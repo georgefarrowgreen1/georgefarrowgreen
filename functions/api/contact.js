@@ -1,25 +1,19 @@
 import { json } from "../_auth.js";
 
-// Contact form → email via Resend (https://resend.com).
-// Requires env: RESEND_API_KEY. Optional: CONTACT_TO, CONTACT_FROM.
+// Contact form delivery. Picks a provider based on which env var is set:
+//   WEB3FORMS_KEY   -> https://web3forms.com  (no domain verification needed)
+//   RESEND_API_KEY  -> https://resend.com     (needs a verified sender domain)
 // Spam defenses: hidden honeypot field + per-IP rate limit in KV.
 
 const MAX_PER_WINDOW = 5;
 const WINDOW_SECONDS = 60 * 60; // 1 hour
 
-function clip(s, n) {
-  return String(s == null ? "" : s).slice(0, n).trim();
-}
-
-function validEmail(e) {
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
-}
+function clip(s, n) { return String(s == null ? "" : s).slice(0, n).trim(); }
+function validEmail(e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); }
 
 export async function onRequestPost({ request, env }) {
   let body = {};
-  try { body = await request.json(); } catch (_) {
-    return json({ error: "Invalid request." }, 400);
-  }
+  try { body = await request.json(); } catch (_) { return json({ error: "Invalid request." }, 400); }
 
   // Honeypot: real users never fill this. Pretend success to waste bot time.
   if (clip(body.website, 100)) return json({ ok: true });
@@ -43,30 +37,39 @@ export async function onRequestPost({ request, env }) {
     await env.BIO_KV.put(key, String(count + 1), { expirationTtl: WINDOW_SECONDS });
   }
 
-  if (!env.RESEND_API_KEY) {
-    return json({ error: "The contact form isn't configured yet." }, 503);
+  const subject = `New enquiry from ${name} via your site`;
+
+  // --- Web3Forms (preferred: no domain verification) ---
+  if (env.WEB3FORMS_KEY) {
+    const res = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        access_key: env.WEB3FORMS_KEY,
+        subject,
+        from_name: name,
+        name,
+        email,
+        replyto: email,
+        message,
+      }),
+    });
+    if (!res.ok) return json({ error: "Couldn't send right now — please try later." }, 502);
+    return json({ ok: true });
   }
 
-  const to = env.CONTACT_TO || "georgefarrowgreen@icloud.com";
-  const from = env.CONTACT_FROM || "Website <noreply@georgefarrowgreen.com>";
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to,
-      reply_to: email,
-      subject: `New message from ${name} via your site`,
-      text: `From: ${name} <${email}>\n\n${message}`,
-    }),
-  });
-
-  if (!res.ok) {
-    return json({ error: "Couldn't send right now — please try again later." }, 502);
+  // --- Resend (fallback) ---
+  if (env.RESEND_API_KEY) {
+    const to = env.CONTACT_TO || "georgefarrowgreen@icloud.com";
+    const from = env.CONTACT_FROM || "Website <noreply@georgefarrowgreen.com>";
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, reply_to: email, subject, text: `From: ${name} <${email}>\n\n${message}` }),
+    });
+    if (!res.ok) return json({ error: "Couldn't send right now — please try later." }, 502);
+    return json({ ok: true });
   }
-  return json({ ok: true });
+
+  return json({ error: "The contact form isn't configured yet." }, 503);
 }
