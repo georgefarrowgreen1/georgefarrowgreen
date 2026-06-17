@@ -66,15 +66,52 @@ password, and edit your name, role, bio, and links inline. Hit **Save**.
 
 ## Editing
 
-- **Edit** (footer) → sign in → name, role, and bio become editable in place.
+**Visitors never see any edit controls.** To open the editor as the owner:
+
+- visit **`https://georgefarrowgreen.com/#edit`**, or
+- **triple-tap the footer copyright** line.
+
+If your session is still valid you go straight in; otherwise you'll be asked for
+your passkey/password. Then:
+
+- name, role, and bio become editable in place.
 - **Photo:** while editing, tap the avatar to upload a picture. It's
   center-cropped, downscaled, and stored with your content (falls back to a
   monogram if none set).
 - **Links:** **+ Link** opens an editor; tap any existing pill (✎) to edit its
   label/URL, reorder it (◀ ▶), or remove it. Icons for GitHub, LinkedIn, X,
   Instagram, and email are detected automatically.
+- **Backup** (toolbar) → export your content as JSON, import a JSON file, or
+  **restore a previous version** (the last 15 saves are kept automatically; a
+  restore is itself undoable).
 - **Save** writes to KV. **Sign out** ends the session.
 - Sessions last 7 days. Changing `EDIT_PASSWORD` instantly logs out everyone.
+
+## Contact form
+
+The page has a public contact form. Wire it up to email you via
+[Resend](https://resend.com) (free tier is plenty):
+
+1. Verify your domain in Resend (add the DNS records it gives you — easy on
+   Cloudflare since your DNS is there).
+2. Create a Resend API key.
+3. In your Pages project → **Settings → Variables and Secrets**, add:
+   - `RESEND_API_KEY` — **Secret** — the key from step 2
+   - `CONTACT_TO` *(optional)* — where messages go (default
+     `georgefarrowgreen@icloud.com`)
+   - `CONTACT_FROM` *(optional)* — verified sender, e.g.
+     `Website <noreply@georgefarrowgreen.com>`
+4. Redeploy.
+
+Until `RESEND_API_KEY` is set, the form politely reports it's not configured.
+Spam defenses: a hidden honeypot field + a per-IP rate limit (5/hour) in KV.
+
+## SEO & social
+
+- `og.png` is the social preview image; `index.html` sets Open Graph + Twitter
+  card meta and a `Person` JSON-LD block (enhanced at runtime from live content).
+- `robots.txt` and `sitemap.xml` point at `https://georgefarrowgreen.com/`.
+- Replace `og.png` anytime — keep it 1200×630.
 
 ### Passkeys
 

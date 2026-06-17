@@ -1,25 +1,9 @@
 import { isAuthed, json } from "../_auth.js";
-
-const KEY = "content";
-
-const DEFAULT_CONTENT = {
-  name: "George Farrow Green",
-  role: "Curious human · builder of things",
-  bio:
-    "This is a placeholder bio. Log in with your password to edit it — share a " +
-    "few warm sentences about who you are, what you make, and what you're into.",
-  avatar: "",
-  links: [
-    { label: "Email", url: "mailto:georgefarrowgreen@icloud.com" },
-    { label: "GitHub", url: "https://github.com/georgefarrowgreen1" },
-  ],
-};
+import { getContent, saveContent, sanitize } from "../_content.js";
 
 // Public: anyone can read the bio.
 export async function onRequestGet({ env }) {
-  if (!env.BIO_KV) return json(DEFAULT_CONTENT);
-  const stored = await env.BIO_KV.get(KEY);
-  return json(stored ? JSON.parse(stored) : DEFAULT_CONTENT);
+  return json(await getContent(env));
 }
 
 // Protected: only an authenticated editor can write.
@@ -37,40 +21,6 @@ export async function onRequestPut({ request, env }) {
   }
 
   const clean = sanitize(body);
-  await env.BIO_KV.put(KEY, JSON.stringify(clean));
+  await saveContent(env, clean);
   return json({ ok: true, content: clean });
-}
-
-function clip(s, max) {
-  return String(s == null ? "" : s).slice(0, max);
-}
-
-function cleanUrl(url) {
-  const u = clip(url, 500).trim();
-  if (/^(https?:|mailto:|tel:)/i.test(u)) return u;
-  if (/^[\w.+-]+@[\w.-]+\.\w+$/.test(u)) return "mailto:" + u;
-  if (u) return "https://" + u.replace(/^\/+/, "");
-  return "";
-}
-
-function cleanAvatar(avatar) {
-  const a = String(avatar || "");
-  // Only accept inline image data URLs, capped at ~700 KB of base64.
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(a) && a.length <= 700000) {
-    return a;
-  }
-  return "";
-}
-
-function sanitize(body) {
-  const links = Array.isArray(body.links) ? body.links.slice(0, 12) : [];
-  return {
-    name: clip(body.name, 80) || DEFAULT_CONTENT.name,
-    role: clip(body.role, 120),
-    bio: clip(body.bio, 1200),
-    avatar: cleanAvatar(body.avatar),
-    links: links
-      .map((l) => ({ label: clip(l && l.label, 40).trim(), url: cleanUrl(l && l.url) }))
-      .filter((l) => l.label && l.url),
-  };
 }

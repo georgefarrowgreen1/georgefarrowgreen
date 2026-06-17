@@ -6,10 +6,33 @@
   <title>George Farrow Green</title>
   <meta name="description" content="George Farrow Green — personal bio." />
   <meta name="theme-color" content="#0a0a0f" />
+  <link rel="canonical" href="https://georgefarrowgreen.com/" />
 
+  <!-- Open Graph -->
   <meta property="og:title" content="George Farrow Green" />
   <meta property="og:description" content="Personal bio of George Farrow Green." />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://georgefarrowgreen.com/" />
+  <meta property="og:site_name" content="George Farrow Green" />
+  <meta property="og:image" content="https://georgefarrowgreen.com/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="George Farrow Green" />
+  <meta name="twitter:description" content="Personal bio of George Farrow Green." />
+  <meta name="twitter:image" content="https://georgefarrowgreen.com/og.png" />
+
+  <!-- Structured data (enhanced at runtime from live content) -->
+  <script type="application/ld+json" id="ld-person">
+  {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": "George Farrow Green",
+    "url": "https://georgefarrowgreen.com/"
+  }
+  </script>
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>" />
   <link rel="stylesheet" href="styles.css" />
@@ -44,9 +67,23 @@
       <nav class="links" id="links"></nav>
     </article>
 
+    <section class="card glass contact-card" id="contact-card">
+      <h2 class="contact-title">Get in touch</h2>
+      <form id="contact-form" class="contact-form" novalidate>
+        <input type="text" id="c-name" placeholder="Your name" autocomplete="name" />
+        <input type="email" id="c-email" placeholder="Your email" autocomplete="email" />
+        <textarea id="c-message" placeholder="Your message" rows="4"></textarea>
+        <!-- honeypot: hidden from people, tempting to bots -->
+        <input type="text" id="c-website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        <p class="form-status" id="contact-status" hidden></p>
+        <button type="submit" class="btn primary full" id="contact-submit">Send message</button>
+      </form>
+    </section>
+
     <footer class="footer">
-      <span>© <span id="year"></span> <span id="f-name-foot">George Farrow Green</span></span>
-      <button class="text-btn" id="open-login">Edit</button>
+      <span id="foot-copy" title="">© <span id="year"></span> <span id="f-name-foot">George Farrow Green</span></span>
+      <button class="text-btn" id="vcard-btn">Save contact</button>
+      <button class="text-btn" id="open-login" hidden>Edit</button>
     </footer>
   </main>
 
@@ -108,11 +145,32 @@
     </form>
   </dialog>
 
+  <!-- Backup & version history dialog -->
+  <dialog class="modal glass" id="backup-modal">
+    <div class="modal-body">
+      <h2>Backup &amp; history</h2>
+      <p class="modal-sub">Export your content, or restore a previous version.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="export-json">⬇ Export</button>
+        <button type="button" class="btn ghost" id="import-json">⬆ Import</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden />
+      </div>
+      <h3 class="field-label">Recent versions</h3>
+      <ul class="passkey-list" id="history-list"></ul>
+      <p class="error" id="backup-error" hidden></p>
+      <div class="modal-actions spread">
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="backup-close">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Edit toolbar (shown when authenticated) -->
   <div class="toolbar glass" id="toolbar" hidden>
     <span class="toolbar-status" id="toolbar-status">Editing</span>
     <button class="btn ghost" id="add-link">+ Link</button>
     <button class="btn ghost" id="manage-passkeys">Passkeys</button>
+    <button class="btn ghost" id="open-backup">Backup</button>
     <button class="btn ghost" id="logout">Sign out</button>
     <button class="btn primary" id="save">Save</button>
   </div>

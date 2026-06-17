@@ -98,6 +98,25 @@ function render() {
   document.title = state.name || "Personal site";
   renderAvatar();
   renderLinks();
+  updateStructuredData();
+}
+
+function updateStructuredData() {
+  const el = document.getElementById("ld-person");
+  if (!el) return;
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: state.name || "",
+    url: "https://georgefarrowgreen.com/",
+  };
+  if (state.role) data.description = state.role;
+  const sameAs = (state.links || [])
+    .map((l) => sanitizeUrl(l.url))
+    .filter((u) => /^https?:/.test(u));
+  if (sameAs.length) data.sameAs = sameAs;
+  if (state.avatar) data.image = "https://georgefarrowgreen.com/og.png";
+  el.textContent = JSON.stringify(data);
 }
 
 function renderAvatar() {
@@ -173,14 +192,21 @@ async function loadContent() {
   render();
 }
 
-async function checkSession() {
+async function hasSession() {
   try {
     const res = await fetch("/api/session", { cache: "no-store" });
-    if (res.ok) {
-      const { authed } = await res.json();
-      if (authed) enterEditMode();
-    }
+    if (res.ok) return !!(await res.json()).authed;
   } catch (_) {}
+  return false;
+}
+
+// Owner-only entry point. Visitors never see edit UI; the owner triggers this
+// via #edit or a triple-tap on the footer. A still-valid session skips the
+// password prompt.
+async function requestEdit() {
+  if (editing) return;
+  if (await hasSession()) enterEditMode();
+  else openLogin();
 }
 
 /* ---------------- Edit mode ---------------- */
@@ -345,7 +371,7 @@ function openLogin() {
 
 els.openLogin.addEventListener("click", () => {
   if (editing) exitEditMode();
-  else openLogin();
+  else requestEdit();
 });
 
 els.loginCancel.addEventListener("click", () => els.modal.close());
@@ -581,6 +607,168 @@ pkEls.manageBtn.addEventListener("click", openPasskeyManager);
 pkEls.add.addEventListener("click", passkeyRegister);
 pkEls.close.addEventListener("click", () => pkEls.modal.close());
 
+/* ---------------- Contact form (public) ---------------- */
+const contact = {
+  form: document.getElementById("contact-form"),
+  name: document.getElementById("c-name"),
+  email: document.getElementById("c-email"),
+  message: document.getElementById("c-message"),
+  website: document.getElementById("c-website"),
+  status: document.getElementById("contact-status"),
+};
+
+function contactStatus(text, cls) {
+  contact.status.textContent = text;
+  contact.status.className = "form-status" + (cls ? " " + cls : "");
+  contact.status.hidden = false;
+}
+
+contact.form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    name: contact.name.value.trim(),
+    email: contact.email.value.trim(),
+    message: contact.message.value.trim(),
+    website: contact.website.value, // honeypot
+  };
+  if (!payload.name || !payload.email || !payload.message) {
+    contactStatus("Please add your name, email, and a message.", "err");
+    return;
+  }
+  contactStatus("Sending…", "");
+  try {
+    const res = await fetch("/api/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      contact.form.reset();
+      contactStatus("Thanks — your message was sent! ✓", "ok");
+    } else {
+      contactStatus(data.error || "Couldn't send right now. Try again later.", "err");
+    }
+  } catch (_) {
+    contactStatus("Network error — please try again later.", "err");
+  }
+});
+
+/* ---------------- Save contact (vCard) ---------------- */
+document.getElementById("vcard-btn").addEventListener("click", () => {
+  const parts = (state.name || "").trim().split(/\s+/).filter(Boolean);
+  const lines = ["BEGIN:VCARD", "VERSION:3.0", "FN:" + (state.name || "")];
+  if (parts.length) {
+    const last = parts.length > 1 ? parts[parts.length - 1] : "";
+    const first = parts[0];
+    lines.push(`N:${last};${first};;;`);
+  }
+  if (state.role) lines.push("TITLE:" + state.role);
+  (state.links || []).forEach((l) => {
+    const u = sanitizeUrl(l.url);
+    if (u.startsWith("mailto:")) lines.push("EMAIL;TYPE=INTERNET:" + u.slice(7));
+    else if (u.startsWith("tel:")) lines.push("TEL:" + u.slice(4));
+    else if (/^https?:/.test(u)) lines.push("URL:" + u);
+  });
+  lines.push("END:VCARD");
+  const blob = new Blob([lines.join("\r\n")], { type: "text/vcard" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.name || "contact").replace(/\s+/g, "_") + ".vcf";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ---------------- Backup & version history ---------------- */
+const backup = {
+  modal: document.getElementById("backup-modal"),
+  list: document.getElementById("history-list"),
+  error: document.getElementById("backup-error"),
+  importFile: document.getElementById("import-file"),
+};
+
+document.getElementById("open-backup").addEventListener("click", () => {
+  backup.error.hidden = true;
+  loadHistory();
+  if (typeof backup.modal.showModal === "function") backup.modal.showModal();
+});
+document.getElementById("backup-close").addEventListener("click", () => backup.modal.close());
+
+document.getElementById("export-json").addEventListener("click", () => {
+  syncTextFromDom();
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "bio-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById("import-json").addEventListener("click", () => backup.importFile.click());
+backup.importFile.addEventListener("change", async () => {
+  const file = backup.importFile.files && backup.importFile.files[0];
+  backup.importFile.value = "";
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    state = { ...structuredClone(DEFAULT_CONTENT), ...data };
+    state.links = Array.isArray(state.links) ? state.links : [];
+    render();
+    enterEditMode();
+    setStatus("Imported — review, then Save to keep", "");
+    backup.modal.close();
+  } catch (_) {
+    backup.error.textContent = "That file isn't valid bio JSON.";
+    backup.error.hidden = false;
+  }
+});
+
+async function loadHistory() {
+  backup.list.innerHTML = "";
+  let data = { versions: [] };
+  try {
+    const res = await fetch("/api/history", { cache: "no-store" });
+    if (res.ok) data = await res.json();
+  } catch (_) {}
+  if (!data.versions || !data.versions.length) {
+    const li = document.createElement("li");
+    li.className = "passkey-empty";
+    li.textContent = "No earlier versions yet — they appear here after you save.";
+    backup.list.appendChild(li);
+    return;
+  }
+  data.versions.forEach((v) => {
+    const li = document.createElement("li");
+    li.className = "passkey-item";
+    const span = document.createElement("span");
+    const when = v.savedAt ? new Date(v.savedAt).toLocaleString() : "";
+    span.textContent = (v.name || "Version") + (when ? " · " + when : "");
+    const btn = document.createElement("button");
+    btn.className = "btn ghost small";
+    btn.textContent = "Restore";
+    btn.addEventListener("click", async () => {
+      if (!confirm("Restore this version? Your current content is saved to history first.")) return;
+      try {
+        const res = await fetch("/api/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ index: v.index }),
+        });
+        const d = await res.json();
+        if (res.ok && d.content) {
+          state = { ...structuredClone(DEFAULT_CONTENT), ...d.content };
+          render();
+          enterEditMode();
+          backup.modal.close();
+        }
+      } catch (_) {}
+    });
+    li.appendChild(span);
+    li.appendChild(btn);
+    backup.list.appendChild(li);
+  });
+}
+
 /* ---------------- Pointer-reactive specular highlight ---------------- */
 els.card.addEventListener("pointermove", (e) => {
   const r = els.card.getBoundingClientRect();
@@ -591,4 +779,26 @@ els.card.addEventListener("pointermove", (e) => {
 
 /* ---------------- Boot ---------------- */
 els.year.textContent = new Date().getFullYear();
-loadContent().then(checkSession);
+loadContent();
+
+// Edit access is never shown to visitors. The owner opens it via the #edit
+// fragment or by triple-tapping the footer copyright.
+function maybeOpenEdit() {
+  if (/#(edit|login)/i.test(location.hash)) requestEdit();
+}
+maybeOpenEdit();
+window.addEventListener("hashchange", maybeOpenEdit);
+
+(function () {
+  const footCopy = document.getElementById("foot-copy");
+  let taps = [];
+  footCopy.addEventListener("click", () => {
+    const now = Date.now();
+    taps = taps.filter((t) => now - t < 1500);
+    taps.push(now);
+    if (taps.length >= 3) {
+      taps = [];
+      requestEdit();
+    }
+  });
+})();
