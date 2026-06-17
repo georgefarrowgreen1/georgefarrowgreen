@@ -165,8 +165,9 @@
     </div>
   </dialog>
 
-  <!-- Edit pill (rendered only while authenticated/editing via body.editing) -->
-  <nav class="navpill" id="toolbar" role="toolbar" aria-label="Editing tools">
+  <!-- Edit pill (rendered only while authenticated/editing via body.editing).
+       The hidden attribute keeps it invisible even if CSS fails or is stale. -->
+  <nav class="navpill" id="toolbar" role="toolbar" aria-label="Editing tools" hidden>
     <button class="navbtn" id="add-link" type="button" title="Add link" aria-label="Add link">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M10.5 13.5a3.6 3.6 0 0 0 5.1 0l2.3-2.3a3.6 3.6 0 0 0-5.1-5.1l-1 1"/>

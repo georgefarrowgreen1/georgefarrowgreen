@@ -4,3 +4,14 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+# Always revalidate the app shell so deploys take effect immediately
+# (prevents new HTML loading against a stale cached stylesheet/script).
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/styles.css
+  Cache-Control: no-cache
+/app.js
+  Cache-Control: no-cache
