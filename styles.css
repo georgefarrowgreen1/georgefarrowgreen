@@ -87,16 +87,13 @@ body {
   display: grid;
   place-items: center;
   padding: 0;
-  border-radius: 14px;
+  border: none;
+  background: transparent;
   cursor: pointer;
   color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  transition: background 0.2s var(--ease), transform 0.15s var(--ease);
+  transition: opacity 0.2s var(--ease), transform 0.15s var(--ease);
 }
-.enquire-btn:hover { background: rgba(255, 255, 255, 0.24); }
+.enquire-btn:hover { opacity: 0.7; }
 .enquire-btn:active { transform: scale(0.95); }
 .enquire-btn svg {
   width: 26px;
