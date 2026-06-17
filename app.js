@@ -1,23 +1,23 @@
 /* ----------------------------------------------------------------------
-   Personal bio page — front-end logic
-   - Loads content from /api/content (Cloudflare Pages Function + KV)
-   - Falls back to embedded defaults if the API isn't wired up
-   - Password login via /api/login; edits saved via PUT /api/content
-   - Inline link editor (with icons + reordering) and photo upload
+   Personal site — front-end logic
+   - Hero layout with editable name/role/bio, links, and a background image
+   - Content from /api/content (KV); background from /api/background
+   - Login (password + passkey); inline editing; backup/history; contact form
 ---------------------------------------------------------------------- */
 
 const els = {
   name: document.getElementById("f-name"),
   role: document.getElementById("f-role"),
   bio: document.getElementById("f-bio"),
-  nameFoot: document.getElementById("f-name-foot"),
-  avatar: document.getElementById("avatar"),
-  monogram: document.getElementById("monogram"),
+  brand: document.getElementById("brand"),
   links: document.getElementById("links"),
-  year: document.getElementById("year"),
-  card: document.getElementById("bio-card"),
-  glow: document.querySelector(".card-glow"),
+  heroBg: document.getElementById("hero-bg"),
   photoInput: document.getElementById("photo-input"),
+  setBg: document.getElementById("set-bg"),
+  // enquire / contact
+  enquire: document.getElementById("enquire"),
+  enquireModal: document.getElementById("enquire-modal"),
+  enquireCancel: document.getElementById("enquire-cancel"),
   // login
   openLogin: document.getElementById("open-login"),
   modal: document.getElementById("login-modal"),
@@ -48,9 +48,8 @@ const DEFAULT_CONTENT = {
   name: "George Farrow Green",
   role: "Curious human · builder of things",
   bio:
-    "This is a placeholder bio. Log in with your password to edit it — share a " +
-    "few warm sentences about who you are, what you make, and what you're into.",
-  avatar: "",
+    "This is a placeholder bio. Sign in to edit it — share a few warm " +
+    "sentences about who you are, what you make, and what you're into.",
   links: [
     { label: "Email", url: "mailto:georgefarrowgreen@icloud.com" },
     { label: "GitHub", url: "https://github.com/georgefarrowgreen1" },
@@ -59,11 +58,9 @@ const DEFAULT_CONTENT = {
 
 let state = structuredClone(DEFAULT_CONTENT);
 let editing = false;
-let editingLinkIndex = null; // null = adding a new link
+let editingLinkIndex = null;
 
 /* ---------------- Icons ---------------- */
-// Returns an inline SVG string for a known service, else a generic link glyph.
-// SVGs are author-controlled (not user input), so innerHTML is safe here.
 const ICONS = {
   mail: '<path d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm1 2.2V18h16V7.2l-8 5.3-8-5.3Z"/>',
   github: '<path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85l-.01 2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>',
@@ -84,19 +81,12 @@ function iconFor(url) {
 }
 
 /* ---------------- Rendering ---------------- */
-function monogramFrom(name) {
-  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "·";
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
-}
-
 function render() {
   els.name.textContent = state.name || "";
   els.role.textContent = state.role || "";
   els.bio.textContent = state.bio || "";
-  els.nameFoot.textContent = state.name || "";
+  els.brand.textContent = state.name || "";
   document.title = state.name || "Personal site";
-  renderAvatar();
   renderLinks();
   updateStructuredData();
 }
@@ -111,27 +101,14 @@ function updateStructuredData() {
     url: "https://georgefarrowgreen.com/",
   };
   if (state.role) data.description = state.role;
-  const sameAs = (state.links || [])
-    .map((l) => sanitizeUrl(l.url))
-    .filter((u) => /^https?:/.test(u));
+  const sameAs = (state.links || []).map((l) => sanitizeUrl(l.url)).filter((u) => /^https?:/.test(u));
   if (sameAs.length) data.sameAs = sameAs;
-  if (state.avatar) data.image = "https://georgefarrowgreen.com/og.png";
   el.textContent = JSON.stringify(data);
 }
 
-function renderAvatar() {
-  els.avatar.querySelector("img")?.remove();
-  if (state.avatar) {
-    const img = document.createElement("img");
-    img.src = state.avatar;
-    img.alt = state.name || "Profile photo";
-    img.className = "avatar-img";
-    els.avatar.appendChild(img);
-    els.monogram.style.display = "none";
-  } else {
-    els.monogram.style.display = "";
-    els.monogram.textContent = monogramFrom(state.name);
-  }
+function setHeroBackground(bust) {
+  const url = "/api/background" + (bust ? "?t=" + Date.now() : "");
+  els.heroBg.style.backgroundImage = `url('${url}')`;
 }
 
 function renderLinks() {
@@ -143,10 +120,7 @@ function makePill(link, index) {
   const a = document.createElement("a");
   a.className = "pill";
   a.href = sanitizeUrl(link.url);
-  if (!a.href.startsWith("mailto:")) {
-    a.target = "_blank";
-    a.rel = "noopener";
-  }
+  if (!a.href.startsWith("mailto:")) { a.target = "_blank"; a.rel = "noopener"; }
 
   const icon = document.createElement("span");
   icon.className = "pill-icon";
@@ -159,10 +133,7 @@ function makePill(link, index) {
   a.appendChild(label);
 
   a.addEventListener("click", (e) => {
-    if (editing) {
-      e.preventDefault();
-      openLinkEditor(index);
-    }
+    if (editing) { e.preventDefault(); openLinkEditor(index); }
   });
   return a;
 }
@@ -183,12 +154,8 @@ async function loadContent() {
       const data = await res.json();
       state = { ...structuredClone(DEFAULT_CONTENT), ...data };
       state.links = Array.isArray(state.links) ? state.links : [];
-      render();
-      return;
     }
-  } catch (_) {
-    /* backend not available — use defaults already in DOM */
-  }
+  } catch (_) {}
   render();
 }
 
@@ -200,9 +167,7 @@ async function hasSession() {
   return false;
 }
 
-// Owner-only entry point. Visitors never see edit UI; the owner triggers this
-// via #edit or a triple-tap on the footer. A still-valid session skips the
-// password prompt.
+// Owner-only entry point — visitors never see edit UI.
 async function requestEdit() {
   if (editing) return;
   if (await hasSession()) enterEditMode();
@@ -210,8 +175,6 @@ async function requestEdit() {
 }
 
 /* ---------------- Edit mode ---------------- */
-// The edit pill is shown purely via the body.editing class (CSS), which is only
-// ever added here — after authentication. Nothing edit-related renders without it.
 function enterEditMode() {
   editing = true;
   document.body.classList.add("editing");
@@ -264,16 +227,56 @@ async function save() {
     setStatus("Saved ✓", "ok");
   } catch (_) {
     setStatus("Save failed", "err");
-    alert(
-      "Couldn't save. If you haven't set up the Cloudflare KV backend yet, see " +
-      "the README — editing needs it to persist."
-    );
+    alert("Couldn't save. If the Cloudflare KV backend isn't set up yet, see the README.");
   }
+}
+
+/* ---------------- Background image ---------------- */
+els.setBg.addEventListener("click", () => els.photoInput.click());
+
+els.photoInput.addEventListener("change", async () => {
+  const file = els.photoInput.files && els.photoInput.files[0];
+  els.photoInput.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) { alert("Please choose an image file."); return; }
+  setStatus("Uploading background…", "saving");
+  try {
+    const dataUrl = await resizeImage(file, 2000);
+    const res = await fetch("/api/background", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    if (res.status === 401) { exitEditMode(); openLogin(); return; }
+    if (!res.ok) throw new Error("bg failed");
+    setHeroBackground(true);
+    setStatus("Background updated ✓", "ok");
+  } catch (_) {
+    setStatus("Couldn't set background", "err");
+  }
+});
+
+// Downscale preserving aspect ratio; returns a JPEG data URL.
+function resizeImage(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 /* ---------------- Link editor ---------------- */
 function openLinkEditor(index) {
-  editingLinkIndex = index; // null when adding
+  editingLinkIndex = index;
   const isEdit = index !== null;
   els.linkTitle.textContent = isEdit ? "Edit link" : "Add link";
   els.linkLabel.value = isEdit ? state.links[index].label : "";
@@ -292,10 +295,7 @@ els.linkCancel.addEventListener("click", () => els.linkModal.close());
 els.linkForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const link = { label: els.linkLabel.value.trim(), url: els.linkUrl.value.trim() };
-  if (!link.label || !link.url) {
-    els.linkModal.close();
-    return;
-  }
+  if (!link.label || !link.url) { els.linkModal.close(); return; }
   if (editingLinkIndex === null) state.links.push(link);
   else state.links[editingLinkIndex] = link;
   renderLinks();
@@ -303,10 +303,7 @@ els.linkForm.addEventListener("submit", (e) => {
 });
 
 els.linkRemove.addEventListener("click", () => {
-  if (editingLinkIndex !== null) {
-    state.links.splice(editingLinkIndex, 1);
-    renderLinks();
-  }
+  if (editingLinkIndex !== null) { state.links.splice(editingLinkIndex, 1); renderLinks(); }
   els.linkModal.close();
 });
 
@@ -323,47 +320,6 @@ function moveLink(delta) {
 els.linkMoveLeft.addEventListener("click", () => moveLink(-1));
 els.linkMoveRight.addEventListener("click", () => moveLink(1));
 
-/* ---------------- Photo upload ---------------- */
-els.avatar.addEventListener("click", () => {
-  if (editing) els.photoInput.click();
-});
-
-els.photoInput.addEventListener("change", async () => {
-  const file = els.photoInput.files && els.photoInput.files[0];
-  els.photoInput.value = "";
-  if (!file) return;
-  if (!file.type.startsWith("image/")) {
-    alert("Please choose an image file.");
-    return;
-  }
-  try {
-    state.avatar = await resizeImage(file, 320);
-    renderAvatar();
-    setStatus("Photo added — Save to keep it", "");
-  } catch (_) {
-    alert("Couldn't process that image.");
-  }
-});
-
-// Center-crop to a square and downscale; returns a compact JPEG data URL.
-function resizeImage(file, size) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const side = Math.min(img.width, img.height);
-      const sx = (img.width - side) / 2;
-      const sy = (img.height - side) / 2;
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-      resolve(canvas.toDataURL("image/jpeg", 0.85));
-    };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
-  });
-}
-
 /* ---------------- Login ---------------- */
 function openLogin() {
   els.loginError.hidden = true;
@@ -373,11 +329,7 @@ function openLogin() {
   setTimeout(() => els.password.focus(), 50);
 }
 
-els.openLogin.addEventListener("click", () => {
-  if (editing) exitEditMode();
-  else requestEdit();
-});
-
+els.openLogin.addEventListener("click", () => { if (!editing) requestEdit(); });
 els.loginCancel.addEventListener("click", () => els.modal.close());
 
 els.loginForm.addEventListener("submit", async (e) => {
@@ -389,11 +341,7 @@ els.loginForm.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password: els.password.value }),
     });
-    if (res.ok) {
-      els.modal.close();
-      enterEditMode();
-      return;
-    }
+    if (res.ok) { els.modal.close(); enterEditMode(); return; }
     const data = await res.json().catch(() => ({}));
     els.loginError.textContent =
       data.error ||
@@ -401,8 +349,7 @@ els.loginForm.addEventListener("submit", async (e) => {
        res.status === 401 ? "Incorrect password." : "Login unavailable.");
     els.loginError.hidden = false;
   } catch (_) {
-    els.loginError.textContent =
-      "Login backend not reachable. See the README to set it up on Cloudflare.";
+    els.loginError.textContent = "Login backend not reachable. See the README.";
     els.loginError.hidden = false;
   }
 });
@@ -457,23 +404,17 @@ async function pkApi(payload) {
 }
 
 function pkErr(target, e) {
-  const msg = e && e.name === "NotAllowedError"
-    ? "Cancelled or timed out."
-    : (e && e.message) || "Something went wrong.";
-  target.textContent = msg;
+  target.textContent = e && e.name === "NotAllowedError"
+    ? "Cancelled or timed out." : (e && e.message) || "Something went wrong.";
   target.hidden = false;
 }
 
-// Show the passkey button on the login dialog only if some are registered.
 async function refreshPasskeyButton() {
   let show = false;
   if (pkSupported()) {
     try {
       const res = await fetch("/api/passkeys", { cache: "no-store" });
-      if (res.ok) {
-        const d = await res.json();
-        show = d.supported && d.count > 0;
-      }
+      if (res.ok) { const d = await res.json(); show = d.supported && d.count > 0; }
     } catch (_) {}
   }
   pkEls.loginBtn.hidden = !show;
@@ -490,10 +431,7 @@ async function passkeyLogin() {
         rpId: opt.rpId,
         userVerification: "preferred",
         timeout: 60000,
-        allowCredentials: (opt.allowCredentials || []).map((id) => ({
-          type: "public-key",
-          id: b64u.dec(id),
-        })),
+        allowCredentials: (opt.allowCredentials || []).map((id) => ({ type: "public-key", id: b64u.dec(id) })),
       },
     });
     const r = assertion.response;
@@ -506,9 +444,7 @@ async function passkeyLogin() {
     });
     els.modal.close();
     enterEditMode();
-  } catch (e) {
-    pkErr(els.loginError, e);
-  }
+  } catch (e) { pkErr(els.loginError, e); }
 }
 
 async function passkeyRegister() {
@@ -519,28 +455,16 @@ async function passkeyRegister() {
       publicKey: {
         challenge: b64u.dec(opt.challenge),
         rp: { name: document.title || "Personal site", id: opt.rpId },
-        user: {
-          id: new TextEncoder().encode("owner"),
-          name: "owner",
-          displayName: state.name || "Owner",
-        },
-        pubKeyCredParams: [
-          { type: "public-key", alg: -7 },
-          { type: "public-key", alg: -257 },
-        ],
+        user: { id: new TextEncoder().encode("owner"), name: "owner", displayName: state.name || "Owner" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
         authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
         attestation: "none",
         timeout: 60000,
-        excludeCredentials: (opt.excludeCredentials || []).map((id) => ({
-          type: "public-key",
-          id: b64u.dec(id),
-        })),
+        excludeCredentials: (opt.excludeCredentials || []).map((id) => ({ type: "public-key", id: b64u.dec(id) })),
       },
     });
     const r = cred.response;
-    if (typeof r.getPublicKey !== "function") {
-      throw new Error("This browser doesn't expose the passkey public key.");
-    }
+    if (typeof r.getPublicKey !== "function") throw new Error("This browser doesn't expose the passkey public key.");
     const label = prompt("Name this passkey (e.g. iPhone, MacBook):", "My device");
     await pkApi({
       action: "register-verify",
@@ -551,18 +475,13 @@ async function passkeyRegister() {
       label: ((label || "").trim() || "Passkey"),
     });
     await loadPasskeyList();
-  } catch (e) {
-    pkErr(pkEls.error, e);
-  }
+  } catch (e) { pkErr(pkEls.error, e); }
 }
 
 async function loadPasskeyList() {
   pkEls.list.innerHTML = "";
   let data = { credentials: [] };
-  try {
-    const res = await fetch("/api/passkeys", { cache: "no-store" });
-    data = await res.json();
-  } catch (_) {}
+  try { const res = await fetch("/api/passkeys", { cache: "no-store" }); data = await res.json(); } catch (_) {}
   if (!data.credentials || !data.credentials.length) {
     const li = document.createElement("li");
     li.className = "passkey-empty";
@@ -598,10 +517,7 @@ async function loadPasskeyList() {
 
 function openPasskeyManager() {
   pkEls.error.hidden = true;
-  if (!pkSupported()) {
-    pkEls.error.textContent = "This browser doesn't support passkeys.";
-    pkEls.error.hidden = false;
-  }
+  if (!pkSupported()) { pkEls.error.textContent = "This browser doesn't support passkeys."; pkEls.error.hidden = false; }
   loadPasskeyList();
   if (typeof pkEls.modal.showModal === "function") pkEls.modal.showModal();
 }
@@ -611,7 +527,7 @@ pkEls.manageBtn.addEventListener("click", openPasskeyManager);
 pkEls.add.addEventListener("click", passkeyRegister);
 pkEls.close.addEventListener("click", () => pkEls.modal.close());
 
-/* ---------------- Contact form (public) ---------------- */
+/* ---------------- Enquire / contact form ---------------- */
 const contact = {
   form: document.getElementById("contact-form"),
   name: document.getElementById("c-name"),
@@ -620,6 +536,13 @@ const contact = {
   website: document.getElementById("c-website"),
   status: document.getElementById("contact-status"),
 };
+
+els.enquire.addEventListener("click", () => {
+  contact.status.hidden = true;
+  if (typeof els.enquireModal.showModal === "function") els.enquireModal.showModal();
+  setTimeout(() => contact.name.focus(), 50);
+});
+els.enquireCancel.addEventListener("click", () => els.enquireModal.close());
 
 function contactStatus(text, cls) {
   contact.status.textContent = text;
@@ -647,40 +570,11 @@ contact.form.addEventListener("submit", async (e) => {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      contact.form.reset();
-      contactStatus("Thanks — your message was sent! ✓", "ok");
-    } else {
-      contactStatus(data.error || "Couldn't send right now. Try again later.", "err");
-    }
+    if (res.ok) { contact.form.reset(); contactStatus("Thanks — your message was sent! ✓", "ok"); }
+    else contactStatus(data.error || "Couldn't send right now. Try again later.", "err");
   } catch (_) {
     contactStatus("Network error — please try again later.", "err");
   }
-});
-
-/* ---------------- Save contact (vCard) ---------------- */
-document.getElementById("vcard-btn").addEventListener("click", () => {
-  const parts = (state.name || "").trim().split(/\s+/).filter(Boolean);
-  const lines = ["BEGIN:VCARD", "VERSION:3.0", "FN:" + (state.name || "")];
-  if (parts.length) {
-    const last = parts.length > 1 ? parts[parts.length - 1] : "";
-    const first = parts[0];
-    lines.push(`N:${last};${first};;;`);
-  }
-  if (state.role) lines.push("TITLE:" + state.role);
-  (state.links || []).forEach((l) => {
-    const u = sanitizeUrl(l.url);
-    if (u.startsWith("mailto:")) lines.push("EMAIL;TYPE=INTERNET:" + u.slice(7));
-    else if (u.startsWith("tel:")) lines.push("TEL:" + u.slice(4));
-    else if (/^https?:/.test(u)) lines.push("URL:" + u);
-  });
-  lines.push("END:VCARD");
-  const blob = new Blob([lines.join("\r\n")], { type: "text/vcard" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = (state.name || "contact").replace(/\s+/g, "_") + ".vcf";
-  a.click();
-  URL.revokeObjectURL(a.href);
 });
 
 /* ---------------- Backup & version history ---------------- */
@@ -730,10 +624,7 @@ backup.importFile.addEventListener("change", async () => {
 async function loadHistory() {
   backup.list.innerHTML = "";
   let data = { versions: [] };
-  try {
-    const res = await fetch("/api/history", { cache: "no-store" });
-    if (res.ok) data = await res.json();
-  } catch (_) {}
+  try { const res = await fetch("/api/history", { cache: "no-store" }); if (res.ok) data = await res.json(); } catch (_) {}
   if (!data.versions || !data.versions.length) {
     const li = document.createElement("li");
     li.className = "passkey-empty";
@@ -773,31 +664,6 @@ async function loadHistory() {
   });
 }
 
-/* ---------------- Pointer-reactive specular highlight ---------------- */
-els.card.addEventListener("pointermove", (e) => {
-  const r = els.card.getBoundingClientRect();
-  const x = e.clientX - r.left;
-  const y = e.clientY - r.top;
-  els.glow.style.transform = `translate(${x - r.width * 0.4}px, ${y - r.height * 0.4}px)`;
-});
-
 /* ---------------- Boot ---------------- */
-els.year.textContent = new Date().getFullYear();
 loadContent();
-
-// Edit access is never shown to visitors and never auto-opens (no hash trigger,
-// no session-based auto-edit). The owner opens it with a deliberate triple-tap
-// on the footer copyright line.
-(function () {
-  const footCopy = document.getElementById("foot-copy");
-  let taps = [];
-  footCopy.addEventListener("click", () => {
-    const now = Date.now();
-    taps = taps.filter((t) => now - t < 1200);
-    taps.push(now);
-    if (taps.length >= 3) {
-      taps = [];
-      requestEdit();
-    }
-  });
-})();
+setHeroBackground(false);

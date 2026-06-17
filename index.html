@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>George Farrow Green</title>
-  <meta name="description" content="George Farrow Green — personal bio." />
+  <meta name="description" content="George Farrow Green — personal site." />
   <meta name="theme-color" content="#0a0a0f" />
   <link rel="canonical" href="https://georgefarrowgreen.com/" />
 
   <!-- Open Graph -->
   <meta property="og:title" content="George Farrow Green" />
-  <meta property="og:description" content="Personal bio of George Farrow Green." />
+  <meta property="og:description" content="Personal site of George Farrow Green." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://georgefarrowgreen.com/" />
   <meta property="og:site_name" content="George Farrow Green" />
@@ -21,7 +21,7 @@
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="George Farrow Green" />
-  <meta name="twitter:description" content="Personal bio of George Farrow Green." />
+  <meta name="twitter:description" content="Personal site of George Farrow Green." />
   <meta name="twitter:image" content="https://georgefarrowgreen.com/og.png" />
 
   <!-- Structured data (enhanced at runtime from live content) -->
@@ -35,65 +35,60 @@
   </script>
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>" />
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
-  <!-- Ambient liquid-glass background -->
-  <div class="aurora" aria-hidden="true">
-    <span class="blob blob-1"></span>
-    <span class="blob blob-2"></span>
-    <span class="blob blob-3"></span>
-    <span class="grain"></span>
-  </div>
+  <section class="hero" id="hero">
+    <div class="hero-bg" id="hero-bg" aria-hidden="true"></div>
+    <div class="hero-overlay" aria-hidden="true"></div>
 
-  <main class="stage">
-    <article class="card glass" id="bio-card">
-      <div class="card-glow" aria-hidden="true"></div>
-
-      <div class="avatar glass-inset" id="avatar" title="">
-        <span id="monogram">G</span>
-        <span class="avatar-edit" aria-hidden="true">Change</span>
+    <header class="topbar">
+      <div class="brand" id="brand">George Farrow Green</div>
+      <div class="top-actions">
+        <button class="key-btn" id="open-login" type="button" title="Sign in to edit" aria-label="Sign in to edit">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="9" cy="15" r="3.4"/>
+            <path d="M11.4 12.6 18 6"/>
+            <path d="M15.5 5.5 18.5 8.5"/>
+            <path d="M13.6 8.4 15.6 10.4"/>
+          </svg>
+        </button>
+        <button class="enquire-btn" id="enquire" type="button">Enquire now</button>
       </div>
-      <input type="file" id="photo-input" accept="image/*" hidden />
+    </header>
 
-      <h1 class="name" id="f-name">George Farrow Green</h1>
-      <p class="role" id="f-role">Curious human · builder of things</p>
-
-      <p class="bio" id="f-bio">
-        This is a placeholder bio. Log in with your password to edit it — share a
-        few warm sentences about who you are, what you make, and what you're into.
+    <div class="hero-content">
+      <h1 class="hero-name" id="f-name">George Farrow Green</h1>
+      <p class="hero-role" id="f-role">Curious human · builder of things</p>
+      <p class="hero-bio" id="f-bio">
+        This is a placeholder bio. Sign in to edit it — share a few warm
+        sentences about who you are, what you make, and what you're into.
       </p>
-
       <nav class="links" id="links"></nav>
-    </article>
+    </div>
+  </section>
 
-    <section class="card glass contact-card" id="contact-card">
-      <h2 class="contact-title">Get in touch</h2>
-      <form id="contact-form" class="contact-form" novalidate>
-        <input type="text" id="c-name" placeholder="Your name" autocomplete="name" />
-        <input type="email" id="c-email" placeholder="Your email" autocomplete="email" />
-        <textarea id="c-message" placeholder="Your message" rows="4"></textarea>
-        <!-- honeypot: hidden from people, tempting to bots -->
-        <input type="text" id="c-website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
-        <p class="form-status" id="contact-status" hidden></p>
-        <button type="submit" class="btn primary full" id="contact-submit">Send message</button>
-      </form>
-    </section>
+  <!-- Hidden file input, reused for the background image upload -->
+  <input type="file" id="photo-input" accept="image/*" hidden />
 
-    <footer class="footer">
-      <span id="foot-copy">© <span id="year"></span> <span id="f-name-foot">George Farrow Green</span></span>
-      <button class="key-btn" id="open-login" type="button" title="Sign in to edit" aria-label="Sign in to edit">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="9" cy="15" r="3.4"/>
-          <path d="M11.4 12.6 18 6"/>
-          <path d="M15.5 5.5 18.5 8.5"/>
-          <path d="M13.6 8.4 15.6 10.4"/>
-        </svg>
-      </button>
-      <span class="foot-sep" aria-hidden="true">·</span>
-      <button class="text-btn" id="vcard-btn">Save contact</button>
-    </footer>
-  </main>
+  <!-- Enquire / contact dialog -->
+  <dialog class="modal glass" id="enquire-modal">
+    <form id="contact-form" class="contact-form" novalidate>
+      <h2>Get in touch</h2>
+      <p class="modal-sub">Send a message and I'll get back to you.</p>
+      <input type="text" id="c-name" placeholder="Your name" autocomplete="name" />
+      <input type="email" id="c-email" placeholder="Your email" autocomplete="email" />
+      <textarea id="c-message" placeholder="Your message" rows="4"></textarea>
+      <!-- honeypot -->
+      <input type="text" id="c-website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+      <p class="form-status" id="contact-status" hidden></p>
+      <div class="modal-actions spread">
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="enquire-cancel">Close</button>
+        <button type="submit" class="btn primary" id="contact-submit">Send</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Login dialog -->
   <dialog class="modal glass" id="login-modal">
@@ -183,6 +178,14 @@
       </svg>
     </button>
 
+    <button class="navbtn" id="set-bg" type="button" title="Background image" aria-label="Change background image">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2"/>
+        <circle cx="8.5" cy="10" r="1.6"/>
+        <path d="M20 18l-5-5-4 4-2-2-4 4"/>
+      </svg>
+    </button>
+
     <button class="navbtn" id="manage-passkeys" type="button" title="Passkeys" aria-label="Passkeys">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="9" cy="15" r="3.4"/>
@@ -217,6 +220,6 @@
 
   <div class="status-toast" id="toolbar-status" role="status" hidden></div>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
