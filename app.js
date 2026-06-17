@@ -45,7 +45,7 @@ const els = {
 };
 
 const DEFAULT_CONTENT = {
-  name: "George Farrow Green",
+  name: "George Farrow-Green",
   role: "Curious human · builder of things",
   bio:
     "This is a placeholder bio. Sign in to edit it — share a few warm " +

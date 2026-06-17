@@ -5,7 +5,7 @@ export const HISTORY_KEY = "content_history";
 export const HISTORY_MAX = 15;
 
 export const DEFAULT_CONTENT = {
-  name: "George Farrow Green",
+  name: "George Farrow-Green",
   role: "Curious human · builder of things",
   bio:
     "This is a placeholder bio. Log in with your password to edit it — share a " +
