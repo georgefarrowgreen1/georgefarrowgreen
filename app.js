@@ -210,31 +210,20 @@ async function requestEdit() {
 }
 
 /* ---------------- Edit mode ---------------- */
-// Center the floating pill precisely from the live viewport width. Clamps to a
-// margin and falls back to scroll if the pill is wider than the screen.
-function centerToolbar() {
-  const t = els.toolbar;
-  if (!t || t.hidden) return;
-  const w = t.offsetWidth;
-  const left = Math.max(8, Math.round((window.innerWidth - w) / 2));
-  t.style.left = left + "px";
-  t.style.transform = "none";
-}
-
+// The edit pill is shown purely via the body.editing class (CSS), which is only
+// ever added here — after authentication. Nothing edit-related renders without it.
 function enterEditMode() {
   editing = true;
   document.body.classList.add("editing");
-  els.toolbar.hidden = false;
   [els.name, els.role, els.bio].forEach((el) => el.setAttribute("contenteditable", "true"));
-  setStatus("Editing — tap a link to edit it", "");
-  requestAnimationFrame(centerToolbar);
+  setStatus("Editing", "");
 }
 
 function exitEditMode() {
   editing = false;
   document.body.classList.remove("editing");
-  els.toolbar.hidden = true;
   [els.name, els.role, els.bio].forEach((el) => el.removeAttribute("contenteditable"));
+  els.toolbarStatus.hidden = true;
 }
 
 function syncTextFromDom() {
@@ -243,10 +232,14 @@ function syncTextFromDom() {
   state.bio = els.bio.textContent.trim();
 }
 
+let statusTimer;
 function setStatus(text, cls) {
-  els.toolbarStatus.textContent = text;
-  els.toolbarStatus.className = "toolbar-status" + (cls ? " " + cls : "");
-  requestAnimationFrame(centerToolbar); // width may change with the label
+  const el = els.toolbarStatus;
+  el.textContent = text;
+  el.className = "status-toast" + (cls ? " " + cls : "");
+  el.hidden = false;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
 async function save() {
@@ -259,8 +252,8 @@ async function save() {
       body: JSON.stringify(state),
     });
     if (res.status === 401) {
-      setStatus("Session expired", "");
       exitEditMode();
+      setStatus("Session expired — sign in again", "err");
       openLogin();
       return;
     }
@@ -268,11 +261,9 @@ async function save() {
     const data = await res.json();
     if (data.content) state = { ...structuredClone(DEFAULT_CONTENT), ...data.content };
     render();
-    enterEditMode();
-    setStatus("Saved ✓", "saved");
-    setTimeout(() => editing && setStatus("Editing", ""), 2000);
+    setStatus("Saved ✓", "ok");
   } catch (_) {
-    setStatus("Save failed", "");
+    setStatus("Save failed", "err");
     alert(
       "Couldn't save. If you haven't set up the Cloudflare KV backend yet, see " +
       "the README — editing needs it to persist."
@@ -793,10 +784,6 @@ els.card.addEventListener("pointermove", (e) => {
 /* ---------------- Boot ---------------- */
 els.year.textContent = new Date().getFullYear();
 loadContent();
-
-// Keep the floating pill centered as the screen changes.
-window.addEventListener("resize", centerToolbar);
-window.addEventListener("orientationchange", () => setTimeout(centerToolbar, 120));
 
 // Edit access is never shown to visitors and never auto-opens (no hash trigger,
 // no session-based auto-edit). The owner opens it with a deliberate triple-tap
