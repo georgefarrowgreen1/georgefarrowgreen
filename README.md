@@ -66,12 +66,9 @@ password, and edit your name, role, bio, and links inline. Hit **Save**.
 
 ## Editing
 
-**Visitors never see any edit controls.** To open the editor as the owner:
-
-- visit **`https://georgefarrowgreen.com/#edit`**, or
-- **triple-tap the footer copyright** line.
-
-If your session is still valid you go straight in; otherwise you'll be asked for
+**Visitors never see any edit controls, and edit mode never opens on its own.**
+To open the editor as the owner, **triple-tap the footer copyright line**. If
+your session is still valid you go straight in; otherwise you'll be asked for
 your passkey/password. Then:
 
 - name, role, and bio become editable in place.

@@ -781,20 +781,15 @@ els.card.addEventListener("pointermove", (e) => {
 els.year.textContent = new Date().getFullYear();
 loadContent();
 
-// Edit access is never shown to visitors. The owner opens it via the #edit
-// fragment or by triple-tapping the footer copyright.
-function maybeOpenEdit() {
-  if (/#(edit|login)/i.test(location.hash)) requestEdit();
-}
-maybeOpenEdit();
-window.addEventListener("hashchange", maybeOpenEdit);
-
+// Edit access is never shown to visitors and never auto-opens (no hash trigger,
+// no session-based auto-edit). The owner opens it with a deliberate triple-tap
+// on the footer copyright line.
 (function () {
   const footCopy = document.getElementById("foot-copy");
   let taps = [];
   footCopy.addEventListener("click", () => {
     const now = Date.now();
-    taps = taps.filter((t) => now - t < 1500);
+    taps = taps.filter((t) => now - t < 1200);
     taps.push(now);
     if (taps.length >= 3) {
       taps = [];

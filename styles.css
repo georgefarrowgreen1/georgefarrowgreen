@@ -364,25 +364,59 @@ body.editing [contenteditable="true"]:focus {
 .btn.danger:hover { background: rgba(255, 80, 80, 0.28); }
 
 /* ---------- Toolbar ---------- */
+/* Floating, centered glass pill (iOS-26 / Instagram-style nav) */
 .toolbar {
   position: fixed;
-  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
   left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.7rem;
+  gap: 0.25rem;
+  padding: 0.4rem;
   border-radius: 999px;
   z-index: 50;
-  animation: rise 0.4s var(--ease) both;
   max-width: 94vw;
   overflow-x: auto;
   scrollbar-width: none;
+  background: rgba(26, 27, 33, 0.55);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  animation: pillIn 0.45s var(--ease) both;
 }
+@keyframes pillIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(22px) scale(0.94); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+.toolbar { transform: translateX(-50%); }
 .toolbar::-webkit-scrollbar { display: none; }
 .toolbar .btn, .toolbar-status { flex: 0 0 auto; white-space: nowrap; }
-.toolbar-status { padding-left: 0.4rem; }
+
+/* Minimal, borderless segments inside the pill */
+.toolbar .btn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  opacity: 0.82;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+}
+.toolbar .btn:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+.toolbar .btn.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #0a0a12;
+  opacity: 1;
+}
+.toolbar .btn.primary:hover { filter: brightness(1.08); }
+.toolbar-status {
+  padding: 0 0.5rem 0 0.7rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+@media (max-width: 460px) {
+  .toolbar-status { display: none; }
+}
 .toolbar-status {
   font-size: 0.85rem;
   color: var(--muted);
