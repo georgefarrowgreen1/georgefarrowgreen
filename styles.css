@@ -140,6 +140,7 @@ body {
 }
 
 .avatar {
+  position: relative;
   width: 96px;
   height: 96px;
   border-radius: 50%;
@@ -152,7 +153,33 @@ body {
   background-image: linear-gradient(135deg, rgba(122, 162, 255, 0.35), rgba(192, 140, 255, 0.35));
   color: #fff;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
 }
+
+.avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-edit {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-shadow: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  z-index: 2;
+}
+body.editing .avatar { cursor: pointer; }
+body.editing .avatar:hover .avatar-edit { display: flex; }
 
 .name {
   font-size: clamp(1.9rem, 5vw, 2.6rem);
@@ -207,19 +234,21 @@ body {
 
 .pill:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.14); }
 
-.pill .remove-link {
-  border: none;
-  background: rgba(255, 80, 80, 0.25);
-  color: #fff;
-  border-radius: 50%;
-  width: 18px; height: 18px;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  display: none;
+.pill-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
 }
+.pill-icon svg { width: 100%; height: 100%; fill: currentColor; }
 
-body.editing .pill .remove-link { display: inline-flex; align-items: center; justify-content: center; }
+body.editing .pill { cursor: pointer; border-style: dashed; }
+body.editing .pill::after {
+  content: "✎";
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin-left: 0.1rem;
+}
 
 /* ---------- Footer ---------- */
 .footer {
@@ -292,7 +321,16 @@ body.editing [contenteditable="true"]:focus {
 
 .error { color: #ff8585; font-size: 0.85rem; margin: 0; }
 
+.field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
 .modal-actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 0.5rem; }
+.modal-actions.spread { justify-content: flex-start; align-items: center; }
+.modal-actions .spacer { flex: 1; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -317,6 +355,13 @@ body.editing [contenteditable="true"]:focus {
   border-color: var(--glass-stroke);
 }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.15); }
+.btn.ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.danger {
+  background: rgba(255, 80, 80, 0.18);
+  color: #ff9b9b;
+  border-color: rgba(255, 80, 80, 0.35);
+}
+.btn.danger:hover { background: rgba(255, 80, 80, 0.28); }
 
 /* ---------- Toolbar ---------- */
 .toolbar {

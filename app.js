@@ -1,8 +1,9 @@
 /* ----------------------------------------------------------------------
    Personal bio page — front-end logic
    - Loads content from /api/content (Cloudflare Pages Function + KV)
-   - Falls back to the markup already in the page if the API isn't wired up
+   - Falls back to embedded defaults if the API isn't wired up
    - Password login via /api/login; edits saved via PUT /api/content
+   - Inline link editor (with icons + reordering) and photo upload
 ---------------------------------------------------------------------- */
 
 const els = {
@@ -10,11 +11,13 @@ const els = {
   role: document.getElementById("f-role"),
   bio: document.getElementById("f-bio"),
   nameFoot: document.getElementById("f-name-foot"),
+  avatar: document.getElementById("avatar"),
   monogram: document.getElementById("monogram"),
   links: document.getElementById("links"),
   year: document.getElementById("year"),
   card: document.getElementById("bio-card"),
   glow: document.querySelector(".card-glow"),
+  photoInput: document.getElementById("photo-input"),
   // login
   openLogin: document.getElementById("open-login"),
   modal: document.getElementById("login-modal"),
@@ -22,6 +25,17 @@ const els = {
   password: document.getElementById("password"),
   loginError: document.getElementById("login-error"),
   loginCancel: document.getElementById("login-cancel"),
+  // link editor
+  linkModal: document.getElementById("link-modal"),
+  linkForm: document.getElementById("link-form"),
+  linkLabel: document.getElementById("link-label"),
+  linkUrl: document.getElementById("link-url"),
+  linkTitle: document.getElementById("link-modal-title"),
+  linkMove: document.getElementById("link-move"),
+  linkMoveLeft: document.getElementById("link-move-left"),
+  linkMoveRight: document.getElementById("link-move-right"),
+  linkRemove: document.getElementById("link-remove"),
+  linkCancel: document.getElementById("link-cancel"),
   // toolbar
   toolbar: document.getElementById("toolbar"),
   toolbarStatus: document.getElementById("toolbar-status"),
@@ -36,13 +50,38 @@ const DEFAULT_CONTENT = {
   bio:
     "This is a placeholder bio. Log in with your password to edit it — share a " +
     "few warm sentences about who you are, what you make, and what you're into.",
+  avatar: "",
   links: [
     { label: "Email", url: "mailto:georgefarrowgreen@icloud.com" },
     { label: "GitHub", url: "https://github.com/georgefarrowgreen1" },
   ],
 };
 
+let state = structuredClone(DEFAULT_CONTENT);
 let editing = false;
+let editingLinkIndex = null; // null = adding a new link
+
+/* ---------------- Icons ---------------- */
+// Returns an inline SVG string for a known service, else a generic link glyph.
+// SVGs are author-controlled (not user input), so innerHTML is safe here.
+const ICONS = {
+  mail: '<path d="M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm1 2.2V18h16V7.2l-8 5.3-8-5.3Z"/>',
+  github: '<path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.85l-.01 2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>',
+  linkedin: '<path d="M4.98 3.5A2.5 2.5 0 1 1 5 8.5a2.5 2.5 0 0 1-.02-5ZM3 9h4v12H3V9Zm6 0h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21h-4v-5.4c0-1.29-.02-2.95-1.8-2.95-1.8 0-2.07 1.4-2.07 2.85V21H9V9Z"/>',
+  x: '<path d="M17.5 3h3l-7.1 8.1L22 21h-6.4l-4.6-6-5.3 6H2.7l7.6-8.7L2 3h6.6l4.2 5.5L17.5 3Zm-1.1 16h1.7L7.7 4.8H5.9L16.4 19Z"/>',
+  instagram: '<path d="M12 8.6A3.4 3.4 0 1 0 12 15.4 3.4 3.4 0 0 0 12 8.6Zm0-2.2c1.9 0 2.1 0 2.85.04 2.2.1 3.27 1.17 3.37 3.37.04.75.04.95.04 2.85s0 2.1-.04 2.85c-.1 2.2-1.17 3.27-3.37 3.37-.75.04-.95.04-2.85.04s-2.1 0-2.85-.04c-2.2-.1-3.27-1.18-3.37-3.37C5.78 14.1 5.78 13.9 5.78 12s0-2.1.04-2.85c.1-2.2 1.17-3.27 3.37-3.37C9.94 5.74 10.14 5.74 12 5.74Zm0-1.74c-2.17 0-2.44.01-3.29.05C5.7 4.2 4.2 5.7 4.05 8.71 4.01 9.56 4 9.83 4 12s.01 2.44.05 3.29c.15 3.01 1.65 4.51 4.66 4.66.85.04 1.12.05 3.29.05s2.44-.01 3.29-.05c3.01-.15 4.51-1.65 4.66-4.66.04-.85.05-1.12.05-3.29s-.01-2.44-.05-3.29c-.15-3.01-1.65-4.51-4.66-4.66C14.44 4.01 14.17 4 12 4Zm5.85 3.35a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"/>',
+  link: '<path d="M10.6 13.4a3 3 0 0 0 4.24 0l3-3a3 3 0 0 0-4.24-4.24l-1.3 1.3M13.4 10.6a3 3 0 0 0-4.24 0l-3 3a3 3 0 1 0 4.24 4.24l1.3-1.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+};
+
+function iconFor(url) {
+  const u = (url || "").toLowerCase();
+  if (u.startsWith("mailto:") || /^[^@\s]+@[^@\s]+$/.test(u)) return ICONS.mail;
+  if (u.includes("github.com")) return ICONS.github;
+  if (u.includes("linkedin.com")) return ICONS.linkedin;
+  if (u.includes("twitter.com") || /\bx\.com/.test(u)) return ICONS.x;
+  if (u.includes("instagram.com")) return ICONS.instagram;
+  return ICONS.link;
+}
 
 /* ---------------- Rendering ---------------- */
 function monogramFrom(name) {
@@ -51,22 +90,37 @@ function monogramFrom(name) {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-function render(content) {
-  els.name.textContent = content.name || "";
-  els.role.textContent = content.role || "";
-  els.bio.textContent = content.bio || "";
-  els.nameFoot.textContent = content.name || "";
-  els.monogram.textContent = monogramFrom(content.name);
-  document.title = content.name || "Personal site";
-  renderLinks(content.links || []);
+function render() {
+  els.name.textContent = state.name || "";
+  els.role.textContent = state.role || "";
+  els.bio.textContent = state.bio || "";
+  els.nameFoot.textContent = state.name || "";
+  document.title = state.name || "Personal site";
+  renderAvatar();
+  renderLinks();
 }
 
-function renderLinks(links) {
+function renderAvatar() {
+  els.avatar.querySelector("img")?.remove();
+  if (state.avatar) {
+    const img = document.createElement("img");
+    img.src = state.avatar;
+    img.alt = state.name || "Profile photo";
+    img.className = "avatar-img";
+    els.avatar.appendChild(img);
+    els.monogram.style.display = "none";
+  } else {
+    els.monogram.style.display = "";
+    els.monogram.textContent = monogramFrom(state.name);
+  }
+}
+
+function renderLinks() {
   els.links.innerHTML = "";
-  links.forEach((link) => els.links.appendChild(makePill(link)));
+  state.links.forEach((link, i) => els.links.appendChild(makePill(link, i)));
 }
 
-function makePill(link) {
+function makePill(link, index) {
   const a = document.createElement("a");
   a.className = "pill";
   a.href = sanitizeUrl(link.url);
@@ -74,40 +128,22 @@ function makePill(link) {
     a.target = "_blank";
     a.rel = "noopener";
   }
+
+  const icon = document.createElement("span");
+  icon.className = "pill-icon";
+  icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${iconFor(link.url)}</svg>`;
+  a.appendChild(icon);
+
   const label = document.createElement("span");
   label.className = "pill-label";
   label.textContent = link.label || "Link";
-
-  // In edit mode the label & url become editable
-  label.addEventListener("click", (e) => {
-    if (!editing) return;
-    e.preventDefault();
-    const newLabel = prompt("Link text:", link.label || "");
-    if (newLabel === null) return;
-    const newUrl = prompt("Link URL:", link.url || "");
-    if (newUrl === null) return;
-    link.label = newLabel.trim();
-    link.url = newUrl.trim();
-    label.textContent = link.label || "Link";
-    a.href = sanitizeUrl(link.url);
-  });
-
   a.appendChild(label);
 
-  const remove = document.createElement("button");
-  remove.className = "remove-link";
-  remove.type = "button";
-  remove.textContent = "×";
-  remove.title = "Remove link";
-  remove.addEventListener("click", (e) => {
-    e.preventDefault();
-    a.remove();
-  });
-  a.appendChild(remove);
-
-  // Prevent navigation while editing
   a.addEventListener("click", (e) => {
-    if (editing) e.preventDefault();
+    if (editing) {
+      e.preventDefault();
+      openLinkEditor(index);
+    }
   });
   return a;
 }
@@ -126,13 +162,15 @@ async function loadContent() {
     const res = await fetch("/api/content", { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
-      render({ ...DEFAULT_CONTENT, ...data });
+      state = { ...structuredClone(DEFAULT_CONTENT), ...data };
+      state.links = Array.isArray(state.links) ? state.links : [];
+      render();
       return;
     }
   } catch (_) {
     /* backend not available — use defaults already in DOM */
   }
-  render(DEFAULT_CONTENT);
+  render();
 }
 
 async function checkSession() {
@@ -151,7 +189,7 @@ function enterEditMode() {
   document.body.classList.add("editing");
   els.toolbar.hidden = false;
   [els.name, els.role, els.bio].forEach((el) => el.setAttribute("contenteditable", "true"));
-  setStatus("Editing", "");
+  setStatus("Editing — tap a link to edit it", "");
 }
 
 function exitEditMode() {
@@ -161,17 +199,10 @@ function exitEditMode() {
   [els.name, els.role, els.bio].forEach((el) => el.removeAttribute("contenteditable"));
 }
 
-function collectContent() {
-  const links = [...els.links.querySelectorAll(".pill")].map((a) => ({
-    label: a.querySelector(".pill-label").textContent.trim(),
-    url: a.getAttribute("href"),
-  })).filter((l) => l.label);
-  return {
-    name: els.name.textContent.trim(),
-    role: els.role.textContent.trim(),
-    bio: els.bio.textContent.trim(),
-    links,
-  };
+function syncTextFromDom() {
+  state.name = els.name.textContent.trim();
+  state.role = els.role.textContent.trim();
+  state.bio = els.bio.textContent.trim();
 }
 
 function setStatus(text, cls) {
@@ -180,13 +211,13 @@ function setStatus(text, cls) {
 }
 
 async function save() {
-  const content = collectContent();
+  syncTextFromDom();
   setStatus("Saving…", "saving");
   try {
     const res = await fetch("/api/content", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(content),
+      body: JSON.stringify(state),
     });
     if (res.status === 401) {
       setStatus("Session expired", "");
@@ -195,7 +226,9 @@ async function save() {
       return;
     }
     if (!res.ok) throw new Error("save failed");
-    render({ ...DEFAULT_CONTENT, ...content }); // refresh monogram, title, etc.
+    const data = await res.json();
+    if (data.content) state = { ...structuredClone(DEFAULT_CONTENT), ...data.content };
+    render();
     enterEditMode();
     setStatus("Saved ✓", "saved");
     setTimeout(() => editing && setStatus("Editing", ""), 2000);
@@ -208,6 +241,99 @@ async function save() {
   }
 }
 
+/* ---------------- Link editor ---------------- */
+function openLinkEditor(index) {
+  editingLinkIndex = index; // null when adding
+  const isEdit = index !== null;
+  els.linkTitle.textContent = isEdit ? "Edit link" : "Add link";
+  els.linkLabel.value = isEdit ? state.links[index].label : "";
+  els.linkUrl.value = isEdit ? state.links[index].url : "";
+  els.linkRemove.hidden = !isEdit;
+  els.linkMove.hidden = !isEdit;
+  els.linkMoveLeft.disabled = !isEdit || index === 0;
+  els.linkMoveRight.disabled = !isEdit || index === state.links.length - 1;
+  if (typeof els.linkModal.showModal === "function") els.linkModal.showModal();
+  setTimeout(() => els.linkLabel.focus(), 50);
+}
+
+els.addLink.addEventListener("click", () => openLinkEditor(null));
+els.linkCancel.addEventListener("click", () => els.linkModal.close());
+
+els.linkForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const link = { label: els.linkLabel.value.trim(), url: els.linkUrl.value.trim() };
+  if (!link.label || !link.url) {
+    els.linkModal.close();
+    return;
+  }
+  if (editingLinkIndex === null) state.links.push(link);
+  else state.links[editingLinkIndex] = link;
+  renderLinks();
+  els.linkModal.close();
+});
+
+els.linkRemove.addEventListener("click", () => {
+  if (editingLinkIndex !== null) {
+    state.links.splice(editingLinkIndex, 1);
+    renderLinks();
+  }
+  els.linkModal.close();
+});
+
+function moveLink(delta) {
+  const i = editingLinkIndex;
+  if (i === null) return;
+  const j = i + delta;
+  if (j < 0 || j >= state.links.length) return;
+  [state.links[i], state.links[j]] = [state.links[j], state.links[i]];
+  renderLinks();
+  els.linkModal.close();
+  openLinkEditor(j);
+}
+els.linkMoveLeft.addEventListener("click", () => moveLink(-1));
+els.linkMoveRight.addEventListener("click", () => moveLink(1));
+
+/* ---------------- Photo upload ---------------- */
+els.avatar.addEventListener("click", () => {
+  if (editing) els.photoInput.click();
+});
+
+els.photoInput.addEventListener("change", async () => {
+  const file = els.photoInput.files && els.photoInput.files[0];
+  els.photoInput.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) {
+    alert("Please choose an image file.");
+    return;
+  }
+  try {
+    state.avatar = await resizeImage(file, 320);
+    renderAvatar();
+    setStatus("Photo added — Save to keep it", "");
+  } catch (_) {
+    alert("Couldn't process that image.");
+  }
+});
+
+// Center-crop to a square and downscale; returns a compact JPEG data URL.
+function resizeImage(file, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const sx = (img.width - side) / 2;
+      const sy = (img.height - side) / 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 /* ---------------- Login ---------------- */
 function openLogin() {
   els.loginError.hidden = true;
@@ -217,11 +343,8 @@ function openLogin() {
 }
 
 els.openLogin.addEventListener("click", () => {
-  if (editing) {
-    exitEditMode();
-  } else {
-    openLogin();
-  }
+  if (editing) exitEditMode();
+  else openLogin();
 });
 
 els.loginCancel.addEventListener("click", () => els.modal.close());
@@ -242,7 +365,9 @@ els.loginForm.addEventListener("submit", async (e) => {
     }
     const data = await res.json().catch(() => ({}));
     els.loginError.textContent =
-      data.error || (res.status === 401 ? "Incorrect password." : "Login unavailable.");
+      data.error ||
+      (res.status === 429 ? "Too many attempts — try again later." :
+       res.status === 401 ? "Incorrect password." : "Login unavailable.");
     els.loginError.hidden = false;
   } catch (_) {
     els.loginError.textContent =
@@ -254,14 +379,6 @@ els.loginForm.addEventListener("submit", async (e) => {
 els.logout.addEventListener("click", async () => {
   try { await fetch("/api/logout", { method: "POST" }); } catch (_) {}
   exitEditMode();
-});
-
-els.addLink.addEventListener("click", () => {
-  const label = prompt("Link text (e.g. LinkedIn):");
-  if (!label) return;
-  const url = prompt("Link URL:");
-  if (url === null) return;
-  els.links.appendChild(makePill({ label: label.trim(), url: (url || "").trim() }));
 });
 
 els.save.addEventListener("click", save);

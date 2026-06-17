@@ -66,11 +66,22 @@ password, and edit your name, role, bio, and links inline. Hit **Save**.
 
 ## Editing
 
-- **Edit** (footer) → sign in → fields become editable in place.
-- **+ Link** adds a social/contact pill; click a pill's text while editing to
-  change it, or the red × to remove it.
+- **Edit** (footer) → sign in → name, role, and bio become editable in place.
+- **Photo:** while editing, tap the avatar to upload a picture. It's
+  center-cropped, downscaled, and stored with your content (falls back to a
+  monogram if none set).
+- **Links:** **+ Link** opens an editor; tap any existing pill (✎) to edit its
+  label/URL, reorder it (◀ ▶), or remove it. Icons for GitHub, LinkedIn, X,
+  Instagram, and email are detected automatically.
 - **Save** writes to KV. **Sign out** ends the session.
 - Sessions last 7 days. Changing `EDIT_PASSWORD` instantly logs out everyone.
+
+### Security
+
+- Login is **rate-limited** per IP (8 failures → 15-minute lockout, tracked in
+  KV) to blunt password-guessing.
+- The password lives only as a Cloudflare secret; sessions are HMAC-signed in an
+  `HttpOnly; Secure; SameSite=Strict` cookie.
 
 ## Local preview
 

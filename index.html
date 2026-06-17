@@ -27,9 +27,11 @@
     <article class="card glass" id="bio-card">
       <div class="card-glow" aria-hidden="true"></div>
 
-      <div class="avatar glass-inset" id="avatar">
+      <div class="avatar glass-inset" id="avatar" title="">
         <span id="monogram">G</span>
+        <span class="avatar-edit" aria-hidden="true">Change</span>
       </div>
+      <input type="file" id="photo-input" accept="image/*" hidden />
 
       <h1 class="name" id="f-name">George Farrow Green</h1>
       <p class="role" id="f-role">Curious human · builder of things</p>
@@ -58,6 +60,29 @@
       <div class="modal-actions">
         <button type="button" class="btn ghost" id="login-cancel">Cancel</button>
         <button type="submit" class="btn primary" id="login-submit">Sign in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Link editor dialog -->
+  <dialog class="modal glass" id="link-modal">
+    <form id="link-form">
+      <h2 id="link-modal-title">Add link</h2>
+      <label class="field-label" for="link-label">Label</label>
+      <input type="text" id="link-label" placeholder="e.g. LinkedIn" autocomplete="off" />
+      <label class="field-label" for="link-url">URL</label>
+      <input type="text" id="link-url" placeholder="e.g. linkedin.com/in/you or you@email.com" autocomplete="off" />
+
+      <div class="modal-actions" id="link-move" hidden>
+        <button type="button" class="btn ghost" id="link-move-left">◀ Move left</button>
+        <button type="button" class="btn ghost" id="link-move-right">Move right ▶</button>
+      </div>
+
+      <div class="modal-actions spread">
+        <button type="button" class="btn danger" id="link-remove" hidden>Remove</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="link-cancel">Cancel</button>
+        <button type="submit" class="btn primary">Save link</button>
       </div>
     </form>
   </dialog>
