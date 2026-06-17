@@ -18,4 +18,4 @@ compatibility_date = "2026-06-17"
 # KV binding the site's Functions read/write. The variable name MUST be BIO_KV.
 [[kv_namespaces]]
 binding = "BIO_KV"
-id = "PASTE_YOUR_NAMESPACE_ID_HERE"
+id = "10ec6d961a224b3a8b68a7c993ca0caf"
