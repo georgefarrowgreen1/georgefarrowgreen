@@ -67,11 +67,10 @@ body {
 
 .brand {
   margin: 0;
-  font-family: "Chakra Petch", system-ui, sans-serif;
-  font-style: italic;
+  font-family: "Space Grotesk", system-ui, sans-serif;
   font-weight: 700;
   font-size: clamp(1rem, 2.2vw, 1.3rem);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #fff;
   opacity: 0.95;
