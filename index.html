@@ -2,87 +2,74 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>George Farrow Green</title>
-  <meta name="description" content="George Farrow Green — personal website." />
-  <meta name="author" content="George Farrow Green" />
+  <meta name="description" content="George Farrow Green — personal bio." />
+  <meta name="theme-color" content="#0a0a0f" />
 
-  <!-- Open Graph / social preview -->
   <meta property="og:title" content="George Farrow Green" />
-  <meta property="og:description" content="Personal website of George Farrow Green." />
+  <meta property="og:description" content="Personal bio of George Farrow Green." />
   <meta property="og:type" content="website" />
 
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle theme">🌙</button>
+  <!-- Ambient liquid-glass background -->
+  <div class="aurora" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
+    <span class="grain"></span>
+  </div>
 
-  <header class="hero">
-    <div class="container">
-      <p class="eyebrow">Personal site</p>
-      <h1>George Farrow Green</h1>
-      <p class="tagline">
-        Welcome. This is my little corner of the web — a place for what I make,
-        what I'm thinking about, and how to reach me.
-      </p>
-      <nav class="cta-row">
-        <a class="btn btn-primary" href="#contact">Get in touch</a>
-        <a class="btn btn-ghost" href="#work">See my work</a>
-      </nav>
-    </div>
-  </header>
+  <main class="stage">
+    <article class="card glass" id="bio-card">
+      <div class="card-glow" aria-hidden="true"></div>
 
-  <main class="container">
-    <section id="about" class="section">
-      <h2>About</h2>
-      <p>
-        Hi, I'm George. I'm writing this intro as a placeholder — swap it out for
-        a few sentences about who you are, what you do, and what you care about.
-        Keep it warm and short; people read it in a few seconds.
-      </p>
-    </section>
-
-    <section id="work" class="section">
-      <h2>Work</h2>
-      <div class="cards">
-        <article class="card">
-          <h3>Project one</h3>
-          <p>A short description of something you built or contributed to.</p>
-          <a href="#" class="card-link">Learn more →</a>
-        </article>
-        <article class="card">
-          <h3>Project two</h3>
-          <p>Another thing worth showing off. Link it to a repo or a live demo.</p>
-          <a href="#" class="card-link">Learn more →</a>
-        </article>
-        <article class="card">
-          <h3>Project three</h3>
-          <p>Replace these placeholders with your real projects.</p>
-          <a href="#" class="card-link">Learn more →</a>
-        </article>
+      <div class="avatar glass-inset" id="avatar">
+        <span id="monogram">G</span>
       </div>
-    </section>
 
-    <section id="contact" class="section">
-      <h2>Contact</h2>
-      <p>The best way to reach me:</p>
-      <ul class="links">
-        <li><a href="mailto:georgefarrowgreen@icloud.com">georgefarrowgreen@icloud.com</a></li>
-        <li><a href="https://github.com/georgefarrowgreen1" target="_blank" rel="noopener">GitHub</a></li>
-      </ul>
-    </section>
+      <h1 class="name" id="f-name">George Farrow Green</h1>
+      <p class="role" id="f-role">Curious human · builder of things</p>
+
+      <p class="bio" id="f-bio">
+        This is a placeholder bio. Log in with your password to edit it — share a
+        few warm sentences about who you are, what you make, and what you're into.
+      </p>
+
+      <nav class="links" id="links"></nav>
+    </article>
+
+    <footer class="footer">
+      <span>© <span id="year"></span> <span id="f-name-foot">George Farrow Green</span></span>
+      <button class="text-btn" id="open-login">Edit</button>
+    </footer>
   </main>
 
-  <footer class="footer">
-    <div class="container">
-      <p>© <span id="year"></span> George Farrow Green</p>
-    </div>
-  </footer>
+  <!-- Login dialog -->
+  <dialog class="modal glass" id="login-modal">
+    <form method="dialog" id="login-form">
+      <h2>Sign in to edit</h2>
+      <p class="modal-sub">Enter your password to make changes.</p>
+      <input type="password" id="password" placeholder="Password" autocomplete="current-password" />
+      <p class="error" id="login-error" hidden></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="login-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="login-submit">Sign in</button>
+      </div>
+    </form>
+  </dialog>
 
-  <script src="script.js"></script>
+  <!-- Edit toolbar (shown when authenticated) -->
+  <div class="toolbar glass" id="toolbar" hidden>
+    <span class="toolbar-status" id="toolbar-status">Editing</span>
+    <button class="btn ghost" id="add-link">+ Link</button>
+    <button class="btn ghost" id="logout">Sign out</button>
+    <button class="btn primary" id="save">Save</button>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
