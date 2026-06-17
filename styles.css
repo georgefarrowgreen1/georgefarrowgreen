@@ -530,5 +530,33 @@ body.editing .navpill {
 .form-status.err { color: #ff8585; }
 
 /* footer text buttons */
-.footer { flex-wrap: wrap; justify-content: center; }
+.footer { flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
 #foot-copy { cursor: default; }
+.foot-sep { color: var(--muted); opacity: 0.5; }
+
+/* Discreet key icon = the only login entry point (hidden while editing) */
+.key-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.4;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: opacity 0.2s, background 0.2s;
+}
+.key-btn:hover, .key-btn:focus-visible { opacity: 1; background: rgba(255, 255, 255, 0.08); outline: none; }
+.key-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+body.editing .key-btn, body.editing .foot-sep { display: none; }
