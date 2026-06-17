@@ -395,14 +395,17 @@ body.editing [contenteditable="true"]:focus {
 .toolbar::-webkit-scrollbar { display: none; }
 .toolbar .btn, .toolbar-status { flex: 0 0 auto; white-space: nowrap; }
 
-/* Minimal, borderless segments inside the pill */
+/* Minimal, borderless icon segments inside the pill */
 .toolbar .btn {
   border: none;
   background: transparent;
   color: var(--text);
-  opacity: 0.82;
-  padding: 0.55rem 0.95rem;
+  opacity: 0.85;
+  padding: 0.5rem 0.85rem;
   border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 .toolbar .btn:hover { background: rgba(255, 255, 255, 0.12); opacity: 1; }
 .toolbar .btn.primary {
@@ -411,13 +414,29 @@ body.editing [contenteditable="true"]:focus {
   opacity: 1;
 }
 .toolbar .btn.primary:hover { filter: brightness(1.08); }
+
+.toolbar .ic {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .toolbar-status {
-  padding: 0 0.5rem 0 0.7rem;
+  padding: 0 0.4rem 0 0.7rem;
   font-size: 0.82rem;
   color: var(--muted);
 }
-@media (max-width: 460px) {
+
+/* Collapse to a clean icon-only pill on small screens */
+@media (max-width: 560px) {
   .toolbar-status { display: none; }
+  .toolbar .btn-label { display: none; }
+  .toolbar .btn { padding: 0.55rem; }
 }
 .toolbar-status {
   font-size: 0.85rem;
