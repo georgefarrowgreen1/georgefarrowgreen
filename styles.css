@@ -69,33 +69,43 @@ body {
   margin: 0;
   font-family: "Space Grotesk", system-ui, sans-serif;
   font-weight: 700;
-  font-size: clamp(1rem, 2.2vw, 1.3rem);
-  letter-spacing: 0.14em;
+  font-size: clamp(1.05rem, 2.3vw, 1.4rem);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #fff;
-  opacity: 0.95;
+  opacity: 1;
   white-space: nowrap;
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
+  -webkit-text-stroke: 0.7px #fff; /* extra weight beyond Space Grotesk's 700 */
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
 }
 
 .top-actions { display: flex; align-items: center; gap: 0.7rem; flex: 0 0 auto; }
 
 .enquire-btn {
-  padding: 0.62rem 1.4rem;
-  border-radius: 999px;
-  font: inherit;
-  font-weight: 600;
-  font-size: 0.9rem;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 14px;
   cursor: pointer;
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   transition: background 0.2s var(--ease), transform 0.15s var(--ease);
 }
 .enquire-btn:hover { background: rgba(255, 255, 255, 0.24); }
-.enquire-btn:active { transform: scale(0.97); }
+.enquire-btn:active { transform: scale(0.95); }
+.enquire-btn svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
 
 /* ---------------- Hero content (bottom-left) ---------------- */
 .hero-content {

@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <section class="hero" id="hero">
@@ -56,7 +56,13 @@
             <path d="M13.6 8.4 15.6 10.4"/>
           </svg>
         </button>
-        <button class="enquire-btn" id="enquire" type="button">Enquire now</button>
+        <button class="enquire-btn" id="enquire" type="button" title="Enquire" aria-label="Enquire">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 13 10.5 7.5"/>
+            <path d="M6.5 17.5 15.5 8.5"/>
+            <path d="M12.5 17 18 11.5"/>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -222,6 +228,6 @@
 
   <div class="status-toast" id="toolbar-status" role="status" hidden></div>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
