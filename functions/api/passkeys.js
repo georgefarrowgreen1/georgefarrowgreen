@@ -91,11 +91,24 @@ async function putPasskeys(env, list) {
 }
 
 /* ---------------- Verification ---------------- */
-async function verifyClientData(clientDataBuf, type, expectedChallenge, origin) {
+// Accept the RP-ID host itself or any of its subdomains (https only; localhost
+// allowed for dev). This lets one passkey work across apex + subdomains when
+// RP_ID is pinned to the registrable domain.
+function originAllowed(originStr, rpId) {
+  try {
+    const u = new URL(originStr);
+    if (u.protocol !== "https:" && u.hostname !== "localhost") return false;
+    return u.hostname === rpId || u.hostname.endsWith("." + rpId);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function verifyClientData(clientDataBuf, type, expectedChallenge, rpId) {
   const data = JSON.parse(new TextDecoder().decode(clientDataBuf));
   if (data.type !== type) return false;
   if (data.challenge !== expectedChallenge) return false;
-  if (data.origin !== origin) return false;
+  if (!originAllowed(data.origin, rpId)) return false;
   return true;
 }
 
@@ -144,8 +157,10 @@ export async function onRequestGet({ request, env }) {
 export async function onRequestPost({ request, env }) {
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   const url = new URL(request.url);
-  const rpId = url.hostname;
-  const origin = url.origin;
+  // Pin the RP ID to the registrable domain (e.g. georgefarrowgreen.com) via
+  // the RP_ID env var so one passkey works across apex + subdomains. Falls back
+  // to the request host when unset.
+  const rpId = env.RP_ID || url.hostname;
 
   let body = {};
   try { body = await request.json(); } catch (_) {}
@@ -170,7 +185,7 @@ export async function onRequestPost({ request, env }) {
     if (!expected) return json({ error: "Challenge expired. Try again." }, 400);
     await env.BIO_KV.delete("pk_chal_reg");
 
-    const ok = await verifyClientData(b64urlToBuf(body.clientDataJSON), "webauthn.create", expected, origin);
+    const ok = await verifyClientData(b64urlToBuf(body.clientDataJSON), "webauthn.create", expected, rpId);
     if (!ok) return json({ error: "Registration verification failed." }, 400);
     if (body.alg !== -7 && body.alg !== -257) {
       return json({ error: "Unsupported key type (need ES256 or RS256)." }, 400);
@@ -209,7 +224,7 @@ export async function onRequestPost({ request, env }) {
     if (!cred) return json({ error: "Unknown passkey." }, 401);
 
     const clientBuf = b64urlToBuf(body.clientDataJSON);
-    if (!(await verifyClientData(clientBuf, "webauthn.get", expected, origin))) {
+    if (!(await verifyClientData(clientBuf, "webauthn.get", expected, rpId))) {
       return json({ error: "Verification failed." }, 401);
     }
     const valid = await verifyAssertion(

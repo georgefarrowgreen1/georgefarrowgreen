@@ -89,9 +89,13 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - WebAuthn is implemented on Web Crypto (no dependencies); credentials live in
   KV. ES256 and RS256 keys are supported.
 
-> Passkeys are bound to the **domain** they're registered on. If you use both the
-> `*.pages.dev` URL and a custom domain, register a passkey on each — one won't
-> work on the other.
+> **Pin the RP ID for multi-subdomain setups.** Passkeys are bound to a domain.
+> Set an environment variable **`RP_ID`** = `georgefarrowgreen.com` (Pages →
+> Settings → Variables and Secrets, a plain variable, not a secret) so one
+> passkey works across the apex **and all subdomains** (www, etc.). When unset,
+> it defaults to the exact host you visited. Note: a passkey can't be registered
+> from the raw `*.pages.dev` URL once `RP_ID` is pinned to your custom domain —
+> use the real domain for registering.
 
 ### Security
 
