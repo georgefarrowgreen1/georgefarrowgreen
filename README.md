@@ -76,12 +76,31 @@ password, and edit your name, role, bio, and links inline. Hit **Save**.
 - **Save** writes to KV. **Sign out** ends the session.
 - Sessions last 7 days. Changing `EDIT_PASSWORD` instantly logs out everyone.
 
+### Passkeys
+
+Sign in with Face ID / Touch ID / a security key instead of typing the password.
+
+- Sign in once with your password → toolbar **Passkeys → + Add a passkey** →
+  follow the system prompt. Repeat per device.
+- After that, the login dialog shows **Sign in with a passkey**.
+- Manage/remove them anytime from **Passkeys** in the toolbar.
+- The **password stays** as a fallback/recovery method — passkeys are added, not
+  required.
+- WebAuthn is implemented on Web Crypto (no dependencies); credentials live in
+  KV. ES256 and RS256 keys are supported.
+
+> Passkeys are bound to the **domain** they're registered on. If you use both the
+> `*.pages.dev` URL and a custom domain, register a passkey on each — one won't
+> work on the other.
+
 ### Security
 
 - Login is **rate-limited** per IP (8 failures → 15-minute lockout, tracked in
   KV) to blunt password-guessing.
 - The password lives only as a Cloudflare secret; sessions are HMAC-signed in an
   `HttpOnly; Secure; SameSite=Strict` cookie.
+- Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
+  user-presence flag, and signature).
 
 ## Local preview
 

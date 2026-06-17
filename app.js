@@ -338,6 +338,7 @@ function resizeImage(file, size) {
 function openLogin() {
   els.loginError.hidden = true;
   els.password.value = "";
+  refreshPasskeyButton();
   if (typeof els.modal.showModal === "function") els.modal.showModal();
   setTimeout(() => els.password.focus(), 50);
 }
@@ -382,6 +383,203 @@ els.logout.addEventListener("click", async () => {
 });
 
 els.save.addEventListener("click", save);
+
+/* ---------------- Passkeys (WebAuthn) ---------------- */
+const pkEls = {
+  loginBtn: document.getElementById("passkey-login"),
+  divider: document.getElementById("login-divider"),
+  manageBtn: document.getElementById("manage-passkeys"),
+  modal: document.getElementById("passkey-modal"),
+  list: document.getElementById("passkey-list"),
+  add: document.getElementById("passkey-add"),
+  close: document.getElementById("passkey-close"),
+  error: document.getElementById("passkey-error"),
+};
+
+const b64u = {
+  enc(buf) {
+    const u = new Uint8Array(buf);
+    let s = "";
+    for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  },
+  dec(str) {
+    str = String(str || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (str.length % 4) str += "=";
+    const bin = atob(str);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+  },
+};
+
+const pkSupported = () => typeof window.PublicKeyCredential !== "undefined";
+
+async function pkApi(payload) {
+  const res = await fetch("/api/passkeys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Request failed.");
+  return data;
+}
+
+function pkErr(target, e) {
+  const msg = e && e.name === "NotAllowedError"
+    ? "Cancelled or timed out."
+    : (e && e.message) || "Something went wrong.";
+  target.textContent = msg;
+  target.hidden = false;
+}
+
+// Show the passkey button on the login dialog only if some are registered.
+async function refreshPasskeyButton() {
+  let show = false;
+  if (pkSupported()) {
+    try {
+      const res = await fetch("/api/passkeys", { cache: "no-store" });
+      if (res.ok) {
+        const d = await res.json();
+        show = d.supported && d.count > 0;
+      }
+    } catch (_) {}
+  }
+  pkEls.loginBtn.hidden = !show;
+  pkEls.divider.hidden = !show;
+}
+
+async function passkeyLogin() {
+  els.loginError.hidden = true;
+  try {
+    const opt = await pkApi({ action: "auth-options" });
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: b64u.dec(opt.challenge),
+        rpId: opt.rpId,
+        userVerification: "preferred",
+        timeout: 60000,
+        allowCredentials: (opt.allowCredentials || []).map((id) => ({
+          type: "public-key",
+          id: b64u.dec(id),
+        })),
+      },
+    });
+    const r = assertion.response;
+    await pkApi({
+      action: "auth-verify",
+      id: b64u.enc(assertion.rawId),
+      authenticatorData: b64u.enc(r.authenticatorData),
+      clientDataJSON: b64u.enc(r.clientDataJSON),
+      signature: b64u.enc(r.signature),
+    });
+    els.modal.close();
+    enterEditMode();
+  } catch (e) {
+    pkErr(els.loginError, e);
+  }
+}
+
+async function passkeyRegister() {
+  pkEls.error.hidden = true;
+  try {
+    const opt = await pkApi({ action: "register-options" });
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: b64u.dec(opt.challenge),
+        rp: { name: document.title || "Personal site", id: opt.rpId },
+        user: {
+          id: new TextEncoder().encode("owner"),
+          name: "owner",
+          displayName: state.name || "Owner",
+        },
+        pubKeyCredParams: [
+          { type: "public-key", alg: -7 },
+          { type: "public-key", alg: -257 },
+        ],
+        authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+        attestation: "none",
+        timeout: 60000,
+        excludeCredentials: (opt.excludeCredentials || []).map((id) => ({
+          type: "public-key",
+          id: b64u.dec(id),
+        })),
+      },
+    });
+    const r = cred.response;
+    if (typeof r.getPublicKey !== "function") {
+      throw new Error("This browser doesn't expose the passkey public key.");
+    }
+    const label = prompt("Name this passkey (e.g. iPhone, MacBook):", "My device");
+    await pkApi({
+      action: "register-verify",
+      id: b64u.enc(cred.rawId),
+      publicKey: b64u.enc(r.getPublicKey()),
+      alg: r.getPublicKeyAlgorithm(),
+      clientDataJSON: b64u.enc(r.clientDataJSON),
+      label: ((label || "").trim() || "Passkey"),
+    });
+    await loadPasskeyList();
+  } catch (e) {
+    pkErr(pkEls.error, e);
+  }
+}
+
+async function loadPasskeyList() {
+  pkEls.list.innerHTML = "";
+  let data = { credentials: [] };
+  try {
+    const res = await fetch("/api/passkeys", { cache: "no-store" });
+    data = await res.json();
+  } catch (_) {}
+  if (!data.credentials || !data.credentials.length) {
+    const li = document.createElement("li");
+    li.className = "passkey-empty";
+    li.textContent = "No passkeys yet. Add one to sign in without a password.";
+    pkEls.list.appendChild(li);
+    return;
+  }
+  data.credentials.forEach((c) => {
+    const li = document.createElement("li");
+    li.className = "passkey-item";
+    const span = document.createElement("span");
+    const when = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "";
+    span.textContent = c.label + (when ? " · " + when : "");
+    const del = document.createElement("button");
+    del.className = "btn danger small";
+    del.textContent = "Remove";
+    del.addEventListener("click", async () => {
+      if (!confirm("Remove this passkey?")) return;
+      try {
+        await fetch("/api/passkeys", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: c.id }),
+        });
+      } catch (_) {}
+      loadPasskeyList();
+    });
+    li.appendChild(span);
+    li.appendChild(del);
+    pkEls.list.appendChild(li);
+  });
+}
+
+function openPasskeyManager() {
+  pkEls.error.hidden = true;
+  if (!pkSupported()) {
+    pkEls.error.textContent = "This browser doesn't support passkeys.";
+    pkEls.error.hidden = false;
+  }
+  loadPasskeyList();
+  if (typeof pkEls.modal.showModal === "function") pkEls.modal.showModal();
+}
+
+pkEls.loginBtn.addEventListener("click", passkeyLogin);
+pkEls.manageBtn.addEventListener("click", openPasskeyManager);
+pkEls.add.addEventListener("click", passkeyRegister);
+pkEls.close.addEventListener("click", () => pkEls.modal.close());
 
 /* ---------------- Pointer-reactive specular highlight ---------------- */
 els.card.addEventListener("pointermove", (e) => {

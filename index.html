@@ -54,7 +54,13 @@
   <dialog class="modal glass" id="login-modal">
     <form method="dialog" id="login-form">
       <h2>Sign in to edit</h2>
-      <p class="modal-sub">Enter your password to make changes.</p>
+      <p class="modal-sub">Use a passkey, or your password.</p>
+
+      <button type="button" class="btn primary full" id="passkey-login" hidden>
+        <span class="key-glyph" aria-hidden="true">🔑</span> Sign in with a passkey
+      </button>
+      <div class="divider" id="login-divider" hidden><span>or</span></div>
+
       <input type="password" id="password" placeholder="Password" autocomplete="current-password" />
       <p class="error" id="login-error" hidden></p>
       <div class="modal-actions">
@@ -62,6 +68,21 @@
         <button type="submit" class="btn primary" id="login-submit">Sign in</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Passkey manager dialog -->
+  <dialog class="modal glass" id="passkey-modal">
+    <div class="modal-body">
+      <h2>Passkeys</h2>
+      <p class="modal-sub">Sign in with Face ID, Touch ID, or a security key.</p>
+      <ul class="passkey-list" id="passkey-list"></ul>
+      <p class="error" id="passkey-error" hidden></p>
+      <div class="modal-actions spread">
+        <button type="button" class="btn primary" id="passkey-add">+ Add a passkey</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="passkey-close">Done</button>
+      </div>
+    </div>
   </dialog>
 
   <!-- Link editor dialog -->
@@ -91,6 +112,7 @@
   <div class="toolbar glass" id="toolbar" hidden>
     <span class="toolbar-status" id="toolbar-status">Editing</span>
     <button class="btn ghost" id="add-link">+ Link</button>
+    <button class="btn ghost" id="manage-passkeys">Passkeys</button>
     <button class="btn ghost" id="logout">Sign out</button>
     <button class="btn primary" id="save">Save</button>
   </div>
