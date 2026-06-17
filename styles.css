@@ -66,17 +66,16 @@ body {
 }
 
 .brand {
+  margin: 0;
   font-family: "Chakra Petch", system-ui, sans-serif;
   font-style: italic;
   font-weight: 700;
-  font-size: 1rem;
-  letter-spacing: 0.14em;
+  font-size: clamp(1rem, 2.2vw, 1.3rem);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #fff;
   opacity: 0.95;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.4);
 }
 
@@ -107,19 +106,6 @@ body {
   padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1.2rem, 4.5vw, 3.6rem);
   padding-bottom: max(clamp(2rem, 6vw, 4rem), calc(env(safe-area-inset-bottom) + 1.5rem));
   max-width: 920px;
-}
-
-.hero-name {
-  font-family: "Chakra Petch", system-ui, sans-serif;
-  font-style: italic;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: clamp(2.6rem, 9vw, 6rem);
-  line-height: 0.92;
-  letter-spacing: 0.01em;
-  margin: 0 0 0.7rem;
-  color: #fff;
-  text-shadow: 0 2px 36px rgba(0, 0, 0, 0.5);
 }
 
 .hero-role {

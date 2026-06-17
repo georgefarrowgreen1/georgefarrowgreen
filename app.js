@@ -9,7 +9,6 @@ const els = {
   name: document.getElementById("f-name"),
   role: document.getElementById("f-role"),
   bio: document.getElementById("f-bio"),
-  brand: document.getElementById("brand"),
   links: document.getElementById("links"),
   heroBg: document.getElementById("hero-bg"),
   photoInput: document.getElementById("photo-input"),
@@ -85,7 +84,6 @@ function render() {
   els.name.textContent = state.name || "";
   els.role.textContent = state.role || "";
   els.bio.textContent = state.bio || "";
-  els.brand.textContent = state.name || "";
   document.title = state.name || "Personal site";
   renderLinks();
   updateStructuredData();
