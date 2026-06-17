@@ -210,12 +210,24 @@ async function requestEdit() {
 }
 
 /* ---------------- Edit mode ---------------- */
+// Center the floating pill precisely from the live viewport width. Clamps to a
+// margin and falls back to scroll if the pill is wider than the screen.
+function centerToolbar() {
+  const t = els.toolbar;
+  if (!t || t.hidden) return;
+  const w = t.offsetWidth;
+  const left = Math.max(8, Math.round((window.innerWidth - w) / 2));
+  t.style.left = left + "px";
+  t.style.transform = "none";
+}
+
 function enterEditMode() {
   editing = true;
   document.body.classList.add("editing");
   els.toolbar.hidden = false;
   [els.name, els.role, els.bio].forEach((el) => el.setAttribute("contenteditable", "true"));
   setStatus("Editing — tap a link to edit it", "");
+  requestAnimationFrame(centerToolbar);
 }
 
 function exitEditMode() {
@@ -234,6 +246,7 @@ function syncTextFromDom() {
 function setStatus(text, cls) {
   els.toolbarStatus.textContent = text;
   els.toolbarStatus.className = "toolbar-status" + (cls ? " " + cls : "");
+  requestAnimationFrame(centerToolbar); // width may change with the label
 }
 
 async function save() {
@@ -780,6 +793,10 @@ els.card.addEventListener("pointermove", (e) => {
 /* ---------------- Boot ---------------- */
 els.year.textContent = new Date().getFullYear();
 loadContent();
+
+// Keep the floating pill centered as the screen changes.
+window.addEventListener("resize", centerToolbar);
+window.addEventListener("orientationchange", () => setTimeout(centerToolbar, 120));
 
 // Edit access is never shown to visitors and never auto-opens (no hash trigger,
 // no session-based auto-edit). The owner opens it with a deliberate triple-tap
