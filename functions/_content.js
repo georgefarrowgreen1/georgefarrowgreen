@@ -10,7 +10,6 @@ export const DEFAULT_CONTENT = {
   bio:
     "This is a placeholder bio. Log in with your password to edit it — share a " +
     "few warm sentences about who you are, what you make, and what you're into.",
-  avatar: "",
   links: [
     { label: "Email", url: "mailto:georgefarrowgreen@icloud.com" },
     { label: "GitHub", url: "https://github.com/georgefarrowgreen1" },
@@ -52,22 +51,12 @@ function cleanUrl(url) {
   return "";
 }
 
-function cleanAvatar(avatar) {
-  const a = String(avatar || "");
-  // Only accept inline image data URLs, capped at ~700 KB of base64.
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(a) && a.length <= 700000) {
-    return a;
-  }
-  return "";
-}
-
 export function sanitize(body) {
   const links = Array.isArray(body.links) ? body.links.slice(0, 12) : [];
   return {
     name: clip(body.name, 80) || DEFAULT_CONTENT.name,
     role: clip(body.role, 120),
     bio: clip(body.bio, 1200),
-    avatar: cleanAvatar(body.avatar),
     links: links
       .map((l) => ({ label: clip(l && l.label, 40).trim(), url: cleanUrl(l && l.url) }))
       .filter((l) => l.label && l.url),
