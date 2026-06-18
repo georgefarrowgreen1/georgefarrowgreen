@@ -200,7 +200,7 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
   -webkit-backdrop-filter: blur(48px) saturate(180%);
   backdrop-filter: blur(48px) saturate(180%);
   border: none;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  box-shadow: none;
 }
 #enquire-modal::backdrop {
   background: rgba(0, 0, 0, 0.15);
