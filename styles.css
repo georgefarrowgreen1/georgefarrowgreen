@@ -20,6 +20,12 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Hide text content until JS has loaded the real values, so no placeholder
+   text flashes through on load. Revealed by body.loaded (set in app.js, with
+   an inline failsafe timeout). */
+.brand, .hero-content { opacity: 0; transition: opacity 0.4s var(--ease); }
+body.loaded .brand, body.loaded .hero-content { opacity: 1; }
+
 /* ---------------- Hero ---------------- */
 .hero {
   position: relative;

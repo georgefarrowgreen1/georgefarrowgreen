@@ -155,6 +155,7 @@ async function loadContent() {
     }
   } catch (_) {}
   render();
+  document.body.classList.add("loaded");
 }
 
 async function hasSession() {
