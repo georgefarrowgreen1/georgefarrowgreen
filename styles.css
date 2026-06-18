@@ -255,13 +255,13 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
   transition: transform 0.15s var(--ease), filter 0.2s, background 0.2s;
 }
 .btn:active { transform: scale(0.97); }
-.btn.primary { background: linear-gradient(135deg, rgba(122, 162, 255, 0.85), rgba(192, 140, 255, 0.85)); color: #0a0a12; -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
-.btn.primary:hover { filter: brightness(1.08); }
-.btn.ghost { background: rgba(255, 255, 255, 0.1); color: var(--text); border-color: var(--glass-line); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
-.btn.ghost:hover { background: rgba(255, 255, 255, 0.18); }
+.btn.primary { background: rgba(255, 255, 255, 0.16); color: #fff; border-color: var(--glass-line); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
+.btn.primary:hover { background: rgba(255, 255, 255, 0.26); }
+.btn.ghost { background: rgba(255, 255, 255, 0.08); color: var(--text); border-color: var(--glass-line); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
+.btn.ghost:hover { background: rgba(255, 255, 255, 0.16); }
 .btn.ghost:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn.danger { background: rgba(255, 80, 80, 0.18); color: #ff9b9b; border-color: rgba(255, 80, 80, 0.35); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
-.btn.danger:hover { background: rgba(255, 80, 80, 0.28); }
+.btn.danger { background: rgba(255, 255, 255, 0.08); color: #fff; border-color: var(--glass-line); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
+.btn.danger:hover { background: rgba(255, 255, 255, 0.16); }
 .btn.full { width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 0.4rem; }
 .btn.small { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
 .key-glyph { font-size: 1rem; }
@@ -342,8 +342,8 @@ body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; 
 .navbtn:hover, .navbtn:focus-visible { background: rgba(255, 255, 255, 0.13); outline: none; }
 .navbtn:active { transform: scale(0.9); }
 .navbtn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-.navbtn.save { background: linear-gradient(135deg, rgba(122, 162, 255, 0.9), rgba(192, 140, 255, 0.9)); color: #0a0a12; }
-.navbtn.save:hover { filter: brightness(1.08); }
+.navbtn.save { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.navbtn.save:hover { background: rgba(255, 255, 255, 0.26); }
 .navbtn.save svg { stroke-width: 2.4; }
 
 /* ---------------- Status toast ---------------- */
@@ -399,7 +399,7 @@ body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; 
   backdrop-filter: blur(8px);
   cursor: pointer;
 }
-.bg-device:hover { background: rgba(122, 162, 255, 0.8); color: #0a0a12; }
+.bg-device:hover { background: rgba(255, 255, 255, 0.25); color: #fff; }
 /* focal-point marker */
 .bg-focus {
   position: absolute;
