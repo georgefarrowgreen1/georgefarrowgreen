@@ -126,24 +126,21 @@ body.loaded .brand, body.loaded .hero-content { opacity: 1; }
 .enquire-btn:hover { opacity: 0.7; }
 .enquire-btn:active { transform: scale(0.95); }
 
-/* Instagram — liquid glass icon link */
+/* Instagram — transparent icon link, consistent with the other header icons */
 .ig-btn {
   width: 40px;
   height: 40px;
   display: grid;
   place-items: center;
-  border-radius: 12px;
   color: #fff;
   text-decoration: none;
-  background: var(--glass-pill);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-line);
-  transition: background 0.2s var(--ease), transform 0.15s var(--ease);
+  background: transparent;
+  border: none;
+  transition: opacity 0.2s var(--ease), transform 0.15s var(--ease);
 }
-.ig-btn:hover { background: rgba(255, 255, 255, 0.2); }
+.ig-btn:hover { opacity: 0.7; }
 .ig-btn:active { transform: scale(0.95); }
-.ig-btn svg { width: 22px; height: 22px; fill: currentColor; }
+.ig-btn svg { width: 24px; height: 24px; fill: currentColor; }
 .enquire-btn svg {
   width: 26px;
   height: 26px;
