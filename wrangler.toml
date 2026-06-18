@@ -20,10 +20,8 @@ compatibility_date = "2026-06-17"
 binding = "BIO_KV"
 id = "10ec6d961a224b3a8b68a7c993ca0caf"
 
-# R2 bucket for background photos. UNCOMMENT after creating the bucket in
-# Cloudflare (R2 -> Create bucket -> name it "bio-media"). Leaving it commented
-# until the bucket exists prevents deploys from failing. Variable name MUST be
-# BIO_R2; until enabled, photos fall back to KV automatically.
-# [[r2_buckets]]
-# binding = "BIO_R2"
-# bucket_name = "bio-media"
+# R2 bucket for background photos (bucket name must exist in your account).
+# Variable name MUST be BIO_R2. Images fall back to KV if this is ever removed.
+[[r2_buckets]]
+binding = "BIO_R2"
+bucket_name = "bio-media"
