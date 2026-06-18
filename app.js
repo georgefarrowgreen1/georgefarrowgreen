@@ -121,10 +121,11 @@ function buildSlides() {
   if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
   els.heroBg.innerHTML = "";
   bgIndex = 0;
-  bgImages.forEach((id, i) => {
+  bgImages.forEach((img, i) => {
     const s = document.createElement("div");
     s.className = "hero-slide" + (i === 0 ? " active" : "");
-    s.style.backgroundImage = `url('/api/background?id=${encodeURIComponent(id)}')`;
+    s.style.backgroundImage = `url('/api/background?id=${encodeURIComponent(img.id)}')`;
+    s.style.backgroundPosition = img.focus || "50% 50%";
     els.heroBg.appendChild(s);
   });
   if (bgImages.length > 1) bgTimer = setInterval(nextSlide, 6000);
@@ -288,32 +289,64 @@ function renderBgGrid() {
     bgEls.grid.appendChild(p);
     return;
   }
-  bgImages.forEach((id) => {
+  const hint = document.createElement("p");
+  hint.className = "bg-hint";
+  hint.textContent = "Tap a photo to set its focus point (where it stays centred when cropped).";
+  bgEls.grid.appendChild(hint);
+
+  const wrap = document.createElement("div");
+  wrap.className = "bg-cells";
+  bgImages.forEach((item) => {
     const cell = document.createElement("div");
     cell.className = "bg-cell";
     const img = document.createElement("img");
-    img.src = `/api/background?id=${encodeURIComponent(id)}`;
+    img.src = `/api/background?id=${encodeURIComponent(item.id)}`;
     img.alt = "";
+    img.style.objectPosition = item.focus || "50% 50%";
+    const dot = document.createElement("span");
+    dot.className = "bg-focus";
+    const [fx, fy] = (item.focus || "50% 50%").split(" ");
+    dot.style.left = fx;
+    dot.style.top = fy;
     const rm = document.createElement("button");
     rm.className = "bg-remove";
     rm.type = "button";
     rm.textContent = "×";
     rm.title = "Remove";
-    rm.addEventListener("click", async () => {
+    rm.addEventListener("click", async (e) => {
+      e.stopPropagation();
       try {
         await fetch("/api/background", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify({ id: item.id }),
+        });
+      } catch (_) {}
+      await loadBackgrounds();
+      renderBgGrid();
+    });
+    cell.addEventListener("click", async (e) => {
+      if (e.target === rm) return;
+      const r = img.getBoundingClientRect();
+      const x = Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / r.width) * 100)));
+      const y = Math.max(0, Math.min(100, Math.round(((e.clientY - r.top) / r.height) * 100)));
+      const focus = `${x}% ${y}%`;
+      try {
+        await fetch("/api/background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: item.id, focus }),
         });
       } catch (_) {}
       await loadBackgrounds();
       renderBgGrid();
     });
     cell.appendChild(img);
+    cell.appendChild(dot);
     cell.appendChild(rm);
-    bgEls.grid.appendChild(cell);
+    wrap.appendChild(cell);
   });
+  bgEls.grid.appendChild(wrap);
 }
 
 els.photoInput.addEventListener("change", async () => {

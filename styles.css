@@ -371,15 +371,28 @@ body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; 
 .status-toast.saving { color: var(--accent); }
 
 /* ---------------- Background manager grid ---------------- */
-.bg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.bg-hint { font-size: 0.78rem; color: var(--muted); margin: 0 0 0.6rem; }
+.bg-cells { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
 .bg-cell {
   position: relative;
   aspect-ratio: 1;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--glass-stroke);
+  border: 1px solid var(--glass-line);
+  cursor: crosshair;
 }
 .bg-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* focal-point marker */
+.bg-focus {
+  position: absolute;
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(122, 162, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
 .bg-remove {
   position: absolute;
   top: 5px; right: 5px;
