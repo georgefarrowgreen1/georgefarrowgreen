@@ -397,23 +397,22 @@ body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; 
 /* ---------------- Mobile (desktop layout unchanged) ---------------- */
 @media (max-width: 600px) {
   .topbar {
-    align-items: flex-start;
-    padding: 1rem 1.1rem;
-    padding-top: max(1rem, env(safe-area-inset-top));
+    align-items: center;
+    padding: 0.9rem 1.1rem;
+    padding-top: max(0.9rem, env(safe-area-inset-top));
     gap: 0.6rem;
   }
   .brand {
-    font-size: 0.95rem;
-    letter-spacing: 0.06em;
-    white-space: normal;
-    line-height: 1.15;
-    max-width: 60vw;
+    font-size: clamp(0.85rem, 4.4vw, 1.15rem);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    line-height: 1.1;
     -webkit-text-stroke: 0.4px #fff;
   }
-  .top-actions { gap: 0.2rem; }
-  .key-btn { width: 32px; height: 32px; }
-  .enquire-btn { width: 42px; height: 42px; }
-  .enquire-btn svg { width: 24px; height: 24px; }
+  .top-actions { gap: 0.1rem; }
+  .key-btn { width: 34px; height: 34px; }
+  .enquire-btn { width: 40px; height: 40px; }
+  .enquire-btn svg { width: 23px; height: 23px; }
 
   .hero-content {
     padding: 1.5rem 1.2rem;
