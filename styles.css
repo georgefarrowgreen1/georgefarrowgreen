@@ -5,6 +5,12 @@
   --accent: #7aa2ff;
   --accent-2: #c08cff;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Full glass theme — see-through, blur only, no rim/sheen/shadow */
+  --glass: rgba(18, 20, 26, 0.42);        /* panels & modals */
+  --glass-pill: rgba(18, 20, 26, 0.5);    /* floating controls */
+  --glass-blur: blur(42px) saturate(180%);
+  --glass-line: rgba(255, 255, 255, 0.1); /* hairline for field edges */
 }
 
 * { box-sizing: border-box; }
@@ -180,23 +186,24 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
 
 /* ---------------- Glass + modals ---------------- */
 .glass {
-  background: rgba(20, 20, 28, 0.72);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  backdrop-filter: blur(30px) saturate(180%);
-  border: 1px solid var(--glass-stroke);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: none;
 }
 
 .modal {
-  border: 1px solid var(--glass-stroke);
-  border-radius: 22px;
+  border: none;
+  border-radius: 24px;
   padding: 0;
   color: var(--text);
   width: min(400px, 92vw);
-  background: rgba(20, 20, 28, 0.86);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  backdrop-filter: blur(30px) saturate(180%);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: none;
 }
-.modal::backdrop { background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.modal::backdrop { background: rgba(0, 0, 0, 0.32); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 
 /* See-through frosted "Get in touch" panel — blur only, no rim, no sheen */
 #enquire-modal {
@@ -223,8 +230,8 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
   width: 100%;
   padding: 0.8rem 1rem;
   border-radius: 12px;
-  border: 1px solid var(--glass-stroke);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-line);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   font: inherit;
 }
@@ -315,11 +322,11 @@ body.editing .key-btn { display: none; }
   padding: 0.4rem;
   border-radius: 999px;
   z-index: 50;
-  background: rgba(18, 19, 24, 0.62);
-  -webkit-backdrop-filter: blur(38px) saturate(180%);
-  backdrop-filter: blur(38px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  background: var(--glass-pill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; }
 @keyframes pillUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
@@ -352,11 +359,11 @@ body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; 
   z-index: 51;
   font-size: 0.85rem;
   color: var(--text);
-  background: rgba(18, 19, 24, 0.82);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  background: var(--glass-pill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   animation: pillUp 0.25s var(--ease) both;
 }
 .status-toast.ok { color: #5fd08a; }
