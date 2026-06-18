@@ -1,6 +1,7 @@
 import { json } from "../_auth.js";
+import { saveMessage } from "./messages.js";
 
-// Contact form delivery. Picks a provider based on which env var is set:
+// Contact form. Saves to D1 (if bound) and/or emails via a provider:
 //   WEB3FORMS_KEY   -> https://web3forms.com  (no domain verification needed)
 //   RESEND_API_KEY  -> https://resend.com     (needs a verified sender domain)
 // Spam defenses: hidden honeypot field + per-IP rate limit in KV.
@@ -37,6 +38,12 @@ export async function onRequestPost({ request, env }) {
     await env.BIO_KV.put(key, String(count + 1), { expirationTtl: WINDOW_SECONDS });
   }
 
+  // Persist to D1 (best effort — never block the user on this).
+  let saved = false;
+  if (env.DB) {
+    try { await saveMessage(env, { name, email, body: message }); saved = true; } catch (_) {}
+  }
+
   const subject = `New enquiry from ${name} via your site`;
 
   // --- Web3Forms (preferred: no domain verification) ---
@@ -44,17 +51,9 @@ export async function onRequestPost({ request, env }) {
     const res = await fetch("https://api.web3forms.com/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        access_key: env.WEB3FORMS_KEY,
-        subject,
-        from_name: name,
-        name,
-        email,
-        replyto: email,
-        message,
-      }),
+      body: JSON.stringify({ access_key: env.WEB3FORMS_KEY, subject, from_name: name, name, email, replyto: email, message }),
     });
-    if (!res.ok) return json({ error: "Couldn't send right now — please try later." }, 502);
+    if (!res.ok && !saved) return json({ error: "Couldn't send right now — please try later." }, 502);
     return json({ ok: true });
   }
 
@@ -67,9 +66,11 @@ export async function onRequestPost({ request, env }) {
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from, to, reply_to: email, subject, text: `From: ${name} <${email}>\n\n${message}` }),
     });
-    if (!res.ok) return json({ error: "Couldn't send right now — please try later." }, 502);
+    if (!res.ok && !saved) return json({ error: "Couldn't send right now — please try later." }, 502);
     return json({ ok: true });
   }
 
-  return json({ error: "The contact form isn't configured yet." }, 503);
+  // No email provider configured — success only if we at least recorded it.
+  return saved ? json({ ok: true }) : json({ error: "The contact form isn't configured yet." }, 503);
 }
+

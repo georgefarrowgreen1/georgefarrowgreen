@@ -330,6 +330,24 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
 }
 .passkey-empty { color: var(--muted); font-size: 0.9rem; padding: 0.5rem 0; }
 
+/* messages list */
+.msg-list { list-style: none; margin: 0.25rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; max-height: 50vh; overflow-y: auto; }
+.msg-item {
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.msg-head { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; justify-content: space-between; }
+.msg-from { color: var(--text); font-weight: 600; font-size: 0.85rem; text-decoration: none; }
+.msg-from:hover { text-decoration: underline; }
+.msg-when { color: var(--muted); font-size: 0.72rem; }
+.msg-body { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--muted); white-space: pre-wrap; }
+.msg-item .btn { align-self: flex-end; }
+
 /* ---------------- Discreet login key (top bar) ---------------- */
 .key-btn {
   display: inline-grid;

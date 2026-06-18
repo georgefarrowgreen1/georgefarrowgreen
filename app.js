@@ -837,6 +837,80 @@ window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault();
 });
 
+/* ---------------- Messages (D1) ---------------- */
+const msgEls = {
+  modal: document.getElementById("messages-modal"),
+  list: document.getElementById("messages-list"),
+  error: document.getElementById("messages-error"),
+};
+
+document.getElementById("open-messages").addEventListener("click", openMessages);
+document.getElementById("messages-close").addEventListener("click", () => msgEls.modal.close());
+
+async function openMessages() {
+  msgEls.error.hidden = true;
+  await loadMessages();
+  if (typeof msgEls.modal.showModal === "function") msgEls.modal.showModal();
+}
+
+async function loadMessages() {
+  msgEls.list.innerHTML = "";
+  let data = { messages: [] };
+  try {
+    const res = await fetch("/api/messages", { cache: "no-store" });
+    if (res.status === 401) { exitEditMode(); openLogin(); return; }
+    if (res.ok) data = await res.json();
+    else throw new Error();
+  } catch (_) {
+    msgEls.error.textContent = "Couldn't load messages.";
+    msgEls.error.hidden = false;
+    return;
+  }
+  if (!data.messages.length) {
+    const li = document.createElement("li");
+    li.className = "passkey-empty";
+    li.textContent = "No messages yet.";
+    msgEls.list.appendChild(li);
+    return;
+  }
+  data.messages.forEach((m) => {
+    const li = document.createElement("li");
+    li.className = "msg-item";
+    const head = document.createElement("div");
+    head.className = "msg-head";
+    const who = document.createElement("a");
+    who.className = "msg-from";
+    who.href = "mailto:" + m.email;
+    who.textContent = `${m.name} · ${m.email}`;
+    const when = document.createElement("span");
+    when.className = "msg-when";
+    when.textContent = m.created_at ? new Date(m.created_at).toLocaleString() : "";
+    head.appendChild(who);
+    head.appendChild(when);
+    const body = document.createElement("p");
+    body.className = "msg-body";
+    body.textContent = m.body;
+    const del = document.createElement("button");
+    del.className = "btn danger small";
+    del.textContent = "Delete";
+    del.addEventListener("click", async () => {
+      if (!confirm("Delete this message?")) return;
+      try {
+        await fetch("/api/messages", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: m.id }),
+        });
+      } catch (_) {}
+      loadMessages();
+    });
+    li.appendChild(head);
+    li.appendChild(body);
+    li.appendChild(del);
+    msgEls.list.appendChild(li);
+  });
+}
+
 // Click/tap outside any dialog (on the backdrop) closes it.
 document.querySelectorAll("dialog").forEach((d) => {
   d.addEventListener("click", (e) => { if (e.target === d) d.close(); });

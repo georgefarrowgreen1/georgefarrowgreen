@@ -25,3 +25,9 @@ id = "10ec6d961a224b3a8b68a7c993ca0caf"
 [[r2_buckets]]
 binding = "BIO_R2"
 bucket_name = "bio-media"
+
+# D1 database for contact-form submissions (and future structured data).
+[[d1_databases]]
+binding = "DB"
+database_name = "bio-db"
+database_id = "de4ad515-52c6-4cb3-9f8f-008384ef813a"
