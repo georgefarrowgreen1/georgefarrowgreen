@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
   <section class="hero" id="hero">
@@ -73,8 +73,23 @@
     </div>
   </section>
 
-  <!-- Hidden file input, reused for the background image upload -->
-  <input type="file" id="photo-input" accept="image/*" hidden />
+  <!-- Hidden file input for background photo uploads (multiple) -->
+  <input type="file" id="photo-input" accept="image/*" multiple hidden />
+
+  <!-- Background photos manager -->
+  <dialog class="modal glass" id="bg-modal">
+    <div class="modal-body">
+      <h2>Background photos</h2>
+      <p class="modal-sub">Add one or more — they cross-fade as a slideshow.</p>
+      <div class="bg-grid" id="bg-grid"></div>
+      <p class="error" id="bg-error" hidden></p>
+      <div class="modal-actions spread">
+        <button type="button" class="btn primary" id="bg-add">+ Add photo</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="bg-close">Done</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- Enquire / contact dialog -->
   <dialog class="modal glass" id="enquire-modal">
@@ -227,6 +242,6 @@
 
   <!-- failsafe: reveal content even if app.js is slow/unavailable -->
   <script>setTimeout(function(){document.body.classList.add("loaded");},2500);</script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

@@ -38,14 +38,19 @@ body.loaded .brand, body.loaded .hero-content { opacity: 1; }
   background: radial-gradient(125% 125% at 50% -10%, #1a1c28 0%, #0b0b11 58%, #050507 100%);
 }
 
-.hero-bg {
+.hero-bg { position: absolute; inset: 0; }
+
+/* carousel slides cross-fade */
+.hero-slide {
   position: absolute;
   inset: 0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  transition: opacity 0.6s var(--ease);
+  opacity: 0;
+  transition: opacity 1.2s var(--ease);
 }
+.hero-slide.active { opacity: 1; }
 
 .hero-overlay {
   position: absolute;
@@ -357,3 +362,57 @@ body.editing .navpill { display: flex; animation: pillUp 0.4s var(--ease) both; 
 .status-toast.ok { color: #5fd08a; }
 .status-toast.err { color: #ff8585; }
 .status-toast.saving { color: var(--accent); }
+
+/* ---------------- Background manager grid ---------------- */
+.bg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.bg-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--glass-stroke);
+}
+.bg-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bg-remove {
+  position: absolute;
+  top: 5px; right: 5px;
+  width: 22px; height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.bg-remove:hover { background: rgba(220, 60, 60, 0.85); }
+
+/* ---------------- Mobile (desktop layout unchanged) ---------------- */
+@media (max-width: 600px) {
+  .topbar {
+    align-items: flex-start;
+    padding: 1rem 1.1rem;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    gap: 0.6rem;
+  }
+  .brand {
+    font-size: 0.95rem;
+    letter-spacing: 0.06em;
+    white-space: normal;
+    line-height: 1.15;
+    max-width: 60vw;
+    -webkit-text-stroke: 0.4px #fff;
+  }
+  .top-actions { gap: 0.2rem; }
+  .key-btn { width: 32px; height: 32px; }
+  .enquire-btn { width: 42px; height: 42px; }
+  .enquire-btn svg { width: 24px; height: 24px; }
+
+  .hero-content {
+    padding: 1.5rem 1.2rem;
+    padding-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1.4rem));
+  }
+
+  .navbtn { width: 48px; height: 44px; }
+  .navbtn svg { width: 22px; height: 22px; }
+}

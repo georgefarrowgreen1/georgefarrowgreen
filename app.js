@@ -104,9 +104,38 @@ function updateStructuredData() {
   el.textContent = JSON.stringify(data);
 }
 
-function setHeroBackground(bust) {
-  const url = "/api/background" + (bust ? "?t=" + Date.now() : "");
-  els.heroBg.style.backgroundImage = `url('${url}')`;
+/* ---------------- Background carousel ---------------- */
+let bgImages = [];
+let bgIndex = 0;
+let bgTimer = null;
+
+async function loadBackgrounds() {
+  try {
+    const res = await fetch("/api/background", { cache: "no-store" });
+    if (res.ok) bgImages = (await res.json()).images || [];
+  } catch (_) { bgImages = []; }
+  buildSlides();
+}
+
+function buildSlides() {
+  if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
+  els.heroBg.innerHTML = "";
+  bgIndex = 0;
+  bgImages.forEach((id, i) => {
+    const s = document.createElement("div");
+    s.className = "hero-slide" + (i === 0 ? " active" : "");
+    s.style.backgroundImage = `url('/api/background?id=${encodeURIComponent(id)}')`;
+    els.heroBg.appendChild(s);
+  });
+  if (bgImages.length > 1) bgTimer = setInterval(nextSlide, 6000);
+}
+
+function nextSlide() {
+  const slides = els.heroBg.children;
+  if (slides.length < 2) return;
+  slides[bgIndex].classList.remove("active");
+  bgIndex = (bgIndex + 1) % slides.length;
+  slides[bgIndex].classList.add("active");
 }
 
 function renderLinks() {
@@ -230,28 +259,88 @@ async function save() {
   }
 }
 
-/* ---------------- Background image ---------------- */
-els.setBg.addEventListener("click", () => els.photoInput.click());
+/* ---------------- Background manager ---------------- */
+const bgEls = {
+  modal: document.getElementById("bg-modal"),
+  grid: document.getElementById("bg-grid"),
+  error: document.getElementById("bg-error"),
+  add: document.getElementById("bg-add"),
+  close: document.getElementById("bg-close"),
+};
+
+els.setBg.addEventListener("click", openBgManager);
+bgEls.add.addEventListener("click", () => els.photoInput.click());
+bgEls.close.addEventListener("click", () => bgEls.modal.close());
+
+async function openBgManager() {
+  bgEls.error.hidden = true;
+  await loadBackgrounds();
+  renderBgGrid();
+  if (typeof bgEls.modal.showModal === "function") bgEls.modal.showModal();
+}
+
+function renderBgGrid() {
+  bgEls.grid.innerHTML = "";
+  if (!bgImages.length) {
+    const p = document.createElement("p");
+    p.className = "passkey-empty";
+    p.textContent = "No photos yet — add one or more.";
+    bgEls.grid.appendChild(p);
+    return;
+  }
+  bgImages.forEach((id) => {
+    const cell = document.createElement("div");
+    cell.className = "bg-cell";
+    const img = document.createElement("img");
+    img.src = `/api/background?id=${encodeURIComponent(id)}`;
+    img.alt = "";
+    const rm = document.createElement("button");
+    rm.className = "bg-remove";
+    rm.type = "button";
+    rm.textContent = "×";
+    rm.title = "Remove";
+    rm.addEventListener("click", async () => {
+      try {
+        await fetch("/api/background", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+      } catch (_) {}
+      await loadBackgrounds();
+      renderBgGrid();
+    });
+    cell.appendChild(img);
+    cell.appendChild(rm);
+    bgEls.grid.appendChild(cell);
+  });
+}
 
 els.photoInput.addEventListener("change", async () => {
-  const file = els.photoInput.files && els.photoInput.files[0];
+  const files = els.photoInput.files ? [...els.photoInput.files] : [];
   els.photoInput.value = "";
-  if (!file) return;
-  if (!file.type.startsWith("image/")) { alert("Please choose an image file."); return; }
-  setStatus("Uploading background…", "saving");
+  if (!files.length) return;
+  bgEls.error.hidden = true;
+  setStatus("Uploading…", "saving");
   try {
-    const dataUrl = await resizeImage(file, 2000);
-    const res = await fetch("/api/background", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: dataUrl }),
-    });
-    if (res.status === 401) { exitEditMode(); openLogin(); return; }
-    if (!res.ok) throw new Error("bg failed");
-    setHeroBackground(true);
-    setStatus("Background updated ✓", "ok");
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      const dataUrl = await resizeImage(file, 2000);
+      const res = await fetch("/api/background", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      if (res.status === 401) { exitEditMode(); openLogin(); return; }
+      if (!res.ok) throw new Error("bg failed");
+    }
+    await loadBackgrounds();
+    renderBgGrid();
+    setStatus("Photos updated ✓", "ok");
   } catch (_) {
-    setStatus("Couldn't set background", "err");
+    setStatus("Couldn't upload", "err");
+    bgEls.error.textContent = "Upload failed — try a smaller image.";
+    bgEls.error.hidden = false;
   }
 });
 
@@ -665,4 +754,4 @@ async function loadHistory() {
 
 /* ---------------- Boot ---------------- */
 loadContent();
-setHeroBackground(false);
+loadBackgrounds();

@@ -1,16 +1,24 @@
 import { isAuthed, json } from "../_auth.js";
 
-// Large hero background image, stored separately from content (so it doesn't
-// bloat the content JSON or version history). Stored as a data URL in KV under
-// "background"; served as a real image with a content-type.
+// Background photos for the hero carousel. Multiple images supported.
+//   bg_list   -> JSON array of image ids (order = slideshow order)
+//   bg:<id>   -> data URL for each image
+//   background-> legacy single image (migrated transparently as id "legacy")
 
-const KEY = "background";
+const LIST = "bg_list";
+const LEGACY = "background";
+const IMG = (id) => `bg:${id}`;
 
-export async function onRequestGet({ env }) {
-  if (!env.BIO_KV) return new Response(null, { status: 404 });
-  const dataUrl = await env.BIO_KV.get(KEY);
-  if (!dataUrl) return new Response(null, { status: 404 });
-  const m = /^data:(image\/[\w.+-]+);base64,(.*)$/s.exec(dataUrl);
+async function getList(env) {
+  if (!env.BIO_KV) return [];
+  const v = await env.BIO_KV.get(LIST);
+  if (v) return JSON.parse(v);
+  const legacy = await env.BIO_KV.get(LEGACY);
+  return legacy ? ["legacy"] : [];
+}
+
+function imageResponse(dataUrl) {
+  const m = /^data:(image\/[\w.+-]+);base64,(.*)$/s.exec(dataUrl || "");
   if (!m) return new Response(null, { status: 404 });
   const bin = atob(m[2]);
   const bytes = new Uint8Array(bin.length);
@@ -20,22 +28,40 @@ export async function onRequestGet({ env }) {
   });
 }
 
+export async function onRequestGet({ request, env }) {
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) return json({ images: await getList(env) });
+  if (!env.BIO_KV) return new Response(null, { status: 404 });
+  const dataUrl = await env.BIO_KV.get(id === "legacy" ? LEGACY : IMG(id));
+  if (!dataUrl) return new Response(null, { status: 404 });
+  return imageResponse(dataUrl);
+}
+
 export async function onRequestPut({ request, env }) {
   if (!(await isAuthed(request, env))) return json({ error: "Not authorized." }, 401);
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
   let body = {};
   try { body = await request.json(); } catch (_) { return json({ error: "Invalid JSON." }, 400); }
   const a = String(body.image || "");
-  // Accept inline image data URLs up to ~3 MB of base64.
   if (!/^data:image\/(png|jpeg|jpg|webp);base64,/.test(a) || a.length > 4000000) {
     return json({ error: "Invalid or oversized image." }, 400);
   }
-  await env.BIO_KV.put(KEY, a);
-  return json({ ok: true });
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  await env.BIO_KV.put(IMG(id), a);
+  const list = await getList(env);
+  list.push(id);
+  await env.BIO_KV.put(LIST, JSON.stringify(list.slice(0, 20)));
+  return json({ ok: true, id, images: list });
 }
 
 export async function onRequestDelete({ request, env }) {
   if (!(await isAuthed(request, env))) return json({ error: "Not authorized." }, 401);
-  if (env.BIO_KV) await env.BIO_KV.delete(KEY);
-  return json({ ok: true });
+  if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
+  let body = {};
+  try { body = await request.json(); } catch (_) {}
+  const id = body.id;
+  const list = (await getList(env)).filter((x) => x !== id);
+  await env.BIO_KV.put(LIST, JSON.stringify(list));
+  await env.BIO_KV.delete(id === "legacy" ? LEGACY : IMG(id));
+  return json({ ok: true, images: list });
 }
