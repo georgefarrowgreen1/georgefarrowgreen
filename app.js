@@ -7,8 +7,6 @@
 
 const els = {
   name: document.getElementById("f-name"),
-  role: document.getElementById("f-role"),
-  bio: document.getElementById("f-bio"),
   links: document.getElementById("links"),
   heroBg: document.getElementById("hero-bg"),
   photoInput: document.getElementById("photo-input"),
@@ -82,8 +80,6 @@ function iconFor(url) {
 /* ---------------- Rendering ---------------- */
 function render() {
   els.name.textContent = state.name || "";
-  els.role.textContent = state.role || "";
-  els.bio.textContent = state.bio || "";
   document.title = state.name || "Personal site";
   renderLinks();
   updateStructuredData();
@@ -98,7 +94,6 @@ function updateStructuredData() {
     name: state.name || "",
     url: "https://georgefarrowgreen.com/",
   };
-  if (state.role) data.description = state.role;
   const sameAs = (state.links || []).map((l) => sanitizeUrl(l.url)).filter((u) => /^https?:/.test(u));
   if (sameAs.length) data.sameAs = sameAs;
   el.textContent = JSON.stringify(data);
@@ -219,21 +214,19 @@ async function requestEdit() {
 function enterEditMode() {
   editing = true;
   document.body.classList.add("editing");
-  [els.name, els.role, els.bio].forEach((el) => el.setAttribute("contenteditable", "true"));
+  els.name.setAttribute("contenteditable", "true");
   setStatus("Editing", "");
 }
 
 function exitEditMode() {
   editing = false;
   document.body.classList.remove("editing");
-  [els.name, els.role, els.bio].forEach((el) => el.removeAttribute("contenteditable"));
+  els.name.removeAttribute("contenteditable");
   els.toolbarStatus.hidden = true;
 }
 
 function syncTextFromDom() {
   state.name = els.name.textContent.trim();
-  state.role = els.role.textContent.trim();
-  state.bio = els.bio.textContent.trim();
 }
 
 let statusTimer;
