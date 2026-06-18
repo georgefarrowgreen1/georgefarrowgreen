@@ -162,13 +162,13 @@ body.loaded .brand, body.loaded .hero-content { opacity: 1; }
   font-weight: 500;
   text-decoration: none;
   color: #fff;
-  background: rgba(255, 255, 255, 0.13);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
   transition: transform 0.18s var(--ease), background 0.2s var(--ease);
 }
-.pill:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.22); }
+.pill:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.18); }
 .pill-icon { display: inline-flex; width: 16px; height: 16px; opacity: 0.9; }
 .pill-icon svg { width: 100%; height: 100%; fill: currentColor; }
 body.editing .pill { cursor: pointer; border-style: dashed; }
@@ -255,12 +255,12 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
   transition: transform 0.15s var(--ease), filter 0.2s, background 0.2s;
 }
 .btn:active { transform: scale(0.97); }
-.btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0a0a12; }
+.btn.primary { background: linear-gradient(135deg, rgba(122, 162, 255, 0.85), rgba(192, 140, 255, 0.85)); color: #0a0a12; -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
 .btn.primary:hover { filter: brightness(1.08); }
-.btn.ghost { background: rgba(255, 255, 255, 0.08); color: var(--text); border-color: var(--glass-stroke); }
-.btn.ghost:hover { background: rgba(255, 255, 255, 0.15); }
+.btn.ghost { background: rgba(255, 255, 255, 0.1); color: var(--text); border-color: var(--glass-line); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
+.btn.ghost:hover { background: rgba(255, 255, 255, 0.18); }
 .btn.ghost:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn.danger { background: rgba(255, 80, 80, 0.18); color: #ff9b9b; border-color: rgba(255, 80, 80, 0.35); }
+.btn.danger { background: rgba(255, 80, 80, 0.18); color: #ff9b9b; border-color: rgba(255, 80, 80, 0.35); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
 .btn.danger:hover { background: rgba(255, 80, 80, 0.28); }
 .btn.full { width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 0.4rem; }
 .btn.small { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
