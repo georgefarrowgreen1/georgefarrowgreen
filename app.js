@@ -831,6 +831,11 @@ window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault();
 });
 
+// Click/tap outside any dialog (on the backdrop) closes it.
+document.querySelectorAll("dialog").forEach((d) => {
+  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+});
+
 /* ---------------- Boot ---------------- */
 loadContent();
 loadBackgrounds();
