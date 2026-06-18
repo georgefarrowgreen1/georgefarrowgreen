@@ -16,6 +16,19 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
+/* No zoom; no text selection/copy except inside form fields (e.g. email) */
+html { touch-action: manipulation; }
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 body {
   margin: 0;
   font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont,

@@ -819,6 +819,25 @@ async function loadHistory() {
   });
 }
 
+/* ---------------- Restrictions: no zoom, no copy (except form fields) ------- */
+function inField(el) {
+  const t = el && el.tagName;
+  return t === "INPUT" || t === "TEXTAREA";
+}
+// Block copy/cut unless the selection is in an input/textarea (e.g. email).
+["copy", "cut"].forEach((evt) =>
+  document.addEventListener(evt, (e) => { if (!inField(e.target)) e.preventDefault(); })
+);
+// Block pinch-zoom (iOS gesture events).
+["gesturestart", "gesturechange", "gestureend"].forEach((evt) =>
+  document.addEventListener(evt, (e) => e.preventDefault())
+);
+// Block ctrl/⌘ + wheel zoom and keyboard zoom shortcuts.
+window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault();
+});
+
 /* ---------------- Boot ---------------- */
 loadContent();
 loadBackgrounds();
