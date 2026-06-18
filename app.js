@@ -126,11 +126,17 @@ function buildSlides() {
   els.heroBg.innerHTML = "";
   bgIndex = 0;
   const shown = visibleSlides();
+  const device = bgMq.matches ? "mobile" : "desktop";
   shown.forEach((img, i) => {
     const s = document.createElement("div");
     s.className = "hero-slide" + (i === 0 ? " active" : "");
-    s.style.backgroundImage = `url('/api/background?id=${encodeURIComponent(img.id)}')`;
+    // First slide reuses the preloaded "cover" URL for an instant first paint.
+    const url = i === 0
+      ? `/api/background?id=cover&d=${device}`
+      : `/api/background?id=${encodeURIComponent(img.id)}`;
+    s.style.backgroundImage = `url('${url}')`;
     s.style.backgroundPosition = img.focus || "50% 50%";
+    s.style.transformOrigin = img.focus || "50% 50%";
     els.heroBg.appendChild(s);
   });
   if (shown.length > 1) bgTimer = setInterval(nextSlide, 6000);

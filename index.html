@@ -34,13 +34,17 @@
   }
   </script>
 
+  <!-- Preload the first (device-appropriate) background photo for fast first paint -->
+  <link rel="preload" as="image" href="/api/background?id=cover&amp;d=desktop" media="(min-width: 601px)" fetchpriority="high" />
+  <link rel="preload" as="image" href="/api/background?id=cover&amp;d=mobile" media="(max-width: 600px)" fetchpriority="high" />
+
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/favicon-32.png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=32" />
+  <link rel="stylesheet" href="styles.css?v=33" />
 </head>
 <body>
   <section class="hero" id="hero">
@@ -247,6 +251,6 @@
 
   <!-- failsafe: reveal content even if app.js is slow/unavailable -->
   <script>setTimeout(function(){document.body.classList.add("loaded");},2500);</script>
-  <script src="app.js?v=32"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

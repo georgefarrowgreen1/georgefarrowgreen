@@ -49,8 +49,19 @@ function sanitizeFocus(f) {
 }
 
 export async function onRequestGet({ request, env }) {
-  const id = new URL(request.url).searchParams.get("id");
+  const url = new URL(request.url);
+  let id = url.searchParams.get("id");
   if (!id) return json({ images: await getList(env) });
+
+  // "cover" resolves to the first image for the requested device — used for an
+  // early <link rel=preload> so the first photo paints fast.
+  if (id === "cover") {
+    const want = url.searchParams.get("d") === "mobile" ? "mobile" : "desktop";
+    const list = await getList(env);
+    const pick = list.find((e) => (e.device || "both") === "both" || e.device === want) || list[0];
+    if (!pick) return new Response(null, { status: 404 });
+    id = pick.id;
+  }
 
   if (env.BIO_R2) {
     const obj = await env.BIO_R2.get(R2_KEY(id));
