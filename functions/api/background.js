@@ -13,7 +13,9 @@ const DEFAULT_FOCUS = "50% 50%";
 
 function normalize(list) {
   return (list || []).map((e) =>
-    typeof e === "string" ? { id: e, focus: DEFAULT_FOCUS } : { id: e.id, focus: e.focus || DEFAULT_FOCUS }
+    typeof e === "string"
+      ? { id: e, focus: DEFAULT_FOCUS, device: "both" }
+      : { id: e.id, focus: e.focus || DEFAULT_FOCUS, device: e.device || "both" }
   );
 }
 
@@ -22,7 +24,7 @@ async function getList(env) {
   const v = await env.BIO_KV.get(LIST);
   if (v) return normalize(JSON.parse(v));
   const legacy = await env.BIO_KV.get(LEGACY);
-  return legacy ? [{ id: "legacy", focus: DEFAULT_FOCUS }] : [];
+  return legacy ? [{ id: "legacy", focus: DEFAULT_FOCUS, device: "both" }] : [];
 }
 
 async function saveList(env, list) {
@@ -89,12 +91,13 @@ export async function onRequestPut({ request, env }) {
     await env.BIO_KV.put(KV_IMG(id), a);
   }
   const list = await getList(env);
-  list.push({ id, focus: DEFAULT_FOCUS });
+  list.push({ id, focus: DEFAULT_FOCUS, device: "both" });
   await saveList(env, list);
   return json({ ok: true, id, images: list });
 }
 
-// Update a photo's focal point: { id, focus: "x% y%" }
+// Update a photo's focal point and/or device target:
+//   { id, focus?: "x% y%", device?: "both"|"desktop"|"mobile" }
 export async function onRequestPost({ request, env }) {
   if (!(await isAuthed(request, env))) return json({ error: "Not authorized." }, 401);
   if (!env.BIO_KV) return json({ error: "Storage not configured (BIO_KV)." }, 503);
@@ -103,7 +106,10 @@ export async function onRequestPost({ request, env }) {
   const list = await getList(env);
   const entry = list.find((e) => e.id === body.id);
   if (!entry) return json({ error: "Not found." }, 404);
-  entry.focus = sanitizeFocus(body.focus);
+  if (body.focus !== undefined) entry.focus = sanitizeFocus(body.focus);
+  if (body.device !== undefined) {
+    entry.device = ["both", "desktop", "mobile"].includes(body.device) ? body.device : "both";
+  }
   await saveList(env, list);
   return json({ ok: true, images: list });
 }

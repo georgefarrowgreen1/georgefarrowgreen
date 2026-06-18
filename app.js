@@ -117,19 +117,31 @@ async function loadBackgrounds() {
   buildSlides();
 }
 
+const bgMq = window.matchMedia("(max-width: 600px)");
+
+// Photos shown for the current device (Both always; else matching tag).
+function visibleSlides() {
+  const want = bgMq.matches ? "mobile" : "desktop";
+  const f = bgImages.filter((im) => (im.device || "both") === "both" || im.device === want);
+  return f.length ? f : bgImages;
+}
+
 function buildSlides() {
   if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
   els.heroBg.innerHTML = "";
   bgIndex = 0;
-  bgImages.forEach((img, i) => {
+  const shown = visibleSlides();
+  shown.forEach((img, i) => {
     const s = document.createElement("div");
     s.className = "hero-slide" + (i === 0 ? " active" : "");
     s.style.backgroundImage = `url('/api/background?id=${encodeURIComponent(img.id)}')`;
     s.style.backgroundPosition = img.focus || "50% 50%";
     els.heroBg.appendChild(s);
   });
-  if (bgImages.length > 1) bgTimer = setInterval(nextSlide, 6000);
+  if (shown.length > 1) bgTimer = setInterval(nextSlide, 6000);
 }
+// Rebuild when crossing the mobile/desktop breakpoint.
+bgMq.addEventListener("change", buildSlides);
 
 function nextSlide() {
   const slides = els.heroBg.children;
@@ -291,7 +303,7 @@ function renderBgGrid() {
   }
   const hint = document.createElement("p");
   hint.className = "bg-hint";
-  hint.textContent = "Tap a photo to set its focus point (where it stays centred when cropped).";
+  hint.textContent = "Tap a photo to set its focus point. Use the tag to choose where it shows.";
   bgEls.grid.appendChild(hint);
 
   const wrap = document.createElement("div");
@@ -341,8 +353,30 @@ function renderBgGrid() {
       await loadBackgrounds();
       renderBgGrid();
     });
+    const dev = document.createElement("button");
+    dev.className = "bg-device";
+    dev.type = "button";
+    const labels = { both: "Both", desktop: "Desktop", mobile: "Phone" };
+    dev.textContent = labels[item.device || "both"];
+    dev.title = "Where this photo shows";
+    dev.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const order = ["both", "desktop", "mobile"];
+      const next = order[(order.indexOf(item.device || "both") + 1) % order.length];
+      try {
+        await fetch("/api/background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: item.id, device: next }),
+        });
+      } catch (_) {}
+      await loadBackgrounds();
+      renderBgGrid();
+    });
+
     cell.appendChild(img);
     cell.appendChild(dot);
+    cell.appendChild(dev);
     cell.appendChild(rm);
     wrap.appendChild(cell);
   });
