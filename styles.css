@@ -123,8 +123,8 @@ body.loaded .brand, body.loaded .hero-content { opacity: 1; }
   color: #fff;
   transition: opacity 0.2s var(--ease), transform 0.15s var(--ease);
 }
-.enquire-btn:hover { opacity: 0.7; }
-.enquire-btn:active { transform: scale(0.95); }
+.enquire-btn:hover { opacity: 0.85; transform: scale(1.12); }
+.enquire-btn:active { transform: scale(0.9); }
 
 /* Instagram — transparent icon link, consistent with the other header icons */
 .ig-btn {
@@ -138,8 +138,8 @@ body.loaded .brand, body.loaded .hero-content { opacity: 1; }
   border: none;
   transition: opacity 0.2s var(--ease), transform 0.15s var(--ease);
 }
-.ig-btn:hover { opacity: 0.7; }
-.ig-btn:active { transform: scale(0.95); }
+.ig-btn:hover { opacity: 0.85; transform: scale(1.12); }
+.ig-btn:active { transform: scale(0.9); }
 .ig-btn svg { width: 24px; height: 24px; fill: currentColor; }
 .enquire-btn svg {
   width: 26px;
@@ -330,9 +330,10 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
   opacity: 0.5;
   cursor: pointer;
   border-radius: 50%;
-  transition: opacity 0.2s, background 0.2s;
+  transition: opacity 0.2s, background 0.2s, transform 0.15s var(--ease);
 }
-.key-btn:hover, .key-btn:focus-visible { opacity: 1; background: rgba(255, 255, 255, 0.15); outline: none; }
+.key-btn:hover, .key-btn:focus-visible { opacity: 1; background: rgba(255, 255, 255, 0.15); outline: none; transform: scale(1.12); }
+.key-btn:active { transform: scale(0.9); }
 .key-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 body.editing .key-btn { display: none; }
 
