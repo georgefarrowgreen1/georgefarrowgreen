@@ -192,6 +192,24 @@ body.editing [contenteditable="true"]:focus { box-shadow: 0 0 0 2px var(--accent
   backdrop-filter: blur(30px) saturate(180%);
 }
 .modal::backdrop { background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+
+/* Clear liquid-glass treatment for the "Get in touch" panel */
+#enquire-modal {
+  background: rgba(40, 42, 52, 0.32);
+  -webkit-backdrop-filter: blur(44px) saturate(200%);
+  backdrop-filter: blur(44px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+#enquire-modal::backdrop {
+  background: rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+#enquire-modal input, #enquire-modal textarea {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
 .modal form, .modal-body { padding: 1.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
 .modal h2 { margin: 0; font-size: 1.3rem; font-weight: 600; letter-spacing: -0.02em; }
 .modal-sub { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.9rem; }

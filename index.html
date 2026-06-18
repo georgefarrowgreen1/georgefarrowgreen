@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
 </head>
 <body>
   <section class="hero" id="hero">
@@ -46,7 +46,7 @@
     <div class="hero-overlay" aria-hidden="true"></div>
 
     <header class="topbar">
-      <h1 class="brand" id="f-name">George Farrow-Green</h1>
+      <h1 class="brand" id="f-name"></h1>
       <div class="top-actions">
         <button class="key-btn" id="open-login" type="button" title="Sign in to edit" aria-label="Sign in to edit">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -67,11 +67,8 @@
     </header>
 
     <div class="hero-content">
-      <p class="hero-role" id="f-role">Curious human · builder of things</p>
-      <p class="hero-bio" id="f-bio">
-        This is a placeholder bio. Sign in to edit it — share a few warm
-        sentences about who you are, what you make, and what you're into.
-      </p>
+      <p class="hero-role" id="f-role"></p>
+      <p class="hero-bio" id="f-bio"></p>
       <nav class="links" id="links"></nav>
     </div>
   </section>
@@ -230,6 +227,6 @@
 
   <!-- failsafe: reveal content even if app.js is slow/unavailable -->
   <script>setTimeout(function(){document.body.classList.add("loaded");},2500);</script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
