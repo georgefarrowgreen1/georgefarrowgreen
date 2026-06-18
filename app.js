@@ -103,6 +103,7 @@ function updateStructuredData() {
 let bgImages = [];
 let bgIndex = 0;
 let bgTimer = null;
+let renderedKey = "";
 
 async function loadBackgrounds() {
   try {
@@ -126,6 +127,7 @@ function buildSlides() {
   els.heroBg.innerHTML = "";
   bgIndex = 0;
   const shown = visibleSlides();
+  renderedKey = shown.map((s) => s.id).join(",");
   const device = bgMq.matches ? "mobile" : "desktop";
   shown.forEach((img, i) => {
     const s = document.createElement("div");
@@ -141,8 +143,14 @@ function buildSlides() {
   });
   if (shown.length > 1) bgTimer = setInterval(nextSlide, 6000);
 }
+// Only rebuild on breakpoint change if the visible photo set actually differs,
+// so resizing across mobile/desktop doesn't flash or restart the slideshow.
+function onBreakpointChange() {
+  const key = visibleSlides().map((s) => s.id).join(",");
+  if (key !== renderedKey) buildSlides();
+}
 // Rebuild when crossing the mobile/desktop breakpoint.
-bgMq.addEventListener("change", buildSlides);
+bgMq.addEventListener("change", onBreakpointChange);
 
 function nextSlide() {
   const slides = els.heroBg.children;
