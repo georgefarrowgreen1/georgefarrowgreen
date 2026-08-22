@@ -255,9 +255,14 @@ def write_conf(mode: str, tiers: list[dict], slots: int, ctx: int) -> str:
     for t in tiers:
         lines.append(f"# {t['tier']} — {t.get('why','')}")
         lines.append(f"{t['tier']}_BACKEND={t['backend']}")
-        lines.append(f"{t['tier']}_REPO={t['repo']}")
-        if t.get("file") and t["file"] != "-":
-            lines.append(f"{t['tier']}_FILE={t['file']}")
+        # PATH and REPO are alternatives, and writing REPO=None for a local
+        # file makes tiers_from_conf hand llama-server the string "None".
+        if t.get("path"):
+            lines.append(f"{t['tier']}_PATH={t['path']}")
+        else:
+            lines.append(f"{t['tier']}_REPO={t['repo']}")
+            if t.get("file") and t["file"] != "-":
+                lines.append(f"{t['tier']}_FILE={t['file']}")
         lines.append(f"{t['tier']}_ALIAS={t['alias']}")
         lines.append(f"{t['tier']}_PORT={t['port']}")
         lines.append("")

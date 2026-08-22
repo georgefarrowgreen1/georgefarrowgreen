@@ -376,6 +376,26 @@ def _ask_stream(q, workspace):
 # The wizard runs before there is a config, so these must work with nothing
 # on disk. They are the only endpoints that do.
 
+def _local_models(ram_gb: float) -> list[dict]:
+    """Whatever is sitting in models/, sized against this machine.
+
+    The terminal setup has offered these since they were addable; the wizard
+    did not, so a file you had already downloaded was invisible in the GUI and
+    the only route was to download another copy.
+    """
+    import bench
+    out = []
+    for f in sorted((ROOT / "models").glob("*.gguf")):
+        gb = f.stat().st_size / (1024 ** 3)
+        # A 4-bit GGUF is roughly 0.55 GB per billion parameters — close
+        # enough to choose a slot count from, and much closer than assuming.
+        slots, ctx_k = bench.fit(max(0.5, gb / 0.55), gb, ram_gb)
+        out.append({"path": f"models/{f.name}", "name": f.name,
+                    "stem": f.stem, "gb": round(gb, 1),
+                    "slots": slots, "ctx_k": ctx_k, "fits": slots > 0})
+    return out
+
+
 def h_setup_state(_q):
     from core.plan import SHAPES
     import bench
@@ -383,7 +403,7 @@ def h_setup_state(_q):
     if m["ram_gb"] == 0:                      # dev box, not a Mac
         m = {"brand": "not a Mac (showing an assumed 96 GB M3 Ultra)",
              "chip": "M3 Ultra", "ram_gb": 96, "bandwidth": 819, "cores": 28}
-    usable = max(m["ram_gb"] - bench.OS_RESERVE_GB, 0)
+    usable = bench.usable_gb(m["ram_gb"])
     rows = []
     for name, size, active, role, note in bench.MODELS:
         params = int("".join(c for c in name.split("-")[1] if c.isdigit()) or 8)
@@ -394,16 +414,38 @@ def h_setup_state(_q):
                      "total": round(size + cache, 1), "tps": round(one),
                      "batched": round(many), "note": note,
                      "fits": size + cache <= usable and many >= 8})
-    return {"machine": {**m, "usable_gb": usable}, "models": rows,
-            "shapes": SHAPES, "configured": srv.configured(),
-            "conf": srv.read_conf(),
+    # Size every shape to this Mac here, so the wizard has no reason to
+    # invent 4 slots at 32k the way it used to. A shape that cannot fit at
+    # any context says so instead of being offered and then dying.
+    shapes = []
+    for sh in SHAPES:
+        slots, ctx_k = bench.fit(sh["params"], sh["gb"], m["ram_gb"])
+        shapes.append({**sh, "slots": slots, "ctx_k": ctx_k,
+                       "fits": slots > 0})
+    return {"machine": {**m, "usable_gb": round(usable, 1)}, "models": rows,
+            "shapes": shapes, "local": _local_models(m["ram_gb"]),
+            "configured": srv.configured(), "conf": srv.read_conf(),
             "installed": {b: srv.installed(b) for b in BACKENDS}}
 
 
 def h_setup_plan(body):
     """Which backend for which tier, and why. The rule lives in backends.py."""
     from core.plan import build
-    return {"tiers": build(body.get("shape", "small"),
+    shape = body.get("shape", "small")
+    if shape.startswith("local:"):
+        # No backend choice to make: MLX cannot read GGUF, so a file on disk
+        # is always llama.cpp. backends.py is skipped rather than consulted.
+        rel = shape.split(":", 1)[1]
+        f = (ROOT / rel).resolve()
+        if not f.is_file() or ROOT / "models" not in f.parents:
+            return {"error": "no such model"}, 404
+        return {"tiers": [{"tier": "SMALL", "backend": "llama.cpp",
+                           "repo": None, "file": None, "path": f"models/{f.name}",
+                           "alias": f.stem, "port": 8081, "model": f.name,
+                           "why": "weights already on this Mac — nothing to "
+                                  "download, and llama.cpp is the only thing "
+                                  "that reads GGUF"}]}
+    return {"tiers": build(shape,
                            int(body.get("slots", 4)),
                            int(body.get("ctx", 32768)) // 1000)}
 

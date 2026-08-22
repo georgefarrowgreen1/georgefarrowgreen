@@ -165,6 +165,7 @@ const post=async(p,b={})=>{const r=await fetch(p,{method:'POST',headers:{'Conten
   body:JSON.stringify(b)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;};
 
 let STATE=null, SHAPE=null, PLAN=null;
+let FIT={slots: 4, ctx: 32768};   // replaced by the server's sizing on select
 
 function step(n){
   ['p1','p2','p3','p4'].forEach((p,i)=>$('#'+p).classList.toggle('on',i===n-1));
@@ -188,25 +189,40 @@ function step(n){
     }).join('')+`</tbody>`;
 
   $('#shapes').innerHTML='';
-  STATE.shapes.forEach(s=>{
-    const tight=s.gb+13>STATE.machine.usable_gb;
-    const c=el(`<div class="card-opt ${tight?'tight':''}" role="button" tabindex="0"
-        aria-pressed="false" data-id="${s.id}">
-      <div class="t"><h3>${esc(s.title)}</h3><span class="sz">~${s.gb}GB</span></div>
-      <div class="sub">${esc(s.sub)}</div>
-      <div class="det">${esc(s.detail)}</div>
-      ${tight?'<div class="warnrow">Tight on this Mac once cache is counted.</div>':''}
+  // The server sizes every option against this Mac and returns the slots and
+  // context it can actually hold. Nothing here decides that any more — the
+  // wizard used to ask for 4 slots at 32k whatever the machine was.
+  const card=(o)=>{
+    const c=el(`<div class="card-opt ${o.fits?'':'tight'}" role="button" tabindex="0"
+        aria-pressed="false" data-id="${esc(o.id)}">
+      <div class="t"><h3>${esc(o.title)}</h3><span class="sz">~${o.gb}GB</span></div>
+      <div class="sub">${esc(o.sub)}</div>
+      <div class="det">${esc(o.detail)}</div>
+      ${o.fits
+        ? (o.slots<4||o.ctx_k<32
+            ? `<div class="warnrow">Fits at ${o.slots} slot${o.slots===1?'':'s'}
+               &times; ${o.ctx_k}k, not the usual 4 &times; 32k.</div>`
+            : '')
+        : '<div class="warnrow">Will not fit in this Mac\u2019s memory at any context size.</div>'}
     </div>`);
     const choose=()=>{
-      SHAPE=s.id;
+      if(!o.fits) return;                 // offering it would only fail later
+      SHAPE=o.id; FIT={slots:o.slots, ctx:o.ctx_k*1024};
       document.querySelectorAll('.card-opt').forEach(x=>
-        x.setAttribute('aria-pressed',String(x.dataset.id===s.id)));
+        x.setAttribute('aria-pressed',String(x.dataset.id===o.id)));
       $('#to3').disabled=false;
     };
     c.onclick=choose;
     c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}};
-    $('#shapes').append(c);
-  });
+    return c;
+  };
+
+  (STATE.local||[]).forEach(f=>$('#shapes').append(card({
+    id:'local:'+f.path, title:f.stem, gb:f.gb, slots:f.slots, ctx_k:f.ctx_k,
+    fits:f.fits, sub:'Already in models/ \u2014 nothing to download',
+    detail:'Read from disk where you put it. Always llama.cpp: MLX cannot '
+          +'read GGUF.'})));
+  STATE.shapes.forEach(s=>$('#shapes').append(card(s)));
 })();
 
 $('#to2').onclick=()=>step(2);
@@ -214,7 +230,8 @@ $('#back2').onclick=()=>step(1);
 $('#back3').onclick=()=>step(2);
 
 $('#to3').onclick=async()=>{
-  PLAN=(await post('/api/v1/setup/plan',{shape:SHAPE,slots:4,ctx:32768})).tiers;
+  PLAN=(await post('/api/v1/setup/plan',
+        {shape:SHAPE,slots:FIT.slots,ctx:FIT.ctx})).tiers;
   $('#plan').innerHTML=PLAN.map(t=>`<div class="tier">
     <span class="badge ${t.backend==='mlx'?'mlx':'llama'}">${esc(t.backend)}</span>
     <div class="body"><div class="m">${esc(t.model)} <span style="color:var(--lab3);
@@ -271,14 +288,15 @@ $('#to4').onclick=async()=>{
     }
 
     // write the config before starting, so a crash mid-download is recoverable
-    await post('/api/v1/setup/write',{mode:'servers',tiers:PLAN,slots:4,ctx:32768});
+    await post('/api/v1/setup/write',
+      {mode:'servers',tiers:PLAN,slots:FIT.slots,ctx:FIT.ctx});
     logLine('blokk.conf written','ok');
 
     for(const t of PLAN){
       logLine(`── starting ${t.backend} for ${t.tier.toLowerCase()} on :${t.port} ──`);
       $('#w-'+t.tier).textContent='starting';
       let ok=false, err=null;
-      await stream('/api/v1/setup/start',{tier:t,slots:4,ctx:32768},ev=>{
+      await stream('/api/v1/setup/start',{tier:t,slots:FIT.slots,ctx:FIT.ctx},ev=>{
         if(ev.type==='STARTED') logLine('$ '+ev.command);
         if(ev.type==='LOG'){ logLine(ev.line);
           $('#w-'+t.tier).textContent=ev.line.slice(0,72); }
