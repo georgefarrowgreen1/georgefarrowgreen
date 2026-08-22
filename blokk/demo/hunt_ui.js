@@ -41,6 +41,17 @@ probe('B7  service worker serves a stale shell after an update',
   /SHELL\s*=\s*'blokk-shell-v1'/.test(sw),
   'cache name is hand-versioned; ship a UI change and the phone keeps the old one');
 
+// B8 — the repeat-decide response is a different shape
+// Found by driving the real dashboard against the real server: decide on the
+// phone, then tap Approve on the Mac. The server answers {ok, already} with no
+// category, res.category.replace threw, and the catch rendered "Nothing was
+// sent — the item is still in the queue" for an item that had in fact been
+// decided. Reporting a write as failed when it succeeded is invariant 6 in
+// reverse, and it sends someone looking for a card that is gone.
+probe('B8  a decision made on another device reports "nothing was sent"',
+  /res\.category\.replace/.test(js) && !/res\.already/.test(js),
+  'the {ok, already} shape carries no category or trust');
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

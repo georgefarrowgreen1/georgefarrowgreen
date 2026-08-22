@@ -380,6 +380,22 @@ function paint(h, ap, handled, runs){
       try{
         const res = await post(`/api/v1/approvals/${a.id}/decide`,{decision, edited_body});
         const s = el('<div class="settled"></div>');
+        // Decided somewhere else — the phone, or a tap that got retried. The
+        // server answers {ok, already} with no category and no trust, so the
+        // lines below threw a TypeError that the catch rendered as "Nothing
+        // was sent — the item is still in the queue". That is the opposite of
+        // what happened: it was sent, just not from here, and telling someone
+        // to go looking for an item that is gone is worse than saying nothing.
+        if(res.already){
+          card.classList.add('gone');
+          const past = {approve:'approved', edit:'edited', reject:'rejected'}[res.already];
+          s.innerHTML = `<b>Already ${esc(past || 'decided')}.</b> This was decided on
+            another device — nothing was sent twice.`;
+          card.append(s);
+          announce(`${a.category.replace(/_/g,' ')} already ${esc(past || 'decided')}`);
+          setTimeout(()=>tick(true), 900);
+          return;
+        }
         if(res.blocked==='stale'){
           s.innerHTML = `<b style="color:var(--red)">Blocked.</b> ${esc(res.detail)}`;
           card.append(s);
