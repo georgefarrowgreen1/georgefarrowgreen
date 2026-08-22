@@ -3,6 +3,7 @@
 Wire real data in, one source at a time.
 
     python3 connect.py list                          what is wired now
+    python3 connect.py local                         what this Mac already holds
     python3 connect.py add cottages imap  blokk-cottages-mail
     python3 connect.py add cottages messages local
     python3 connect.py test                          prove every credential works
@@ -56,6 +57,22 @@ def main() -> int:
     if cmd == "remove":
         print(sources.remove(store, args[1], args[2])["detail"]
               .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
+        return 0
+
+    if cmd == "local":
+        from core import local
+        sv = local.survey()
+        if not sv.get("mac"):
+            print(sv.get("note", "not macOS"))
+            return 0
+        print(f"{'source':<10} {'state':<11} where")
+        for x in sv["sources"]:
+            print(f"{x['what']:<10} {x['state']:<11} {x['path']}")
+            print(f"{'':<10} {'':<11} {x['detail']}")
+        if sv["blocked"]:
+            print(f"\n{sv['blocked']} of these is here but blocked. To fix:")
+            for i, h in enumerate(sv["how"], 1):
+                print(f"  {i}. {h}")
         return 0
 
     if cmd == "list":

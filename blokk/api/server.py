@@ -445,9 +445,10 @@ def h_models_remove(body):
 
 
 def h_sources(_q):
-    from core import sources
+    from core import local, sources
     return {"workspaces": sources.workspaces(store),
             "sources": sources.listing(store),
+            "local": local.survey(),
             "kinds": [{"id": k, "reads": v,
                        "keychain": k in sources.NEEDS_KEYCHAIN}
                       for k, v in sources.KINDS.items()]}
