@@ -4,14 +4,16 @@
 #   ./blokk            set up if needed, then run
 #   ./blokk 8080       on a different port
 #   ./blokk update     pull the latest code and restart
+#   ./blokk doctor     why the phone cannot reach this Mac
 #
 # Unconfigured, it opens the setup wizard in your browser. Configured, it
 # starts the model servers and the app. Same command either way — you should
 # not have to know which state you are in.
 set -euo pipefail
 cd "$(dirname "$0")"
-# Checked before PORT, so it cannot be mistaken for one.
+# Checked before PORT, so neither can be mistaken for one.
 [ "${1:-}" = "update" ] && exec ./update.sh
+[ "${1:-}" = "doctor" ] && exec python3 -m core.doctor "${2:-8080}"
 
 PORT="${1:-8080}"
 
