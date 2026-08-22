@@ -127,6 +127,21 @@ try:
             return (True, f"{type(e).__name__} — connection dropped rather than 500")
     probe("A9  a handler bug drops the connection", handler_error)
 
+    # ── 10. CORS against the loopback trust ──────────────────────────────
+    def cors_open():
+        # A1 trusts loopback without a token because you are sitting at the
+        # Mac. A browser tab is also sitting at the Mac, so a wildcard here
+        # hands the queue to every site you happen to have open. Ask as an
+        # origin the operator never named.
+        r = urllib.request.Request(B + '/api/v1/health',
+                                   headers={'Origin': 'https://evil.example'})
+        acao = urllib.request.urlopen(r, timeout=10).headers.get(
+            'Access-Control-Allow-Origin')
+        return (acao is not None,
+                f"echoed Access-Control-Allow-Origin: {acao}" if acao
+                else "no CORS headers for an origin that was not allowed")
+    probe("A10 any website you have open can read the queue", cors_open)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

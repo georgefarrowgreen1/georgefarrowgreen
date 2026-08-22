@@ -50,6 +50,20 @@ if not TOKEN:
     TOKEN_FILE.write_text(TOKEN)
     TOKEN_FILE.chmod(0o600)
 
+# Origins allowed to read this API from a page they serve. Empty by default,
+# and that default is load-bearing: loopback is trusted without a token
+# because "you are sitting at the Mac", but a browser tab is also sitting at
+# the Mac. With Access-Control-Allow-Origin: * every website you happen to
+# have open could read the queue — guest names, message bodies, the journal —
+# and POST decisions, because the preflight was allowed too. The dashboard is
+# served by this process, so it is same-origin and needs no CORS at all.
+#
+# Set BLOKK_ALLOWED_ORIGINS to a comma-separated list only if you deliberately
+# host the UI somewhere else, e.g. https://example.com. That page's JavaScript
+# then handles your private data, so trust it as you would this file.
+ALLOWED_ORIGINS = {o.strip() for o in
+                   os.environ.get("BLOKK_ALLOWED_ORIGINS", "").split(",") if o.strip()}
+
 MAX_BODY = 256 * 1024      # A3: rfile.read(Content-Length) allocates whatever
                            # it is told to. 256KB is generous for JSON.
 
@@ -444,13 +458,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
     # ---------------------------------------------------------------- access
+    def _cors(self):
+        """Echo the origin only if it was allowed. No header at all is the
+        right answer for an origin we do not know: the browser then refuses
+        to hand the response to that page's script."""
+        origin = self.headers.get("Origin")
+        if not origin or origin not in ALLOWED_ORIGINS:
+            return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")          # or a cache serves one
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+
     def _authorised(self) -> bool:
         host = self.client_address[0]
         if host in ("127.0.0.1", "::1"):
@@ -515,7 +539,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("X-Accel-Buffering", "no")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._cors()
         self.send_header("Connection", "close")
         self.end_headers()
         i = 0
