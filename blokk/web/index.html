@@ -37,6 +37,10 @@
           font-size:15px;cursor:pointer;display:grid;place-items:center;flex:0 0 auto}
 
   main{flex:1;padding:0 20px 20px}
+  .foot{margin:26px 0 4px;text-align:center}
+  .foot button{background:none;border:0;color:var(--lab3);font-size:12.5px;
+    font-family:var(--ui);padding:8px;cursor:pointer}
+  .foot button:hover{color:var(--lab2)}
   .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
   .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:24px}
   .sect{font-size:13px;color:var(--lab3);margin:28px 0 12px;font-weight:500}
@@ -292,8 +296,6 @@
       title="Open on your phone">▫</button>
     <a class="icobtn" id="setup" href="/setup.html"
       aria-label="Set up the model" title="Set up the model">⚙</a>
-    <button class="icobtn" id="update" aria-label="Update Blokk"
-      title="Update Blokk">⇧</button>
     <button class="icobtn" id="refresh" aria-label="Refresh now">↻</button>
   </header>
 
@@ -355,6 +357,10 @@
       <button id="reset">Reset</button>
       <button id="sweep" class="go">Run the sweep</button>
     </div>
+    <!-- Updating belongs where a version number belongs, and a sixth circle
+         in the header left "9 runs · 3 parked" wrapping onto four lines on a
+         390px phone. It is a twice-a-month action; it can be a word. -->
+    <div class="foot"><button id="update">Check for updates</button></div>
   </main>
 
   <div class="composer"><div class="bar" id="openask" role="button" tabindex="0"><span style="color:var(--lab2)">+</span>
