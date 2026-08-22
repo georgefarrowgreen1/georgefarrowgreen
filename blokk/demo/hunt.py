@@ -1,5 +1,5 @@
 """Adversarial pass. Tries to break it rather than confirm it works."""
-import json, pathlib, subprocess, sys, threading, time, urllib.request, urllib.error, sqlite3, socket
+import json, pathlib, subprocess, sys, tempfile, threading, time, urllib.request, urllib.error, sqlite3, socket
 p=subprocess.Popen([sys.executable,'-m','api.server','8099'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1.5)
 B='http://localhost:8099'
@@ -428,6 +428,85 @@ try:
             st.x("DELETE FROM workspace WHERE id=?", ws)
     probe("A19 peek shows nothing when it cannot read, and does not say so",
           peek_silent)
+
+    # ── 20. the model server's last words ───────────────────────────────
+    def _fake_server(script):
+        """A stand-in llama-server on PATH, so this runs anywhere."""
+        d = pathlib.Path(tempfile.mkdtemp())
+        f = d / "llama-server"
+        f.write_text("#!/bin/sh\n" + script)
+        f.chmod(0o755)
+        import os as _o
+        _o.environ["PATH"] = f"{d}:{_o.environ['PATH']}"
+        return d
+
+    def last_words():
+        # A model server that dies prints the reason and exits in the same
+        # breath — "no such file", "out of memory", "port in use". If the
+        # supervisor reports the exit code before draining what is left in
+        # the pipe, the one line that says why is the one line lost, and the
+        # user is told "exited with code 1" and nothing else.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import servers as srv
+        keep_fa = srv._FA
+        _fake_server('echo "build: 9000 (probe)"\n'
+                     'echo "llama_model_load: error loading model: no such file"\n'
+                     'exit 1\n')
+        srv._FA = []                       # do not ask the fake for its flags
+        logf = srv.log_path("A20")
+        if logf.exists():
+            logf.unlink()
+        try:
+            t = srv.Tier(name="A20", backend="llama.cpp", alias="probe",
+                         port=8198, path="/nonexistent.gguf")
+            err = None
+            for ev in srv.SUPERVISOR.start(t):
+                if ev["type"] == "ERROR":
+                    err = ev
+            if not err:
+                return (True, "a server that exited 1 was not reported as an error")
+            if "no such file" not in (err.get("log") or ""):
+                return (True, f"the reason was dropped; kept {err.get('log')!r}")
+            # And it must outlive the process that started it: run.sh starts
+            # tiers from a short-lived heredoc, so an in-memory log is gone
+            # by the time anyone asks.
+            if "no such file" not in (logf.read_text() if logf.exists() else ""):
+                return (True, "the reason reached the stream but not logs/")
+            return (False, "the cause survives both the exit and the process")
+        finally:
+            srv._FA = keep_fa
+            if logf.exists():
+                logf.unlink()
+    probe("A20 a model server that dies takes its reason with it", last_words)
+
+    # ── 21. doctor is silent about the thing that fails most ────────────
+    def doctor_models():
+        # The commonest fault on this machine is that the model server is not
+        # running, and for a while doctor checked the control plane, the
+        # network and the firewall — everything except that.
+        import sys as _s, io, contextlib
+        _s.path.insert(0, ".")
+        from core import servers as srv, doctor
+        keep = srv.CONF
+        tmpc = pathlib.Path(tempfile.mkdtemp()) / "blokk.conf"
+        tmpc.write_text("MODE=servers\nSMALL_BACKEND=llama.cpp\n"
+                        "SMALL_ALIAS=probe\nSMALL_PORT=8198\n"
+                        "BLOKK_SMALL_URL=http://127.0.0.1:8198/v1\n")
+        srv.CONF = tmpc
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                todo = doctor.models()
+            out = buf.getvalue()
+            if "8198" not in out:
+                return (True, "doctor never mentions the port the agent dials")
+            if not todo:
+                return (True, "a dead model server produced nothing to do")
+            return (False, "a dead model server is named, with a next step")
+        finally:
+            srv.CONF = keep
+    probe("A21 doctor says nothing about the model server", doctor_models)
 
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it

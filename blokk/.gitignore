@@ -36,5 +36,8 @@ models/*.safetensors
 # the running control plane
 .blokk.pid
 
+# model server output — machine-local, and it names the machine
+logs/
+
 # database snapshots — the real thing, with real names in it
 backups/

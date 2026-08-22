@@ -24,6 +24,46 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+LOGDIR = ROOT / "logs"
+
+
+def log_path(tier_name: str) -> Path:
+    return LOGDIR / f"{tier_name.lower()}.log"
+
+
+def log_tail(tier_name: str, n: int = 8) -> list[str]:
+    """The model server's own last words, from disk.
+
+    On disk rather than in memory because the process that starts the server
+    is usually not the process asking why it died: run.sh starts tiers from a
+    short-lived heredoc, and the supervisor's in-memory log dies with it. The
+    llama-server line that says *why* — no such file, out of memory, port in
+    use — was reaching nobody.
+    """
+    f = log_path(tier_name)
+    try:
+        return f.read_text(errors="replace").splitlines()[-n:]
+    except Exception:                                            # noqa: BLE001
+        return []
+
+
+def _open_log(tier_name: str, command: str):
+    """Append-mode log, trimmed if it has grown fat. None if unwritable.
+
+    Unwritable is not fatal — a read-only checkout should still be able to
+    start a model server. It just loses the postmortem.
+    """
+    try:
+        LOGDIR.mkdir(exist_ok=True)
+        f = log_path(tier_name)
+        if f.exists() and f.stat().st_size > 2_000_000:
+            keep = f.read_text(errors="replace").splitlines()[-200:]
+            f.write_text("\n".join(keep) + "\n")
+        fh = f.open("a", buffering=1, errors="replace")
+        fh.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')}  {command}\n")
+        return fh
+    except Exception:                                            # noqa: BLE001
+        return None
 
 
 # llama.cpp changed -fa from a bare switch to one that takes on|off|auto.
@@ -133,6 +173,10 @@ class Supervisor:
                    "note": "already up"}
             return
         if not installed(tier.backend):
+            fh = _open_log(tier.name, "(not started)")
+            if fh:
+                fh.write(f"--- {tier.binary} is not installed\n")
+                fh.close()
             yield {"type": "ERROR", "tier": tier.name,
                    "message": f"{tier.binary} is not installed"}
             return
@@ -147,6 +191,7 @@ class Supervisor:
 
         yield {"type": "STARTED", "tier": tier.name,
                "command": " ".join(tier.command())}
+        fh = _open_log(tier.name, " ".join(tier.command()))
 
         # Output is drained on its own thread. readline() blocks, and a quiet
         # server — which llama-server with --log-disable very much is — would
@@ -165,34 +210,75 @@ class Supervisor:
 
         threading.Thread(target=drain, daemon=True).start()
 
+        def note(text: str) -> None:
+            if fh:
+                try:
+                    fh.write(text + "\n")
+                except Exception:                                # noqa: BLE001
+                    pass
+
         deadline = time.time() + 1800          # a cold 20GB pull is not quick
         last_poll = 0.0
-        while time.time() < deadline:
-            try:
-                line = q.get(timeout=0.4)
-                if line is not None:
-                    with self._lock:
-                        self.logs[tier.name].append(line)
-                        self.logs[tier.name] = self.logs[tier.name][-400:]
-                    yield {"type": "LOG", "tier": tier.name, "line": line}
-            except queue.Empty:
-                pass
+        try:
+            while time.time() < deadline:
+                try:
+                    line = q.get(timeout=0.4)
+                    if line is not None:
+                        with self._lock:
+                            self.logs[tier.name].append(line)
+                            self.logs[tier.name] = self.logs[tier.name][-400:]
+                        note(line)
+                        yield {"type": "LOG", "tier": tier.name, "line": line}
+                except queue.Empty:
+                    pass
 
-            now_t = time.time()
-            if now_t - last_poll >= 1.0:
-                last_poll = now_t
-                if alive(tier.port, timeout=0.5):
-                    yield {"type": "READY", "tier": tier.name, "port": tier.port}
-                    return
-                if proc.poll() is not None:
-                    tail = "\n".join(self.logs[tier.name][-6:])
-                    yield {"type": "ERROR", "tier": tier.name,
-                           "message": f"exited with code {proc.returncode}",
-                           "log": tail}
-                    return
+                now_t = time.time()
+                if now_t - last_poll >= 1.0:
+                    last_poll = now_t
+                    if alive(tier.port, timeout=0.5):
+                        note(f"--- answering on :{tier.port}")
+                        yield {"type": "READY", "tier": tier.name,
+                               "port": tier.port}
+                        return
+                    if proc.poll() is not None:
+                        # The line that says *why* is the last one written,
+                        # and the process is usually dead before the reader
+                        # has drained it — llama-server prints the reason and
+                        # exits in the same breath. Take what is left before
+                        # declaring the cause unknown. The drain thread puts
+                        # None when stdout closes, so this ends at once.
+                        end = time.time() + 2.0
+                        while time.time() < end:
+                            try:
+                                line = q.get(timeout=0.2)
+                            except queue.Empty:
+                                break
+                            if line is None:
+                                break
+                            with self._lock:
+                                self.logs[tier.name].append(line)
+                                self.logs[tier.name] = self.logs[tier.name][-400:]
+                            note(line)
+                            yield {"type": "LOG", "tier": tier.name, "line": line}
+                        tail = "\n".join(self.logs[tier.name][-6:])
+                        note(f"--- exited with code {proc.returncode}")
+                        yield {"type": "ERROR", "tier": tier.name,
+                               "message": f"exited with code {proc.returncode}",
+                               "log": tail}
+                        return
 
-        yield {"type": "ERROR", "tier": tier.name,
-               "message": "did not answer within 30 minutes"}
+            note("--- gave up waiting after 30 minutes")
+            yield {"type": "ERROR", "tier": tier.name,
+                   "message": "did not answer within 30 minutes"}
+        finally:
+            # Also runs when the browser closes the SSE stream mid-start and
+            # this generator is collected — otherwise the handle leaks and the
+            # last lines never reach the file.
+            if fh:
+                try:
+                    fh.close()
+                except Exception:                                # noqa: BLE001
+                    pass
 
     def stop_all(self) -> int:
         with self._lock:
