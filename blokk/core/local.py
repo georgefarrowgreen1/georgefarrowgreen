@@ -28,7 +28,8 @@ SOURCES = [
      "reads": "events, without CalDAV or an app-specific password"},
     {"id": "mail", "what": "Mail", "kind": "imap",
      "path": HOME / "Library/Mail",
-     "reads": "messages Mail.app has already downloaded"},
+     "kind_local": "maildir",
+     "reads": "messages Mail.app has already downloaded, without IMAP"},
 ]
 
 

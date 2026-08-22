@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import json
 
-KINDS = {"imap": "mail", "caldav": "calendar", "ical": "calendar",
+KINDS = {"imap": "mail", "maildir": "mail",
+         "caldav": "calendar", "ical": "calendar",
          "messages": "messages"}
 # The two that read this Mac's own files need no credential — and no network,
 # and no app-specific password. They need Full Disk Access, which core/local.py

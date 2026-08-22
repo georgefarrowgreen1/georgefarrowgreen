@@ -279,6 +279,37 @@ class Engine:
         self._drive(run_id)
         return run_id
 
+    def start_background(self, workflow: str, workspace_id: str,
+                         payload: dict | None = None,
+                         on_done=None) -> str:
+        """Same as start(), but the caller does not wait for the workflow.
+
+        The run row is written before this returns, so the id is real and the
+        run is visible as 'running' immediately — a caller can answer, and the
+        page can show it, while the model is still being read.
+
+        Nothing about durability changes: _drive journals every step exactly
+        as before, and a failure marks the run failed and resumable rather
+        than vanishing with the thread.
+        """
+        run_id = f"r_{uuid.uuid4().hex[:10]}"
+        self.store.x(
+            "INSERT INTO run(id,workspace_id,workflow,status,input) VALUES(?,?,?,'running',?)",
+            run_id, workspace_id, workflow, json.dumps(payload or {}),
+        )
+
+        def drive():
+            try:
+                self._drive(run_id)
+            except Exception:                                     # noqa: BLE001
+                pass          # _drive has already marked and journalled it
+            finally:
+                if on_done:
+                    on_done()                 # the page is polling a version
+        threading.Thread(target=drive, daemon=True,
+                         name=f"run-{run_id}").start()
+        return run_id
+
     def signal(self, run_id: str, signal: str, payload: Any) -> None:
         w = self.store.one("SELECT * FROM waiting WHERE run_id=?", run_id)
         if not w or w["signal"] != signal:

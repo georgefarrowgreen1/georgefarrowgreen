@@ -306,7 +306,12 @@ def h_sweep(body):
             skipped.append(existing["id"])
             continue
         try:
-            started.append(engine.start("morning_sweep", w["id"]))
+            # Started, not finished. The workflow runs every workspace's
+            # sweep, which with real weights is minutes — holding the request
+            # open for that made the page give up and call it a failure. The
+            # runs are journalled and resumable, and the poll shows them.
+            started.append(engine.start_background(
+                "morning_sweep", w["id"], on_done=bump))
         except Exception as e:                                   # noqa: BLE001
             # The run is already marked failed and journalled, so it is
             # resumable once whatever broke is fixed. Losing three good
@@ -314,7 +319,8 @@ def h_sweep(body):
             # is the wrong trade.
             failed.append({"workspace": w["id"], "error": str(e)[:200]})
     bump()
-    out = {"started": started, "already_swept_today": skipped}
+    out = {"started": started, "already_swept_today": skipped,
+           "running": True}
     if failed:
         out["failed"] = failed
     return out

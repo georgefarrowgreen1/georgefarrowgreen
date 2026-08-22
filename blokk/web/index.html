@@ -409,7 +409,10 @@ async function tick(force){
     const h = await get('/api/v1/health');
     $('#live').classList.remove('off');
     $('#offline').innerHTML = '';
-    if(h.version === ver && !force) { paintHealth(h); return; }   // nothing changed
+    // A run in flight changes the world without every step bumping the
+    // version, so while anything is running the cache is not to be trusted —
+    // otherwise a sweep that is working looks like a page that is stuck.
+    if(h.version === ver && !force && !h.running) { paintHealth(h); return; }
     ver = h.version;
     // Partial failure is not offline. Health answered, so the Mac is there;
     // degrade the section that failed rather than blanking the screen.
@@ -747,6 +750,10 @@ $('#sweep').onclick = async e=>{
     .catch(e=>({error:e.message, timedOut:e.timedOut}));
   if(r.timedOut) toast(`<b>Still sweeping.</b> It runs on the Mac, not in this
     page, so it carries on — the cards above fill in as each workspace lands.`);
+  else if(r.running && r.started && r.started.length)
+    toast(`<b>Sweeping ${r.started.length} workspace${r.started.length===1?'':'s'}.</b>
+      They run on the Mac; the cards fill in as each lands. Every write is
+      queued, nothing sent.`);
   else if(r.error) toast(`<b>Sweep failed.</b> ${esc(r.error)}`);
   else if(!r.started.length)
     toast(`<b>Already swept today.</b> ${r.already_swept_today.length} workspaces have run —
