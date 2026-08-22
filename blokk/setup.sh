@@ -56,6 +56,8 @@ say ""
 say "  1  Qwen3-8B                   one model, one server. 24GB Macs and up"
 say "  2  Qwen3.6-35B-A3B            one model, MoE. Knows more. 48GB and up"
 say "  3  both: 8B triage + 35B MoE  two tiers, and probably two backends"
+say "  4  Qwen3-4B                   smallest worth real mail. 8-16GB Macs"
+say "  5  Qwen3-1.7B                 runs on 8GB. Drafts, not decisions"
 if [ "$LOCAL_N" -gt 0 ]; then
   say ""
   say "  ${BOLD}already in models/${OFF} — nothing to download"
@@ -94,11 +96,31 @@ case "$CHOICE" in
 
     step "Writing blokk.conf"
     ALIAS="$(basename "$GGUF" .gguf)"
+    # Size to the file on disk. A 4-bit GGUF is roughly 0.55 GB per billion
+    # parameters, which is close enough to pick a slot count — and far closer
+    # than assuming the four 32k slots a big Mac gets.
+    LFIT="$(python3 - "$GGUF" <<'PYFIT'
+import os, sys
+sys.path.insert(0, ".")
+import bench
+gb = os.path.getsize(sys.argv[1]) / (1024 ** 3)
+slots, ctx_k = bench.fit(max(0.5, gb / 0.55), gb, bench.machine()["ram_gb"] or 32)
+print(f"{slots} {ctx_k} {gb:.1f}")
+PYFIT
+)"
+    set -- $LFIT
+    LSLOTS="$1"; LCTX=$(( $2 * 1024 )); LGB="$3"
+    if [ "$LSLOTS" = "0" ]; then
+      warn "$(basename "$GGUF") is ${LGB}GB and will not fit in this Mac's memory."
+      say "  ${DIM}Try a smaller quantisation, or ./setup.sh --stubs.${OFF}"
+      exit 1
+    fi
+    [ "$LSLOTS" -lt 4 ] && warn "Sized to ${LSLOTS} slot(s) at $(( LCTX / 1024 ))k for this Mac."
     {
       echo "# Written by setup.sh on $(date +%Y-%m-%d). Edit freely; run.sh reads it."
       echo "MODE=servers"
-      echo "SLOTS=4"
-      echo "CTX=32768"
+      echo "SLOTS=$LSLOTS"
+      echo "CTX=$LCTX"
       echo ""
       echo "# SMALL — local weights, read from disk, never downloaded"
       echo "SMALL_BACKEND=llama.cpp"
@@ -119,8 +141,41 @@ case "$CHOICE" in
     ;;
 esac
 
-SLOTS=4
-CTX=32768
+# Size the plan to this Mac rather than assuming a big one. Four 32k slots
+# is the design's default and what a 32GB machine gets; asking an 8GB Mac to
+# allocate that is how you get a server that starts and then dies.
+FITTED="$(python3 - "$CHOICE" <<'PYFIT'
+import sys
+sys.path.insert(0, ".")
+import bench
+from core.plan import SHAPES
+shape = {"1": "small", "2": "moe", "3": "both",
+         "4": "mini", "5": "tiny"}.get(sys.argv[1], "small")
+sh = next(s for s in SHAPES if s["id"] == shape)
+ram = bench.machine()["ram_gb"] or 32
+slots, ctx_k = bench.fit(sh["params"], sh["gb"], ram)
+print(f"{slots} {ctx_k} {ram} {sh['gb']} {sh['title']}")
+PYFIT
+)"
+set -- $FITTED
+SLOTS="$1"; CTX=$(( $2 * 1024 )); RAM="$3"; NEED="$4"; MODELNAME="$5"
+
+if [ "$SLOTS" = "0" ]; then
+  warn "${MODELNAME} needs about ${NEED}GB of weights and this Mac has ${RAM}GB."
+  say ""
+  say "  Nothing fits, at any context size. Your options:"
+  say ""
+  say "    ./setup.sh          and pick 4 or 5 — the smaller models"
+  say "    models/             drop your own .gguf in and pick it"
+  say "    ./setup.sh --stubs  every mechanism real, the prose invented"
+  say ""
+  exit 1
+fi
+if [ "$SLOTS" -lt 4 ] || [ "$CTX" -lt 32768 ]; then
+  warn "Sized down to ${SLOTS} slot(s) at $(( CTX / 1024 ))k for ${RAM}GB of RAM."
+  say "  ${DIM}Fewer things at once, and less of each thread visible. A smaller"
+  say "  model would run wider — ./setup.sh and pick 4 or 5.${OFF}"
+fi
 
 # The rule lives in core/backends.py, so setup.sh and the docs cannot drift.
 PLAN="$(python3 core/plan.py "$CHOICE" "$SLOTS" $((CTX/1000)))"

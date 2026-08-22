@@ -48,6 +48,10 @@ BANDWIDTH = {
 # 200 tok/s and a nasty surprise.
 MODELS = [
     # name                       GB    active GB  role      note
+    ("Qwen3-1.7B-4bit",          1.1,  1.1,  "small",
+     "runs on 8GB. Too small to call tools reliably — drafts, not decisions"),
+    ("Qwen3-4B-4bit",            2.5,  2.5,  "small",
+     "the smallest that is worth pointing at real mail. 8GB and up"),
     ("Qwen3-8B-4bit",            4.6,  4.6,  "small",
      "the triage tier. Around 7B is the floor where tool calling works at all"),
     ("Qwen3.5-8B-4bit",          4.8,  4.8,  "small",
@@ -64,8 +68,41 @@ MODELS = [
      "only worth it if you have the memory to spare and can wait"),
 ]
 
-KV_PER_TOKEN_MB = {8: 0.065, 27: 0.150, 31: 0.160, 35: 0.070, 70: 0.164}
+KV_PER_TOKEN_MB = {2: 0.025, 4: 0.040, 8: 0.065, 27: 0.150, 31: 0.160,
+                   35: 0.070, 70: 0.164}
 OS_RESERVE_GB = 12          # macOS, Blokk, your browser, Messages
+
+
+def usable_gb(ram_gb: float) -> float:
+    """What is actually left for weights and cache.
+
+    A flat 12 GB is right on a 64 GB machine and absurd on an 8 GB one: it
+    reports zero usable and every model as "does not fit", which is how an
+    8 GB Mac ends up being handed a plan for a 4.6 GB model with four 32k
+    slots. macOS idles at roughly 3 GB and grows with what you run, so scale
+    with the machine and keep the old number as the ceiling — big Macs behave
+    exactly as before, small ones stop being told a flat lie.
+    """
+    return max(0.0, ram_gb - max(3.0, min(float(OS_RESERVE_GB), ram_gb * 0.35)))
+
+
+# Largest to smallest. The first that fits wins, so a big Mac still gets the
+# four batched slots the whole design is built around.
+LADDER = ((4, 32), (4, 16), (2, 32), (2, 16), (2, 8), (1, 16), (1, 8), (1, 4))
+
+
+def fit(params_b: float, model_gb: float, ram_gb: float) -> tuple[int, int]:
+    """(slots, ctx_k) that leaves the weights room, or (0, 0) if none do.
+
+    The margin is not politeness: llama-server allocates the cache up front
+    and the OS grows underneath it, so sizing to the last byte gets you a
+    server that starts and then dies an hour into the night's sweep.
+    """
+    room = (usable_gb(ram_gb) - model_gb) * 0.8
+    for slots, ctx_k in LADDER:
+        if room > 0 and kv_gb(params_b, ctx_k, slots) <= room:
+            return slots, ctx_k
+    return 0, 0
 
 
 def sysctl(key: str) -> str:
@@ -113,10 +150,11 @@ def batched(single: float, n: int, saturation=6.0) -> float:
 
 
 def report(m: dict, ctx_k: int, workers: int) -> None:
-    usable = max(m["ram_gb"] - OS_RESERVE_GB, 0)
+    usable = usable_gb(m["ram_gb"])
     print(f"\n  {m.get('brand', 'unknown')}")
     print(f"  {m['ram_gb']} GB unified · ~{m['bandwidth']} GB/s · "
-          f"{usable} GB usable after {OS_RESERVE_GB} GB for macOS and everything else\n")
+          f"{usable:.0f} GB usable after "
+          f"{m['ram_gb'] - usable:.0f} GB for macOS and everything else\n")
 
     print(f"  Sized for {workers} concurrent workers at {ctx_k}k context each.")
     print(f"  {'model':<26} {'weights':>8} {'kv':>7} {'total':>7} {'tok/s':>7} "
