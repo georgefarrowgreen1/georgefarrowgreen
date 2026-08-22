@@ -217,6 +217,28 @@
   #srcdlg .mini.go{width:100%;background:var(--blue);border-color:transparent;
     color:#fff;font-weight:600}
   #srcdlg .mini.danger{color:var(--red)}
+  /* Armed: the second tap does the irreversible thing, so it must not look
+     like the first one. */
+  #updlg{border:0;padding:22px;border-radius:18px;max-width:520px;
+    width:calc(100vw - 32px);background:var(--card);color:var(--lab)}
+  #updlg::backdrop{background:rgba(0,0,0,.6)}
+  #updlg h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
+  #updlg p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
+  #updlg .sub{font-size:12px;color:var(--lab3)}
+  #updlg .mini{padding:9px 12px;border:1px solid var(--hair);border-radius:10px;
+    background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui)}
+  #updlg .mini.go{width:100%;background:var(--blue);border-color:transparent;
+    color:#fff;font-weight:600;margin-top:8px}
+  #updlg .mini.armed{background:var(--red);border-color:transparent;color:#fff}
+  #updlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
+    background:var(--card2);color:var(--lab);font-size:14px}
+  #updlg pre{margin:10px 0 0;padding:10px;background:#0B0B0E;border-radius:10px;
+    max-height:230px;overflow:auto;font-size:11.5px;line-height:1.45;color:var(--lab2)}
+  #updlg ul{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--lab2);
+    line-height:1.5;font-family:var(--mono)}
+  #updlg .warn{color:var(--amber)}
+  #srcdlg .mini.armed{background:var(--red);color:#fff;border-color:transparent}
+  #srcdlg .addbox .mini.danger{width:100%;margin-top:8px}
   #srcdlg .lrow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px}
   #srcdlg .lrow small{color:var(--lab3);font-size:11px;font-family:var(--mono);margin-left:6px}
   #srcdlg .ldet{color:var(--lab2);font-size:12px;margin-top:2px}
@@ -270,13 +292,26 @@
       title="Open on your phone">▫</button>
     <a class="icobtn" id="setup" href="/setup.html"
       aria-label="Set up the model" title="Set up the model">⚙</a>
+    <button class="icobtn" id="update" aria-label="Update Blokk"
+      title="Update Blokk">⇧</button>
     <button class="icobtn" id="refresh" aria-label="Refresh now">↻</button>
   </header>
 
-  <!-- Everything ./blokk doctor prints, in the window you already have open.
-       Deliberately not an update button: loopback is trusted without a token,
-       so an endpoint that replaced the running code would be reachable by any
-       page you happen to have open. Updating stays ./blokk update. -->
+  <!-- Updating from here was deliberately absent, on the grounds that loopback
+       is trusted without a token and an endpoint that replaced the running code
+       would be reachable by any page you happened to have open. What changed:
+       _same_site() now requires Sec-Fetch-Site or a JSON content type, so a
+       cross-origin POST either announces itself or has to preflight past an
+       empty allowlist. And the endpoint cannot be aimed: it runs update.sh,
+       which fast-forwards to the branch this clone already tracks and refuses
+       outright if anything is edited. Restarting still refuses unless run.sh
+       is watching, because exit 75 with nobody there is a stop, not a
+       restart — and from a phone that is unrecoverable. -->
+  <dialog id="updlg">
+    <h2>Update Blokk</h2>
+    <div id="upbody">…</div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
   <!-- connect.py, in the window you already have open. No password is typed
        here or anywhere near the browser: adding a source records the name of
        a keychain service, and the password is put in the keychain separately.
@@ -405,6 +440,34 @@ async function post(p,b={},ms=12000){
   // out as though the email had gone.
   if(!r.ok){ const e=new Error(j.error||('HTTP '+r.status)); e.status=r.status; e.payload=j; throw e; }
   return j;
+}
+
+// SSE over POST. EventSource cannot POST and reconnects on its own, which
+// would replay a stream you already read; this reads the body as it arrives
+// and stops when the server closes it. No timeout: the thing being streamed
+// is a git pull, and giving up on it is worse than waiting.
+async function stream(path, body, onEvent){
+  const r = await fetch(API + path, {method:'POST',
+    headers:{'Content-Type':'application/json', ...AUTH},
+    body: JSON.stringify(body)});
+  if(!r.ok){
+    const j = await r.json().catch(()=>({}));
+    onEvent({type:'ERROR', message: j.error || ('HTTP ' + r.status)});
+    return;
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for(;;){
+    const {value, done} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    const frames = buf.split('\n\n'); buf = frames.pop();
+    for(const f of frames){
+      const line = f.split('\n').find(l => l.startsWith('data: '));
+      if(!line) continue;
+      try{ onEvent(JSON.parse(line.slice(6))); }catch(_){ /* half a frame */ }
+    }
+  }
 }
 
 function toast(m){ const t=$('#toast'); t.innerHTML=m; t.classList.add('up');
@@ -665,6 +728,26 @@ async function paintSources(extra){
   const kopts = SRC.kinds.map(k =>
     `<option value="${esc(k.id)}">${esc(k.id)} — reads ${esc(k.reads)}</option>`).join('');
 
+  // Your own workspaces, and which are the sample world. Everything is scoped
+  // per workspace — credentials, trust, memory — so this is the first thing
+  // to set up and, until now, the one thing you had to open a terminal for.
+  const wsrows = SRC.workspaces.map(w => `
+    <div class="srow">
+      <div><b>${esc(w.id)}</b> · ${esc(w.name || w.id)}
+        ${w.sample ? '<small>sample — invented data</small>' : ''}</div>
+      <span><button class="mini danger" data-wsrm="${esc(w.id)}">remove</button></span>
+    </div>`).join('');
+  const wsbox = `
+    <div class="sect2">Workspaces</div>
+    ${wsrows || '<p class="sub">None yet.</p>'}
+    <div class="addbox">
+      <input id="w-id" placeholder="id — lowercase, e.g. georgefg" />
+      <input id="w-name" placeholder="name — e.g. George Farrow Green" />
+      <button class="mini go" id="w-add">Add a workspace</button>
+      ${SRC.sample && SRC.sample.length ? `<button class="mini danger"
+        id="w-clean">Remove the sample world (${SRC.sample.length})</button>` : ''}
+    </div>`;
+
   // What this Mac already holds. Worth showing before the add form: two of
   // the three need no credential at all, and the one thing standing in the
   // way is a checkbox rather than a password.
@@ -682,7 +765,8 @@ async function paintSources(extra){
       <ol>${L.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>
     </div>` : ''}`;
 
-  body.innerHTML = `${localbox}${wired}
+  body.innerHTML = `${wsbox}${localbox}
+    <div class="sect2">Wired sources</div>${wired}
     <div class="addbox">
       <div class="sect2">Add a source</div>
       <select id="s-ws">${wsopts}</select>
@@ -694,6 +778,44 @@ async function paintSources(extra){
     </div>
     <button class="mini" id="s-test">Test every credential</button>
     <div id="srcout">${extra || ''}</div>`;
+
+  $('#w-add').onclick = async () => {
+    const r = await post('/api/v1/workspaces/add',
+      {id: $('#w-id').value, name: $('#w-name').value});
+    paintSources(r.error ? `<p class="no">${esc(r.error)}</p>`
+      : `<p class="ok2">Added ${esc(r.id)}. Wire a source to it below.</p>`);
+  };
+  if($('#w-clean')) $('#w-clean').onclick = async (e) => {
+    const b = e.target;
+    if(b.dataset.armed !== '1'){
+      const r = await post('/api/v1/workspaces/clean', {});
+      const n = Object.values(r.holds || {}).reduce((a, h) =>
+        a + Object.values(h).reduce((x, y) => x + y, 0), 0);
+      b.dataset.armed = '1';
+      b.textContent = `Yes — remove ${r.sample.join(', ')} and ${n} rows`;
+      return;
+    }
+    const r = await post('/api/v1/workspaces/clean', {confirm: true});
+    paintSources(`<p class="ok2">Removed ${esc((r.removed||[]).join(', '))}.
+      ${(r.left||[]).length ? '' : 'No workspaces left — add one above.'}</p>`);
+  };
+  body.querySelectorAll('[data-wsrm]').forEach(b => b.onclick = async () => {
+    // Two taps, and the second one says what goes. The schema cascades:
+    // approvals, runs, journal, trust, memory. It is not recoverable.
+    if(b.dataset.armed !== '1'){
+      const r = await post('/api/v1/workspaces/remove', {id: b.dataset.wsrm});
+      if(r.error){ paintSources(`<p class="no">${esc(r.error)}</p>`); return; }
+      const n = Object.values(r.holds).reduce((x, y) => x + y, 0);
+      b.dataset.armed = '1';
+      b.classList.add('armed');
+      b.textContent = n ? `remove ${n} rows?` : 'remove — sure?';
+      return;
+    }
+    const r = await post('/api/v1/workspaces/remove',
+                         {id: b.dataset.wsrm, confirm: true});
+    paintSources(r.error ? `<p class="no">${esc(r.error)}</p>`
+      : `<p class="sub">Removed ${esc(r.id)} and everything in it.</p>`);
+  });
 
   $('#s-add').onclick = async () => {
     const r = await post('/api/v1/sources/add', {
@@ -752,6 +874,76 @@ $('#sources').onclick = async () => {
   try{ await paintSources(); }
   catch(e){ $('#srcbody').innerHTML = `<p class="no">${esc(e.message)}</p>`; }
 };
+
+// ./blokk update, without the terminal. Three states, and each one says what
+// it is waiting for: checking (a network call, so it can hang), something to
+// pull (what, and whether it touches the schema), and pulling (update.sh's
+// own output, line by line — the same script the terminal runs).
+async function paintUpdate(){
+  const body = $('#upbody');
+  body.innerHTML = `<p class="sub">Checking with GitHub…</p>`;
+  let r;
+  try{ r = await post('/api/v1/update/check', {}, 130000); }
+  catch(e){ body.innerHTML = `<p class="no">${esc(e.message)}</p>`; return; }
+
+  if(r.clone === false || r.error){
+    body.innerHTML = `<p>${esc(r.detail || r.error)}</p>`;
+    return;
+  }
+  if(r.behind === 0){
+    body.innerHTML = `<p>Up to date.</p>
+      <p class="sub">On <code>${esc(r.branch)}</code>, at ${esc(r.at)}.</p>
+      <button class="mini" id="up-again">Check again</button>`;
+    $('#up-again').onclick = paintUpdate;
+    return;
+  }
+  const dirty = (r.dirty || []).length;
+  body.innerHTML = `
+    <p><b>${r.behind} update${r.behind===1?'':'s'}</b> waiting on
+      <code>${esc(r.branch)}</code>.</p>
+    <ul>${r.commits.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+    ${r.schema ? `<p class="warn">This one changes the database schema. Take a
+      backup first — the ⚯ panel has one, or <code>connect.py backup</code>.</p>` : ''}
+    ${dirty ? `<p class="warn">You have ${dirty} edited file${dirty===1?'':'s'}
+      here, so this will refuse rather than overwrite them.</p>` : ''}
+    <button class="mini go" id="up-go">Update and restart</button>
+    <pre id="uplog" style="display:none"></pre>`;
+
+  $('#up-go').onclick = async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Pulling…';
+    const log = $('#uplog'); log.style.display = 'block'; log.textContent = '';
+    let failed = false;
+    await stream('/api/v1/update/apply', {confirm: true}, ev => {
+      if(ev.type === 'LOG'){ log.textContent += ev.line + '\n'; log.scrollTop = 1e6; }
+      if(ev.type === 'ERROR'){ failed = true;
+        log.textContent += '\n' + (ev.message || 'update failed') + '\n'; }
+    });
+    if(failed){
+      e.target.disabled = false;
+      e.target.textContent = 'Try again';
+      return;
+    }
+    e.target.textContent = 'Restarting…';
+    const rr = await post('/api/v1/restart', {confirm: true});
+    if(rr.error){
+      // Pulled, but nothing will start it again. Say so rather than leaving
+      // the page spinning at a Mac that is about to stop answering.
+      log.textContent += '\n' + rr.error + '\n';
+      e.target.textContent = 'Pulled — restart it yourself';
+      return;
+    }
+    // It is going away and coming back on the same port. Wait for it rather
+    // than reloading into the gap.
+    for(let i = 0; i < 60; i++){
+      await new Promise(r => setTimeout(r, 1000));
+      try{ await get('/api/v1/health'); location.reload(); return; }catch(_){}
+    }
+    e.target.textContent = 'Restarted, but it has not come back — check the Mac';
+  };
+}
+
+$('#update').onclick = () => { $('#updlg').showModal(); paintUpdate(); };
 
 $('#phone').onclick = async () => {
   const dlg = $('#phonedlg'); const body = $('#phonebody');

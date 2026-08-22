@@ -508,6 +508,79 @@ try:
             srv.CONF = keep
     probe("A21 doctor says nothing about the model server", doctor_models)
 
+    # ── 23. deleting a workspace from a phone ───────────────────────────
+    def ws_delete():
+        # Removing a workspace cascades: credentials, runs, journal,
+        # approvals, trust, episodes, facts. It is the single most
+        # destructive thing the API can do, it is now two taps away on a
+        # touchscreen, and it is not recoverable. It must not happen on one
+        # request, and a bad id must not make a workspace at all.
+        bad = po('/api/v1/workspaces/add', {'id': 'Not An Id!', 'name': 'x'})
+        if not bad.get('error'):
+            return (True, f"'Not An Id!' was accepted as a workspace id")
+        sample = po('/api/v1/workspaces/add', {'id': 'cottages', 'name': 'x'})
+        if not sample.get('error'):
+            return (True, "a sample workspace's id was reused, which hands "
+                          "real data invented guests")
+        made = po('/api/v1/workspaces/add', {'id': 'a_probe23', 'name': 'Probe'})
+        if not made.get('ok'):
+            return (True, f"could not create a workspace: {made}")
+        try:
+            first = po('/api/v1/workspaces/remove', {'id': 'a_probe23'})
+            if not first.get('confirm'):
+                return (True, "one request removed a workspace and everything "
+                              "in it — no confirmation step")
+            still = [w['id'] for w in g('/api/v1/sources')['workspaces']]
+            if 'a_probe23' not in still:
+                return (True, "the unconfirmed request removed it anyway")
+            po('/api/v1/workspaces/remove', {'id': 'a_probe23', 'confirm': True})
+            gone = [w['id'] for w in g('/api/v1/sources')['workspaces']]
+            if 'a_probe23' in gone:
+                return (True, "the confirmed request did not remove it")
+        finally:
+            po('/api/v1/workspaces/remove', {'id': 'a_probe23', 'confirm': True})
+        return (False, "a bad id is refused, and removing takes two requests")
+    probe("A23 one request deletes a workspace and everything in it", ws_delete)
+
+    # ── 24. an endpoint that replaces the running code ──────────────────
+    def update_guard():
+        # This was deliberately not an endpoint at all. It is one now because
+        # updating from a phone is the whole point of the GUI, and the CSRF
+        # hole that made it unsafe is closed. The guards it depends on are
+        # worth a probe each, because the day one of them regresses, any page
+        # you have open can pull code onto the machine.
+        try:
+            po('/api/v1/update/apply', {})
+            return (True, "update ran without confirm")
+        except urllib.error.HTTPError as e:
+            if e.code != 400:
+                return (True, f"update without confirm answered {e.code}")
+        except Exception:                                        # noqa: BLE001
+            # Anything else means it answered with a stream rather than a
+            # refusal — it started updating.
+            return (True, "update started without confirm")
+        r = po('/api/v1/restart', {'confirm': True})
+        if not r.get('error'):
+            return (True, "an unsupervised process restarted itself, which "
+                          "is a stop with extra steps")
+        # And it must not be reachable as a simple cross-site POST — the same
+        # hole A13 found on sweep, on the one endpoint where it would matter
+        # most.
+        req = urllib.request.Request(B + '/api/v1/update/apply',
+                                     json.dumps({'confirm': True}).encode(),
+                                     {'Content-Type': 'text/plain',
+                                      'Sec-Fetch-Site': 'cross-site'})
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            return (True, "a cross-site POST can pull code onto this machine")
+        except urllib.error.HTTPError as e:
+            if e.code != 403:
+                return (True, f"cross-site update answered {e.code}, not 403")
+        return (False, "confirm required, cross-site refused, unsupervised "
+                       "restart refused")
+    probe("A24 anything can make this machine pull and run new code",
+          update_guard)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

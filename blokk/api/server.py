@@ -452,12 +452,69 @@ def h_models_remove(body):
 
 def h_sources(_q):
     from core import local, sources
-    return {"workspaces": sources.workspaces(store),
+    return {"workspaces": [{**w, "sample": w["id"] in sources.SAMPLE}
+                           for w in sources.workspaces(store)],
+            "sample": sources.is_sample(store),
             "sources": sources.listing(store),
             "local": local.survey(),
             "kinds": [{"id": k, "reads": v,
                        "keychain": k in sources.NEEDS_KEYCHAIN}
                       for k, v in sources.KINDS.items()]}
+
+
+def h_workspace_add(body):
+    from core import sources
+    r = sources.workspace_add(store, body.get("id", ""), body.get("name", ""))
+    if not r.get("error"):
+        bump()
+    return r
+
+
+def h_workspace_remove(body):
+    """Removing a workspace takes everything in it. Say what, and mean it.
+
+    Two-step by construction: without confirm it reports what would go, and
+    the caller sends the same request again with the counts it was shown.
+    A dialog that deletes six months of decisions on one tap is a dialog
+    someone taps by accident.
+    """
+    from core import sources
+    wid = body.get("id", "")
+    if not store.one("SELECT 1 FROM workspace WHERE id=?", wid):
+        return {"error": f"no workspace '{wid}'"}
+    counts = {t: store.one(f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?",
+                           wid)["c"]
+              for t in ("credential", "run", "approval", "trust", "episode",
+                        "fact")}
+    if not body.get("confirm"):
+        return {"confirm": True, "id": wid, "holds": counts}
+    r = sources.workspace_remove(store, wid)
+    if not r.get("error"):
+        bump()
+    return r
+
+
+def h_workspace_clean(body):
+    """Remove the sample world — four invented businesses with invented guests.
+
+    Useful until you have your own workspace; actively misleading after, and
+    the fake connectors fill gaps by workspace id, so leaving them wired means
+    invented data sitting next to real data.
+    """
+    from core import sources
+    sample = sources.is_sample(store)
+    if not sample:
+        return {"ok": True, "removed": [], "detail":
+                "No sample workspaces left — this is your own data."}
+    if not body.get("confirm"):
+        holds = {w: {t: store.one(
+            f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?", w)["c"]
+            for t in ("run", "approval", "episode", "fact")} for w in sample}
+        return {"confirm": True, "sample": sample, "holds": holds}
+    out = [sources.workspace_remove(store, w) for w in sample]
+    bump()
+    return {"ok": True, "removed": [r["id"] for r in out if r.get("ok")],
+            "left": sources.workspaces(store)}
 
 
 def h_sources_add(body):
@@ -600,6 +657,105 @@ def h_doctor(_q):
     return _DOCTOR["report"]
 
 
+# ------------------------------------------------------------------- update
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _git(*args, timeout=60) -> tuple[int, str]:
+    import subprocess
+    try:
+        r = subprocess.run(["git", *args], cwd=str(ROOT), timeout=timeout,
+                           capture_output=True, text=True)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except Exception as e:                                       # noqa: BLE001
+        return 1, str(e)
+
+
+def h_update_check(_body):
+    """Is there anything to pull? Asked, never volunteered.
+
+    Nothing here phones home on startup — a machine that quietly fetches code
+    is one whose behaviour you cannot pin to a moment. This runs git fetch,
+    which is a network call, and it runs it because somebody pressed a button.
+    """
+    code, _ = _git("rev-parse", "--show-toplevel")
+    if code:
+        return {"clone": False, "detail":
+                "This is a copy, not a clone, so there is nothing to pull."}
+    _, branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+    branch = branch.strip()
+    if branch == "HEAD":
+        return {"clone": True, "error": "Detached HEAD — git checkout main first."}
+    _, dirty = _git("status", "--porcelain", "--", ".")
+    code, out = _git("fetch", "--quiet", "origin", branch, timeout=120)
+    if code:
+        return {"clone": True, "error": f"Could not reach GitHub: {out.strip()[:200]}"}
+    _, local = _git("rev-parse", "HEAD")
+    _, remote = _git("rev-parse", f"origin/{branch}")
+    if local.strip() == remote.strip():
+        _, at = _git("log", "-1", "--format=%h %s")
+        return {"clone": True, "behind": 0, "branch": branch, "at": at.strip()}
+    _, log = _git("log", "--oneline", "--no-decorate",
+                  f"HEAD..origin/{branch}", "--", ".")
+    schema = _git("diff", "--quiet", f"HEAD..origin/{branch}",
+                  "--", "core/schema.sql")[0] != 0
+    commits = [ln for ln in log.splitlines() if ln.strip()]
+    return {"clone": True, "branch": branch, "behind": len(commits),
+            "commits": commits[:20], "schema": schema,
+            "dirty": [ln for ln in dirty.splitlines() if ln.strip()][:20]}
+
+
+def _update_stream():
+    """Run the same update.sh the terminal runs, line by line.
+
+    The same script rather than a reimplementation: two ways to update would
+    drift, and the one you were not looking at would be the one that ate an
+    uncommitted change. --no-restart because the browser restarts separately,
+    through an endpoint that says whether anything will start it again.
+    """
+    import subprocess
+    yield {"type": "STARTED", "command": "./update.sh --no-restart"}
+    proc = subprocess.Popen(["./update.sh", "--no-restart"], cwd=str(ROOT),
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, bufsize=1)
+    for line in proc.stdout:                                     # type: ignore[union-attr]
+        yield {"type": "LOG", "line": _ANSI.sub("", line.rstrip())}
+    proc.wait()
+    if proc.returncode == 0:
+        yield {"type": "READY", "code": 0}
+    else:
+        # update.sh exits non-zero for reasons that are not failures — "you
+        # have local edits", "not a clone" — and it has already said which.
+        yield {"type": "ERROR", "message": f"update.sh exited {proc.returncode}",
+               "code": proc.returncode}
+
+
+def h_restart(body):
+    """Restart into the code that is now on disk.
+
+    This used to be signal-only, on the grounds that nothing reachable over
+    HTTP should be able to replace the code the machine is running. What
+    changed: POSTs are same-site checked now, so a page you happen to be
+    visiting cannot reach this, and update.sh will only fast-forward to the
+    branch this clone already tracks — it cannot be pointed somewhere else,
+    and it refuses outright if you have edits. What it still will not do is
+    run on an unsupervised process: exiting 75 with nothing watching is not a
+    restart, it is a stop, and from a phone on the sofa that is unrecoverable.
+    """
+    if not body.get("confirm"):
+        return {"confirm": True, "supervised": bool(os.environ.get("BLOKK_SUPERVISED"))}
+    if not os.environ.get("BLOKK_SUPERVISED"):
+        return {"error": "This Blokk was not started by run.sh, so nothing "
+                         "would start it again. Restart it yourself: ./blokk"}
+    import time as _t
+
+    def later():
+        _t.sleep(0.4)          # let this response reach the browser first
+        os.kill(os.getpid(), signal.SIGUSR1)
+    threading.Thread(target=later, daemon=True).start()
+    return {"ok": True, "restarting": True}
+
+
 def h_setup_status(_q):
     # status lives on the supervisor, not the module — it needs to know which
     # processes this instance owns.
@@ -628,10 +784,15 @@ ROUTES_GET = [
 ROUTES_POST = [
     (r"^/api/v1/models/add$", h_models_add),
     (r"^/api/v1/models/remove$", h_models_remove),
+    (r"^/api/v1/workspaces/add$", h_workspace_add),
+    (r"^/api/v1/workspaces/remove$", h_workspace_remove),
+    (r"^/api/v1/workspaces/clean$", h_workspace_clean),
     (r"^/api/v1/sources/add$", h_sources_add),
     (r"^/api/v1/sources/remove$", h_sources_remove),
     (r"^/api/v1/sources/test$", h_sources_test),
     (r"^/api/v1/sources/peek$", h_sources_peek),
+    (r"^/api/v1/update/check$", h_update_check),
+    (r"^/api/v1/restart$", h_restart),
     (r"^/api/v1/setup/plan$", h_setup_plan),
     (r"^/api/v1/setup/write$", h_setup_write),
     (r"^/api/v1/setup/stop$", h_setup_stop),
@@ -796,6 +957,13 @@ class Handler(BaseHTTPRequestHandler):
                           "Content-Type: application/json."})
         if not self._authorised():
             return self._send(401, {"error": "token required"})
+        if u.path == "/api/v1/update/apply":
+            body = self._read_body()
+            if body is None:
+                return
+            if not body.get("confirm"):
+                return self._send(400, {"error": "confirm required"})
+            return self._sse(_update_stream())
         if u.path == "/api/v1/setup/install":
             body = self._read_body()
             if body is None:

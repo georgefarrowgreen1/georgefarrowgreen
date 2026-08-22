@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Blokk. Pull the latest code and restart.
 #
-#   ./update.sh        fetch, show what is coming, pull, restart
-#   ./blokk update     the same thing
+#   ./update.sh              fetch, show what is coming, pull, restart
+#   ./blokk update           the same thing
+#   ./update.sh --no-restart pull, but leave the running Blokk alone
+#
+# --no-restart is for the GUI, which streams this output into the browser and
+# then restarts through its own endpoint. A script that pulls the rug out
+# from under the connection printing its progress ends mid-sentence, and the
+# page cannot tell that from a crash.
 #
 # Deliberately not automatic. Nothing here phones home on startup: a machine
 # that quietly fetches code is a machine whose behaviour you cannot pin to a
@@ -10,6 +16,9 @@
 # version ping. You update when you say so.
 set -uo pipefail
 cd "$(dirname "$0")"
+
+NO_RESTART=0
+[ "${1:-}" = "--no-restart" ] && NO_RESTART=1
 
 BOLD=$'\033[1m'; DIM=$'\033[2m'; OK=$'\033[32m'; WARN=$'\033[33m'; OFF=$'\033[0m'
 say()  { printf '%s\n' "$*"; }
@@ -78,6 +87,12 @@ git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1 || {
   exit 1
 }
 good "now at $(git log -1 --format='%h %s')"
+
+if [ "$NO_RESTART" = "1" ]; then
+  say ""
+  say "  Pulled. Nothing restarted — the caller asked to do that itself."
+  exit 0
+fi
 
 step "Restarting"
 # A control plane started by run.sh writes its pid and restarts on SIGUSR1,

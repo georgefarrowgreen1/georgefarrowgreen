@@ -50,8 +50,10 @@ for t in tiers_from_conf():
 PYSTART
 fi
 
+# Tells the control plane it is supervised, so its restart endpoint knows
+# something will start it again. Unsupervised, exit 75 is just an exit.
 set +e
-python3 -m api.server "$PORT"
+BLOKK_SUPERVISED=1 python3 -m api.server "$PORT"
 CODE=$?
 set -e
 [ "$CODE" = "75" ] || exit "$CODE"

@@ -92,6 +92,27 @@ probe('B9  a slow sweep is reported as a failed one',
   }
 }
 
+// B11 — the update button is two taps from replacing the running code
+// Not "does it work" — whether the page can walk you into a state it cannot
+// get you out of. Pulled-but-not-restarted has to be a thing it says, and
+// reloading before the Mac answers again leaves you on a dead page.
+{
+  const up = js.match(/async function paintUpdate\(\)\{[\s\S]*?\n\}/);
+  probe('B11 the update panel is gone', !up, up ? '' : 'paintUpdate() not found');
+  if(up){
+    const src = up[0];
+    probe('B11a a pull that cannot restart is reported as done',
+      !/rr\.error/.test(src),
+      'says "pulled — restart it yourself" instead of spinning');
+    probe('B11b the page reloads into the gap while the Mac is down',
+      !/health/.test(src) || !/for\s*\(/.test(src),
+      'polls health until it answers, then reloads');
+    probe('B11c a failed update still offers to restart',
+      !/failed\s*=\s*true/.test(src) || !/if\(failed\)/.test(src),
+      'a failed pull stops before the restart');
+  }
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.
