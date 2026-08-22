@@ -859,7 +859,10 @@ class Server(ThreadingHTTPServer):
 
 
 def serve(port=8080):
-    resumed = engine.resume_all()
+    # Picked up, not waited for. Printing the banner after resuming meant a
+    # Mac with a few interrupted sweeps behind it sat silent for minutes on
+    # every start, with nothing on screen to say why.
+    resumed = engine.resume_all(background=True, on_done=bump)
     expired = engine.sweep_deadlines()
     ip, host = lan_ip(), socket.gethostname().split(".")[0].lower()
     phone = f"http://{ip}:{port}/?t={TOKEN}"
@@ -901,7 +904,9 @@ def serve(port=8080):
 
     print(f"  {B}Status{O}")
     print(f"     model         {model}")
-    print(f"     overnight     {len(resumed)} run(s) resumed, {expired} wait(s) expired")
+    print(f"     overnight     {len(resumed)} run(s) "
+          + ("picked up, resuming now" if resumed else "resumed")
+          + f", {expired} wait(s) expired")
     print(f"     update        ./blokk update")
     print(f"     stop          Ctrl-C\n")
     SERVING_PORT["n"] = port

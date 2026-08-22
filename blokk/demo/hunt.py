@@ -320,6 +320,35 @@ try:
             shutil.rmtree(root.parent, ignore_errors=True)
     probe("A16 the local calendar offers booked nights as free", ical_gaps)
 
+    # ── 17. boot waits for the runs it is resuming ───────────────────────
+    def boot_blocks():
+        # Every interrupted sweep strands its runs as 'running', and boot used
+        # to drive all of them before printing anything. With a real model
+        # that is a minute apiece, in silence, growing each time it happened.
+        src = open('api/server.py').read()
+        if 'resume_all(background=True' not in src:
+            return (True, "resume_all is driven inline before the banner")
+        # and it must still actually resume them
+        db = sqlite3.connect('blokk.db')
+        db.execute("INSERT INTO run(id,workspace_id,workflow,status,input) "
+                   "VALUES('r_probe17','cottages','morning_sweep','running','{}')")
+        db.commit()
+        db.close()
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from api.server import engine
+        picked = engine.resume_all(background=True)
+        for _ in range(40):
+            row = Store('blokk.db').one(
+                "SELECT status FROM run WHERE id='r_probe17'")
+            if row and row["status"] != "running":
+                return (False, f"boot does not wait; the run still resumed "
+                               f"({row['status']})")
+            time.sleep(0.1)
+        return (True, "picked up but never resumed")
+    probe("A17 boot waits for every stranded run before saying anything", boot_blocks)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

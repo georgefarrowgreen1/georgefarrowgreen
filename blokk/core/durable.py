@@ -332,13 +332,39 @@ class Engine:
             self.signal(row["run_id"], row["signal"], {"expired": True})
         return len(stale)
 
-    def resume_all(self) -> list[str]:
+    def resume_all(self, background: bool = False, on_done=None) -> list[str]:
         """Called on boot. Anything that was running when the power went is
-        picked up here — this is the entire payoff of the journal."""
-        rows = self.store.q("SELECT id FROM run WHERE status='running'")
-        for r in rows:
-            self._drive(r["id"])
-        return [r["id"] for r in rows]
+        picked up here — this is the entire payoff of the journal.
+
+        background=True because resuming is not free. Each run picks up where
+        it stopped, which means model calls, which on a small Mac is a minute
+        apiece — and this used to happen before the boot banner printed, so
+        the whole of it was silence. Worse, it compounds: every interrupted
+        sweep strands its runs as 'running', so the wait grew each time.
+
+        The journal is what makes this safe to defer. Nothing is lost by the
+        server answering first; the runs resume just the same, and the page
+        shows them as running while they do.
+        """
+        rows = [r["id"] for r in self.store.q(
+            "SELECT id FROM run WHERE status='running'")]
+        if not background:
+            for rid in rows:
+                self._drive(rid)
+            return rows
+
+        def drive_all():
+            for rid in rows:
+                try:
+                    self._drive(rid)
+                except Exception:                                 # noqa: BLE001
+                    pass       # _drive has marked and journalled it already
+                if on_done:
+                    on_done()
+        if rows:
+            threading.Thread(target=drive_all, daemon=True,
+                             name="resume").start()
+        return rows
 
     # ------------------------------------------------------------------------
     def _drive(self, run_id: str) -> None:
