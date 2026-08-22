@@ -142,6 +142,26 @@ try:
                 else "no CORS headers for an origin that was not allowed")
     probe("A10 any website you have open can read the queue", cors_open)
 
+    # ── 11. a dropped connection is not an error ─────────────────────────
+    def drop_noise():
+        # A phone opens speculative connections and drops them. Each one used
+        # to raise in handle_one_request, before any handler runs, and
+        # socketserver printed a full traceback per drop — a screen full a
+        # minute, which is how a real traceback goes unread. Quiet for these,
+        # loud for everything else.
+        import struct
+        src = open('api/server.py').read()
+        if 'def handle_error' not in src:
+            return (True, "no handle_error override — every dropped socket prints a traceback")
+        for _ in range(3):                      # reset three, mid-request-line
+            c = socket.create_connection(('127.0.0.1', 8099))
+            c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+            c.close()
+        time.sleep(0.4)
+        return (g('/api/v1/health')['ok'] is not True,
+                "3 dropped connections, server still answering")
+    probe("A11 a phone dropping connections floods the log", drop_noise)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

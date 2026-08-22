@@ -9,11 +9,13 @@ than a brain: lose the phone and you lose a screen.
 """
 from __future__ import annotations
 
+import errno
 import json
 import mimetypes
 import re
 import socket
 import sqlite3
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -620,6 +622,36 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, f.read_bytes(), ctype)
 
 
+class Server(ThreadingHTTPServer):
+    """ThreadingHTTPServer that does not shout about peers who walked away.
+
+    A phone opens speculative connections and drops them: Safari preconnects,
+    the poll reconnecting after the screen sleeps, wifi handing over. Each one
+    raises inside handle_one_request, at readline() — before any handler here
+    runs, so the try/except around a response cannot catch it — and
+    socketserver's default handle_error prints a full traceback per drop. On a
+    phone that is a screen full of them a minute.
+
+    That is not "fail loudly", it is the thing that stops loud failures being
+    read: a real traceback scrolls past among hundreds of these. So drop the
+    ones that mean "the other end went away" and print everything else exactly
+    as before. Nothing is swallowed except a socket that was never going to
+    deliver a request.
+    """
+
+    # ENOTCONN is what macOS raises here; Linux says ECONNRESET for the same
+    # thing, and ConnectionError covers the reset/abort/pipe family on both.
+    QUIET = {errno.ENOTCONN, errno.ECONNRESET, errno.EPIPE, errno.ETIMEDOUT}
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            return
+        if isinstance(exc, OSError) and exc.errno in self.QUIET:
+            return
+        super().handle_error(request, client_address)
+
+
 def serve(port=8080):
     resumed = engine.resume_all()
     expired = engine.sweep_deadlines()
@@ -649,7 +681,7 @@ def serve(port=8080):
         print("  models    STUBS — deterministic placeholder text, no weights loaded.\n"
               "            Everything runs and every mechanism is real; only the prose\n"
               "            is fake. Run ./setup.sh to attach a model.\n")
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    Server(("0.0.0.0", port), Handler).serve_forever()
 
 
 if __name__ == "__main__":
