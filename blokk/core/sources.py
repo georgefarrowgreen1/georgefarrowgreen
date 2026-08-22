@@ -225,29 +225,15 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
     # them blind meant peek raised TypeError on the sample world and asked
     # for twelve hours everywhere else. Twelve hours of a quiet mailbox looks
     # exactly like an empty one, on the screen you opened to tell them apart.
-    import inspect
+    from datetime import datetime, timedelta
+    from core.connectors import read_since
     DAYS = 60
     window, rows = "", []
     fn = getattr(c, "search_since", None) or getattr(c, "since", None)
     if fn:
         window = f"the last {DAYS} days"
-        try:
-            args = inspect.signature(fn).parameters
-        except (TypeError, ValueError):                          # a builtin
-            args = {}
-        kw = {}
-        if "limit" in args:
-            kw["limit"] = max(n, 20)
-        if "days" in args:
-            kw["days"] = DAYS
-        elif "hours" in args:
-            kw["hours"] = DAYS * 24
-        elif "hour" in args:
-            # An ISO prefix, the shape the flow passes.
-            from datetime import datetime, timedelta
-            kw["hour"] = (datetime.now()
-                          - timedelta(days=DAYS)).strftime("%Y-%m-%dT%H")
-        rows = fn(**kw)
+        now = datetime.now()
+        rows = read_since(fn, now - timedelta(days=DAYS), now, max(n, 20))
     elif getattr(c, "events", None):
         window = "the next 90 days"
         rows = c.events(days=90)

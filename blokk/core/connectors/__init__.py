@@ -49,6 +49,37 @@ class Connector(Protocol):
         ...
 
 
+def read_since(fn, since, now, limit: int = 50) -> list:
+    """Call a reader with the window it understands.
+
+    The three readers disagree about how to say "recent": LocalMail counts
+    days or an ISO hour string, IcloudMail counts hours, Messages counts
+    hours, the sample world wants a positional string. Calling them all the
+    same way meant a TypeError on one and a silent twelve-hour window on the
+    rest — and twelve hours of a quiet mailbox is indistinguishable from an
+    empty one.
+
+    `since` and `now` are passed in rather than read from the clock, because
+    one of the two callers is a workflow and workflows do not get a clock.
+    """
+    import inspect
+    try:
+        args = inspect.signature(fn).parameters
+    except (TypeError, ValueError):                    # a builtin, or a mock
+        args = {}
+    kw: dict = {}
+    if "limit" in args:
+        kw["limit"] = limit
+    hours = max(1, int((now - since).total_seconds() // 3600) + 1)
+    if "days" in args:
+        kw["days"] = max(1, (hours + 23) // 24)
+    elif "hours" in args:
+        kw["hours"] = hours
+    elif "hour" in args:
+        kw["hour"] = since.strftime("%Y-%m-%dT%H")
+    return list(fn(**kw))
+
+
 @dataclass
 class Registry:
     """Which connectors a workspace may use. Scope is data, not prompt."""

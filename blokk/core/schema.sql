@@ -183,3 +183,13 @@ CREATE TABLE IF NOT EXISTS regression (
   last_pass     INTEGER,
   last_run_at   TEXT
 );
+
+-- Machine-local settings the GUI can change. A table rather than blokk.conf
+-- because the conf is rewritten wholesale by the setup wizard, and losing
+-- your sweep time to a model change is the kind of surprise nobody connects
+-- back to its cause. CREATE IF NOT EXISTS, so an existing database picks it
+-- up on the next start with no migration.
+CREATE TABLE IF NOT EXISTS setting (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);

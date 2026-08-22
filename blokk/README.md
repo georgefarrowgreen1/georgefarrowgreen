@@ -1,8 +1,9 @@
 # Blokk
 
 A local agent runtime for several small businesses on one Mac. It reads mail
-and calendars overnight, queues anything that needs a decision, acts alone on
-the categories that have earned it, and learns from your corrections.
+and calendars overnight — at 04:00 by default, or when the lid next opens if
+the Mac was asleep — queues anything that needs a decision, acts alone on the
+categories that have earned it, and learns from your corrections.
 
 Nothing leaves the machine. Stdlib only — no `pip install` for Blokk itself.
 

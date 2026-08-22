@@ -223,24 +223,29 @@
   #srcdlg .mini.danger{color:var(--red)}
   /* Armed: the second tap does the irreversible thing, so it must not look
      like the first one. */
-  #updlg{border:0;padding:22px;border-radius:18px;max-width:520px;
+  #schedlg,#updlg{border:0;padding:22px;border-radius:18px;max-width:520px;
     width:calc(100vw - 32px);background:var(--card);color:var(--lab)}
-  #updlg::backdrop{background:rgba(0,0,0,.6)}
-  #updlg h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
-  #updlg p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
-  #updlg .sub{font-size:12px;color:var(--lab3)}
+  #schedlg::backdrop,#updlg::backdrop{background:rgba(0,0,0,.6)}
+  #schedlg h2,#updlg h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
+  #schedlg p,#updlg p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
+  #schedlg .sub,#updlg .sub{font-size:12px;color:var(--lab3)}
   #updlg .mini{padding:9px 12px;border:1px solid var(--hair);border-radius:10px;
     background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui)}
   #updlg .mini.go{width:100%;background:var(--blue);border-color:transparent;
     color:#fff;font-weight:600;margin-top:8px}
   #updlg .mini.armed{background:var(--red);border-color:transparent;color:#fff}
-  #updlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
+  #schedlg button.wide,#updlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
     background:var(--card2);color:var(--lab);font-size:14px}
   #updlg pre{margin:10px 0 0;padding:10px;background:#0B0B0E;border-radius:10px;
     max-height:230px;overflow:auto;font-size:11.5px;line-height:1.45;color:var(--lab2)}
   #updlg ul{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--lab2);
     line-height:1.5;font-family:var(--mono)}
   #updlg .warn{color:var(--amber)}
+  #schedlg .no{color:var(--red);font-size:13px}
+  #schedlg select{width:100%;margin:6px 0 10px;padding:10px;border-radius:10px;
+    border:1px solid var(--hair);background:#09090b;color:var(--lab);
+    font-size:15px;font-family:var(--ui)}
+  #nightrow{cursor:pointer}
   #srcdlg .mini.armed{background:var(--red);color:#fff;border-color:transparent}
   #srcdlg .addbox .mini.danger{width:100%;margin-top:8px}
   #srcdlg .lrow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px}
@@ -309,6 +314,12 @@
        outright if anything is edited. Restarting still refuses unless run.sh
        is watching, because exit 75 with nobody there is a stop, not a
        restart — and from a phone that is unrecoverable. -->
+  <dialog id="schedlg">
+    <h2>When Blokk sweeps</h2>
+    <div id="schebody">…</div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
+
   <dialog id="updlg">
     <h2>Update Blokk</h2>
     <div id="upbody">…</div>
@@ -689,8 +700,21 @@ function paint(h, ap, handled, runs){
   paintHealth(h);
 }
 
+// What the night shift is doing, in the fewest words that are still true.
+// "Next at 04:00" is a promise this cannot keep — the Mac may be shut — so
+// it says when the window opens, not when the sweep will happen.
+function nightWords(s){
+  if(!s) return '—';
+  if(!s.on) return 'off';
+  if(s.error) return 'failed — ' + s.error.slice(0, 40);
+  if(s.due) return s.at + ' · due now';
+  if(s.last) return s.at + ' · swept ' + s.last.slice(11, 16);
+  return s.at + ' · not yet run';
+}
+
 function paintHealth(h){
   const a=h.attention_budget, sp=h.spend[0]||{tokens:0,max_tokens:4000000};
+  const sch=h.schedule||{};
   $('#health').innerHTML = `
     <div class="hrow"><span class="k">Your attention</span>
       <span class="trk"><i style="width:${Math.min(100,a.used/a.limit*100)}%;background:${a.used>a.limit?'var(--red)':a.used>5?'var(--amber)':'var(--green)'}"></i></span>
@@ -701,9 +725,52 @@ function paintHealth(h){
     <div class="hrow"><span class="k">Day budget</span>
       <span class="trk"><i style="width:${Math.min(100,sp.tokens/sp.max_tokens*100)}%;background:var(--lab2)"></i></span>
       <span class="v">${(sp.tokens/1000).toFixed(0)}k / 4M</span></div>
+    <div class="hrow" id="nightrow" role="button" tabindex="0"
+      title="Change when Blokk sweeps"><span class="k">Night shift</span>
+      <span class="trk"><i style="width:${sch.on ? 100 : 0}%;background:${
+        sch.error ? 'var(--red)' : sch.on ? 'var(--green)' : 'var(--lab3)'}"></i></span>
+      <span class="v">${esc(nightWords(sch))}</span></div>
     <div class="hrow"><span class="k">Side effects</span>
       <span class="trk"><i style="width:${Math.min(100,h.handled*8)}%;background:var(--amber)"></i></span>
       <span class="v">${h.handled} journalled</span></div>`;
+  const row = $('#nightrow');
+  if(row) row.onclick = openSchedule;
+}
+
+// Its own dialog, not a control inside the card: the card repaints every
+// four seconds, which would shut a dropdown under the finger holding it.
+async function openSchedule(){
+  const dlg = $('#schedlg'), body = $('#schebody');
+  dlg.showModal();
+  const s = await get('/api/v1/schedule').catch(()=>null);
+  if(!s){ body.innerHTML = '<p class="no">The Mac is not answering.</p>'; return; }
+  const hours = Array.from({length: 24}, (_, i) =>
+    String(i).padStart(2, '0') + ':00');
+  body.innerHTML = `
+    <p>Blokk reads everything wired to it once a day and queues what needs
+      you. Pick the hour you would rather it happened than you.</p>
+    <select id="sche-at">
+      <option value="">Off — only when I press Sweep</option>
+      ${hours.map(h => `<option value="${h}" ${
+        s.at === h ? 'selected' : ''}>${h}</option>`).join('')}
+      ${s.at && !hours.includes(s.at)
+        ? `<option value="${esc(s.at)}" selected>${esc(s.at)}</option>` : ''}
+    </select>
+    <p class="sub">${s.last
+      ? 'Last swept ' + esc(s.last.replace('T', ' ').slice(0, 16)) +
+        ' · ' + esc(s.last_status)
+      : 'It has not run yet.'}</p>
+    <p class="sub">If the Mac is asleep at that hour nothing is lost — the
+      sweep runs when the lid next opens, once, and reads everything since
+      the last one rather than a fixed window.</p>
+    ${s.error ? `<p class="no">${esc(s.error)}</p>` : ''}`;
+  $('#sche-at').onchange = async (e) => {
+    const r = await post('/api/v1/schedule', {at: e.target.value});
+    if(r.error){ body.insertAdjacentHTML('beforeend',
+      `<p class="no">${esc(r.error)}</p>`); return; }
+    toast(r.at ? `Sweeping at ${esc(r.at)}` : 'Night shift off');
+    tick(true);
+  };
 }
 
 function toggleQuiet(){

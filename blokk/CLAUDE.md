@@ -72,6 +72,7 @@ worse than an error.
     core/ask.py        read-only chat agent, AG-UI events
     core/models.py     Router + ServedModel (any OpenAI-compatible server)
     core/backends.py   llama.cpp vs MLX rule, with the evidence in comments
+    core/nightly.py    the night shift: when to sweep, and what window to read
     core/plan.py       shape -> per-tier plan
     core/servers.py    model server lifecycle + blokk.conf i/o, shared by GUI
                        and CLI. Writes logs/<tier>.log
@@ -141,6 +142,9 @@ All four suites green. Verified behaviours:
 * a silent model server is detected in 0.4s (output drained on a thread)
 * a model server that dies leaves its reason in logs/<tier>.log, and
   `./blokk doctor` prints it along with which of the four faults it is
+* the sweep runs itself. A laptop asleep at 04:00 sweeps once when the lid
+  next opens, not twice and not never, and reads everything since the last
+  sweep rather than a fixed twelve hours
 * a source Blokk cannot read says so, rather than returning an empty list
 * calendars nested in a .caldav container are found (iCloud puts every one
   of them there); a reader that finds nothing says ok: False, not ok: True

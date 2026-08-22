@@ -113,6 +113,31 @@ probe('B9  a slow sweep is reported as a failed one',
   }
 }
 
+// B12 — the night shift row, and where its control lives
+{
+  const w = js.match(/function nightWords\(s\)\{[\s\S]*?\n\}/);
+  probe('B12 the night shift is invisible on the dashboard', !w,
+    w ? '' : 'nightWords() not found');
+  if(w){
+    const f = new Function('return (' + w[0] + ')')();
+    probe('B12a a night shift that is off reads as one that is on',
+      f({on:false, at:'04:00'}) !== 'off', 'off says off');
+    probe('B12b a failed sweep reads as a healthy one',
+      !/failed/.test(f({on:true, at:'04:00', error:'boom'})),
+      'a failed run says so in the row');
+    // The row cannot promise a minute: the Mac may be shut at that minute.
+    const notrun = f({on:true, at:'04:00'});
+    probe('B12c the row promises a time the Mac may be asleep for',
+      /next/i.test(notrun), 'says when the window opens, not when it will run');
+  }
+  // A <select> inside paintHealth would be rebuilt every four seconds, which
+  // shuts a dropdown under the finger holding it open.
+  const ph = js.match(/function paintHealth\(h\)\{[\s\S]*?\n\}/);
+  probe('B12d the schedule control is rebuilt under the finger using it',
+    !!ph && /<select/.test(ph[0]),
+    'the control is in its own dialog, not in the repainted card');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

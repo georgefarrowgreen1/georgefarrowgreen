@@ -27,7 +27,7 @@ from core.durable import Engine, Store, now
 from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import ask as run_ask
-from core import servers as srv
+from core import nightly, servers as srv
 from core.backends import BACKENDS, pick
 
 import os
@@ -40,6 +40,13 @@ DB = ROOT / "blokk.db"
 store = Store(DB)
 engine = Engine(store)
 policy = Policy(store)
+
+# Built here, started in serve(). Handlers read its state, and a module that
+# is imported by a test or by hunt.py must not quietly start sweeping.
+NIGHTLY = nightly.Nightly(
+    store,
+    sweep=lambda since: sweep_all(since=since),
+    expire=lambda: engine.sweep_deadlines())
 
 # ── access ──────────────────────────────────────────────────────────────────
 # The server binds 0.0.0.0 so the phone can reach it, which means everyone
@@ -122,6 +129,9 @@ def h_health(_q):
         "handled": store.one("SELECT COUNT(*) c FROM journal WHERE side_effect=1")["c"],
         "spend": rows(store.q("SELECT * FROM budget WHERE day=?",
                               now().date().isoformat())),
+        # On health rather than its own endpoint: it changes once a day, and
+        # the row that shows it is repainted on every tick anyway.
+        "schedule": NIGHTLY.state(),
     }
 
 
@@ -288,12 +298,16 @@ def h_memory(ws, _q):
     }
 
 
-def h_sweep(body):
+def sweep_all(force: bool = False, since: str = "") -> dict:
     """Idempotent per workspace per day.
 
     Without this, the Mac and the phone both pressing sweep at 04:00 starts
     two runs per workspace and every guest gets two replies. A sweep is a
     daily event, so the day is the key. force=true is the manual override.
+
+    Shared with the night shift rather than reimplemented for it: a scheduler
+    with its own copy of "have we already swept" is a scheduler that
+    eventually disagrees with the button.
     """
     day = now().date().isoformat()
     started, skipped, failed = [], [], []
@@ -302,7 +316,7 @@ def h_sweep(body):
             "SELECT id FROM run WHERE workspace_id=? AND workflow='morning_sweep' "
             "AND date(started_at)=? AND status IN ('running','suspended','done')",
             w["id"], day)
-        if existing and not body.get("force"):
+        if existing and not force:
             skipped.append(existing["id"])
             continue
         try:
@@ -311,7 +325,8 @@ def h_sweep(body):
             # open for that made the page give up and call it a failure. The
             # runs are journalled and resumable, and the poll shows them.
             started.append(engine.start_background(
-                "morning_sweep", w["id"], on_done=bump))
+                "morning_sweep", w["id"], payload={"since": since} if since
+                else None, on_done=bump))
         except Exception as e:                                   # noqa: BLE001
             # The run is already marked failed and journalled, so it is
             # resumable once whatever broke is fixed. Losing three good
@@ -324,6 +339,28 @@ def h_sweep(body):
     if failed:
         out["failed"] = failed
     return out
+
+
+def h_sweep(body):
+    return sweep_all(force=bool(body.get("force")))
+
+
+def h_schedule(_q):
+    return NIGHTLY.state()
+
+
+def h_schedule_set(body):
+    """Change the hour, or turn the night shift off.
+
+    Refuses what it cannot parse rather than storing it: a schedule that
+    silently means "never" is the failure this whole file was written to fix.
+    """
+    try:
+        at = nightly.set_at(store, str(body.get("at", "")))
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    bump()
+    return {"ok": True, "at": at, **NIGHTLY.state()}
 
 
 def h_reset(_body):
@@ -774,6 +811,7 @@ ROUTES_GET = [
     (r"^/api/v1/setup/status$", h_setup_status),
     (r"^/api/v1/health$", h_health),
     (r"^/api/v1/doctor$", h_doctor),
+    (r"^/api/v1/schedule$", h_schedule),
     (r"^/api/v1/workspaces$", h_workspaces),
     (r"^/api/v1/runs$", h_runs),
     (r"^/api/v1/runs/([\w]+)$", h_run),
@@ -799,6 +837,7 @@ ROUTES_POST = [
     (r"^/api/v1/approvals/([\w]+)/decide$", h_decide),
     (r"^/api/v1/approvals/([\w]+)/recheck$", h_recheck),
     (r"^/api/v1/sweep$", h_sweep),
+    (r"^/api/v1/schedule$", h_schedule_set),
     (r"^/api/v1/reset$", h_reset),
     (r"^/api/v1/kill$", h_kill),
     (r"^/api/v1/memory/([\w]+)/consolidate$",
@@ -1052,6 +1091,7 @@ def serve(port=8080):
     # every start, with nothing on screen to say why.
     resumed = engine.resume_all(background=True, on_done=bump)
     expired = engine.sweep_deadlines()
+    NIGHTLY.start()
     ip, host = lan_ip(), socket.gethostname().split(".")[0].lower()
     phone = f"http://{ip}:{port}/?t={TOKEN}"
 
@@ -1092,6 +1132,13 @@ def serve(port=8080):
 
     print(f"  {B}Status{O}")
     print(f"     model         {model}")
+    # What it will do while nobody is looking, which is the whole product.
+    sch = NIGHTLY.state()
+    when = (f"sweeps at {sch['at']}" if sch["on"] else
+            f"{Y}no nightly sweep — only when you press it{O}")
+    if sch["on"] and sch["last"]:
+        when += f", last {sch['last'][:16].replace('T', ' ')}"
+    print(f"     night shift   {when}")
     print(f"     overnight     {len(resumed)} run(s) "
           + ("picked up, resuming now" if resumed else "resumed")
           + f", {expired} wait(s) expired")

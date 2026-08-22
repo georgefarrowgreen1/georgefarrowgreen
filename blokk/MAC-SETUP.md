@@ -127,7 +127,17 @@ the 4-bit build you will actually run, and nobody publishes the delta).
     cp launchd/com.blokk.plist ~/Library/LaunchAgents/
     launchctl load ~/Library/LaunchAgents/com.blokk.plist
 
-    sudo pmset -a sleep 0 powernap 1     # or a 04:00 sweep never happens
+The agent keeps the control plane alive; the control plane does the sweeping.
+It reads everything wired to it once a day — 04:00 unless you change it in
+the app, on the Night shift row.
+
+    sudo pmset -a sleep 0 powernap 1     # optional: sweep at 04:00, not at 09:14
+
+Optional, not required. A shut lid at 04:00 does not lose you a night: the
+sweep runs when the Mac next wakes, once, and reads everything since the
+last one rather than a fixed window. Keeping it awake only buys you a queue
+that is already full at breakfast instead of one that fills while you make
+the coffee.
 
 ## Order
 

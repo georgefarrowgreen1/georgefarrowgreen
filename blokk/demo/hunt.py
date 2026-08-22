@@ -693,6 +693,92 @@ try:
     probe("A27 peek asks every connector the same question and breaks",
           peek_shapes)
 
+    # ── 28. the night nobody was awake for ──────────────────────────────
+    def night_shift():
+        # The premise is that the queue is full when you wake up. A timer is
+        # not enough: a laptop is asleep at 04:00, timers do not fire while it
+        # sleeps, and the one that was due does not fire on wake either. So
+        # the question has to be askable at any moment and answer correctly
+        # from three values, with no memory of what it meant to do.
+        import sys as _s
+        from datetime import datetime as D
+        _s.path.insert(0, ".")
+        from core import nightly as N
+        cases = [
+            (D(2026, 8, 22, 4, 0), "04:00", None, True, "on the hour"),
+            (D(2026, 8, 22, 3, 59), "04:00", None, False, "a minute early"),
+            (D(2026, 8, 22, 9, 14), "04:00", None, True, "lid opened at 09:14"),
+            (D(2026, 8, 22, 9, 14), "04:00", "2026-08-22", False, "already today"),
+            (D(2026, 8, 22, 2, 0), "04:00", "2026-08-20", False, "before the hour"),
+            (D(2026, 8, 22, 9, 0), "", None, False, "turned off"),
+            (D(2026, 8, 22, 9, 0), "tea", None, False, "unparseable"),
+        ]
+        for when, at, last, want, why in cases:
+            if N.due(when, at, last) is not want:
+                return (True, f"{why}: due={not want}, expected {want}")
+        # A week of a laptop that is only ever awake between 08:30 and 23:00
+        # must sweep once a day, late, and never twice.
+        swept, last = [], None
+        for day in (20, 21, 22):
+            for hh in range(8, 23):
+                when = D(2026, 8, day, hh, 30)
+                if N.due(when, "04:00", last):
+                    swept.append(when)
+                    last = when.date().isoformat()
+        if len(swept) != 3 or any(w.hour != 8 for w in swept):
+            return (True, f"a sleeping laptop swept {len(swept)} times: {swept}")
+        # And the endpoint refuses a schedule it cannot honour rather than
+        # storing something that silently means never.
+        try:
+            po('/api/v1/schedule', {'at': 'when I get up'})
+            return (True, "an unparseable schedule was accepted")
+        except urllib.error.HTTPError as e:
+            if e.code != 400:
+                return (True, f"bad schedule answered {e.code}")
+        if "schedule" not in g('/api/v1/health'):
+            return (True, "health does not say whether the night shift is on")
+        return (False, "asleep at 04:00 sweeps once, on waking, and not twice")
+    probe("A28 nothing runs the sweep unless somebody presses a button",
+          night_shift)
+
+    # ── 29. the window a late sweep reads ───────────────────────────────
+    def sweep_window():
+        # A sweep that ran late still looked back a fixed twelve hours from
+        # when it ran, so a night the Mac spent asleep was a night of mail
+        # nobody read. And the fix has its own trap: the journal is UTC and
+        # aware, a hand-written window is naive, and subtracting one from the
+        # other raises inside the activity that reads the mail — a sweep that
+        # dies on a timezone and journals nothing about why.
+        import sys as _s, time as _t
+        _s.path.insert(0, ".")
+        from api.server import sweep_all
+        from core.durable import Store
+        st = Store('blokk.db')
+        st.x("DELETE FROM run WHERE workflow='morning_sweep'")
+        out = sweep_all(force=True, since="2026-01-01T00:00:00")   # naive
+        if not out.get("started"):
+            return (True, f"a forced sweep started nothing: {out}")
+        for _ in range(100):
+            if not st.one("SELECT COUNT(*) c FROM run WHERE workflow="
+                          "'morning_sweep' AND status='running'")["c"]:
+                break
+            _t.sleep(0.1)
+        rows = st.q("SELECT id,status,result,input FROM run "
+                    "WHERE workflow='morning_sweep'")
+        for r in rows:
+            if "offset-naive" in (r["result"] or ""):
+                return (True, "the sweep died on a naive/aware datetime")
+            if '"since"' not in (r["input"] or ""):
+                return (True, f"the window was not journalled: {r['input']}")
+        failed = [r["id"] for r in rows if r["status"] == "failed"]
+        if failed:
+            first = st.one("SELECT result FROM run WHERE id=?", failed[0])
+            return (True, f"{len(failed)} sweeps failed: {first['result']}"[:120])
+        return (False, f"{len(rows)} sweeps ran, each journalling the window "
+                       f"it read from")
+    probe("A29 a sweep that runs late reads a fixed window anyway",
+          sweep_window)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

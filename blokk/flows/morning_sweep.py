@@ -12,8 +12,9 @@ through a single approval gate.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
-from core.connectors import wire
+from core.connectors import read_since, wire
 from core.harness import quarantine_read
 from core.models import router
 
@@ -26,6 +27,24 @@ def register(engine, store):
     @engine.workflow("morning_sweep")
     def morning_sweep(ctx, payload):
         ws = ctx.workspace_id
+        # How far back to read, decided by the caller and journalled with the
+        # run. A fixed twelve hours meant a night the Mac spent asleep was a
+        # night of mail nobody read: the sweep ran late and still looked back
+        # twelve hours from *then*, so the gap fell on the floor. The
+        # scheduler passes the last sweep's start; a hand-pressed sweep passes
+        # nothing and gets a day.
+        since = ctx.now() - timedelta(hours=24)
+        if payload.get("since"):
+            try:
+                given = datetime.fromisoformat(str(payload["since"]))
+                # An offset or nothing: a naive stamp is read as UTC, which is
+                # what the journal and ctx.now() both are. Mixing the two
+                # raises, and it raises inside the activity that reads the
+                # mail — so the whole sweep dies on a timezone.
+                since = (given if given.tzinfo
+                         else given.replace(tzinfo=timezone.utc))
+            except ValueError:
+                pass                       # a malformed window is not fatal
         world = registry.for_workspace(ws)
         # ctx.progress, not a local dict: a run that suspends on an approval
         # must still report what it read, or the dashboard chips come up empty.
@@ -38,18 +57,18 @@ def register(engine, store):
         # a dict, not as a sentence some later agent might obey.
         def read_mail():
             src = world["mail"]
-            try:
-                return [dict(m) for m in src.search_since(hours=12, limit=50)]
-            except TypeError:
-                return [dict(m) for m in src.search_since("18:00")]  # sample world
+            return [dict(m) for m in
+                    read_since(src.search_since, since, ctx.now(), limit=50)]
 
         msgs = ctx.activity("mail.search", read_mail) if world.get("mail") else []
 
         # Texts, if a Messages connector is wired. Same treatment as mail:
         # inbound is untrusted and goes through the same quarantine.
         if world.get("messages"):
-            texts = ctx.activity("messages.since",
-                                 lambda: world["messages"].since(hours=12, limit=40))
+            texts = ctx.activity(
+                "messages.since",
+                lambda: read_since(world["messages"].since, since, ctx.now(),
+                                   limit=40))
             msgs += [{"id": t["id"], "from": t["from"], "at": t["at"],
                       "subject": "(text message)", "body": t["body"]}
                      for t in texts if t.get("provenance") != "self"]
