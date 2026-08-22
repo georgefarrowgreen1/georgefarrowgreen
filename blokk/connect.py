@@ -4,6 +4,8 @@ Wire real data in, one source at a time.
 
     python3 connect.py list                          what is wired now
     python3 connect.py local                         what this Mac already holds
+    python3 connect.py workspace add georgefg "George Farrow Green"
+    python3 connect.py clean                         drop the sample world
     python3 connect.py add cottages imap  blokk-cottages-mail
     python3 connect.py add cottages messages local
     python3 connect.py test                          prove every credential works
@@ -57,6 +59,57 @@ def main() -> int:
     if cmd == "remove":
         print(sources.remove(store, args[1], args[2])["detail"]
               .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
+        return 0
+
+    if cmd == "workspace":
+        sub = args[1] if len(args) > 1 else "list"
+        if sub == "add":
+            if len(args) < 4:
+                print("usage: connect.py workspace add <id> <name>")
+                return 1
+            r = sources.workspace_add(store, args[2], " ".join(args[3:]))
+            print(r.get("error") or f"added {r['id']} — {r['name']}")
+            return 1 if r.get("error") else 0
+        if sub == "remove":
+            if len(args) < 3:
+                print("usage: connect.py workspace remove <id>")
+                return 1
+            r = sources.workspace_remove(store, args[2])
+            if r.get("error"):
+                print(r["error"])
+                return 1
+            gone = ", ".join(f"{v} {k}" for k, v in r["removed"].items() if v)
+            print(f"removed {r['id']}" + (f", and with it {gone}" if gone else ""))
+            return 0
+        for w in sources.workspaces(store):
+            mark = "  (sample)" if w["id"] in sources.SAMPLE else ""
+            print(f"  {w['id']:<14} {w['name']}{mark}")
+        return 0
+
+    if cmd == "clean":
+        # The sample world is four invented businesses with invented guests in
+        # them. Useful until you have your own; misleading after.
+        sample = sources.is_sample(store)
+        if not sample:
+            print("No sample workspaces left — this is your own data.")
+            return 0
+        if "--yes" not in args:
+            print(f"This removes {len(sample)} sample workspace(s): "
+                  f"{', '.join(sample)}")
+            print("and everything in them — approvals, runs, journal, trust, "
+                  "facts, episodes.")
+            print("\nYour own workspaces are untouched. Nothing outside "
+                  "blokk.db is read or written.")
+            print("\n  connect.py clean --yes    to go ahead")
+            print("  connect.py workspace add <id> <name>   to make your own first")
+            return 1
+        for wid in sample:
+            r = sources.workspace_remove(store, wid)
+            gone = ", ".join(f"{v} {k}" for k, v in r["removed"].items() if v)
+            print(f"  removed {wid}" + (f" ({gone})" if gone else ""))
+        left = sources.workspaces(store)
+        print(f"\n{len(left)} workspace(s) left: "
+              f"{', '.join(w['id'] for w in left) or 'none — add one'}")
         return 0
 
     if cmd == "local":

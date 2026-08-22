@@ -11,6 +11,7 @@ never sees a credential, and neither does the database.
 from __future__ import annotations
 
 import json
+import re
 
 KINDS = {"imap": "mail", "maildir": "mail",
          "caldav": "calendar", "ical": "calendar",
@@ -19,6 +20,55 @@ KINDS = {"imap": "mail", "maildir": "mail",
 # and no app-specific password. They need Full Disk Access, which core/local.py
 # checks for and explains.
 NEEDS_KEYCHAIN = ("imap", "caldav")
+
+
+SAMPLE = ("cottages", "biz2", "biz3", "personal")
+
+
+def workspace_add(store, wid: str, name: str, egress: list | None = None) -> dict:
+    """A real workspace of your own.
+
+    seed.py was the only thing that ever made one, which was fine while the
+    sample world was the point and useless the moment it stopped being.
+    """
+    wid = (wid or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,30}", wid or ""):
+        return {"error": "an id is lowercase letters, digits, - and _"}
+    if store.one("SELECT 1 FROM workspace WHERE id=?", wid):
+        return {"error": f"'{wid}' already exists"}
+    if wid in SAMPLE:
+        # core/connectors/fake.py fills gaps by workspace id, so a real
+        # workspace with a sample's name is handed invented guests for
+        # anything not yet wired. "personal" is a name someone would
+        # plausibly choose, so refuse rather than let that happen quietly.
+        return {"error": f"'{wid}' is one of the sample world's names, so it "
+                         f"would be handed invented data for anything not yet "
+                         f"wired. Pick another id."}
+    store.x("INSERT INTO workspace(id,name,active,egress_allow) VALUES(?,?,1,?)",
+            wid, (name or wid).strip(), json.dumps(egress or []))
+    return {"ok": True, "id": wid, "name": (name or wid).strip()}
+
+
+def workspace_remove(store, wid: str) -> dict:
+    """Everything that workspace ever held goes with it.
+
+    The schema cascades — credentials, runs, journal, approvals, trust,
+    episodes, facts. That is the point of removing a workspace, and it is not
+    recoverable, so the caller has to mean it.
+    """
+    if not store.one("SELECT 1 FROM workspace WHERE id=?", wid):
+        return {"error": f"no workspace '{wid}'"}
+    counts = {t: store.one(f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?",
+                           wid)["c"]
+              for t in ("credential", "run", "approval", "trust", "episode",
+                        "fact")}
+    store.x("DELETE FROM workspace WHERE id=?", wid)
+    return {"ok": True, "id": wid, "removed": counts}
+
+
+def is_sample(store) -> list[str]:
+    """Which of the seeded sample workspaces are still here."""
+    return [w["id"] for w in workspaces(store) if w["id"] in SAMPLE]
 
 
 def workspaces(store) -> list[dict]:

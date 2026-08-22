@@ -107,7 +107,15 @@ def wire(store) -> Registry:
             # fall through to the fake, so the other four still run.
             print(f"[blokk] {ws}/{kind} unavailable: {e}")
 
+    # The sample world fills gaps, but only for the sample workspaces, and
+    # only while they still exist. Registering it unconditionally meant that
+    # deleting "cottages" and later creating a real workspace with that name
+    # handed it invented guests for anything not yet wired — fake data
+    # appearing inside real data, which is the one place it must never be.
+    live = {w["id"] for w in store.q("SELECT id FROM workspace WHERE active=1")}
     for ws, world in FAKE.items():
+        if ws not in live:
+            continue
         for name, obj in world.items():
             if obj is not None and REGISTRY.get(ws, name) is None:
                 REGISTRY.add(ws, name, obj)
