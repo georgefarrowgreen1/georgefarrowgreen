@@ -15,6 +15,7 @@ import mimetypes
 import re
 import socket
 import shutil
+import signal
 import sqlite3
 import sys
 import threading
@@ -45,6 +46,9 @@ policy = Policy(store)
 # else on the wifi can too. Loopback is trusted (you are sitting at the Mac);
 # everything else needs the token. Persisted so the phone's saved URL keeps
 # working across restarts.
+# Where update.sh looks to find a running control plane.
+PIDFILE = ROOT / ".blokk.pid"
+
 TOKEN_FILE = ROOT / ".blokk-token"
 TOKEN = os.environ.get("BLOKK_TOKEN") or (
     TOKEN_FILE.read_text().strip() if TOKEN_FILE.exists() else None)
@@ -753,7 +757,48 @@ def serve(port=8080):
     print(f"     overnight     {len(resumed)} run(s) resumed, {expired} wait(s) expired")
     print(f"     update        ./blokk update")
     print(f"     stop          Ctrl-C\n")
-    Server(("0.0.0.0", port), Handler).serve_forever()
+    httpd = Server(("0.0.0.0", port), Handler)
+
+    # Update while running. `./blokk update` pulls, then signals here; the
+    # process exits 75 and run.sh starts it again with the new code. A signal
+    # rather than an endpoint on purpose: nothing reachable over HTTP should
+    # be able to replace the code this machine is running, and loopback is
+    # trusted without a token.
+    #
+    # SIGUSR1, not SIGHUP: closing the terminal sends HUP, and "the window
+    # shut" must not read as "restart yourself".
+    #
+    # The model servers are not touched. They were started detached and are
+    # reused on the way back up, so this costs a second rather than a reload.
+    restart = {"asked": False}
+
+    def _restart(_sig, _frame):
+        restart["asked"] = True
+        # shutdown() blocks until serve_forever returns, so it cannot be
+        # called from the thread that is inside serve_forever.
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+    def _stop(_sig, _frame):
+        # Python's default SIGTERM handler exits without unwinding, so the
+        # finally below never runs and a stale pid is left behind pointing at
+        # nothing. update.sh checks the pid is alive before trusting it, but
+        # leaving litter that says "Blokk is running" is its own small lie.
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGUSR1, _restart)
+    signal.signal(signal.SIGTERM, _stop)
+    PIDFILE.write_text(str(os.getpid()))
+    try:
+        httpd.serve_forever()
+    except (KeyboardInterrupt, SystemExit):
+        pass                                   # Ctrl-C and SIGTERM are normal
+    finally:
+        httpd.server_close()
+        if PIDFILE.exists() and PIDFILE.read_text().strip() == str(os.getpid()):
+            PIDFILE.unlink()
+    if restart["asked"]:
+        print("\n  Restarting with the new code...\n")
+        raise SystemExit(75)        # run.sh reads 75 as "start me again"
 
 
 if __name__ == "__main__":

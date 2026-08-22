@@ -80,13 +80,26 @@ git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1 || {
 good "now at $(git log -1 --format='%h %s')"
 
 step "Restarting"
-if launchctl list 2>/dev/null | grep -q com.blokk; then
+# A control plane started by run.sh writes its pid and restarts on SIGUSR1,
+# so there is nothing for you to stop. Model servers are left alone: they are
+# detached and get reused, which is why this takes a second.
+PID=""
+[ -f .blokk.pid ] && PID="$(cat .blokk.pid 2>/dev/null || true)"
+if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+  if kill -USR1 "$PID" 2>/dev/null; then
+    good "told the running Blokk (pid $PID) to restart — no need to stop anything"
+    say "  ${DIM}Its terminal will say so. The model servers keep running.${OFF}"
+  else
+    warn "Could not signal pid $PID. Stop it with Ctrl-C and run ./blokk."
+  fi
+elif launchctl list 2>/dev/null | grep -q com.blokk; then
   launchctl kickstart -k "gui/$(id -u)/com.blokk" 2>/dev/null \
     && good "launch agent restarted — it is already running the new code" \
     || warn "Could not restart the launch agent. Try: launchctl kickstart -k gui/$(id -u)/com.blokk"
 else
-  say "  ${DIM}No launch agent loaded, so nothing was restarted for you.${OFF}"
-  say "  Stop Blokk with Ctrl-C and start it again:"
+  [ -n "$PID" ] && rm -f .blokk.pid       # a pid pointing at nothing
+  say "  ${DIM}Blokk is not running, so there was nothing to restart.${OFF}"
+  say "  Start it when you want it:"
   say ""
   say "    ./blokk"
 fi

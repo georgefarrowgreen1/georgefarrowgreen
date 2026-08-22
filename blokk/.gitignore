@@ -32,3 +32,6 @@ venv/
 models/*.gguf
 models/*.bin
 models/*.safetensors
+
+# the running control plane
+.blokk.pid

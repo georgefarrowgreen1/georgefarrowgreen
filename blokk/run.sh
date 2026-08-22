@@ -18,6 +18,15 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT INT TERM
 
+# Supervise rather than exec, so ./blokk update can replace the code without
+# you stopping anything. The control plane exits 75 when it has been asked to
+# restart; every other exit is a real one and ends the script.
+#
+# The tier block is inside the loop on purpose: it is idempotent (alive()
+# skips a server already up), so a restart costs a second and nothing is
+# reloaded, but a model server that died in the meantime gets started again.
+while :; do
+
 # The GUI and this script start servers through core/servers.py, so there is
 # one implementation rather than two that drift.
 if [ "${MODE:-stubs}" != "stubs" ]; then
@@ -41,4 +50,9 @@ for t in tiers_from_conf():
 PYSTART
 fi
 
-exec python3 -m api.server "$PORT"
+set +e
+python3 -m api.server "$PORT"
+CODE=$?
+set -e
+[ "$CODE" = "75" ] || exit "$CODE"
+done
