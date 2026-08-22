@@ -408,6 +408,50 @@ def _local_models(ram_gb: float) -> list[dict]:
     return out
 
 
+def h_sources(_q):
+    from core import sources
+    return {"workspaces": sources.workspaces(store),
+            "sources": sources.listing(store),
+            "kinds": [{"id": k, "reads": v,
+                       "keychain": k in sources.NEEDS_KEYCHAIN}
+                      for k, v in sources.KINDS.items()]}
+
+
+def h_sources_add(body):
+    from core import sources
+    out = sources.add(store, (body.get("workspace") or "").strip(),
+                      (body.get("kind") or "").strip(),
+                      (body.get("ref") or "").strip())
+    if out.get("error"):
+        return out, 400
+    bump()
+    return out
+
+
+def h_sources_remove(body):
+    from core import sources
+    out = sources.remove(store, body.get("workspace", ""), body.get("kind", ""))
+    bump()
+    return out
+
+
+def h_sources_test(_body):
+    from core import sources
+    return sources.test(store)
+
+
+def h_sources_peek(body):
+    """Reads nothing into the system — it shows you what a connector sees.
+
+    The bodies coming back are untrusted text from outside, carrying the
+    quarantine verdict with them. Whatever renders this escapes it.
+    """
+    from core import sources
+    out = sources.peek(store, body.get("workspace", ""), body.get("name", ""),
+                       min(int(body.get("n", 5) or 5), 20))
+    return (out, 404) if out.get("error") else out
+
+
 def h_phone(_q):
     """Everything needed to get this onto a phone, and why it might not work.
 
@@ -507,6 +551,7 @@ def h_setup_stop(_body):
 
 ROUTES_GET = [
     (r"^/api/v1/phone$", h_phone),
+    (r"^/api/v1/sources$", h_sources),
     (r"^/api/v1/setup/state$", h_setup_state),
     (r"^/api/v1/setup/status$", h_setup_status),
     (r"^/api/v1/health$", h_health),
@@ -518,6 +563,10 @@ ROUTES_GET = [
     (r"^/api/v1/memory/([\w]+)$", h_memory),
 ]
 ROUTES_POST = [
+    (r"^/api/v1/sources/add$", h_sources_add),
+    (r"^/api/v1/sources/remove$", h_sources_remove),
+    (r"^/api/v1/sources/test$", h_sources_test),
+    (r"^/api/v1/sources/peek$", h_sources_peek),
     (r"^/api/v1/setup/plan$", h_setup_plan),
     (r"^/api/v1/setup/write$", h_setup_write),
     (r"^/api/v1/setup/stop$", h_setup_stop),

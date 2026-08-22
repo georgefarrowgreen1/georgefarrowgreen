@@ -190,6 +190,38 @@
   #phonedlg .sub{font-size:12px;color:var(--lab3)}
   #phonedlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
     background:var(--blue);color:#fff;font-size:15px;font-weight:600;font-family:var(--ui)}
+  #srcdlg{border:0;padding:22px;border-radius:18px;max-width:400px;width:calc(100vw - 40px);
+    background:var(--card);color:var(--lab);font-family:var(--ui);max-height:86vh}
+  #srcdlg::backdrop{background:rgba(0,0,0,.6)}
+  #srcdlg h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
+  #srcdlg p{margin:6px 0;font-size:13px;color:var(--lab2);line-height:1.45}
+  #srcdlg .sub{font-size:12px;color:var(--lab3)}
+  #srcdlg .sect2{font-size:12px;color:var(--lab3);margin:4px 0 8px;
+    text-transform:uppercase;letter-spacing:.04em}
+  #srcdlg .srow{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:9px 0;border-bottom:1px solid var(--hair);font-size:13px}
+  #srcdlg .srow small{display:block;color:var(--lab3);font-size:11px;font-family:var(--mono)}
+  #srcdlg .addbox{margin:14px 0;padding:12px;border-radius:12px;background:var(--card2)}
+  #srcdlg select,#srcdlg input{width:100%;margin-bottom:7px;padding:9px 10px;border-radius:9px;
+    border:1px solid var(--hair);background:#09090b;color:var(--lab);font-size:14px;
+    font-family:var(--ui)}
+  #srcdlg .mini{padding:7px 11px;border:1px solid var(--hair);border-radius:9px;
+    background:var(--card);color:var(--lab);font-size:12px;font-family:var(--ui)}
+  #srcdlg .mini.go{width:100%;background:var(--blue);border-color:transparent;
+    color:#fff;font-weight:600}
+  #srcdlg .mini.danger{color:var(--red)}
+  #srcdlg .trow{font-size:12px;padding:4px 0;font-family:var(--mono);color:var(--lab2)}
+  #srcdlg .peek{padding:9px 0;border-bottom:1px solid var(--hair);font-size:12px}
+  #srcdlg .peek .pf{color:var(--lab3)} #srcdlg .peek .ps{color:var(--lab);font-weight:600}
+  #srcdlg .peek .pp{color:var(--lab3);font-size:11px;font-family:var(--mono)}
+  #srcdlg .peek .pb{color:var(--lab2);margin-top:4px;white-space:pre-wrap}
+  #srcdlg .cmd{background:#09090b;padding:9px;border-radius:8px;font-family:var(--mono);
+    font-size:11px;color:var(--lab2);white-space:pre-wrap;word-break:break-all}
+  #srcdlg .yes,#phonedlg .yes{color:var(--green)}
+  #srcdlg .no,#phonedlg .no{color:var(--red)}
+  #srcdlg .ok2{color:var(--green)}
+  #srcdlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
+    background:var(--blue);color:#fff;font-size:15px;font-weight:600;font-family:var(--ui)}
   #phonedlg .qr{width:min(62vw,220px);margin:14px auto;display:block}
   #phonedlg .qr svg{width:100%;height:auto;border-radius:8px;display:block}
   #phonedlg .link code{font-size:11px;word-break:break-all;color:var(--lab2);
@@ -216,6 +248,8 @@
   <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
   </g></svg><span class="on" id="live"></span></div>
     <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
+    <button class="icobtn" id="sources" aria-label="Data sources"
+      title="Data sources">⚯</button>
     <button class="icobtn" id="phone" aria-label="Open on your phone"
       title="Open on your phone">▫</button>
     <a class="icobtn" id="setup" href="/setup.html"
@@ -227,6 +261,16 @@
        Deliberately not an update button: loopback is trusted without a token,
        so an endpoint that replaced the running code would be reachable by any
        page you happen to have open. Updating stays ./blokk update. -->
+  <!-- connect.py, in the window you already have open. No password is typed
+       here or anywhere near the browser: adding a source records the name of
+       a keychain service, and the password is put in the keychain separately.
+       Peek renders somebody else's mail, so every field of it is escaped. -->
+  <dialog id="srcdlg">
+    <h2>Where Blokk reads from</h2>
+    <div id="srcbody">loading…</div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
+
   <dialog id="phonedlg">
     <h2>Open Blokk on your phone</h2>
     <div id="phonebody">checking…</div>
@@ -319,8 +363,11 @@ async function get(p){
     return await r.json();
   } finally { t.done(); }
 }
-async function post(p,b={}){
-  const t=withTimeout(12000);
+async function post(p,b={},ms=12000){
+  // Per call, because they are not alike: deciding an approval is instant,
+  // but testing a mail credential waits out the server's own timeout, and a
+  // fetch that gives up first reports "aborted" for something that worked.
+  const t=withTimeout(ms);
   const r=await fetch(API+p,{method:'POST',
     headers:{'Content-Type':'application/json',...AUTH},
     body:JSON.stringify(b),signal:t.signal}).finally(()=>t.done());
@@ -536,6 +583,97 @@ function toggleQuiet(){
 }
 $('#qhead').onclick = toggleQuiet;
 $('#qhead').onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleQuiet(); } };
+let SRC = null;
+
+async function paintSources(extra){
+  const body = $('#srcbody');
+  SRC = await get('/api/v1/sources');
+  const wired = SRC.sources.length ? SRC.sources.map(s => `
+    <div class="srow">
+      <div><b>${esc(s.workspace_id)}</b> · ${esc(s.reads)}
+        <small>${esc(s.keychain_ref)} · ${esc(s.scopes.join(','))}</small></div>
+      <span>
+        <button class="mini" data-peek="${esc(s.workspace_id)}|${esc(s.reads)}">peek</button>
+        <button class="mini danger" data-rm="${esc(s.workspace_id)}|${esc(s.kind)}">remove</button>
+      </span>
+    </div>`).join('')
+    : `<p class="sub">Nothing wired — every workspace is running on the sample
+       world. Start with the one that needs no credential: messages.</p>`;
+
+  const wsopts = SRC.workspaces.map(w =>
+    `<option value="${esc(w.id)}">${esc(w.name || w.id)}</option>`).join('');
+  const kopts = SRC.kinds.map(k =>
+    `<option value="${esc(k.id)}">${esc(k.id)} — reads ${esc(k.reads)}</option>`).join('');
+
+  body.innerHTML = `${wired}
+    <div class="addbox">
+      <div class="sect2">Add a source</div>
+      <select id="s-ws">${wsopts}</select>
+      <select id="s-kind">${kopts}</select>
+      <input id="s-ref" placeholder="keychain service name (or: local)" />
+      <button class="mini go" id="s-add">Add</button>
+      <p class="sub">Read-only. No password is stored here — you put that in the
+        keychain yourself, and Blokk reads it at call time.</p>
+    </div>
+    <button class="mini" id="s-test">Test every credential</button>
+    <div id="srcout">${extra || ''}</div>`;
+
+  $('#s-add').onclick = async () => {
+    const r = await post('/api/v1/sources/add', {
+      workspace: $('#s-ws').value, kind: $('#s-kind').value, ref: $('#s-ref').value });
+    paintSources(r.error
+      ? `<p class="no">${esc(r.error)}</p>`
+      : `<p class="ok2">Added.</p>` + (r.keychain_hint
+          ? `<p class="sub">If the password is not in the keychain yet, run this
+             in a terminal:</p><pre class="cmd">${esc(r.keychain_hint)}</pre>` : ''));
+  };
+  $('#s-test').onclick = async () => {
+    // A mail server that is not answering takes its full timeout to say so.
+    // Thirty seconds of a bare "testing…" in a modal reads as a hang.
+    $('#srcout').innerHTML = '<p class="sub">Testing each credential. A server '
+      + 'that is not answering can take a minute to say so, and they are '
+      + 'checked one at a time, so this sits here a while.</p>';
+    // Each unreachable source costs ~30s of its own timeout before it
+    // answers, so allow for several.
+    const r = await post('/api/v1/sources/test', {}, 120000);
+    $('#srcout').innerHTML = r.total
+      ? r.results.map(x => `<div class="trow"><span class="${x.ok?'yes':'no'}">
+          ${x.ok?'ok':'FAIL'}</span> <code>${esc(x.label)}</code>
+          <small>${esc(x.detail)}</small></div>`).join('')
+        + `<p class="sub">${r.working} of ${r.total} working</p>`
+      : '<p class="sub">Nothing to test yet.</p>';
+  };
+  body.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+    const [ws, kind] = b.dataset.rm.split('|');
+    const r = await post('/api/v1/sources/remove', {workspace: ws, kind});
+    paintSources(`<p class="sub">${esc(r.detail)}</p>`);
+  });
+  body.querySelectorAll('[data-peek]').forEach(b => b.onclick = async () => {
+    const [ws, name] = b.dataset.peek.split('|');
+    $('#srcout').innerHTML = '<p class="sub">reading…</p>';
+    const r = await post('/api/v1/sources/peek',
+                         {workspace: ws, name, n: 5}, 45000);
+    // Everything below is somebody else's words. esc() on every field, and the
+    // quarantine verdict shown rather than hidden — this is the one screen
+    // that deliberately displays untrusted text.
+    $('#srcout').innerHTML = r.error ? `<p class="no">${esc(r.error)}</p>`
+      : (r.rows.map(x => `<div class="peek">
+          <div class="pf">${esc(x.from)}</div>
+          <div class="ps">${esc(x.subject)}</div>
+          <div class="pp">${esc(x.provenance)}${x.instruction_like
+            ? ' <span class="no">— contains something shaped like an instruction</span>' : ''}</div>
+          <div class="pb">${esc(x.body)}</div></div>`).join('')
+        + `<p class="sub">${r.count} rows. Nothing was written, nothing marked read.</p>`);
+  });
+}
+
+$('#sources').onclick = async () => {
+  const dlg = $('#srcdlg');
+  $('#srcbody').textContent = 'loading…'; dlg.showModal();
+  try{ await paintSources(); }
+  catch(e){ $('#srcbody').innerHTML = `<p class="no">${esc(e.message)}</p>`; }
+};
+
 $('#phone').onclick = async () => {
   const dlg = $('#phonedlg'); const body = $('#phonebody');
   body.textContent = 'checking…'; dlg.showModal();

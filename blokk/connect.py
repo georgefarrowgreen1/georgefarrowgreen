@@ -24,9 +24,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from core.durable import Store                                    # noqa: E402
+from core import sources                                          # noqa: E402
 
 DB = Path(__file__).parent / "blokk.db"
-KINDS = {"imap": "mail", "caldav": "calendar", "messages": "messages"}
+# The commands themselves live in core/sources.py, because the dashboard
+# runs the same ones and two copies would drift.
+KINDS = sources.KINDS
 
 
 def main() -> int:
@@ -38,33 +41,25 @@ def main() -> int:
         if len(args) < 4:
             print("usage: connect.py add <workspace> <imap|caldav|messages> <keychain-ref>")
             return 1
-        ws, kind, ref = args[1], args[2], args[3]
-        if kind not in KINDS:
-            print(f"kind must be one of {', '.join(KINDS)}")
+        r = sources.add(store, args[1], args[2], args[3])
+        if r.get("error"):
+            print(r["error"])
             return 1
-        if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
-            print(f"no workspace '{ws}'. Known: "
-                  + ", ".join(r["id"] for r in store.q("SELECT id FROM workspace")))
-            return 1
-        store.x("""INSERT OR REPLACE INTO credential(id,workspace_id,kind,keychain_ref,scopes)
-                   VALUES(?,?,?,?,?)""",
-                f"c_{ws}_{kind}", ws, kind, ref, json.dumps(["read"]))
-        print(f"added {kind} to {ws} using keychain service '{ref}' (read scope)")
-        if kind != "messages":
+        print(f"added {r['kind']} to {r['workspace_id']} using keychain service "
+              f"'{r['keychain_ref']}' (read scope)")
+        if r.get("keychain_hint"):
             print("\nIf you have not put the password in the keychain yet:")
-            print(f"  security add-generic-password -s {ref} -a you@icloud.com -w")
+            print("  " + r["keychain_hint"])
         print("\nNow run:  python3 connect.py test")
         return 0
 
     if cmd == "remove":
-        ws, kind = args[1], args[2]
-        store.x("DELETE FROM credential WHERE workspace_id=? AND kind=?", ws, kind)
-        print(f"removed {kind} from {ws}. The keychain entry is untouched — "
-              f"delete it yourself if you meant to revoke access.")
+        print(sources.remove(store, args[1], args[2])["detail"]
+              .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
         return 0
 
     if cmd == "list":
-        rows = store.q("SELECT * FROM credential ORDER BY workspace_id")
+        rows = sources.listing(store)
         if not rows:
             print("Nothing wired. Every workspace is running on the sample world.\n")
             print("Start with the one that needs no credential:")
@@ -72,54 +67,36 @@ def main() -> int:
             return 0
         print(f"{'workspace':<12} {'kind':<10} {'keychain ref':<28} scopes")
         for r in rows:
-            print(f"{r['workspace_id']:<12} {r['kind']:<10} {r['keychain_ref']:<28} "
-                  f"{','.join(json.loads(r['scopes']))}")
+            print(f"{r['workspace_id']:<12} {r['kind']:<10} "
+                  f"{r['keychain_ref']:<28} {','.join(r['scopes'])}")
         return 0
 
     if cmd == "test":
-        from core.connectors import wire
-        reg = wire(store)
-        rows = store.q("SELECT * FROM credential")
-        if not rows:
+        out = sources.test(store)
+        if not out["total"]:
             print("Nothing to test — no credentials configured.")
             return 0
-        bad = 0
-        for r in rows:
-            name = KINDS[r["kind"]]
-            c = reg.get(r["workspace_id"], name)
-            label = f"{r['workspace_id']}/{name}"
-            if c is None or not hasattr(c, "check"):
-                print(f"  FAIL  {label:<24} not loaded"); bad += 1; continue
-            try:
-                print(f"  ok    {label:<24} {c.check()}")
-            except Exception as e:                                # noqa: BLE001
-                print(f"  FAIL  {label:<24} {type(e).__name__}: {e}"); bad += 1
-        print(f"\n{len(rows)-bad} of {len(rows)} working")
-        return 1 if bad else 0
+        for r in out["results"]:
+            print(f"  {'ok  ' if r['ok'] else 'FAIL'}  {r['label']:<24} {r['detail']}")
+        print(f"\n{out['working']} of {out['total']} working")
+        return 0 if out["working"] == out["total"] else 1
 
     if cmd == "peek":
         # The important one. Look at what it would actually read before you
         # let anything downstream act on it.
-        from core.connectors import wire
-        from core.harness import quarantine_read
-        ws, name = args[1], args[2]
-        n = int(args[3]) if len(args) > 3 else 5
-        c = wire(store).get(ws, name)
-        if c is None:
-            print(f"nothing named '{name}' for {ws}"); return 1
-        fn = (getattr(c, "search_since", None) or getattr(c, "since", None)
-              or getattr(c, "events", None))
-        rows = fn()[:n] if fn else []
-        for r in rows:
-            body = r.get("body") or r.get("summary") or ""
-            q = quarantine_read(body)
+        out = sources.peek(store, args[1], args[2],
+                           int(args[3]) if len(args) > 3 else 5)
+        if out.get("error"):
+            print(out["error"])
+            return 1
+        for r in out["rows"]:
             flag = "  <-- contains something shaped like an instruction" \
-                if q["instruction_like"] else ""
-            print(f"\n  from : {r.get('from') or r.get('start','')}")
-            print(f"  subj : {r.get('subject') or r.get('summary','')}")
-            print(f"  prov : {r.get('provenance','?')}{flag}")
-            print(f"  body : {body[:160].strip()}")
-        print(f"\n{len(rows)} rows. Nothing was written, nothing was marked read.")
+                if r["instruction_like"] else ""
+            print(f"\n  from : {r['from']}")
+            print(f"  subj : {r['subject']}")
+            print(f"  prov : {r['provenance']}{flag}")
+            print(f"  body : {r['body'][:160].strip()}")
+        print(f"\n{out['count']} rows. Nothing was written, nothing was marked read.")
         return 0
 
     print(__doc__)
