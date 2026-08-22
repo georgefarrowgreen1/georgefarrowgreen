@@ -18,57 +18,6 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT INT TERM
 
-# A server is up when it can list models. llama-server also has /health;
-# mlx_lm.server does not, so /v1/models is the check that works for both.
-alive() { curl -s --max-time 1 "http://127.0.0.1:$1/v1/models" >/dev/null 2>&1; }
-
-lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-
-start_tier() {
-  local tier="$1" lt backend repo file alias port log pid
-  lt="$(lower "$tier")"
-  backend="$(eval echo "\${${tier}_BACKEND:-}")"
-  [ -n "$backend" ] || return 0
-  repo="$(eval echo "\${${tier}_REPO}")"
-  file="$(eval echo "\${${tier}_FILE:-}")"
-  alias="$(eval echo "\${${tier}_ALIAS}")"
-  port="$(eval echo "\${${tier}_PORT}")"
-  log="/tmp/blokk-${lt}.log"
-
-  if alive "$port"; then
-    echo "  ${lt} tier already up on :${port} (${backend})"
-    return 0
-  fi
-
-  echo "  starting ${backend} for the ${lt} tier on :${port}..."
-  case "$backend" in
-    llama.cpp)
-      # -cb continuous batching, -np slots, -fa flash attention.
-      # Each slot carries its own KV cache, so -np scales memory linearly.
-      llama-server -hf "${repo}:${file}" --alias "${alias}" --port "${port}" \
-        -cb -np "${SLOTS:-4}" -c "${CTX:-32768}" -fa --log-disable \
-        > "$log" 2>&1 &
-      ;;
-    mlx)
-      mlx_lm.server --model "${repo}" --port "${port}" --max-tokens 2048 \
-        > "$log" 2>&1 &
-      ;;
-    *)
-      echo "  unknown backend '${backend}' for ${tier} — skipping"; return 0 ;;
-  esac
-  pid=$!
-  PIDS+=("$pid")
-
-  printf "  waiting"
-  for _ in $(seq 1 240); do
-    alive "$port" && { echo " up"; return 0; }
-    kill -0 "$pid" 2>/dev/null || { echo; echo "  ${lt} tier died - see $log"; tail -3 "$log" || true; return 1; }
-    printf "."; sleep 2
-  done
-  echo; echo "  ${lt} tier did not come up in time - see $log"
-  return 1
-}
-
 # The GUI and this script start servers through core/servers.py, so there is
 # one implementation rather than two that drift.
 if [ "${MODE:-stubs}" != "stubs" ]; then

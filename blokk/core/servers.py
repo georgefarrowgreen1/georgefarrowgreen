@@ -26,6 +26,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+# llama.cpp changed -fa from a bare switch to one that takes on|off|auto.
+# Passing the shape the installed build does not expect makes llama-server
+# print its usage and exit 1, which arrives here as "the model server died"
+# with a page of flag documentation and no cause. Ask the binary which it is
+# rather than pinning a version: this has to still start in two years.
+_FA: list[str] | None = None
+
+
+def flash_attn_flag() -> list[str]:
+    global _FA
+    if _FA is None:
+        try:
+            out = subprocess.run(["llama-server", "--help"], timeout=15,
+                                 capture_output=True, text=True)
+            help_text = (out.stdout or "") + (out.stderr or "")
+        except Exception:                     # not installed, or too old to ask
+            help_text = ""
+        if "--flash-attn" not in help_text:
+            _FA = []                          # unknown flag: leave it off
+        elif "on|off|auto" in help_text:
+            _FA = ["-fa", "on"]
+        else:
+            _FA = ["-fa"]
+    return _FA
+
+
 @dataclass
 class Tier:
     name: str                 # SMALL | LARGE
@@ -50,7 +76,8 @@ class Tier:
                   ["-hf", f"{self.repo}:{self.file}"]
             return ["llama-server", *src,
                     "--alias", self.alias, "--port", str(self.port),
-                    "-cb", "-np", str(self.slots), "-c", str(self.ctx), "-fa"]
+                    "-cb", "-np", str(self.slots), "-c", str(self.ctx),
+                    *flash_attn_flag()]
         if self.backend == "mlx":
             return ["mlx_lm.server", "--model", self.repo,
                     "--port", str(self.port), "--max-tokens", "2048"]
