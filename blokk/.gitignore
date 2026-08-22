@@ -35,3 +35,6 @@ models/*.safetensors
 
 # the running control plane
 .blokk.pid
+
+# database snapshots — the real thing, with real names in it
+backups/

@@ -349,6 +349,54 @@ try:
         return (True, "picked up but never resumed")
     probe("A17 boot waits for every stranded run before saying anything", boot_blocks)
 
+    # ── 18. the backup is a copy of a moving file ────────────────────────
+    def backup_torn():
+        # blokk.db is the system, and it is written to while it is copied.
+        # WAL keeps recent commits in a sidecar, so `cp` of a live database
+        # gets one missing its newest writes — silently, and you find out the
+        # day you need it. Prove the snapshot sees writes a plain copy misses.
+        import shutil, sqlite3 as sq, sys as _s, tempfile, threading, time as _t
+        _s.path.insert(0, ".")
+        from core import backup as bk
+        from core.durable import Store
+        st = Store('blokk.db')
+        stop = threading.Event()
+        def hammer():
+            i = 0
+            while not stop.is_set():
+                st.x("INSERT OR REPLACE INTO fact(id,workspace_id,text,confidence)"
+                     " VALUES(?,?,?,?)", f"probe{i}", "cottages", "x", 0.1)
+                i += 1
+                _t.sleep(0.001)
+        th = threading.Thread(target=hammer, daemon=True)
+        th.start()
+        tmp = tempfile.mkdtemp()
+        try:
+            _t.sleep(0.3)
+            r = bk.make('blokk.db', into=tmp, keep=5)
+            naive = f"{tmp}/naive.db"
+            shutil.copy('blokk.db', naive)
+        finally:
+            stop.set()
+            th.join(timeout=2)
+        if not r.get("ok"):
+            return (True, f"the snapshot failed: {r}")
+        if not bk.verify(r["path"]).get("ok"):
+            return (True, "the snapshot does not pass integrity_check")
+        def facts(path):
+            c = sq.connect(f"file:{path}?mode=ro", uri=True)
+            try:
+                return c.execute("SELECT COUNT(*) FROM fact").fetchone()[0]
+            finally:
+                c.close()
+        snap, plain = facts(r["path"]), facts(naive)
+        # Two backups inside one second must not become one file.
+        two = {bk.make('blokk.db', into=tmp, keep=5)["path"] for _ in range(3)}
+        if len(two) != 3:
+            return (True, "backups taken together overwrite each other")
+        return (snap < plain, f"snapshot has {snap} rows, a plain copy {plain}")
+    probe("A18 a backup taken while running is torn", backup_torn)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

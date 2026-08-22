@@ -6,6 +6,8 @@ Wire real data in, one source at a time.
     python3 connect.py local                         what this Mac already holds
     python3 connect.py workspace add georgefg "George Farrow Green"
     python3 connect.py clean                         drop the sample world
+    python3 connect.py backup                        snapshot blokk.db
+    python3 connect.py backup list / verify
     python3 connect.py add cottages imap  blokk-cottages-mail
     python3 connect.py add cottages messages local
     python3 connect.py test                          prove every credential works
@@ -59,6 +61,41 @@ def main() -> int:
     if cmd == "remove":
         print(sources.remove(store, args[1], args[2])["detail"]
               .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
+        return 0
+
+    if cmd == "backup":
+        from core import backup
+        sub = args[1] if len(args) > 1 else "make"
+        folder = DB.parent / "backups"
+        if sub == "list":
+            rows = backup.listing(folder)
+            if not rows:
+                print("No backups yet.  connect.py backup")
+                return 0
+            for r in rows:
+                print(f"  {r['at']}  {r['bytes']/1024/1024:7.1f} MB  {r['name']}")
+            return 0
+        if sub == "verify":
+            target = (folder / args[2]) if len(args) > 2 else None
+            if target is None:
+                rows = backup.listing(folder)
+                if not rows:
+                    print("No backups to verify.")
+                    return 1
+                target = folder / rows[0]["name"]
+            r = backup.verify(target)
+            print(f"  {target.name}: {r.get('integrity') or r.get('detail')}"
+                  f"  ({r.get('workspaces','?')} workspaces)")
+            return 0 if r.get("ok") else 1
+        r = backup.make(DB)
+        if r.get("error"):
+            print(r["error"])
+            return 1
+        held = ", ".join(f"{v} {k}" for k, v in r["holds"].items() if v)
+        print(f"  {r['path']}  ({r['bytes']/1024/1024:.1f} MB)")
+        print(f"  holds {held}")
+        if r["pruned"]:
+            print(f"  pruned {len(r['pruned'])} older than the last {r['kept']}")
         return 0
 
     if cmd == "workspace":
