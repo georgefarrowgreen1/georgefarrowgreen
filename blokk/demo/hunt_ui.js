@@ -52,6 +52,16 @@ probe('B8  a decision made on another device reports "nothing was sent"',
   /res\.category\.replace/.test(js) && !/res\.already/.test(js),
   'the {ok, already} shape carries no category or trust');
 
+// B9 — giving up watching is reported as the thing going wrong
+// The sweep runs every workspace's workflow inside the request. With a real
+// model that is minutes, the page gave up at twelve seconds, and said "Sweep
+// failed" while the runs on screen carried on and finished. A write that
+// succeeded must never be reported as one that did not.
+probe('B9  a slow sweep is reported as a failed one',
+  !/timedOut/.test(js) || !/Still sweeping/.test(js)
+  || /post\('\/api\/v1\/sweep'\)/.test(js),
+  'abort is distinguished from error, and the sweep is given minutes not seconds');
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

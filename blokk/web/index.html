@@ -377,9 +377,20 @@ async function post(p,b={},ms=12000){
   // but testing a mail credential waits out the server's own timeout, and a
   // fetch that gives up first reports "aborted" for something that worked.
   const t=withTimeout(ms);
-  const r=await fetch(API+p,{method:'POST',
-    headers:{'Content-Type':'application/json',...AUTH},
-    body:JSON.stringify(b),signal:t.signal}).finally(()=>t.done());
+  let r;
+  try{
+    r=await fetch(API+p,{method:'POST',
+      headers:{'Content-Type':'application/json',...AUTH},
+      body:JSON.stringify(b),signal:t.signal});
+  }catch(e){
+    // Marked, so a caller can tell "we stopped waiting" from "it went wrong".
+    // They are not the same thing and must not read the same.
+    const err=new Error(e.name==='AbortError'
+      ? 'this page stopped waiting after '+Math.round(ms/1000)+'s'
+      : e.message);
+    err.timedOut = e.name==='AbortError';
+    throw err;
+  }finally{ t.done(); }
   const j=await r.json().catch(()=>({}));
   // A failed write must not render as a successful one. Before this, a 500
   // left res.blocked undefined, the success branch ran, and the card greyed
@@ -727,8 +738,16 @@ $('#phone').onclick = async () => {
 $('#refresh').onclick = ()=> tick(true);
 $('#sweep').onclick = async e=>{
   if(busy) return; busy=true; e.target.disabled=true; e.target.textContent='Sweeping…';
-  const r = await post('/api/v1/sweep').catch(e=>({error:e.message}));
-  if(r.error) toast(`<b>Sweep failed.</b> ${esc(r.error)}`);
+  // The sweep is the longest thing here: it runs the workflow for every
+  // workspace inside the request, and with a real model that is minutes, not
+  // seconds. Twelve seconds of waiting used to end in "Sweep failed" while
+  // the runs above carried on and finished — the sweep is on the Mac, not in
+  // this page, and giving up watching is not the same as it going wrong.
+  const r = await post('/api/v1/sweep', {}, 15*60*1000)
+    .catch(e=>({error:e.message, timedOut:e.timedOut}));
+  if(r.timedOut) toast(`<b>Still sweeping.</b> It runs on the Mac, not in this
+    page, so it carries on — the cards above fill in as each workspace lands.`);
+  else if(r.error) toast(`<b>Sweep failed.</b> ${esc(r.error)}`);
   else if(!r.started.length)
     toast(`<b>Already swept today.</b> ${r.already_swept_today.length} workspaces have run —
       nothing re-queued, so nobody gets a second reply.`);
