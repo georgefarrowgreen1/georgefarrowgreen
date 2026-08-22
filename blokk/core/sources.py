@@ -113,6 +113,34 @@ def remove(store, ws: str, kind: str) -> dict:
                                   "yourself if you meant to revoke access."}
 
 
+def describe(kind: str, state: dict) -> str:
+    """A check() result as a sentence.
+
+    It used to be str(the dict), so the screen that tells you whether your
+    mail is readable said {'ok': True, 'calendars': [], 'events_on_disk': 0}.
+    Every number in there was right and the sentence it added up to — none of
+    your calendars are here — was left for you to work out.
+    """
+    if not isinstance(state, dict):
+        return str(state)
+    if state.get("ok") is False:
+        return state.get("detail", "found nothing to read")
+    if "calendars" in state:
+        n = len(state["calendars"])
+        return (f"{n} calendar(s) — {', '.join(state['calendars'][:6])}; "
+                f"{state.get('events_on_disk', 0)} events on disk, "
+                f"{state.get('in_next_90_days', 0)} in the next 90 days")
+    if "messages_seen" in state:
+        boxes = ", ".join(state.get("mailboxes", [])[:6])
+        return (f"{state['messages_seen']} message(s)"
+                + (f", newest {state['newest']}" if state.get("newest") else "")
+                + (f"; in {boxes}" if boxes else "")
+                + ("; more on disk than it walked" if state.get("capped") else ""))
+    if "messages" in state or "chats" in state:
+        return ", ".join(f"{k} {v}" for k, v in state.items() if k != "ok")
+    return ", ".join(f"{k} {v}" for k, v in state.items() if k != "ok")
+
+
 def test(store) -> dict:
     from core.connectors import wire
     reg = wire(store)
@@ -127,7 +155,14 @@ def test(store) -> dict:
             bad += 1
             continue
         try:
-            results.append({"label": label, "ok": True, "detail": str(c.check())})
+            state = c.check()
+            # A connector that says ok: False has found nothing to read. That
+            # is a failure of this test, whatever the call did not raise.
+            good = not (isinstance(state, dict) and state.get("ok") is False)
+            results.append({"label": label, "ok": good,
+                            "detail": describe(r["kind"], state)})
+            if not good:
+                bad += 1
         except Exception as e:                                    # noqa: BLE001
             results.append({"label": label, "ok": False,
                             "detail": f"{type(e).__name__}: {e}"})
@@ -154,9 +189,18 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
     # and a source Blokk is not allowed to open look identical here, and this
     # is the screen you come to when you cannot see your mail — so it has to
     # tell the two apart rather than leave you to guess.
+    state = None
     if hasattr(c, "check"):
         try:
-            c.check()
+            state = c.check()
+            if isinstance(state, dict) and state.get("ok") is False:
+                # The connector itself says it found nothing to read. It
+                # knows why; pass that on rather than rendering an empty list.
+                return {"error": state.get("detail", "nothing readable"),
+                        "readable": False, "state": state,
+                        "fix": "connect.py local, or the ⚯ panel's On this "
+                               "Mac section, says whether this is a "
+                               "permission or an empty folder."}
         except FileNotFoundError as e:
             return {"error": str(e), "readable": False,
                     "fix": "Either that app keeps nothing on this Mac, or "
@@ -172,9 +216,53 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
             return {"error": f"{type(e).__name__}: {e}", "readable": False,
                     "fix": "The source is wired but not answering."}
 
-    fn = (getattr(c, "search_since", None) or getattr(c, "since", None)
-          or getattr(c, "events", None))
-    rows = fn()[:n] if fn else []
+    # The window is stated, and it is wide. peek used to call search_since()
+    # with no arguments, which means "since last night" — so a mailbox with
+    # nothing in the last 24 hours peeked as empty, on the screen you open
+    # precisely because you think Blokk cannot see your mail.
+    # Ask for the window in whatever unit the connector counts in. The three
+    # readers disagree — days, hours, or an ISO hour string — and calling
+    # them blind meant peek raised TypeError on the sample world and asked
+    # for twelve hours everywhere else. Twelve hours of a quiet mailbox looks
+    # exactly like an empty one, on the screen you opened to tell them apart.
+    import inspect
+    DAYS = 60
+    window, rows = "", []
+    fn = getattr(c, "search_since", None) or getattr(c, "since", None)
+    if fn:
+        window = f"the last {DAYS} days"
+        try:
+            args = inspect.signature(fn).parameters
+        except (TypeError, ValueError):                          # a builtin
+            args = {}
+        kw = {}
+        if "limit" in args:
+            kw["limit"] = max(n, 20)
+        if "days" in args:
+            kw["days"] = DAYS
+        elif "hours" in args:
+            kw["hours"] = DAYS * 24
+        elif "hour" in args:
+            # An ISO prefix, the shape the flow passes.
+            from datetime import datetime, timedelta
+            kw["hour"] = (datetime.now()
+                          - timedelta(days=DAYS)).strftime("%Y-%m-%dT%H")
+        rows = fn(**kw)
+    elif getattr(c, "events", None):
+        window = "the next 90 days"
+        rows = c.events(days=90)
+    elif getattr(c, "gaps", None):
+        # The sample calendar answers "which nights are free" and nothing
+        # else. Show that rather than an empty list with no explanation.
+        window = "free nights in the next 90 days"
+        rows = [{"from": g["from"], "subject": g["note"], "provenance": "self"}
+                for g in c.gaps(days=90)]
+    else:
+        return {"error": f"'{name}' has nothing to peek at",
+                "readable": True, "window": "",
+                "fix": "This connector answers specific questions rather "
+                       "than listing. Nothing is wrong with it."}
+    rows = list(rows)[:n]
     out = []
     for r in rows:
         body = r.get("body") or r.get("summary") or ""
@@ -184,9 +272,23 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
                     "provenance": r.get("provenance", "?"),
                     "instruction_like": bool(q["instruction_like"]),
                     "body": body[:400].strip()})
+    # Readable and empty is a real answer, and a different one from
+    # unreadable — but "nothing here" on its own is still a shrug. Say what
+    # was looked at and what is on disk outside the window, because that is
+    # the sentence that tells you whether to widen the window or go and fix
+    # Full Disk Access.
+    note = ""
+    if not out:
+        note = f"Blokk can read this, and there is nothing in {window}."
+        if isinstance(state, dict):
+            seen = state.get("messages_seen") or state.get("events_on_disk")
+            if seen:
+                note += (f" {seen} item(s) are on disk"
+                         + (f", the newest from {state['newest']}"
+                            if state.get("newest") else "") + ".")
+            boxes = state.get("mailboxes") or state.get("calendars")
+            if boxes:
+                note += f" It can see: {', '.join(map(str, boxes[:8]))}."
     return {"rows": out, "count": len(out), "readable": True,
-            # Readable and empty is a real answer, and a different one from
-            # unreadable. Say which.
-            "note": ("" if out else
-                     f"Blokk can read this, and there is nothing in the "
-                     f"window it looked at.")}
+            "window": window, "state": state if isinstance(state, dict) else {},
+            "note": note}

@@ -1,7 +1,11 @@
 """macOS Calendar, read from disk. Read-only, local, no credential.
 
 Calendar.app keeps everything in ~/Library/Calendars as .ics files, one per
-event, grouped into .calendar bundles. Reading them needs no app-specific
+event, grouped into .calendar bundles. Those bundles are NOT all at the top
+level: an iCloud account puts them one directory down, inside a .caldav
+container, and Exchange inside a .exchange one. Only "On My Mac" calendars
+sit at the top. Globbing the top level therefore finds nothing at all on a
+Mac whose calendars are all in iCloud — which is most of them. Reading them needs no app-specific
 password, no network and no CalDAV discovery — which caldav_cal.py's own
 docstring calls the fiddly part. It does need Full Disk Access; core/local.py
 says so and names the app to grant it to.
@@ -17,11 +21,17 @@ counted and reported by check() rather than quietly dropped.
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-ROOT = Path.home() / "Library/Calendars"
+# BLOKK_CALENDAR_ROOT overrides where this looks. For a Mac that keeps its
+# store somewhere else, and for testing this against a fixture of
+# the real layout — which is how the .caldav nesting and the
+# directory-order walk were both found without a Mac to hand.
+ROOT = Path(os.environ.get("BLOKK_CALENDAR_ROOT") or (
+    Path.home() / "Library/Calendars"))
 MAX_OCCURRENCES = 800          # a daily event over a long window, bounded
 WEEKDAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 
@@ -104,10 +114,23 @@ def _expand(ev: dict, lo: date, hi: date) -> list[tuple[date, date]]:
     return out
 
 
+def bundles(root: Path) -> list[Path]:
+    """Every .calendar bundle, at whatever depth the account type put it.
+
+    rglob rather than glob: iCloud nests them inside <uuid>.caldav, Exchange
+    inside .exchange, and only local calendars are at the top. A top-level
+    glob reported "0 calendars" on a Mac with a full diary, and said ok.
+    """
+    try:
+        return sorted({b for b in root.rglob("*.calendar") if b.is_dir()})
+    except OSError:
+        return []
+
+
 def _read(root: Path) -> tuple[list[dict], list[str]]:
     """Every event on disk, and the calendar names they came from."""
     events, names = [], []
-    for bundle in sorted(root.glob("*.calendar")):
+    for bundle in bundles(root):
         title = bundle.name
         info = bundle / "Info.plist"
         if info.exists():
@@ -163,8 +186,23 @@ class LocalCalendar:
             raise FileNotFoundError(f"no calendars at {self.root}")
         events, names = _read(self.root)
         window = self.events(days=90)
+        # Zero calendars is not ok. It said ok for a while, next to an empty
+        # list, on a Mac with a full diary — which is the failure this
+        # codebase is least willing to ship: a confident wrong answer on the
+        # screen you opened *because* you could not see your data.
+        if not names:
+            containers = sorted({p.suffix for p in self.root.iterdir()
+                                 if p.is_dir()}) if self.root.exists() else []
+            return {"ok": False, "calendars": [], "events_on_disk": 0,
+                    "in_next_90_days": 0, "looked_in": str(self.root),
+                    "saw": containers,
+                    "detail": f"no .calendar bundles anywhere under "
+                              f"{self.root}. Either Calendar has never synced "
+                              f"on this Mac, or Blokk cannot read that folder "
+                              f"— Full Disk Access, granted to the app that "
+                              f"starts Blokk."}
         return {"ok": True, "calendars": names, "events_on_disk": len(events),
-                "in_next_90_days": len(window)}
+                "in_next_90_days": len(window), "looked_in": str(self.root)}
 
     def events(self, days: int = 90) -> list[dict]:
         lo = date.today()

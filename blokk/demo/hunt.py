@@ -581,6 +581,118 @@ try:
     probe("A24 anything can make this machine pull and run new code",
           update_guard)
 
+    # ── 25. where a Mac actually keeps its calendars ────────────────────
+    def calendars_nested():
+        # An iCloud account puts its .calendar bundles one level down, inside
+        # a <uuid>.caldav container; Exchange inside .exchange. Only "On My
+        # Mac" calendars sit at the top. A top-level glob therefore returned
+        # zero calendars on a Mac with a full diary — and said ok while it
+        # did, which is the worst possible pairing on the screen you open
+        # because you cannot see your data.
+        import sys as _s, tempfile, shutil
+        _s.path.insert(0, ".")
+        from core.connectors.ical import LocalCalendar
+        root = pathlib.Path(tempfile.mkdtemp()) / "Calendars"
+        ev = root / "1A2B.caldav" / "9F8E.calendar" / "Events"
+        ev.mkdir(parents=True)
+        (ev.parent / "Info.plist").write_text(
+            "<plist><dict><key>Title</key><string>Home</string>"
+            "</dict></plist>")
+        (ev / "e.ics").write_text(
+            "BEGIN:VEVENT\nSUMMARY:Dentist\nDTSTART;VALUE=DATE:20990901\n"
+            "DTEND;VALUE=DATE:20990902\nEND:VEVENT\n")
+        try:
+            got = LocalCalendar(root=root).check()
+            if not got.get("calendars"):
+                return (True, "an iCloud calendar was invisible — only "
+                              "top-level bundles are found")
+            # And an empty one must not report ok.
+            empty = pathlib.Path(tempfile.mkdtemp()) / "Calendars"
+            empty.mkdir()
+            blank = LocalCalendar(root=empty).check()
+            if blank.get("ok") is not False:
+                return (True, f"no calendars anywhere, and it said {blank}")
+            return (False, f"finds {got['calendars']}, and says so when there "
+                           f"are none")
+        finally:
+            shutil.rmtree(root.parent, ignore_errors=True)
+    probe("A25 calendars inside a .caldav container are invisible",
+          calendars_nested)
+
+    # ── 26. newest first, across the whole mailbox ──────────────────────
+    def mail_order():
+        # _files() stopped the walk at a cap and sorted what it had reached.
+        # The walk reaches Deleted Messages before INBOX, so a mailbox full of
+        # recent mail reported nothing but deleted mail — and peek, which
+        # asked for "since last night", showed nothing at all.
+        import sys as _s, tempfile, shutil, os as _os, time as _t
+        _s.path.insert(0, ".")
+        from core.connectors.emlx_mail import LocalMail
+        root = pathlib.Path(tempfile.mkdtemp()) / "Mail"
+        def put(box, name, days):
+            d = root / "V10/ACCT" / f"{box}.mbox/U/Data/1/Messages"
+            d.mkdir(parents=True, exist_ok=True)
+            body = (f"From: a@b.c\nSubject: {name}\n"
+                    f"Content-Type: text/plain\n\nhello\n").encode()
+            f = d / f"{name}.emlx"
+            f.write_bytes(str(len(body)).encode() + b"\n" + body)
+            t = _t.time() - days * 86400
+            _os.utime(f, (t, t))
+        for i in range(40):
+            put("Deleted Messages", f"old{i}", 500 + i)
+        for i in range(5):
+            put("INBOX", f"new{i}", 10 + i)
+        try:
+            m = LocalMail(root=root)
+            boxes = m.check().get("mailboxes", [])
+            if "INBOX" not in boxes:
+                return (True, f"the inbox is not in {boxes}")
+            first = m._files()[0]
+            if "INBOX" not in str(first):
+                return (True, f"newest first is wrong: {first.name} came top")
+            # peek's window has to be wide enough to contain something, and
+            # said out loud either way.
+            if not m.search_since(days=60):
+                return (True, "a 60-day window found none of five messages "
+                              "from the last fortnight")
+            return (False, "the whole walk is sorted, and a stated window "
+                           "reaches the mail in it")
+        finally:
+            shutil.rmtree(root.parent, ignore_errors=True)
+    probe("A26 mail is read in directory order, not newest first", mail_order)
+
+    # ── 27. peek, on every shape of connector there is ──────────────────
+    def peek_shapes():
+        # The readers disagree about how to say "recent": days, hours, an ISO
+        # hour string, or a question like "which nights are free". peek called
+        # them all the same way, so it raised TypeError on the sample world
+        # and asked every real one for twelve hours — and twelve hours of a
+        # quiet mailbox is indistinguishable from an empty mailbox on the one
+        # screen that exists to tell them apart.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import sources
+        from core.durable import Store
+        st = Store('blokk.db')
+        bad = []
+        for ws in [w["id"] for w in sources.workspaces(st)]:
+            for name in ("mail", "calendar", "messages"):
+                try:
+                    r = sources.peek(st, ws, name, 2)
+                except Exception as e:                           # noqa: BLE001
+                    bad.append(f"{ws}/{name} raised {type(e).__name__}")
+                    continue
+                if r.get("error"):
+                    continue                 # not wired, or nothing to list
+                if not r.get("window"):
+                    bad.append(f"{ws}/{name} showed {r.get('count')} rows "
+                               f"without saying over what window")
+        if bad:
+            return (True, "; ".join(bad[:3]))
+        return (False, "every wired source states the window it looked at")
+    probe("A27 peek asks every connector the same question and breaks",
+          peek_shapes)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

@@ -78,6 +78,39 @@ def _readable(p: Path) -> tuple[bool, str]:
         return False, "denied" if p.exists() else "missing"
 
 
+def _contents(src: dict, root: Path) -> tuple[int, str]:
+    """How much is actually there, cheaply.
+
+    A readable folder is not the same as a folder with your data in it, and
+    on this Mac the difference was the whole bug: ~/Library/Calendars listed
+    fine, and every calendar in it was one level further down, inside a
+    .caldav container that nothing was looking in.
+
+    Bounded on purpose. This runs every time the panel opens, and a full walk
+    of a large Mail folder is not a thing to do on a click.
+    """
+    try:
+        if src["id"] == "calendar":
+            from core.connectors.ical import bundles
+            n = len(bundles(root))
+            return n, f"{n} calendar(s)"
+        if src["id"] == "mail":
+            n = 0
+            for f in root.rglob("*.emlx"):
+                if f.name.endswith(".partial.emlx"):
+                    continue
+                n += 1
+                if n >= 500:
+                    return n, "500+ messages"
+            return n, f"{n} message(s)"
+        if src["id"] == "messages":
+            size = root.stat().st_size if root.exists() else 0
+            return (1 if size else 0), f"{size / 1024 / 1024:.0f} MB on disk"
+    except Exception:                                            # noqa: BLE001
+        return -1, ""                    # counting is a nicety, never a fault
+    return -1, ""
+
+
 def survey() -> dict:
     """Per source: is it here, and may we read it."""
     if os.uname().sysname != "Darwin":
@@ -88,23 +121,37 @@ def survey() -> dict:
         p: Path = s["path"]
         present = p.exists()
         ok, why = _readable(p) if present else (False, "missing")
+        count, found = _contents(s, p) if ok else (-1, "")
+        # Readable and empty is its own state. It reported "ready" while peek
+        # showed nothing, which is the same screen disagreeing with itself.
+        if ok and count == 0:
+            ok, why = False, "empty"
         out.append({
+            "found": found,
             "id": s["id"], "what": s["what"], "kind": s["kind"],
             "kind_local": s.get("kind_local"),
             "path": str(p).replace(str(HOME), "~"),
             "reads": s["reads"],
             "present": present, "readable": ok,
-            "state": "ready" if ok else ("blocked" if why == "denied"
-                                         else "not set up"),
+            "state": ("ready" if ok else
+                      {"denied": "blocked", "empty": "empty"}.get(why,
+                                                                 "not set up")),
             "detail": {
-                "ready": "Blokk can read this now.",
+                "ready": f"Blokk can read this now — {found}."
+                         if found else "Blokk can read this now.",
                 "blocked": "It is here, but macOS is not letting Blokk read "
                            "it. That is Full Disk Access.",
+                "empty": f"The folder opens and there is nothing in it. "
+                         f"Either this app stores nothing on this Mac, or "
+                         f"macOS is handing Blokk an empty listing because "
+                         f"Full Disk Access is not granted — those look "
+                         f"identical from here.",
                 "not set up": f"Nothing at {p.name} — this app has not stored "
                               f"anything locally on this Mac.",
-            }["ready" if ok else ("blocked" if why == "denied" else "not set up")],
+            }["ready" if ok else
+              {"denied": "blocked", "empty": "empty"}.get(why, "not set up")],
         })
-    blocked = [s for s in out if s["state"] == "blocked"]
+    blocked = [s for s in out if s["state"] in ("blocked", "empty")]
     return {"mac": True, "sources": out, "grant_to": granting_app(),
             "blocked": len(blocked),
             "how": ["Apple menu > System Settings > Privacy & Security",

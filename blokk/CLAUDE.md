@@ -142,6 +142,9 @@ All four suites green. Verified behaviours:
 * a model server that dies leaves its reason in logs/<tier>.log, and
   `./blokk doctor` prints it along with which of the four faults it is
 * a source Blokk cannot read says so, rather than returning an empty list
+* calendars nested in a .caldav container are found (iCloud puts every one
+  of them there); a reader that finds nothing says ok: False, not ok: True
+  next to an empty list
 * a backup taken mid-write is a consistent snapshot, and never overwrites
 
 ## Not built yet

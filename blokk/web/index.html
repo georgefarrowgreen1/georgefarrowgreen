@@ -762,12 +762,14 @@ async function paintSources(extra){
   const localbox = !onmac ? '' : `
     <div class="sect2">On this Mac</div>
     ${L.sources.map(x => `<div class="lrow">
-      <span class="ldot ${x.state === 'ready' ? 'yes' : x.state === 'blocked' ? 'no' : 'meh'}"></span>
+      <span class="ldot ${x.state === 'ready' ? 'yes'
+        : (x.state === 'blocked' || x.state === 'empty') ? 'no' : 'meh'}"></span>
       <div><b>${esc(x.what)}</b> <small>${esc(x.path)}</small>
+        ${x.found ? `<small>${esc(x.found)}</small>` : ''}
         <div class="ldet">${esc(x.detail)}</div></div>
     </div>`).join('')}
     ${L.blocked ? `<div class="fda">
-      <b>${L.blocked} of these is on this Mac but blocked.</b>
+      <b>${L.blocked} of these is on this Mac but not readable.</b>
       <ol>${L.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>
     </div>` : ''}`;
 
@@ -870,7 +872,8 @@ async function paintSources(extra){
             ? ' <span class="no">— contains something shaped like an instruction</span>' : ''}</div>
           <div class="pb">${esc(x.body)}</div></div>`).join('')
         + `<p class="sub">${r.note ? esc(r.note) + ' ' : ''}${r.count} row${
-             r.count===1?'':'s'}. Nothing was written, nothing marked read.</p>`);
+             r.count===1?'':'s'}${r.window ? ' from ' + esc(r.window) : ''}.
+             Nothing was written, nothing marked read.</p>`);
   });
 }
 

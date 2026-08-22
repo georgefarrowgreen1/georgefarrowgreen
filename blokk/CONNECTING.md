@@ -34,6 +34,21 @@ Then, once you have your own and it works, take the sample world out:
 
     python3 connect.py clean --yes
 
+### If a source tests ok but peeks empty
+
+Two different things look identical from the outside, so the panel now says
+which: **what it found** (`3 calendar(s)`, `1705 message(s), newest 12 Aug`)
+and **the window it looked at** (mail: the last 60 days; calendar: the next
+90). "Nothing in the last 60 days, 1705 on disk, newest from June" is a
+readable source with old mail. "0 calendars, and here is where I looked" is
+Full Disk Access, or a Mac that syncs nothing locally.
+
+If the layout on your Mac is unusual — mail on another volume, say — point
+them somewhere else:
+
+    BLOKK_MAIL_ROOT=/Volumes/Archive/Mail ./blokk
+    BLOKK_CALENDAR_ROOT=~/Library/Calendars ./blokk
+
 ## 1. Messages — start here
 
 No credential, nothing leaves the Mac, read-only. It proves the plumbing

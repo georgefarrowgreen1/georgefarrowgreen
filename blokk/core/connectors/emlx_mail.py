@@ -17,14 +17,20 @@ worker needed.
 """
 from __future__ import annotations
 
+import os
 import email
 import email.policy
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-ROOT = Path.home() / "Library/Mail"
-SCAN_CAP = 4000            # files stat-ed before giving up on "recent"
+# BLOKK_MAIL_ROOT overrides where this looks. For a Mac that keeps its
+# store somewhere else, and for testing this against a fixture of
+# the real layout — which is how the .caldav nesting and the
+# directory-order walk were both found without a Mac to hand.
+ROOT = Path(os.environ.get("BLOKK_MAIL_ROOT") or (
+    Path.home() / "Library/Mail"))
+SCAN_CAP = 60000           # files stat-ed before giving up on the walk
 
 
 def _mailbox(path: Path) -> str:
@@ -85,40 +91,75 @@ class LocalMail:
         self.root = Path(root) if root else ROOT
 
     def _files(self) -> list[Path]:
-        """Every .emlx, newest first, bounded.
+        """Every .emlx, newest first.
 
         A long-lived mailbox holds tens of thousands. Sorting them all by
         mtime is one stat each and no reads, which is cheap; opening them is
         not, so the caller's limit does the rest.
+
+        The whole walk finishes before anything is sorted. Stopping the walk
+        at a cap and sorting what it happened to reach is not "newest first",
+        it is "an arbitrary few thousand, in directory order" — and the
+        directory order puts Deleted Messages before INBOX, so a full inbox
+        reported nothing but deleted mail.
         """
         found = []
-        for p in self.root.rglob("*.emlx"):
-            if p.name.endswith(".partial.emlx"):
-                continue                   # a body Mail has not downloaded
-            try:
-                found.append((p.stat().st_mtime, p))
-            except OSError:
-                continue
-            if len(found) >= SCAN_CAP:
-                break
+        try:
+            for p in self.root.rglob("*.emlx"):
+                if p.name.endswith(".partial.emlx"):
+                    continue               # a body Mail has not downloaded
+                try:
+                    found.append((p.stat().st_mtime, p))
+                except OSError:
+                    continue
+                if len(found) >= SCAN_CAP:
+                    break                  # a runaway guard, not a search limit
+        except OSError:
+            pass                           # unreadable subtree; keep what we have
         found.sort(reverse=True)
+        self._capped = len(found) >= SCAN_CAP
         return [p for _, p in found]
 
     def check(self) -> dict:
         if not self.root.exists():
             raise FileNotFoundError(f"no Mail data at {self.root}")
         files = self._files()
-        boxes = sorted({_mailbox(p) for p in files[:200]})
+        # Every mailbox, not the newest 200. Sampling the top of the list
+        # reported "Deleted Messages" and nothing else, which reads as "your
+        # mail is not here" when the mail was there all along.
+        boxes = sorted({_mailbox(p) for p in files})
+        newest = ""
+        if files:
+            newest = datetime.fromtimestamp(
+                files[0].stat().st_mtime).strftime("%Y-%m-%d")
+        if not files:
+            return {"ok": False, "messages_seen": 0, "mailboxes": [],
+                    "looked_in": str(self.root),
+                    "detail": f"no .emlx files anywhere under {self.root}. "
+                              f"Mail may be storing nothing locally, or Blokk "
+                              f"cannot read that folder — Full Disk Access, "
+                              f"granted to the app that starts Blokk."}
         return {"ok": True, "messages_seen": len(files),
-                "capped": len(files) >= SCAN_CAP, "mailboxes": boxes[:12]}
+                "capped": getattr(self, "_capped", False),
+                "newest": newest, "mailboxes": boxes[:12],
+                "looked_in": str(self.root)}
 
-    def search_since(self, hour: str = "", limit: int = 50) -> list[dict]:
+    def search_since(self, hour: str = "", limit: int = 50,
+                     days: int | None = None) -> list[dict]:
         """Messages since `hour` (an ISO prefix, as the flow passes it).
 
         An unparseable or empty hour means "recent" rather than "everything":
         the alternative is a connector that reads an entire archive because a
         caller passed a blank string.
+
+        `days` overrides both, and exists for peek. The sweep wants "since
+        last night"; someone asking to see what Blokk can read wants a window
+        wide enough to contain something, and an empty screen with no window
+        stated is indistinguishable from an empty mailbox.
         """
+        if days is not None:
+            cutoff = datetime.now() - timedelta(days=days)
+            return self._since(cutoff, limit)
         cutoff = None
         if hour:
             for fmt in ("%Y-%m-%dT%H", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
@@ -129,7 +170,9 @@ class LocalMail:
                     continue
         if cutoff is None:
             cutoff = datetime.now() - timedelta(days=1)
+        return self._since(cutoff, limit)
 
+    def _since(self, cutoff, limit: int) -> list[dict]:
         out = []
         for p in self._files():
             if datetime.fromtimestamp(p.stat().st_mtime) < cutoff:
