@@ -11,6 +11,29 @@ time. A leaked `blokk.db` leaks metadata, not access.
     python3 connect.py test      prove every credential works
     python3 connect.py peek …    see exactly what it would read
 
+**All of this is in the app too.** The ⚯ button on the dashboard does
+workspaces, sources, the peek, the Full Disk Access check and the credential
+test; ⇧ pulls an update and restarts. The commands here are the same code
+underneath (`core/sources.py`), so use whichever is in front of you — the
+terminal is not the privileged one. What has no button, on purpose, is
+putting a password anywhere near a browser: that stays `security add-generic-password`
+in a terminal, and Blokk only ever stores the service name.
+
+## 0. A workspace of your own
+
+The four that ship — cottages, biz2, biz3, personal — are invented, and the
+fake connectors fill gaps *by workspace id*, so a real business living in one
+of them gets handed invented guests for anything not yet wired. Make your own
+before you wire anything real:
+
+    python3 connect.py workspace add georgefg "George Farrow Green"
+    python3 connect.py workspace              # what exists now
+    python3 connect.py local                  # what this Mac will hand over
+
+Then, once you have your own and it works, take the sample world out:
+
+    python3 connect.py clean --yes
+
 ## 1. Messages — start here
 
 No credential, nothing leaves the Mac, read-only. It proves the plumbing

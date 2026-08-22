@@ -88,7 +88,9 @@ worse than an error.
                        keychain, and the fake world
     flows/             workflow definitions
     api/server.py      control plane. Stdlib http.server. Holds credentials
-    web/               dashboard, setup wizard, sources and phone panels, PWA
+    web/               dashboard, setup wizard, sources, phone and update
+                       panels, PWA. Parity with connect.py is deliberate:
+                       both call core/sources.py, neither reimplements it
     demo/              browser port of the engine + the test suites
     brand/             the mark, generated parametrically
 
@@ -120,6 +122,9 @@ you change a threshold or a rule in Python, change it there too and re-run
   at 04:00 is not an error message.
 * Shell scripts must run on **bash 3.2** — macOS still ships it. No `${var,,}`,
   no `${arr[-1]}`, no associative arrays.
+* The GUI and the CLI must not be two implementations. A new capability goes
+  in `core/`, and `connect.py` and `api/server.py` both call it. The one thing
+  the GUI deliberately cannot do is take a password.
 * Never put prompt or completion text in span attributes or logs. Hash and
   pointer only; guest names must not end up in a second store with different
   retention.
