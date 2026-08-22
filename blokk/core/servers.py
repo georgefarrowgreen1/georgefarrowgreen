@@ -72,6 +72,14 @@ class Tier:
             # -m reads weights you already have; -hf downloads and caches
             # them. Anything in models/ is there because someone put it
             # there, so it wins over fetching five gigabytes again.
+            if not self.path and not self.repo:
+                # Without this the format string produces "-hf None:None",
+                # and llama-server answers "invalid HF repo format", which
+                # names neither the tier nor the field that went missing.
+                raise ValueError(
+                    f"{self.name} tier has neither a local file nor a repo to "
+                    f"download. Something dropped PATH or REPO between the "
+                    f"plan and here.")
             src = ["-m", self.path] if self.path else \
                   ["-hf", f"{self.repo}:{self.file}"]
             return ["llama-server", *src,
@@ -225,6 +233,19 @@ def read_conf() -> dict:
 
 def configured() -> bool:
     return read_conf().get("MODE") in ("stubs", "servers", "llamacpp")
+
+
+def tier_from_plan(t: dict, slots: int = 4, ctx: int = 32768) -> Tier:
+    """A plan dict (from the wizard, over the wire) into a Tier.
+
+    Exists because the GUI's start handler built one by hand and forgot
+    `path`, so a local model was started as `-hf None:None`. One conversion
+    means the next field added has one place to be added to.
+    """
+    return Tier(name=t["tier"], backend=t["backend"],
+                repo=t.get("repo"), path=t.get("path"), file=t.get("file"),
+                alias=t["alias"], port=int(t["port"]),
+                slots=int(slots), ctx=int(ctx))
 
 
 def tiers_from_conf() -> list[Tier]:

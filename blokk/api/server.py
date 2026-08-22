@@ -779,10 +779,8 @@ class Handler(BaseHTTPRequestHandler):
             if body is None:
                 return
             t = body.get("tier", {})
-            tier = srv.Tier(name=t["tier"], backend=t["backend"], repo=t["repo"],
-                            file=t.get("file"), alias=t["alias"],
-                            port=int(t["port"]), slots=int(body.get("slots", 4)),
-                            ctx=int(body.get("ctx", 32768)))
+            tier = srv.tier_from_plan(t, body.get("slots", 4),
+                                      body.get("ctx", 32768))
             return self._sse(srv.SUPERVISOR.start(tier))
         if u.path == "/api/v1/ask":
             body = self._read_body()

@@ -243,6 +243,41 @@ try:
                 os.remove(f)
     probe("A14 the setup wizard cannot load", setup_state)
 
+    # ── 15. the wizard's plan actually starts what it planned ────────────
+    def local_start():
+        # The GUI planned a local model correctly and then started it as
+        # `-hf None:None`, because the start handler rebuilt the Tier by hand
+        # and left out path. The plan looked right on screen; only the command
+        # was wrong. So check the whole way through, plan to command line.
+        import os, struct, sys
+        sys.path.insert(0, ".")
+        from core.servers import tier_from_plan
+        os.makedirs('models', exist_ok=True)
+        f = 'models/_probe_start.gguf'
+        def st(x):
+            b = x.encode(); return struct.pack('<Q', len(b)) + b
+        items = (st('general.architecture') + struct.pack('<I', 8) + st('llama')
+                 + st('llama.block_count') + struct.pack('<I', 4) + struct.pack('<I', 8)
+                 + st('llama.attention.head_count') + struct.pack('<I', 4) + struct.pack('<I', 8)
+                 + st('llama.attention.head_count_kv') + struct.pack('<I', 4) + struct.pack('<I', 2)
+                 + st('llama.embedding_length') + struct.pack('<I', 4) + struct.pack('<I', 2048))
+        try:
+            with open(f, 'wb') as fh:
+                fh.write(b'GGUF' + struct.pack('<I', 3) + struct.pack('<Q', 0)
+                         + struct.pack('<Q', 5) + items)
+            plan = po('/api/v1/setup/plan',
+                      {'shape': 'local:models/_probe_start.gguf'})['tiers'][0]
+            cmd = tier_from_plan(plan, 1, 4096).command()
+            if '-hf' in cmd:
+                return (True, f"planned a local file, would run: {' '.join(cmd[:3])}")
+            if '-m' not in cmd or '_probe_start.gguf' not in ' '.join(cmd):
+                return (True, f"no local file on the command line: {' '.join(cmd[:4])}")
+            return (False, ' '.join(cmd[:3]))
+        finally:
+            if os.path.exists(f):
+                os.remove(f)
+    probe("A15 a local model is started as a download", local_start)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.
