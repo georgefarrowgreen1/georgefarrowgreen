@@ -424,6 +424,26 @@ def _local_models(ram_gb: float) -> list[dict]:
     return out
 
 
+def h_models_add(body):
+    from core import weights
+    out = weights.add(ROOT, (body.get("path") or "").strip())
+    if out.get("error"):
+        return out, 400
+    _KV_CACHE.clear()                 # a new file to read the geometry from
+    bump()
+    return out
+
+
+def h_models_remove(body):
+    from core import weights
+    out = weights.remove(ROOT, (body.get("name") or "").strip())
+    if out.get("error"):
+        return out, 400
+    _KV_CACHE.clear()
+    bump()
+    return out
+
+
 def h_sources(_q):
     from core import sources
     return {"workspaces": sources.workspaces(store),
@@ -579,6 +599,8 @@ ROUTES_GET = [
     (r"^/api/v1/memory/([\w]+)$", h_memory),
 ]
 ROUTES_POST = [
+    (r"^/api/v1/models/add$", h_models_add),
+    (r"^/api/v1/models/remove$", h_models_remove),
     (r"^/api/v1/sources/add$", h_sources_add),
     (r"^/api/v1/sources/remove$", h_sources_remove),
     (r"^/api/v1/sources/test$", h_sources_test),

@@ -89,6 +89,21 @@
   .pane{display:none}.pane.on{display:block}
   code{font-family:var(--mono);font-size:12.5px;background:var(--card2);padding:2px 6px;border-radius:5px}
   button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .card-opt .rmmodel{position:absolute;top:10px;right:12px;font-size:11px;
+    padding:3px 8px;border-radius:7px;border:1px solid var(--hair);
+    background:transparent;color:var(--lab3);font-family:var(--ui)}
+  .card-opt .rmmodel:hover{color:var(--red);border-color:var(--red)}
+  .card-opt{position:relative}
+  .addmodel{margin-top:14px;padding:14px;border-radius:14px;background:var(--card2);
+    border:1px dashed var(--hair)}
+  .addmodel label{display:block;font-size:13px;color:var(--lab2);margin-bottom:8px}
+  .addmodel .row{display:flex;gap:8px}
+  .addmodel input{flex:1;padding:9px 11px;border-radius:9px;border:1px solid var(--hair);
+    background:#09090b;color:var(--lab);font-size:13px;font-family:var(--mono)}
+  .addmodel button{padding:9px 16px;border:0;border-radius:9px;background:var(--blue);
+    color:#fff;font-size:13px;font-weight:600;font-family:var(--ui)}
+  .addmodel button:disabled{opacity:.5}
+  .addmodel .hint{margin:8px 0 0;font-size:12px;color:var(--lab3)}
 </style></head>
 <body><div class="page">
 
@@ -209,50 +224,102 @@ function step(n){
         <td>${r.tps}</td><td><span class="v ${v[0]}">${v[1]}</span></td></tr>`;
     }).join('')+`</tbody>`;
 
-  $('#shapes').innerHTML='';
-  // The server sizes every option against this Mac and returns the slots and
-  // context it can actually hold. Nothing here decides that any more — the
-  // wizard used to ask for 4 slots at 32k whatever the machine was.
-  const card=(o)=>{
-    const c=el(`<div class="card-opt ${o.fits?'':'tight'}" role="button" tabindex="0"
-        aria-pressed="false" data-id="${esc(o.id)}">
-      <div class="t"><h3>${esc(o.title)}</h3><span class="sz">~${o.gb}GB</span></div>
-      <div class="sub">${esc(o.sub)}</div>
-      <div class="det">${esc(o.detail)}</div>
-      ${!o.fits
-        ? '<div class="warnrow">Larger than this Mac\u2019s whole memory \u2014 it would '
-          +'spend its time paging rather than answering.</div>'
-        : o.strains
-          ? `<div class="warnrow">Bigger than the memory nominally free, so it will
-             page and run slow. llama.cpp mmaps the weights, so it does run \u2014
-             at ${o.slots} slot${o.slots===1?'':'s'} &times; ${o.ctx_k}k.</div>`
-          : (o.slots<4||o.ctx_k<32
-              ? `<div class="warnrow">Fits at ${o.slots} slot${o.slots===1?'':'s'}
-                 &times; ${o.ctx_k}k, not the usual 4 &times; 32k.</div>`
-              : '')}
-    </div>`);
-    const choose=()=>{
-      // Selectable even when the estimate is gloomy. The numbers here are a
-      // guess from a file size; you have either run this model on this Mac or
-      // you have not, and only one of us knows which.
-      if(!o.fits) return;                 // genuinely hopeless: bigger than RAM
-      SHAPE=o.id; FIT={slots:o.slots, ctx:o.ctx_k*1024};
-      document.querySelectorAll('.card-opt').forEach(x=>
-        x.setAttribute('aria-pressed',String(x.dataset.id===o.id)));
-      $('#to3').disabled=false;
+  // Re-rendered rather than reloaded: adding a model used to reload the page,
+  // which threw you back to step one and made you click through again.
+  async function renderModels(msg, bad){
+    STATE = await get('/api/v1/setup/state');
+    $('#shapes').innerHTML='';
+    // The server sizes every option against this Mac and returns the slots and
+    // context it can actually hold. Nothing here decides that any more — the
+    // wizard used to ask for 4 slots at 32k whatever the machine was.
+    const card=(o)=>{
+      const c=el(`<div class="card-opt ${o.fits?'':'tight'}" role="button" tabindex="0"
+          aria-pressed="false" data-id="${esc(o.id)}">
+        <div class="t"><h3>${esc(o.title)}</h3><span class="sz">~${o.gb}GB</span></div>
+        <div class="sub">${esc(o.sub)}</div>
+        <div class="det">${esc(o.detail)}</div>
+        ${!o.fits
+          ? '<div class="warnrow">Larger than this Mac\u2019s whole memory \u2014 it would '
+            +'spend its time paging rather than answering.</div>'
+          : o.strains
+            ? `<div class="warnrow">Bigger than the memory nominally free, so it will
+               page and run slow. llama.cpp mmaps the weights, so it does run \u2014
+               at ${o.slots} slot${o.slots===1?'':'s'} &times; ${o.ctx_k}k.</div>`
+            : (o.slots<4||o.ctx_k<32
+                ? `<div class="warnrow">Fits at ${o.slots} slot${o.slots===1?'':'s'}
+                   &times; ${o.ctx_k}k, not the usual 4 &times; 32k.</div>`
+                : '')}
+      </div>`);
+      const choose=()=>{
+        // Selectable even when the estimate is gloomy. The numbers here are a
+        // guess from a file size; you have either run this model on this Mac or
+        // you have not, and only one of us knows which.
+        if(!o.fits) return;                 // genuinely hopeless: bigger than RAM
+        SHAPE=o.id; FIT={slots:o.slots, ctx:o.ctx_k*1024};
+        document.querySelectorAll('.card-opt').forEach(x=>
+          x.setAttribute('aria-pressed',String(x.dataset.id===o.id)));
+        $('#to3').disabled=false;
+      };
+      c.onclick=choose;
+      c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}};
+      return c;
     };
-    c.onclick=choose;
-    c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}};
-    return c;
-  };
 
-  (STATE.local||[]).forEach(f=>$('#shapes').append(card({
-    id:'local:'+f.path, title:f.stem, gb:f.gb, slots:f.slots, ctx_k:f.ctx_k,
-    fits:f.fits, strains:f.strains,
-    sub:'Already in models/ \u2014 nothing to download',
-    detail:'Read from disk where you put it. Always llama.cpp: MLX cannot '
-          +'read GGUF.'})));
-  STATE.shapes.forEach(s=>$('#shapes').append(card(s)));
+    (STATE.local||[]).forEach(f=>{
+      const c = card({
+        id:'local:'+f.path, title:f.stem, gb:f.gb, slots:f.slots, ctx_k:f.ctx_k,
+        fits:f.fits, strains:f.strains,
+        sub:'Already in models/ \u2014 nothing to download',
+        detail:'Read from disk where you put it. Always llama.cpp: MLX cannot '
+              +'read GGUF.'});
+      const rm = el(`<button class="rmmodel" title="Remove from Blokk">remove</button>`);
+      rm.onclick = async (e)=>{
+        e.stopPropagation();                 // removing is not choosing
+        rm.disabled = true; rm.textContent = '…';
+        try{
+          const r = await post('/api/v1/models/remove', {name:f.name});
+          await renderModels(r.detail || 'removed');
+        }catch(err){ rm.disabled=false; rm.textContent='remove'; note(err.message, true); }
+      };
+      c.append(rm);
+      $('#shapes').append(c);
+    });
+    STATE.shapes.forEach(s=>$('#shapes').append(card(s)));
+
+    // Weights already on this Mac. Linked, not copied: the files stay where
+    // they are and removing one takes away the link, never the gigabytes.
+    const adder = el(`<div class="addmodel">
+      <label for="mpath">Already have a .gguf on this Mac?</label>
+      <div class="row">
+        <input id="mpath" placeholder="/Users/you/Gemma 4 Models  (a file or a folder)" />
+        <button id="maddgo">Add</button>
+      </div>
+      <p class="hint" id="mnote">It is linked, not copied \u2014 nothing is moved and
+        nothing is uploaded.</p>
+    </div>`);
+    $('#shapes').append(adder);
+    const note=(m,bad)=>{ const n=$('#mnote'); n.textContent=m;
+                          n.style.color = bad ? 'var(--red)' : 'var(--lab3)'; };
+    // Carried across the re-render: otherwise the confirmation of what was
+    // just linked is wiped by the list rebuilding underneath it.
+    if(msg) note(msg, bad);
+    $('#maddgo').onclick = async ()=>{
+      const v = $('#mpath').value.trim();
+      if(!v) return note('Give the path to a .gguf, or to a folder of them.', true);
+      $('#maddgo').disabled = true; note('reading…');
+      try{
+        const r = await post('/api/v1/models/add', {path:v});
+        const bits = [];
+        if(r.added.length) bits.push(r.added.map(a=>a.name+' ('+a.gb+'GB)').join(', '));
+        r.skipped.forEach(sk=>bits.push(sk.name+' — '+sk.why));
+        const msg = bits.join(' · ') || 'nothing added';
+        $('#maddgo').disabled = false;
+        if(r.added.length){ $('#mpath').value=''; await renderModels(msg); }
+        else note(msg, true);
+      }catch(e){ $('#maddgo').disabled=false; note(e.message, true); }
+    };
+  }
+  await renderModels();
 })();
 
 $('#to2').onclick=()=>step(2);
