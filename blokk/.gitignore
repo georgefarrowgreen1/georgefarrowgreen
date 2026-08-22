@@ -27,3 +27,8 @@ venv/
 
 # os
 .DS_Store
+
+# local model weights — gigabytes, and not ours to version
+models/*.gguf
+models/*.bin
+models/*.safetensors

@@ -30,9 +30,10 @@ ROOT = Path(__file__).resolve().parent.parent
 class Tier:
     name: str                 # SMALL | LARGE
     backend: str              # llama.cpp | mlx
-    repo: str
     alias: str
     port: int
+    repo: str | None = None   # HuggingFace repo to download from
+    path: str | None = None   # a .gguf already on disk; wins over repo
     file: str | None = None   # GGUF filename; MLX repos have none
     slots: int = 4
     ctx: int = 32768
@@ -42,7 +43,12 @@ class Tier:
             # -cb continuous batching, -np slots, -fa flash attention.
             # Each slot carries its own KV cache, so -np scales memory
             # linearly — raise it only when bench.py says the cache can take it.
-            return ["llama-server", "-hf", f"{self.repo}:{self.file}",
+            # -m reads weights you already have; -hf downloads and caches
+            # them. Anything in models/ is there because someone put it
+            # there, so it wins over fetching five gigabytes again.
+            src = ["-m", self.path] if self.path else \
+                  ["-hf", f"{self.repo}:{self.file}"]
+            return ["llama-server", *src,
                     "--alias", self.alias, "--port", str(self.port),
                     "-cb", "-np", str(self.slots), "-c", str(self.ctx), "-fa"]
         if self.backend == "mlx":
@@ -201,7 +207,11 @@ def tiers_from_conf() -> list[Tier]:
         if not c.get(f"{name}_BACKEND"):
             continue
         out.append(Tier(
-            name=name, backend=c[f"{name}_BACKEND"], repo=c[f"{name}_REPO"],
+            # REPO is absent when PATH is set, and vice versa; neither may
+            # be required, or a local-weights config raises KeyError here and
+            # run.sh starts nothing.
+            name=name, backend=c[f"{name}_BACKEND"],
+            repo=c.get(f"{name}_REPO"), path=c.get(f"{name}_PATH"),
             file=c.get(f"{name}_FILE"), alias=c[f"{name}_ALIAS"],
             port=int(c[f"{name}_PORT"]), slots=int(c.get("SLOTS", 4)),
             ctx=int(c.get("CTX", 32768))))

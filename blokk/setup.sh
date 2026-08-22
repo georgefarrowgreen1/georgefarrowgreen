@@ -35,6 +35,19 @@ if [ "$MODE" = "--stubs" ]; then
   exit 0
 fi
 
+# Anything already on disk beats anything to download. Listed before the
+# menu so the numbering below is stable whether or not models/ has files.
+LOCAL_N=0
+LOCAL_FILES=""
+if [ -d models ]; then
+  for f in models/*.gguf; do
+    [ -f "$f" ] || continue                 # the glob itself when empty
+    LOCAL_N=$((LOCAL_N + 1))
+    LOCAL_FILES="${LOCAL_FILES}${f}
+"
+  done
+fi
+
 step "Choosing a model"
 say "${DIM}One model is enough to start. Two tiers is a real optimisation — most"
 say "agent work is triage and does not need a big model — but it is a second"
@@ -43,11 +56,67 @@ say ""
 say "  1  Qwen3-8B                   one model, one server. 24GB Macs and up"
 say "  2  Qwen3.6-35B-A3B            one model, MoE. Knows more. 48GB and up"
 say "  3  both: 8B triage + 35B MoE  two tiers, and probably two backends"
+if [ "$LOCAL_N" -gt 0 ]; then
+  say ""
+  say "  ${BOLD}already in models/${OFF} — nothing to download"
+  i=0
+  printf '%s\n' "$LOCAL_FILES" | while read -r f; do
+    [ -n "$f" ] || continue
+    i=$((i + 1))
+    printf '  l%-2s%-28s %s\n' "$i" "$(basename "$f")" \
+      "$(du -h "$f" 2>/dev/null | cut -f1)"
+  done
+fi
 say ""
 case "$MODE" in
   --small) CHOICE=1 ;;
   --both)  CHOICE=3 ;;
+  --local) CHOICE=l1 ;;
   *) read -r -p "Which? [1] " CHOICE; CHOICE="${CHOICE:-1}" ;;
+esac
+
+# A local file short-circuits the plan: core/backends.py chooses between
+# llama.cpp and MLX by model shape, and that choice is already made — MLX
+# cannot read GGUF. One tier, one server, pointed at the file.
+case "$CHOICE" in
+  l*|L*)
+    LOCAL_I="$(printf '%s' "$CHOICE" | tr -dc '0-9')"
+    [ -n "$LOCAL_I" ] || LOCAL_I=1
+    GGUF="$(printf '%s\n' "$LOCAL_FILES" | sed -n "${LOCAL_I}p")"
+    [ -n "$GGUF" ] && [ -f "$GGUF" ] || { warn "No such local model: $CHOICE"; exit 1; }
+
+    step "Installing backends"
+    if command -v llama-server >/dev/null 2>&1; then good "llama-server present"
+    elif command -v brew >/dev/null 2>&1; then
+      read -r -p "Install llama.cpp with Homebrew? [Y/n] " yn
+      case "$yn" in [Nn]*) warn "skipped" ;; *) brew install llama.cpp && good "installed" ;; esac
+    else warn "No Homebrew — see https://brew.sh"; fi
+
+    step "Writing blokk.conf"
+    ALIAS="$(basename "$GGUF" .gguf)"
+    {
+      echo "# Written by setup.sh on $(date +%Y-%m-%d). Edit freely; run.sh reads it."
+      echo "MODE=servers"
+      echo "SLOTS=4"
+      echo "CTX=32768"
+      echo ""
+      echo "# SMALL — local weights, read from disk, never downloaded"
+      echo "SMALL_BACKEND=llama.cpp"
+      echo "SMALL_PATH=$GGUF"
+      echo "SMALL_ALIAS=$ALIAS"
+      echo "SMALL_PORT=8081"
+      echo ""
+      echo "BLOKK_SMALL_URL=http://127.0.0.1:8081/v1"
+      echo "BLOKK_SMALL_MODEL=$ALIAS"
+      echo "BLOKK_LARGE_URL=http://127.0.0.1:8081/v1"
+      echo "BLOKK_LARGE_MODEL=$ALIAS"
+    } > blokk.conf
+    good "blokk.conf written — both tiers point at $(basename "$GGUF")"
+    say ""
+    say "  ${BOLD}./run.sh${OFF}   starts it and then Blokk. Nothing to download."
+    say ""
+    exit 0
+    ;;
 esac
 
 SLOTS=4
