@@ -387,12 +387,19 @@ def _local_models(ram_gb: float) -> list[dict]:
     out = []
     for f in sorted((ROOT / "models").glob("*.gguf")):
         gb = f.stat().st_size / (1024 ** 3)
-        # A 4-bit GGUF is roughly 0.55 GB per billion parameters — close
-        # enough to choose a slot count from, and much closer than assuming.
-        slots, ctx_k = bench.fit(max(0.5, gb / 0.55), gb, ram_gb)
+        # The file states its own geometry. Fall back to 0.55 GB per billion
+        # parameters only when the header cannot be read — that guess is what
+        # made a mixture-of-experts look like a dense model twice its size.
+        from core import gguf
+        try:
+            kv_mb = gguf.kv_mb_per_token(f)
+        except Exception:
+            kv_mb = None
+        slots, ctx_k = bench.fit(max(0.5, gb / 0.55), gb, ram_gb, kv_mb=kv_mb)
         out.append({"path": f"models/{f.name}", "name": f.name,
                     "stem": f.stem, "gb": round(gb, 1),
-                    "slots": slots, "ctx_k": ctx_k, "fits": slots > 0})
+                    "slots": slots, "ctx_k": ctx_k, "fits": slots > 0,
+                    "strains": bench.strains(gb, ram_gb)})
     return out
 
 
@@ -421,7 +428,8 @@ def h_setup_state(_q):
     for sh in SHAPES:
         slots, ctx_k = bench.fit(sh["params"], sh["gb"], m["ram_gb"])
         shapes.append({**sh, "slots": slots, "ctx_k": ctx_k,
-                       "fits": slots > 0})
+                       "fits": slots > 0,
+                       "strains": bench.strains(sh["gb"], m["ram_gb"])})
     return {"machine": {**m, "usable_gb": round(usable, 1)}, "models": rows,
             "shapes": shapes, "local": _local_models(m["ram_gb"]),
             "configured": srv.configured(), "conf": srv.read_conf(),

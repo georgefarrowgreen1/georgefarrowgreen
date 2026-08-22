@@ -198,15 +198,23 @@ function step(n){
       <div class="t"><h3>${esc(o.title)}</h3><span class="sz">~${o.gb}GB</span></div>
       <div class="sub">${esc(o.sub)}</div>
       <div class="det">${esc(o.detail)}</div>
-      ${o.fits
-        ? (o.slots<4||o.ctx_k<32
-            ? `<div class="warnrow">Fits at ${o.slots} slot${o.slots===1?'':'s'}
-               &times; ${o.ctx_k}k, not the usual 4 &times; 32k.</div>`
-            : '')
-        : '<div class="warnrow">Will not fit in this Mac\u2019s memory at any context size.</div>'}
+      ${!o.fits
+        ? '<div class="warnrow">Larger than this Mac\u2019s whole memory \u2014 it would '
+          +'spend its time paging rather than answering.</div>'
+        : o.strains
+          ? `<div class="warnrow">Bigger than the memory nominally free, so it will
+             page and run slow. llama.cpp mmaps the weights, so it does run \u2014
+             at ${o.slots} slot${o.slots===1?'':'s'} &times; ${o.ctx_k}k.</div>`
+          : (o.slots<4||o.ctx_k<32
+              ? `<div class="warnrow">Fits at ${o.slots} slot${o.slots===1?'':'s'}
+                 &times; ${o.ctx_k}k, not the usual 4 &times; 32k.</div>`
+              : '')}
     </div>`);
     const choose=()=>{
-      if(!o.fits) return;                 // offering it would only fail later
+      // Selectable even when the estimate is gloomy. The numbers here are a
+      // guess from a file size; you have either run this model on this Mac or
+      // you have not, and only one of us knows which.
+      if(!o.fits) return;                 // genuinely hopeless: bigger than RAM
       SHAPE=o.id; FIT={slots:o.slots, ctx:o.ctx_k*1024};
       document.querySelectorAll('.card-opt').forEach(x=>
         x.setAttribute('aria-pressed',String(x.dataset.id===o.id)));
@@ -219,7 +227,8 @@ function step(n){
 
   (STATE.local||[]).forEach(f=>$('#shapes').append(card({
     id:'local:'+f.path, title:f.stem, gb:f.gb, slots:f.slots, ctx_k:f.ctx_k,
-    fits:f.fits, sub:'Already in models/ \u2014 nothing to download',
+    fits:f.fits, strains:f.strains,
+    sub:'Already in models/ \u2014 nothing to download',
     detail:'Read from disk where you put it. Always llama.cpp: MLX cannot '
           +'read GGUF.'})));
   STATE.shapes.forEach(s=>$('#shapes').append(card(s)));

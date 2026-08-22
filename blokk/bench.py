@@ -92,17 +92,42 @@ LADDER = ((4, 32), (4, 16), (2, 32), (2, 16), (2, 8), (1, 16), (1, 8), (1, 4))
 
 
 def fit(params_b: float, model_gb: float, ram_gb: float) -> tuple[int, int]:
-    """(slots, ctx_k) that leaves the weights room, or (0, 0) if none do.
+    """(slots, ctx_k) this Mac can hold. (0, 0) only when it is hopeless.
 
-    The margin is not politeness: llama-server allocates the cache up front
-    and the OS grows underneath it, so sizing to the last byte gets you a
-    server that starts and then dies an hour into the night's sweep.
+    Weights and cache are not the same kind of memory, and treating them as
+    one number refuses models that demonstrably run. llama.cpp mmaps the GGUF,
+    so the weights are file-backed: the OS pages them in and out, and a model
+    somewhat larger than nominally free memory works, just slower. The KV
+    cache is the opposite — anonymous memory, allocated up front, and it has
+    to fit or llama-server dies at startup.
+
+    So size the cache against what is left once the weights have taken their
+    share, let the weights themselves overrun, and keep a floor: there is
+    always room for one small slot, because the alternative is telling
+    somebody their own model does not run when they have already run it.
+
+    The 0.8 margin on the cache is not politeness. It is allocated before the
+    first token and the OS grows underneath it, so sizing to the last byte
+    gets a server that starts and dies an hour into the night's sweep.
     """
-    room = (usable_gb(ram_gb) - model_gb) * 0.8
+    usable = usable_gb(ram_gb)
+    if model_gb > ram_gb * 1.5:            # paging this would be all it did
+        return 0, 0
+    room = max(0.4, (usable - min(model_gb, usable * 0.9)) * 0.8)
     for slots, ctx_k in LADDER:
-        if room > 0 and kv_gb(params_b, ctx_k, slots) <= room:
+        if kv_gb(params_b, ctx_k, slots) <= room:
             return slots, ctx_k
-    return 0, 0
+    return 1, 4                            # the floor, not a refusal
+
+
+def strains(model_gb: float, ram_gb: float) -> bool:
+    """True when the weights alone exceed what is nominally free.
+
+    Worth saying out loud — it will page, and a sweep will be slow — but it
+    is advice, not a veto. The person at the keyboard knows what they have
+    run on this machine and this function does not.
+    """
+    return model_gb > usable_gb(ram_gb)
 
 
 def sysctl(key: str) -> str:
