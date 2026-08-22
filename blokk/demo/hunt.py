@@ -508,6 +508,38 @@ try:
             srv.CONF = keep
     probe("A21 doctor says nothing about the model server", doctor_models)
 
+    # ── 22. locked out, and told nothing ────────────────────────────────
+    def locked_out():
+        # Two blokks against one file is the classic own-goal: a launchd job
+        # and a terminal, or a second ./blokk started while the first is up.
+        # SQLite raises "database is locked" from three frames down, which
+        # says neither which file nor — the part that matters — whether the
+        # write went in. It did not. If the caller cannot tell, the safe
+        # assumption is that it did, and the write gets retried by hand.
+        import sys as _s, shutil, sqlite3 as sq3
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "contended.db"
+        shutil.copy("blokk.db", tmp)
+        st = Store(tmp)
+        st.db.execute("PRAGMA busy_timeout=200")   # do not sit here for 10s
+        other = sq3.connect(str(tmp), isolation_level=None, timeout=5)
+        other.execute("BEGIN EXCLUSIVE")           # the other blokk, writing
+        try:
+            st.x("INSERT OR REPLACE INTO fact(id,workspace_id,text,confidence)"
+                 " VALUES(?,?,?,0.5)", "probe22", "cottages", "y")
+            return (True, "a write against a locked database quietly succeeded?")
+        except Exception as e:                                   # noqa: BLE001
+            msg = str(e)
+            if "nothing was written" not in msg:
+                return (True, f"locked out with no idea whether it wrote: {msg[:60]}")
+            return (False, "says which file, and that nothing was written")
+        finally:
+            other.execute("ROLLBACK")
+            other.close()
+    probe("A22 locked out by another writer, with no idea what happened",
+          locked_out)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

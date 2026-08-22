@@ -66,9 +66,12 @@ class Store:
     call goes through a lock. WAL keeps readers from blocking on it.
     """
 
+    TIMEOUT = 10          # seconds to wait for another writer to let go
+
     def __init__(self, path: str | Path):
         self.path = str(path)
-        self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=10)
+        self.db = sqlite3.connect(self.path, check_same_thread=False,
+                                  timeout=self.TIMEOUT)
         self.db.row_factory = sqlite3.Row
         self.lock = threading.RLock()
         with self.lock:
@@ -91,9 +94,25 @@ class Store:
         what comes back.
         """
         with self.lock:
-            cur = self.db.execute(sql, a)
-            self.db.commit()
-            return cur.rowcount
+            try:
+                cur = self.db.execute(sql, a)
+                self.db.commit()
+                return cur.rowcount
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e) and "busy" not in str(e):
+                    raise
+                # SQLite's busy handler spins rather than queues, so a second
+                # connection writing hard can hold this one off for the whole
+                # timeout. Rare, and it arrives as a bare "database is
+                # locked" three frames down — which at 04:00 names neither
+                # the file nor whether the write happened. It did not: the
+                # statement never ran.
+                self.db.rollback()
+                raise sqlite3.OperationalError(
+                    f"{self.path} was locked for {self.TIMEOUT}s by another "
+                    f"writer, so nothing was written. Another blokk running "
+                    f"against the same file is the usual cause: "
+                    f"lsof {self.path}") from e
 
 
 # ------------------------------------------------------------------- context
