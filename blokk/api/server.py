@@ -14,6 +14,7 @@ import json
 import mimetypes
 import re
 import socket
+import shutil
 import sqlite3
 import sys
 import threading
@@ -66,9 +67,13 @@ if not TOKEN:
 ALLOWED_ORIGINS = {o.strip() for o in
                    os.environ.get("BLOKK_ALLOWED_ORIGINS", "").split(",") if o.strip()}
 
+BOLD, DIM, OFF = "\033[1m", "\033[2m", "\033[0m"
+GREEN, AMBER, RED = "\033[32m", "\033[33m", "\033[31m"
+
 MAX_BODY = 256 * 1024      # A3: rfile.read(Content-Length) allocates whatever
                            # it is told to. 256KB is generous for JSON.
 
+from core import qr  # noqa: E402
 from flows.morning_sweep import register  # noqa: E402
 register(engine, store)
 
@@ -656,31 +661,48 @@ def serve(port=8080):
     resumed = engine.resume_all()
     expired = engine.sweep_deadlines()
     ip, host = lan_ip(), socket.gethostname().split(".")[0].lower()
-    print(f"""
-  Blokk is up
+    phone = f"http://{ip}:{port}/?t={TOKEN}"
 
-    on this Mac     http://localhost:{port}
-    on your phone   http://{host}.local:{port}/?t={TOKEN}
-    or by address   http://{ip}:{port}/?t={TOKEN}
+    # Under launchd, stdout is a log file: no colour, no QR, nobody watching.
+    tty = sys.stdout.isatty()
+    cols = shutil.get_terminal_size((80, 24)).columns
+    B, D, G, Y, R, O = ((BOLD, DIM, GREEN, AMBER, RED, OFF) if tty
+                        else ("", "", "", "", "", ""))
 
-  The phone link carries a token — anything that is not loopback needs it,
-  because this binds to every interface and your wifi has other people on it.
-  Open it once, Share -> Add to Home Screen, and it is remembered.
+    print(f"\n  {B}Blokk is up{O}\n")
+    print(f"  {B}1{O}  On this Mac      {G}http://localhost:{port}{O}")
+    print(f"  {B}2{O}  On your phone    same wifi, then Add to Home Screen\n")
 
-  Resumed {len(resumed)} run(s), expired {expired} wait(s). Ctrl-C to stop.
-""")
+    # The whole point: nobody types a token off a screen correctly, and the
+    # two things people leave out — the :port and the ?t= — are exactly the
+    # two that turn this into "it doesn't connect".
+    if tty and qr.width(phone) <= cols - 4:
+        for line in qr.render(phone).splitlines():
+            print("     " + line)
+        print()
+    print(f"     {G}{phone}{O}")
+    print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}{O}\n")
+
     ms = model_status(probe=True)
     if ms["live"] and ms.get("reachable"):
-        print(f"  models    small {ms['small']}\n            large {ms['large']}\n")
+        model = f"{G}ready{O}    {ms['small']}"
+        if ms["large"] != ms["small"]:
+            model += f" / {ms['large']}"
     elif ms["live"]:
-        print(f"  models    {ms['small']} CONFIGURED BUT NOT ANSWERING.\n"
-              f"            Sweeps will fail and be marked resumable rather than\n"
-              f"            silently degrading. Start the model server, or run\n"
-              f"            ./setup.sh --stubs to work without one.\n")
+        model = (f"{R}not answering{O}    {ms['small']} is configured but the "
+                 f"server is not up.\n                                    {D}Sweeps will fail and be "
+                 f"marked resumable rather than quietly\n                                    degrading. "
+                 f"Start it, or ./setup.sh --stubs to work without one.{O}")
     else:
-        print("  models    STUBS — deterministic placeholder text, no weights loaded.\n"
-              "            Everything runs and every mechanism is real; only the prose\n"
-              "            is fake. Run ./setup.sh to attach a model.\n")
+        model = (f"{Y}stubs{O}    no weights loaded. Every mechanism is real; only "
+                 f"the prose\n                            {D}is invented. ./setup.sh attaches a "
+                 f"model.{O}")
+
+    print(f"  {B}Status{O}")
+    print(f"     model         {model}")
+    print(f"     overnight     {len(resumed)} run(s) resumed, {expired} wait(s) expired")
+    print(f"     update        ./blokk update")
+    print(f"     stop          Ctrl-C\n")
     Server(("0.0.0.0", port), Handler).serve_forever()
 
 

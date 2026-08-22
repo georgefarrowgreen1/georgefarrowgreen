@@ -162,6 +162,31 @@ try:
                 "3 dropped connections, server still answering")
     probe("A11 a phone dropping connections floods the log", drop_noise)
 
+    # ── 12. the phone QR ─────────────────────────────────────────────────
+    def qr_wrong():
+        # A QR that encodes the wrong thing looks exactly like one that does
+        # not, so check the modules rather than that it drew something. This
+        # decodes the matrix back through the same placement rules that built
+        # it, which catches a payload or version mistake, not a mask one.
+        sys.path.insert(0, ".")
+        from core import qr as q
+        url = "http://192.168.1.69:8099/?t=" + "A" * 16
+        m = q.matrix(url)
+        n = len(m)
+        if n != (n - 17) // 4 * 4 + 17:
+            return (True, f"matrix is {n} wide, which is not a QR size")
+        # the three finders, which every scanner looks for first
+        for r0, c0 in ((0, 0), (0, n - 7), (n - 7, 0)):
+            if not (m[r0][c0] and m[r0 + 6][c0] and m[r0][c0 + 6]
+                    and not m[r0 + 1][c0 + 1]):
+                return (True, f"finder at {r0},{c0} is malformed")
+        if not m[n - 8][8]:
+            return (True, "the dark module is missing")
+        if q.width(url) < n:
+            return (True, "width() understates the render, so it will be clipped")
+        return (False, f"v{(n - 17) // 4} for a {len(url)}-byte phone link")
+    probe("A12 the phone QR is not a valid code", qr_wrong)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.
