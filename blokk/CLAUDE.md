@@ -59,9 +59,11 @@ worse than an error.
 ## Layout
 
     blokk              single entrypoint: wizard if unconfigured, else run
+                       ./blokk update  ./blokk doctor
     setup.sh / run.sh  terminal equivalents; share core/plan.py + core/servers.py
     bench.py           sizes the machine; --serve measures; --compare settles
-    connect.py         wire real data sources, one at a time
+    connect.py         data sources, workspaces, backups — CLI over core/sources.py
+    regress.py         run the frozen examples against whatever is attached
     seed.py            sample world, safe to re-run
 
     core/schema.sql    the data model. One SQLite file; the thing to back up
@@ -71,11 +73,22 @@ worse than an error.
     core/models.py     Router + ServedModel (any OpenAI-compatible server)
     core/backends.py   llama.cpp vs MLX rule, with the evidence in comments
     core/plan.py       shape -> per-tier plan
-    core/servers.py    model server lifecycle, shared by GUI and CLI
-    core/connectors/   iCloud IMAP, Messages, CalDAV, and the fake world
+    core/servers.py    model server lifecycle + blokk.conf i/o, shared by GUI
+                       and CLI. Writes logs/<tier>.log
+    core/gguf.py       bounded GGUF header reader; KV cache arithmetic
+    core/weights.py    the models/ folder: symlink a .gguf in, take it out
+    core/sources.py    add/remove/peek a data source; shared by CLI and GUI
+    core/local.py      what this Mac will hand over without a password
+    core/backup.py     online snapshot of blokk.db, and verifying one
+    core/regression.py twenty frozen examples and the assertions on them
+    core/doctor.py     why the phone cannot reach this Mac, and why the
+                       agent cannot reach a model
+    core/qr.py         QR for the phone URL, no dependency
+    core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
+                       keychain, and the fake world
     flows/             workflow definitions
     api/server.py      control plane. Stdlib http.server. Holds credentials
-    web/               dashboard, setup wizard, PWA
+    web/               dashboard, setup wizard, sources and phone panels, PWA
     demo/              browser port of the engine + the test suites
     brand/             the mark, generated parametrically
 
@@ -121,17 +134,25 @@ All four suites green. Verified behaviours:
 * approving 20 clean graduates a category; pinned categories never do
 * a dead model server degrades per workspace rather than 500ing the sweep
 * a silent model server is detected in 0.4s (output drained on a thread)
+* a model server that dies leaves its reason in logs/<tier>.log, and
+  `./blokk doctor` prints it along with which of the four faults it is
+* a source Blokk cannot read says so, rather than returning an empty list
+* a backup taken mid-write is a consistent snapshot, and never overwrites
 
 ## Not built yet
 
 * `core/sandbox.py` — needed before code mode. gVisor or a microVM **plus an
   egress allowlist**; kernel isolation with open outbound is worth nothing.
-* the regression runner — the `regression` table exists, nothing runs it.
-  Twenty frozen examples nightly, or a model swap degrades quality silently
-  and a guest finds out first.
 * a real `answer()` on `ServedModel` is wired but unexercised against weights.
+  The regression runner exists (`./regress.py`) and is honest that stub prose
+  makes its numbers meaningless — they start counting when weights are on.
 * connectors are read-only. Sending is a separate connector, deliberately not
-  written.
+  written: it needs a `recipient` on `approval` — the first schema migration —
+  and it belongs behind the trust gate like everything else that writes.
+* Ask can search Blokk's own state but not the mail and calendar content it
+  read. Six tools, none of them full-text.
+* `span` has no writer and `skill` is decorative. Both are in the schema
+  ahead of the code that will use them.
 
 ## If you are picking this up cold
 
