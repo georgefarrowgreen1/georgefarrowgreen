@@ -581,6 +581,25 @@ def h_setup_write(body):
     return {"ok": True, "conf": conf, "path": str(srv.CONF)}
 
 
+_DOCTOR: dict = {"at": 0.0, "report": None}
+
+
+def h_doctor(_q):
+    """Why the agent cannot reach a model, for the dashboard.
+
+    Cached for fifteen seconds. Each call opens sockets to the tier ports,
+    and when nothing is listening that is a connect timeout per tier — on
+    the phone, on a poll, that is a page that stutters every few seconds
+    for news that changes about twice a day.
+    """
+    import time as _t
+    if _DOCTOR["report"] is None or _t.time() - _DOCTOR["at"] > 15:
+        from core import doctor
+        _DOCTOR["report"] = doctor.model_report()
+        _DOCTOR["at"] = _t.time()
+    return _DOCTOR["report"]
+
+
 def h_setup_status(_q):
     # status lives on the supervisor, not the module — it needs to know which
     # processes this instance owns.
@@ -598,6 +617,7 @@ ROUTES_GET = [
     (r"^/api/v1/setup/state$", h_setup_state),
     (r"^/api/v1/setup/status$", h_setup_status),
     (r"^/api/v1/health$", h_health),
+    (r"^/api/v1/doctor$", h_doctor),
     (r"^/api/v1/workspaces$", h_workspaces),
     (r"^/api/v1/runs$", h_runs),
     (r"^/api/v1/runs/([\w]+)$", h_run),

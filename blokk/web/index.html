@@ -162,6 +162,13 @@
   .toast.up{transform:translate(-50%,0)}
   @media (prefers-reduced-motion:reduce){.toast,.trk i{transition:none}}
   button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .warn-note{background:#1A1405;border:1px solid rgba(255,159,10,.32);border-radius:14px;
+            padding:14px;font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:18px}
+  .warn-note b{color:var(--lab)}
+  .warn-note details{margin-top:9px}
+  .warn-note summary{cursor:pointer;color:var(--lab2);font-size:12.5px}
+  .warn-note pre{margin:8px 0 0;padding:9px;background:#0B0B0E;border-radius:9px;
+            overflow-x:auto;font-size:11.5px;line-height:1.4;color:var(--lab2);white-space:pre}
   .off-note{background:#1E0E0E;border:1px solid rgba(255,69,58,.3);border-radius:14px;padding:14px;
             font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:18px}
   /* edit sheet — the correction is the highest-signal thing you produce,
@@ -288,6 +295,7 @@
 
   <main>
     <div id="offline"></div>
+    <div id="modelnote"></div>
     <div class="lede" id="lede" role="status" aria-live="polite">…</div>
     <div class="sub" id="lsub"></div>
     <div class="chips" id="chips"></div>
@@ -402,11 +410,22 @@ async function post(p,b={},ms=12000){
 function toast(m){ const t=$('#toast'); t.innerHTML=m; t.classList.add('up');
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('up'),3600); }
 
-let ver = -1, busy = false;
+let ver = -1, busy = false, lastDoc = 0;
+
+// Its own cadence, because it is not tied to the version counter — a model
+// server dying changes nothing in the database, so a page waiting for a
+// version bump would show yesterday's answer.
+async function tickModel(force){
+  if(!force && Date.now() - lastDoc < 20000) return;
+  lastDoc = Date.now();
+  try{ paintModel(await get('/api/v1/doctor')); }
+  catch(e){ /* health already says if the Mac is unreachable */ }
+}
 
 async function tick(force){
   try{
     const h = await get('/api/v1/health');
+    tickModel(force);
     $('#live').classList.remove('off');
     $('#offline').innerHTML = '';
     // A run in flight changes the world without every step bumping the
@@ -431,6 +450,7 @@ async function tick(force){
     paint(h, ap, handled, runs);
   }catch(e){
     $('#live').classList.add('off');
+    $('#modelnote').innerHTML = '';   // one card about being offline, not two
     if(String(e.message)==='401'){
       $('#whosub').textContent = 'not paired';
       $('#offline').innerHTML = `<div class="off-note"><b>This device isn't paired.</b>
@@ -442,6 +462,23 @@ async function tick(force){
     $('#offline').innerHTML = `<div class="off-note"><b>Offline.</b> The Mac may be asleep or off the network.
       Nothing is lost — suspended runs keep their state on disk and pick up where they stopped.</div>`;
   }
+}
+
+// The model server is the one dependency Blokk has that it does not own, and
+// when it is missing everything still runs — with placeholder prose. That is
+// the correct behaviour and the easiest thing in the world not to notice, so
+// it gets said on the screen rather than only in the terminal.
+function paintModel(r){
+  const el = $('#modelnote');
+  if(!r || r.ok || !r.todo || !r.todo.length){ el.innerHTML=''; return; }
+  const down = (r.tiers||[]).filter(t=>t.state && t.state!=='answering');
+  const log = down.map(t=>t.log||[]).find(l=>l.length) || [];
+  el.innerHTML = `<div class="warn-note"><b>No model server.</b>
+    Everything else is real — sweeps, the queue, the journal — but any text
+    you see is placeholder.
+    <div style="margin-top:8px">${r.todo.map(t=>esc(t)).join('<br>')}</div>
+    ${log.length ? `<details><summary>what the model server said</summary>
+      <pre>${esc(log.join('\n'))}</pre></details>` : ''}</div>`;
 }
 
 function paint(h, ap, handled, runs){

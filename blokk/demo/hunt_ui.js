@@ -62,6 +62,36 @@ probe('B9  a slow sweep is reported as a failed one',
   || /post\('\/api\/v1\/sweep'\)/.test(js),
   'abort is distinguished from error, and the sweep is given minutes not seconds');
 
+// B10 — the model server's log is not ours
+// It is whatever llama-server printed, which includes file paths and, on a
+// bad day, whatever was in the model's name. It goes on the dashboard, so it
+// goes through esc() first. Run the real function rather than grepping for
+// the call: a probe that matches a string passes the day someone moves it.
+{
+  const src = js.match(/function paintModel\(r\)\{[\s\S]*?\n\}/);
+  if(!src){
+    probe('B10 the model server banner is gone', true, 'paintModel() not found');
+  } else {
+    let html = '';
+    const el = { set innerHTML(v){ html = v; }, get innerHTML(){ return html; } };
+    const escFn = s => String(s??'').replace(/[&<>"']/g,
+      c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const paintModel = new Function('$','esc',
+      'return (' + src[0] + ')')(()=>el, escFn);
+    paintModel({ok:false, todo:['<script>alert(1)</'+'script>'],
+                tiers:[{name:'SMALL', state:'not running',
+                        log:['error: <img src=x onerror=alert(1)>']}]});
+    const leaked = /<img|<script/i.test(html);
+    probe('B10 llama-server output is written to the page unescaped', leaked,
+      leaked ? html.slice(0,90) : 'the log tail and the advice are both escaped');
+    // And it must say nothing at all when there is nothing wrong, or it
+    // becomes the banner everyone learns to scroll past.
+    paintModel({ok:true, todo:[], tiers:[]});
+    probe('B10b a healthy model server still shows the warning', html !== '',
+      html === '' ? 'silent when the model server is up' : html.slice(0,60));
+  }
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

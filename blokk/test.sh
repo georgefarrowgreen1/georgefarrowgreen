@@ -11,6 +11,16 @@ run() {
 rm -f blokk.db blokk.db-wal blokk.db-shm
 python3 seed.py >/dev/null
 
+# blokk.conf is NOT deleted — it is yours, and it may be a real setup. But it
+# decides what the suites run against: with a model server configured and not
+# running, every workflow fails on an unreachable endpoint and probes that
+# expect a run to finish report a defect that is not there. Cost me an hour.
+if [ -f blokk.conf ] && ! grep -q '^MODE=stubs' blokk.conf; then
+  printf '\033[33m  note: blokk.conf is configured for a model server.\033[0m\n'
+  printf '  The suites will use it. If it is not running they will fail on that,\n'
+  printf '  not on the code. ./blokk doctor says which.\n'
+fi
+
 run "server: adversarial"   python3 demo/hunt.py
 run "front end: adversarial" node demo/hunt_ui.js
 run "API contract"          node demo/contract.js
