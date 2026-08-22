@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import json
 
-KINDS = {"imap": "mail", "caldav": "calendar", "messages": "messages"}
-NEEDS_KEYCHAIN = ("imap", "caldav")           # messages is local, read-only
+KINDS = {"imap": "mail", "caldav": "calendar", "ical": "calendar",
+         "messages": "messages"}
+# The two that read this Mac's own files need no credential — and no network,
+# and no app-specific password. They need Full Disk Access, which core/local.py
+# checks for and explains.
+NEEDS_KEYCHAIN = ("imap", "caldav")
 
 
 def workspaces(store) -> list[dict]:

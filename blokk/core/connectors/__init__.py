@@ -93,6 +93,9 @@ def wire(store) -> Registry:
             elif kind == "caldav":
                 from core.connectors.caldav_cal import IcloudCalendar
                 REGISTRY.add(ws, "calendar", IcloudCalendar(ref))
+            elif kind == "ical":
+                from core.connectors.ical import LocalCalendar
+                REGISTRY.add(ws, "calendar", LocalCalendar())
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(ws, "messages", AppleMessages())

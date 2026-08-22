@@ -24,7 +24,8 @@ SOURCES = [
      "reads": "the whole archive, read-only, straight off disk"},
     {"id": "calendar", "what": "Calendar", "kind": "caldav",
      "path": HOME / "Library/Calendars",
-     "reads": "events, if you would rather not go through CalDAV"},
+     "kind_local": "ical",
+     "reads": "events, without CalDAV or an app-specific password"},
     {"id": "mail", "what": "Mail", "kind": "imap",
      "path": HOME / "Library/Mail",
      "reads": "messages Mail.app has already downloaded"},
@@ -88,6 +89,7 @@ def survey() -> dict:
         ok, why = _readable(p) if present else (False, "missing")
         out.append({
             "id": s["id"], "what": s["what"], "kind": s["kind"],
+            "kind_local": s.get("kind_local"),
             "path": str(p).replace(str(HOME), "~"),
             "reads": s["reads"],
             "present": present, "readable": ok,

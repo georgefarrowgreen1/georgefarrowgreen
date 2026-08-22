@@ -1,5 +1,5 @@
 """Adversarial pass. Tries to break it rather than confirm it works."""
-import json, subprocess, sys, threading, time, urllib.request, urllib.error, sqlite3, socket
+import json, pathlib, subprocess, sys, threading, time, urllib.request, urllib.error, sqlite3, socket
 p=subprocess.Popen([sys.executable,'-m','api.server','8099'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1.5)
 B='http://localhost:8099'
@@ -277,6 +277,48 @@ try:
             if os.path.exists(f):
                 os.remove(f)
     probe("A15 a local model is started as a download", local_start)
+
+    # ── 16. the local calendar tells the truth about free nights ─────────
+    def ical_gaps():
+        # gaps() answers "which nights are free", and a recurring event left
+        # unexpanded makes it name nights that are booked. A confident wrong
+        # answer here reaches a guest, so check the invariant directly: no
+        # night an event covers may appear in gaps().
+        import shutil, sys, tempfile
+        from datetime import date, timedelta
+        sys.path.insert(0, ".")
+        import core.connectors.ical as ical
+        root = pathlib.Path(tempfile.mkdtemp()) / "Calendars"
+        ev = root / "A.calendar" / "Events"
+        ev.mkdir(parents=True)
+        T = date.today()
+        d = lambda n: (T + timedelta(days=n)).strftime("%Y%m%d")
+        (ev / "w.ics").write_text(
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Cleaner\r\n"
+            f"DTSTART;VALUE=DATE:{d(1)}\r\nDTEND;VALUE=DATE:{d(2)}\r\n"
+            "RRULE:FREQ=WEEKLY;COUNT=8\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+        try:
+            c = ical.LocalCalendar(root=root)
+            busy = set()
+            for e in c.events(days=90):
+                s0 = date.fromisoformat(e["start"])
+                e0 = date.fromisoformat(e["end"])
+                while s0 <= e0:
+                    busy.add(s0)
+                    s0 += timedelta(days=1)
+            if len(busy) < 8:
+                return (True, f"weekly recurrence expanded to only {len(busy)} night(s)")
+            free = set()
+            for g in c.gaps(days=90, max_nights=90):
+                s0 = date.fromisoformat(g["from"])
+                for i in range(g["nights"]):
+                    free.add(s0 + timedelta(days=i))
+            clash = busy & free
+            return (bool(clash),
+                    f"{len(busy)} booked nights, none of them offered as free")
+        finally:
+            shutil.rmtree(root.parent, ignore_errors=True)
+    probe("A16 the local calendar offers booked nights as free", ical_gaps)
 
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
