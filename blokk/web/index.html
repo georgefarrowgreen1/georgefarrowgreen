@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>Blokk</title>
+<style>
+  :root{
+    --card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
+    --hair:rgba(235,235,245,.09);
+    --lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.30);
+    --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;display:flex;flex-direction:column}
+  .wrap{width:100%;max-width:440px;margin:0 auto;flex:1;display:flex;flex-direction:column}
+
+  header{display:flex;align-items:center;gap:13px;padding:calc(env(safe-area-inset-top) + 16px) 20px 14px}
+  .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;
+          position:relative;flex:0 0 auto}
+  .avatar .logo{width:30px;height:30px;display:block}
+  .avatar .on{position:absolute;right:1px;bottom:1px;width:11px;height:11px;border-radius:50%;
+              background:var(--green);border:2.5px solid #000;transition:background .3s}
+  .avatar .on.off{background:var(--red)}
+  header .who{flex:1;min-width:0}
+  header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
+  header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2)}
+  .icobtn{width:38px;height:38px;border-radius:50%;background:var(--card);border:0;color:var(--lab2);
+          font-size:15px;cursor:pointer;display:grid;place-items:center;flex:0 0 auto}
+
+  main{flex:1;padding:0 20px 20px}
+  .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
+  .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:24px}
+  .sect{font-size:13px;color:var(--lab3);margin:28px 0 12px;font-weight:500}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:20px;
+        background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
+  .chip .t{color:var(--lab3);font-size:12px}
+  .chip.warn{border-color:rgba(255,214,10,.28)} .chip.warn .t{color:var(--amber)}
+
+  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);border-radius:18px;
+          padding:16px;margin-bottom:11px;transition:opacity .3s}
+  .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
+  .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
+  .action.gone{opacity:.3}
+  .action .top{display:flex;gap:11px;align-items:flex-start}
+  .glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:13px;
+         flex:0 0 auto;margin-top:1px;color:#000;font-weight:700}
+  .action .txt{flex:1;font-size:16.5px;line-height:1.38;letter-spacing:-.012em}
+  .action .why{font-size:13.5px;color:var(--lab2);margin:9px 0 0 37px;line-height:1.42}
+  .action .why em{font-style:normal;color:var(--amber)}
+  .pair{display:flex;gap:10px;margin-top:15px}
+  .pair button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:16px;
+               font-weight:500;background:rgba(255,255,255,.055);color:var(--lab2);cursor:pointer}
+  .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
+  .pair button:disabled{opacity:.4}
+  .settled{font-size:13.5px;color:var(--lab2);margin-top:13px;padding-top:13px;
+           border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
+  .settled b{color:var(--lab);font-weight:600}
+
+  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
+  .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
+  .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
+  .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
+  .quiet .head .l small{display:block;color:var(--lab2);font-size:13px;margin-top:2px}
+  .quiet .head .c{color:var(--lab3);font-size:13px;transition:transform .25s}
+  .quiet.open .c{transform:rotate(90deg)}
+  .quiet .list{display:none;border-top:1px solid var(--hair);padding:2px 16px}
+  .quiet.open .list{display:block}
+  .qi{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--hair)}
+  .qi:last-child{border-bottom:0}
+  .dot{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
+  .qi .t{flex:1;font-size:14px;line-height:1.35}
+  .qi .t small{display:block;color:var(--lab2);font-size:12.5px;margin-top:2px}
+  .qi .m{font-family:var(--mono);font-size:11px;color:var(--lab3)}
+
+  .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
+  .runs::-webkit-scrollbar{display:none}
+  .run{flex:0 0 auto;width:136px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
+  .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
+  .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}
+  .run .lb{font-family:var(--mono);font-size:10px;color:var(--lab3);margin-top:4px}
+
+  .health{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:16px}
+  .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
+  .hrow:first-child{margin-top:0}
+  .hrow .k{color:var(--lab2);width:98px;flex:0 0 auto}
+  .trk{flex:1;height:4px;border-radius:2px;background:rgba(235,235,245,.09);overflow:hidden}
+  .trk i{display:block;height:100%;border-radius:2px;transition:width .4s}
+  .hrow .v{font-family:var(--mono);font-size:12px;color:var(--lab2);width:78px;text-align:right;flex:0 0 auto}
+
+  .ctl{display:flex;gap:9px;margin-top:12px}
+  .ctl button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:15px;
+              font-weight:500;background:var(--card);color:var(--lab);cursor:pointer}
+  .ctl button.go{background:var(--blue);color:#fff}
+  .ctl button:disabled{opacity:.4}
+
+  /* ask — the composer expands into a thread rather than navigating away,
+     so you never lose your place in the brief */
+  .ask{position:fixed;inset:0;background:#000;z-index:40;display:none;flex-direction:column}
+  .ask.on{display:flex}
+  .ask .ah{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 16px) 20px 13px;
+           border-bottom:1px solid var(--hair)}
+  .ask .ah h2{flex:1;font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .ask .ah .scope{font-family:var(--mono);font-size:9.5px;color:var(--lab3);
+                  background:var(--card);padding:5px 9px;border-radius:7px}
+  .ask .thread{flex:1;overflow-y:auto;padding:16px 20px 8px;scrollbar-width:none}
+  .ask .thread::-webkit-scrollbar{display:none}
+  .q{background:var(--card);border-radius:18px 18px 5px 18px;padding:13px 15px;font-size:15.5px;
+     line-height:1.42;margin:0 0 14px auto;max-width:84%;width:fit-content}
+  .a{font-size:15.5px;line-height:1.5;margin-bottom:8px;white-space:pre-wrap}
+  .a .cursor{display:inline-block;width:7px;height:17px;background:var(--blue);
+             vertical-align:-3px;margin-left:2px;animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  @media(prefers-reduced-motion:reduce){.a .cursor{animation:none}}
+  .steps{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px}
+  .step{display:inline-flex;align-items:center;gap:6px;background:var(--card2);
+        border:1px solid var(--hair);border-radius:14px;padding:6px 11px;
+        font-family:var(--mono);font-size:10.5px;color:var(--lab2)}
+  .step .n{color:var(--lab3)}
+  .step.live{border-color:rgba(10,132,255,.4)}
+  .step.flag{border-color:rgba(255,214,10,.4);color:var(--amber)}
+  .prop{background:var(--action);border:1px solid rgba(10,132,255,.24);border-radius:16px;
+        padding:14px;margin:6px 0 18px}
+  .prop .pl{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+            color:var(--blue);margin-bottom:7px}
+  .prop .pb{font-size:14.5px;line-height:1.42}
+  .prop .pn{font-size:12.5px;color:var(--lab2);margin-top:9px;line-height:1.4}
+  .sugg{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+  .sugg button{border:1px solid var(--hair);background:var(--card2);color:var(--lab2);
+               border-radius:16px;padding:9px 13px;font-family:var(--ui);font-size:13px;cursor:pointer}
+  .askbar{flex:0 0 auto;padding:8px 16px calc(env(safe-area-inset-bottom) + 14px);
+          background:linear-gradient(180deg,transparent,#000 24%)}
+  .askbar .row{display:flex;align-items:flex-end;gap:9px;background:var(--card);
+               border-radius:24px;padding:8px 8px 8px 17px}
+  .askbar textarea{flex:1;background:none;border:0;color:var(--lab);font-family:var(--ui);
+                   font-size:16px;line-height:1.4;resize:none;max-height:110px;padding:8px 0;outline:none}
+  .askbar .go{width:38px;height:38px;border-radius:50%;border:0;background:var(--blue);color:#fff;
+              font-size:16px;cursor:pointer;flex:0 0 auto}
+  .askbar .go:disabled{background:var(--card2);color:var(--lab3)}
+  .askbar .stop{width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,69,58,.2);
+                color:var(--red);font-size:13px;cursor:pointer;flex:0 0 auto}
+  .readonly{font-size:11.5px;color:var(--lab3);text-align:center;margin-top:9px;line-height:1.4}
+
+  .composer{position:sticky;bottom:0;padding:8px 20px calc(env(safe-area-inset-bottom) + 14px);
+            background:linear-gradient(180deg,transparent,#000 24%)}
+  .bar{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:24px;padding:13px 17px}
+  .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
+
+  .toast{position:fixed;left:50%;transform:translate(-50%,150%);bottom:90px;width:calc(100% - 40px);
+         max-width:400px;background:#2C2C2E;border-radius:14px;padding:14px 16px;font-size:14px;
+         line-height:1.4;transition:transform .3s cubic-bezier(.3,1.2,.5,1);z-index:9}
+  .toast.up{transform:translate(-50%,0)}
+  @media (prefers-reduced-motion:reduce){.toast,.trk i{transition:none}}
+  button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .off-note{background:#1E0E0E;border:1px solid rgba(255,69,58,.3);border-radius:14px;padding:14px;
+            font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:18px}
+  /* edit sheet — the correction is the highest-signal thing you produce,
+     so it needs somewhere real to be written */
+  .editor{margin-top:13px}
+  .editor textarea{width:100%;min-height:112px;background:#0B0B0E;border:1px solid rgba(10,132,255,.3);
+    border-radius:12px;padding:13px;color:var(--lab);font-family:var(--ui);font-size:15px;
+    line-height:1.45;resize:vertical;-webkit-appearance:none}
+  .editor textarea:focus{outline:none;border-color:var(--blue)}
+  .editor .diffnote{font-size:12px;color:var(--lab2);margin-top:9px;line-height:1.4}
+  .editor .diffnote b{color:var(--lab)}
+  .err{background:#1E0E0E;border:1px solid rgba(255,69,58,.35);border-radius:12px;padding:12px;
+       font-size:13px;line-height:1.45;color:#FFB4AE;margin-top:12px}
+  .err b{color:var(--red)}
+  .recheck{width:100%;margin-top:11px;border:0;border-radius:12px;padding:13px;
+           background:rgba(255,214,10,.16);color:var(--amber);font-family:var(--ui);
+           font-size:14.5px;font-weight:500;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="avatar"><svg viewBox="0 0 512 512" class="logo" aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><span class="on" id="live"></span></div>
+    <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
+    <button class="icobtn" id="refresh" aria-label="Refresh now">↻</button>
+  </header>
+
+  <main>
+    <div id="offline"></div>
+    <div class="lede" id="lede" role="status" aria-live="polite">…</div>
+    <div class="sub" id="lsub"></div>
+    <div class="chips" id="chips"></div>
+
+    <div class="sect" id="s-need">Needs a decision</div>
+    <div id="actions"></div>
+
+    <div class="sect">Didn't need you</div>
+    <div class="quiet" id="quiet">
+      <div class="head" id="qhead" role="button" tabindex="0" aria-expanded="false" aria-controls="qlist"><span class="n" id="qn">0</span>
+        <span class="l">handled overnight<small>nothing irreversible, all journalled</small></span>
+        <span class="c">›</span></div>
+      <div class="list" id="qlist"></div>
+    </div>
+
+    <div class="sect">Overnight</div>
+    <div class="runs" id="runs"></div>
+
+    <div class="sect">Health</div>
+    <div class="health" id="health"></div>
+    <div class="ctl">
+      <button id="reset">Reset</button>
+      <button id="sweep" class="go">Run the sweep</button>
+    </div>
+  </main>
+
+  <div class="composer"><div class="bar" id="openask" role="button" tabindex="0"><span style="color:var(--lab2)">+</span>
+    <span class="ph" id="ph">Ask about anything above</span><span style="color:var(--lab2)">🎙</span></div></div>
+</div>
+<div class="ask" id="ask" role="dialog" aria-modal="true" aria-label="Ask Blokk">
+  <div class="ah">
+    <button class="icobtn" id="askclose" aria-label="Close">&#10005;</button>
+    <h2>Ask Blokk</h2>
+    <span class="scope">READ-ONLY</span>
+  </div>
+  <div class="thread" id="thread">
+    <div class="sugg" id="sugg"></div>
+  </div>
+  <div class="askbar"><div class="row">
+    <textarea id="qbox" rows="1" placeholder="Ask about anything above"
+              aria-label="Ask Blokk a question"></textarea>
+    <button class="go" id="qgo" aria-label="Send">&#8593;</button>
+  </div>
+  <div class="readonly">It can read your journal, queue and memory. It cannot send anything.</div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="sr" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
+
+<script>
+const API = location.origin;                 // served by the control plane
+
+// Auth. Loopback needs nothing; the phone arrives with ?t= once, and we
+// keep it so the home-screen icon works forever after. Removed from the URL
+// immediately — a token in the address bar ends up in screenshots.
+const TOKEN = (()=>{
+  const u = new URLSearchParams(location.search).get('t');
+  try{
+    if(u){ localStorage.setItem('blokk-token', u);
+           history.replaceState({}, '', location.pathname); return u; }
+    return localStorage.getItem('blokk-token') || '';
+  }catch{ return u || ''; }          // private mode: hold it in memory only
+})();
+const AUTH = TOKEN ? {'X-Blokk-Token': TOKEN} : {};
+const $ = s => document.querySelector(s);
+const el = h => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+const esc = s => String(s??'').replace(/[&<>"']/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const WCOL = {cottages:'var(--blue)',biz2:'var(--purple)',biz3:'#FF9F0A',personal:'var(--cyan)'};
+
+const TIMEOUT = 8000;
+function withTimeout(ms=TIMEOUT){
+  // AbortSignal.timeout is not everywhere yet; this works on any Safari.
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms);
+  return {signal:c.signal, done:()=>clearTimeout(t)};
+}
+async function get(p){
+  const t=withTimeout();
+  try{
+    const r=await fetch(API+p,{cache:'no-store',headers:AUTH,signal:t.signal});
+    if(!r.ok) throw new Error(r.status);
+    return await r.json();
+  } finally { t.done(); }
+}
+async function post(p,b={}){
+  const t=withTimeout(12000);
+  const r=await fetch(API+p,{method:'POST',
+    headers:{'Content-Type':'application/json',...AUTH},
+    body:JSON.stringify(b),signal:t.signal}).finally(()=>t.done());
+  const j=await r.json().catch(()=>({}));
+  // A failed write must not render as a successful one. Before this, a 500
+  // left res.blocked undefined, the success branch ran, and the card greyed
+  // out as though the email had gone.
+  if(!r.ok){ const e=new Error(j.error||('HTTP '+r.status)); e.status=r.status; e.payload=j; throw e; }
+  return j;
+}
+
+function toast(m){ const t=$('#toast'); t.innerHTML=m; t.classList.add('up');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('up'),3600); }
+
+let ver = -1, busy = false;
+
+async function tick(force){
+  try{
+    const h = await get('/api/v1/health');
+    $('#live').classList.remove('off');
+    $('#offline').innerHTML = '';
+    if(h.version === ver && !force) { paintHealth(h); return; }   // nothing changed
+    ver = h.version;
+    // Partial failure is not offline. Health answered, so the Mac is there;
+    // degrade the section that failed rather than blanking the screen.
+    const [ap, handled, runs] = await Promise.all([
+      get('/api/v1/approvals').catch(()=>null),
+      get('/api/v1/handled').catch(()=>[]),
+      get('/api/v1/runs').catch(()=>[])
+    ]);
+    if(ap===null){
+      $('#offline').innerHTML = `<div class="off-note"><b>Queue unavailable.</b>
+        Everything else loaded, so the Mac is up. Nothing has been decided —
+        pull to refresh in a moment.</div>`;
+      paint(h, [], handled, runs);
+      return;
+    }
+    paint(h, ap, handled, runs);
+  }catch(e){
+    $('#live').classList.add('off');
+    if(String(e.message)==='401'){
+      $('#whosub').textContent = 'not paired';
+      $('#offline').innerHTML = `<div class="off-note"><b>This device isn't paired.</b>
+        Open the link the Mac printed — the one ending in <code>?t=…</code> — once, and it is
+        remembered. Nothing is wrong with the Mac.</div>`;
+      return;
+    }
+    $('#whosub').textContent = 'can\'t reach the Mac';
+    $('#offline').innerHTML = `<div class="off-note"><b>Offline.</b> The Mac may be asleep or off the network.
+      Nothing is lost — suspended runs keep their state on disk and pick up where they stopped.</div>`;
+  }
+}
+
+function paint(h, ap, handled, runs){
+  const open = ap.length;
+  $('#whosub').textContent = `${runs.length} run${runs.length===1?'':'s'} · ${h.suspended} parked`;
+  $('#lede').textContent = open===0 ? 'Nothing needs you.'
+    : open===1 ? 'One thing needs you.' : `${open} things need you.`;
+  $('#lsub').textContent = open===0
+    ? 'That is the target state, not an empty screen. Put the phone down.'
+    : "Everything else is done, filed, or waiting on someone who isn't you.";
+  $('#s-need').style.display = open ? '' : 'none';
+
+  // A row written by an older build should not take the screen with it.
+  const res = r => { try { return JSON.parse(r.result||'{}')||{}; } catch { return {}; } };
+  const flagged = runs.reduce((n,r)=>n + (res(r).flagged||0), 0);
+  const filed   = runs.reduce((n,r)=>n + (res(r).filed||0), 0);
+  $('#chips').innerHTML = [
+    {t:`Read ${filed+flagged} messages`, ok:true},
+    {t:`Filed ${filed}`, ok:true},
+    {t:flagged?`Quarantined ${flagged}`:'Nothing quarantined', ok:!flagged},
+    {t:'Rates · cached pages', ok:false}
+  ].map(c=>`<span class="chip ${c.ok?'':'warn'}"><span class="t">${c.ok?'✓':'!'}</span>${esc(c.t)}</span>`).join('');
+
+  const wrap = $('#actions'); wrap.innerHTML='';
+  ap.forEach(a=>{
+    const glyph = a.pinned ? {g:'✱',c:'var(--amber)'} : {g:'✉',c:'var(--green)'};
+    const card = el(`<div class="action ${a.pinned?'hold':''} ${a.stale?'stale':''}">
+      <div class="top"><span class="glyph" style="background:${glyph.c}">${glyph.g}</span>
+        <span class="txt">${esc(a.body)}</span></div>
+      <div class="why">${esc(a.title)}${a.evidence.freshness?' · <em>'+esc(a.evidence.freshness)+'</em>':''}
+        ${a.stale?'<br><em>Facts changed since drafting — will be re-checked at send.</em>':''}</div>
+      <div class="pair">
+        <button data-d="${a.pinned?'reject':'edit'}">${a.pinned?'Later':'Edit'}</button>
+        <button data-d="approve" class="yes">${a.pinned?'Open thread':'Approve'}</button>
+      </div></div>`);
+    const enable = on => card.querySelectorAll('.pair button').forEach(x=>x.disabled=!on);
+    const send = async (decision, edited_body)=>{
+      enable(false);
+      card.querySelectorAll('.err').forEach(n=>n.remove());
+      try{
+        const res = await post(`/api/v1/approvals/${a.id}/decide`,{decision, edited_body});
+        const s = el('<div class="settled"></div>');
+        if(res.blocked==='stale'){
+          s.innerHTML = `<b style="color:var(--red)">Blocked.</b> ${esc(res.detail)}`;
+          card.append(s);
+          // A stale item used to be a dead end — reject or ignore. Now you can
+          // ask it to look again.
+          const rb = el('<button class="recheck">Check again against live data</button>');
+          rb.onclick = async ()=>{
+            rb.disabled=true; rb.textContent='Checking…';
+            try{
+              const r2 = await post(`/api/v1/approvals/${a.id}/recheck`);
+              rb.textContent = r2.still_valid ? 'Still valid — approve again' : 'No longer valid';
+              rb.disabled = !r2.still_valid;
+              if(r2.still_valid) rb.onclick = ()=>send('approve', null);
+            }catch(e){ rb.remove(); card.append(errNode(e)); }
+          };
+          card.append(rb); enable(true); return;
+        }
+        card.classList.add('gone');
+        s.innerHTML = res.now_autonomous
+          ? `<b>${esc(res.category.replace(/_/g,' '))} now acts alone.</b> It will stop appearing here.`
+          : `${esc(res.category.replace(/_/g,' '))} · ${esc(res.trust)}`;
+        if(decision!=='approve') s.innerHTML += `<br>Filed as an episode — consolidation reads the diff.`;
+        if(res.run_resumed) s.innerHTML += `<br>Run resumed at the line it stopped on.`;
+        card.append(s);
+        announce(`${a.category.replace(/_/g,' ')} ${decision}d`);
+        setTimeout(()=>tick(true), 900);
+      }catch(e){
+        // Nothing happened. Say so, and give the buttons back.
+        card.append(errNode(e)); enable(true);
+      }
+    };
+    const errNode = e => el(`<div class="err"><b>Not done.</b> ${esc(e.message)}.
+      Nothing was sent — the item is still in the queue. ${e.status>=500
+        ? 'The Mac may be under load; try again in a moment.'
+        : 'Pull to refresh and check it is still there.'}</div>`);
+
+    card.querySelectorAll('button').forEach(b=>{
+      b.onclick = ()=>{
+        if(b.dataset.d==='approve') return send('approve', null);
+        if(a.pinned) return send('reject', null);
+        // Real edit: show the draft, let it be changed, send what you wrote.
+        if(card.querySelector('.editor')) return;
+        enable(false);
+        const ed = el(`<div class="editor">
+          <textarea aria-label="Edit the draft before sending">${esc(a.body)}</textarea>
+          <div class="diffnote">What you change here is the signal.
+            <b>Three similar corrections become a rule</b> at the next consolidation.</div>
+          <div class="pair">
+            <button data-x="cancel">Cancel</button>
+            <button data-x="save" class="yes">Send my version</button>
+          </div></div>`);
+        const ta = ed.querySelector('textarea');
+        ed.querySelector('[data-x="cancel"]').onclick = ()=>{ ed.remove(); enable(true); };
+        ed.querySelector('[data-x="save"]').onclick = ()=>{
+          const v = ta.value.trim();
+          if(!v || v===a.body){ ed.remove(); enable(true);
+            return send('approve', null); }        // unchanged is an approval, not an edit
+          ed.remove(); send('edit', v);
+        };
+        card.append(ed);
+        ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+      };
+    });
+    wrap.append(card);
+  });
+
+  $('#qn').textContent = handled.length;
+  $('#qlist').innerHTML = handled.length
+    ? handled.map(q=>`<div class="qi"><span class="dot" style="background:${WCOL[q.ws]||'var(--lab3)'}"></span>
+        <span class="t">${esc(q.title||q.category)}<small>${esc((q.body||'').slice(0,72))}</small></span>
+        <span class="m">${esc(q.decision)}</span></div>`).join('')
+    : `<div class="qi"><span class="t" style="color:var(--lab3)">Nothing yet. Run the sweep, then decide something.</span></div>`;
+
+  $('#runs').innerHTML = runs.map(r=>{
+    const c = r.status==='suspended'?'var(--blue)':r.status==='done'?'var(--green)':'var(--red)';
+    return `<div class="run"><div class="w"><span class="dot" style="background:${WCOL[r.workspace_id]}"></span>${esc(r.workspace_id)}</div>
+      <div class="st" style="color:${c}">${r.status==='suspended'?'parked':esc(r.status)}</div>
+      <div class="lb">${r.steps} STEPS · ${r.writes} WRITE${r.writes===1?'':'S'}</div></div>`;
+  }).join('') || '<div class="run"><div class="lb">NO RUNS YET</div></div>';
+
+  paintHealth(h);
+}
+
+function paintHealth(h){
+  const a=h.attention_budget, sp=h.spend[0]||{tokens:0,max_tokens:4000000};
+  $('#health').innerHTML = `
+    <div class="hrow"><span class="k">Your attention</span>
+      <span class="trk"><i style="width:${Math.min(100,a.used/a.limit*100)}%;background:${a.used>a.limit?'var(--red)':a.used>5?'var(--amber)':'var(--green)'}"></i></span>
+      <span class="v">${a.used} / ${a.limit}</span></div>
+    <div class="hrow"><span class="k">Parked runs</span>
+      <span class="trk"><i style="width:${Math.min(100,h.suspended*25)}%;background:var(--blue)"></i></span>
+      <span class="v">${h.suspended} · 0 tok/hr</span></div>
+    <div class="hrow"><span class="k">Day budget</span>
+      <span class="trk"><i style="width:${Math.min(100,sp.tokens/sp.max_tokens*100)}%;background:var(--lab2)"></i></span>
+      <span class="v">${(sp.tokens/1000).toFixed(0)}k / 4M</span></div>
+    <div class="hrow"><span class="k">Side effects</span>
+      <span class="trk"><i style="width:${Math.min(100,h.handled*8)}%;background:var(--amber)"></i></span>
+      <span class="v">${h.handled} journalled</span></div>`;
+}
+
+function toggleQuiet(){
+  const open = $('#quiet').classList.toggle('open');
+  $('#qhead').setAttribute('aria-expanded', String(open));
+}
+$('#qhead').onclick = toggleQuiet;
+$('#qhead').onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleQuiet(); } };
+$('#refresh').onclick = ()=> tick(true);
+$('#sweep').onclick = async e=>{
+  if(busy) return; busy=true; e.target.disabled=true; e.target.textContent='Sweeping…';
+  const r = await post('/api/v1/sweep').catch(e=>({error:e.message}));
+  if(r.error) toast(`<b>Sweep failed.</b> ${esc(r.error)}`);
+  else if(!r.started.length)
+    toast(`<b>Already swept today.</b> ${r.already_swept_today.length} workspaces have run —
+      nothing re-queued, so nobody gets a second reply.`);
+  else toast(`Swept ${r.started.length} workspace${r.started.length===1?'':'s'}${
+    r.already_swept_today.length?', '+r.already_swept_today.length+' already done':''}.
+    Every write is queued, nothing sent.`);
+  e.target.disabled=false; e.target.textContent='Run the sweep'; busy=false; tick(true);
+};
+$('#reset').onclick = async ()=>{
+  await post('/api/v1/reset');
+  toast('Runs cleared. <b>Trust and learned facts kept</b> — otherwise you could never watch them move.');
+  tick(true);
+};
+
+// Screen-reader announcements. Without this the count changes silently.
+function announce(msg){ const r=$('#sr'); if(r) r.textContent=msg; }
+
+
+/* ── Ask ────────────────────────────────────────────────────────────────────
+   POST returns an SSE stream directly. EventSource can't do POST and would
+   auto-reconnect mid-answer, replaying a turn you already read — so we read
+   the body with fetch and render AG-UI events as they land.
+   ───────────────────────────────────────────────────────────────────────── */
+const SUGG = ['What needs me?', "What did it handle without me?",
+              'Anything close to acting alone?', 'What has it learned?'];
+let asking = null;   // AbortController while a turn is in flight
+
+function openAsk(seed){
+  $('#ask').classList.add('on');
+  document.body.style.overflow='hidden';
+  const sg=$('#sugg');
+  if(sg && !sg.children.length){
+    SUGG.forEach(s=>{
+      const b=document.createElement('button'); b.textContent=s;
+      b.onclick=()=>send(s); sg.append(b);
+    });
+  }
+  if(seed) $('#qbox').value = seed;
+  setTimeout(()=>$('#qbox').focus(), 60);
+}
+function closeAsk(){
+  $('#ask').classList.remove('on'); document.body.style.overflow='';
+  if(asking){ asking.abort(); asking=null; }
+}
+$('#openask').onclick = ()=>openAsk();
+$('#openask').onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();openAsk();} };
+$('#askclose').onclick = closeAsk;
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#ask').classList.contains('on')) closeAsk(); });
+
+const qbox = $('#qbox');
+qbox.addEventListener('input', ()=>{
+  qbox.style.height='auto'; qbox.style.height=Math.min(110,qbox.scrollHeight)+'px';
+  $('#qgo').disabled = !qbox.value.trim();
+});
+qbox.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); if(qbox.value.trim()) send(qbox.value.trim()); }
+});
+$('#qgo').disabled = true;
+$('#qgo').onclick = ()=>{ if(qbox.value.trim()) send(qbox.value.trim()); };
+
+async function send(q){
+  if(asking) return;                       // one turn at a time
+  // B5: hide, don't destroy — the suggestions come back on a fresh thread.
+  const s=$('#sugg'); if(s) s.style.display='none';
+  qbox.value=''; qbox.style.height='auto'; $('#qgo').disabled=true;
+
+  const th=$('#thread');
+  th.append(el(`<div class="q">${esc(q)}</div>`));
+  const steps=el('<div class="steps"></div>');
+  const ans=el('<div class="a"><span class="cursor"></span></div>');
+  th.append(steps, ans);
+  th.scrollTop=th.scrollHeight;
+
+  // swap send for stop while streaming
+  const go=$('#qgo'); go.style.display='none';
+  const stop=el('<button class="stop" aria-label="Stop">&#9632;</button>');
+  stop.onclick=()=>{ if(asking) asking.abort(); };
+  go.parentNode.append(stop);
+
+  asking = new AbortController();
+  let text='';
+  try{
+    const r = await fetch(API+'/api/v1/ask',{method:'POST',
+      headers:{'Content-Type':'application/json',...AUTH},
+      body:JSON.stringify({q}), signal:asking.signal});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+
+    const reader=r.body.getReader(), dec=new TextDecoder();
+    let buf='';
+    for(;;){
+      const {value,done}=await reader.read(); if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const frames = buf.split('\n\n'); buf = frames.pop();
+      for(const f of frames){
+        const line = f.split('\n').find(l=>l.startsWith('data: '));
+        if(!line) continue;
+        const ev = JSON.parse(line.slice(6));
+        if(ev.type==='TOOL_CALL_START'){
+          steps.append(el(`<span class="step live" data-t="${esc(ev.name)}">
+            <span class="n">&#9679;</span>${esc(ev.name.replace(/_/g,' '))}</span>`));
+          th.scrollTop=th.scrollHeight;
+        }
+        if(ev.type==='TOOL_CALL_END'){
+          const c=steps.querySelector(`[data-t="${ev.name}"]`);
+          if(c){ c.classList.remove('live');
+                 c.innerHTML=`<span class="n">${ev.rows}</span>${esc(ev.name.replace(/_/g,' '))}`; }
+        }
+        if(ev.type==='TEXT_MESSAGE_CONTENT'){
+          text+=ev.delta;
+          ans.innerHTML=esc(text)+'<span class="cursor"></span>';
+          th.scrollTop=th.scrollHeight;
+        }
+        if(ev.type==='TEXT_MESSAGE_END') ans.innerHTML=esc(text);
+        if(ev.type==='PROPOSAL'){
+          th.append(el(`<div class="prop"><div class="pl">Proposal &middot; queued</div>
+            <div class="pb">${esc(ev.text)}</div>
+            <div class="pn">${esc(ev.note||'')} It is in the queue with everything else —
+            nothing has been sent.</div></div>`));
+          setTimeout(()=>tick(true), 400);
+          announce('Proposal queued');
+        }
+        if(ev.type==='RUN_FINISHED' && ev.budget_left!==undefined && ev.budget_left<20){
+          th.append(el(`<div class="readonly" style="text-align:left;margin:2px 0 16px">
+            ${ev.budget_left} question${ev.budget_left===1?'':'s'} left in today's allowance.</div>`));
+        }
+        if(ev.type==='RUN_ERROR'){
+          ans.innerHTML = esc(text) + `<div class="err"><b>Stopped early.</b> ${esc(ev.message)}.
+            The answer above may be incomplete.</div>`;
+        }
+        if(ev.type==='SOURCES' && ev.rows.length){
+          const n=ev.rows.reduce((t,x)=>t+x.count,0);
+          th.append(el(`<div class="readonly" style="text-align:left;margin:2px 0 18px">
+            Read ${n} row${n===1?'':'s'} from ${ev.rows.length} source${ev.rows.length===1?'':'s'}.
+            Nothing outside this database was touched.</div>`));
+        }
+      }
+    }
+    ans.innerHTML=esc(text);
+  }catch(e){
+    ans.innerHTML = e.name==='AbortError'
+      ? esc(text)+'<div class="readonly" style="text-align:left;margin-top:8px">Stopped.</div>'
+      : `<div class="err"><b>Couldn't ask.</b> ${esc(e.message)}. The Mac may be asleep —
+         nothing was sent either way.</div>`;
+  }finally{
+    asking=null; stop.remove(); go.style.display='';
+    $('#qgo').disabled=!qbox.value.trim();
+    th.scrollTop=th.scrollHeight;
+  }
+}
+
+tick(true);
+// Mac and phone stay in step without holding a socket. Paused when hidden —
+// a backgrounded tab polling every 4s keeps the phone's radio awake for
+// nothing, and the first thing you do on returning is a fresh fetch anyway.
+let poll = setInterval(tick, 4000);
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ clearInterval(poll); poll=null; }
+  else if(!poll){ tick(true); poll = setInterval(tick, 4000); }
+});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>

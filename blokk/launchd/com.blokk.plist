@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.blokk</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <!-- edit this path -->
+    <string>cd "$HOME/blokk" &amp;&amp; ./run.sh 8080</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/blokk.log</string>
+  <key>StandardErrorPath</key><string>/tmp/blokk.err</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BLOKK_SMALL_URL</key><string>http://127.0.0.1:8081/v1</string>
+    <key>BLOKK_LARGE_URL</key><string>http://127.0.0.1:8082/v1</string>
+  </dict>
+</dict>
+</plist>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Blokk">
+  <g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#FFFFFF"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#8E8E93"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#FFFFFF"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#8E8E93"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#FFFFFF"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#8E8E93"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#FFFFFF"/>
+  </g>
+</svg>

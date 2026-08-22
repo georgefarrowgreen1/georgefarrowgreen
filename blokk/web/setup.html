@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#000000"><title>Blokk — setup</title>
+<style>
+  :root{
+    --void:#08080A;--card:#141416;--card2:#1C1C1E;--hair:rgba(235,235,245,.09);
+    --lab:#F5F5F7;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.30);
+    --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--void);color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+  .page{max-width:760px;margin:0 auto;padding:38px 24px 90px}
+
+  header{display:flex;align-items:center;gap:15px;margin-bottom:34px}
+  header svg{width:44px;height:44px}
+  header h1{font-size:23px;font-weight:600;margin:0;letter-spacing:-.02em}
+  header p{margin:3px 0 0;font-size:14px;color:var(--lab2)}
+
+  .steps{display:flex;gap:6px;margin-bottom:30px}
+  .steps div{flex:1;height:3px;border-radius:2px;background:rgba(235,235,245,.1)}
+  .steps div.on{background:var(--blue)}
+  .steps div.done{background:var(--green)}
+
+  h2{font-size:26px;font-weight:600;letter-spacing:-.025em;margin:0 0 8px}
+  .lead{font-size:15.5px;line-height:1.5;color:var(--lab2);margin:0 0 26px;max-width:60ch}
+  .lead b{color:var(--lab);font-weight:600}
+
+  .box{background:var(--card);border:1px solid var(--hair);border-radius:16px;padding:18px}
+  .box+.box{margin-top:9px}
+  .mono{font-family:var(--mono)}
+
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+  th{text-align:right;font-weight:500;color:var(--lab3);padding:0 0 9px;font-size:10px;
+     letter-spacing:.1em;text-transform:uppercase}
+  th:first-child{text-align:left}
+  td{padding:7px 0;border-top:1px solid var(--hair);text-align:right;color:var(--lab2)}
+  td:first-child{text-align:left;color:var(--lab);font-family:var(--ui);font-size:13.5px}
+  tr.no td{opacity:.34}
+  .v{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:5px}
+  .v.ok{background:rgba(48,209,88,.15);color:var(--green)}
+  .v.slow{background:rgba(255,214,10,.14);color:var(--amber)}
+  .v.no{background:rgba(255,69,58,.14);color:var(--red)}
+
+  .cards{display:grid;gap:10px}
+  .card-opt{background:var(--card);border:1.5px solid var(--hair);border-radius:16px;
+            padding:17px 18px;cursor:pointer;transition:border-color .15s,background .15s}
+  .card-opt:hover{border-color:rgba(235,235,245,.2)}
+  .card-opt[aria-pressed="true"]{border-color:var(--blue);background:rgba(10,132,255,.07)}
+  .card-opt .t{display:flex;align-items:baseline;gap:10px}
+  .card-opt .t h3{font-size:16.5px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .card-opt .t .sz{font-family:var(--mono);font-size:11px;color:var(--lab3);margin-left:auto}
+  .card-opt .sub{font-size:13px;color:var(--lab2);margin-top:2px}
+  .card-opt .det{font-size:13px;line-height:1.45;color:var(--lab2);margin-top:9px}
+  .card-opt.tight{opacity:.5}
+  .card-opt .warnrow{font-size:12.5px;color:var(--amber);margin-top:9px}
+
+  .tier{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-top:1px solid var(--hair)}
+  .tier:first-child{border-top:0;padding-top:0}
+  .tier .badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+               padding:4px 8px;border-radius:6px;flex:0 0 auto;margin-top:2px}
+  .badge.llama{background:rgba(255,159,10,.15);color:#FF9F0A}
+  .badge.mlx{background:rgba(191,90,242,.16);color:var(--purple)}
+  .tier .body{flex:1;min-width:0}
+  .tier .body .m{font-size:14.5px}
+  .tier .body .w{font-size:12.5px;color:var(--lab2);margin-top:4px;line-height:1.45}
+  .tier .st{font-family:var(--mono);font-size:10px;color:var(--lab3);flex:0 0 auto;margin-top:4px}
+  .tier .st.up{color:var(--green)}
+
+  button.go{border:0;border-radius:12px;padding:14px 26px;font-family:var(--ui);font-size:15.5px;
+            font-weight:500;background:var(--blue);color:#fff;cursor:pointer}
+  button.ghost{background:var(--card2);color:var(--lab)}
+  button.go:disabled{opacity:.35;cursor:default}
+  .row{display:flex;gap:10px;align-items:center;margin-top:24px}
+  .row .spacer{flex:1}
+  .hint{font-size:12.5px;color:var(--lab3);line-height:1.5}
+
+  pre.log{background:#0B0B0E;border:1px solid var(--hair);border-radius:14px;padding:14px;
+          font-family:var(--mono);font-size:11px;line-height:1.55;color:var(--lab2);
+          max-height:260px;overflow:auto;margin:14px 0 0;white-space:pre-wrap;word-break:break-all}
+  pre.log .err{color:#FF9A93}
+  pre.log .ok{color:var(--green)}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.2);
+        border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.spin{animation:none}}
+  .pane{display:none}.pane.on{display:block}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--card2);padding:2px 6px;border-radius:5px}
+  button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+</style></head>
+<body><div class="page">
+
+  <header>
+    <svg viewBox="0 0 512 512"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg>
+    <div><h1>Blokk</h1><p id="sub">Setting up</p></div>
+  </header>
+
+  <div class="steps"><div id="s1" class="on"></div><div id="s2"></div><div id="s3"></div><div id="s4"></div></div>
+
+  <!-- 1 — machine -->
+  <div class="pane on" id="p1">
+    <h2>This Mac</h2>
+    <p class="lead" id="machine">Reading the hardware…</p>
+    <div class="box"><table id="models"><tbody></tbody></table></div>
+    <p class="hint" style="margin-top:14px">Sized for five workers at 40k context each.
+      <b style="color:var(--lab2)">Your ceiling is cache, not model size</b> — the kv column is
+      what fills the machine, and it grows with workers and context, not with the weights.</p>
+    <div class="row"><div class="spacer"></div><button class="go" id="to2">Choose a model</button></div>
+  </div>
+
+  <!-- 2 — model -->
+  <div class="pane" id="p2">
+    <h2>Which model</h2>
+    <p class="lead">One is enough to start. Two tiers is a real optimisation —
+      most agent work is triage and does not need a big model — but it is a second
+      server to keep alive, so reach for it once you have measured your own mix.</p>
+    <div class="cards" id="shapes"></div>
+    <div class="row"><button class="go ghost" id="back2">Back</button><div class="spacer"></div>
+      <button class="go" id="to3" disabled>Continue</button></div>
+  </div>
+
+  <!-- 3 — backends -->
+  <div class="pane" id="p3">
+    <h2>Backends</h2>
+    <p class="lead">Blokk speaks the OpenAI API, so llama.cpp and MLX are just ports —
+      it can run <b>both at once</b>, one per tier. Here is what it picked and why.</p>
+    <div class="box" id="plan"></div>
+    <p class="hint" style="margin-top:14px">A suggestion, not a verdict — the numbers behind it
+      were measured on other people's Macs. Once running, <code>bench.py --compare</code>
+      settles it on yours.</p>
+    <div class="row"><button class="go ghost" id="back3">Back</button><div class="spacer"></div>
+      <button class="go" id="to4">Install and start</button></div>
+  </div>
+
+  <!-- 4 — go -->
+  <div class="pane" id="p4">
+    <h2 id="h4">Starting</h2>
+    <p class="lead" id="lead4">The first start downloads the weights. That is a one-off, and the
+      progress below is the downloader's own output rather than a bar we invented.</p>
+    <div class="box" id="tierstatus"></div>
+    <pre class="log" id="log"></pre>
+    <div class="row"><div class="spacer"></div>
+      <button class="go" id="open" style="display:none">Open Blokk</button></div>
+  </div>
+
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const el=h=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild;};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const get=async p=>{const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();};
+const post=async(p,b={})=>{const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify(b)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;};
+
+let STATE=null, SHAPE=null, PLAN=null;
+
+function step(n){
+  ['p1','p2','p3','p4'].forEach((p,i)=>$('#'+p).classList.toggle('on',i===n-1));
+  [1,2,3,4].forEach(i=>{const d=$('#s'+i);d.className=i<n?'done':i===n?'on':'';});
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+(async function boot(){
+  STATE=await get('/api/v1/setup/state');
+  const m=STATE.machine;
+  $('#machine').innerHTML=`<b>${esc(m.brand)}</b><br>${m.ram_gb} GB unified memory ·
+    about ${m.bandwidth} GB/s · <b>${m.usable_gb} GB usable</b> once macOS and everything
+    else has its share.`;
+  $('#sub').textContent=`${m.chip} · ${m.ram_gb} GB`;
+  $('#models').innerHTML=`<thead><tr><th>model</th><th>weights</th><th>kv</th><th>total</th>
+    <th>tok/s</th><th></th></tr></thead><tbody>`+STATE.models.map(r=>{
+      const v=!r.fits?['no','no fit']:r.batched<18?['slow','sluggish']:['ok','fits'];
+      return `<tr class="${r.fits?'':'no'}"><td>${esc(r.name)}</td>
+        <td>${r.weights}G</td><td>${r.kv}G</td><td>${r.total}G</td>
+        <td>${r.tps}</td><td><span class="v ${v[0]}">${v[1]}</span></td></tr>`;
+    }).join('')+`</tbody>`;
+
+  $('#shapes').innerHTML='';
+  STATE.shapes.forEach(s=>{
+    const tight=s.gb+13>STATE.machine.usable_gb;
+    const c=el(`<div class="card-opt ${tight?'tight':''}" role="button" tabindex="0"
+        aria-pressed="false" data-id="${s.id}">
+      <div class="t"><h3>${esc(s.title)}</h3><span class="sz">~${s.gb}GB</span></div>
+      <div class="sub">${esc(s.sub)}</div>
+      <div class="det">${esc(s.detail)}</div>
+      ${tight?'<div class="warnrow">Tight on this Mac once cache is counted.</div>':''}
+    </div>`);
+    const choose=()=>{
+      SHAPE=s.id;
+      document.querySelectorAll('.card-opt').forEach(x=>
+        x.setAttribute('aria-pressed',String(x.dataset.id===s.id)));
+      $('#to3').disabled=false;
+    };
+    c.onclick=choose;
+    c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose();}};
+    $('#shapes').append(c);
+  });
+})();
+
+$('#to2').onclick=()=>step(2);
+$('#back2').onclick=()=>step(1);
+$('#back3').onclick=()=>step(2);
+
+$('#to3').onclick=async()=>{
+  PLAN=(await post('/api/v1/setup/plan',{shape:SHAPE,slots:4,ctx:32768})).tiers;
+  $('#plan').innerHTML=PLAN.map(t=>`<div class="tier">
+    <span class="badge ${t.backend==='mlx'?'mlx':'llama'}">${esc(t.backend)}</span>
+    <div class="body"><div class="m">${esc(t.model)} <span style="color:var(--lab3);
+      font-family:var(--mono);font-size:11px">:${t.port}</span></div>
+      <div class="w">${esc(t.why)}</div></div>
+    <span class="st" id="st-${t.tier}">${STATE.installed[t.backend]?'ready':'to install'}</span>
+  </div>`).join('');
+  step(3);
+};
+
+function logLine(txt,cls){
+  const p=$('#log'); const atBottom=p.scrollTop+p.clientHeight>=p.scrollHeight-30;
+  p.insertAdjacentHTML('beforeend',(cls?`<span class="${cls}">`:'')+esc(txt)+(cls?'</span>':'')+'\n');
+  if(atBottom) p.scrollTop=p.scrollHeight;
+}
+
+async function stream(path,body,onEvent){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const rd=r.body.getReader(),dec=new TextDecoder(); let buf='';
+  for(;;){
+    const {value,done}=await rd.read(); if(done) break;
+    buf+=dec.decode(value,{stream:true});
+    const frames=buf.split('\n\n'); buf=frames.pop();
+    for(const f of frames){
+      const line=f.split('\n').find(l=>l.startsWith('data: '));
+      if(line) onEvent(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
+$('#to4').onclick=async()=>{
+  step(4);
+  $('#to4').disabled=true;
+  $('#tierstatus').innerHTML=PLAN.map(t=>`<div class="tier">
+    <span class="badge ${t.backend==='mlx'?'mlx':'llama'}">${esc(t.backend)}</span>
+    <div class="body"><div class="m">${esc(t.model)}</div>
+      <div class="w" id="w-${t.tier}">waiting</div></div>
+    <span class="st" id="s-${t.tier}"><span class="spin"></span></span></div>`).join('');
+
+  try{
+    // install anything missing, streaming the installer's own output
+    const need=[...new Set(PLAN.map(t=>t.backend))].filter(b=>!STATE.installed[b]);
+    for(const b of need){
+      logLine(`── installing ${b} ──`);
+      let failed=null;
+      await stream('/api/v1/setup/install',{backend:b},ev=>{
+        if(ev.type==='LOG') logLine(ev.line);
+        if(ev.type==='ERROR'){ failed=ev.message; logLine(ev.message,'err'); }
+        if(ev.type==='READY') logLine(`${b} installed`,'ok');
+      });
+      if(failed) throw new Error(failed);
+    }
+
+    // write the config before starting, so a crash mid-download is recoverable
+    await post('/api/v1/setup/write',{mode:'servers',tiers:PLAN,slots:4,ctx:32768});
+    logLine('blokk.conf written','ok');
+
+    for(const t of PLAN){
+      logLine(`── starting ${t.backend} for ${t.tier.toLowerCase()} on :${t.port} ──`);
+      $('#w-'+t.tier).textContent='starting';
+      let ok=false, err=null;
+      await stream('/api/v1/setup/start',{tier:t,slots:4,ctx:32768},ev=>{
+        if(ev.type==='STARTED') logLine('$ '+ev.command);
+        if(ev.type==='LOG'){ logLine(ev.line);
+          $('#w-'+t.tier).textContent=ev.line.slice(0,72); }
+        if(ev.type==='READY'){ ok=true;
+          $('#s-'+t.tier).outerHTML=`<span class="st up" id="s-${t.tier}">up</span>`;
+          $('#w-'+t.tier).textContent=`answering on :${t.port}`;
+          logLine(`${t.tier.toLowerCase()} tier is up`,'ok'); }
+        if(ev.type==='ERROR'){ err=ev.message; logLine(ev.message,'err');
+          if(ev.log) logLine(ev.log,'err'); }
+      });
+      if(!ok) throw new Error(err||'did not come up');
+    }
+
+    $('#h4').textContent='Ready';
+    $('#lead4').innerHTML='Everything is up and <code>blokk.conf</code> is written, so '
+      +'<code>./run.sh</code> will start all of this by itself next time.';
+    $('#open').style.display='';
+  }catch(e){
+    $('#h4').textContent='Stopped';
+    $('#lead4').innerHTML=`<b style="color:var(--red)">${esc(e.message)}</b><br>
+      Nothing is half-configured — <code>blokk.conf</code> is written, so you can fix the
+      cause and run <code>./run.sh</code>, or reload this page to change the plan.`;
+    logLine('--- stopped ---','err');
+  }
+};
+
+$('#open').onclick=()=>{ location.href='/'; };
+</script>
+</body></html>

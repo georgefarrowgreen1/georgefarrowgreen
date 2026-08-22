@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blokk — identity</title>
+<style>
+  :root{
+    --void:#08080A; --panel:#111114; --hair:rgba(235,235,245,.09);
+    --lab:#F5F5F7; --lab2:rgba(235,235,245,.58); --lab3:rgba(235,235,245,.28);
+    --blue:#0A84FF; --green:#30D158; --amber:#FFD60A;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--void);color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+  .page{max-width:760px;margin:0 auto;padding:44px 22px 90px}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--lab3);margin:56px 0 16px}
+  .eyebrow:first-child{margin-top:0}
+  p.note{font-size:14px;line-height:1.6;color:var(--lab2);margin:14px 0 0;max-width:56ch}
+  p.note b{color:var(--lab);font-weight:600}
+
+  /* ── hero ─────────────────────────────────────────────── */
+  .hero{background:var(--panel);border:1px solid var(--hair);border-radius:26px;
+         padding:56px 30px 44px;text-align:center;position:relative;overflow:hidden}
+  .hero .big{width:210px;height:210px;margin:0 auto}
+  .hero .big #mark-pending{animation:drop 4.5s cubic-bezier(.34,1.3,.5,1) infinite}
+  @keyframes drop{
+    0%{transform:translateY(-96px);opacity:0}
+    16%{transform:translateY(-15px);opacity:1}
+    82%{transform:translateY(-15px);opacity:1}
+    92%{transform:translateY(-15px);opacity:1}
+    100%{transform:translateY(-96px);opacity:0}
+  }
+  @media (prefers-reduced-motion:reduce){ .hero .big #mark-pending{animation:none;transform:translateY(-15px)} }
+  .word{display:flex;align-items:center;justify-content:center;gap:.045em;margin-top:30px;
+         font-size:52px;font-weight:650;letter-spacing:-.045em;line-height:1}
+  .word .sq{width:.44em;height:.44em;background:var(--blue);
+             transform:rotate(45deg) scaleY(.62);margin:0 .13em;border-radius:2px}
+  .tag{font-size:15px;color:var(--lab2);margin-top:16px;letter-spacing:.01em}
+
+  /* ── grid ─────────────────────────────────────────────── */
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .cell{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--hair);
+         border-radius:20px;padding:22px;text-align:center}
+  .cell.light{background:#F5F5F7}
+  .cell .cap{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+              color:var(--lab3);margin-top:16px}
+  .cell.light .cap{color:#8E8E93}
+  .cell svg{width:76px;height:76px}
+
+  /* ── size ladder ──────────────────────────────────────── */
+  .ladder{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap;
+           background:var(--panel);border:1px solid var(--hair);border-radius:20px;padding:28px 24px 20px}
+  .ladder .s{text-align:center}
+  .ladder .s .n{font-family:var(--mono);font-size:9.5px;color:var(--lab3);margin-top:10px}
+
+  /* ── home screen ──────────────────────────────────────── */
+  .hs{background:linear-gradient(155deg,#1b2333 0%,#0f1420 42%,#241a2b 100%);
+       border-radius:34px;padding:34px 26px 30px;border:1px solid var(--hair)}
+  .hs .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 16px}
+  .app{text-align:center}
+  .app .sq{width:100%;aspect-ratio:1;border-radius:23%;display:grid;place-items:center;overflow:hidden;
+            box-shadow:0 5px 16px rgba(0,0,0,.45)}
+  .app .sq svg{width:100%;height:100%;display:block}
+  .app .nm{font-size:11px;color:#fff;margin-top:7px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .app.ghost .sq{background:rgba(255,255,255,.14)}
+  .app.ghost .nm{opacity:.65}
+
+  /* ── lockups ──────────────────────────────────────────── */
+  .lock{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--hair);
+         border-radius:18px;padding:22px 24px;margin-bottom:10px}
+  .lock svg{width:44px;height:44px;flex:0 0 auto}
+  .lock .w{display:flex;align-items:center;font-size:27px;font-weight:650;letter-spacing:-.04em}
+  .lock .w .sq{width:.44em;height:.44em;background:var(--blue);transform:rotate(45deg) scaleY(.62);
+                margin:0 .13em;border-radius:1.5px}
+  .lock.stack{flex-direction:column;gap:16px;padding:34px}
+  .lock.inv{background:#F5F5F7} .lock.inv .w{color:#0A0A0C}
+  .lock.inv .w .sq{background:#0A84FF}
+  .lock .role{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+               text-transform:uppercase;color:var(--lab3)}
+  .lock.inv .role{color:#8E8E93}
+
+  /* ── terminal ─────────────────────────────────────────── */
+  pre.term{background:#0B0B0E;border:1px solid var(--hair);border-radius:18px;padding:24px;
+            font-family:var(--mono);font-size:12px;line-height:1.5;color:var(--lab2);
+            overflow-x:auto;margin:0}
+  pre.term b{color:var(--blue);font-weight:400}
+  pre.term i{color:var(--lab);font-style:normal}
+
+  .swatches{display:flex;gap:10px;flex-wrap:wrap}
+  .sw{flex:1;min-width:110px;border-radius:16px;overflow:hidden;border:1px solid var(--hair)}
+  .sw .chip{height:66px}
+  .sw .m{padding:11px 13px;font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--lab2);background:var(--panel)}
+  .sw .m b{display:block;color:var(--lab);font-weight:500;letter-spacing:.04em}
+</style></head>
+<body><div class="page">
+
+  <div class="eyebrow">Blokk · identity</div>
+
+  <div class="hero">
+    <div class="big"><svg viewBox="0 0 512 512" class="" id="heromark" aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div>
+    <div class="word">BL<span class="sq"></span>KK</div>
+    <div class="tag">The one that holds things back.</div>
+  </div>
+
+  <p class="note">The mark is the journal, drawn. An append-only stack of slabs seen isometrically —
+  each one a completed step. <b>The top slab floats:</b> that's the step that's queued and waiting on you,
+  and the exposed blue face is the slot the next one drops into. At 16px it's a cube. At full size
+  it's a stack that isn't finished yet, which is the honest state of the system almost all the time.</p>
+
+  <div class="eyebrow">Backgrounds</div>
+  <div class="row">
+    <div class="cell"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><div class="cap">On dark · primary</div></div>
+    <div class="cell light"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#1C1C1E"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#48484A"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#1C1C1E"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#48484A"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#1C1C1E"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#48484A"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><div class="cap">On light</div></div>
+    <div class="cell"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#FFFFFF"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#8E8E93"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#FFFFFF"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#8E8E93"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#FFFFFF"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#8E8E93"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#FFFFFF"/>
+  </g></svg><div class="cap">Mono</div></div>
+    <div class="cell"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,0)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><div class="cap">Solid · under 20px</div></div>
+  </div>
+  <p class="note">The float is the first thing to go. Below about 20px the seam closes up and reads
+  as noise, so the solid cut drops the lift and tightens to a clean cube.</p>
+
+  <div class="eyebrow">Size ladder</div>
+  <div class="ladder">
+    <div class="s"><div style="width:96px"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="n">96</div></div>
+    <div class="s"><div style="width:64px"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="n">64</div></div>
+    <div class="s"><div style="width:40px"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="n">40</div></div>
+    <div class="s"><div style="width:28px"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,0)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="n">28 · solid</div></div>
+    <div class="s"><div style="width:20px"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,0)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="n">20 · solid</div></div>
+    <div class="s"><div style="width:16px"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,0)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="n">16 · favicon</div></div>
+  </div>
+
+  <div class="eyebrow">Home screen</div>
+  <div class="hs"><div class="grid">
+    <div class="app"><div class="sq" style="background:#0A0A0C"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg></div><div class="nm">Blokk</div></div>
+    <div class="app ghost"><div class="sq"></div><div class="nm">Mail</div></div>
+    <div class="app ghost"><div class="sq"></div><div class="nm">Calendar</div></div>
+    <div class="app ghost"><div class="sq"></div><div class="nm">Notes</div></div>
+  </div></div>
+  <p class="note">Near-white on true black. Most tools on a home screen are a coloured glyph on a coloured
+  field; a black tile reads as a hole in the grid, which is exactly the attention you want from something
+  you're meant to open once a day and close.</p>
+
+  <div class="eyebrow">Lockups</div>
+  <div class="lock"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,0)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><div class="w">BL<span class="sq"></span>KK</div><div class="role">Horizontal</div></div>
+  <div class="lock inv"><svg viewBox="0 0 512 512" class=""  aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#1C1C1E"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#48484A"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#1C1C1E"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#48484A"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#1C1C1E"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#48484A"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><div class="w">BL<span class="sq"></span>KK</div><div class="role">Inverted</div></div>
+  <div class="lock stack"><svg viewBox="0 0 512 512" class="" style="width:64px;height:64px" aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><div class="w">BL<span class="sq"></span>KK</div></div>
+  <p class="note">The <b>O is the block's top face</b> — same rhombus, same blue, same 45° at 0.62 vertical
+  scale. It's the one detail that ties the wordmark to the mark, and it means the name can be set without
+  the cube beside it and still be recognisably Blokk.</p>
+
+  <div class="eyebrow">Palette</div>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#0A0A0C"></div><div class="m"><b>VOID</b>#0A0A0C<br>ground</div></div>
+    <div class="sw"><div class="chip" style="background:#F5F5F7"></div><div class="m"><b>SLAB</b>#F5F5F7<br>lit face</div></div>
+    <div class="sw"><div class="chip" style="background:#A2A8B4"></div><div class="m"><b>SHADE</b>#A2A8B4<br>shaded face</div></div>
+    <div class="sw"><div class="chip" style="background:#0A84FF"></div><div class="m"><b>SLOT</b>#0A84FF<br>pending</div></div>
+    <div class="sw"><div class="chip" style="background:#FFD60A"></div><div class="m"><b>HELD</b>#FFD60A<br>manual only</div></div>
+  </div>
+  <p class="note">Amber is reserved. It appears on exactly one thing — a category pinned to manual —
+  so that when you do see it, it means something.</p>
+
+  <div class="eyebrow">Terminal</div>
+  <pre class="term">  <b>    ▄▟██▙▄    </b>
+  <b>  ▄▟███████▙▄  </b>   <i>Blokk</i>
+  <b>  ▜███████████▛  </b>
+    ███████████     on this Mac    http://localhost:8080
+    ███████████     on your phone  http://mac-studio.local:8080
+    ▜█████████▛
+      ▜█████▛       Resumed 0 runs, expired 0 waits. Ctrl-C to stop.</pre>
+
+  <div class="eyebrow">Files</div>
+  <pre class="term">brand/blokk-mark.svg        on dark, the primary
+brand/blokk-mark-light.svg  on light
+brand/blokk-mark-mono.svg   single colour
+brand/blokk-mark-solid.svg  no float, for small sizes
+brand/blokk-icon.svg        app icon, squircle baked in
+web/icon.svg                what the phone installs</pre>
+
+</div></body></html>

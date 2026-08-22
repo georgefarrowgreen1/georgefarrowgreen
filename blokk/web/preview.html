@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>Blokk</title>
+<style>
+  :root{
+    --card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
+    --hair:rgba(235,235,245,.09);
+    --lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.30);
+    --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;display:flex;flex-direction:column}
+  .wrap{width:100%;max-width:440px;margin:0 auto;flex:1;display:flex;flex-direction:column}
+
+  header{display:flex;align-items:center;gap:13px;padding:calc(env(safe-area-inset-top) + 16px) 20px 14px}
+  .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;
+          position:relative;flex:0 0 auto}
+  .avatar .logo{width:30px;height:30px;display:block}
+  .avatar .on{position:absolute;right:1px;bottom:1px;width:11px;height:11px;border-radius:50%;
+              background:var(--green);border:2.5px solid #000;transition:background .3s}
+  .avatar .on.off{background:var(--red)}
+  header .who{flex:1;min-width:0}
+  header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
+  header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2)}
+  .icobtn{width:38px;height:38px;border-radius:50%;background:var(--card);border:0;color:var(--lab2);
+          font-size:15px;cursor:pointer;display:grid;place-items:center;flex:0 0 auto}
+
+  main{flex:1;padding:0 20px 20px}
+  .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
+  .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:24px}
+  .sect{font-size:13px;color:var(--lab3);margin:28px 0 12px;font-weight:500}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:20px;
+        background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
+  .chip .t{color:var(--lab3);font-size:12px}
+  .chip.warn{border-color:rgba(255,214,10,.28)} .chip.warn .t{color:var(--amber)}
+
+  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);border-radius:18px;
+          padding:16px;margin-bottom:11px;transition:opacity .3s}
+  .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
+  .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
+  .action.gone{opacity:.3}
+  .action .top{display:flex;gap:11px;align-items:flex-start}
+  .glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:13px;
+         flex:0 0 auto;margin-top:1px;color:#000;font-weight:700}
+  .action .txt{flex:1;font-size:16.5px;line-height:1.38;letter-spacing:-.012em}
+  .action .why{font-size:13.5px;color:var(--lab2);margin:9px 0 0 37px;line-height:1.42}
+  .action .why em{font-style:normal;color:var(--amber)}
+  .pair{display:flex;gap:10px;margin-top:15px}
+  .pair button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:16px;
+               font-weight:500;background:rgba(255,255,255,.055);color:var(--lab2);cursor:pointer}
+  .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
+  .pair button:disabled{opacity:.4}
+  .settled{font-size:13.5px;color:var(--lab2);margin-top:13px;padding-top:13px;
+           border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
+  .settled b{color:var(--lab);font-weight:600}
+
+  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
+  .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
+  .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
+  .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
+  .quiet .head .l small{display:block;color:var(--lab2);font-size:13px;margin-top:2px}
+  .quiet .head .c{color:var(--lab3);font-size:13px;transition:transform .25s}
+  .quiet.open .c{transform:rotate(90deg)}
+  .quiet .list{display:none;border-top:1px solid var(--hair);padding:2px 16px}
+  .quiet.open .list{display:block}
+  .qi{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--hair)}
+  .qi:last-child{border-bottom:0}
+  .dot{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
+  .qi .t{flex:1;font-size:14px;line-height:1.35}
+  .qi .t small{display:block;color:var(--lab2);font-size:12.5px;margin-top:2px}
+  .qi .m{font-family:var(--mono);font-size:11px;color:var(--lab3)}
+
+  .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
+  .runs::-webkit-scrollbar{display:none}
+  .run{flex:0 0 auto;width:136px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
+  .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
+  .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}
+  .run .lb{font-family:var(--mono);font-size:10px;color:var(--lab3);margin-top:4px}
+
+  .health{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:16px}
+  .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
+  .hrow:first-child{margin-top:0}
+  .hrow .k{color:var(--lab2);width:98px;flex:0 0 auto}
+  .trk{flex:1;height:4px;border-radius:2px;background:rgba(235,235,245,.09);overflow:hidden}
+  .trk i{display:block;height:100%;border-radius:2px;transition:width .4s}
+  .hrow .v{font-family:var(--mono);font-size:12px;color:var(--lab2);width:78px;text-align:right;flex:0 0 auto}
+
+  .ctl{display:flex;gap:9px;margin-top:12px}
+  .ctl button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:15px;
+              font-weight:500;background:var(--card);color:var(--lab);cursor:pointer}
+  .ctl button.go{background:var(--blue);color:#fff}
+  .ctl button:disabled{opacity:.4}
+
+  .composer{position:sticky;bottom:0;padding:8px 20px calc(env(safe-area-inset-bottom) + 14px);
+            background:linear-gradient(180deg,transparent,#000 24%)}
+  .bar{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:24px;padding:13px 17px}
+  .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
+
+  .toast{position:fixed;left:50%;transform:translate(-50%,150%);bottom:90px;width:calc(100% - 40px);
+         max-width:400px;background:#2C2C2E;border-radius:14px;padding:14px 16px;font-size:14px;
+         line-height:1.4;transition:transform .3s cubic-bezier(.3,1.2,.5,1);z-index:9}
+  .toast.up{transform:translate(-50%,0)}
+  @media (prefers-reduced-motion:reduce){.toast,.trk i{transition:none}}
+  button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .off-note{background:#1E0E0E;border:1px solid rgba(255,69,58,.3);border-radius:14px;padding:14px;
+            font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:18px}
+</style>
+
+<style>
+  body{background:#0A0A0B}
+  .wrap{background:#000;border-radius:0}
+  @media (min-width:520px){
+    body{padding:22px 12px 40px;align-items:center}
+    .wrap{max-width:400px;border:1px solid rgba(235,235,245,.13);border-radius:42px;
+          overflow:hidden;min-height:812px;box-shadow:0 30px 80px rgba(0,0,0,.8)}
+    header{padding-top:26px}
+  }
+  .switch{position:sticky;top:0;z-index:20;display:flex;gap:3px;justify-content:center;
+          background:rgba(10,10,11,.94);backdrop-filter:blur(12px);padding:9px 10px;
+          border-bottom:1px solid rgba(235,235,245,.08)}
+  .switch button{border:0;border-radius:9px;padding:8px 14px;font-family:var(--ui);font-size:12.5px;
+                 background:transparent;color:var(--lab3);cursor:pointer;font-weight:500}
+  .switch button[aria-pressed="true"]{background:#232327;color:var(--lab)}
+  .pv{max-width:400px;margin:14px auto 0;padding:0 14px;font-size:11.5px;line-height:1.6;
+      color:var(--lab3);text-align:center}
+  .pv b{color:var(--lab2)}
+</style>
+</head>
+<body>
+<div class="switch">
+  <button class="stbtn" data-s="morning" aria-pressed="true">Morning</button>
+  <button class="stbtn" data-s="stale">09:00</button>
+  <button class="stbtn" data-s="clear">All clear</button>
+  <button class="stbtn" data-s="offline">Offline</button>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="avatar"><svg viewBox="0 0 512 512" class="logo" aria-hidden="true"><g id="mark-body">
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  </g>
+  <g id="mark-pending" transform="translate(0,-15)">
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
+  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  </g></svg><span class="on" id="live"></span></div>
+    <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
+    <button class="icobtn" id="refresh" title="Refresh">↻</button>
+  </header>
+
+  <main>
+    <div id="offline"></div>
+    <div class="lede" id="lede">…</div>
+    <div class="sub" id="lsub"></div>
+    <div class="chips" id="chips"></div>
+
+    <div class="sect" id="s-need">Needs a decision</div>
+    <div id="actions"></div>
+
+    <div class="sect">Didn't need you</div>
+    <div class="quiet" id="quiet">
+      <div class="head" id="qhead"><span class="n" id="qn">0</span>
+        <span class="l">handled overnight<small>nothing irreversible, all journalled</small></span>
+        <span class="c">›</span></div>
+      <div class="list" id="qlist"></div>
+    </div>
+
+    <div class="sect">Overnight</div>
+    <div class="runs" id="runs"></div>
+
+    <div class="sect">Health</div>
+    <div class="health" id="health"></div>
+    <div class="ctl">
+      <button id="reset">Reset</button>
+      <button id="sweep" class="go">Run the sweep</button>
+    </div>
+  </main>
+
+  <div class="composer"><div class="bar"><span style="color:var(--lab2)">+</span>
+    <span class="ph">Message Blokk</span><span style="color:var(--lab2)">🎙</span></div></div>
+</div>
+<p class="pv">Same file as <b>web/index.html</b> — identical CSS and paint(). Only the transport differs: fixtures instead of fetch.</p>
+<div class="toast" id="toast"></div>
+
+
+<script>
+/* ── DESIGN PREVIEW ────────────────────────────────────────────────────────
+   Same CSS, same markup, same paint() as web/index.html. Only the transport
+   is different: fixtures instead of fetch, so this renders with no Mac
+   running. Use it to look at states you'd otherwise have to manufacture.
+   ────────────────────────────────────────────────────────────────────────── */
+const $ = s => document.querySelector(s);
+const el = h => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+const esc = s => String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const WCOL = {cottages:'var(--blue)',biz2:'var(--purple)',biz3:'#FF9F0A',personal:'var(--cyan)'};
+
+const F = {
+  morning: {
+    health:{version:1,suspended:2,running:0,approvals_open:3,handled:14,
+            attention_budget:{used:3,limit:8},spend:[{tokens:284000,max_tokens:4000000}]},
+    approvals:[
+      {id:'a1',workspace:'Cottages',workspace_id:'cottages',category:'availability_reply',
+       title:'Hall, Jennifer · asked once · 1 gap open',
+       body:'The last week of August is free. That\'s the shoulder rate, and the £25 dog charge applies. Shall I hold it for you?',
+       evidence:{sources:['mail','calendar']},pinned:false,stale:false},
+      {id:'a2',workspace:'Cottages',workspace_id:'cottages',category:'access_question',
+       title:'Okonkwo, David asked about access to the beach',
+       body:'No draft — this reads like a mobility question.',
+       evidence:{sources:['mail']},pinned:true,stale:false},
+      {id:'a3',workspace:'Cottages',workspace_id:'cottages',category:'rate_change',
+       title:'4 comparable places undercut you',
+       body:'Drop the October midweek rate by £15.',
+       evidence:{sources:['cached'],freshness:'blocked twice, fell back to cached pages'},
+       pinned:false,stale:false}],
+    handled:[
+      {ws:'cottages',title:'Filed 31 enquiries',body:'sorted by intent, none needed a reply',decision:'auto'},
+      {ws:'cottages',title:'Warned Thursday arrivals',body:'35mph northerly, coast road',decision:'skill'},
+      {ws:'biz2',title:'Chased 3 invoices',body:'day-30 reminders, standard wording',decision:'auto'},
+      {ws:'biz3',title:'Reordered 2 lines',body:'below cover, same supplier as last time',decision:'auto'},
+      {ws:'personal',title:'Held 6 newsletters',body:'nothing you asked to see',decision:'auto'},
+      {ws:'cottages',title:'Dropped a rate proposal',body:'two workers disagreed on October',decision:'held'}],
+    runs:[
+      {workspace_id:'cottages',status:'suspended',steps:11,writes:3,result:'{"filed":2,"flagged":1}'},
+      {workspace_id:'biz2',status:'suspended',steps:6,writes:1,result:'{"filed":1,"flagged":0}'},
+      {workspace_id:'biz3',status:'done',steps:4,writes:0,result:'{"filed":0,"flagged":0}'},
+      {workspace_id:'personal',status:'done',steps:4,writes:0,result:'{"filed":0,"flagged":0}'}]
+  },
+  clear: {
+    health:{version:2,suspended:0,running:0,approvals_open:0,handled:19,
+            attention_budget:{used:0,limit:8},spend:[{tokens:311000,max_tokens:4000000}]},
+    approvals:[],
+    handled:[
+      {ws:'cottages',title:'Answered 4 availability enquiries',body:'availability_reply now acts alone',decision:'auto'},
+      {ws:'cottages',title:'Filed 27 enquiries',body:'sorted by intent',decision:'auto'},
+      {ws:'biz2',title:'Chased 3 invoices',body:'invoice_chase now acts alone',decision:'auto'},
+      {ws:'biz3',title:'Reordered 2 lines',body:'below cover',decision:'auto'},
+      {ws:'personal',title:'Held 9 newsletters',body:'nothing you asked to see',decision:'auto'}],
+    runs:[
+      {workspace_id:'cottages',status:'done',steps:9,writes:4,result:'{"filed":27,"flagged":1}'},
+      {workspace_id:'biz2',status:'done',steps:6,writes:3,result:'{"filed":4,"flagged":0}'},
+      {workspace_id:'biz3',status:'done',steps:4,writes:2,result:'{"filed":0,"flagged":0}'},
+      {workspace_id:'personal',status:'done',steps:4,writes:0,result:'{"filed":9,"flagged":0}'}]
+  },
+  stale: {
+    health:{version:3,suspended:1,running:0,approvals_open:1,handled:16,
+            attention_budget:{used:1,limit:8},spend:[{tokens:284000,max_tokens:4000000}]},
+    approvals:[
+      {id:'a1',workspace:'Cottages',workspace_id:'cottages',category:'availability_reply',
+       title:'Hall, Jennifer · drafted at 04:11, it is now 09:02',
+       body:'The last week of August is free. That\'s the shoulder rate, and the £25 dog charge applies.',
+       evidence:{sources:['mail','calendar']},pinned:false,stale:true}],
+    handled:[{ws:'cottages',title:'Filed 31 enquiries',body:'sorted by intent',decision:'auto'}],
+    runs:[{workspace_id:'cottages',status:'suspended',steps:11,writes:3,result:'{"filed":2,"flagged":1}'}]
+  }
+};
+
+let state = 'morning', settled = {};
+
+function paint(){
+  const d = F[state], h = d.health;
+  const ap = d.approvals.filter(a => !settled[a.id]);
+  const open = ap.length;
+
+  $('#live').classList.toggle('off', state==='offline');
+  if(state==='offline'){
+    $('#whosub').textContent = "can't reach the Mac";
+    $('#offline').innerHTML = `<div class="off-note"><b>Offline.</b> The Mac may be asleep or off the network.
+      Nothing is lost — suspended runs keep their state on disk and pick up where they stopped.</div>`;
+    ['#lede','#lsub','#chips','#s-need','#actions','#quiet','#runs','#health'].forEach(s=>$(s).style.display='none');
+    document.querySelectorAll('.sect').forEach(s=>s.style.display='none');
+    $('.ctl').style.display='none';
+    return;
+  }
+  ['#lede','#lsub','#chips','#s-need','#actions','#quiet','#runs','#health'].forEach(s=>$(s).style.display='');
+  document.querySelectorAll('.sect').forEach(s=>s.style.display='');
+  $('.ctl').style.display='';
+  $('#offline').innerHTML='';
+
+  $('#whosub').textContent = `${d.runs.length} runs · ${h.suspended} parked`;
+  $('#lede').textContent = open===0 ? 'Nothing needs you.'
+    : open===1 ? 'One thing needs you.' : `${open} things need you.`;
+  $('#lsub').textContent = open===0
+    ? 'That is the target state, not an empty screen. Put the phone down.'
+    : "Everything else is done, filed, or waiting on someone who isn't you.";
+  $('#s-need').style.display = open ? '' : 'none';
+
+  const flagged = d.runs.reduce((n,r)=>n+(JSON.parse(r.result||'{}').flagged||0),0);
+  const filed   = d.runs.reduce((n,r)=>n+(JSON.parse(r.result||'{}').filed||0),0);
+  $('#chips').innerHTML = [
+    {t:`Read ${filed+flagged} messages`,ok:true},
+    {t:`Filed ${filed}`,ok:true},
+    {t:flagged?`Quarantined ${flagged}`:'Nothing quarantined',ok:!flagged},
+    {t:'Rates · cached pages',ok:false}
+  ].map(c=>`<span class="chip ${c.ok?'':'warn'}"><span class="t">${c.ok?'✓':'!'}</span>${esc(c.t)}</span>`).join('');
+
+  const wrap = $('#actions'); wrap.innerHTML='';
+  ap.forEach(a=>{
+    const g = a.pinned ? {g:'✱',c:'var(--amber)'} : {g:'✉',c:'var(--green)'};
+    const card = el(`<div class="action ${a.pinned?'hold':''} ${a.stale?'stale':''}">
+      <div class="top"><span class="glyph" style="background:${g.c}">${g.g}</span>
+        <span class="txt">${esc(a.body)}</span></div>
+      <div class="why">${esc(a.title)}${a.evidence.freshness?' · <em>'+esc(a.evidence.freshness)+'</em>':''}
+        ${a.stale?'<br><em>Facts changed since drafting — will be re-checked at send.</em>':''}</div>
+      <div class="pair">
+        <button data-d="${a.pinned?'reject':'edit'}">${a.pinned?'Later':'Edit'}</button>
+        <button data-d="approve" class="yes">${a.pinned?'Open thread':'Approve'}</button>
+      </div></div>`);
+    card.querySelectorAll('button').forEach(b=>{
+      b.onclick = ()=>{
+        card.querySelectorAll('button').forEach(x=>x.disabled=true);
+        const s = el('<div class="settled"></div>');
+        if(a.stale && b.dataset.d==='approve'){
+          s.innerHTML = `<b style="color:var(--red)">Blocked.</b> A booking landed at 07:34. Those nights are gone. Re-checked at send, not at draft.`;
+          card.querySelectorAll('button').forEach(x=>x.disabled=false);
+        } else {
+          card.classList.add('gone'); settled[a.id]=1;
+          s.innerHTML = a.category==='availability_reply' && b.dataset.d==='approve'
+            ? '<b>availability reply now acts alone.</b> It will stop appearing here.'
+            : a.pinned ? 'access question · pinned to manual'
+            : `${esc(a.category.replace(/_/g,' '))} · 16 clean approvals to go`;
+          if(b.dataset.d!=='approve') s.innerHTML += '<br>Filed as an episode — consolidation reads the diff.';
+          setTimeout(paint, 700);
+        }
+        card.append(s);
+      };
+    });
+    wrap.append(card);
+  });
+
+  $('#qn').textContent = d.handled.length;
+  $('#qlist').innerHTML = d.handled.map(q=>`<div class="qi">
+    <span class="dot" style="background:${WCOL[q.ws]||'var(--lab3)'}"></span>
+    <span class="t">${esc(q.title)}<small>${esc(q.body)}</small></span>
+    <span class="m">${esc(q.decision)}</span></div>`).join('');
+
+  $('#runs').innerHTML = d.runs.map(r=>{
+    const c = r.status==='suspended'?'var(--blue)':'var(--green)';
+    return `<div class="run"><div class="w"><span class="dot" style="background:${WCOL[r.workspace_id]}"></span>${esc(r.workspace_id)}</div>
+      <div class="st" style="color:${c}">${r.status==='suspended'?'parked':esc(r.status)}</div>
+      <div class="lb">${r.steps} STEPS · ${r.writes} WRITE${r.writes===1?'':'S'}</div></div>`;
+  }).join('');
+
+  const a=h.attention_budget, sp=h.spend[0];
+  $('#health').innerHTML = `
+    <div class="hrow"><span class="k">Your attention</span>
+      <span class="trk"><i style="width:${Math.min(100,open/a.limit*100)}%;background:${open>5?'var(--amber)':'var(--green)'}"></i></span>
+      <span class="v">${open} / ${a.limit}</span></div>
+    <div class="hrow"><span class="k">Parked runs</span>
+      <span class="trk"><i style="width:${Math.min(100,h.suspended*25)}%;background:var(--blue)"></i></span>
+      <span class="v">${h.suspended} · 0 tok/hr</span></div>
+    <div class="hrow"><span class="k">Day budget</span>
+      <span class="trk"><i style="width:${sp.tokens/sp.max_tokens*100}%;background:var(--lab2)"></i></span>
+      <span class="v">${(sp.tokens/1000).toFixed(0)}k / 4M</span></div>
+    <div class="hrow"><span class="k">Side effects</span>
+      <span class="trk"><i style="width:${Math.min(100,h.handled*6)}%;background:var(--amber)"></i></span>
+      <span class="v">${h.handled} journalled</span></div>`;
+}
+
+$('#qhead').onclick = ()=> $('#quiet').classList.toggle('open');
+$('#refresh').onclick = ()=>{ settled={}; paint(); };
+$('#sweep').onclick = ()=>{ settled={}; state='morning'; sync(); };
+$('#reset').onclick = ()=>{ settled={}; state='clear'; sync(); };
+
+function sync(){ document.querySelectorAll('.stbtn').forEach(b=>
+  b.setAttribute('aria-pressed', String(b.dataset.s===state))); paint(); }
+document.querySelectorAll('.stbtn').forEach(b=>b.onclick=()=>{ state=b.dataset.s; settled={}; sync(); });
+sync();
+</script>
+</body>
+</html>
