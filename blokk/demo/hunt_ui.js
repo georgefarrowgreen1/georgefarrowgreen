@@ -138,6 +138,35 @@ probe('B9  a slow sweep is reported as a failed one',
     'the control is in its own dialog, not in the repainted card');
 }
 
+// B13 — the layout, and the things a stylesheet can quietly undo
+{
+  const css = h.split('<style>')[1].split('</'+'style>')[0];
+  // A media query placed before the rules it overrides loses every fight of
+  // equal specificity, silently — the desktop rail was drawn at phone width
+  // for exactly this reason and nothing said so.
+  const mq = css.indexOf('grid-template-columns');
+  const lastBase = Math.max(css.lastIndexOf('\n  .run{'), css.lastIndexOf('\n  .runs{'),
+                            css.lastIndexOf('\n  .col-main{'), css.lastIndexOf('\n  .ask .thread{'));
+  probe('B13 the wide-screen rules are overridden by later base rules',
+    mq !== -1 && lastBase > mq,
+    'the media query comes after the rules it overrides');
+  probe('B13a the desktop layout is gone', !/grid-template-columns/.test(css),
+    'two columns above 900px');
+  // Everything reachable by Tab must show where it is, not just <button>.
+  probe('B13b only <button> gets a focus ring',
+    !/\[role="button"\]:focus-visible/.test(css),
+    'links and role=button are covered too');
+  // The composer is sticky; without room, the last card sits under it.
+  probe('B13c the sticky composer covers the end of the queue',
+    !/padding[^;]*84px/.test(css), 'the page reserves its height');
+  // Three dialogs were being kept in step by hand and had already drifted.
+  // Chrome means the sheet itself: a bare #xxxdlg{} setting padding and a
+  // radius. Rules for what is *inside* one dialog are not duplication.
+  const perDialog = (css.match(/#(phone|src|sche|up)dlg\s*\{[^}]*padding/g) || []).length;
+  probe('B13d each dialog carries its own copy of the dialog chrome',
+    perDialog > 0, 'one dialog component, four widths');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

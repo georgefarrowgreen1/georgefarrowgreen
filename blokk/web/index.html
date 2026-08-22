@@ -11,17 +11,28 @@
 <title>Blokk</title>
 <style>
   :root{
+    --bg:#000;
     --card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
     --hair:rgba(235,235,245,.09);
     --lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.30);
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+
+    /* One scale, because eleven ad-hoc font sizes is not a design, it is a
+       history of small decisions. Everything below picks from these. */
+    --t-lede:27px; --t-title:21px; --t-card:16.5px; --t-body:15px;
+    --t-meta:13.5px; --t-small:12.5px; --t-mono:11.5px;
+    --sp-1:6px; --sp-2:11px; --sp-3:16px; --sp-4:22px; --sp-5:28px;
+    --r-lg:18px; --r-md:13px; --r-sm:10px;
+    --rail:320px;        /* the status column on a wide screen */
+    --gutter:20px;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
   body{min-height:100vh;display:flex;flex-direction:column}
   .wrap{width:100%;max-width:440px;margin:0 auto;flex:1;display:flex;flex-direction:column}
+
 
   header{display:flex;align-items:center;gap:13px;padding:calc(env(safe-area-inset-top) + 16px) 20px 14px}
   .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;
@@ -33,10 +44,26 @@
   header .who{flex:1;min-width:0}
   header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
   header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2)}
-  .icobtn{width:38px;height:38px;border-radius:50%;background:var(--card);border:0;color:var(--lab2);
-          font-size:15px;cursor:pointer;display:grid;place-items:center;flex:0 0 auto}
+  /* Glyphs before this were ⚯ ▫ ⚙ ↻, which nobody has ever been able to read
+     — the user had to be told in prose what each one opened. Drawn icons on a
+     phone, and the word as well as soon as the window is wide enough for it. */
+  .tools{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+  .icobtn{height:38px;min-width:38px;padding:0;border-radius:19px;background:var(--card);
+          border:0;color:var(--lab2);font-size:var(--t-small);font-family:var(--ui);
+          cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+          gap:7px;flex:0 0 auto;text-decoration:none;transition:background .15s,color .15s}
+  .icobtn:hover{background:#2A2A2D;color:var(--lab)}
+  .icobtn svg{width:18px;height:18px;flex:0 0 auto}
+  .icobtn .lbl{display:none}
+  @media (min-width:900px){
+    .icobtn{padding:0 15px 0 12px}
+    .icobtn .lbl{display:inline}
+  }
 
-  main{flex:1;padding:0 20px 20px}
+  /* Room for the composer, which is sticky and would otherwise sit on top of
+     whatever is last on the page. In one column that is the foot of main; in
+     two it is the foot of the queue, which is why this moves below. */
+  main{flex:1;padding:0 var(--gutter) 84px}
   .foot{margin:26px 0 4px;text-align:center}
   .foot button{background:none;border:0;color:var(--lab3);font-size:12.5px;
     font-family:var(--ui);padding:8px;cursor:pointer}
@@ -89,18 +116,23 @@
 
   .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
   .runs::-webkit-scrollbar{display:none}
-  .run{flex:0 0 auto;width:136px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
+  .run{flex:0 0 auto;width:152px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
   .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
   .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}
-  .run .lb{font-family:var(--mono);font-size:10px;color:var(--lab3);margin-top:4px}
+  .run .lb{font-family:var(--mono);font-size:10.5px;color:var(--lab3);margin-top:4px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   .health{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:16px}
   .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
   .hrow:first-child{margin-top:0}
-  .hrow .k{color:var(--lab2);width:98px;flex:0 0 auto}
+  .hrow .k{color:var(--lab2);width:92px;flex:0 0 auto}
   .trk{flex:1;height:4px;border-radius:2px;background:rgba(235,235,245,.09);overflow:hidden}
   .trk i{display:block;height:100%;border-radius:2px;transition:width .4s}
-  .hrow .v{font-family:var(--mono);font-size:12px;color:var(--lab2);width:78px;text-align:right;flex:0 0 auto}
+  .hrow .v{font-family:var(--mono);font-size:var(--t-mono);color:var(--lab2);
+    text-align:right;flex:0 0 auto;white-space:nowrap;letter-spacing:-.01em}
+  /* No track: "parked runs" and "side effects" have no ceiling, so a bar
+     drawn at count×25% was a shape with no meaning in it. */
+  .hrow.plain .v{margin-left:auto}
 
   .ctl{display:flex;gap:9px;margin-top:12px}
   .ctl button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:15px;
@@ -165,7 +197,11 @@
          line-height:1.4;transition:transform .3s cubic-bezier(.3,1.2,.5,1);z-index:9}
   .toast.up{transform:translate(-50%,0)}
   @media (prefers-reduced-motion:reduce){.toast,.trk i{transition:none}}
-  button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  /* Anything you can reach with Tab has to show where you are — links and
+     the div-shaped buttons included, which the button-only rule missed. */
+  button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
+  summary:focus-visible,[tabindex]:focus-visible{outline:2px solid #fff;
+    outline-offset:2px;border-radius:4px}
   .warn-note{background:#1A1405;border:1px solid rgba(255,159,10,.32);border-radius:14px;
             padding:14px;font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:18px}
   .warn-note b{color:var(--lab)}
@@ -190,64 +226,59 @@
   .recheck{width:100%;margin-top:11px;border:0;border-radius:12px;padding:13px;
            background:rgba(255,214,10,.16);color:var(--amber);font-family:var(--ui);
            font-size:14.5px;font-weight:500;cursor:pointer}
-  /* No other dialog exists here, so this one carries its own dark styling.
-     A <dialog> defaults to a white sheet, which against this app reads as a
-     broken page rather than a panel. */
-  #phonedlg{border:0;padding:22px;border-radius:18px;max-width:340px;width:calc(100vw - 40px);
-    background:var(--card);color:var(--lab);font-family:var(--ui)}
-  #phonedlg::backdrop{background:rgba(0,0,0,.6)}
-  #phonedlg h2{margin:0 0 6px;font-size:18px;letter-spacing:-.01em}
-  #phonedlg p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
-  #phonedlg .sub{font-size:12px;color:var(--lab3)}
-  #phonedlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
-    background:var(--blue);color:#fff;font-size:15px;font-weight:600;font-family:var(--ui)}
-  #srcdlg{border:0;padding:22px;border-radius:18px;max-width:400px;width:calc(100vw - 40px);
-    background:var(--card);color:var(--lab);font-family:var(--ui);max-height:86vh}
-  #srcdlg::backdrop{background:rgba(0,0,0,.6)}
-  #srcdlg h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
-  #srcdlg p{margin:6px 0;font-size:13px;color:var(--lab2);line-height:1.45}
-  #srcdlg .sub{font-size:12px;color:var(--lab3)}
-  #srcdlg .sect2{font-size:12px;color:var(--lab3);margin:4px 0 8px;
+  /* ── dialogs ────────────────────────────────────────────────────────
+     One component. A <dialog> defaults to a white sheet, which against this
+     app reads as a broken page rather than a panel, so all of it is here —
+     once, rather than copied per dialog and drifting apart. */
+  dialog{border:0;padding:22px;border-radius:var(--r-lg);color:var(--lab);
+    background:var(--card);font-family:var(--ui);width:calc(100vw - 32px);
+    max-height:calc(100vh - 48px);overflow:auto}
+  dialog::backdrop{background:rgba(0,0,0,.62)}
+  dialog h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
+  dialog p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
+  dialog .sub{font-size:var(--t-small);color:var(--lab3);margin:8px 0 0;
+    line-height:1.45}
+  dialog .no{color:var(--red);font-size:13px}
+  dialog .ok2{color:var(--green);font-size:13px}
+  dialog select,dialog input{width:100%;margin-bottom:7px;padding:10px;
+    border-radius:var(--r-sm);border:1px solid var(--hair);background:#09090b;
+    color:var(--lab);font-size:15px;font-family:var(--ui)}
+  dialog select:focus-visible,dialog input:focus-visible{outline:2px solid var(--blue);
+    outline-offset:1px;border-color:transparent}
+  dialog .mini{padding:9px 12px;border:1px solid var(--hair);border-radius:var(--r-sm);
+    background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui);
+    cursor:pointer}
+  dialog .mini:hover{background:#2A2A2D}
+  dialog .mini.go{width:100%;background:var(--blue);border-color:transparent;
+    color:#fff;font-weight:600;margin-top:2px}
+  dialog .mini.danger{color:var(--red)}
+  dialog .mini.armed{background:var(--red);border-color:transparent;color:#fff}
+  dialog button.wide{width:100%;margin-top:16px;padding:12px;border:0;
+    border-radius:var(--r-md);background:var(--card2);color:var(--lab);font-size:15px;
+    font-family:var(--ui);cursor:pointer}
+  dialog button.wide:hover{background:#2A2A2D}
+  dialog .sect2{font-size:12px;color:var(--lab3);margin:14px 0 8px;
     text-transform:uppercase;letter-spacing:.04em}
-  #srcdlg .srow{display:flex;justify-content:space-between;align-items:center;gap:8px;
-    padding:9px 0;border-bottom:1px solid var(--hair);font-size:13px}
-  #srcdlg .srow small{display:block;color:var(--lab3);font-size:11px;font-family:var(--mono)}
-  #srcdlg .addbox{margin:14px 0;padding:12px;border-radius:12px;background:var(--card2)}
-  #srcdlg select,#srcdlg input{width:100%;margin-bottom:7px;padding:9px 10px;border-radius:9px;
-    border:1px solid var(--hair);background:#09090b;color:var(--lab);font-size:14px;
-    font-family:var(--ui)}
-  #srcdlg .mini{padding:7px 11px;border:1px solid var(--hair);border-radius:9px;
-    background:var(--card);color:var(--lab);font-size:12px;font-family:var(--ui)}
-  #srcdlg .mini.go{width:100%;background:var(--blue);border-color:transparent;
-    color:#fff;font-weight:600}
-  #srcdlg .mini.danger{color:var(--red)}
-  /* Armed: the second tap does the irreversible thing, so it must not look
-     like the first one. */
-  #schedlg,#updlg{border:0;padding:22px;border-radius:18px;max-width:520px;
-    width:calc(100vw - 32px);background:var(--card);color:var(--lab)}
-  #schedlg::backdrop,#updlg::backdrop{background:rgba(0,0,0,.6)}
-  #schedlg h2,#updlg h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
-  #schedlg p,#updlg p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
-  #schedlg .sub,#updlg .sub{font-size:12px;color:var(--lab3)}
-  #updlg .mini{padding:9px 12px;border:1px solid var(--hair);border-radius:10px;
-    background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui)}
-  #updlg .mini.go{width:100%;background:var(--blue);border-color:transparent;
-    color:#fff;font-weight:600;margin-top:8px}
-  #updlg .mini.armed{background:var(--red);border-color:transparent;color:#fff}
-  #schedlg button.wide,#updlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
-    background:var(--card2);color:var(--lab);font-size:14px}
-  #updlg pre{margin:10px 0 0;padding:10px;background:#0B0B0E;border-radius:10px;
-    max-height:230px;overflow:auto;font-size:11.5px;line-height:1.45;color:var(--lab2)}
+  dialog pre{margin:10px 0 0;padding:10px;background:#0B0B0E;border-radius:var(--r-sm);
+    max-height:230px;overflow:auto;font-size:var(--t-mono);line-height:1.45;color:var(--lab2)}
+  dialog .srow{display:flex;justify-content:space-between;align-items:center;
+    gap:8px;padding:10px 0;border-bottom:1px solid var(--hair);font-size:13px}
+  dialog .srow:last-of-type{border-bottom:0}
+  dialog .srow small{display:block;color:var(--lab3);font-size:11px;
+    font-family:var(--mono)}
+  dialog .addbox{margin:12px 0;padding:12px;border-radius:var(--r-md);
+    background:var(--card2)}
+  dialog .addbox .mini.danger{width:100%;margin-top:8px}
+  dialog .warn{color:var(--amber)}
+  #phonedlg{max-width:340px} #srcdlg{max-width:420px}
+  #schedlg{max-width:420px}  #updlg{max-width:540px}
   #updlg ul{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--lab2);
     line-height:1.5;font-family:var(--mono)}
-  #updlg .warn{color:var(--amber)}
-  #schedlg .no{color:var(--red);font-size:13px}
-  #schedlg select{width:100%;margin:6px 0 10px;padding:10px;border-radius:10px;
-    border:1px solid var(--hair);background:#09090b;color:var(--lab);
-    font-size:15px;font-family:var(--ui)}
-  #nightrow{cursor:pointer}
-  #srcdlg .mini.armed{background:var(--red);color:#fff;border-color:transparent}
-  #srcdlg .addbox .mini.danger{width:100%;margin-top:8px}
+  .hrow.night{cursor:pointer;border-radius:var(--r-sm);margin-left:-6px;
+    margin-right:-6px;padding:5px 6px}
+  .hrow.night:hover{background:rgba(235,235,245,.05)}
+  .hrow.night:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .hrow .v.good{color:var(--green)} .hrow .v.bad{color:var(--red)}
   #srcdlg .lrow{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px}
   #srcdlg .lrow small{color:var(--lab3);font-size:11px;font-family:var(--mono);margin-left:6px}
   #srcdlg .ldet{color:var(--lab2);font-size:12px;margin-top:2px}
@@ -267,8 +298,6 @@
   #srcdlg .yes,#phonedlg .yes{color:var(--green)}
   #srcdlg .no,#phonedlg .no{color:var(--red)}
   #srcdlg .ok2{color:var(--green)}
-  #srcdlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
-    background:var(--blue);color:#fff;font-size:15px;font-weight:600;font-family:var(--ui)}
   #phonedlg .qr{width:min(62vw,220px);margin:14px auto;display:block}
   #phonedlg .qr svg{width:100%;height:auto;border-radius:8px;display:block}
   #phonedlg .link code{font-size:11px;word-break:break-all;color:var(--lab2);
@@ -277,7 +306,54 @@
     font-size:12px;padding:3px 0;color:var(--lab3)}
   #phonedlg .prow code{color:var(--lab)}
   #phonedlg .yes{color:var(--green)} #phonedlg .no{color:var(--red)}
-  header .icobtn#setup{text-decoration:none;display:grid;place-items:center}
+
+
+  /* An iPad in portrait is neither: too wide to want a 440px column down the
+     middle, too narrow for a rail beside it. It gets one wider column. */
+  @media (min-width:600px) and (max-width:899px){
+    .wrap{max-width:600px}
+  }
+
+  /* ── wide screens ───────────────────────────────────────────────────
+     Last in the file on purpose: these override base rules of equal
+     specificity, and a media query earlier in the sheet loses every
+     one of those fights silently. */
+  /* A Mac is not a large phone. Below 900px this is one column, exactly as
+     before; above it the queue keeps a readable measure and everything that
+     is *status* rather than *decision* moves into a rail beside it, instead
+     of two thirds of a desktop screen being black. */
+  @media (min-width:900px){
+    .wrap{max-width:1080px}
+    header,main{padding-left:0;padding-right:0}
+    main{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);
+         gap:var(--sp-5);align-items:start}
+    /* A decision is a sentence to read. Past about 70 characters the eye
+       loses the line, so the column stops growing long before the window
+       does — the extra width goes to the rail, not to longer lines. */
+    .col-main{max-width:660px;padding-bottom:84px}
+    main{padding-bottom:24px}
+    .col-side{position:sticky;top:var(--sp-3)}
+    .composer{margin-right:calc(var(--rail) + var(--sp-5))}
+    /* In the rail these are a list, not a carousel: nothing to swipe with
+       on a Mac, and a horizontal scroller you cannot see the end of hides
+       the workspace that failed. */
+    /* Ask was a phone sheet stretched to the window: an answer running the
+       full 1280px, and a composer a metre wide. The bar stays full width so
+       the rule under it does; what you read does not. */
+    .ask .ah{padding-left:max(20px,calc((100vw - 760px)/2));
+             padding-right:max(20px,calc((100vw - 760px)/2))}
+    .ask .thread,.askbar{max-width:760px;margin-left:auto;margin-right:auto;width:100%}
+    .ask .q{max-width:70%}
+
+    .runs{flex-direction:column;overflow:visible;margin:0;padding:0;gap:var(--sp-1)}
+    /* Name and outcome on one line, the counts underneath with the whole
+       width to themselves — stacked, "3 writes" truncated to "3 wri…". */
+    .run{width:auto;padding:11px 13px;display:grid;
+         grid-template-columns:1fr auto;align-items:baseline;gap:3px 10px}
+    .run .w{margin:0}
+    .run .st{font-size:15px;text-align:right}
+    .run .lb{grid-column:1/-1;margin:0}
+  }
 </style>
 </head>
 <body>
@@ -295,13 +371,16 @@
   <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
   </g></svg><span class="on" id="live"></span></div>
     <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
+    <nav class="tools" aria-label="Blokk settings">
     <button class="icobtn" id="sources" aria-label="Data sources"
-      title="Data sources">⚯</button>
+      title="Data sources"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9.5 14.5 14.5 9.5"/><path d="M7.8 11.2 6 13a3.9 3.9 0 0 0 5.5 5.5l1.8-1.8"/><path d="M16.2 12.8 18 11a3.9 3.9 0 0 0-5.5-5.5l-1.8 1.8"/></svg><span class="lbl">Sources</span></button>
     <button class="icobtn" id="phone" aria-label="Open on your phone"
-      title="Open on your phone">▫</button>
+      title="Open on your phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="3" width="10" height="18" rx="2.4"/><path d="M11 18h2"/></svg><span class="lbl">Phone</span></button>
     <a class="icobtn" id="setup" href="/setup.html"
-      aria-label="Set up the model" title="Set up the model">⚙</a>
-    <button class="icobtn" id="refresh" aria-label="Refresh now">↻</button>
+      aria-label="Set up the model" title="Set up the model"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></svg><span class="lbl">Model</span></a>
+    <button class="icobtn" id="refresh" aria-label="Refresh now"
+      title="Refresh now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/></svg><span class="lbl">Refresh</span></button>
+    </nav>
   </header>
 
   <!-- Updating from here was deliberately absent, on the grounds that loopback
@@ -342,6 +421,7 @@
   </dialog>
 
   <main>
+   <div class="col-main">
     <div id="offline"></div>
     <div id="modelnote"></div>
     <div class="lede" id="lede" role="status" aria-live="polite">…</div>
@@ -358,7 +438,9 @@
         <span class="c">›</span></div>
       <div class="list" id="qlist"></div>
     </div>
+   </div>
 
+   <aside class="col-side">
     <div class="sect">Overnight</div>
     <div class="runs" id="runs"></div>
 
@@ -372,6 +454,7 @@
          in the header left "9 runs · 3 parked" wrapping onto four lines on a
          390px phone. It is a twice-a-month action; it can be a word. -->
     <div class="foot"><button id="update">Check for updates</button></div>
+   </aside>
   </main>
 
   <div class="composer"><div class="bar" id="openask" role="button" tabindex="0"><span style="color:var(--lab2)">+</span>
@@ -694,8 +777,8 @@ function paint(h, ap, handled, runs){
     const c = r.status==='suspended'?'var(--blue)':r.status==='done'?'var(--green)':'var(--red)';
     return `<div class="run"><div class="w"><span class="dot" style="background:${WCOL[r.workspace_id]}"></span>${esc(r.workspace_id)}</div>
       <div class="st" style="color:${c}">${r.status==='suspended'?'parked':esc(r.status)}</div>
-      <div class="lb">${r.steps} STEPS · ${r.writes} WRITE${r.writes===1?'':'S'}</div></div>`;
-  }).join('') || '<div class="run"><div class="lb">NO RUNS YET</div></div>';
+      <div class="lb">${r.steps} steps · ${r.writes} write${r.writes===1?'':'s'}</div></div>`;
+  }).join('') || '<div class="run"><div class="lb">no runs yet</div></div>';
 
   paintHealth(h);
 }
@@ -715,26 +798,31 @@ function nightWords(s){
 function paintHealth(h){
   const a=h.attention_budget, sp=h.spend[0]||{tokens:0,max_tokens:4000000};
   const sch=h.schedule||{};
+  // A bar means "how full", so it is only drawn where there is a ceiling to
+  // be full of. Parked runs and side effects have none; they get a number.
   $('#health').innerHTML = `
     <div class="hrow"><span class="k">Your attention</span>
       <span class="trk"><i style="width:${Math.min(100,a.used/a.limit*100)}%;background:${a.used>a.limit?'var(--red)':a.used>5?'var(--amber)':'var(--green)'}"></i></span>
       <span class="v">${a.used} / ${a.limit}</span></div>
-    <div class="hrow"><span class="k">Parked runs</span>
-      <span class="trk"><i style="width:${Math.min(100,h.suspended*25)}%;background:var(--blue)"></i></span>
-      <span class="v">${h.suspended} · 0 tok/hr</span></div>
     <div class="hrow"><span class="k">Day budget</span>
       <span class="trk"><i style="width:${Math.min(100,sp.tokens/sp.max_tokens*100)}%;background:var(--lab2)"></i></span>
       <span class="v">${(sp.tokens/1000).toFixed(0)}k / 4M</span></div>
-    <div class="hrow" id="nightrow" role="button" tabindex="0"
+    <div class="hrow plain"><span class="k">Parked runs</span>
+      <span class="v">${h.suspended} waiting on a signal</span></div>
+    <div class="hrow plain"><span class="k">Side effects</span>
+      <span class="v">${h.handled} journalled</span></div>
+    <div class="hrow plain night" id="nightrow" role="button" tabindex="0"
       title="Change when Blokk sweeps"><span class="k">Night shift</span>
-      <span class="trk"><i style="width:${sch.on ? 100 : 0}%;background:${
-        sch.error ? 'var(--red)' : sch.on ? 'var(--green)' : 'var(--lab3)'}"></i></span>
-      <span class="v">${esc(nightWords(sch))}</span></div>
-    <div class="hrow"><span class="k">Side effects</span>
-      <span class="trk"><i style="width:${Math.min(100,h.handled*8)}%;background:var(--amber)"></i></span>
-      <span class="v">${h.handled} journalled</span></div>`;
+      <span class="v ${sch.error ? 'bad' : sch.on ? 'good' : ''}">${
+        esc(nightWords(sch))}</span></div>`;
   const row = $('#nightrow');
-  if(row) row.onclick = openSchedule;
+  if(row){
+    row.onclick = openSchedule;
+    // A div with role=button and no key handler is a button only for people
+    // using a mouse. Same shape as #qhead and #openask above.
+    row.onkeydown = e => { if(e.key === 'Enter' || e.key === ' '){
+      e.preventDefault(); openSchedule(); } };
+  }
 }
 
 // Its own dialog, not a control inside the card: the card repaints every
