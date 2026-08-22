@@ -12,7 +12,8 @@ const seed = () => {
     {workspace_id:'biz2',category:'invoice_chase',clean:19,edited:0,rejected:0,threshold:20,auto:0,pinned_manual:0}];
   return s;
 };
-const ok=(l,c)=>console.log((c?'  PASS  ':'  FAIL  ')+l);
+let fails=0;
+const ok=(l,c)=>{ if(!c) fails++; console.log((c?'  PASS  ':'  FAIL  ')+l); };
 
 // 1 — sweep
 let s=seed(), p=new Policy(s), e=new Engine(s,p,clock);
@@ -74,3 +75,6 @@ const facts = model.deriveFacts([
   {id:'e2',category:'availability_reply',before:'August is open.',after:'August is open. Dog charge is £25.'},
   {id:'e3',category:'availability_reply',before:'Free that week.',after:'Free that week. Plus the dog charge.'}]);
 ok(`consolidation derived ${facts.length} fact(s) from 3 edits: "${facts[0]&&facts[0].text}"`, facts.length>=1);
+
+// A FAIL line that leaves the exit code at 0 is invisible to test.sh.
+process.exit(fails?1:0);

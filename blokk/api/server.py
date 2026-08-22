@@ -185,8 +185,19 @@ def h_decide(approval_id, body):
         return {"ok": False, "blocked": "stale",
                 "detail": "Facts changed since drafting. Re-checked at send, not at draft."}
 
-    store.x("UPDATE approval SET decision=?, edited_body=?, decided_at=? WHERE id=?",
-            body["decision"], body.get("edited_body"), now().isoformat(), approval_id)
+    # Claim the approval in one statement. The check above is a fast path for
+    # the common retry, not the guard: this is a threading server, so six taps
+    # on a flaky phone connection all read decision IS NULL and all get here.
+    # Deciding twice would call policy.record twice, and trust.clean moving by
+    # six is autonomy granted by a race — exactly what the trust gate exists to
+    # stop. Only the thread whose UPDATE matched a row may record.
+    claimed = store.x(
+        "UPDATE approval SET decision=?, edited_body=?, decided_at=? "
+        "WHERE id=? AND decision IS NULL",
+        body["decision"], body.get("edited_body"), now().isoformat(), approval_id)
+    if not claimed:
+        loser = store.one("SELECT decision FROM approval WHERE id=?", approval_id)
+        return {"ok": True, "already": loser["decision"]}
     policy.record(a["workspace_id"], a["category"], body["decision"])
 
     # An edit is a diff between what the agent wrote and what you wanted.

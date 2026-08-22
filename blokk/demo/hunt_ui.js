@@ -42,3 +42,6 @@ probe('B7  service worker serves a stale shell after an update',
   'cache name is hand-versioned; ship a UI change and the phone keeps the old one');
 
 console.log(`\n  ${BUGS.length} issues found`);
+// Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
+// is a suite nobody is running.
+process.exit(BUGS.length ? 1 : 0);

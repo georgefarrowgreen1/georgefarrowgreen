@@ -82,10 +82,18 @@ class Store:
         with self.lock:
             return self.db.execute(sql, a).fetchone()
 
-    def x(self, sql: str, *a) -> None:
+    def x(self, sql: str, *a) -> int:
+        """Returns rowcount, so a caller can make a conditional UPDATE its
+        claim. The lock below serialises each statement, but it does NOT
+        span two calls: a SELECT-then-UPDATE across separate x()/one()
+        calls is still check-then-act. Guard the transition in one
+        statement (`... WHERE id=? AND decision IS NULL`) and branch on
+        what comes back.
+        """
         with self.lock:
-            self.db.execute(sql, a)
+            cur = self.db.execute(sql, a)
             self.db.commit()
+            return cur.rowcount
 
 
 # ------------------------------------------------------------------- context

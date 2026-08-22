@@ -135,3 +135,6 @@ try:
 finally:
     p.terminate()
 print(f"\n  {len(BUGS)} issues found")
+# Exit non-zero so test.sh actually gates on this. Printing the count
+# and returning 0 meant a real defect scrolled past under "all green".
+sys.exit(1 if BUGS else 0)
