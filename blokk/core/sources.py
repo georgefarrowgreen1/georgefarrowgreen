@@ -147,7 +147,31 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
     from core.harness import quarantine_read
     c = wire(store).get(ws, name)
     if c is None:
-        return {"error": f"nothing named '{name}' for {ws}"}
+        return {"error": f"nothing named '{name}' for {ws}",
+                "fix": "Add a source for it first."}
+
+    # Ask whether it can read at all before showing you nothing. An empty list
+    # and a source Blokk is not allowed to open look identical here, and this
+    # is the screen you come to when you cannot see your mail — so it has to
+    # tell the two apart rather than leave you to guess.
+    if hasattr(c, "check"):
+        try:
+            c.check()
+        except FileNotFoundError as e:
+            return {"error": str(e), "readable": False,
+                    "fix": "Either that app keeps nothing on this Mac, or "
+                           "Blokk is not allowed to see it. connect.py local "
+                           "says which, and names the app to grant Full Disk "
+                           "Access to."}
+        except PermissionError as e:
+            return {"error": str(e), "readable": False,
+                    "fix": "macOS is refusing. System Settings > Privacy & "
+                           "Security > Full Disk Access, then start Blokk "
+                           "again — it is only picked up on launch."}
+        except Exception as e:                                    # noqa: BLE001
+            return {"error": f"{type(e).__name__}: {e}", "readable": False,
+                    "fix": "The source is wired but not answering."}
+
     fn = (getattr(c, "search_since", None) or getattr(c, "since", None)
           or getattr(c, "events", None))
     rows = fn()[:n] if fn else []
@@ -160,4 +184,9 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
                     "provenance": r.get("provenance", "?"),
                     "instruction_like": bool(q["instruction_like"]),
                     "body": body[:400].strip()})
-    return {"rows": out, "count": len(out)}
+    return {"rows": out, "count": len(out), "readable": True,
+            # Readable and empty is a real answer, and a different one from
+            # unreadable. Say which.
+            "note": ("" if out else
+                     f"Blokk can read this, and there is nothing in the "
+                     f"window it looked at.")}

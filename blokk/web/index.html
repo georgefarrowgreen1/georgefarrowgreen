@@ -696,14 +696,16 @@ async function paintSources(extra){
     // Everything below is somebody else's words. esc() on every field, and the
     // quarantine verdict shown rather than hidden — this is the one screen
     // that deliberately displays untrusted text.
-    $('#srcout').innerHTML = r.error ? `<p class="no">${esc(r.error)}</p>`
+    $('#srcout').innerHTML = r.error
+      ? `<p class="no">${esc(r.error)}</p>${r.fix ? `<p class="sub">${esc(r.fix)}</p>` : ''}`
       : (r.rows.map(x => `<div class="peek">
           <div class="pf">${esc(x.from)}</div>
           <div class="ps">${esc(x.subject)}</div>
           <div class="pp">${esc(x.provenance)}${x.instruction_like
             ? ' <span class="no">— contains something shaped like an instruction</span>' : ''}</div>
           <div class="pb">${esc(x.body)}</div></div>`).join('')
-        + `<p class="sub">${r.count} rows. Nothing was written, nothing marked read.</p>`);
+        + `<p class="sub">${r.note ? esc(r.note) + ' ' : ''}${r.count} row${
+             r.count===1?'':'s'}. Nothing was written, nothing marked read.</p>`);
   });
 }
 

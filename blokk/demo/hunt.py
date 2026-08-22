@@ -397,6 +397,38 @@ try:
         return (snap < plain, f"snapshot has {snap} rows, a plain copy {plain}")
     probe("A18 a backup taken while running is torn", backup_torn)
 
+    # ── 19. "you have no mail" vs "I cannot read your mail" ──────────────
+    def peek_silent():
+        # peek is the screen you open when you cannot see your data. If a
+        # source Blokk is not allowed to open returns the same empty list as
+        # an empty inbox, it answers the question wrongly at the one moment
+        # it is being asked.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import sources
+        from core.durable import Store
+        st = Store('blokk.db')
+        ws = "a_probe19"
+        st.x("INSERT OR REPLACE INTO workspace(id,name,active,egress_allow)"
+             " VALUES(?,?,1,'[]')", ws, "probe")
+        try:
+            sources.add(st, ws, "ical", "local")
+            import core.connectors.ical as ical
+            keep = ical.ROOT
+            ical.ROOT = pathlib.Path("/nonexistent/Calendars")
+            try:
+                r = sources.peek(st, ws, "calendar", 3)
+            finally:
+                ical.ROOT = keep
+            if r.get("error"):
+                return (False, "an unreadable source says so, with a fix")
+            return (True, f"an unreadable source returned {r.get('count')} rows "
+                          f"and no reason — indistinguishable from empty")
+        finally:
+            st.x("DELETE FROM workspace WHERE id=?", ws)
+    probe("A19 peek shows nothing when it cannot read, and does not say so",
+          peek_silent)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.
