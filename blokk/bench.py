@@ -91,7 +91,8 @@ def usable_gb(ram_gb: float) -> float:
 LADDER = ((4, 32), (4, 16), (2, 32), (2, 16), (2, 8), (1, 16), (1, 8), (1, 4))
 
 
-def fit(params_b: float, model_gb: float, ram_gb: float) -> tuple[int, int]:
+def fit(params_b: float, model_gb: float, ram_gb: float,
+        kv_mb: float | None = None) -> tuple[int, int]:
     """(slots, ctx_k) this Mac can hold. (0, 0) only when it is hopeless.
 
     Weights and cache are not the same kind of memory, and treating them as
@@ -114,8 +115,12 @@ def fit(params_b: float, model_gb: float, ram_gb: float) -> tuple[int, int]:
     if model_gb > ram_gb * 1.5:            # paging this would be all it did
         return 0, 0
     room = max(0.4, (usable - min(model_gb, usable * 0.9)) * 0.8)
+    # kv_mb, when the caller could read it out of the file's own header, beats
+    # the table lookup keyed on a parameter count inferred from file size.
+    cache = (lambda ck, sl: sl * ck * 1000 * kv_mb / 1024) if kv_mb else \
+            (lambda ck, sl: kv_gb(params_b, ck, sl))
     for slots, ctx_k in LADDER:
-        if kv_gb(params_b, ctx_k, slots) <= room:
+        if cache(ctx_k, slots) <= room:
             return slots, ctx_k
     return 1, 4                            # the floor, not a refusal
 

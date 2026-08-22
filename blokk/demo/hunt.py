@@ -207,6 +207,42 @@ try:
                 "a cross-site POST is refused with 403")
     probe("A13 any website you have open can drive this one", csrf)
 
+    # ── 14. the wizard's own boot call ───────────────────────────────────
+    def setup_state():
+        # Nothing exercised this, so a signature change in bench.fit shipped
+        # with api/server.py still calling the old one: every Mac with a file
+        # in models/ got a 500 here, and the wizard sat on "Reading the
+        # hardware" because it treated a failure as still-loading.
+        import os, struct
+        os.makedirs('models', exist_ok=True)
+        f = 'models/_probe.gguf'
+        def st(x):
+            b = x.encode(); return struct.pack('<Q', len(b)) + b
+        items = (st('general.architecture') + struct.pack('<I', 8) + st('llama')
+                 + st('llama.block_count') + struct.pack('<I', 4) + struct.pack('<I', 8)
+                 + st('llama.attention.head_count') + struct.pack('<I', 4) + struct.pack('<I', 8)
+                 + st('llama.attention.head_count_kv') + struct.pack('<I', 4) + struct.pack('<I', 2)
+                 + st('llama.embedding_length') + struct.pack('<I', 4) + struct.pack('<I', 2048))
+        try:
+            with open(f, 'wb') as fh:
+                fh.write(b'GGUF' + struct.pack('<I', 3) + struct.pack('<Q', 0)
+                         + struct.pack('<Q', 5) + items)
+            d = g('/api/v1/setup/state')
+            local = [m for m in d.get('local', []) if m['name'] == '_probe.gguf']
+            missing = [k for k in ('machine', 'shapes', 'models', 'local')
+                       if k not in d]
+            if missing:
+                return (True, f"answers without {', '.join(missing)}")
+            if not local:
+                return (True, "a .gguf in models/ is not listed")
+            if not all('slots' in sh and 'fits' in sh for sh in d['shapes']):
+                return (True, "shapes carry no sizing for this Mac")
+            return (False, f"{len(d['shapes'])} shapes, {len(d['local'])} local, sized")
+        finally:
+            if os.path.exists(f):
+                os.remove(f)
+    probe("A14 the setup wizard cannot load", setup_state)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

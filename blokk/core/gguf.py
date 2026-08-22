@@ -39,14 +39,33 @@ class _Reader:
         if t == _STRING:
             return self.string()
         if t == _ARRAY:
+            # Skipped, never built. The token array alone is a quarter of a
+            # million strings, and nothing here ever wants one — reading them
+            # into a list is megabytes of Python objects per file, per call.
             et, n = self.u32(), self.u64()
-            return [self.value(et) for _ in range(n)]
+            if et in _FIXED:
+                self.f.seek(_FIXED[et][1] * n, 1)
+            elif et == _STRING:
+                for _ in range(n):
+                    self.f.seek(self.u64(), 1)
+            else:                             # nested arrays: give up cleanly
+                raise ValueError("nested array")
+            return f"<{n} skipped>"
         code, size = _FIXED[t]
         return struct.unpack("<" + code, self.f.read(size))[0]
 
 
-def metadata(path: str | Path, limit: int = 4096) -> dict:
-    """Header key-values. Empty dict if this is not a GGUF we understand."""
+def metadata(path: str | Path, want: set[str] | None = None,
+             limit: int = 4096, budget: int = 4 * 1024 * 1024) -> dict:
+    """Header key-values. Empty dict if this is not a GGUF we understand.
+
+    Two bounds, because this runs inside a request handler and a file on a
+    slow disk must not be able to hold the page open. `want` stops as soon as
+    the keys we came for are present — geometry is written before the
+    tokenizer, so in practice we never reach the 256,000-entry token array at
+    all. `budget` is the backstop for a file that does not look like the ones
+    we have seen.
+    """
     out: dict = {}
     with open(path, "rb") as f:
         if f.read(4) != b"GGUF":
@@ -62,6 +81,10 @@ def metadata(path: str | Path, limit: int = 4096) -> dict:
                 out[key] = r.value(r.u32())
             except Exception:
                 break                         # truncated or a type we skip
+            if want and want <= out.keys():
+                break
+            if f.tell() > budget:
+                break
     return out
 
 
@@ -92,5 +115,14 @@ def kv_bytes_per_token(meta: dict) -> float | None:
 
 def kv_mb_per_token(path: str | Path) -> float | None:
     """What bench.kv_gb wants, measured rather than guessed. None if unknown."""
-    per_token = kv_bytes_per_token(metadata(path))
+    # Read once to learn the architecture, then name the keys that depend on
+    # it so the second pass can stop the moment it has them.
+    head = metadata(path, want={"general.architecture"})
+    arch = head.get("general.architecture")
+    if not arch:
+        return None
+    want = {"general.architecture", f"{arch}.block_count",
+            f"{arch}.attention.head_count", f"{arch}.attention.head_count_kv",
+            f"{arch}.embedding_length"}
+    per_token = kv_bytes_per_token(metadata(path, want=want))
     return per_token / (1024 ** 2) if per_token else None

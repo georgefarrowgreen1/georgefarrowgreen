@@ -160,7 +160,19 @@
 const $=s=>document.querySelector(s);
 const el=h=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild;};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const get=async p=>{const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();};
+const get=async(p,ms=15000)=>{
+  // A wizard that waits forever looks identical to one that is still working.
+  // Whatever goes wrong here has to end up on the screen.
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms);
+  try{
+    const r=await fetch(p,{signal:c.signal});
+    if(!r.ok)throw new Error('the Mac answered '+r.status);
+    return await r.json();
+  }catch(e){
+    throw new Error(e.name==='AbortError'
+      ? 'no answer in '+(ms/1000)+'s' : e.message);
+  }finally{ clearTimeout(t); }
+};
 const post=async(p,b={})=>{const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(b)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j;};
 
@@ -174,7 +186,16 @@ function step(n){
 }
 
 (async function boot(){
-  STATE=await get('/api/v1/setup/state');
+  try{
+    STATE=await get('/api/v1/setup/state');
+  }catch(e){
+    $('#machine').innerHTML=`<b style="color:var(--red)">Could not read this Mac.</b><br>
+      ${esc(e.message)}.<br><span class="hint">Blokk is running — this page loaded from it —
+      so the setup endpoint itself is stuck or erroring. The terminal it was
+      started from will have said why. <b>./blokk doctor</b> checks the rest.</span>`;
+    $('#sub').textContent='setup could not start';
+    return;
+  }
   const m=STATE.machine;
   $('#machine').innerHTML=`<b>${esc(m.brand)}</b><br>${m.ram_gb} GB unified memory ·
     about ${m.bandwidth} GB/s · <b>${m.usable_gb} GB usable</b> once macOS and everything

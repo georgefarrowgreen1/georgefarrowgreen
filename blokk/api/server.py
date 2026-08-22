@@ -381,6 +381,9 @@ def _ask_stream(q, workspace):
 # The wizard runs before there is a config, so these must work with nothing
 # on disk. They are the only endpoints that do.
 
+_KV_CACHE: dict = {}      # (path, size, mtime) -> MB per token
+
+
 def _local_models(ram_gb: float) -> list[dict]:
     """Whatever is sitting in models/, sized against this machine.
 
@@ -390,16 +393,29 @@ def _local_models(ram_gb: float) -> list[dict]:
     """
     import bench
     out = []
-    for f in sorted((ROOT / "models").glob("*.gguf")):
-        gb = f.stat().st_size / (1024 ** 3)
+    for f in sorted((ROOT / "models").glob("*.gguf"))[:40]:
+        try:
+            st = f.stat()
+        except OSError:
+            continue                  # vanished, or a link to nothing
+        gb = st.st_size / (1024 ** 3)
         # The file states its own geometry. Fall back to 0.55 GB per billion
         # parameters only when the header cannot be read — that guess is what
         # made a mixture-of-experts look like a dense model twice its size.
         from core import gguf
-        try:
-            kv_mb = gguf.kv_mb_per_token(f)
-        except Exception:
-            kv_mb = None
+        # Cached on size and mtime. This endpoint is fetched every time the
+        # wizard opens, and re-reading every header each time is unbounded
+        # work inside a request handler — the page has nothing to show until
+        # it finishes.
+        ck = (str(f), st.st_size, int(st.st_mtime))
+        if ck in _KV_CACHE:
+            kv_mb = _KV_CACHE[ck]
+        else:
+            try:
+                kv_mb = gguf.kv_mb_per_token(f)
+            except Exception:
+                kv_mb = None          # fall back to guessing from the size
+            _KV_CACHE[ck] = kv_mb
         slots, ctx_k = bench.fit(max(0.5, gb / 0.55), gb, ram_gb, kv_mb=kv_mb)
         out.append({"path": f"models/{f.name}", "name": f.name,
                     "stem": f.stem, "gb": round(gb, 1),
