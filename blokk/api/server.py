@@ -47,6 +47,7 @@ policy = Policy(store)
 # everything else needs the token. Persisted so the phone's saved URL keeps
 # working across restarts.
 # Where update.sh looks to find a running control plane.
+SERVING_PORT = {"n": 8080}   # set by serve(); h_phone builds the link
 PIDFILE = ROOT / ".blokk.pid"
 
 TOKEN_FILE = ROOT / ".blokk-token"
@@ -407,6 +408,30 @@ def _local_models(ram_gb: float) -> list[dict]:
     return out
 
 
+def h_phone(_q):
+    """Everything needed to get this onto a phone, and why it might not work.
+
+    The terminal has had this since ./blokk doctor; the dashboard had not, so
+    the answer lived in a window you had probably closed.
+    """
+    from core import doctor, qr
+    port = SERVING_PORT["n"]
+    ips = doctor.interfaces()
+    reachable = [{"ip": ip, "interface": name, "answers": doctor.reachable(ip, port)}
+                 for name, ip in ips]
+    live = [r for r in reachable if r["answers"]]
+    url = f"http://{live[0]['ip']}:{port}/?t={TOKEN}" if live else ""
+    state, note = doctor.firewall()
+    out = {"url": url, "addresses": reachable,
+           "firewall": {"state": state, "note": note}}
+    if url:
+        try:
+            out["qr"] = qr.svg(url)
+        except Exception:
+            pass                       # a missing picture is not a failure
+    return out
+
+
 def h_setup_state(_q):
     from core.plan import SHAPES
     import bench
@@ -481,6 +506,7 @@ def h_setup_stop(_body):
 
 
 ROUTES_GET = [
+    (r"^/api/v1/phone$", h_phone),
     (r"^/api/v1/setup/state$", h_setup_state),
     (r"^/api/v1/setup/status$", h_setup_status),
     (r"^/api/v1/health$", h_health),
@@ -535,6 +561,29 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Origin")          # or a cache serves one
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+
+    def _same_site(self) -> bool:
+        """A page you happen to have open must not be able to drive this.
+
+        Loopback is trusted without a token because you are sitting at the
+        Mac — but a browser tab is also sitting at the Mac. A form-style POST
+        (text/plain, no custom headers) needs no preflight, so until this
+        existed any website could fire a sweep, rewrite blokk.conf or start a
+        process here. CORS stopped it reading the answer, which made it
+        silent rather than harmless.
+
+        Two independent checks, because neither covers everyone. Browsers
+        that send Sec-Fetch-Site say outright where the request came from.
+        Requiring a JSON content type covers the rest: it is not a
+        simple request, so anything cross-origin must preflight first, and
+        the allowlist above answers preflights from unknown origins with
+        nothing.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site and site not in ("same-origin", "none"):
+            return False
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0]
+        return ctype.strip().lower() == "application/json"
 
     def _authorised(self) -> bool:
         host = self.client_address[0]
@@ -625,6 +674,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        if not self._same_site():
+            return self._send(403, {
+                "error": "cross-site request refused",
+                "detail": "This endpoint changes something, so it only "
+                          "accepts requests from Blokk's own pages. Send "
+                          "Content-Type: application/json."})
         if not self._authorised():
             return self._send(401, {"error": "token required"})
         if u.path == "/api/v1/setup/install":
@@ -757,6 +812,7 @@ def serve(port=8080):
     print(f"     overnight     {len(resumed)} run(s) resumed, {expired} wait(s) expired")
     print(f"     update        ./blokk update")
     print(f"     stop          Ctrl-C\n")
+    SERVING_PORT["n"] = port
     httpd = Server(("0.0.0.0", port), Handler)
 
     # Update while running. `./blokk update` pulls, then signals here; the

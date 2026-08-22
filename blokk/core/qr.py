@@ -338,6 +338,26 @@ def render(text: str, quiet: int = 4) -> str:
     return "\n".join(out)
 
 
+def svg(text: str, quiet: int = 4) -> str:
+    """The same code as an SVG, for the browser.
+
+    One path of rectangles rather than a grid of elements: a version-4 code is
+    over a thousand modules, and a thousand divs is a page that stutters when
+    it repaints. Colours are literal, not currentColor — a QR that inherits a
+    theme is a QR that stops scanning in dark mode.
+    """
+    m = matrix(text)
+    n = len(m) + quiet * 2
+    rects = "".join(
+        f"M{c + quiet} {r + quiet}h1v1h-1z"
+        for r, row in enumerate(m) for c, v in enumerate(row) if v)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" '
+            f'shape-rendering="crispEdges" role="img" '
+            f'aria-label="Link to open Blokk on your phone">'
+            f'<rect width="{n}" height="{n}" fill="#fff"/>'
+            f'<path d="{rects}" fill="#000"/></svg>')
+
+
 def width(text: str) -> int:
     """Columns render() will occupy, for deciding whether it fits."""
     return len(matrix(text)) + 8

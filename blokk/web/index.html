@@ -179,6 +179,26 @@
   .recheck{width:100%;margin-top:11px;border:0;border-radius:12px;padding:13px;
            background:rgba(255,214,10,.16);color:var(--amber);font-family:var(--ui);
            font-size:14.5px;font-weight:500;cursor:pointer}
+  /* No other dialog exists here, so this one carries its own dark styling.
+     A <dialog> defaults to a white sheet, which against this app reads as a
+     broken page rather than a panel. */
+  #phonedlg{border:0;padding:22px;border-radius:18px;max-width:340px;width:calc(100vw - 40px);
+    background:var(--card);color:var(--lab);font-family:var(--ui)}
+  #phonedlg::backdrop{background:rgba(0,0,0,.6)}
+  #phonedlg h2{margin:0 0 6px;font-size:18px;letter-spacing:-.01em}
+  #phonedlg p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
+  #phonedlg .sub{font-size:12px;color:var(--lab3)}
+  #phonedlg button.wide{width:100%;margin-top:14px;padding:11px;border:0;border-radius:11px;
+    background:var(--blue);color:#fff;font-size:15px;font-weight:600;font-family:var(--ui)}
+  #phonedlg .qr{width:min(62vw,220px);margin:14px auto;display:block}
+  #phonedlg .qr svg{width:100%;height:auto;border-radius:8px;display:block}
+  #phonedlg .link code{font-size:11px;word-break:break-all;color:var(--lab2);
+    font-family:var(--mono)}
+  #phonedlg .prow{display:flex;gap:8px;align-items:baseline;
+    font-size:12px;padding:3px 0;color:var(--lab3)}
+  #phonedlg .prow code{color:var(--lab)}
+  #phonedlg .yes{color:var(--green)} #phonedlg .no{color:var(--red)}
+  header .icobtn#setup{text-decoration:none;display:grid;place-items:center}
 </style>
 </head>
 <body>
@@ -196,8 +216,22 @@
   <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
   </g></svg><span class="on" id="live"></span></div>
     <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
+    <button class="icobtn" id="phone" aria-label="Open on your phone"
+      title="Open on your phone">▫</button>
+    <a class="icobtn" id="setup" href="/setup.html"
+      aria-label="Set up the model" title="Set up the model">⚙</a>
     <button class="icobtn" id="refresh" aria-label="Refresh now">↻</button>
   </header>
+
+  <!-- Everything ./blokk doctor prints, in the window you already have open.
+       Deliberately not an update button: loopback is trusted without a token,
+       so an endpoint that replaced the running code would be reachable by any
+       page you happen to have open. Updating stays ./blokk update. -->
+  <dialog id="phonedlg">
+    <h2>Open Blokk on your phone</h2>
+    <div id="phonebody">checking…</div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
 
   <main>
     <div id="offline"></div>
@@ -502,6 +536,30 @@ function toggleQuiet(){
 }
 $('#qhead').onclick = toggleQuiet;
 $('#qhead').onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleQuiet(); } };
+$('#phone').onclick = async () => {
+  const dlg = $('#phonedlg'); const body = $('#phonebody');
+  body.textContent = 'checking…'; dlg.showModal();
+  try{
+    const d = await get('/api/v1/phone');
+    const rows = d.addresses.map(a =>
+      `<div class="prow"><code>${esc(a.ip)}</code>
+       <span class="${a.answers?'yes':'no'}">${a.answers?'reachable':'no answer'}</span>
+       <small>${esc(a.interface)}</small></div>`).join('');
+    const fw = d.firewall.state === 'on' && /NOT listed/.test(d.firewall.note)
+      ? `<p class="no">The firewall is on and python is not allowed through —
+         that is almost certainly why the phone cannot connect. System Settings
+         &rsaquo; Network &rsaquo; Firewall.</p>` : '';
+    body.innerHTML = d.url
+      ? `<p>Point the camera at this, on the same wifi as this Mac.</p>
+         <div class="qr">${d.qr || ''}</div>
+         <p class="link"><code>${esc(d.url)}</code></p>
+         <p class="sub">Then Share &rsaquo; Add to Home Screen and it is remembered.</p>
+         ${rows}${fw}`
+      : `<p class="no">Nothing on this Mac is reachable from the network.</p>
+         ${rows}${fw}`;
+  }catch(e){ body.innerHTML = `<p class="no">Could not check: ${esc(e.message)}</p>`; }
+};
+
 $('#refresh').onclick = ()=> tick(true);
 $('#sweep').onclick = async e=>{
   if(busy) return; busy=true; e.target.disabled=true; e.target.textContent='Sweeping…';

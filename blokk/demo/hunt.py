@@ -187,6 +187,26 @@ try:
         return (False, f"v{(n - 17) // 4} for a {len(url)}-byte phone link")
     probe("A12 the phone QR is not a valid code", qr_wrong)
 
+    # ── 13. cross-site writes ────────────────────────────────────────────
+    def csrf():
+        # A1 trusts loopback, and a browser tab is on loopback. A form-style
+        # POST needs no preflight, so without a same-site check any website
+        # you have open can fire a sweep or rewrite the config. It cannot read
+        # the answer, which makes it silent rather than harmless.
+        before = len(g('/api/v1/approvals'))
+        r = urllib.request.Request(
+            B + '/api/v1/sweep', b'{}',
+            {'Content-Type': 'text/plain', 'Sec-Fetch-Site': 'cross-site'})
+        try:
+            urllib.request.urlopen(r, timeout=10)
+            landed = True
+        except urllib.error.HTTPError as e:
+            landed = e.code != 403
+        after = len(g('/api/v1/approvals'))
+        return (landed or after != before,
+                "a cross-site POST is refused with 403")
+    probe("A13 any website you have open can drive this one", csrf)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.
