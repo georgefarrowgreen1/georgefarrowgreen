@@ -27,7 +27,7 @@ from core.durable import Engine, Store, now
 from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import (ask as run_ask, history as ask_history,
-                      scope_for as ask_scope)
+                      scope_for as ask_scope, _thread_id as ask_thread_id)
 from core import actions, nightly, servers as srv
 from core.backends import BACKENDS, pick
 
@@ -258,7 +258,7 @@ def h_thread(q):
     button waiting to be pressed twice.
     """
     ws = ask_scope(store, (q.get("workspace") or [None])[0])
-    tid = (q.get("thread") or [f"t_{ws}"])[0]
+    tid = ask_thread_id((q.get("thread") or [None])[0], ws)
     out = []
     for m in ask_history(store, tid):
         row = dict(m)
@@ -511,7 +511,7 @@ def _ask_stream(q, workspace, thread=None):
     # cannot end up scoped to different workspaces.
     ws = ask_scope(store, workspace)
     run_id = None
-    tid = thread or f"t_{ws}"
+    tid = ask_thread_id(thread, ws)
     for ev in run_ask(store, q, router.small, workspace, thread=thread):
         if ev["type"] == "RUN_STARTED":
             tid = ev.get("thread") or tid

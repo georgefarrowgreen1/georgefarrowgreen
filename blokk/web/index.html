@@ -80,6 +80,7 @@
        hard-coded values were doing the actual spacing, which is why a card
        could inset its content 17px at the top and 11px at the side. */
     --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --sp-7:28px;         /* between 6 and 5, still on the grid */
     --sheet-pad:20px;    /* a sheet's own inset; the concentric calcs read it */
 
     /* iOS 26 corners. Two rules do most of the work:
@@ -501,9 +502,23 @@
                    var(--gutter) var(--sp-3);
            border-bottom:1px solid var(--glass-edge);
            box-shadow:inset 0 -.6px 0 var(--fill-2)}
-  .ask .ah h2{flex:1;font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
-  .ask .ah .scope{font-family:var(--mono);font-size:9.5px;color:var(--lab3);
-                  background:var(--card);padding:4px 8px;border-radius:7px}
+  /* The title holds its line and the picker takes what is left. h2 was
+     flex:1, so at 430px "Ask Blokk" wrapped to two lines to make room for a
+     workspace name — the title breaking to accommodate a control is the
+     wrong way round. */
+  .ask .ah h2{flex:0 0 auto;white-space:nowrap;font-size:17px;font-weight:600;
+              margin:0;letter-spacing:-.01em}
+  .ask .ah .scope{font-family:var(--mono);font-size:11px;color:var(--lab2);
+                  background:var(--card);padding:0 var(--sp-7) 0 var(--sp-3);
+                  min-height:var(--tap);border-radius:var(--r-pill);
+                  border:1px solid var(--hair);cursor:pointer;
+                  max-width:44vw;text-overflow:ellipsis;
+                  -webkit-appearance:none;appearance:none;
+                  background-image:linear-gradient(45deg,transparent 50%,var(--lab3) 50%),
+                                   linear-gradient(135deg,var(--lab3) 50%,transparent 50%);
+                  background-position:calc(100% - 16px) 50%,calc(100% - 12px) 50%;
+                  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+  .ask .ah .scope:hover{background-color:var(--fill-3)}
   .ask .thread{flex:1;overflow-y:auto;padding:16px 20px 8px;scrollbar-width:none}
   .ask .thread::-webkit-scrollbar{display:none}
   .q{background:var(--card);border-radius:18px 18px 5px 18px;padding:12px 16px;font-size:15.5px;
@@ -1037,7 +1052,14 @@
   <div class="ah glass">
     <button class="icobtn" id="askclose" aria-label="Close">&#10005;</button>
     <h2>Ask Blokk</h2>
-    <span class="scope">READS &middot; PROPOSES</span>
+    <!-- Which businesses' data this is about. It was a fixed chip saying
+         READ-ONLY, so a person with four workspaces could not tell which
+         one they were asking about, let alone change it — and the answer
+         to "what needs me?" is a different answer for each. -->
+    <label class="sronly" for="askws">Workspace</label>
+    <select class="scope" id="askws"></select>
+    <button class="icobtn" id="asknew" aria-label="Start a new conversation"
+            title="New conversation">&#10010;</button>
   </div>
   <div class="thread" id="thread">
     <div class="sugg" id="sugg"></div>
@@ -1983,14 +2005,11 @@ function openAsk(seed){
   requestAnimationFrame(()=>requestAnimationFrame(()=>ask.classList.add('open')));
   document.body.style.overflow='hidden';
   const sg=$('#sugg');
-  if(sg && !sg.children.length && !$('#thread').querySelector('.q')){
-    SUGG.forEach(s=>{
-      const b=document.createElement('button'); b.textContent=s;
-      b.onclick=()=>send(s); sg.append(b);
-    });
-  }
+  if(sg && !sg.children.length && !$('#thread').querySelector('.q'))
+    drawSuggestions();
   if(seed) $('#qbox').value = seed;
   setTimeout(()=>$('#qbox').focus(), 60);
+  loadScope();
   restoreThread();
 }
 function closeAsk(){
@@ -2022,6 +2041,15 @@ function closeAsk(){
 // keydown that used to be here is gone.
 $('#openask').onclick = ()=>openAsk();
 $('#askclose').onclick = closeAsk;
+$('#asknew').onclick = () => {
+  // A real new id, not null. Null means "the default", which is this
+  // workspace's one thread — so clearing the screen and then reloading
+  // brought the old conversation straight back.
+  THREAD = 't_' + (WS || 'ws').replace(/[^A-Za-z0-9_-]/g,'') + '_'
+           + Math.random().toString(36).slice(2, 8);
+  rememberThread();
+  freshThread(); $('#qbox').focus();
+};
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#ask').classList.contains('on')) closeAsk(); });
 
 const qbox = $('#qbox');
@@ -2039,7 +2067,90 @@ $('#qgo').onclick = ()=>{ if(qbox.value.trim()) send(qbox.value.trim()); };
 // The queue in the dashboard is still the queue. This is the same row, drawn
 // where the sentence that made it is: a proposal you have to go and find is a
 // proposal you approve without rereading what asked for it.
-let THREAD = null;
+let THREAD = null, WS = null;
+
+// Where you were, per workspace. A "new conversation" that a reload throws
+// away is not a new conversation, it is a cleared screen — and the picker
+// showing biz2 while the answer on screen is about another workspace is the
+// interface disagreeing with itself about the only thing it needs to say.
+// Per viewer, per browser: nothing here is shared and nothing is important
+// enough to be, so a private window or blocked storage just means the
+// server's own default, which is what happened before any of this existed.
+const SEEN = 'blokk-thread';
+function rememberThread(){
+  try{
+    if(!WS) return;
+    const all = JSON.parse(localStorage.getItem(SEEN) || '{}');
+    // Which workspace as well as which thread in it. Remembering only the
+    // thread meant a reload came back on whichever workspace the server
+    // would have picked from scratch, and showed that one's conversation —
+    // so "new conversation" survived a reload only if you happened to be in
+    // the workspace the server would have chosen anyway.
+    all._last = WS;
+    if(THREAD) all[WS] = THREAD;
+    localStorage.setItem(SEEN, JSON.stringify(all));
+  }catch{}
+}
+function recallThread(ws){
+  try{ return (JSON.parse(localStorage.getItem(SEEN) || '{}'))[ws] || null; }
+  catch{ return null; }
+}
+function recallWorkspace(){
+  try{ return (JSON.parse(localStorage.getItem(SEEN) || '{}'))._last || null; }
+  catch{ return null; }
+}
+function syncScope(){
+  const sel = $('#askws');
+  if(sel && WS && [...sel.options].some(o => o.value === WS)) sel.value = WS;
+}
+
+// Which workspace the chat is about, and a way to change it. Filling this
+// from the same list the Sources sheet uses, rather than a second copy that
+// drifts. The server picks a sensible one when nothing is chosen; whatever
+// it picked comes back on RUN_STARTED and is selected here.
+async function loadScope(){
+  const sel = $('#askws');
+  if(sel.options.length) return;
+  let d;
+  try{ d = await get('/api/v1/sources'); }catch(e){ return; }
+  const ws = (d.workspaces || []);
+  if(!ws.length){ sel.hidden = true; return; }
+  for(const w of ws){
+    const o = document.createElement('option');
+    o.value = w.id;
+    o.textContent = (w.name || w.id) + (w.sample ? ' · sample' : '');
+    sel.append(o);
+  }
+  syncScope();
+  sel.onchange = () => {
+    // A different workspace is a different conversation, not the same one
+    // rescoped. Mixing four businesses' mail into one transcript is how the
+    // fourth's guest ends up in the first's answer.
+    WS = sel.value;
+    THREAD = recallThread(WS);   // where you last were in that one
+    freshThread();
+    restoreThread();
+  };
+}
+
+function freshThread(){
+  const th = $('#thread');
+  [...th.children].forEach(c => { if(c.id !== 'sugg') c.remove(); });
+  const sg = $('#sugg');
+  if(sg){ sg.style.display = ''; if(!sg.children.length) drawSuggestions(); }
+  lastDegraded = '';
+  th.scrollTop = 0;
+}
+
+function drawSuggestions(){
+  const sg = $('#sugg'); if(!sg) return;
+  sg.innerHTML = '';
+  SUGG.forEach(s => {
+    const b = document.createElement('button');
+    b.textContent = s;
+    b.onclick = () => send(s); sg.append(b);
+  });
+}
 // The same three-line warning on every turn is a wall, and a wall is skimmed.
 // Said in full the first time it appears, then kept to one line for as long
 // as it stays true — still visible, still per turn, no longer shouting.
@@ -2116,10 +2227,25 @@ async function decide(card, id, decision){
 async function restoreThread(){
   const th = $('#thread');
   if(th.querySelector('.q')) return;                  // already drawn
+  // The server's default is right on a machine that has never been used and
+  // wrong on one that has. Whatever you were last looking at wins, and if
+  // that workspace has since gone the server falls back for us.
+  if(!WS) WS = recallWorkspace();
+  const q = [];
+  if(WS) q.push('workspace=' + encodeURIComponent(WS));
+  const remembered = THREAD || (WS ? recallThread(WS) : null);
+  if(remembered) q.push('thread=' + encodeURIComponent(remembered));
   let d;
-  try{ d = await get('/api/v1/thread'); }catch(e){ return; }
-  if(!d || !d.messages || !d.messages.length) return;
-  THREAD = d.thread;
+  try{ d = await get('/api/v1/thread' + (q.length ? '?' + q.join('&') : '')); }
+  catch(e){ return; }
+  if(!d) return;
+  // Taken even when the thread is empty: this is how the panel learns which
+  // workspace the server picked, and the picker is wrong until it does.
+  WS = d.workspace || WS;
+  THREAD = d.thread || THREAD;
+  syncScope();
+  rememberThread();
+  if(!d.messages || !d.messages.length) return;
   const s = $('#sugg'); if(s) s.style.display='none';
   for(const m of d.messages){
     if(m.role === 'user'){ th.append(el(`<div class="q">${esc(m.content)}</div>`)); continue; }
@@ -2155,7 +2281,8 @@ async function send(q){
   try{
     const r = await fetch(API+'/api/v1/ask',{method:'POST',
       headers:{'Content-Type':'application/json',...AUTH},
-      body:JSON.stringify({q, thread:THREAD}), signal:asking.signal});
+      body:JSON.stringify({q, thread:THREAD, workspace:WS}),
+      signal:asking.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
 
     const reader=r.body.getReader(), dec=new TextDecoder();
@@ -2168,7 +2295,14 @@ async function send(q){
         const line = f.split('\n').find(l=>l.startsWith('data: '));
         if(!line) continue;
         const ev = JSON.parse(line.slice(6));
-        if(ev.type==='RUN_STARTED' && ev.thread) THREAD = ev.thread;
+        if(ev.type==='RUN_STARTED'){
+          if(ev.thread) THREAD = ev.thread;
+          // The server resolves the scope when none was sent.
+          // Showing what it chose beats leaving the picker blank
+          // next to an answer about a workspace nobody named.
+          if(ev.workspace) WS = ev.workspace;
+          syncScope(); rememberThread();
+        }
         if(ev.type==='TOOL_CALL_START'){ tools++;
           steps.append(el(`<span class="step live" data-t="${esc(ev.name)}">
             <span class="n">&#9679;</span>${esc(ev.name.replace(/_/g,' '))}</span>`));

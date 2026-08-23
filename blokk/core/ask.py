@@ -473,6 +473,22 @@ def _newest_first(ts: str | None) -> str:
     return "".join(chr(0x10FFFE - ord(c)) for c in ts)
 
 
+THREAD_ID = re.compile(r"^t_[A-Za-z0-9_-]{1,64}$")
+
+
+def _thread_id(thread: str | None, ws: str) -> str:
+    """The thread to write into, and it has to be one this can name.
+
+    The id arrives from the browser, which is how "new conversation" makes a
+    new one. It is a value in a parameterised query so it cannot do anything
+    clever, but an unbounded string from a client still becomes a primary key
+    and a filename-shaped thing in a log, and there is no reason to accept
+    one. Anything unrecognised falls back to this workspace's own thread.
+    """
+    t = (thread or "").strip()
+    return t if THREAD_ID.match(t) else f"t_{ws}"
+
+
 def ask(store, question: str, model, workspace: str | None = None,
         thread: str | None = None) -> Iterator[dict]:
     """Yields AG-UI shaped events. Reads, converses, proposes. Never writes."""
@@ -485,7 +501,7 @@ def ask(store, question: str, model, workspace: str | None = None,
             "at. Add one from Sources, or run: "
             "python3 connect.py workspace add <id> \"<name>\"", "nothing yet")
         return
-    thread = thread or f"t_{ws}"
+    thread = _thread_id(thread, ws)
     okay, left = _meter(store, ws)
     if not okay:
         yield from _only_say(
@@ -494,7 +510,7 @@ def ask(store, question: str, model, workspace: str | None = None,
             "is the ceiling doing its job.", ws)
         return
 
-    yield {"type": "RUN_STARTED", "scope": workspace or "all workspaces",
+    yield {"type": "RUN_STARTED", "scope": ws, "workspace": ws,
            "thread": thread, "budget_left": left}
 
     # The resolved one, not the argument. build_tools scopes its SQL and

@@ -2770,6 +2770,67 @@ try:
     probe("A70 setup hands over before anything real is wired",
           setup_ends_on_real_data)
 
+    def threads_are_separate():
+        # Four businesses, one chat. Switching workspace has to be a
+        # different conversation, not the same one rescoped — mixing four
+        # businesses' mail into one transcript is how the fourth's guest ends
+        # up in the first's answer. And a thread id arrives from a browser,
+        # so it has to be something this can name.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.ask import ask as run_ask, history, _thread_id
+        from core.models import StubModel
+
+        for bad in ("", None, "nope", "t_" + "x" * 80, "t_'; DROP TABLE --",
+                    "../../etc/passwd"):
+            if _thread_id(bad, "cottages") != "t_cottages":
+                return (True, f"{bad!r} was accepted as a thread id")
+        for good in ("t_cottages", "t_mine_a1b2", "t_ok-1"):
+            if _thread_id(good, "cottages") != good:
+                return (True, f"{good!r} was refused")
+
+        tmp = pathlib.Path(_tf.mkdtemp()) / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
+        st = Store(tmp)
+        st.x("DELETE FROM message")
+        st.x("UPDATE budget SET tool_calls=0")
+
+        def turn(q, ws, thread=None):
+            scope = None
+            for ev in run_ask(st, q, StubModel(), ws, thread=thread):
+                if ev["type"] == "RUN_STARTED":
+                    scope = ev
+            return scope
+
+        a = turn("what needs me?", "cottages")
+        b = turn("what needs me?", "biz3")
+        if not a or not b:
+            return (True, "no run started")
+        for ev in (a, b):
+            if "workspace" not in ev:
+                return (True, "the run does not say which workspace it is "
+                              "about, so the picker cannot show it")
+        if a["thread"] == b["thread"]:
+            return (True, "two workspaces share one transcript")
+        if len(history(st, a["thread"])) != 2:
+            return (True, "the cottages thread does not hold its own turn")
+        if any("biz3" in m["content"] for m in history(st, a["thread"])):
+            return (True, "another workspace's turn leaked into this thread")
+        # A named thread is a new conversation in the same workspace.
+        c = turn("Hi", "cottages", thread="t_cottages_fresh1")
+        if c["thread"] != "t_cottages_fresh1":
+            return (True, "a new conversation was folded into the old one")
+        if len(history(st, "t_cottages_fresh1")) != 2:
+            return (True, "the new conversation did not keep its own turn")
+        if len(history(st, a["thread"])) != 2:
+            return (True, "starting a new conversation changed the old one")
+        return (False, "one transcript per workspace, a named thread starts a "
+                       "new one, and a client cannot invent an id this "
+                       "cannot name")
+    probe("A71 four businesses share one chat transcript", threads_are_separate)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

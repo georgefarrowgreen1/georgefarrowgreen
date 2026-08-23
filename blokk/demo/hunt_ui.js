@@ -678,6 +678,37 @@ probe('B18 a run that could not resume is not mentioned at all',
     defs < 3, `${defs} definitions: bare, prefers-dark, and [data-theme]`);
 }
 
+// B31 — the chat says which workspace it is about, and lets you change it
+// The header carried a fixed chip reading READ-ONLY, so somebody with four
+// businesses could not tell which one an answer was about — and "what needs
+// me?" is a different answer for each of them.
+{
+  const head = h.slice(h.indexOf('<div class="ah glass">'));
+  const ah = head.slice(0, head.indexOf('</div>'));
+  probe('B31 the chat panel never says which workspace it is about',
+    !/id="askws"/.test(ah), 'a picker in the header, and it is a real select');
+  probe('B31a there is no way to start a new conversation',
+    !/id="asknew"/.test(ah), 'a new-conversation control sits beside it');
+  // The picker must be labelled: a bare <select> in a header reads as
+  // nothing to a screen reader.
+  probe('B31b the workspace picker has no label',
+    !/for="askws"/.test(h), 'labelled, visually hidden');
+  // And what you were last looking at has to survive a reload, or "new
+  // conversation" is a cleared screen rather than a new conversation.
+  // Both halves: which workspace you were in, and which thread in it.
+  // Remembering only the thread meant a reload came back on whichever
+  // workspace the server would have picked from scratch.
+  // Both halves, and both directions. Checking that `_last` merely appears
+  // passed on an implementation that read it and never wrote it — the reader
+  // alone is enough to satisfy a substring test and does nothing at all.
+  probe('B31c where you were is forgotten on reload',
+    !/blokk-thread/.test(js) || !/localStorage\.setItem\(SEEN/.test(js)
+      || !/localStorage\.getItem\(SEEN/.test(js)
+      || !/_last\s*=/.test(js) || !/\._last\s*\|\|/.test(js)
+      || !/WS\s*=\s*recallWorkspace\(\)/.test(js),
+    'the workspace and its thread are both remembered, per browser');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.
