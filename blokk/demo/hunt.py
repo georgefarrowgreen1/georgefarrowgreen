@@ -1005,6 +1005,43 @@ try:
     probe("A35 a rejection resets the counter but leaves the autonomy",
           trust_revoked)
 
+    # ── 36. a decision the server cannot carry out ──────────────────────
+    def bad_decision():
+        # The claim ran before anything checked what the decision *was*, and
+        # recording trust then raised on the way past. The row was left
+        # marked with a word the system has no meaning for: gone from the
+        # queue, never sent, no episode, no trust, and the run holding it
+        # never woke. A tap that cannot be carried out must change nothing.
+        po('/api/v1/reset'); po('/api/v1/sweep')
+        # The sweep runs in the background now, so the queue fills a moment
+        # after the request returns.
+        cands = []
+        for _ in range(60):
+            cands = g('/api/v1/approvals')
+            if cands:
+                break
+            time.sleep(0.1)
+        if not cands:
+            return (True, "a sweep queued nothing at all")
+        aid = cands[0]['id']
+        for junk in ('delete', 'APPROVE', '', 'approve ', 'yes'):
+            try:
+                po(f'/api/v1/approvals/{aid}/decide', {'decision': junk})
+                return (True, f"{junk!r} was accepted as a decision")
+            except urllib.error.HTTPError as e:
+                if e.code != 400:
+                    return (True, f"{junk!r} answered {e.code}, not 400")
+        still = [a for a in g('/api/v1/approvals') if a['id'] == aid]
+        if not still:
+            return (True, "a refused decision took the approval out of the "
+                          "queue anyway")
+        r = po(f'/api/v1/approvals/{aid}/decide', {'decision': 'approve'})
+        if not r.get('ok'):
+            return (True, f"a real decision then failed: {r}")
+        return (False, "an unknown decision is refused and changes nothing")
+    probe("A36 an unknown decision is written to the row and then raises",
+          bad_decision)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

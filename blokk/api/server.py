@@ -242,6 +242,9 @@ def h_handled(_q):
         "WHERE a.decision IS NOT NULL ORDER BY a.decided_at DESC LIMIT 20"))
 
 
+DECISIONS = ("approve", "edit", "reject")
+
+
 def h_decide(approval_id, body):
     a = store.one("SELECT * FROM approval WHERE id=?", approval_id)
     if not a:
@@ -249,7 +252,17 @@ def h_decide(approval_id, body):
     if a["decision"]:
         return {"ok": True, "already": a["decision"]}      # taps get retried
 
-    if body.get("decision") == "approve" and _stale(a):
+    # Before the claim, not after it. An unrecognised decision used to be
+    # written into the row and *then* raise on the way to recording trust:
+    # the approval left the queue marked "delete", never sent, with no
+    # episode and no trust behind it, and the run holding it never woke. A
+    # decision this endpoint cannot carry out must not be recorded as one.
+    decision = body.get("decision")
+    if decision not in DECISIONS:
+        return {"error": f"decision must be one of {', '.join(DECISIONS)}, "
+                         f"not {decision!r}"}, 400
+
+    if decision == "approve" and _stale(a):
         return {"ok": False, "blocked": "stale",
                 "detail": "Facts changed since drafting. Re-checked at send, not at draft."}
 
@@ -262,18 +275,18 @@ def h_decide(approval_id, body):
     claimed = store.x(
         "UPDATE approval SET decision=?, edited_body=?, decided_at=? "
         "WHERE id=? AND decision IS NULL",
-        body["decision"], body.get("edited_body"), now().isoformat(), approval_id)
+        decision, body.get("edited_body"), now().isoformat(), approval_id)
     if not claimed:
         loser = store.one("SELECT decision FROM approval WHERE id=?", approval_id)
         return {"ok": True, "already": loser["decision"]}
-    policy.record(a["workspace_id"], a["category"], body["decision"])
+    policy.record(a["workspace_id"], a["category"], decision)
 
     # An edit is a diff between what the agent wrote and what you wanted.
-    if body["decision"] in ("edit", "reject"):
+    if decision in ("edit", "reject"):
         store.x("""INSERT OR REPLACE INTO episode
                    (id,workspace_id,kind,category,before,after)
                    VALUES(?,?,?,?,?,?)""",
-                f"e_{approval_id}", a["workspace_id"], body["decision"],
+                f"e_{approval_id}", a["workspace_id"], decision,
                 a["category"], a["body"], body.get("edited_body"))
 
     still = store.one(
@@ -282,7 +295,7 @@ def h_decide(approval_id, body):
     resumed = False
     if still == 0:
         try:
-            engine.signal(a["run_id"], "approval", {"decision": body["decision"]})
+            engine.signal(a["run_id"], "approval", {"decision": decision})
             resumed = True
         except (ValueError, KeyError):
             pass                                   # already resumed, fine
