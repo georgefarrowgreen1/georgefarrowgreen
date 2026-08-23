@@ -30,6 +30,11 @@ REACHES_OUT = IS_PLACE + IS_URL
 # and no app-specific password. They need Full Disk Access, which core/local.py
 # checks for and explains.
 NEEDS_KEYCHAIN = ("imap", "caldav")
+# The three that need nothing at all: no password, no network, no account.
+# "local" points them at the Apple app's own folder; anything else is a path,
+# which is how an exported mailbox or a shared calendar directory gets wired.
+NEEDS_NOTHING = ("maildir", "ical", "messages")
+READS_A_FOLDER = ("maildir", "ical")
 
 
 SAMPLE = ("cottages", "biz2", "biz3", "personal")
@@ -115,6 +120,19 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
             return {"error": f"{ref!r} is not a page address. It wants the "
                              f"whole thing, starting https:// — for example "
                              f"https://example.com/prices"}
+    if kind in READS_A_FOLDER and ref.lower() not in ("local", "default"):
+        # A folder that is not there is a source that adds cleanly and then
+        # reads nothing — found at 04:00, by nobody. "local" means the Apple
+        # app's own place and is checked when it is opened, not here.
+        from pathlib import Path as _P
+        folder = _P(ref).expanduser()
+        if not folder.exists():
+            return {"error": f"there is nothing at {ref}. Give a folder that "
+                             f"exists, or 'local' for the Mac's own "
+                             f"{'mailbox' if kind == 'maildir' else 'calendars'}."}
+        if not folder.is_dir():
+            return {"error": f"{ref} is a file. This wants the folder it is "
+                             f"in — Blokk reads everything underneath."}
     if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
         known = ", ".join(w["id"] for w in workspaces(store))
         return {"error": f"no workspace '{ws}'. Known: {known}"}

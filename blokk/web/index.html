@@ -2221,10 +2221,19 @@ async function send(q){
             The answer above may be incomplete.</div>`;
         }
         if(ev.type==='SOURCES' && ev.rows.length){
-          const n=ev.rows.reduce((t,x)=>t+x.count,0);
+          // The provenance line, and it has to stay true. It used to say
+          // "nothing outside this database was touched" — right while every
+          // tool was a SELECT, wrong the moment one of them opened your mail.
+          const n = ev.rows.reduce((t,x)=>t+x.count,0);
+          const has = k => ev.rows.some(r=>r.source===k);
+          const where = has('outside')
+            ? 'Some of that came from outside this Mac, through the allowlist.'
+            : has('yours')
+            ? 'Read from your own files on this Mac. Nothing left it.'
+            : 'All of it from Blokk&rsquo;s own records. Nothing left this Mac.';
           th.append(el(`<div class="readonly note wide">
             Read ${n} row${n===1?'':'s'} from ${ev.rows.length} source${ev.rows.length===1?'':'s'}.
-            Nothing outside this database was touched.</div>`));
+            ${where}</div>`));
         }
       }
     }

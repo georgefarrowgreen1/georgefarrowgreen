@@ -69,6 +69,14 @@ class ReadTool:
     name: str
     desc: str
     fn: Callable[..., object]
+    # Where the rows come from, because the panel says so underneath every
+    # answer and the sentence has to stay true. It said "nothing outside this
+    # database was touched" — which was true when every tool was a SELECT,
+    # and became a lie the moment one of them opened your mail.
+    #   blokk   — its own tables
+    #   yours   — files on this Mac
+    #   outside — a request that left the machine, through the egress gate
+    source: str = "blokk"
 
 
 def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool]:
@@ -245,7 +253,8 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         ReadTool("learned_facts",   "what it has learned from your corrections", learned_facts),
         ReadTool("sources_state",   "what is wired up, and what each workspace may reach", sources_state),
         ReadTool("schedule_state",  "when the night shift runs and how the last one went", schedule_state),
-        ReadTool("this_mac",        "what is on this Mac that could be wired up but is not", this_mac),
+        ReadTool("this_mac",        "what is on this Mac that could be wired up but is not",
+                 this_mac, source="yours"),
     ]
 
     # One tool per wired source, and none for a source that is not there.
@@ -253,20 +262,21 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         "SELECT kind FROM credential WHERE workspace_id=?", workspace_scope)} \
         if workspace_scope else set()
     OVER = (
-        ("imap",     "read_mail",     "the actual mail, most recent first", read_mail),
-        ("maildir",  "read_mail",     "the actual mail, most recent first", read_mail),
-        ("caldav",   "read_calendar", "what is in the calendar", read_calendar),
-        ("ical",     "read_calendar", "what is in the calendar", read_calendar),
-        ("caldav",   "free_nights",   "which nights nobody has booked", free_nights),
-        ("ical",     "free_nights",   "which nights nobody has booked", free_nights),
-        ("messages", "read_messages", "recent messages", read_messages),
-        ("web",      "read_page",     "the page it is watching, as it is now", read_page),
-        ("weather",  "forecast",      "the forecast where you are", forecast),
+        # kind, tool, what it is, the reader, where the rows come from
+        ("imap",     "read_mail",     "the actual mail, most recent first", read_mail, "outside"),
+        ("maildir",  "read_mail",     "the actual mail, most recent first", read_mail, "yours"),
+        ("caldav",   "read_calendar", "what is in the calendar", read_calendar, "outside"),
+        ("ical",     "read_calendar", "what is in the calendar", read_calendar, "yours"),
+        ("caldav",   "free_nights",   "which nights nobody has booked", free_nights, "outside"),
+        ("ical",     "free_nights",   "which nights nobody has booked", free_nights, "yours"),
+        ("messages", "read_messages", "recent messages", read_messages, "yours"),
+        ("web",      "read_page",     "the page it is watching, as it is now", read_page, "outside"),
+        ("weather",  "forecast",      "the forecast where you are", forecast, "outside"),
     )
     have = {t.name for t in tools}
-    for kind, name, desc, fn in OVER:
+    for kind, name, desc, fn, src in OVER:
         if kind in wired and name not in have:
-            tools.append(ReadTool(name, desc, fn))
+            tools.append(ReadTool(name, desc, fn, source=src))
             have.add(name)
     return {t.name: t for t in tools}
 
@@ -613,7 +623,9 @@ def ask(store, question: str, model, workspace: str | None = None,
 
     if gathered:
         yield {"type": "SOURCES",
-               "rows": [{"tool": n, "count": len(r)} for n, r in gathered],
+               "rows": [{"tool": n, "count": len(r),
+                         "source": tools[n].source if n in tools else "blokk"}
+                        for n, r in gathered],
                "flagged": flagged}
     yield {"type": "RUN_FINISHED", "steps": steps, "budget_left": left,
            "degraded": degraded or None}
@@ -888,8 +900,10 @@ INTENT = (
     ("add_workspace", r"\b(add|create|new)\b.*\bworkspace\b"),
     ("remove_source", r"\b(remove|delete|drop|unhook)\b.*\bsource\b"),
     ("remove_workspace", r"\b(delete|remove|drop|get rid of)\b.*\bworkspace\b"),
-    ("add_source",  r"\b(add|wire|connect|hook up)\b.*"
-                    r"\b(source|mail|imap|calendar|caldav|ical|weather|page|web)\b"),
+    ("add_source",  r"\b(add|wire|connect|hook up|read)\b.*"
+                    r"\b(source|mail|inbox|email|imap|maildir|calendar|diary|"
+                    r"caldav|ical|ics|messages|imessage|weather|forecast|page|"
+                    r"web|site)\b"),
 )
 
 # What a read tool needs behind it, said in the words of somebody who has not
@@ -1055,9 +1069,7 @@ def _guess(q: str, known: list[str]) -> dict | None:
             else:
                 misses.append("workspace")
         if "kind" in act.args:
-            from core import sources
-            k = next((k for k in sources.KINDS
-                      if re.search(rf"\b{k}\b", q, re.I)), None)
+            k = _kind_in(q)
             if k:
                 args["kind"] = k
             else:
@@ -1086,8 +1098,40 @@ def _guess(q: str, known: list[str]) -> dict | None:
 PLACE = re.compile(r"\b(?:for|in|at|near)\s+([A-Z][\w'-]*(?:[ -][A-Z][\w'-]*)*)")
 
 
+# What somebody says, and which connector that is. Ordered so the route that
+# needs nothing wins: "connect my mail" means the archive already on this Mac,
+# which needs no password, no app-specific password and no network — not IMAP,
+# which needs all three and is where people give up on setup. Type "imap" and
+# you get imap; the exact names are checked first for exactly that reason.
+WORDS_FOR = (
+    ("maildir",  r"\bmail\b|\binbox\b|\bemail\b"),
+    ("ical",     r"\bcalendar\b|\bdiary\b|\bics\b"),
+    ("messages", r"\bmessages?\b|\bimessage\b|\btexts?\b"),
+    ("weather",  r"\bweather\b|\bforecast\b|\brain\b"),
+    ("web",      r"\bweb\b|\bpage\b|\bsite\b|\bwebsite\b|https?://"),
+)
+
+
+def _kind_in(q: str) -> str:
+    """Which connector this sentence is about."""
+    from core import sources
+    for k in sources.KINDS:
+        if re.search(rf"\b{k}\b", q, re.I):
+            return k
+    for kind, pattern in WORDS_FOR:
+        if re.search(pattern, q, re.I):
+            return kind
+    return ""
+
+
 def _ref_for(kind: str, q: str) -> str:
     from core import sources
+    if kind in sources.NEEDS_NOTHING:
+        # A path if the sentence names one, otherwise the Apple app's own
+        # folder. This is the whole reason a local source can be wired from a
+        # chat box: there is nothing to ask anybody for.
+        m = re.search(r"(?:from|in|at|under)\s+(~?/[^\s,]+)", q)
+        return m.group(1) if m else "local"
     if kind in sources.IS_URL:
         m = re.search(r"https?://\S+", q)
         return m.group(0) if m else ""
@@ -1106,6 +1150,8 @@ def _ref_for(kind: str, q: str) -> str:
 
 def _ref_word(kind: str) -> str:
     from core import sources
+    if kind in sources.NEEDS_NOTHING:
+        return "folder"
     if kind in sources.IS_URL:
         return "page address"
     if kind in sources.IS_PLACE:
@@ -1124,7 +1170,7 @@ def _hint(missing: str, known: list[str], action: str = "") -> str:
         "workspace": (", ".join(known[:-1]) + " or " + known[-1] + "?"
                       if len(known) > 1 else (known[0] + "?" if known
                                               else "there are none yet.")),
-        "kind": "mail, calendar, weather or a page?",
+        "kind": "mail, calendar, messages, weather or a page?",
         "place": "a town, or a latitude and longitude.",
         "page address": "the https address of the page.",
         "keychain entry name": "that one is worth doing from Sources, where "

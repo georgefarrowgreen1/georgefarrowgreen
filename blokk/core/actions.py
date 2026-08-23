@@ -60,8 +60,18 @@ class Action:
     pinned: bool = False              # never graduates to acting alone
     category: str = "blokk_admin"     # the trust bucket it counts toward
     run: Callable[..., dict] = field(default=lambda **kw: {})
+    # An optional sentence-builder, for the actions whose arguments are
+    # jargon. "Wire maildir into cottages, reading local" is accurate and
+    # means nothing to the person whose thumb is over Approve, and that
+    # sentence is the entire decision they are being asked to make.
+    phrase: Callable[[dict], str] | None = None
 
     def preview(self, args: dict) -> str:
+        if self.phrase is not None:
+            try:
+                return self.phrase(args)
+            except Exception:                                    # noqa: BLE001
+                pass
         try:
             return self.summary.format(**args)
         except KeyError:
@@ -125,8 +135,13 @@ def _add_source(store, workspace, kind, ref, **_):
     out = sources.add(store, workspace, kind, ref)
     if out.get("error"):
         raise Rejected(out["error"])
+    # The same sentence the proposal was approved under, so what it says it
+    # did matches what it said it would do. "maildir added to cottages" is
+    # neither.
     return {"ok": True, **out,
-            "detail": out.get("note") or f"{kind} added to {workspace}"}
+            "detail": out.get("note")
+            or ACTIONS["add_source"].preview(
+                {"workspace": workspace, "kind": kind, "ref": ref})}
 
 
 def _remove_source(store, workspace, kind, **_):
@@ -171,6 +186,47 @@ def _remove_workspace(store, workspace, **_):
             f"that belonged to it", **out}
 
 
+# Where a source actually reads from, said the way somebody would say it.
+FROM = {
+    "maildir":  "the Mail app on this Mac",
+    "ical":     "the Calendar app on this Mac",
+    "messages": "the Messages archive on this Mac",
+}
+NOUN = {"maildir": "mail", "imap": "mail", "ical": "calendar",
+        "caldav": "calendar", "messages": "messages", "weather": "forecast",
+        "web": "page"}
+
+
+def _own(name: str) -> str:
+    """cottages' mail, not cottages's mail."""
+    return f"{name}'" if name.endswith(("s", "S")) else f"{name}'s"
+
+
+def _say_add(a: dict) -> str:
+    ws, kind, ref = a.get("workspace", ""), a.get("kind", ""), a.get("ref", "")
+    noun = NOUN.get(kind, kind)
+    if kind in FROM:
+        where = FROM[kind] if ref.lower() in ("local", "default") else ref
+        return f"Read {_own(ws)} {noun} from {where}."
+    if kind == "imap":
+        return (f"Read {_own(ws)} mail over IMAP, signing in with the "
+                f"keychain entry {ref}.")
+    if kind == "caldav":
+        return (f"Read {_own(ws)} calendar over CalDAV, signing in with "
+                f"the keychain entry {ref}.")
+    if kind == "weather":
+        return f"Get {ws} the forecast for {ref} — it sends a latitude and " \
+               f"a longitude, and nothing else."
+    if kind == "web":
+        return f"Watch {ref} for {ws}, and let {ws} reach that one host."
+    return f"Add a {kind} source to {ws}, reading {ref}."
+
+
+def _say_remove(a: dict) -> str:
+    ws, kind = a.get("workspace", ""), a.get("kind", "")
+    return f"Stop reading {_own(ws)} {NOUN.get(kind, kind)}."
+
+
 ACTIONS: dict[str, Action] = {a.name: a for a in (
     Action("sweep_now", "Run the sweep now, across every workspace.",
            run=_sweep, category="blokk_run"),
@@ -179,7 +235,8 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
     Action("set_schedule", "Move the night shift to {at}.",
            args=("at",), run=_schedule),
     Action("add_source", "Wire {kind} into {workspace}, reading {ref}.",
-           args=("workspace", "kind", "ref"), run=_add_source),
+           args=("workspace", "kind", "ref"), run=_add_source,
+           phrase=_say_add),
     Action("add_workspace", "Add a workspace called {workspace}.",
            args=("workspace",), optional=("name",), run=_add_workspace),
     # Pinned. Each of these either opens a route out of the machine or
@@ -190,7 +247,8 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
     Action("egress_deny", "Stop {workspace} reaching {host}.",
            args=("workspace", "host"), pinned=True, run=_egress_deny),
     Action("remove_source", "Remove {workspace}'s {kind} source.",
-           args=("workspace", "kind"), pinned=True, run=_remove_source),
+           args=("workspace", "kind"), pinned=True, run=_remove_source,
+           phrase=_say_remove),
     Action("remove_workspace",
            "Delete the workspace {workspace} and everything in it.",
            args=("workspace",), pinned=True, run=_remove_workspace),

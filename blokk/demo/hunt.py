@@ -2518,6 +2518,134 @@ try:
     probe("A64 a model's answer arrives in one lump after the wait",
           streams_as_it_writes)
 
+    def connect_without_a_terminal():
+        # Wiring a source meant leaving the app for connect.py, which is the
+        # step people do not take. The whole journey has to work from the
+        # chat box: ask, get a proposal, approve, and then be able to read
+        # the thing you just connected.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        import core.actions as A
+        import core.connectors as _C
+        from core.ask import ask as run_ask
+        from core.models import StubModel
+
+        tmp = pathlib.Path(_tf.mkdtemp())
+        md, _cal = _fixture(tmp)
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        _C.REGISTRY._by_ws.clear()
+        st.x("DELETE FROM credential WHERE workspace_id='cottages'")
+
+        def turn(q):
+            props, said = [], []
+            for ev in run_ask(st, q, StubModel(), "cottages"):
+                if ev["type"] == "PROPOSAL":
+                    props.append(ev)
+                if ev["type"] == "TEXT_MESSAGE_CONTENT":
+                    said.append(ev["delta"])
+            return props, "".join(said)
+
+        st.x("UPDATE budget SET tool_calls=0")
+        # 1. Asked before it is wired: say so, do not shrug.
+        _p, before = turn("what's in my inbox?")
+        if "no mailbox" not in before.lower():
+            return (True, f"asked about an unwired inbox, answered: {before[:70]}")
+        # 2. "connect my mail" takes the route that needs no password.
+        props, _ = turn("connect my mail to cottages")
+        if not props:
+            return (True, "asking to connect mail proposed nothing")
+        act = props[0]["action"]
+        if act["name"] != "add_source" or act["args"].get("kind") != "maildir":
+            return (True, f"it chose {act['args'].get('kind')!r} — imap needs a "
+                          f"password, an account and a network, which is where "
+                          f"people stop")
+        # 3. The sentence under the Approve button is readable.
+        if "maildir" in props[0]["text"] or "local" in props[0]["text"]:
+            return (True, f"the proposal reads: {props[0]['text']!r}")
+        # 4. Approving it makes the source real and readable.
+        A.run(st, {"name": "add_source",
+                   "args": {"workspace": "cottages", "kind": "maildir",
+                            "ref": str(md)}})
+        _C.REGISTRY._by_ws.clear()
+        st.x("UPDATE budget SET tool_calls=0")
+        _p, after = turn("what's in my inbox?")
+        if "availability" not in after.lower():
+            return (True, f"connected, and still cannot read it: {after[:70]}")
+        return (False, "unwired says so, one sentence proposes the "
+                       "no-password route, and approving it makes it readable")
+    probe("A65 connecting a source needs a terminal", connect_without_a_terminal)
+
+    def provenance_is_true():
+        # The panel prints a line under every answer saying where the rows
+        # came from. It said "nothing outside this database was touched" —
+        # true while every tool was a SELECT, and a lie the moment one of
+        # them opened your mail.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        import core.connectors as _C
+        from core.ask import ask as run_ask, build_tools
+        from core.models import StubModel
+
+        js = open("web/index.html").read().split("<script>")[1]
+        if "Nothing outside this database was touched" in js:
+            return (True, "the panel still claims nothing outside the database "
+                          "was touched, under answers read from your mail")
+        tmp = pathlib.Path(_tf.mkdtemp())
+        md, _cal = _fixture(tmp)
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        _C.REGISTRY._by_ws.clear()
+        sources.add(st, "cottages", "maildir", str(md))
+        if build_tools(st, "cottages")["read_mail"].source != "yours":
+            return (True, "reading your mail is filed as a read of Blokk's "
+                          "own tables")
+        st.x("UPDATE budget SET tool_calls=0")
+        rows = []
+        for ev in run_ask(st, "what's in my inbox?", StubModel(), "cottages"):
+            if ev["type"] == "SOURCES":
+                rows = ev["rows"]
+        if not rows or not all("source" in r for r in rows):
+            return (True, f"the sources event says nothing about where the "
+                          f"rows came from: {rows}")
+        if not any(r["source"] == "yours" for r in rows):
+            return (True, f"reading your mail reported as {rows}")
+        return (False, "every read says whether it came from Blokk, your "
+                       "files, or off this Mac")
+    probe("A66 the panel claims nothing left the database while reading mail",
+          provenance_is_true)
+
+    def a_folder_that_is_not_there():
+        import sys as _s, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        st = Store('blokk.db')
+        bad = sources.add(st, "cottages", "maildir", "/nowhere/at/all")
+        if not bad.get("error"):
+            st.x("DELETE FROM credential WHERE workspace_id='cottages' "
+                 "AND kind='maildir'")
+            return (True, "a source pointing at nothing was added cleanly, and "
+                          "would read nothing at 04:00")
+        f = pathlib.Path(_tf.mkdtemp()) / "one.ics"
+        f.write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n")
+        isfile = sources.add(st, "cottages", "ical", str(f))
+        if not isfile.get("error"):
+            st.x("DELETE FROM credential WHERE workspace_id='cottages' "
+                 "AND kind='ical'")
+            return (True, "a file was accepted where a folder was wanted")
+        return (False, "a missing folder and a file-not-folder are both "
+                       "refused with the fix in the sentence")
+    probe("A67 a source can point at a folder that does not exist",
+          a_folder_that_is_not_there)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
