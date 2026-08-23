@@ -139,7 +139,11 @@ worse than an error.
                        type scale and one material; when you change one,
                        change the others or they drift into three products
     demo/              browser port of the engine + the test suites
-    brand/             the mark, generated parametrically
+    brand/             the mark, generated parametrically. chatmark.py emits
+                       the ask bubble's glyph from the same geometry — the
+                       block's top face, RATIO 0.568, which is 92/162 off
+                       blokk-mark.svg. Do not hand-edit the polygons in
+                       the markup; regenerate. B27d checks
 
 ## Tests — run all four before committing
 

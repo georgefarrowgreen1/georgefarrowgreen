@@ -152,7 +152,7 @@
   .bubble{width:56px;height:56px;border:0;border-radius:var(--r-pill);
     display:grid;place-items:center;color:var(--lab);cursor:pointer;
     position:relative;transition:transform .2s cubic-bezier(.32,1.12,.4,1)}
-  .bubble svg{width:24px;height:24px}
+  .bubble svg{width:28px;height:28px}
   .bubble:hover{transform:scale(1.05)}
   .bubble:active{transform:scale(.94)}
   .bubble .ring{position:absolute;inset:-4px;border-radius:var(--r-pill);
@@ -248,10 +248,9 @@
     <div class="composer">
       <button class="bubble glass dense" id="bubble" aria-label="Ask Blokk">
         <span class="ring" aria-hidden="true"></span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M20.5 11.4a7.6 7.6 0 0 1-8.2 7.5L7 21l.6-3.5A7.6 7.6 0 1 1 20.5 11.4Z"/>
-          <path d="M9 11h.01M12.5 11h.01M16 11h.01"/>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <polygon points="12,5.28967 20.592,10.1699 12,15.0502 3.408,10.1699" fill="#0A84FF"/>
+          <polygon points="11.8282,14.9526 9.07872,13.3909 9.07872,18.7104" fill="#0A84FF"/>
         </svg>
       </button>
     </div>

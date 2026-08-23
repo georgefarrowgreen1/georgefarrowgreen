@@ -557,6 +557,24 @@ probe('B18 a run that could not resume is not mentioned at all',
   probe('B27c the bubble is smaller than a fingertip',
     !bub || parseFloat((bub[0].match(/width:(\d+)px/) || [0, 0])[1]) < 44,
     'it is 56');
+  // B27d — the mark is Blokk's, and it is generated
+  // The glyph is the block's top face from the logo, at the same 0.568
+  // isometric scale, emitted by brand/chatmark.py. Hand-editing the
+  // polygons in the markup is how a mark drifts away from the one in the
+  // brand book while still looking roughly right.
+  const gen = fs.readFileSync('brand/chatmark.py', 'utf8');
+  const ratio = (gen.match(/RATIO\s*=\s*([\d.]+)/) || [])[1];
+  const want = fs.readFileSync('brand/blokk-chat.svg', 'utf8')
+                 .match(/points="[^"]+"/g);
+  for (const f of ['web/index.html', 'demo/index.html']) {
+    const src = fs.readFileSync(f, 'utf8');
+    const inBubble = (src.match(
+      /<button class="bubble[\s\S]{0,900}?<\/button>/) || [''])[0];
+    probe(`B27d ${f} draws its own chat glyph by hand`,
+      !ratio || !want || (inBubble.match(/<polygon /g) || []).length !== 2
+        || /stroke=/.test(inBubble),
+      'two polygons from brand/chatmark.py, filled, not stroked');
+  }
 }
 
 console.log(`\n  ${BUGS.length} issues found`);
