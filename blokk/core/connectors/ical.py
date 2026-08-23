@@ -10,9 +10,14 @@ password, no network and no CalDAV discovery — which caldav_cal.py's own
 docstring calls the fiddly part. It does need Full Disk Access; core/local.py
 says so and names the app to grant it to.
 
-Everything here works in whole dates. gaps() answers "which nights are free",
-and a night is free or it is not; carrying times and zones through would add
-timezone arithmetic to a question that does not ask for it.
+gaps() works in whole dates, and should: it answers "which nights are free",
+and a night is free or it is not. open_windows() is the one thing here that
+carries times, because "you have Saturday morning free" is a different
+question from "Saturday is free" and the useful answer is the first one. The
+times it carries are local wall-clock, which is what a calendar means and
+what a person reading the suggestion means. A DTSTART written in UTC is
+converted per occurrence rather than once, so a weekly 09:00 does not slide
+an hour when the clocks change.
 
 Recurrence is expanded, and that is not optional. A weekly event left
 unexpanded makes gaps() report free nights that are booked — a confident
@@ -23,7 +28,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 # BLOKK_CALENDAR_ROOT overrides where this looks. For a Mac that keeps its
@@ -59,6 +64,36 @@ def _as_date(value: str) -> date | None:
         except ValueError:
             continue
     return None
+
+
+def _as_time(value: str) -> tuple[object, bool]:
+    """(time, is_utc) for a DATE-TIME value, or (None, False) for a DATE.
+
+    None means all day, which is a different thing from midnight: an all-day
+    event blocks the whole day, and one starting at 00:00 blocks an hour.
+    """
+    v = (value or "").strip()
+    if "T" not in v:
+        return (None, False)
+    utc = v.endswith("Z")
+    try:
+        return (datetime.strptime(v.rstrip("Z")[9:15], "%H%M%S").time(), utc)
+    except ValueError:
+        return (None, False)
+
+
+def _local(when: datetime, utc: bool) -> datetime:
+    """A wall-clock datetime, from whichever frame the file wrote it in.
+
+    A floating or TZID time is already wall-clock and is used as written —
+    which is also what keeps a recurring 09:00 at 09:00 across a DST change.
+    A UTC one is converted for the occurrence it belongs to, not for the
+    first one, which is the same bug in the other direction.
+    """
+    if not utc:
+        return when
+    return (when.replace(tzinfo=timezone.utc).astimezone()
+            .replace(tzinfo=None))
 
 
 _DUR = re.compile(r"^[+-]?P(?:(\d+)W)?(?:(\d+)D)?"
@@ -205,10 +240,33 @@ def _read(root: Path) -> tuple[list[dict], list[str]]:
                         d = _as_date(one)
                         if d:
                             exd.add(d.isoformat())
+                # How long it runs, kept as one delta rather than an end
+                # date. An occurrence is then a start plus a length, which
+                # is what makes a multi-day or midnight-crossing event fall
+                # out right instead of needing a second date to be expanded.
+                t_start, t_utc = _as_time(_prop(block, "DTSTART")[1])
+                t_end, _ = _as_time(_prop(block, "DTEND")[1])
+                if t_start is None:
+                    length = timedelta(days=(e - s).days + 1)
+                elif t_end is not None:
+                    e_raw = _as_date(_prop(block, "DTEND")[1]) or s
+                    length = (datetime.combine(e_raw, t_end)
+                              - datetime.combine(s, t_start))
+                else:
+                    length = _duration(_prop(block, "DURATION")[1])
+                if length is None or length <= timedelta(0):
+                    # RFC 5545 says a DATE-TIME start with neither DTEND nor
+                    # DURATION lasts no time at all. Treated as an hour here,
+                    # because ambiguity resolves toward busy everywhere else
+                    # in this file and the failure that reaches a person is
+                    # being told they are free during a meeting.
+                    length = timedelta(hours=1)
                 events.append({"summary": _prop(block, "SUMMARY")[1],
                                "start": s, "end": e, "calendar": title,
                                "rrule": _prop(block, "RRULE")[1],
-                               "exdates": exd, "unparsed": False})
+                               "exdates": exd, "unparsed": False,
+                               "allday": t_start is None, "t_start": t_start,
+                               "t_utc": t_utc, "length": length})
     return events, names
 
 
@@ -257,6 +315,38 @@ class LocalCalendar:
                             "recurring": bool(ev["rrule"]),
                             "provenance": "self"})
         return sorted(out, key=lambda r: r["start"])
+
+    def busy(self, days: int = 7) -> list[tuple[datetime, datetime]]:
+        """Every occurrence in the window as a local start and end.
+
+        An occurrence is a start plus the event's length. Expanding the end
+        date separately would double-count a recurrence and lose an event
+        that runs past midnight.
+        """
+        lo = date.today()
+        hi = lo + timedelta(days=days)
+        out = []
+        for ev in _read(self.root)[0]:
+            for head, _tail in _expand(ev, lo, hi):
+                if ev.get("allday", True):
+                    start = datetime.combine(head, time(0, 0))
+                else:
+                    start = _local(datetime.combine(head, ev["t_start"]),
+                                   ev["t_utc"])
+                out.append((start, start + ev.get("length", timedelta(days=1))))
+        return sorted(out)
+
+    def open_windows(self, days: int = 7, day_start: int = 8,
+                     day_end: int = 20, min_hours: float = 2) -> list[dict]:
+        """Daylight hours with nothing in them, per day.
+
+        The unit a person plans in. gaps() answers the cottage's question —
+        which nights are unbooked — and this one answers yours: is there
+        actually a morning free this week.
+        """
+        from core.connectors import free_windows
+        return free_windows(self.busy(days=days + 1), days, day_start,
+                            day_end, min_hours, datetime.now())
 
     def gaps(self, days: int = 90, max_nights: int = 4) -> list[dict]:
         """Runs of free nights, shortest useful unit first.

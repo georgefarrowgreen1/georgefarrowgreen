@@ -928,6 +928,12 @@ function paint(h, ap, handled, runs){
           : `${esc(res.category.replace(/_/g,' '))} · ${esc(res.trust)}`;
         if(decision!=='approve') s.innerHTML += `<br>Filed as an episode — consolidation reads the diff.`;
         if(res.run_resumed) s.innerHTML += `<br>Run resumed at the line it stopped on.`;
+        // The decision landed; the run behind it did not pick up again. Both
+        // halves have to be said, or a queue that empties looks like work
+        // that finished.
+        if(res.run_error) s.innerHTML += `<br><span style="color:var(--red)">Your
+          decision is recorded, but the run behind it could not carry on:</span>
+          ${esc(res.run_error)}. It is marked failed under Runs.`;
         card.append(s);
         announce(`${a.category.replace(/_/g,' ')} ${decision}d`);
         setTimeout(()=>tick(true), 900);

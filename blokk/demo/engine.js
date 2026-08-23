@@ -30,6 +30,14 @@ class Ctx {
     const step = this.step;
     const prior = this.store.journal.find(j => j.run_id===this.run_id && j.step===step);
     if (prior){                                   // replay: no call, no tokens, no resend
+      // Same guard as core/durable.py: steps are matched by number, so the
+      // workflow has to ask for the same things in the same order. Handing
+      // back the previous step's result instead is a wrong answer three
+      // lines later with nothing saying why.
+      if (prior.name !== name)
+        throw new Error(`replaying ${this.run_id} step ${step}: journalled as `
+          + `'${prior.name}', workflow asked for '${name}'. A workflow that `
+          + `takes a different path on replay cannot be resumed.`);
       this.replayed++;
       this.tokensSaved += (prior.tokens_in||0)+(prior.tokens_out||0);
       this.store.say('replay', `step ${step} ${name} — replayed from journal, 0 tokens`);

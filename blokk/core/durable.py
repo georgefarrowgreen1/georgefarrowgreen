@@ -40,6 +40,14 @@ def _hash(obj: Any) -> str:
     ).hexdigest()[:16]
 
 
+class Nondeterministic(Exception):
+    """The workflow asked for a different step than the one journalled.
+
+    Not recoverable by retrying: the run's history and the code no longer
+    agree, and every result after the divergence would be the wrong one.
+    """
+
+
 class Suspended(Exception):
     """Raised to unwind out of a workflow that is now parked on a signal.
 
@@ -165,6 +173,21 @@ class Ctx:
             "SELECT * FROM journal WHERE run_id=? AND step=?", self.run_id, step
         )
         if prior is not None:
+            # Replay is matched on the step number, so the workflow has to
+            # ask for the same things in the same order every time. When it
+            # does not, this used to hand back the *previous* step's result
+            # — a timestamp arriving where a list of emails was expected,
+            # three lines later, with nothing saying why. The step's name is
+            # recorded; check it, and say so loudly.
+            if prior["name"] != name:
+                raise Nondeterministic(
+                    f"replaying {self.run_id} step {step}: this run recorded "
+                    f"{prior['name']!r} there and the workflow has just asked "
+                    f"for {name!r}. The two have to line up — a workflow that "
+                    f"takes a different path on replay cannot be resumed. The "
+                    f"usual cause is a clock, a random number or another "
+                    f"ctx.activity called from inside an activity body, which "
+                    f"only runs the first time.")
             # Replayed. No call, no tokens, no duplicate send.
             self.replayed += 1
             self.tokens_saved += prior["tokens_in"] + prior["tokens_out"]
@@ -430,6 +453,12 @@ class Engine:
                 json.dumps({**ctx.progress, "error": str(e)}, default=str),
                 now().isoformat(), run_id)
             raise
+        # A workflow is expected to return a dict, and merging one that is
+        # not used to blow up here with "'str' object is not a mapping" —
+        # after the work was done, naming neither the workflow nor the run,
+        # and leaving the run stuck at 'running' forever.
+        if result is not None and not isinstance(result, dict):
+            result = {"returned": result}
         self.store.x(
             "UPDATE run SET status='done', result=?, ended_at=? WHERE id=?",
             json.dumps({**ctx.progress, **(result or {})}, default=str),

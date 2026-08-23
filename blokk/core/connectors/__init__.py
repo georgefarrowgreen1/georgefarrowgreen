@@ -33,6 +33,7 @@ is not in scope.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
 
 
@@ -84,6 +85,50 @@ def read_since(fn, since, now, limit: int = 50) -> list:
     elif "hour" in args:
         kw["hour"] = since.strftime("%Y-%m-%dT%H")
     return list(fn(**kw))
+
+
+def free_windows(busy, days: int, day_start: int, day_end: int,
+                 min_hours: float, now) -> list[dict]:
+    """Daylight hours with nothing in them, given the hours that are taken.
+
+    Pure, and shared: the real calendar and the sample world must not each
+    have their own idea of what "free on Saturday morning" means, or the
+    demo teaches something the Mac does not do.
+
+    `busy` is (start, end) local datetimes. `now` is passed in rather than
+    read, so this can be tested at a fixed hour.
+    """
+    from datetime import time as _time, timedelta as _td
+    out = []
+    for i in range(max(1, int(days))):
+        d = (now + _td(days=i)).date()
+        # A window that has already passed is not an offer. Told at 18:00
+        # that you are free from 09:00 is the same class of wrong answer as
+        # an empty calendar on a Mac with a full diary.
+        free = [(max(datetime.combine(d, _time(day_start)), now),
+                 datetime.combine(d, _time(day_end)))]
+        for bs, be in busy:
+            cut = []
+            for fs, fe in free:
+                if be <= fs or bs >= fe:
+                    cut.append((fs, fe))
+                    continue
+                if bs > fs:
+                    cut.append((fs, min(bs, fe)))
+                if be < fe:
+                    cut.append((max(be, fs), fe))
+            free = cut
+        for fs, fe in free:
+            hours = (fe - fs).total_seconds() / 3600
+            if hours >= min_hours:
+                out.append({"date": d.isoformat(), "day": d.strftime("%A"),
+                            "from": fs.strftime("%H:%M"),
+                            "to": fe.strftime("%H:%M"),
+                            "hours": round(hours, 1),
+                            # Your own calendar: not external, not
+                            # quarantined — and no summary leaves with it.
+                            "provenance": "self"})
+    return out
 
 
 @dataclass

@@ -264,6 +264,13 @@ probe('B9  a slow sweep is reported as a failed one',
     'it posts to egress/deny and repaints from the server');
 }
 
+// B18 — a decision that lands on a run that then cannot continue
+// The tap is recorded and the run is marked failed. Saying only the first
+// half empties the queue and looks like work that finished.
+probe('B18 a run that could not resume is not mentioned at all',
+  /res\.run_resumed/.test(js) && !/res\.run_error/.test(js),
+  'both halves are said on the card');
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

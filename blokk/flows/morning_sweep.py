@@ -55,10 +55,17 @@ def register(engine, store):
         # The reader has no tools and returns fields, never prose. An
         # instruction hidden in a stranger's email arrives here as a value in
         # a dict, not as a sentence some later agent might obey.
+        # Read once, here, not inside the activities below. ctx.now() is
+        # itself a journalled step: calling it from inside an activity body
+        # records it on the first run and skips it on replay, because the
+        # body does not run the second time — so every step after it came
+        # back holding the step before's result. Steps are matched by number.
+        until = ctx.now()
+
         def read_mail():
             src = world["mail"]
             return [dict(m) for m in
-                    read_since(src.search_since, since, ctx.now(), limit=50)]
+                    read_since(src.search_since, since, until, limit=50)]
 
         msgs = ctx.activity("mail.search", read_mail) if world.get("mail") else []
 
@@ -67,7 +74,7 @@ def register(engine, store):
         if world.get("messages"):
             texts = ctx.activity(
                 "messages.since",
-                lambda: read_since(world["messages"].since, since, ctx.now(),
+                lambda: read_since(world["messages"].since, since, until,
                                    limit=40))
             msgs += [{"id": t["id"], "from": t["from"], "at": t["at"],
                       "subject": "(text message)", "body": t["body"]}
@@ -130,6 +137,34 @@ def register(engine, store):
                        revalidate="calendar_gap")
                 out["queued"] += 1
 
+        # ---- 4b. a dry day with an hour in it -------------------------------
+        # The one suggestion that needs two sources to be worth anything.
+        # Either half alone is noise: a forecast you can get from a window,
+        # and a free morning you already knew about. Together they are the
+        # thing you would otherwise notice on Sunday evening, too late.
+        cal = world.get("calendar")
+        if world.get("weather") and hasattr(cal, "open_windows"):
+            dry = ctx.activity("weather.dry",
+                               lambda: world["weather"].dry_windows(days=7))
+            free = ctx.activity("calendar.open",
+                                lambda: cal.open_windows(days=7, min_hours=2))
+            pick = _outing(dry, free)
+            if pick:
+                day, win = pick
+                _queue(ctx, store, "outdoor_window",
+                       f"{win['day']} {win['from']}–{win['to']} is free, and "
+                       f"the forecast is {day['label']} — {day['why']}.",
+                       f"{_hours(win['hours'])} free on {win['day']}, and it "
+                       f"should be {day['label']}",
+                       {"sources": ["weather", "calendar"],
+                        "date": win["date"], "hours": win["hours"],
+                        "rain_chance": day["rain_chance"],
+                        "wind_kph": day["wind_kph"],
+                        "checked_at": _hour(ctx)},
+                       # A forecast is the most perishable thing in the queue.
+                       revalidate="forecast")
+                out["queued"] += 1
+
         if rates and rates["undercut_by"] >= 3:
             _queue(ctx, store, "rate_change",
                    f"Drop the {rates['month']} midweek rate by £{rates['delta_gbp']}.",
@@ -147,6 +182,33 @@ def register(engine, store):
             out["decision"] = decision
 
         return out
+
+
+def _outing(dry: list, free: list) -> tuple | None:
+    """The first dry day with a usable window, and the best window on it.
+
+    Pure — no clock, no IO, no sorting by anything the caller cannot see.
+    One suggestion, not seven: the attention budget is eight items for the
+    whole night, and a fortnight of weather would eat it.
+    """
+    by_date = {}
+    for w in free or []:
+        best = by_date.get(w["date"])
+        # Longest wins, and the earlier start breaks a tie — so the same
+        # forecast and the same diary always produce the same suggestion,
+        # which is what makes a replay return what the first run queued.
+        if best is None or (w["hours"], best["from"]) > (best["hours"], w["from"]):
+            by_date[w["date"]] = w
+    for day in sorted(dry or [], key=lambda d: d["date"]):
+        win = by_date.get(day["date"])
+        if win:
+            return day, win
+    return None
+
+
+def _hours(n: float) -> str:
+    """3.0 -> "3h", 2.5 -> "2.5h". A card is read at arm's length."""
+    return f"{int(n)}h" if float(n).is_integer() else f"{n}h"
 
 
 def _hour(ctx) -> str:

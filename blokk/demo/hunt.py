@@ -1588,6 +1588,231 @@ try:
     probe("A44 the forecast arrives as prose a model has to trust",
           weather_fields)
 
+    # ── 45. free on Saturday morning, or just free on Saturday ──────────
+    def open_windows():
+        # ical.py works in whole dates on purpose, and open_windows() is the
+        # one thing in it that does not. Times are where a calendar reader
+        # gets quietly wrong: an all-day event that blocks nothing, a UTC
+        # meeting an hour out, a recurring one that slides when the clocks
+        # change, and a window offered at 18:00 that started at 09:00.
+        import os as _os, sys as _s, tempfile
+        from datetime import date as D, datetime as DT, time as T, timedelta as TD
+        _s.path.insert(0, ".")
+        from core.connectors import free_windows
+
+        # The arithmetic first, at a fixed hour, with no files involved.
+        now = DT(2026, 8, 24, 7, 0)                       # a Monday, 07:00
+        day = now.date()
+        busy = [(DT.combine(day, T(9, 0)), DT.combine(day, T(10, 30))),
+                (DT.combine(day, T(13, 0)), DT.combine(day, T(14, 0)))]
+        w = free_windows(busy, 1, 8, 20, 2, now)
+        got = [(x["from"], x["to"]) for x in w]
+        if got != [("10:30", "13:00"), ("14:00", "20:00")]:
+            return (True, f"two meetings cut the day into {got}")
+        # 08:00 is behind us at 11:00, and a window that has gone is not an
+        # offer — being told at 18:00 that you are free from 09:00 is the
+        # same class of wrong answer as an empty calendar on a full Mac.
+        late = free_windows(busy, 1, 8, 20, 2, DT.combine(day, T(11, 0)))
+        if late and late[0]["from"] != "11:00":
+            return (True, f"a window that had already passed was offered: "
+                          f"{late[0]['from']}")
+        if free_windows(busy, 1, 8, 20, 2, DT.combine(day, T(19, 30))):
+            return (True, "half an hour before dark came back as a window")
+
+        # Then the parsing, against files shaped like Calendar's own.
+        root = pathlib.Path(tempfile.mkdtemp())
+        ev = root / "acct.caldav" / "Home.calendar" / "Events"
+        ev.mkdir(parents=True)
+        def ics(name, body):
+            (ev / name).write_text(
+                f"BEGIN:VCALENDAR\nBEGIN:VEVENT\n{body}\nEND:VEVENT\n"
+                f"END:VCALENDAR\n")
+        d0 = D.today()
+        ics("m.ics", f"SUMMARY:Standup\nDTSTART;TZID=Europe/London:"
+                     f"{d0 + TD(days=1):%Y%m%d}T090000\nDTEND;TZID=Europe/"
+                     f"London:{d0 + TD(days=1):%Y%m%d}T093000")
+        ics("a.ics", f"SUMMARY:Away\nDTSTART;VALUE=DATE:{d0 + TD(days=2):%Y%m%d}"
+                     f"\nDTEND;VALUE=DATE:{d0 + TD(days=3):%Y%m%d}")
+        ics("u.ics", f"SUMMARY:Call\nDTSTART:{d0 + TD(days=3):%Y%m%d}T140000Z"
+                     f"\nDTEND:{d0 + TD(days=3):%Y%m%d}T150000Z")
+        ics("n.ics", f"SUMMARY:Reminder\nDTSTART;TZID=Europe/London:"
+                     f"{d0 + TD(days=4):%Y%m%d}T173000")
+        was = _os.environ.get("TZ")
+        try:
+            _os.environ["TZ"] = "Europe/London"
+            time.tzset()                    # so a UTC event has to convert
+            from core.connectors.ical import LocalCalendar
+            cal = LocalCalendar(root=root)
+            by_day = {}
+            for b in cal.busy(days=6):
+                by_day.setdefault(b[0].date().isoformat(), []).append(
+                    (b[0].strftime("%H:%M"), b[1].strftime("%H:%M")))
+            mtg = by_day.get((d0 + TD(days=1)).isoformat())
+            if mtg != [("09:00", "09:30")]:
+                return (True, f"a half-hour meeting read as {mtg}")
+            allday = by_day.get((d0 + TD(days=2)).isoformat())
+            if not allday or allday[0] != ("00:00", "00:00"):
+                return (True, f"an all-day event read as {allday}")
+            if [w2 for w2 in cal.open_windows(days=6)
+                    if w2["date"] == (d0 + TD(days=2)).isoformat()]:
+                return (True, "an all-day event left the day free")
+            call = by_day.get((d0 + TD(days=3)).isoformat())
+            # 14:00Z is 15:00 in London in August. Taking the wall clock as
+            # written puts an hour of your afternoon in the wrong place.
+            if not call or call[0][0] not in ("15:00", "14:00"):
+                return (True, f"a UTC event landed at {call}")
+            if call[0][0] == "14:00":
+                return (True, "a UTC event was read as local time")
+            nodur = by_day.get((d0 + TD(days=4)).isoformat())
+            if not nodur or nodur[0] != ("17:30", "18:30"):
+                return (True, f"an event with no end read as {nodur}")
+        finally:
+            if was is None:
+                _os.environ.pop("TZ", None)
+            else:
+                _os.environ["TZ"] = was
+            time.tzset()
+        return (False, "meetings, all-day, UTC and no-DTEND all land where "
+                       "the calendar app shows them")
+    probe("A45 the calendar says a day is free when a meeting is in it",
+          open_windows)
+
+    # ── 46. the suggestion that needs two sources ───────────────────────
+    def composite():
+        # Either half alone is noise. The claim being probed is that the
+        # suggestion only appears when both agree, that it picks the same
+        # day twice running (a workflow that replays must re-queue what it
+        # queued), and that it is one card and not seven.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from flows.morning_sweep import _outing
+
+        dry = [{"date": "2026-08-26", "label": "clear", "why": "10% rain",
+                "rain_chance": 10, "wind_kph": 14.0},
+               {"date": "2026-08-24", "label": "mostly clear", "why": "5% rain",
+                "rain_chance": 5, "wind_kph": 9.0}]
+        free = [{"date": "2026-08-26", "day": "Wednesday", "from": "08:00",
+                 "to": "11:00", "hours": 3.0},
+                {"date": "2026-08-26", "day": "Wednesday", "from": "17:00",
+                 "to": "20:00", "hours": 3.0},
+                {"date": "2026-08-27", "day": "Thursday", "from": "09:00",
+                 "to": "20:00", "hours": 11.0}]
+        if _outing([], free) or _outing(dry, []):
+            return (True, "one source alone was enough to make a suggestion")
+        first = _outing(dry, free)
+        if not first:
+            return (True, "a dry day with a free morning produced nothing")
+        # The 24th is the sooner dry day and has nothing free on it, so the
+        # answer is the 26th: a dry day you cannot use is not a suggestion.
+        if first[0]["date"] != first[1]["date"]:
+            return (True, f"it paired the forecast for {first[0]['date']} "
+                          f"with a window on {first[1]['date']}")
+        if first[0]["date"] != "2026-08-26":
+            return (True, f"expected the first usable dry day, got "
+                          f"{first[0]['date']}")
+        if _outing(dry, list(reversed(free)))[1] != first[1]:
+            return (True, "the same forecast and diary chose a different "
+                          "window depending on list order — a replay would "
+                          "queue something else than the first run did")
+        # And in the live sample world, exactly one card, with both sources
+        # named on it, from a workspace that has no credentials at all. Swept
+        # here rather than read from whatever earlier probes left behind: a
+        # probe that depends on the order it runs in is a probe that will
+        # start failing for a reason that has nothing to do with it.
+        po('/api/v1/reset')
+        po('/api/v1/sweep')
+        cards = []
+        for _ in range(80):
+            cards = [a for a in g('/api/v1/approvals')
+                     if a["category"] == "outdoor_window"]
+            if cards:
+                break
+            time.sleep(0.2)
+        if len(cards) != 1:
+            return (True, f"{len(cards)} outdoor cards in the queue — the "
+                          f"attention budget is eight for the whole night")
+        ev = cards[0]["evidence"]
+        if sorted(ev.get("sources") or []) != ["calendar", "weather"]:
+            return (True, f"the card does not say what it is built on: {ev}")
+        return (False, "one card, only when a dry day and a free window "
+                       "line up, and the same one on a replay")
+    probe("A46 a suggestion that needs two sources fires on one", composite)
+
+    # ── 47. the step that comes back holding the wrong answer ───────────
+    def replay_alignment():
+        # Replay is matched on the step *number*. A workflow that asks for a
+        # different sequence the second time therefore gets the previous
+        # step's result — a timestamp where a list of emails should be —
+        # and fails three lines later with a TypeError that names neither.
+        # Found for real: ctx.now() inside an activity body is journalled on
+        # the first run and skipped on replay, because the body does not run
+        # the second time. Every run with exactly one approval died on
+        # resume; runs with two survived only because deciding one of them
+        # does not wake anything.
+        import sys as _s, tempfile
+        _s.path.insert(0, ".")
+        from core.durable import Engine, Nondeterministic, Store
+
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        st.x("INSERT INTO workspace(id,name,active) VALUES('w','W',1)")
+        eng = Engine(st)
+        drift = {"on": False}
+
+        @eng.workflow("drifter")
+        def drifter(ctx, _payload):
+            ctx.activity("first", lambda: "one")
+            if not drift["on"]:
+                ctx.activity("only-on-the-first-run", lambda: "two")
+            return {"got": ctx.activity("last", lambda: "three")}
+
+        rid = eng.start("drifter", "w")
+        drift["on"] = True                     # the second run takes a shortcut
+        try:
+            eng._drive(rid)
+            return (True, "a workflow that skipped a step on replay was "
+                          "handed the wrong step's result and carried on")
+        except Nondeterministic as e:
+            msg = str(e)
+            if "only-on-the-first-run" not in msg or "'last'" not in msg:
+                return (True, f"it noticed, but does not say what diverged: "
+                              f"{msg[:80]}")
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"it failed as {type(e).__name__}, which names "
+                          f"neither the run nor the step: {str(e)[:70]}")
+
+        # And the real flow no longer drifts: a run holding exactly one
+        # approval has to resume when that one is decided.
+        po('/api/v1/reset')
+        po('/api/v1/sweep')
+        card = None
+        for _ in range(80):
+            open_now = g('/api/v1/approvals')
+            solo = {}
+            for a in open_now:
+                solo[a["run_id"]] = solo.get(a["run_id"], 0) + 1
+            card = next((a for a in open_now if solo[a["run_id"]] == 1), None)
+            if card:
+                break
+            time.sleep(0.2)
+        if not card:
+            return (True, "no run in the sample world holds a single "
+                          "approval, so nothing here exercises a resume")
+        r = po(f'/api/v1/approvals/{card["id"]}/decide', {"decision": "approve"})
+        if r.get("run_error"):
+            return (True, f"deciding the only approval on a run could not "
+                          f"wake it: {r['run_error'][:90]}")
+        if not r.get("run_resumed"):
+            return (True, f"deciding the only approval on a run did not wake "
+                          f"it: {r}")
+        run = g(f'/api/v1/runs/{card["run_id"]}')
+        status = (run.get("run") or run).get("status")
+        if status != "done":
+            return (True, f"the resumed run ended {status!r}")
+        return (False, "a step that does not line up says so, and a run "
+                       "holding one approval resumes and finishes")
+    probe("A47 a replayed step comes back holding the step before's result",
+          replay_alignment)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

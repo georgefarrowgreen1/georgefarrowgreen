@@ -294,18 +294,28 @@ def h_decide(approval_id, body):
     still = store.one(
         "SELECT COUNT(*) c FROM approval WHERE run_id=? AND decision IS NULL",
         a["run_id"])["c"]
-    resumed = False
+    resumed, resume_error = False, None
     if still == 0:
         try:
             engine.signal(a["run_id"], "approval", {"decision": decision})
             resumed = True
         except (ValueError, KeyError):
             pass                                   # already resumed, fine
+        except Exception as e:                               # noqa: BLE001
+            # The decision is already recorded and it stands — the tap
+            # happened and the person is owed that. What failed is the run
+            # picking up where it left off, and _drive has already marked it
+            # so. Answering 500 here would report a write that succeeded as
+            # one that did not, which is invariant 6 backwards.
+            resume_error = f"{type(e).__name__}: {e}"
 
     ok, why = policy.may_act(a["workspace_id"], a["category"])
     bump()
-    return {"ok": True, "category": a["category"], "now_autonomous": ok,
-            "trust": why, "run_resumed": resumed}
+    out = {"ok": True, "category": a["category"], "now_autonomous": ok,
+           "trust": why, "run_resumed": resumed}
+    if resume_error:
+        out["run_error"] = resume_error
+    return out
 
 
 def h_recheck(approval_id, _body):
