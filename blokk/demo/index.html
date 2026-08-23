@@ -10,6 +10,9 @@
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --tap:44px;
+    /* The dashboard's corners: concentric when nested, capsules when sized
+       to their content. */
+    --r-card:22px; --r-lg:18px; --r-pill:999px;
     /* The dashboard's material, verbatim — this page exists to show what the
        app looks like, and it had none of it. Chrome is glass; content is
        not. Two numbers drive the whole thing. */
@@ -81,11 +84,12 @@
   .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:22px}
   .sect{font-size:13px;color:var(--lab3);margin:26px 0 12px;font-weight:500}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:20px;background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:var(--r-pill);background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
   .chip .t{color:var(--lab3);font-size:12px}
   .chip.warn{border-color:rgba(255,214,10,.28)}.chip.warn .t{color:var(--amber)}
   .chip.bad{border-color:rgba(255,69,58,.3)}.chip.bad .t{color:var(--red)}
-  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);border-radius:18px;padding:16px;margin-bottom:11px;transition:opacity .3s}
+  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);
+    border-radius:var(--r-card);padding:16px;margin-bottom:11px;transition:opacity .3s}
   .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
   .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
   .action.gone{opacity:.3}
@@ -97,12 +101,15 @@
   .action .why{font-size:13.5px;color:var(--lab2);margin:9px 0 0 37px;line-height:1.42}
   .action .why em{font-style:normal;color:var(--amber)}
   .pair{display:flex;gap:10px;margin-top:15px}
-  .pair button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:16px;font-weight:500;background:rgba(255,255,255,.055);color:var(--lab2);cursor:pointer}
+  .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:14px;
+    font-family:var(--ui);font-size:16px;font-weight:500;
+    background:rgba(255,255,255,.055);color:var(--lab2);cursor:pointer}
   .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
   .pair button:disabled{opacity:.4}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:13px;padding-top:13px;border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
-  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
+  .quiet{background:var(--card2);border:1px solid var(--hair);
+    border-radius:var(--r-card);overflow:hidden}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;
     min-height:var(--tap);cursor:pointer}
   .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
@@ -119,12 +126,14 @@
   .qi .m{font-family:var(--mono);font-size:11px;color:var(--lab3)}
   .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
   .runs::-webkit-scrollbar{display:none}
-  .run{flex:0 0 auto;width:136px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
+  .run{flex:0 0 auto;width:136px;background:var(--card2);border:1px solid var(--hair);
+    border-radius:var(--r-lg);padding:13px}
   .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
   .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em;
     color:var(--c,var(--lab))}
   .run .lb{font-family:var(--mono);font-size:10px;color:var(--lab3);margin-top:4px}
-  .health{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:16px}
+  .health{background:var(--card2);border:1px solid var(--hair);
+    border-radius:var(--r-card);padding:16px}
   .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
   .hrow:first-child{margin-top:0}
   .hrow .k{color:var(--lab2);width:98px;flex:0 0 auto}
@@ -136,19 +145,20 @@
     text-align:right;flex:0 0 auto;white-space:nowrap}
   .composer{position:sticky;bottom:0;z-index:15;margin-top:auto;
     padding:10px 20px 18px}
-  .bar{display:flex;align-items:center;gap:12px;border-radius:24px;
+  .bar{display:flex;align-items:center;gap:12px;border-radius:var(--r-pill);
     padding:13px 17px;min-height:var(--tap)}
   .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
 
   /* ── inspector ─────────────────────────────────────── */
   .insp{width:100%;max-width:400px;display:flex;flex-direction:column;gap:10px}
   @media(min-width:940px){.insp{max-width:420px}}
-  .panel{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:15px}
+  .panel{background:var(--card2);border:1px solid var(--hair);
+    border-radius:var(--r-card);padding:15px}
   .panel h3{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;
             color:var(--lab3);margin:0 0 11px;font-weight:500;display:flex;justify-content:space-between}
   .panel h3 span{color:var(--lab2)}
   .ctlrow{display:flex;gap:7px;flex-wrap:wrap}
-  .ctlrow button{flex:1;min-width:96px;border:0;border-radius:11px;
+  .ctlrow button{flex:1;min-width:96px;border:0;border-radius:var(--r-pill);
                  padding:12px 8px;min-height:var(--tap);font-family:var(--ui);
                  font-size:13.5px;font-weight:500;background:var(--card);color:var(--lab);cursor:pointer}
   .ctlrow button.go{background:var(--blue);color:#fff}

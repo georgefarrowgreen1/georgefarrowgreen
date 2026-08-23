@@ -183,7 +183,7 @@ probe('B9  a slow sweep is reported as a failed one',
   probe('B14a glass ignores Reduce Transparency',
     !/prefers-reduced-transparency/.test(css) || !/prefers-contrast/.test(css),
     'both pin the material solid');
-  // iOS 27 added these two. Without them a glass bar dissolves into whatever
+  // iOS 26 added these two. Without them a glass bar dissolves into whatever
   // is behind it and the edge of the toolbar disappears.
   probe('B14b the glass has no edge and no specular highlight',
     !/darkened edge/.test(css) || !/inset 0 \.6px 0 rgba\(255,255,255/.test(css),
@@ -419,6 +419,38 @@ probe('B18 a run that could not resume is not mentioned at all',
   probe('B23 the page sits flush against the edge on a 1024 screen',
     /padding-left: ?0[;}]/.test(flat) || !/max-width: ?calc\(1080px/.test(flat),
     'the measure is 1080 and the gutter is on top of it');
+}
+
+// B24 — one piece of glass, not four
+// iOS 26 groups the controls of a bar into a single glass container with
+// the items inside it. Four separate lozenges, each with its own material
+// and its own edge, read as four surfaces floating at different depths —
+// which is what this had.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  const tools = css.match(/\n  \.tools\{[^}]*\}/);
+  const ico = css.match(/\n  \.icobtn\{[^}]*\}/);
+  probe('B24 every toolbar item carries its own material',
+    !/class="tools glass"/.test(h)
+      || !/border-radius:var\(--r-pill\)/.test(tools ? tools[0] : '')
+      || /background:rgba/.test(ico ? ico[0] : ''),
+    'the group is the glass; the items are regions of it');
+}
+
+// B25 — three files, one set of corners
+// Same reason as B15 for the palette: the dashboard, the wizard and the
+// demo are one product, and a radius scale that only two of them have is
+// how they start looking like two products.
+{
+  const want = ['--r-card', '--r-pill'];
+  const missing = [];
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const css = fs.readFileSync(f, 'utf8').split('<style>')[1];
+    want.forEach(t => { if (!css.includes(t + ':')) missing.push(`${f} ${t}`); });
+  }
+  probe('B25 the corner scale is not shared by all three pages',
+    missing.length > 0, missing.length ? missing.join(', ')
+                                       : 'all three define --r-card and --r-pill');
 }
 
 console.log(`\n  ${BUGS.length} issues found`);

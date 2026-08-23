@@ -24,7 +24,23 @@
     --t-lede:27px; --t-title:21px; --t-card:17px; --t-body:15px;
     --t-meta:13.5px; --t-small:12.5px; --t-mono:11.5px;
     --sp-1:6px; --sp-2:11px; --sp-3:16px; --sp-4:22px; --sp-5:28px;
+
+    /* iOS 26 corners. Two rules do most of the work:
+
+       **Concentric.** A rounded thing inside a rounded thing shares its
+       centre, so the inner radius is the outer one minus the gap between
+       them — `calc(var(--r-card) - var(--sp-3))` for a control inset by
+       sp-3. Get it wrong and the two curves run at different rates and the
+       inner one looks pinched, which is what `calc(20px - 16px + 8px)` was
+       doing here by hand.
+
+       **Capsules.** A control sized to its content is a pill, not a
+       rounded rectangle. A pill is concentric with anything, at any
+       padding, which is half the reason iOS 26 uses so many of them. */
+    --r-card:22px;       /* a grouped container */
     --r-lg:18px; --r-md:13px; --r-sm:10px;
+    --r-pill:999px;
+    --r-sheet:30px;      /* a sheet's top corners, near the display's own */
     --rail:320px;        /* the status column on a wide screen */
     --gutter:20px;
     /* 44 points. Not a guideline — it is the size of a fingertip, and every
@@ -32,7 +48,7 @@
        may *look* smaller than this; its target may not be. */
     --tap:44px;
 
-    /* ── Liquid Glass, as iOS 27 does it ──────────────────────────────
+    /* ── Liquid Glass, as iOS 26 does it ──────────────────────────────
        Chrome is glass; content is not. A card you are reading a stranger's
        words off does not want the wall behind it showing through — Apple
        puts the material on bars, sheets and controls, and leaves what you
@@ -41,14 +57,14 @@
 
        --glass-fill  0 = clear, 1 = solid. Raised by the slider, and pinned
                      to 1 by Reduce Transparency or Increase Contrast.
-       --glass-blur  the diffusion. iOS 27's change was to diffuse busy
+       --glass-blur  the diffusion. iOS 26's change was to diffuse busy
                      content harder, so this is deliberately heavy. */
     --glass-fill:.72;
     --glass-blur:30px;
     --glass-sat:180%;
   }
   /* One material. The darkened outer edge and the bright specular top are
-     the two things iOS 27 added to it, and they are what stop a glass bar
+     the two things iOS 26 added to it, and they are what stop a glass bar
      dissolving into whatever happens to be behind it. */
   .glass{
     background:
@@ -64,7 +80,7 @@
       0 10px 34px rgba(0,0,0,.42);
   }
   /* A bar that sits over dense content carries more fill than one at the top
-     of the page. Same material, further along it — iOS 27's readability pass
+     of the page. Same material, further along it — iOS 26's readability pass
      was exactly this: diffuse harder where there is more to diffuse. */
   .glass.dense{background:
       linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
@@ -107,7 +123,7 @@
     /* The dense fill, not the plain one. A bar floating over a queue of mail
        is the densest thing in this app to sit over, and at .72 a stranger's
        subject line read straight through it and competed with the workspace
-       name — the exact readability problem iOS 27's pass was about. */
+       name — the exact readability problem iOS 26's pass was about. */
     background:
       linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03)),
       rgba(18,18,20,calc(var(--glass-fill) + .16));
@@ -133,8 +149,15 @@
   /* Glyphs before this were ⚯ ▫ ⚙ ↻, which nobody has ever been able to read
      — the user had to be told in prose what each one opened. Drawn icons on a
      phone, and the word as well as soon as the window is wide enough for it. */
-  .tools{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-  @media (min-width:900px){.tools{gap:7px}}
+  /* One capsule, not four circles. iOS 26 groups the controls of a bar
+     into a single piece of glass with the items sitting inside it, rather
+     than giving each one its own pill — the glass is a surface the bar is
+     made of, and four separate lozenges read as four separate surfaces
+     floating at different depths. The group is a pill and so are the items
+     in it, which is concentric at any padding. */
+  .tools{display:flex;align-items:center;gap:2px;flex:0 0 auto;
+    padding:3px;border-radius:var(--r-pill)}
+  @media (min-width:900px){.tools{gap:3px}}
   /* Targets are 44 now rather than 40, which is 16 more points of toolbar,
      and the subtitle is what paid for it: "4 runs · 1 parked" became
      "4 runs · 1 …" on a 390-point phone. Refresh is the one that can go —
@@ -152,14 +175,16 @@
     .avatar{width:38px;height:38px;border-radius:11px}
     .avatar .logo{width:24px;height:24px}
   }
-  .icobtn{height:var(--tap);min-width:var(--tap);padding:0;border-radius:22px;border:0;
+  /* Inside the group the item carries no material of its own — it is a
+     region of the same piece of glass, and it only lights up under the
+     finger. */
+  .icobtn{height:var(--tap);min-width:var(--tap);padding:0;
+          border-radius:var(--r-pill);border:0;
           color:var(--lab2);font-size:var(--t-small);font-family:var(--ui);
           cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-          gap:7px;flex:0 0 auto;text-decoration:none;
-          background:rgba(255,255,255,.09);
-          box-shadow:0 0 0 .5px rgba(0,0,0,.5),inset 0 .6px 0 rgba(255,255,255,.22);
+          gap:7px;flex:0 0 auto;text-decoration:none;background:transparent;
           transition:background .15s,color .15s,transform .12s}
-  .icobtn:hover{background:rgba(255,255,255,.16);color:var(--lab)}
+  .icobtn:hover{background:rgba(255,255,255,.14);color:var(--lab)}
   .icobtn:active{transform:scale(.94)}
   .icobtn svg{width:18px;height:18px;flex:0 0 auto}
   .icobtn .lbl{display:none}
@@ -203,13 +228,13 @@
   .sect{font-size:13px;color:var(--lab3);margin:28px 0 12px;font-weight:500}
 
   .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:20px;
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:var(--r-pill);
         background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
   .chip .t{color:var(--lab3);font-size:12px}
   .chip.warn{border-color:rgba(255,214,10,.28)} .chip.warn .t{color:var(--amber)}
 
   .action{background:var(--action);border:1px solid rgba(10,132,255,.22);
-          border-radius:20px;padding:16px;margin-bottom:11px;
+          border-radius:var(--r-card);padding:var(--sp-3);margin-bottom:11px;
           box-shadow:inset 0 .6px 0 rgba(255,255,255,.13),0 2px 10px rgba(0,0,0,.3);
           transition:opacity .3s}
   .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
@@ -223,7 +248,10 @@
   .action .why{font-size:13.5px;color:var(--lab2);margin:9px 0 0 37px;line-height:1.42}
   .action .why em{font-style:normal;color:var(--amber)}
   .pair{display:flex;gap:10px;margin-top:15px}
-  .pair button{flex:1;border:0;border-radius:calc(20px - 16px + 8px);padding:14px;font-family:var(--ui);
+  /* A capsule, not a rounded rectangle with a radius worked out by hand.
+     `calc(20px - 16px + 8px)` was an attempt at concentricity with a fudge
+     on the end; a pill is concentric with its card at any padding. */
+  .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:14px;font-family:var(--ui);
                font-size:16px;font-weight:500;background:rgba(255,255,255,.055);
                color:var(--lab2);cursor:pointer;transition:transform .12s ease,
                background .15s ease;box-shadow:inset 0 .6px 0 rgba(255,255,255,.10)}
@@ -234,7 +262,7 @@
            border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
 
-  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:20px;
+  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:var(--r-card);
          overflow:hidden;box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
   .quiet .head:active{background:rgba(255,255,255,.04)}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
@@ -258,7 +286,7 @@
   .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
   .runs::-webkit-scrollbar{display:none}
   .run{flex:0 0 auto;width:152px;background:var(--card2);border:1px solid var(--hair);
-       border-radius:16px;padding:13px;
+       border-radius:var(--r-lg);padding:13px;
        box-shadow:inset 0 .6px 0 rgba(255,255,255,.07)}
   .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
   .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em;
@@ -266,7 +294,7 @@
   .run .lb{font-family:var(--mono);font-size:10.5px;color:var(--lab3);margin-top:4px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-  .health{background:var(--card2);border:1px solid var(--hair);border-radius:20px;
+  .health{background:var(--card2);border:1px solid var(--hair);border-radius:var(--r-card);
           padding:16px;box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
   .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
   .hrow:first-child{margin-top:0}
@@ -283,7 +311,7 @@
   .hrow.plain .v{margin-left:auto}
 
   .ctl{display:flex;gap:9px;margin-top:12px}
-  .ctl button{flex:1;border:0;border-radius:14px;padding:14px;font-family:var(--ui);
+  .ctl button{flex:1;border:0;border-radius:var(--r-pill);padding:14px;font-family:var(--ui);
               font-size:15px;font-weight:500;background:rgba(255,255,255,.08);
               color:var(--lab);cursor:pointer;transition:transform .12s ease,
               background .15s ease;box-shadow:inset 0 .6px 0 rgba(255,255,255,.12)}
@@ -333,7 +361,7 @@
                font-family:var(--ui);font-size:13px;cursor:pointer}
   .sugg button:hover{background:rgba(255,255,255,.12);color:var(--lab)}
   .askbar{flex:0 0 auto;padding:8px 16px calc(env(safe-area-inset-bottom) + 14px)}
-  .askbar .row{display:flex;align-items:flex-end;gap:9px;border-radius:24px;
+  .askbar .row{display:flex;align-items:flex-end;gap:9px;border-radius:var(--r-pill);
                padding:8px 8px 8px 17px}
   .askbar textarea{flex:1;background:none;border:0;color:var(--lab);font-family:var(--ui);
                    font-size:16px;line-height:1.4;resize:none;max-height:110px;
@@ -349,7 +377,7 @@
 
   .composer{position:sticky;bottom:0;z-index:15;
             padding:10px var(--gutter) calc(env(safe-area-inset-bottom) + 14px)}
-  .bar{display:flex;align-items:center;gap:12px;border-radius:24px;padding:13px 17px;
+  .bar{display:flex;align-items:center;gap:12px;border-radius:var(--r-pill);padding:13px 17px;
        cursor:pointer;transition:transform .12s ease}
   .bar:active{transform:scale(.985)}
   .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
@@ -392,7 +420,7 @@
   .err{background:#1E0E0E;border:1px solid rgba(255,69,58,.35);border-radius:12px;padding:12px;
        font-size:13px;line-height:1.45;color:#FFB4AE;margin-top:12px}
   .err b{color:var(--red)}
-  .recheck{width:100%;margin-top:11px;border:0;border-radius:12px;padding:13px;
+  .recheck{width:100%;margin-top:11px;border:0;border-radius:var(--r-pill);padding:13px;
            background:rgba(255,214,10,.16);color:var(--amber);font-family:var(--ui);
            font-size:14.5px;font-weight:500;cursor:pointer}
   /* ── dialogs ────────────────────────────────────────────────────────
@@ -408,7 +436,7 @@
        up from the bottom edge and stops 38px short of it is not a sheet. */
     max-width:100%;
     position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;width:100%;
-    border-radius:22px 22px 0 0;
+    border-radius:var(--r-sheet) var(--r-sheet) 0 0;
     padding-bottom:calc(22px + env(safe-area-inset-bottom));
     background:
       linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03) 30%,
@@ -430,7 +458,7 @@
   @media (min-width:600px){
     dialog{position:fixed;top:50%;left:50%;right:auto;bottom:auto;
       transform:translate(-50%,-50%);width:calc(100vw - 32px);
-      border-radius:22px;padding-bottom:22px;max-height:calc(100vh - 64px);
+      border-radius:var(--r-sheet);padding-bottom:22px;max-height:calc(100vh - 64px);
       box-shadow:0 0 0 .5px rgba(0,0,0,.66),
                  inset 0 .6px 0 rgba(255,255,255,.30),
                  0 24px 70px rgba(0,0,0,.55)}
@@ -455,7 +483,7 @@
     color:var(--lab);font-size:15px;font-family:var(--ui)}
   dialog select:focus-visible,dialog input:focus-visible{outline:2px solid var(--blue);
     outline-offset:1px;border-color:transparent}
-  dialog .mini{padding:10px 15px;min-height:var(--tap);border:1px solid var(--hair);border-radius:var(--r-sm);
+  dialog .mini{padding:10px 15px;min-height:var(--tap);border:1px solid var(--hair);border-radius:var(--r-pill);
     background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui);
     cursor:pointer}
   dialog .mini:hover{background:rgba(255,255,255,.14)}
@@ -467,13 +495,24 @@
   dialog .mini.armed,dialog .mini.quiet.armed{background:var(--red);
     border-color:transparent;color:#fff}
   dialog button.wide{width:100%;margin-top:16px;padding:14px;min-height:48px;border:0;
-    border-radius:var(--r-md);background:var(--card2);color:var(--lab);font-size:15px;
+    border-radius:var(--r-pill);background:var(--card2);color:var(--lab);font-size:15px;
     font-family:var(--ui);cursor:pointer}
   dialog button.wide:hover{background:#2A2A2D}
   dialog .sect2{font-size:12px;color:var(--lab3);margin:14px 0 8px;
     text-transform:uppercase;letter-spacing:.04em}
   dialog pre{margin:10px 0 0;padding:10px;background:#0B0B0E;border-radius:var(--r-sm);
     max-height:230px;overflow:auto;font-size:var(--t-mono);line-height:1.45;color:var(--lab2)}
+  /* An inset grouped list, which is the shape iOS uses for anything that
+     reads like settings: rows inside one rounded container, separators
+     inset to where the text starts rather than running the full width, and
+     the container inset from the edges of the sheet. Bare rows on the
+     sheet's own background is the plain list style, which iOS keeps for
+     content you scroll rather than settings you change. */
+  dialog .group{background:var(--card2);border:1px solid var(--hair);
+    border-radius:calc(var(--r-sheet) - 22px + 14px);
+    padding:0 14px;margin:0 0 10px;
+    box-shadow:inset 0 .6px 0 rgba(255,255,255,.06)}
+  dialog .group:empty{display:none}
   dialog .srow{display:flex;justify-content:space-between;align-items:center;
     gap:8px;padding:10px 0;border-bottom:1px solid var(--hair);font-size:13px}
   dialog .srow:last-of-type{border-bottom:0}
@@ -485,10 +524,11 @@
      inside somebody else's. The chips were 16px tall, wrapped out of the
      text block on any workspace with two hosts, and carried a destructive
      action on a third of a fingertip. */
-  dialog .orow{font-size:13px;color:var(--lab2);margin:10px 0 2px}
+  dialog .orow{font-size:13px;color:var(--lab2);margin:14px 0 4px;
+    padding-left:2px}
   dialog .orow b{color:var(--lab)}
   dialog .hrow2{display:flex;align-items:center;justify-content:space-between;
-    gap:10px;min-height:var(--tap);padding:2px 0 2px 12px;
+    gap:10px;min-height:var(--tap);padding:2px 0;
     border-bottom:1px solid var(--hair)}
   dialog .hrow2:last-of-type{border-bottom:0}
   dialog .hrow2 code{font-family:var(--mono);font-size:12px;color:var(--lab2);
@@ -518,7 +558,7 @@
      next to the button that adds things, which is where "remove the sample
      world" used to sit looking exactly as important as "add a workspace". */
   dialog .rowbtn{width:100%;margin:10px 0 0;min-height:var(--tap);
-    border:1px solid var(--hair);border-radius:var(--r-md);background:transparent;
+    border:1px solid var(--hair);border-radius:var(--r-pill);background:transparent;
     color:var(--lab);font-size:14.5px;font-family:var(--ui);cursor:pointer;
     transition:background .15s ease,transform .12s ease}
   dialog .rowbtn:hover{background:rgba(255,255,255,.10)}
@@ -531,7 +571,10 @@
   dialog .mini.quiet{color:var(--lab2);background:transparent}
   dialog .mini.quiet:hover{background:rgba(255,69,58,.14);color:var(--red);
     border-color:rgba(255,69,58,.35)}
-  dialog .addbox{margin:12px 0;padding:12px;border-radius:var(--r-md);
+  /* Inset inside a sheet: the sheet's corner less the 22px it insets by,
+     so the two curves are concentric rather than merely both round. */
+  dialog .addbox{margin:12px 0;padding:12px;
+    border-radius:calc(var(--r-sheet) - 22px + 12px);
     background:var(--card2)}
   dialog .addbox .mini.danger{width:100%;margin-top:8px}
   dialog .warn{color:var(--amber)}
@@ -638,7 +681,7 @@
   <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
   </g></svg><span class="on" id="live"></span></div>
     <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
-    <nav class="tools" aria-label="Blokk settings">
+    <nav class="tools glass" aria-label="Blokk settings">
     <button class="icobtn" id="sources" aria-label="Data sources"
       title="Data sources"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9.5 14.5 14.5 9.5"/><path d="M7.8 11.2 6 13a3.9 3.9 0 0 0 5.5 5.5l1.8-1.8"/><path d="M16.2 12.8 18 11a3.9 3.9 0 0 0-5.5-5.5l-1.8 1.8"/></svg><span class="lbl">Sources</span></button>
     <button class="icobtn" id="phone" aria-label="Open on your phone"
@@ -857,7 +900,7 @@ function toast(m){ const t=$('#toast'); t.innerHTML=m; t.classList.add('up');
 
 let ver = -1, busy = false, lastDoc = 0;
 
-// The scroll edge effect. iOS 27 draws a uniform bar the moment content
+// The scroll edge effect. iOS 26 draws a uniform bar the moment content
 // passes under a floating one, and nothing before that — so the top of an
 // unscrolled page has no seam across it, and text never sits on text.
 (function scrollEdge(){
@@ -1214,7 +1257,8 @@ async function paintSources(extra){
     </div>`).join('');
   const wsbox = `
     <div class="sect2">Workspaces</div>
-    ${wsrows || '<p class="sub">None yet.</p>'}
+    ${wsrows ? `<div class="group">${wsrows}</div>`
+             : '<p class="sub">None yet.</p>'}
     <div class="addbox">
       <input id="w-id" placeholder="id — lowercase, e.g. georgefg" />
       <input id="w-name" placeholder="name — e.g. George Farrow Green" />
@@ -1230,13 +1274,13 @@ async function paintSources(extra){
   const onmac = L.mac && (L.sources || []).length;
   const localbox = !onmac ? '' : `
     <div class="sect2">On this Mac</div>
-    ${L.sources.map(x => `<div class="lrow">
+    <div class="group">${L.sources.map(x => `<div class="lrow">
       <span class="ldot ${x.state === 'ready' ? 'yes'
         : (x.state === 'blocked' || x.state === 'empty') ? 'no' : 'meh'}"></span>
       <div><b>${esc(x.what)}</b> <small>${esc(x.path)}</small>
         ${x.found ? `<small>${esc(x.found)}</small>` : ''}
         <div class="ldet">${esc(x.detail)}</div></div>
-    </div>`).join('')}
+    </div>`).join('')}</div>
     ${L.blocked ? `<div class="fda">
       <b>${L.blocked} of these is on this Mac but not readable.</b>
       <ol>${L.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>
@@ -1251,10 +1295,10 @@ async function paintSources(extra){
     <div class="sect2">What can leave this Mac</div>
     ${out.length ? out.map(w => `
       <div class="orow"><b>${esc(w.id)}</b></div>
-      ${w.egress.map(h => `<div class="hrow2">
+      <div class="group">${w.egress.map(h => `<div class="hrow2">
         <code>${esc(h)}</code>
         <button class="mini quiet" data-deny="${esc(w.id)}|${esc(h)}"
-          title="Stop ${esc(w.id)} reaching ${esc(h)}">Stop</button></div>`).join('')}
+          title="Stop ${esc(w.id)} reaching ${esc(h)}">Stop</button></div>`).join('')}</div>
     `).join('') : `<p class="sub">Nothing reaches off this Mac. Adding a
       weather or web source is what opens a host, one at a time.</p>`}
     ${(SRC.egress_log || []).length ? `
@@ -1279,7 +1323,8 @@ async function paintSources(extra){
       }).join('')}</div>` : ''}`;
 
   body.innerHTML = `${wsbox}${localbox}
-    <div class="sect2">Wired sources</div>${wired}
+    <div class="sect2">Wired sources</div>${
+      SRC.sources.length ? `<div class="group">${wired}</div>` : wired}
     <div class="addbox">
       <div class="sect2">Add a source</div>
       <select id="s-ws">${wsopts}</select>
@@ -1511,7 +1556,7 @@ async function paintUpdate(){
 $('#update').onclick = () => { $('#updlg').showModal(); paintUpdate(); };
 
 /* ── Appearance ─────────────────────────────────────────────────────────────
-   iOS 27 added a slider for exactly this, because a material that takes its
+   iOS 26 added a slider for exactly this, because a material that takes its
    colour from whatever is behind it is not equally readable behind
    everything. One number drives both the fill and the diffusion; it lives in
    localStorage, so it is this browser's preference and never leaves it.

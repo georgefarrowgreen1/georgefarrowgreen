@@ -132,7 +132,7 @@ worse than an error.
     web/               dashboard, setup wizard, sources, phone, update and
                        appearance panels, PWA. Parity with connect.py is
                        deliberate: both call core/sources.py, neither
-                       reimplements it. The look is iOS 27 Liquid Glass —
+                       reimplements it. The look is iOS 26 Liquid Glass —
                        chrome is glass, content is not, and Reduce
                        Transparency wins over the in-app slider. index.html,
                        setup.html and demo/index.html share one palette, one
@@ -191,6 +191,23 @@ you change a threshold or a rule in Python, change it there too and re-run
 * The front end is one `<script>` per page, so one stray paren is a blank
   screen that every pattern-matching probe still passes. B19 parses all
   three pages.
+* **Corners follow iOS 26's two rules.** *Concentric*: a rounded thing inside
+  a rounded thing shares its centre, so the inner radius is the outer one
+  minus the gap — `calc(var(--r-sheet) - 22px + 12px)` for a box inset by
+  22px and padded by 12. *Capsules*: anything sized to its content is
+  `--r-pill`, which is concentric with any container at any padding. Do not
+  compute a radius by hand; `calc(20px - 16px + 8px)` was here and it was a
+  fudge, not a rule. All three pages define `--r-card` and `--r-pill`, and
+  B25 fails if one of them stops.
+* **A bar's controls are one piece of glass.** iOS 26 groups the items of a
+  toolbar into a single glass container and lets each item light up inside
+  it. Four separate lozenges, each with its own material and edge, read as
+  four surfaces at four depths. B24 checks the group carries the material
+  and the items do not.
+* Settings-shaped content is an **inset grouped list**: rows inside one
+  rounded container, separators inset to the text rather than the full
+  width, container inset from the edges. Bare rows on the background is the
+  plain list style, which iOS keeps for content you scroll.
 
 ## Known-good state
 
@@ -234,6 +251,9 @@ All four suites green. Verified behaviours:
   past the right edge. Measured in a real browser, not asserted
 * the wizard's model table is a table on a Mac and a list of blocks on a
   phone, where six numeric columns rendered as "1.1G12.7G13.8G"
+* the toolbar is one glass capsule holding four items, the sheet corners are
+  the display's, and every control sized to its content is a capsule —
+  which is what iOS 26 looks like
 
 ## Not built yet
 
