@@ -72,7 +72,7 @@ def _readable(p: Path) -> tuple[bool, str]:
         return False, "denied"
     except FileNotFoundError:
         return False, "missing"
-    except OSError as e:
+    except OSError:
         # sqlite files under TCC can come back as EPERM-shaped OSErrors that
         # are not PermissionError; treat an unreadable existing file as denied.
         return False, "denied" if p.exists() else "missing"

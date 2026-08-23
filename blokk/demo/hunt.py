@@ -5,7 +5,8 @@ time.sleep(1.5)
 B='http://localhost:8099'
 def g(u,raw=False):
     d=urllib.request.urlopen(B+u,timeout=10).read(); return d if raw else json.loads(d)
-def po(u,b={},timeout=10):
+def po(u,b=None,timeout=10):
+    b = {} if b is None else b
     r=urllib.request.Request(B+u,json.dumps(b).encode(),{'Content-Type':'application/json'})
     return json.loads(urllib.request.urlopen(r,timeout=timeout).read())
 BUGS=[]
@@ -338,7 +339,7 @@ try:
         _s.path.insert(0, ".")
         from core.durable import Store
         from api.server import engine
-        picked = engine.resume_all(background=True)
+        engine.resume_all(background=True)
         for _ in range(40):
             row = Store('blokk.db').one(
                 "SELECT status FROM run WHERE id='r_probe17'")
