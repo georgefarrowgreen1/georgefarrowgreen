@@ -532,7 +532,7 @@
   .step{display:inline-flex;align-items:center;gap:4px;background:var(--card2);
         border:1px solid var(--hair);border-radius:14px;padding:4px 12px;
         font-family:var(--mono);font-size:10.5px;color:var(--lab2)}
-  .step .n{color:var(--lab3)}
+  .step .n{color:var(--lab3);font-variant-numeric:tabular-nums}
   .step.live{border-color:rgba(10,132,255,.4)}
   .step.flag{border-color:rgba(255,214,10,.4);color:var(--amber)}
   .prop{background:var(--action);border:1px solid rgba(10,132,255,.24);border-radius:16px;
@@ -2067,6 +2067,17 @@ $('#qgo').onclick = ()=>{ if(qbox.value.trim()) send(qbox.value.trim()); };
 // The queue in the dashboard is still the queue. This is the same row, drawn
 // where the sentence that made it is: a proposal you have to go and find is a
 // proposal you approve without rereading what asked for it.
+// A tool's name in the code and its name on a chip are not the same thing.
+const TOOLNAME = {
+  open_approvals:'the queue', what_was_handled:'handled alone',
+  recent_runs:'runs', search_journal:'journal', trust_state:'trust',
+  learned_facts:'memory', sources_state:'sources', schedule_state:'schedule',
+  this_mac:'this Mac', read_mail:'mail', read_calendar:'calendar',
+  free_nights:'free nights', read_messages:'messages', read_page:'the page',
+  forecast:'forecast',
+};
+const toolName = n => TOOLNAME[n] || String(n).replace(/_/g,' ');
+
 let THREAD = null, WS = null;
 
 // Where you were, per workspace. A "new conversation" that a reload throws
@@ -2305,13 +2316,16 @@ async function send(q){
         }
         if(ev.type==='TOOL_CALL_START'){ tools++;
           steps.append(el(`<span class="step live" data-t="${esc(ev.name)}">
-            <span class="n">&#9679;</span>${esc(ev.name.replace(/_/g,' '))}</span>`));
+            ${esc(toolName(ev.name))}<span class="n">&#9679;</span></span>`));
           th.scrollTop=th.scrollHeight;
         }
         if(ev.type==='TOOL_CALL_END'){
           const c=steps.querySelector(`[data-t="${ev.name}"]`);
+          // Label first, count after. Count-first read as a plural — "1 free
+          // nights", "4 read mail" — and no label survives being pluralised
+          // by whatever number happens to precede it.
           if(c){ c.classList.remove('live');
-                 c.innerHTML=`<span class="n">${ev.rows}</span>${esc(ev.name.replace(/_/g,' '))}`; }
+                 c.innerHTML=`${esc(toolName(ev.name))}<span class="n">${ev.rows}</span>`; }
         }
         if(ev.type==='TEXT_MESSAGE_CONTENT'){
           text+=ev.delta;

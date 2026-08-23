@@ -58,11 +58,12 @@ night — completed steps replay for free and the email that already went does
 not go twice.
 
 **One write path.** Everything that changes the world funnels through one
-approval queue and one trust gate. Ask can hold a conversation and can propose
-changes, but it cannot carry them out: it has no executor and no way to reach
-one, because it reads untrusted mail and holds private data, and denying it an
-exit is the only defence that survives contact. You approve, and the queue
-runs it — then tells you what it did.
+approval queue and one trust gate. Ask reads your mail, your calendar and
+your queue, holds a conversation about them and proposes changes — but it
+cannot carry them out: it has no executor and no way to reach one, because it
+reads untrusted mail and holds private data, and denying it an exit is the
+only defence that survives contact. You approve, and the queue runs it — then
+tells you what it did.
 
 **Autonomy is earned per category and never transfers.** Twenty clean
 approvals and a category stops appearing in your queue. Some are pinned to

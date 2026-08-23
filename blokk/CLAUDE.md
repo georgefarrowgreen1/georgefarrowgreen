@@ -67,6 +67,24 @@ Anything fetched from outside — an email body, a web page, a forecast — carr
 regex in there is triage, not defence; the defence is that the reader has no
 tools. Do not "improve" it into a filter people rely on.
 
+This surface got wider when Ask learned to read your data. It has tools over
+the wired connectors now — mail, calendar, messages, the page, the forecast —
+so a stranger's email reaches the model on any question about the inbox, in a
+chat box that can also propose actions. That is the trifecta with the volume
+turned up, and it holds for the same reason it did before: the rows arrive
+inside a labelled envelope that says `untrusted`, the propose path validates
+every argument against `ACTIONS` rather than trusting what the model wrote,
+and nothing runs without a person tapping approve. A62 stages exactly that
+attack through the mail tool and fails if a proposal comes out of it.
+
+Two smaller rules that fall out of this. A read tool declares where its rows
+come from — `blokk` for its own tables, `yours` for files on this Mac,
+`outside` for anything through the egress gate — because the panel prints a
+provenance line under every answer and it said "nothing outside this database
+was touched" for a while after that stopped being true. And a tool is only
+offered for a source that is wired: the grammar is built from that dict, so
+not offering it is the same as it not existing.
+
 The other direction is `core/egress.py`, the only place anything leaves. Not
 "nothing leaves the machine" any more, but the narrower claim: *nothing leaves
 except requests you allowed, to hosts you named, and the log says exactly what

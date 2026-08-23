@@ -10,14 +10,28 @@ time. A leaked `blokk.db` leaks metadata, not access.
     python3 connect.py list      what is wired
     python3 connect.py test      prove every credential works
     python3 connect.py peek …    see exactly what it would read
+    python3 connect.py ask "…"   the chat, with every step printed
+
+Local sources take a folder as well as the word `local`. `local` means
+wherever the Apple app keeps it; a path means that path — an exported
+mailbox, a maildir from any other client, a folder of `.ics` files. Both
+readers take plain formats now, not only Apple's own layouts.
 
 **All of this is in the app too.** The ⚯ button on the dashboard does
 workspaces, sources, the peek, the Full Disk Access check and the credential
 test; ⇧ pulls an update and restarts. The commands here are the same code
 underneath (`core/sources.py`), so use whichever is in front of you — the
 terminal is not the privileged one. What has no button, on purpose, is
-putting a password anywhere near a browser: that stays `security add-generic-password`
-in a terminal, and Blokk only ever stores the service name.
+putting a password anywhere near a browser: that stays in a terminal, and
+Blokk only ever stores the service name. `connect.py add` now asks for it
+there and puts it away for you — hidden, straight to `security`, never in
+argv, the database or the log — so it is one command rather than two.
+
+**Or just say so.** The chat box can do all of this: "what can I connect?",
+then "connect my mail", then approve the card. It proposes; the approval
+queue runs it; nothing happens without your tap. It picks the route that
+needs no password wherever one exists, which for Mail, Calendar and Messages
+on this Mac is all three of them.
 
 ## 0. A workspace of your own
 
