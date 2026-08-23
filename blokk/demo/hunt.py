@@ -2227,6 +2227,70 @@ try:
         return (False, "the pids are written down, and the trap reads them")
     probe("A58 Ctrl-C leaves the model servers running", runsh_stops_what_it_starts)
 
+    def chat_survives_a_clean_world():
+        # CONNECTING.md's whole point is dropping the sample world and wiring
+        # your own. Do that, and the chat defaulted to the string "cottages" —
+        # a workspace that no longer exists. budget.workspace_id references
+        # workspace(id) and foreign keys are on, so metering the turn raised
+        # from three frames down, the generator died mid-stream, and the panel
+        # said the connection had ended part way through. A default that names
+        # a specific row is a default that stops being true.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf, shutil as _sh
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        from core.ask import ask as run_ask
+        from core.models import StubModel
+
+        tmp = pathlib.Path(_tf.mkdtemp()) / "clean.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
+        st = Store(tmp)
+        sources.workspace_add(st, "mine", "Mine")
+        for w in sources.SAMPLE:
+            sources.workspace_remove(st, w)
+
+        def turn(q, store):
+            return "".join(e.get("delta", "") for e in
+                           run_ask(store, q, StubModel())
+                           if e["type"] == "TEXT_MESSAGE_CONTENT")
+        try:
+            said = turn("Hi", st)
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"the sample world gone and the chat raises "
+                          f"{type(e).__name__}: {str(e)[:60]}")
+        if not said.strip():
+            return (True, "the sample world gone and the chat says nothing")
+        # And with no workspaces at all it must say so rather than crash.
+        sources.workspace_remove(st, "mine")
+        try:
+            empty = turn("Hi", st)
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"no workspaces at all raises "
+                          f"{type(e).__name__}: {str(e)[:60]}")
+        if "no workspaces" not in empty.lower():
+            return (True, f"no workspaces, and it answered anyway: {empty[:60]}")
+        return (False, "scopes to a workspace that exists, and says so when "
+                       "there are none")
+    probe("A59 dropping the sample world breaks the chat",
+          chat_survives_a_clean_world)
+
+    def a_real_error_survives_to_the_screen():
+        # The front end rewrites the answer element more than once before it
+        # returns, so an error painted straight into it gets wiped — and the
+        # generic message that replaced it named neither the fault nor where
+        # to look. Strictly worse than the message it covered up.
+        js = open("web/index.html").read().split("<script>")[1]
+        if "failed = ev.message" not in js:
+            return (True, "RUN_ERROR is painted into the element and not kept")
+        tail = js[js.index("if(!text.trim() && !proposed)"):][:400]
+        if "failed" not in tail:
+            return (True, "the empty-answer fallback ignores what actually "
+                          "went wrong")
+        return (False, "a RUN_ERROR message reaches the screen and stays there")
+    probe("A60 a real error is overwritten by a generic one",
+          a_real_error_survives_to_the_screen)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

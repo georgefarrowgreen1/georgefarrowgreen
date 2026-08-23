@@ -26,7 +26,8 @@ from urllib.parse import parse_qs, urlparse
 from core.durable import Engine, Store, now
 from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
-from core.ask import ask as run_ask, history as ask_history
+from core.ask import (ask as run_ask, history as ask_history,
+                      scope_for as ask_scope)
 from core import actions, nightly, servers as srv
 from core.backends import BACKENDS, pick
 
@@ -256,7 +257,7 @@ def h_thread(q):
     approved an hour ago redraws as approved and what it did, not as a live
     button waiting to be pressed twice.
     """
-    ws = (q.get("workspace") or ["cottages"])[0]
+    ws = ask_scope(store, (q.get("workspace") or [None])[0])
     tid = (q.get("thread") or [f"t_{ws}"])[0]
     out = []
     for m in ask_history(store, tid):
@@ -506,7 +507,9 @@ def _ask_stream(q, workspace, thread=None):
     writes exactly one kind of row: an undecided approval. It cannot send, and
     it cannot mark anything decided.
     """
-    ws = workspace or "cottages"
+    # The same resolution ask() does, so the approval row and the transcript
+    # cannot end up scoped to different workspaces.
+    ws = ask_scope(store, workspace)
     run_id = None
     tid = thread or f"t_{ws}"
     for ev in run_ask(store, q, router.small, workspace, thread=thread):

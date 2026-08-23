@@ -297,10 +297,37 @@ def _for_model(rows: list[dict]) -> list[dict]:
 
 
 # ────────────────────────────────────────────────────────────────── the loop
+def scope_for(store, workspace: str | None) -> str:
+    """Which workspace this turn is about, and it has to be one that exists.
+
+    This defaulted to the string "cottages", which is a workspace in the
+    sample world and nowhere else. Drop the sample world — which the whole of
+    CONNECTING.md is about doing — and every chat turn wrote a budget row
+    against a workspace id with nothing behind it. `budget.workspace_id`
+    references `workspace(id)` and foreign keys are on, so the insert raised
+    from three frames inside the metering, the generator died mid-stream, and
+    the panel showed a turn that ended part way through.
+
+    A default that names a specific row is a default that stops being true.
+    """
+    if workspace and store.one("SELECT 1 FROM workspace WHERE id=?", workspace):
+        return workspace
+    row = store.one("SELECT id FROM workspace WHERE active=1 ORDER BY id LIMIT 1")
+    return row["id"] if row else ""
+
+
 def ask(store, question: str, model, workspace: str | None = None,
         thread: str | None = None) -> Iterator[dict]:
     """Yields AG-UI shaped events. Reads, converses, proposes. Never writes."""
-    ws = workspace or "cottages"
+    ws = scope_for(store, workspace)
+    if not ws:
+        # Nothing to be scoped to, and nothing to meter against. Said plainly
+        # here rather than left to fail on the first write.
+        yield from _only_say(
+            "There are no workspaces yet, so there is nothing for me to look "
+            "at. Add one from Sources, or run: "
+            "python3 connect.py workspace add <id> \"<name>\"", "nothing yet")
+        return
     thread = thread or f"t_{ws}"
     okay, left = _meter(store, ws)
     if not okay:

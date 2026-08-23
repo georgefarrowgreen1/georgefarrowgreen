@@ -2151,7 +2151,7 @@ async function send(q){
   go.parentNode.append(stop);
 
   asking = new AbortController();
-  let text='', proposed=false, finished=false, tools=0, degraded='';
+  let text='', proposed=false, finished=false, tools=0, degraded='', failed='';
   try{
     const r = await fetch(API+'/api/v1/ask',{method:'POST',
       headers:{'Content-Type':'application/json',...AUTH},
@@ -2210,7 +2210,14 @@ async function send(q){
             ${ev.budget_left} question${ev.budget_left===1?'':'s'} left in today's allowance.</div>`));
         }
         if(ev.type==='RUN_ERROR'){
-          ans.innerHTML = esc(text) + `<div class="err"><b>Stopped early.</b> ${esc(ev.message)}.
+          // Kept, not just painted. Everything below rewrites ans.innerHTML
+          // at least once more before this function returns, so an error
+          // written straight into the element is an error that gets wiped —
+          // and the generic "nothing came back" that replaced it named
+          // neither the fault nor where to look, which is strictly worse
+          // than the message it covered up.
+          failed = ev.message || 'the run stopped early';
+          ans.innerHTML = esc(text) + `<div class="err"><b>Stopped early.</b> ${esc(failed)}.
             The answer above may be incomplete.</div>`;
         }
         if(ev.type==='SOURCES' && ev.rows.length){
@@ -2228,11 +2235,15 @@ async function send(q){
     // quiet upstream, it gets a sentence here, and the sentence says what did
     // arrive so the next question is answerable.
     if(!text.trim() && !proposed) ans.innerHTML = `<div class="err">
-      <b>Nothing came back.</b> ${finished
+      <b>Nothing came back.</b> ${failed
+        ? `It stopped on: ${esc(failed)}.`
+        : finished
         ? `The turn finished${tools?` after reading ${tools} source${tools===1?'':'s'}`:''}
            without saying anything${degraded?`, and reported: ${esc(degraded)}`:''}.`
-        : 'The connection ended part way through.'}
-      Ask again, and if it keeps happening run <code>./blokk doctor</code>.</div>`;
+        : 'The connection ended part way through, before the run reported finishing.'}
+      Ask again, and if it keeps happening run <code>./blokk doctor</code>
+      or <code>python3 connect.py ask "${esc(q)}"</code>, which prints every
+      step in the open.</div>`;
   }catch(e){
     ans.innerHTML = e.name==='AbortError'
       ? esc(text)+'<div class="readonly note">Stopped.</div>'
