@@ -212,6 +212,24 @@ you change a threshold or a rule in Python, change it there too and re-run
   rounded container, separators inset to the text rather than the full
   width, container inset from the edges. Bare rows on the background is the
   plain list style, which iOS keeps for content you scroll.
+* **Light and dark are three states, not two.** An explicit choice stamps
+  `data-theme` on `<html>`; "system" stamps nothing and only
+  `prefers-color-scheme` separates it — and that un-stamped state is the one
+  most people are in. So the complete palette lives on bare `:root` (dark,
+  because that is what this app is), and the two guarded blocks
+  (`@media (prefers-color-scheme:light) :root:not([data-theme="dark"])` and
+  `:root[data-theme="light"]`) **redefine tokens and nothing else**. A colour
+  whose only definition sits inside one of those blocks does not exist in the
+  third state. B28/B28a/B28b/B28c enforce all of it, including that the glass
+  reads `--glass-tint` rather than a pinned one — the token can be right while
+  a second copy of the rule three lines up is not, which is how the bubble
+  stayed charcoal on a white page.
+* **Accents are per theme and measured.** `#FFD60A` on white is 1.2:1 and
+  this app writes sentences in amber; `#30D158` is 1.8:1. Each light accent
+  is the hue at a lightness that clears 4.5:1 on its own ground. White on
+  `#0A84FF` is 3.65:1, so anything with white text on blue uses
+  `--blue-fill`. `--lab3` was iOS's own 30% and measured 2.25:1 in *both*
+  themes — section headers and run counts are set in it — and is now 4.6:1.
 * **Spacing is a 4-point grid** — `--sp-1`(4) through `--sp-6`(32), the same
   in all three pages. Every margin, padding and gap is a multiple of 4;
   under 4px is optical (a hairline, a nudge) and left alone. The scale used
@@ -269,6 +287,12 @@ All four suites green. Verified behaviours:
 * the toolbar is one glass capsule holding four items, the sheet corners are
   the display's, and every control sized to its content is a capsule —
   which is what iOS 26 looks like
+* light and dark both measure zero text below 4.5:1 across the dashboard,
+  the wizard and the demo, checked on rendered pixels with the ground
+  composited — not on the token values
+* an explicit choice beats the OS in both directions, and system follows the
+  OS while the app is open; theme-color follows the ground so the browser's
+  own chrome does too
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

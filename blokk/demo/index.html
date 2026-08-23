@@ -4,14 +4,25 @@
 <meta name="theme-color" content="#000000"><title>Blokk — live demo</title>
 <style>
   :root{
-    --void:#08080A;--card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
-    --hair:rgba(235,235,245,.09);--lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.30);
+    color-scheme:dark;
+    --void:#08080A;--bg:#000;--card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
+    --hair:rgba(235,235,245,.09);--lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.50);
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
+    --blue-fill:#0A6DD8;--sunk:#0B0B0E;--raised:#2C2C2E;
+    --fill-1:rgba(255,255,255,.055);--fill-2:rgba(255,255,255,.09);
+    --fill-3:rgba(255,255,255,.14);
+    --shadow:rgba(0,0,0,.42);
+    --glass-tint:18,18,20;
+    --glass-hi:rgba(255,255,255,.11);--glass-hi2:rgba(255,255,255,.035);
+    --glass-hi3:rgba(255,255,255,.06);
+    --glass-spec:rgba(255,255,255,.34);--glass-under:rgba(255,255,255,.07);
+    --glass-edge:rgba(0,0,0,.62);
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --tap:44px;
     /* The dashboard's corners: concentric when nested, capsules when sized
        to their content. */
+    --mark-lit:#F5F5F7;--mark-shade:#A2A8B4;
     --r-card:22px; --r-lg:18px; --r-pill:999px;
     /* The dashboard's 4-point grid, verbatim. */
     --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
@@ -22,24 +33,74 @@
   }
   .glass{
     background:
-      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
-                      rgba(255,255,255,.06)),
-      rgba(18,18,20,var(--glass-fill));
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2) 42%,
+                      var(--glass-hi3)),
+      rgba(var(--glass-tint),var(--glass-fill));
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
-    box-shadow:0 0 0 .5px rgba(0,0,0,.62),
-               inset 0 .6px 0 rgba(255,255,255,.34),
-               inset 0 -.6px 0 rgba(255,255,255,.07),
-               0 10px 34px rgba(0,0,0,.42)}
+    box-shadow:0 0 0 .5px var(--glass-edge),
+               inset 0 .6px 0 var(--glass-spec),
+               inset 0 -.6px 0 var(--glass-under),
+               0 10px 34px var(--shadow)}
   .glass.dense{background:
-      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
-                      rgba(255,255,255,.06)),
-      rgba(18,18,20,calc(var(--glass-fill) + .16))}
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2) 42%,
+                      var(--glass-hi3)),
+      rgba(var(--glass-tint),calc(var(--glass-fill) + .16))}
   @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
     :root{--glass-fill:1;--glass-blur:0px;--glass-sat:100%}
     .glass{box-shadow:0 0 0 .5px rgba(0,0,0,.7),
       inset 0 .6px 0 rgba(255,255,255,.14),0 10px 34px rgba(0,0,0,.42)}
   }
+  /* The mark's own faces. brand/blokk-mark-light.svg exists because a
+     near-white slab on a near-white page is not a logo; these are the same
+     two cuts, as tokens, so the one in the markup flips with everything
+     else instead of needing a second copy of the SVG. */
+  .lit{fill:var(--mark-lit)}
+  .shade{fill:var(--mark-shade)}
+  .slot{fill:var(--blue)}
+  /* Light: the same tokens, both guards, so the un-stamped state resolves.
+     The phone itself stays dark either way -- it is a device screen, and a
+     screen does not change colour because the page around it did. */
+  @media (prefers-color-scheme:light){
+    :root:not([data-theme="dark"]){
+      color-scheme:light;
+    --void:#E9E9EE;--bg:#F2F2F7;--card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
+      --hair:rgba(60,60,67,.16);--lab:#16171A;--lab2:rgba(60,60,67,.85);
+      --lab3:rgba(60,60,67,.74);
+      --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
+      --purple:#7B3AA0;--cyan:#0B6E92;--blue-fill:#0A6DD8;--sunk:#F2F2F5;
+      --raised:#FFFFFF;
+    --raised:#FFFFFF;
+      --mark-lit:#16171A;--mark-shade:#6C7280;
+      --fill-1:rgba(16,23,38,.045);--fill-2:rgba(16,23,38,.07);
+      --fill-3:rgba(16,23,38,.11);
+      --shadow:rgba(16,23,38,.14);
+      --glass-tint:252,252,254;
+      --glass-hi:rgba(255,255,255,.55);--glass-hi2:rgba(255,255,255,.25);
+      --glass-hi3:rgba(255,255,255,.35);
+      --glass-spec:rgba(255,255,255,.85);--glass-under:rgba(16,23,38,.05);
+      --glass-edge:rgba(16,23,38,.16);
+    }
+  }
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --void:#E9E9EE;--bg:#F2F2F7;--card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
+    --hair:rgba(60,60,67,.16);--lab:#16171A;--lab2:rgba(60,60,67,.85);
+    --lab3:rgba(60,60,67,.74);
+    --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
+    --purple:#7B3AA0;--cyan:#0B6E92;--blue-fill:#0A6DD8;--sunk:#F2F2F5;
+    --raised:#FFFFFF;
+    --mark-lit:#16171A;--mark-shade:#6C7280;
+    --fill-1:rgba(16,23,38,.045);--fill-2:rgba(16,23,38,.07);
+    --fill-3:rgba(16,23,38,.11);
+    --shadow:rgba(16,23,38,.14);
+    --glass-tint:252,252,254;
+    --glass-hi:rgba(255,255,255,.55);--glass-hi2:rgba(255,255,255,.25);
+    --glass-hi3:rgba(255,255,255,.35);
+    --glass-spec:rgba(255,255,255,.85);--glass-under:rgba(16,23,38,.05);
+    --glass-edge:rgba(16,23,38,.16);
+  }
+
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   .dim{color:var(--lab2)} .faint{color:var(--lab3)} .bad{color:var(--red)}
   .dot{background:var(--c,var(--lab3))}
@@ -51,7 +112,10 @@
   .shell{display:flex;gap:20px;justify-content:center;align-items:flex-start;padding:16px 12px 48px;flex-wrap:wrap}
 
   /* ── phone ─────────────────────────────────────────── */
-  .phone{width:100%;max-width:400px;background:#000;border-radius:0}
+  /* The screen is the app's ground, so it flips with it. Leaving it black
+     while the cards inside went light gave a light card on a black screen
+     with dark text over the top of both. */
+  .phone{width:100%;max-width:400px;background:var(--bg);border-radius:0}
   @media(min-width:520px){.phone{border:1px solid rgba(235,235,245,.13);border-radius:42px;
     overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.75)}}
   /* A phone scrolls inside its own frame, which is what makes the scroll
@@ -65,8 +129,8 @@
   header::before{content:"";position:absolute;inset:0;z-index:-1;opacity:0;
     pointer-events:none;transition:opacity .22s ease;
     background:
-      linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03)),
-      rgba(18,18,20,calc(var(--glass-fill) + .16));
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2)),
+      rgba(var(--glass-tint),calc(var(--glass-fill) + .16));
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     box-shadow:0 .5px 0 rgba(0,0,0,.6),inset 0 -.6px 0 rgba(255,255,255,.10),
@@ -74,12 +138,12 @@
   header.edge::before{opacity:1}
   .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;position:relative;flex:0 0 auto}
   .avatar svg{width:30px;height:30px;display:block}
-  .avatar .on{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:var(--green);border:2.5px solid #000}
+  .avatar .on{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:var(--green);border:2.5px solid var(--bg)}
   header .who{flex:1}header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
   header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2)}
   .icobtn{width:var(--tap);height:var(--tap);border-radius:50%;border:0;
     color:var(--lab2);font-size:15px;cursor:pointer;display:grid;place-items:center;
-    background:rgba(255,255,255,.09);
+    background:var(--fill-2);
     box-shadow:0 0 0 .5px rgba(0,0,0,.5),inset 0 .6px 0 rgba(255,255,255,.22)}
   main{flex:1;padding:0 20px 20px}
   .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
@@ -105,7 +169,7 @@
   .pair{display:flex;gap:8px;margin-top:16px}
   .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:var(--sp-3);
     min-height:var(--tap);font-family:var(--ui);font-size:16px;font-weight:500;
-    background:rgba(255,255,255,.055);color:var(--lab2);cursor:pointer}
+    background:var(--fill-1);color:var(--lab2);cursor:pointer}
   .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
   .pair button:disabled{opacity:.4}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
@@ -176,7 +240,7 @@
   .ctlrow button{flex:1;min-width:96px;border:0;border-radius:var(--r-pill);
                  padding:12px 8px;min-height:var(--tap);font-family:var(--ui);
                  font-size:13.5px;font-weight:500;background:var(--card);color:var(--lab);cursor:pointer}
-  .ctlrow button.go{background:var(--blue);color:#fff}
+  .ctlrow button.go{background:var(--blue-fill);color:#fff}
   .ctlrow button.dan{background:rgba(255,69,58,.18);color:var(--red)}
   .ctlrow button:disabled{opacity:.35;cursor:default}
   .hint{font-size:12px;line-height:1.5;color:var(--lab2);margin-top:12px}
@@ -203,7 +267,8 @@
   .trow .bar2 i{display:block;height:100%;transition:width .4s}
   .trow .st{font-family:var(--mono);font-size:10px;width:66px;text-align:right;flex:0 0 auto;color:var(--lab3)}
   .toast{position:fixed;left:50%;transform:translate(-50%,160%);bottom:24px;width:calc(100% - 36px);max-width:420px;
-         background:#2C2C2E;border-radius:14px;padding:12px 16px;font-size:13.5px;line-height:1.45;
+         background:var(--raised);color:var(--lab);border:1px solid var(--hair);
+         border-radius:14px;padding:12px 16px;font-size:13.5px;line-height:1.45;
          transition:transform .3s cubic-bezier(.3,1.2,.5,1);z-index:20}
   .toast.up{transform:translate(-50%,0)}
   @media(prefers-reduced-motion:reduce){.toast,.trk i,.bar2 i{transition:none}}
@@ -218,15 +283,15 @@
   <div class="phone"><div class="wrap">
     <header>
       <div class="avatar"><svg viewBox="0 0 512 512"><g id="mark-body">
-  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
-  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
-  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
-  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" class="lit"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" class="shade"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" class="lit"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" class="shade"/>
   </g>
   <g id="mark-pending" transform="translate(0,-15)">
-  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
-  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
-  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" class="lit"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" class="shade"/>
+  <polygon points="256,96 418,188 256,280 94,188" class="slot"/>
   </g></svg><span class="on" id="live"></span></div>
       <div class="who"><h1>Blokk</h1><p id="whosub">idle</p></div>
       <button class="icobtn" id="refresh">&#8635;</button>

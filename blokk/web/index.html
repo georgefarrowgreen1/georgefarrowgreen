@@ -10,12 +10,59 @@
 <link rel="apple-touch-icon" href="/icon.svg">
 <title>Blokk</title>
 <style>
+  /* ── the palette ──────────────────────────────────────────────────────
+     Dark is the ground truth: bare :root is the dark theme, because that is
+     what this app was and what most of it is looked at in. Light is two
+     guarded overrides of the *same tokens*, never of the rules that use
+     them — a colour whose only definition sits inside a media query does
+     not exist in the third state, which is the one most people are in.
+
+     There are three states, not two. An explicit choice stamps
+     data-theme="dark"/"light" on <html>; "system" stamps nothing at all and
+     only prefers-color-scheme separates it. So: bare :root is dark, the
+     media query is guarded with :not([data-theme="dark"]) so an explicit
+     dark beats a light OS, and [data-theme="light"] repeats it so the
+     control wins in the other direction too.
+
+     --fill-* are "a bit more than the ground", which is a *lighten* on dark
+     and a *darken* on light. Written as white-over-dark everywhere, every
+     hover state on the light theme would have gone the wrong way. */
   :root{
+    color-scheme:dark;
+    --mark-lit:#F5F5F7;--mark-shade:#A2A8B4;
     --bg:#000;
     --card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
+    --inset:#141416;         /* a surface recessed inside a sheet */
+    --sunk:#0B0B0E;          /* code, logs, anything recessed into a card */
+    --field:#09090b;         /* an input's well */
+    --raised:#2A2A2D;        /* a hovered solid control */
     --hair:rgba(235,235,245,.09);
-    --lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.30);
+    /* .30 for the tertiary label is what iOS uses and it measures 2.25:1
+       on this ground — section headers, run-card counts and the foot are
+       all set in it, and they are text people read. .50 measures 4.61.
+       The hierarchy is still there; it is carried by size and weight,
+       which is the sturdier way to carry it. */
+    --lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.50);
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
+    --blue-soft:#4DA3FF;     /* blue as *text*, on a blue-tinted card */
+    --blue-hard:#1E90FF;     /* the filled button, hovered */
+    --blue-fill:#0A6DD8;     /* blue *behind white text*: #0A84FF is 3.65:1 */
+    --err-bg:#1E0E0E;--err-ink:#FFB4AE;--warn-bg:#1A1405;
+    /* a bit more than the ground, at four strengths */
+    --fill-1:rgba(255,255,255,.055);
+    --fill-2:rgba(255,255,255,.09);
+    --fill-3:rgba(255,255,255,.14);
+    --fill-4:rgba(255,255,255,.22);
+    --shadow:rgba(0,0,0,.42);
+    /* the material */
+    --glass-tint:18,18,20;
+    --glass-hi:rgba(255,255,255,.11);
+    --glass-hi2:rgba(255,255,255,.035);
+    --glass-hi3:rgba(255,255,255,.06);
+    --glass-spec:rgba(255,255,255,.34);
+    --glass-under:rgba(255,255,255,.07);
+    --glass-edge:rgba(0,0,0,.62);
+    --on-accent:#000;        /* ink on a saturated fill (the glyph chips) */
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
 
@@ -68,38 +115,107 @@
     --glass-blur:30px;
     --glass-sat:180%;
   }
+  /* Light. Every token above, and nothing else — no rule is redefined here,
+     which is what keeps the third state (system, un-stamped) working.
+
+     The accents are not the dark ones lightened. #FFD60A on white is 1.2:1
+     and this app writes *sentences* in amber; #30D158 is 1.8:1. Each one
+     below is the hue at a lightness that clears 4.5:1 on its own ground,
+     measured rather than guessed. */
+  @media (prefers-color-scheme:light){
+    :root:not([data-theme="dark"]){
+      color-scheme:light;
+    --mark-lit:#16171A;--mark-shade:#6C7280;
+      --bg:#F2F2F7;
+      --card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
+      --inset:#EDEDF2;--sunk:#F2F2F5;--field:#FFFFFF;--raised:#E8E8ED;
+      --hair:rgba(60,60,67,.16);
+      --lab:#16171A;--lab2:rgba(60,60,67,.85);--lab3:rgba(60,60,67,.74);
+      --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
+      --purple:#7B3AA0;--cyan:#0B6E92;
+      --blue-soft:#0A5FBF;--blue-hard:#0958B8;--blue-fill:#0A6DD8;
+      --err-bg:#FFF0EF;--err-ink:#8C2018;--warn-bg:#FFF8E6;
+      --fill-1:rgba(16,23,38,.045);
+      --fill-2:rgba(16,23,38,.07);
+      --fill-3:rgba(16,23,38,.11);
+      --fill-4:rgba(16,23,38,.18);
+      --shadow:rgba(16,23,38,.14);
+      --glass-tint:252,252,254;
+      --glass-hi:rgba(255,255,255,.55);
+      --glass-hi2:rgba(255,255,255,.25);
+      --glass-hi3:rgba(255,255,255,.35);
+      --glass-spec:rgba(255,255,255,.85);
+      --glass-under:rgba(16,23,38,.05);
+      --glass-edge:rgba(16,23,38,.16);
+      --on-accent:#fff;
+    }
+  }
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --mark-lit:#16171A;--mark-shade:#6C7280;
+    --bg:#F2F2F7;
+    --card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
+    --inset:#EDEDF2;--sunk:#F2F2F5;--field:#FFFFFF;--raised:#E8E8ED;
+    --hair:rgba(60,60,67,.16);
+    --lab:#16171A;--lab2:rgba(60,60,67,.85);--lab3:rgba(60,60,67,.74);
+    --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
+    --purple:#7B3AA0;--cyan:#0B6E92;
+    --blue-soft:#0A5FBF;--blue-hard:#0958B8;--blue-fill:#0A6DD8;
+    --err-bg:#FFF0EF;--err-ink:#8C2018;--warn-bg:#FFF8E6;
+    --fill-1:rgba(16,23,38,.045);
+    --fill-2:rgba(16,23,38,.07);
+    --fill-3:rgba(16,23,38,.11);
+    --fill-4:rgba(16,23,38,.18);
+    --shadow:rgba(16,23,38,.14);
+    --glass-tint:252,252,254;
+    --glass-hi:rgba(255,255,255,.55);
+    --glass-hi2:rgba(255,255,255,.25);
+    --glass-hi3:rgba(255,255,255,.35);
+    --glass-spec:rgba(255,255,255,.85);
+    --glass-under:rgba(16,23,38,.05);
+    --glass-edge:rgba(16,23,38,.16);
+    --on-accent:#fff;
+  }
+
   /* One material. The darkened outer edge and the bright specular top are
      the two things iOS 26 added to it, and they are what stop a glass bar
      dissolving into whatever happens to be behind it. */
   .glass{
     background:
-      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
-                      rgba(255,255,255,.06)),
-      rgba(18,18,20,var(--glass-fill));
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2) 42%,
+                      var(--glass-hi3)),
+      rgba(var(--glass-tint),var(--glass-fill));
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     box-shadow:
-      0 0 0 .5px rgba(0,0,0,.62),                 /* darkened edge */
-      inset 0 .6px 0 rgba(255,255,255,.34),       /* specular, top */
-      inset 0 -.6px 0 rgba(255,255,255,.07),      /* and a hint below */
-      0 10px 34px rgba(0,0,0,.42);
+      0 0 0 .5px var(--glass-edge),               /* darkened edge */
+      inset 0 .6px 0 var(--glass-spec),           /* specular, top */
+      inset 0 -.6px 0 var(--glass-under),         /* and a hint below */
+      0 10px 34px var(--shadow);
   }
   /* A bar that sits over dense content carries more fill than one at the top
      of the page. Same material, further along it — iOS 26's readability pass
      was exactly this: diffuse harder where there is more to diffuse. */
   .glass.dense{background:
-      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
-                      rgba(255,255,255,.06)),
-      rgba(18,18,20,calc(var(--glass-fill) + .16))}
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2) 42%,
+                      var(--glass-hi3)),
+      rgba(var(--glass-tint),calc(var(--glass-fill) + .16))}
 
   /* Reduce Transparency and Increase Contrast are not suggestions. Both
      land here, and both make the material a surface rather than a window. */
   @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
     :root{--glass-fill:1;--glass-blur:0px;--glass-sat:100%}
-    .glass{box-shadow:0 0 0 .5px rgba(0,0,0,.7),
-      inset 0 .6px 0 rgba(255,255,255,.14),0 10px 34px rgba(0,0,0,.42)}
+    .glass{box-shadow:0 0 0 .5px var(--glass-edge),
+      inset 0 .6px 0 var(--glass-under),0 10px 34px var(--shadow)}
   }
 
+  /* The mark's own faces. brand/blokk-mark-light.svg exists because a
+     near-white slab on a near-white page is not a logo; these are the same
+     two cuts, as tokens, so the one in the markup flips with everything
+     else instead of needing a second copy of the SVG. */
+  .lit{fill:var(--mark-lit)}
+  .shade{fill:var(--mark-shade)}
+  .slot{fill:var(--blue)}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   /* Small shared classes, so the markup below carries none of its own
      styling. A style= attribute in a template is a rule nothing can find,
@@ -110,7 +226,8 @@
     clip:rect(0 0 0 0);white-space:nowrap}
   /* The workspace colour arrives as a custom property, not a background. */
   .dot{background:var(--c,var(--lab3))}
-  html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+  html,body{margin:0;background:var(--bg);color:var(--lab);font-family:var(--ui);
+    -webkit-font-smoothing:antialiased}
   body{min-height:100vh;display:flex;flex-direction:column}
   .wrap{width:100%;max-width:440px;margin:0 auto;flex:1;display:flex;flex-direction:column}
 
@@ -131,18 +248,18 @@
        subject line read straight through it and competed with the workspace
        name — the exact readability problem iOS 26's pass was about. */
     background:
-      linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03)),
-      rgba(18,18,20,calc(var(--glass-fill) + .16));
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2)),
+      rgba(var(--glass-tint),calc(var(--glass-fill) + .16));
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
-    box-shadow:0 .5px 0 rgba(0,0,0,.6),inset 0 -.6px 0 rgba(255,255,255,.10),
-               0 10px 30px rgba(0,0,0,.34)}
+    box-shadow:0 .5px 0 var(--glass-edge),inset 0 -.6px 0 var(--glass-under),
+               0 10px 30px var(--shadow)}
   header.edge::before{opacity:1}
   .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;
           position:relative;flex:0 0 auto}
   .avatar .logo{width:30px;height:30px;display:block}
   .avatar .on{position:absolute;right:1px;bottom:1px;width:11px;height:11px;border-radius:50%;
-              background:var(--green);border:2.5px solid #000;transition:background .3s}
+              background:var(--green);border:2.5px solid var(--bg);transition:background .3s}
   .avatar .on.off{background:var(--red)}
   header .who{flex:1;min-width:0}
   header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
@@ -190,7 +307,7 @@
           cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
           gap:8px;flex:0 0 auto;text-decoration:none;background:transparent;
           transition:background .15s,color .15s,transform .12s}
-  .icobtn:hover{background:rgba(255,255,255,.14);color:var(--lab)}
+  .icobtn:hover{background:var(--fill-3);color:var(--lab)}
   .icobtn:active{transform:scale(.94)}
   .icobtn svg{width:18px;height:18px;flex:0 0 auto}
   .icobtn .lbl{display:none}
@@ -208,6 +325,18 @@
     font-family:var(--ui);padding:0 12px;min-height:var(--tap);cursor:pointer}
   .foot button:hover{color:var(--lab2)}
   .foot .dot2{color:var(--lab3);font-size:12.5px}
+  /* Three states, so three buttons: "System" is not a default nobody picked,
+     it is a choice that hands the question back to the OS. */
+  dialog .seg{display:flex;gap:2px;padding:3px;margin:0 0 var(--sp-4);
+    background:var(--fill-1);border-radius:var(--r-pill)}
+  dialog .seg button{flex:1;min-height:var(--tap);border:0;
+    border-radius:var(--r-pill);background:transparent;color:var(--lab2);
+    font-family:var(--ui);font-size:14.5px;cursor:pointer;
+    transition:background .15s ease,color .15s ease}
+  dialog .seg button:hover{color:var(--lab)}
+  dialog .seg button[aria-checked="true"]{background:var(--card);
+    color:var(--lab);box-shadow:0 1px 3px var(--shadow),
+    inset 0 .6px 0 var(--glass-spec)}
   dialog .slid{display:flex;align-items:center;gap:12px;margin:16px 0 4px;
     font-size:var(--t-small);color:var(--lab3)}
   /* The track is 6px because that is what it should look like; the control
@@ -244,16 +373,16 @@
   .action{background:var(--action);border:1px solid rgba(10,132,255,.22);
           border-radius:var(--r-card);padding:var(--sp-4);
           margin-bottom:var(--sp-3);
-          box-shadow:inset 0 .6px 0 rgba(255,255,255,.13),0 2px 10px rgba(0,0,0,.3);
+          box-shadow:inset 0 .6px 0 var(--fill-3),0 2px 10px rgba(0,0,0,.3);
           transition:opacity .3s}
   .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
-  .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
+  .action.stale{background:var(--err-bg);border-color:rgba(255,69,58,.3)}
   .action.gone{opacity:.3}
   .action .top{display:flex;gap:12px;align-items:flex-start}
   /* 28, so the "why" line below can hang off it: 28 + sp-3 = 40. */
   .glyph{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:13px;
     background:var(--c,var(--card2));
-         flex:0 0 auto;margin-top:1px;color:#000;font-weight:700}
+         flex:0 0 auto;margin-top:1px;color:var(--on-accent);font-weight:700}
   .action .txt{flex:1;font-size:var(--t-card);line-height:1.4;letter-spacing:-.014em}
   .action .why{font-size:13.5px;color:var(--lab2);line-height:1.42;
     margin:var(--sp-2) 0 0 calc(28px + var(--sp-3))}
@@ -268,19 +397,19 @@
      emergent. */
   .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:12px;
     min-height:var(--tap);font-family:var(--ui);
-               font-size:16px;font-weight:500;background:rgba(255,255,255,.055);
+               font-size:16px;font-weight:500;background:var(--fill-1);
                color:var(--lab2);cursor:pointer;transition:transform .12s ease,
-               background .15s ease;box-shadow:inset 0 .6px 0 rgba(255,255,255,.10)}
+               background .15s ease;box-shadow:inset 0 .6px 0 var(--fill-2)}
   .pair button:active:not(:disabled){transform:scale(.97)}
-  .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
+  .pair button.yes{background:rgba(10,132,255,.20);color:var(--blue-soft);font-weight:600}
   .pair button:disabled{opacity:.4}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:12px;padding-top:12px;
-           border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
+           border-top:1px solid var(--fill-1);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
 
   .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:var(--r-card);
-         overflow:hidden;box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
-  .quiet .head:active{background:rgba(255,255,255,.04)}
+         overflow:hidden;box-shadow:inset 0 .6px 0 var(--fill-2)}
+  .quiet .head:active{background:var(--fill-1)}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
   .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
   .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
@@ -303,7 +432,7 @@
   .runs::-webkit-scrollbar{display:none}
   .run{flex:0 0 auto;width:152px;background:var(--card2);border:1px solid var(--hair);
        border-radius:var(--r-lg);padding:12px;
-       box-shadow:inset 0 .6px 0 rgba(255,255,255,.07)}
+       box-shadow:inset 0 .6px 0 var(--fill-1)}
   .run .w{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px}
   .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em;
     color:var(--c,var(--lab))}
@@ -311,7 +440,7 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   .health{background:var(--card2);border:1px solid var(--hair);border-radius:var(--r-card);
-          padding:16px;box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
+          padding:16px;box-shadow:inset 0 .6px 0 var(--fill-2)}
   .hrow{display:flex;align-items:center;gap:12px;font-size:13.5px;margin-top:12px}
   .hrow:first-child{margin-top:0}
   .hrow .k{color:var(--lab2);width:92px;flex:0 0 auto}
@@ -329,14 +458,14 @@
   .ctl{display:flex;gap:8px;margin-top:12px}
   .ctl button{flex:1;border:0;border-radius:var(--r-pill);padding:12px;
     min-height:var(--tap);font-family:var(--ui);
-              font-size:15px;font-weight:500;background:rgba(255,255,255,.08);
+              font-size:15px;font-weight:500;background:var(--fill-2);
               color:var(--lab);cursor:pointer;transition:transform .12s ease,
-              background .15s ease;box-shadow:inset 0 .6px 0 rgba(255,255,255,.12)}
-  .ctl button:hover{background:rgba(255,255,255,.13)}
+              background .15s ease;box-shadow:inset 0 .6px 0 var(--fill-3)}
+  .ctl button:hover{background:var(--fill-3)}
   .ctl button:active:not(:disabled){transform:scale(.97)}
-  .ctl button.go{background:var(--blue);color:#fff;
+  .ctl button.go{background:var(--blue-fill);color:#fff;
     box-shadow:inset 0 .6px 0 rgba(255,255,255,.3),0 4px 14px rgba(10,132,255,.32)}
-  .ctl button.go:hover{background:#1E90FF}
+  .ctl button.go:hover{background:var(--blue-hard)}
   .ctl button:disabled{opacity:.4}
 
   /* ask — the composer expands into a thread rather than navigating away,
@@ -364,7 +493,7 @@
            padding:calc(env(safe-area-inset-top) + var(--sp-4))
                    var(--gutter) var(--sp-3);
            border-bottom:1px solid rgba(0,0,0,.6);
-           box-shadow:inset 0 -.6px 0 rgba(255,255,255,.10)}
+           box-shadow:inset 0 -.6px 0 var(--fill-2)}
   .ask .ah h2{flex:1;font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
   .ask .ah .scope{font-family:var(--mono);font-size:9.5px;color:var(--lab3);
                   background:var(--card);padding:4px 8px;border-radius:7px}
@@ -394,7 +523,7 @@
   .sugg button{border:1px solid var(--hair);background:var(--card2);color:var(--lab2);
                border-radius:22px;padding:0 16px;min-height:var(--tap);
                font-family:var(--ui);font-size:13px;cursor:pointer}
-  .sugg button:hover{background:rgba(255,255,255,.12);color:var(--lab)}
+  .sugg button:hover{background:var(--fill-3);color:var(--lab)}
   .askbar{flex:0 0 auto;
     padding:var(--sp-2) var(--sp-4) calc(env(safe-area-inset-bottom) + var(--sp-4))}
   .askbar .row{display:flex;align-items:flex-end;gap:var(--sp-2);
@@ -410,7 +539,7 @@
                    min-height:var(--tap);padding:12px 0;outline:none}
   .askbar .go,.askbar .stop{width:var(--tap);height:var(--tap);border-radius:50%;
               border:0;font-size:16px;cursor:pointer;flex:0 0 auto}
-  .askbar .go{background:var(--blue);color:#fff}
+  .askbar .go{background:var(--blue-fill);color:#fff}
   .askbar .go:disabled{background:var(--card2);color:var(--lab3)}
   .askbar .stop{background:rgba(255,69,58,.2);color:var(--red);font-size:13px}
   .readonly{font-size:11.5px;color:var(--lab3);text-align:center;margin-top:8px;line-height:1.4}
@@ -466,28 +595,28 @@
   /* Anything you can reach with Tab has to show where you are — links and
      the div-shaped buttons included, which the button-only rule missed. */
   button:focus-visible,a:focus-visible,[role="button"]:focus-visible,
-  summary:focus-visible,[tabindex]:focus-visible{outline:2px solid #fff;
+  summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--lab);
     outline-offset:2px;border-radius:4px}
-  .warn-note{background:#1A1405;border:1px solid rgba(255,159,10,.32);border-radius:14px;
+  .warn-note{background:var(--warn-bg);border:1px solid rgba(255,159,10,.32);border-radius:14px;
             padding:12px;font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:16px}
   .warn-note b{color:var(--lab)}
   .warn-note details{margin-top:8px}
   .warn-note summary{cursor:pointer;color:var(--lab2);font-size:12.5px}
-  .warn-note pre{margin:8px 0 0;padding:8px;background:#0B0B0E;border-radius:9px;
+  .warn-note pre{margin:8px 0 0;padding:8px;background:var(--sunk);border-radius:9px;
             overflow-x:auto;font-size:11.5px;line-height:1.4;color:var(--lab2);white-space:pre}
-  .off-note{background:#1E0E0E;border:1px solid rgba(255,69,58,.3);border-radius:14px;padding:12px;
+  .off-note{background:var(--err-bg);border:1px solid rgba(255,69,58,.3);border-radius:14px;padding:12px;
             font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:16px}
   /* edit sheet — the correction is the highest-signal thing you produce,
      so it needs somewhere real to be written */
   .editor{margin-top:12px}
-  .editor textarea{width:100%;min-height:112px;background:#0B0B0E;border:1px solid rgba(10,132,255,.3);
+  .editor textarea{width:100%;min-height:112px;background:var(--sunk);border:1px solid rgba(10,132,255,.3);
     border-radius:12px;padding:12px;color:var(--lab);font-family:var(--ui);font-size:15px;
     line-height:1.45;resize:vertical;-webkit-appearance:none}
   .editor textarea:focus{outline:none;border-color:var(--blue)}
   .editor .diffnote{font-size:12px;color:var(--lab2);margin-top:8px;line-height:1.4}
   .editor .diffnote b{color:var(--lab)}
-  .err{background:#1E0E0E;border:1px solid rgba(255,69,58,.35);border-radius:12px;padding:12px;
-       font-size:13px;line-height:1.45;color:#FFB4AE;margin-top:12px}
+  .err{background:var(--err-bg);border:1px solid rgba(255,69,58,.35);border-radius:12px;padding:12px;
+       font-size:13px;line-height:1.45;color:var(--err-ink);margin-top:12px}
   .err b{color:var(--red)}
   .recheck{width:100%;margin-top:var(--sp-3);border:0;border-radius:var(--r-pill);
            padding:var(--sp-3);min-height:var(--tap);
@@ -509,9 +638,9 @@
     border-radius:var(--r-sheet) var(--r-sheet) 0 0;
     padding-bottom:calc(var(--sheet-pad) + env(safe-area-inset-bottom));
     background:
-      linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03) 30%,
-                      rgba(255,255,255,.05)),
-      rgba(22,22,24,calc(var(--glass-fill) + .22));
+      linear-gradient(180deg,var(--glass-hi),var(--glass-hi2) 30%,
+                      var(--glass-hi3)),
+      rgba(var(--glass-tint),calc(var(--glass-fill) + .22));
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     box-shadow:0 0 0 .5px rgba(0,0,0,.66),
@@ -550,28 +679,28 @@
   dialog .ok2{color:var(--green);font-size:13px}
   dialog select,dialog input{width:100%;margin-bottom:8px;padding:12px;
     min-height:var(--tap);
-    border-radius:var(--r-sm);border:1px solid var(--hair);background:#09090b;
+    border-radius:var(--r-sm);border:1px solid var(--hair);background:var(--field);
     color:var(--lab);font-size:15px;font-family:var(--ui)}
   dialog select:focus-visible,dialog input:focus-visible{outline:2px solid var(--blue);
     outline-offset:1px;border-color:transparent}
   dialog .mini{padding:8px 16px;min-height:var(--tap);border:1px solid var(--hair);border-radius:var(--r-pill);
-    background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui);
+    background:var(--inset);color:var(--lab);font-size:13px;font-family:var(--ui);
     cursor:pointer}
-  dialog .mini:hover{background:rgba(255,255,255,.14)}
+  dialog .mini:hover{background:var(--fill-3)}
   dialog .mini:active{transform:scale(.97)}
   dialog .mini{transition:transform .12s ease,background .15s ease}
-  dialog .mini.go{width:100%;background:var(--blue);border-color:transparent;
+  dialog .mini.go{width:100%;background:var(--blue-fill);border-color:transparent;
     color:#fff;font-weight:600;margin-top:2px}
   dialog .mini.danger{color:var(--red)}
   dialog .mini.armed,dialog .mini.quiet.armed{background:var(--red);
     border-color:transparent;color:#fff}
   dialog button.wide{width:100%;margin-top:16px;padding:12px;min-height:48px;border:0;
-    border-radius:var(--r-pill);background:var(--card2);color:var(--lab);font-size:15px;
+    border-radius:var(--r-pill);background:var(--inset);color:var(--lab);font-size:15px;
     font-family:var(--ui);cursor:pointer}
-  dialog button.wide:hover{background:#2A2A2D}
+  dialog button.wide:hover{background:var(--raised)}
   dialog .sect2{font-size:12px;color:var(--lab3);margin:12px 0 8px;
     text-transform:uppercase;letter-spacing:.04em}
-  dialog pre{margin:8px 0 0;padding:8px;background:#0B0B0E;border-radius:var(--r-sm);
+  dialog pre{margin:8px 0 0;padding:8px;background:var(--sunk);border-radius:var(--r-sm);
     max-height:230px;overflow:auto;font-size:var(--t-mono);line-height:1.45;color:var(--lab2)}
   /* An inset grouped list, which is the shape iOS uses for anything that
      reads like settings: rows inside one rounded container, separators
@@ -579,10 +708,10 @@
      the container inset from the edges of the sheet. Bare rows on the
      sheet's own background is the plain list style, which iOS keeps for
      content you scroll rather than settings you change. */
-  dialog .group{background:var(--card2);border:1px solid var(--hair);
+  dialog .group{background:var(--inset);border:1px solid var(--hair);
     border-radius:calc(var(--r-sheet) - var(--sheet-pad) + var(--sp-3));
     padding:0 var(--sp-3);margin:0 0 var(--sp-2);
-    box-shadow:inset 0 .6px 0 rgba(255,255,255,.06)}
+    box-shadow:inset 0 .6px 0 var(--fill-1)}
   dialog .group:empty{display:none}
   dialog .srow{display:flex;justify-content:space-between;align-items:center;
     gap:8px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:13px}
@@ -609,7 +738,7 @@
   /* What actually left. Four columns, and the whole thing scrolls inside
      itself — a URL is longer than a phone and must not take the sheet
      sideways with it. */
-  dialog .elog{max-height:190px;overflow:auto;background:#0B0B0E;
+  dialog .elog{max-height:190px;overflow:auto;background:var(--sunk);
     border-radius:var(--r-sm);padding:8px 8px}
   /* minmax(0,1fr) on the URL, and the verdict capped: an `auto` column with
      a long string in it wins the fight for width, and the URL is the column
@@ -632,7 +761,7 @@
     border:1px solid var(--hair);border-radius:var(--r-pill);background:transparent;
     color:var(--lab);font-size:14.5px;font-family:var(--ui);cursor:pointer;
     transition:background .15s ease,transform .12s ease}
-  dialog .rowbtn:hover{background:rgba(255,255,255,.10)}
+  dialog .rowbtn:hover{background:var(--fill-2)}
   dialog .rowbtn:active{transform:scale(.99)}
   dialog .rowbtn.danger{color:var(--red)}
   dialog .rowbtn.armed{background:var(--red);border-color:transparent;color:#fff}
@@ -646,7 +775,7 @@
      so the two curves are concentric rather than merely both round. */
   dialog .addbox{margin:var(--sp-3) 0;padding:var(--sp-3);
     border-radius:calc(var(--r-sheet) - var(--sheet-pad) + var(--sp-3));
-    background:var(--card2)}
+    background:var(--inset)}
   dialog .addbox .mini.danger{width:100%;margin-top:8px}
   dialog .warn{color:var(--amber)}
 
@@ -659,8 +788,8 @@
      above it now, and the highlight is the card's own inset wide. */
   .hrow.night{cursor:pointer;border-radius:var(--r-sm);
     margin:var(--sp-1) 0 0;min-height:var(--tap)}
-  .hrow.night:hover{background:rgba(235,235,245,.05)}
-  .hrow.night:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .hrow.night:hover{background:var(--fill-1)}
+  .hrow.night:focus-visible{outline:2px solid var(--lab);outline-offset:1px}
   .hrow .v.good{color:var(--green)} .hrow .v.bad{color:var(--red)}
   #srcdlg .lrow{display:flex;gap:8px;align-items:flex-start;padding:8px 0;font-size:13px}
   #srcdlg .lrow small{color:var(--lab3);font-size:11px;font-family:var(--mono);margin-left:4px}
@@ -676,7 +805,7 @@
   #srcdlg .peek .pf{color:var(--lab3)} #srcdlg .peek .ps{color:var(--lab);font-weight:600}
   #srcdlg .peek .pp{color:var(--lab3);font-size:11px;font-family:var(--mono)}
   #srcdlg .peek .pb{color:var(--lab2);margin-top:4px;white-space:pre-wrap}
-  #srcdlg .cmd{background:#09090b;padding:8px;border-radius:8px;font-family:var(--mono);
+  #srcdlg .cmd{background:var(--field);padding:8px;border-radius:8px;font-family:var(--mono);
     font-size:11px;color:var(--lab2);white-space:pre-wrap;word-break:break-all}
   #srcdlg .yes,#phonedlg .yes{color:var(--green)}
   #srcdlg .no,#phonedlg .no{color:var(--red)}
@@ -746,15 +875,15 @@
 <div class="wrap">
   <header>
     <div class="avatar"><svg viewBox="0 0 512 512" class="logo" aria-hidden="true"><g id="mark-body">
-  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
-  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" fill="#A2A8B4"/>
-  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" fill="#F5F5F7"/>
-  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" fill="#A2A8B4"/>
+  <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" class="lit"/>
+  <polygon points="418,244.0 256,336.0 256,384.0 418,292.0" class="shade"/>
+  <polygon points="94,300.0 256,392.0 256,440.0 94,348.0" class="lit"/>
+  <polygon points="418,300.0 256,392.0 256,440.0 418,348.0" class="shade"/>
   </g>
   <g id="mark-pending" transform="translate(0,-15)">
-  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" fill="#F5F5F7"/>
-  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" fill="#A2A8B4"/>
-  <polygon points="256,96 418,188 256,280 94,188" fill="#0A84FF"/>
+  <polygon points="94,188.0 256,280.0 256,328.0 94,236.0" class="lit"/>
+  <polygon points="418,188.0 256,280.0 256,328.0 418,236.0" class="shade"/>
+  <polygon points="256,96 418,188 256,280 94,188" class="slot"/>
   </g></svg><span class="on" id="live"></span></div>
     <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
     <nav class="tools glass" aria-label="Blokk settings">
@@ -781,6 +910,11 @@
        restart — and from a phone that is unrecoverable. -->
   <dialog id="appdlg">
     <h2>Appearance</h2>
+    <div class="seg" role="radiogroup" aria-label="Theme">
+      <button type="button" role="radio" data-theme-pick="light">Light</button>
+      <button type="button" role="radio" data-theme-pick="dark">Dark</button>
+      <button type="button" role="radio" data-theme-pick="system">System</button>
+    </div>
     <p>The bars, sheets and controls are glass — they take their colour from
       whatever is behind them. How much of it comes through is yours.</p>
     <div class="slid">
@@ -1652,6 +1786,33 @@ $('#update').onclick = () => { $('#updlg').showModal(); paintUpdate(); };
    everything. One number drives both the fill and the diffusion; it lives in
    localStorage, so it is this browser's preference and never leaves it.
    ───────────────────────────────────────────────────────────────────────── */
+// ── theme ─────────────────────────────────────────────────────────────
+// Three states. "system" stamps nothing on <html> and lets
+// prefers-color-scheme decide, which is the state most people are in and
+// the one that breaks if a colour is only defined inside a media query.
+const THEME_KEY = 'blokk-theme';
+function theme(){
+  try{ return localStorage.getItem(THEME_KEY) || 'system'; }catch{ return 'system'; }
+}
+function applyTheme(pick){
+  const root = document.documentElement;
+  if(pick === 'system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', pick);
+  // The browser paints its own chrome from this, so it has to follow. Read
+  // the ground back out of the stylesheet rather than keeping a second copy
+  // of the palette here that would drift from the first.
+  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta && bg) meta.setAttribute('content', bg);
+  document.querySelectorAll('[data-theme-pick]').forEach(b =>
+    b.setAttribute('aria-checked', String(b.dataset.themePick === pick)));
+}
+applyTheme(theme());
+// Following the OS means following it while the app is open, too.
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if(theme() === 'system') applyTheme('system');
+});
+
 const GLASS_KEY = 'blokk-glass', GLASS_DEFAULT = 58;
 // The OS setting wins. Someone who has asked the system for less transparency
 // has already answered this question, and answering it again for them in an
@@ -1674,6 +1835,13 @@ const glassPref = (() => {
 if(!REDUCED) applyGlass(glassPref === null ? GLASS_DEFAULT : glassPref);
 
 $('#appearance').onclick = () => {
+  document.querySelectorAll('[data-theme-pick]').forEach(b => {
+    b.onclick = () => {
+      const pick = b.dataset.themePick;
+      try{ localStorage.setItem(THEME_KEY, pick); }catch{}
+      applyTheme(pick);
+    };
+  });
   const dlg = $('#appdlg'), range = $('#glass'), note = $('#appnote');
   range.value = glassPref === null ? GLASS_DEFAULT : glassPref;
   if(REDUCED){

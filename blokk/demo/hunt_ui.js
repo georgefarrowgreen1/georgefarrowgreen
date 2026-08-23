@@ -577,6 +577,67 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
 }
 
+// B28 — light and dark, and the third state between them
+// There are three states, not two: an explicit choice stamps
+// data-theme on <html>, and "system" stamps nothing at all. A colour whose
+// only definition lives inside `@media (prefers-color-scheme)` or inside a
+// `[data-theme]` block does not exist in that third state, and the page
+// renders one theme's text on the other theme's ground. So: every token is
+// defined on bare :root, and the themed blocks only *re*define tokens.
+{
+  const strip = css => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const css = strip(fs.readFileSync(f, 'utf8')
+      .split('<style>')[1].split('</' + 'style>')[0]);
+    // The bare :root block, which is the whole palette.
+    const base = (css.match(/(^|\})\s*:root\s*\{([^}]*)\}/) || [0, 0, ''])[2];
+    const declared = new Set((base.match(/--[\w-]+(?=\s*:)/g) || []));
+    // Everything inside a themed block, at any nesting.
+    const themed = new Set();
+    for (const m of css.matchAll(
+        /(@media[^{]*prefers-color-scheme[^{]*\{[\s\S]*?\n  \}|:root\[data-theme[^{]*\{[^}]*\})/g))
+      for (const t of m[0].match(/--[\w-]+(?=\s*:)/g) || []) themed.add(t);
+    const orphans = [...themed].filter(t => !declared.has(t));
+    probe(`B28 ${f} defines a colour only inside a theme block`,
+      orphans.length > 0,
+      orphans.length ? orphans.join(', ')
+                     : `${themed.size} tokens flip, all of them declared on :root`);
+    // And a themed block must not carry rules — only token redefinitions.
+    const rules = [];
+    for (const m of css.matchAll(/:root\[data-theme[^{]*\{([^}]*)\}/g))
+      if (/[a-z-]+\s*:/.test(m[1].replace(/--[\w-]+\s*:[^;]*;?/g, '')
+                                  .replace(/color-scheme\s*:[^;]*;?/g, '')))
+        rules.push('a [data-theme] block sets something that is not a token');
+    probe(`B28a ${f} styles components inside a theme block`,
+      rules.length > 0, rules[0] || 'themed blocks redefine tokens and nothing else');
+  }
+  // B28c — the material has to flip too
+  // Liquid Glass is a *tint over what is behind it*. Pinned to the dark
+  // tint it stays a dark lozenge on a light page — and the token can be
+  // right while a second copy of the rule three lines up is not, which is
+  // exactly what happened here: the bubble stayed charcoal in light mode
+  // with --glass-tint resolving correctly the whole time.
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const css = strip(fs.readFileSync(f, 'utf8')
+      .split('<style>')[1].split('</' + 'style>')[0]);
+    const pinned = (css.match(/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*(var\(--glass-fill\)|calc\([^)]*glass-fill[^)]*\))/g) || []);
+    probe(`B28c ${f} pins the glass to one theme's tint`,
+      pinned.length > 0,
+      pinned.length ? `${pinned.length} rule(s) hard-code the tint`
+                    : 'the material reads --glass-tint');
+  }
+
+  // The page must paint its own ground. A transparent body borrows the
+  // host's, which is the other half of the same bug.
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const css = strip(fs.readFileSync(f, 'utf8')
+      .split('<style>')[1].split('</' + 'style>')[0]).replace(/\s+/g, ' ');
+    probe(`B28b ${f} never paints its own background`,
+      !/(html|body)[^{]*\{[^}]*background:\s*var\(--/.test(css),
+      'body takes its ground from a token');
+  }
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.
