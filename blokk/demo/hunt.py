@@ -2706,6 +2706,70 @@ try:
     probe("A68 adding a source hangs, or sends you elsewhere for the password",
           adding_a_source_finishes)
 
+    def chat_opens_on_something_real():
+        # Right after wiring your own workspace, the chat opened on "biz2" —
+        # an invented business, chosen because b sorts before everything else.
+        # Real before sample, then whatever has something waiting on you.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        from core.ask import scope_for, _newest_first
+
+        # The sentinel has to sit above anything the flip produces, or a
+        # workspace that has never swept claims to be the one you meant.
+        if not _newest_first(None) > _newest_first("2020-01-01"):
+            return (True, "a workspace that has never run sorts as the most "
+                          "recently run")
+        if not _newest_first("2026-08-23") < _newest_first("2026-08-01"):
+            return (True, "older sorts as newer")
+
+        tmp = pathlib.Path(_tf.mkdtemp()) / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
+        st = Store(tmp)
+        sources.workspace_add(st, "mine", "Mine")
+        if scope_for(st, None) != "mine":
+            return (True, f"with a real workspace present it opened on "
+                          f"{scope_for(st, None)!r}")
+        if scope_for(st, "biz3") != "biz3":
+            return (True, "asking for a workspace by name did not get it")
+        if scope_for(st, "no-such-thing") == "no-such-thing":
+            return (True, "a workspace that does not exist was accepted")
+        return (False, "real before sample, and an explicit one always wins")
+    probe("A69 the chat opens on an invented business", chat_opens_on_something_real)
+
+    def setup_ends_on_real_data():
+        # The wizard stopped at the model, so a fresh install landed on a
+        # dashboard of four made-up companies with the person's own mail
+        # nowhere in it. The fifth step is the one that makes the first
+        # screen theirs, and it can only offer what needs no password.
+        html = open("web/setup.html").read()
+        js = html.split("<script>")[1]
+        if 'id="p5"' not in html:
+            return (True, "there is no sources step; setup still ends at the "
+                          "model")
+        if len([1 for i in range(1, 6) if f'id="s{i}"' in html]) < 5:
+            return (True, "the progress bar does not count the new step")
+        for want in ("workspaces/add", "sources/add", "/api/v1/sources"):
+            if want not in js:
+                return (True, f"the step cannot {want}")
+        # It must only ever offer the credential-free route. Offering imap
+        # here puts an app-specific password in the first five minutes,
+        # which is where setup dies.
+        if "kind_local" not in js:
+            return (True, "it offers the raw kind, so Calendar would be wired "
+                          "as caldav and Mail as imap — both need a password")
+        if "ref:'local'" not in js.replace(" ", ""):
+            return (True, "it does not wire the local route")
+        # Skipping has to be possible, or a wizard step becomes a wall.
+        if 'id="skip5"' not in html:
+            return (True, "no way past the step without wiring something")
+        return (False, "five steps, credential-free sources only, and a way "
+                       "past it")
+    probe("A70 setup hands over before anything real is wired",
+          setup_ends_on_real_data)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

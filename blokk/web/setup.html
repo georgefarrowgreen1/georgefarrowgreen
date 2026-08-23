@@ -207,7 +207,17 @@
                        0 4px 14px rgba(10,132,255,.32)}
   button.go:hover:not(:disabled){background:var(--blue-hard, var(--blue))}
   button.go:active:not(:disabled){transform:scale(.97)}
-  button.ghost{background:var(--fill-2);color:var(--lab);
+  /* border:0 like .go. Without it the secondary button takes the browser's
+     default outset border, which reads as a stray hairline box next to a
+     borderless primary — on every step that has a Back button, not just the
+     new one. */
+  /* Its own size, not borrowed. Every ghost in here is also a .go, so this
+     never mattered — until one was not, and rendered 17px tall. A class that
+     is only 44 when it is paired with another class is not 44. */
+  button.ghost{border:0;border-radius:var(--r-pill);padding:0 24px;
+    min-height:var(--tap);font-family:var(--ui);font-size:15.5px;
+    font-weight:500;cursor:pointer;
+    background:var(--fill-2);color:var(--lab);
     box-shadow:inset 0 .6px 0 var(--fill-3)}
   button.ghost:hover{background:var(--fill-3)}
   button.go:disabled{opacity:.35;cursor:default}
@@ -280,6 +290,40 @@
     background:var(--blue-fill);color:#fff;font-size:13px;font-weight:600;font-family:var(--ui)}
   .addmodel button:disabled{opacity:.5}
   .addmodel .hint{margin:8px 0 0;font-size:12px;color:var(--lab3)}
+
+  /* Step 5 — your own data. Same materials as the rest, no new ones. */
+  .fieldlabel{display:block;font-size:13px;color:var(--lab2);margin-bottom:var(--sp-2)}
+  #wsname{width:100%;box-sizing:border-box;padding:8px 12px;min-height:var(--tap);
+    border-radius:var(--r-md);border:1px solid var(--hair);
+    background:var(--field);color:var(--lab);font-size:15px;font-family:var(--ui)}
+  #wsid{margin:var(--sp-2) 0 0}
+  #wsid code{font-family:var(--mono);color:var(--lab2)}
+  /* The whole row is the control, not the 22px box in it. The box is a
+     glyph — the same relationship .icobtn svg has to its button — and the
+     input fills the label so a thumb anywhere on the row hits it. */
+  .srcrow{position:relative;display:flex;align-items:center;gap:var(--sp-3);
+    padding:var(--sp-3) 0;min-height:var(--tap);border-top:1px solid var(--hair);
+    cursor:pointer}
+  .srcrow:first-child{border-top:0}
+  .srcrow input[type=checkbox]{position:absolute;inset:0;width:100%;height:100%;
+    margin:0;opacity:0;cursor:pointer}
+  .srcrow input[type=checkbox]:disabled{cursor:default}
+  .srcrow .tick{flex:0 0 auto;width:22px;height:22px;border-radius:6px;
+    border:1.5px solid var(--lab3);display:grid;place-items:center;
+    color:transparent;font-size:14px;line-height:1;font-weight:700}
+  .srcrow:has(input:checked) .tick{background:var(--blue-fill);
+    border-color:transparent;color:#fff}
+  .srcrow:has(input:focus-visible) .tick{outline:2px solid var(--blue);
+    outline-offset:2px}
+  .srcrow .who{flex:1;min-width:0}
+  .srcrow .who b{display:block;font-size:15px;font-weight:600}
+  .srcrow .who small{display:block;font-size:12.5px;color:var(--lab3);line-height:1.45}
+  .srcrow .st{font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    text-transform:uppercase;padding:4px 8px;border-radius:6px;
+    background:var(--fill-2);color:var(--lab3);flex:0 0 auto}
+  .srcrow .st.ready{background:rgba(48,209,88,.16);color:var(--green)}
+  .srcrow .st.blocked{background:rgba(255,214,10,.16);color:var(--amber)}
+  .srcrow.off{opacity:.55}
 </style></head>
 <body><div class="page">
 
@@ -299,7 +343,7 @@
     <div><h1>Blokk</h1><p id="sub">Setting up</p></div>
   </header>
 
-  <div class="steps"><div id="s1" class="on"></div><div id="s2"></div><div id="s3"></div><div id="s4"></div></div>
+  <div class="steps"><div id="s1" class="on"></div><div id="s2"></div><div id="s3"></div><div id="s4"></div><div id="s5"></div></div>
   </div>
   <main>
 
@@ -349,6 +393,32 @@
       <button class="go" id="open" hidden>Open Blokk</button></div>
   </div>
 
+  <!-- 5 — your own data -->
+  <!-- Setup used to stop at the model, so a fresh install landed on a
+       dashboard of four invented businesses and the person's actual mail was
+       nowhere. This is the step that makes the first screen theirs: name one
+       workspace, tick what is already on this Mac, done. Everything offered
+       here needs no password, no account and no network. -->
+  <div class="pane" id="p5">
+    <h2>Your own data</h2>
+    <p class="lead">Blokk starts on a sample world so you can see it working.
+      Point it at something real and the sample goes quiet. Everything here
+      is already on this Mac and needs no password.</p>
+    <div class="box">
+      <label class="fieldlabel" for="wsname">What do you call it?</label>
+      <input id="wsname" type="text" placeholder="The cottages"
+             autocomplete="off" spellcheck="false">
+      <p class="hint" id="wsid">It will be filed under <code>&mdash;</code></p>
+    </div>
+    <div class="box" id="localsrc">Looking at this Mac…</div>
+    <p class="hint" id="p5note"></p>
+    <div class="row">
+      <button class="go ghost" id="skip5">Skip for now</button>
+      <div class="spacer"></div>
+      <button class="go" id="wire">Wire these up</button>
+    </div>
+  </div>
+
 </main>
 </div>
 <script>
@@ -391,8 +461,8 @@ let STATE=null, SHAPE=null, PLAN=null;
 let FIT={slots: 4, ctx: 32768};   // replaced by the server's sizing on select
 
 function step(n){
-  ['p1','p2','p3','p4'].forEach((p,i)=>$('#'+p).classList.toggle('on',i===n-1));
-  [1,2,3,4].forEach(i=>{const d=$('#s'+i);d.className=i<n?'done':i===n?'on':'';});
+  ['p1','p2','p3','p4','p5'].forEach((p,i)=>$('#'+p).classList.toggle('on',i===n-1));
+  [1,2,3,4,5].forEach(i=>{const d=$('#s'+i);d.className=i<n?'done':i===n?'on':'';});
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -627,6 +697,104 @@ $('#to4').onclick=async()=>{
   }
 };
 
-$('#open').onclick=()=>{ location.href='/'; };
+// ── 5. your own data ───────────────────────────────────────────────────────
+// The wizard used to hand over at the model, so the first screen anybody saw
+// was four invented businesses. Everything offered here is already on this
+// Mac and needs no password, no account and no network — which is exactly
+// why it belongs in the first five minutes rather than in a document.
+$('#open').onclick=()=>{ step(5); loadLocal(); };
+
+const slug = s => (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')
+                          .replace(/^-+|-+$/g,'').slice(0,30);
+
+$('#wsname').addEventListener('input',()=>{
+  const id = slug($('#wsname').value);
+  $('#wsid').innerHTML = id
+    ? `It will be filed under <code>${esc(id)}</code>`
+    : 'It will be filed under <code>&mdash;</code>';
+  refreshWire();
+});
+
+let LOCAL = [];
+async function loadLocal(){
+  const box = $('#localsrc');
+  try{
+    const d = await get('/api/v1/sources');
+    const sur = d.local || {};
+    if(!sur.mac){
+      box.innerHTML = `<p class="hint">${esc(sur.note||'No local Apple sources here.')}
+        You can still wire mail or a calendar over IMAP or CalDAV from the app.</p>`;
+      LOCAL = []; refreshWire(); return;
+    }
+    LOCAL = (sur.sources||[]).filter(x=>x.kind_local || x.kind==='messages');
+    if(!LOCAL.length){ box.innerHTML='<p class="hint">Nothing local found.</p>';
+      refreshWire(); return; }
+    box.innerHTML='';
+    for(const s of LOCAL){
+      const ready = s.state==='ready';
+      const row = el(`<label class="srcrow${ready?'':' off'}">
+        <input type="checkbox" ${ready?'checked':'disabled'} data-kind="${esc(s.kind_local||s.kind)}">
+        <span class="tick" aria-hidden="true">&#10003;</span>
+        <span class="who"><b>${esc(s.what)}</b><small>${esc(s.detail||s.reads)}</small></span>
+        <span class="st ${esc(s.state==='ready'?'ready':s.state==='blocked'?'blocked':'')}">${esc(s.state)}</span>
+      </label>`);
+      row.querySelector('input').addEventListener('change', refreshWire);
+      box.append(row);
+    }
+    if(LOCAL.some(s=>s.state==='blocked'))
+      $('#p5note').textContent = 'Anything marked blocked needs Full Disk '
+        + 'Access, granted to the app that starts Blokk, and a restart. You '
+        + 'can do that later and add it from the app.';
+    refreshWire();
+  }catch(e){
+    box.innerHTML = `<p class="hint">Could not read this Mac: ${esc(e.message)}.
+      You can wire sources from the app instead.</p>`;
+    LOCAL = []; refreshWire();
+  }
+}
+
+function ticked(){
+  return [...document.querySelectorAll('#localsrc input:checked')]
+           .map(i=>i.dataset.kind);
+}
+function refreshWire(){
+  const b = $('#wire');
+  const n = ticked().length, id = slug($('#wsname').value);
+  b.disabled = !id || !n;
+  b.textContent = !n ? 'Nothing ticked'
+    : `Wire ${n} source${n===1?'':'s'} up`;
+}
+
+$('#skip5').onclick = ()=>{ location.href='/'; };
+
+$('#wire').onclick = async ()=>{
+  const b = $('#wire'); b.disabled = true; b.textContent='Wiring…';
+  const id = slug($('#wsname').value);
+  const name = $('#wsname').value.trim() || id;
+  try{
+    const w = await post('/api/v1/workspaces/add', {id, name});
+    // "already exists" is not a failure here — somebody may be running the
+    // wizard a second time, and the sources still need wiring.
+    if(w.error && !/already exists/.test(w.error)) throw new Error(w.error);
+    const failed = [];
+    for(const kind of ticked()){
+      const r = await post('/api/v1/sources/add', {workspace:id, kind, ref:'local'});
+      if(r.error) failed.push(`${kind}: ${r.error}`);
+    }
+    if(failed.length){
+      $('#p5note').innerHTML = `<b class="bad">Some did not attach.</b><br>
+        ${failed.map(esc).join('<br>')}<br>The rest are wired; you can finish
+        the others from the app.`;
+      b.disabled=false; b.textContent='Try again';
+      return;
+    }
+    location.href='/';
+  }catch(e){
+    $('#p5note').innerHTML = `<b class="bad">${esc(e.message)}</b><br>
+      Nothing is half-done — the model is set up either way, and sources can
+      be wired from the app.`;
+    b.disabled=false; refreshWire();
+  }
+};
 </script>
 </body></html>

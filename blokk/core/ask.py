@@ -433,14 +433,44 @@ def scope_for(store, workspace: str | None) -> str:
     # first, which is a coin toss dressed up as a decision — "biz2", because
     # b comes before c. The one with something waiting on you is the one you
     # opened the chat about; failing that, the one that ran most recently.
-    row = store.one(
-        "SELECT w.id FROM workspace w "
+    from core import sources as _src
+    rows = store.q(
+        "SELECT w.id, COUNT(DISTINCT a.id) AS waiting, "
+        "       COUNT(DISTINCT c.id) AS wired, MAX(r.started_at) AS last_run "
+        "FROM workspace w "
         "LEFT JOIN approval a ON a.workspace_id=w.id AND a.decision IS NULL "
+        "LEFT JOIN credential c ON c.workspace_id=w.id "
         "LEFT JOIN run r ON r.workspace_id=w.id "
-        "WHERE w.active=1 "
-        "GROUP BY w.id "
-        "ORDER BY COUNT(a.id) DESC, MAX(r.started_at) DESC, w.id LIMIT 1")
-    return row["id"] if row else ""
+        "WHERE w.active=1 GROUP BY w.id")
+    if not rows:
+        return ""
+    # Real before sample. Somebody who has just wired their own mail should
+    # not have the chat open on an invented business — and the sample world's
+    # names sort early, so alphabetical put "biz2" in front of the workspace
+    # they made thirty seconds ago.
+    def rank(r):
+        return (
+            r["id"] in _src.SAMPLE,                 # real before sample
+            -r["waiting"],                          # most waiting on you
+            -r["wired"],                            # most actually connected
+            _newest_first(r["last_run"]),           # most recently swept
+            r["id"],                                # and then a stable tie
+        )
+    return sorted(rows, key=rank)[0]["id"]
+
+
+def _newest_first(ts: str | None) -> str:
+    """A timestamp that sorts newest-first inside an ascending key.
+
+    A workspace that has never run sorts last rather than first: never having
+    swept is not a claim to be the one you meant.
+    """
+    if not ts:
+        # Above anything the flip below can produce, which is the point:
+        # U+FFFF is *below* it, so the first version of this sentinel put
+        # never-swept workspaces first — the exact opposite of the rule.
+        return "\U0010FFFF"
+    return "".join(chr(0x10FFFE - ord(c)) for c in ts)
 
 
 def ask(store, question: str, model, workspace: str | None = None,

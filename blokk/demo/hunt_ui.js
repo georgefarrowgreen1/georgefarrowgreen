@@ -333,6 +333,13 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
   probe('B20 a control is pinned smaller than a fingertip',
     bad.length > 0, bad.length ? bad[0] : 'nothing interactive is under 44px');
+  // What neither this nor B20a can see: a control whose class declares no
+  // size at all, which then renders at whatever its text needs. `.ghost` did
+  // exactly that and came out 17px tall, and every ghost in the wizard
+  // happened to also carry `.go`, so nothing showed it. Catching that
+  // statically means deciding which rules match which element — a CSS
+  // engine — so it is not attempted here. It is what a rendered measurement
+  // is for, and the reason `.ghost` now declares its own height.
 
   // B20a — and it says so, rather than adding up to it
   // A control whose height is only the sum of its padding is 44 by luck.
