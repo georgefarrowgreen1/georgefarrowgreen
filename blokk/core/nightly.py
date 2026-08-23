@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 
 DEFAULT_AT = "04:00"
 FLOOR_DAYS = 7          # a first sweep reads a week, not the whole archive
+RETRY_AFTER = 60        # minutes before a failed workspace is tried again
 
 
 def _hhmm(text: str) -> tuple[int, int] | None:
@@ -157,6 +158,38 @@ def since_for(store, now: datetime) -> str:
     return start.isoformat(timespec="seconds")
 
 
+def retryable(store, now: datetime, after_min: int = RETRY_AFTER) -> list[str]:
+    """Workspaces whose most recent sweep failed a while ago.
+
+    The night's sweep runs once a day and does not run again — which is right
+    when it worked, and wrong when it did not. The commonest reason it did not
+    is that the model server was not up at 04:00; you start it at nine, and
+    nothing looks at your mail until tomorrow morning.
+
+    Deliberately keyed on the last attempt per workspace and its age, not on
+    the date: no calendar arithmetic, so no argument between the local day the
+    schedule runs on and the UTC day the journal is written in.
+
+    sweep_all already skips a workspace whose sweep today finished, so asking
+    it again picks up exactly the ones that failed.
+    """
+    rows = store.q(
+        """SELECT r.workspace_id, r.status, r.started_at FROM run r
+           JOIN (SELECT workspace_id, MAX(started_at) AS m FROM run
+                  WHERE workflow='morning_sweep' GROUP BY workspace_id) x
+             ON x.workspace_id = r.workspace_id AND x.m = r.started_at
+          WHERE r.workflow='morning_sweep' AND r.status='failed'""")
+    out = []
+    for r in rows:
+        at = _as_local(r["started_at"])
+        if at is None:
+            continue
+        age = (now.astimezone() - at).total_seconds() / 60
+        if age >= after_min:
+            out.append(r["workspace_id"])
+    return sorted(out)
+
+
 # ----------------------------------------------------------------- the thread
 class Nightly:
     """Asks once a minute. Owns no state beyond the thread itself."""
@@ -166,14 +199,17 @@ class Nightly:
         self.clock, self.tick = clock, tick
         self.last_error = ""
         self.fired = 0
+        self._last_try: datetime | None = None
         self._stop = threading.Event()
 
     def state(self) -> dict:
         now = self.clock()
         at = get_at(self.store)
         last = last_sweep(self.store)
+        retry = retryable(self.store, now) if _hhmm(at) else []
         return {"at": at, "on": bool(_hhmm(at)),
                 "last": last["at"], "last_status": last["status"],
+                "retrying": retry,
                 # "due" rather than leaving the caller to compare a timestamp
                 # against its own clock — the phone's clock is not this Mac's.
                 "due": due(now, at, last["date"]),
@@ -188,8 +224,22 @@ class Nightly:
         except Exception as e:                                   # noqa: BLE001
             # Expiring stale approvals must never be what stops the sweep.
             self.last_error = f"expire: {e}"[:200]
-        if not due(now, get_at(self.store), last_sweep(self.store)["date"]):
-            return False
+        at = get_at(self.store)
+        if not due(now, at, last_sweep(self.store)["date"]):
+            # Not today's window — but a workspace whose sweep failed an hour
+            # ago is worth another go, and only that workspace: sweep_all
+            # skips the ones that finished.
+            if not (_hhmm(at) and retryable(self.store, now)):
+                return False
+            # Measured here as well as in the run table. retryable() dates
+            # from the failed run, and a sweep that fails writes a new one —
+            # but a sweep that cannot even start does not, and then this asks
+            # again every sixty seconds for the rest of the day.
+            if self._last_try is not None and (
+                    now.astimezone() - self._last_try).total_seconds() \
+                    < RETRY_AFTER * 60:
+                return False
+            self._last_try = now.astimezone()
         try:
             self.sweep(since_for(self.store, now))
             self.fired += 1

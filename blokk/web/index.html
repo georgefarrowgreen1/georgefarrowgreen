@@ -990,6 +990,8 @@ function nightWords(s){
   if(!s) return '—';
   if(!s.on) return 'off';
   if(s.error) return 'failed — ' + s.error.slice(0, 40);
+  if(s.retrying && s.retrying.length)
+    return s.at + ' · retrying ' + s.retrying.join(', ');
   if(s.due) return s.at + ' · due now';
   if(s.last) return s.at + ' · swept ' + s.last.slice(11, 16);
   return s.at + ' · not yet run';
@@ -1013,7 +1015,8 @@ function paintHealth(h){
       <span class="v">${h.handled} journalled</span></div>
     <div class="hrow plain night" id="nightrow" role="button" tabindex="0"
       title="Change when Blokk sweeps"><span class="k">Night shift</span>
-      <span class="v ${sch.error ? 'bad' : sch.on ? 'good' : ''}">${
+      <span class="v ${sch.error || (sch.retrying||[]).length ? 'bad'
+        : sch.on ? 'good' : ''}">${
         esc(nightWords(sch))}</span></div>`;
   const row = $('#nightrow');
   if(row){
@@ -1048,6 +1051,10 @@ async function openSchedule(){
       ? 'Last swept ' + esc(s.last.replace('T', ' ').slice(0, 16)) +
         ' · ' + esc(s.last_status)
       : 'It has not run yet.'}</p>
+    ${(s.retrying || []).length ? `<p class="sub">The last sweep of
+      ${esc(s.retrying.join(', '))} failed. It tries those again about once an
+      hour, so a model server you start at nine does not cost you the day.</p>`
+      : ''}
     <p class="sub">If the Mac is asleep at that hour nothing is lost — the
       sweep runs when the lid next opens, once, and reads everything since
       the last one rather than a fixed window.</p>

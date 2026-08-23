@@ -210,6 +210,23 @@ probe('B9  a slow sweep is reported as a failed one',
     small.length > 0, small.length ? small.join() : 'targets are 40px and up');
 }
 
+// B15 — the two pages have to mean the same thing by the same name
+{
+  const setup = fs.readFileSync('web/setup.html', 'utf8');
+  const dash  = h;
+  const val = (src, name) => {
+    const m = src.match(new RegExp('--' + name + ':\\s*(#[0-9A-Fa-f]{6})'));
+    return m && m[1].toLowerCase();
+  };
+  const same = ['card', 'card2', 'hair'].every(n => {
+    const a = val(dash, n), b = val(setup, n);
+    return !a || !b || a === b;
+  });
+  probe('B15 card and card2 mean different things on the two pages',
+    !same, same ? 'the dashboard and the wizard agree on the palette'
+                : 'same names, different colours');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

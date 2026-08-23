@@ -1233,6 +1233,57 @@ try:
             _o.close(m)
     probe("A40 a long BLOKK_TOKEN stops the control plane starting", long_token)
 
+    # ── 41. the night the model server was down ─────────────────────────
+    def failed_sweep_retry():
+        # The sweep runs once a day and did not run again — right when it
+        # worked, wrong when it did not. The commonest reason it did not is
+        # that the model server was not up at 04:00: you start it at nine,
+        # and nothing reads your mail until tomorrow morning.
+        import sys as _s, tempfile
+        from datetime import datetime as D
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import nightly as N
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        for w in ("cottages", "biz2"):
+            st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+                 " VALUES(?,?,1,'[]')", w, w)
+        # 04:00: one workspace failed, one finished.
+        st.x("INSERT INTO run(id,workspace_id,workflow,status,input,started_at)"
+             " VALUES('r1','cottages','morning_sweep','failed','{}',?)",
+             "2026-08-23T03:00:02")
+        st.x("INSERT INTO run(id,workspace_id,workflow,status,input,started_at)"
+             " VALUES('r2','biz2','morning_sweep','done','{}',?)",
+             "2026-08-23T03:00:02")
+        asked = []
+        ni = N.Nightly(st, sweep=lambda since: asked.append(since),
+                       expire=lambda: 0, tick=0.01,
+                       clock=lambda: D(2026, 8, 23, 3, 20))
+        if ni.once():
+            return (True, "it retried twenty minutes after failing, not an hour")
+        fires = []
+        for hh in range(4, 24):
+            for mm in (0, 20, 40):
+                ni.clock = (lambda h=hh, m=mm: D(2026, 8, 23, h, m))
+                if ni.once():
+                    fires.append(f"{hh:02d}:{mm:02d}")
+        if not fires:
+            return (True, "a failed sweep was never tried again all day")
+        if len(fires) > 22:
+            return (True, f"it retried {len(fires)} times in a day — once a "
+                          f"minute, not once an hour")
+        if N.retryable(st, D(2026, 8, 23, 23, 0)) != ["cottages"]:
+            return (True, "it wants to retry a workspace that succeeded")
+        # And once it works, it stops.
+        st.x("UPDATE run SET status='done', started_at=? WHERE id='r1'",
+             "2026-08-23T22:00:00")
+        if N.retryable(st, D(2026, 8, 23, 23, 30)):
+            return (True, "it kept retrying after the sweep succeeded")
+        return (False, f"the failed workspace is tried again {len(fires)} "
+                       f"times over a day, and only that one")
+    probe("A41 a sweep that failed at 04:00 is never tried again that day",
+          failed_sweep_retry)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
