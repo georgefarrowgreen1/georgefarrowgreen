@@ -333,6 +333,43 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
   probe('B20 a control is pinned smaller than a fingertip',
     bad.length > 0, bad.length ? bad[0] : 'nothing interactive is under 44px');
+
+  // B20a — and it says so, rather than adding up to it
+  // A control whose height is only the sum of its padding is 44 by luck.
+  // Snapping the spacing to a 4-point grid took four of them from 48 to
+  // 42 without any rule about size changing, and B20 above cannot see it:
+  // there is no height in the rule to read.
+  const emergent = [];
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const css = fs.readFileSync(f, 'utf8').split('<style>')[1].split('</' + 'style>')[0];
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const sel = m[1].replace(/\s+/g, ' ').trim(), body = m[2];
+      if (/::|:hover|:active|:focus|:disabled/.test(sel)) continue;
+      const last = sel.split(',')[0].trim().split(/[ >]+/).pop() || '';
+      // Only rules that lay a control out: a padding and a shape.
+      if (!/^(button|\.mini|\.rowbtn|\.icobtn|\.go|\.pair|\.ctl)/.test(last)
+          && !/button/.test(last)) continue;
+      if (/(min-)?height\s*:/.test(body)) continue;
+      // Only vertical padding can leave a control short. `padding:0 16px`
+      // in a media query is a horizontal override and says nothing about
+      // height — flagging it made this probe cry wolf on its first run.
+      const pad = body.match(/(?:^|;)\s*padding\s*:\s*([^;]+)/);
+      const top = body.match(/(?:^|;)\s*padding-(?:top|bottom)\s*:\s*([^;]+)/);
+      let vertical = 0;
+      if (pad) {
+        const parts = pad[1].trim().split(/\s+/);
+        vertical = Math.max(parseFloat(parts[0]) || 0,
+                            parseFloat(parts[2] ?? parts[0]) || 0);
+      }
+      if (top) vertical = Math.max(vertical, parseFloat(top[1]) || 0);
+      if (!vertical) continue;
+      emergent.push(`${f} ${sel.slice(0, 40)}`);
+    }
+  }
+  probe('B20a a control is 44 only by luck',
+    emergent.length > 0,
+    emergent.length ? `${emergent.length}, e.g. ${emergent[0]}`
+                    : 'every control declares its own minimum height');
 }
 
 // B21 — styling in the markup is a rule nothing can find
@@ -451,6 +488,36 @@ probe('B18 a run that could not resume is not mentioned at all',
   probe('B25 the corner scale is not shared by all three pages',
     missing.length > 0, missing.length ? missing.join(', ')
                                        : 'all three define --r-card and --r-pill');
+}
+
+// B26 — one spacing grid, actually used
+// The scale (--sp-1..6) existed with three users while twenty-two
+// different hard-coded values did the real spacing, which is how a card
+// came to inset its content 17px at the top and 11px at the side. Every
+// margin, padding and gap is a multiple of 4 now (or a token, or a calc
+// over one). Under 4px is optical — a hairline, a nudge — and left alone.
+{
+  const bad = [];
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const css = fs.readFileSync(f, 'utf8').split('<style>')[1].split('</' + 'style>')[0];
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const sel = m[1].replace(/\s+/g, ' ').trim();
+      // A slider thumb is centred on its track, not spaced from it: its
+      // margin is (track - thumb) / 2 and lands wherever that lands.
+      if (/::-(webkit|moz)-(range|slider)/.test(sel)) continue;
+      for (const d of m[2].matchAll(
+             /(?:^|;)\s*(margin|padding|gap|row-gap|column-gap)(?:-\w+)?\s*:\s*([^;]+)/g)) {
+        for (const n of d[2].matchAll(/(-?\d+(?:\.\d+)?)px/g)) {
+          const px = Math.abs(parseFloat(n[1]));
+          if (px >= 4 && px % 4 !== 0)
+            bad.push(`${f} ${sel.slice(0, 34)} ${d[1]}:${n[1]}px`);
+        }
+      }
+    }
+  }
+  probe('B26 spacing is off the 4-point grid',
+    bad.length > 0,
+    bad.length ? `${bad.length}, e.g. ${bad[0]}` : 'every gap is a multiple of 4');
 }
 
 console.log(`\n  ${BUGS.length} issues found`);

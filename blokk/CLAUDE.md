@@ -208,6 +208,17 @@ you change a threshold or a rule in Python, change it there too and re-run
   rounded container, separators inset to the text rather than the full
   width, container inset from the edges. Bare rows on the background is the
   plain list style, which iOS keeps for content you scroll.
+* **Spacing is a 4-point grid** — `--sp-1`(4) through `--sp-6`(32), the same
+  in all three pages. Every margin, padding and gap is a multiple of 4;
+  under 4px is optical (a hairline, a nudge) and left alone. The scale used
+  to exist with three users while twenty-two hard-coded values did the real
+  work, which is how a card came to inset its content 17px at the top and
+  11px at the side. B26 fails on anything off the grid.
+* **A control declares its own minimum height.** Never let it add up to 44
+  from padding: snapping the spacing to the grid took four buttons from 48
+  to 42 without a rule about size changing, and B20 cannot see that — there
+  is no height in the rule to read. B20a fails on a control that sets
+  vertical padding and no height.
 
 ## Known-good state
 
@@ -254,6 +265,9 @@ All four suites green. Verified behaviours:
 * the toolbar is one glass capsule holding four items, the sheet corners are
   the display's, and every control sized to its content is a capsule —
   which is what iOS 26 looks like
+* every container insets its content by the same amount on all four sides:
+  the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
+  Measured in a browser, not asserted
 
 ## Not built yet
 
