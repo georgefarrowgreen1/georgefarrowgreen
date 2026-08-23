@@ -587,8 +587,11 @@
      is *status* rather than *decision* moves into a rail beside it, instead
      of two thirds of a desktop screen being black. */
   @media (min-width:900px){
-    .wrap{max-width:1080px}
-    header,main{padding-left:0;padding-right:0}
+    /* The measure is 1080; the gutter is on top of it. Zeroing the padding
+       here instead was right only once the window was wider than the wrap —
+       between 900 and 1080 the wrap fills the window, and the queue, the
+       header and the rail all sat flush against both edges of the screen. */
+    .wrap{max-width:calc(1080px + var(--gutter) * 2)}
     main{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);
          gap:var(--sp-5);align-items:start}
     /* A decision is a sentence to read. Past about 70 characters the eye

@@ -394,6 +394,33 @@ probe('B18 a run that could not resume is not mentioned at all',
     'it is full width below 640');
 }
 
+// B23 — the gutter, between 900 and 1080
+// The wide layout used to zero the page's horizontal padding and rely on
+// the wrap being narrower than the window. That holds at 1440 and not at
+// 1024: the wrap fills the window, and the header, the queue and the rail
+// all sat flush against both edges of an iPad in landscape.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  // There are three `min-width:900px` blocks in this sheet — two of them
+  // are one line about the toolbar. Take the one that carries the layout,
+  // not the first one that matches.
+  let block = '';
+  for (const m of css.matchAll(/@media\s*\(min-width:\s*900px\)\s*\{/g)) {
+    let depth = 0, one = '';
+    for (let j = m.index + m[0].length - 1; j < css.length; j++) {
+      if (css[j] === '{') depth++;
+      else if (css[j] === '}' && --depth === 0) {
+        one = css.slice(m.index, j + 1); break;
+      }
+    }
+    if (/grid-template-columns/.test(one)) { block = one; break; }
+  }
+  const flat = block.replace(/\s+/g, ' ');
+  probe('B23 the page sits flush against the edge on a 1024 screen',
+    /padding-left: ?0[;}]/.test(flat) || !/max-width: ?calc\(1080px/.test(flat),
+    'the measure is 1080 and the gutter is on top of it');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.
