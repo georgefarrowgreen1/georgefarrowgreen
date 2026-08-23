@@ -241,27 +241,40 @@ probe('B9  a slow sweep is reported as a failed one',
 // B17 — the allowlist has to be visible, and revocable, where people look
 // core/egress.py is the only way anything leaves this Mac, and the list it
 // checks against grows on its own: adding a weather source allows two hosts.
-// If the workspace row does not render them, the list only exists in sqlite3
-// and nobody ever revokes anything.
+// If the sheet does not render them, the list only exists in sqlite3 and
+// nobody ever revokes anything.
 {
   const rows = js.match(/const wsrows = SRC\.workspaces\.map[\s\S]*?\.join\(''\);/);
   const r = rows ? rows[0] : '';
+  const box = js.match(/const egressbox = `[\s\S]*?\n    \$\{\(SRC\.egress_log[\s\S]*?\n\s*\}\).join\(''\)\}<\/div>` : ''\}`;/);
+  const g = box ? box[0] : '';
   probe('B17 the workspace row does not say what it can reach',
-    !/w\.egress/.test(r) || !/may reach/.test(r) || !/data-deny/.test(r),
-    'each host is a chip on the row that owns it');
+    !/w\.egress/.test(r) || !/may reach/.test(r),
+    'the row says it, and the group below revokes it');
   // A workspace that reaches nothing must say so. A blank space reads the
   // same as a feature that has not shipped, and this is the one claim in the
   // product people check.
   probe('B17a a workspace that reaches nothing renders as silence',
     !/reaches nothing/.test(r),
     'the empty case is a sentence');
-  // The host comes out of the database, and goes into an attribute.
+  // Hosts come out of the database and go into markup and an attribute.
   probe('B17b a host is interpolated into an attribute unescaped',
-    /data-deny="\$\{(?!esc\()/.test(r) || !/esc\(h\)/.test(r),
-    'escaped in both the attribute and the label');
-  probe('B17c the ✕ on a host does not revoke anything',
+    /data-deny="\$\{(?!esc\()/.test(g) || !/esc\(h\)/.test(g)
+      || !/\.map\(esc\)/.test(r),
+    'escaped in the row, the label and the attribute');
+  probe('B17c the control on a host does not revoke anything',
     !/\/api\/v1\/egress\/deny/.test(js) || !/data-deny/.test(js),
     'it posts to egress/deny and repaints from the server');
+  // The revoke used to be a 16px chip inside the workspace row, which wrapped
+  // out of the text block on any workspace with two hosts. Its own group, and
+  // a row per host.
+  probe('B17d revoking is a chip inside somebody else\'s row',
+    !/class="hrow2"/.test(g) || /class="host"/.test(js),
+    'each host is a row of its own');
+  // The log is served by /api/v1/sources and had no reader for a while.
+  probe('B17e what has actually left is served and never shown',
+    !/SRC\.egress_log/.test(js),
+    'the sheet shows the tail of logs/egress.log');
 }
 
 // B18 — a decision that lands on a run that then cannot continue
@@ -270,6 +283,116 @@ probe('B9  a slow sweep is reported as a failed one',
 probe('B18 a run that could not resume is not mentioned at all',
   /res\.run_resumed/.test(js) && !/res\.run_error/.test(js),
   'both halves are said on the card');
+
+// B19 — the whole front end is one <script>, so one stray paren is a blank
+// page. Every probe above matches patterns in the source, which a file that
+// cannot parse satisfies perfectly well. Parse it.
+{
+  let err = '';
+  try { new Function(js); } catch (e) { err = e.message; }
+  probe('B19 the dashboard script does not parse', !!err,
+    err || 'index.html parses');
+  for (const f of ['web/setup.html', 'demo/index.html']) {
+    const src = fs.readFileSync(f, 'utf8');
+    const blocks = src.split('<script>').slice(1)
+      .map(b => b.split('</' + 'script>')[0]);
+    let bad = '';
+    blocks.forEach(b => { try { new Function(b); } catch (e) { bad = e.message; } });
+    probe(`B19 ${f} does not parse`, !!bad, bad || f + ' parses');
+  }
+}
+
+// B20 — 44 points, everywhere, measured off the stylesheet
+// Every control in the app was under it: the toolbar at 40, the sheet
+// buttons at 38, the health row at 31, the send button at 38, the
+// transparency slider at 28 and the allowlist chip at 16. A fingertip is
+// 44pt and a mis-tap here revokes something. The rule is one token, so the
+// check is that nothing pins an interactive element below it.
+{
+  const CONTROL = /button|input|select|textarea|\.mini|\.icobtn|\.go\b|\.stop\b|\.rowbtn|\.chip\b|role=button|\.hrow2|\.sugg/;
+  const bad = [];
+  for (const f of ['web/index.html', 'web/setup.html']) {
+    const css = fs.readFileSync(f, 'utf8').split('<style>')[1].split('</' + 'style>')[0];
+    // Rule by rule: selector { body }
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const sel = m[1].replace(/\s+/g, ' ').trim(), body = m[2];
+      if (/::/.test(sel)) continue;
+      // The element being *sized* has to be the control. `.icobtn svg` sizes
+      // the glyph inside the button, and an 18px glyph in a 44px target is
+      // exactly right — matching the whole selector called that a defect.
+      const target = sel.split(',').some(one => {
+        const last = one.trim().split(/[ >]+/).pop() || '';
+        return CONTROL.test(last);
+      });
+      if (!target) continue;
+      for (const h of body.matchAll(/(?:^|;)\s*(min-height|height)\s*:\s*([\d.]+)px/g)) {
+        if (parseFloat(h[2]) < 44)
+          bad.push(`${f}  ${sel.slice(0, 46)}  ${h[1]}:${h[2]}px`);
+      }
+    }
+  }
+  probe('B20 a control is pinned smaller than a fingertip',
+    bad.length > 0, bad.length ? bad[0] : 'nothing interactive is under 44px');
+}
+
+// B21 — styling in the markup is a rule nothing can find
+// A style= attribute in a template cannot be overridden, is not reached by
+// any media query, and does not exist as far as the Reduce Transparency and
+// dark-mode blocks are concerned. Data is different: a bar width and a
+// per-workspace colour are values, and they come through as custom
+// properties, with the rule that uses them in the stylesheet like every
+// other rule.
+{
+  const bad = [];
+  for (const f of ['web/index.html', 'web/setup.html', 'demo/index.html']) {
+    const src = fs.readFileSync(f, 'utf8');
+    for (const m of src.matchAll(/style="([^"]*)"/g)) {
+      const decls = m[1].split(';').map(d => d.trim()).filter(Boolean);
+      // Only custom properties, or a template hole that is entirely one.
+      if (decls.some(d => !/^--/.test(d) && !/^\$\{/.test(d)))
+        bad.push(`${f}: ${m[1].slice(0, 54)}`);
+    }
+  }
+  probe('B21 a CSS rule is written into the markup',
+    bad.length > 0, bad.length ? `${bad.length} of them, e.g. ${bad[0]}`
+                               : 'markup carries values, never rules');
+}
+
+// B22 — six numeric columns, on a 375-point phone
+// The wizard's model table is what somebody sees first, and at 375 the
+// header row rendered as "WEIGHTS KVTOTALTOK/S" and the numbers as
+// "1.1G12.7G13.8G". A table that has stopped being a table.
+{
+  const setup = fs.readFileSync('web/setup.html', 'utf8');
+  const css = setup.split('<style>')[1].split('</' + 'style>')[0];
+  // Balanced braces, not a lazy match: the block has nested rules in it and
+  // `[\s\S]*?\}` stops at the first one, which is how the first version of
+  // this probe reported a rule that was sitting right there.
+  const at = css.search(/@media\s*\(max-width:\s*\d+px\)\s*\{/);
+  let m = '';
+  if (at >= 0) {
+    let depth = 0, i = css.indexOf('{', at);
+    for (let j = i; j < css.length; j++) {
+      if (css[j] === '{') depth++;
+      else if (css[j] === '}' && --depth === 0) { m = css.slice(at, j + 1); break; }
+    }
+  }
+  // One space, not none: stripping all whitespace turns `.row button.go`
+  // into `.rowbutton.go`, and the pattern for it then never matches.
+  const flat = m.replace(/\s+/g, ' ');
+  probe('B22 the model table keeps six columns on a phone',
+    !m || !/#models[^{]*td[^{]*\{[^}]*display: ?block/.test(flat),
+    'below 640 each row becomes a block');
+  // And every number keeps its label, or "12.7G" is four characters of
+  // mystery once the header row is gone.
+  probe('B22a the numbers lose their labels with the header row',
+    !/data-l="weights"/.test(setup) || !/td\[data-l\]::before/.test(css),
+    'each cell carries the column name');
+  // The step's primary action goes full width, where a thumb is.
+  probe('B22b the primary action stays pinned to the right on a phone',
+    !/\.row button\.go ?\{ ?width: ?100%/.test(flat),
+    'it is full width below 640');
+}
 
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail

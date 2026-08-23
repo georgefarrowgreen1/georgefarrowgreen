@@ -134,7 +134,10 @@ worse than an error.
                        deliberate: both call core/sources.py, neither
                        reimplements it. The look is iOS 27 Liquid Glass —
                        chrome is glass, content is not, and Reduce
-                       Transparency wins over the in-app slider
+                       Transparency wins over the in-app slider. index.html,
+                       setup.html and demo/index.html share one palette, one
+                       type scale and one material; when you change one,
+                       change the others or they drift into three products
     demo/              browser port of the engine + the test suites
     brand/             the mark, generated parametrically
 
@@ -176,6 +179,18 @@ you change a threshold or a rule in Python, change it there too and re-run
 * Never put prompt or completion text in span attributes or logs. Hash and
   pointer only; guest names must not end up in a second store with different
   retention.
+* **44 points.** Every control is at least `var(--tap)` on every surface. It
+  may look smaller — a slider track is 6px inside a 44px control, the way iOS
+  draws one — but the target is not. `hunt_ui.js` B20 reads it off the
+  stylesheet, so a control pinned under it fails the suite.
+* **Markup carries values, never rules.** A `style=` attribute cannot be
+  overridden, is not reached by a media query and does not exist as far as
+  the Reduce Transparency and dark blocks are concerned. A bar width or a
+  per-workspace colour is data: pass it as a custom property (`--w`, `--c`)
+  and put the rule that uses it in the stylesheet. B21 enforces this.
+* The front end is one `<script>` per page, so one stray paren is a blank
+  screen that every pattern-matching probe still passes. B19 parses all
+  three pages.
 
 ## Known-good state
 
@@ -214,6 +229,11 @@ All four suites green. Verified behaviours:
 * a web page arrives as text and a title with the quarantine flag on both,
   script and style gone, and the display:none block kept — that is where an
   instruction meant for a model and not for you goes
+* every control on every surface — dashboard, five sheets, ask panel and
+  wizard — measures at least 44×44 at 375, 768 and 1440, and nothing renders
+  past the right edge. Measured in a real browser, not asserted
+* the wizard's model table is a table on a Mac and a list of blocks on a
+  phone, where six numeric columns rendered as "1.1G12.7G13.8G"
 
 ## Not built yet
 

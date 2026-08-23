@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#000000"><title>Blokk — setup</title>
 <style>
   :root{
@@ -12,6 +12,16 @@
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+
+    /* The dashboard's scale, verbatim. Two files that share a palette and
+       then pick their own font sizes look like two products by the time
+       anybody notices. */
+    --t-lede:27px; --t-title:21px; --t-card:17px; --t-body:15px;
+    --t-meta:13.5px; --t-small:12.5px; --t-mono:11.5px;
+    --sp-1:6px; --sp-2:11px; --sp-3:16px; --sp-4:22px; --sp-5:28px;
+    --r-lg:18px; --r-md:13px; --r-sm:10px;
+    --gutter:24px;
+    --tap:44px;                 /* a fingertip, same as the dashboard */
   }
   /* Liquid Glass, as iOS 27 does it — the same two numbers as the dashboard,
      the same darkened edge and specular top, the same accessibility clamp. */
@@ -30,14 +40,35 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
-  .page{max-width:760px;margin:0 auto;padding:38px 24px 90px}
+  .page{max-width:760px;margin:0 auto;
+    padding:0 max(var(--gutter),env(safe-area-inset-left)) 90px;
+    padding-bottom:calc(90px + env(safe-area-inset-bottom))}
 
-  header{display:flex;align-items:center;gap:15px;margin-bottom:34px}
-  header svg{width:44px;height:44px}
-  header h1{font-size:23px;font-weight:600;margin:0;letter-spacing:-.02em}
-  header p{margin:3px 0 0;font-size:14px;color:var(--lab2)}
+  /* The bar and the progress under it travel together, and take the glass
+     when anything scrolls beneath them — the same scroll edge effect as the
+     dashboard, drawn only once there is something behind it to diffuse. */
+  .bar{position:sticky;top:0;z-index:20;margin:0 calc(var(--gutter) * -1);
+    padding:calc(env(safe-area-inset-top) + 22px) var(--gutter) 12px;
+    transition:box-shadow .22s ease}
+  .bar::before{content:"";position:absolute;inset:0;z-index:-1;opacity:0;
+    pointer-events:none;transition:opacity .22s ease;
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03)),
+      rgba(18,18,20,calc(var(--glass-fill) + .16));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:0 .5px 0 rgba(0,0,0,.6),inset 0 -.6px 0 rgba(255,255,255,.10),
+               0 10px 30px rgba(0,0,0,.34)}
+  .bar.edge::before{opacity:1}
+  header{display:flex;align-items:center;gap:15px}
+  header svg{width:44px;height:44px;flex:0 0 auto}
+  header h1{font-size:var(--t-title);font-weight:600;margin:0;letter-spacing:-.02em}
+  header p{margin:3px 0 0;font-size:var(--t-meta);color:var(--lab2);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header div{min-width:0}
 
-  .steps{display:flex;gap:6px;margin-bottom:30px}
+  .steps{display:flex;gap:6px;margin-top:16px}
+  main{padding-top:30px}
   .steps div{flex:1;height:3px;border-radius:2px;background:rgba(235,235,245,.1)}
   .steps div.on{background:var(--blue)}
   .steps div.done{background:var(--green)}
@@ -87,9 +118,11 @@
   .tier .body .m{font-size:14.5px}
   .tier .body .w{font-size:12.5px;color:var(--lab2);margin-top:4px;line-height:1.45}
   .tier .st{font-family:var(--mono);font-size:10px;color:var(--lab3);flex:0 0 auto;margin-top:4px}
+  .tier .port{color:var(--lab3);font-family:var(--mono);font-size:11px}
   .tier .st.up{color:var(--green)}
 
-  button.go{border:0;border-radius:14px;padding:14px 26px;font-family:var(--ui);
+  button.go{border:0;border-radius:14px;padding:0 26px;min-height:var(--tap);
+            font-family:var(--ui);
             font-size:15.5px;font-weight:500;background:var(--blue);color:#fff;
             cursor:pointer;transition:transform .12s ease,background .15s ease;
             box-shadow:inset 0 .6px 0 rgba(255,255,255,.3),
@@ -102,7 +135,9 @@
   button.go:disabled{opacity:.35;cursor:default}
   .row{display:flex;gap:10px;align-items:center;margin-top:24px}
   .row .spacer{flex:1}
-  .hint{font-size:12.5px;color:var(--lab3);line-height:1.5}
+  .hint{font-size:var(--t-small);color:var(--lab3);line-height:1.5}
+  .spaced{margin-top:14px} .dim{color:var(--lab2)} .bad{color:var(--red)}
+  [hidden]{display:none !important}
 
   pre.log{background:#0B0B0E;border:1px solid var(--hair);border-radius:14px;padding:14px;
           font-family:var(--mono);font-size:11px;line-height:1.55;color:var(--lab2);
@@ -114,10 +149,41 @@
   @keyframes sp{to{transform:rotate(360deg)}}
   @media(prefers-reduced-motion:reduce){.spin{animation:none}}
   .pane{display:none}.pane.on{display:block}
+
+  /* ── a phone ──────────────────────────────────────────────────────
+     Six numeric columns in 375 points is four characters each. The header
+     row came out as "WEIGHTS KVTOTALTOK/S" and the numbers as
+     "1.1G12.7G13.8G" — a table that has stopped being a table. Below 640
+     each row becomes a block: the model on its own line, the numbers
+     labelled underneath, and the verdict where the eye already is. */
+  @media (max-width:640px){
+    .page{--gutter:18px}
+    h2{font-size:23px}
+    #models thead{position:absolute;width:1px;height:1px;overflow:hidden;
+      clip:rect(0 0 0 0)}
+    #models,#models tbody,#models tr,#models td{display:block;width:100%}
+    #models tr{border-top:1px solid var(--hair);padding:11px 0}
+    #models tr:first-child{border-top:0}
+    #models td{border:0;padding:0;text-align:left}
+    #models td:first-child{font-size:var(--t-body);margin-bottom:6px}
+    /* The four numbers on one wrapped line, each carrying its own label so
+       "12.7G" is not four characters of mystery. */
+    #models td:not(:first-child):not(:last-child){display:inline-block;
+      width:auto;margin-right:14px;font-family:var(--mono);
+      font-size:var(--t-mono);color:var(--lab2)}
+    #models td[data-l]::before{content:attr(data-l) " ";color:var(--lab3)}
+    #models td:last-child{margin-top:8px}
+    /* Actions stack, and the one that goes forward is the wide one. iOS
+       puts the primary action full width at the bottom of a step. */
+    .row{flex-direction:column-reverse;align-items:stretch;gap:8px}
+    .row .spacer{display:none}
+    .row button.go{width:100%}
+    .addmodel .row{flex-direction:column}
+  }
   code{font-family:var(--mono);font-size:12.5px;background:var(--card);padding:2px 6px;border-radius:5px}
   button:focus-visible{outline:2px solid #fff;outline-offset:2px}
-  .card-opt .rmmodel{position:absolute;top:10px;right:12px;font-size:11px;
-    padding:3px 8px;border-radius:7px;border:1px solid var(--hair);
+  .card-opt .rmmodel{position:absolute;top:6px;right:8px;font-size:11px;
+    padding:0 10px;min-height:var(--tap);border-radius:7px;border:1px solid var(--hair);
     background:transparent;color:var(--lab3);font-family:var(--ui)}
   .card-opt .rmmodel:hover{color:var(--red);border-color:var(--red)}
   .card-opt{position:relative}
@@ -125,15 +191,17 @@
     border:1px dashed var(--hair)}
   .addmodel label{display:block;font-size:13px;color:var(--lab2);margin-bottom:8px}
   .addmodel .row{display:flex;gap:8px}
-  .addmodel input{flex:1;padding:9px 11px;border-radius:9px;border:1px solid var(--hair);
+  .addmodel input{flex:1;min-width:0;padding:9px 11px;min-height:var(--tap);
+    border-radius:9px;border:1px solid var(--hair);
     background:#09090b;color:var(--lab);font-size:13px;font-family:var(--mono)}
-  .addmodel button{padding:9px 16px;border:0;border-radius:9px;background:var(--blue);
-    color:#fff;font-size:13px;font-weight:600;font-family:var(--ui)}
+  .addmodel button{padding:0 16px;min-height:var(--tap);border:0;border-radius:9px;
+    background:var(--blue);color:#fff;font-size:13px;font-weight:600;font-family:var(--ui)}
   .addmodel button:disabled{opacity:.5}
   .addmodel .hint{margin:8px 0 0;font-size:12px;color:var(--lab3)}
 </style></head>
 <body><div class="page">
 
+  <div class="bar" id="bar">
   <header>
     <svg viewBox="0 0 512 512"><g id="mark-body">
   <polygon points="94,244.0 256,336.0 256,384.0 94,292.0" fill="#F5F5F7"/>
@@ -150,14 +218,16 @@
   </header>
 
   <div class="steps"><div id="s1" class="on"></div><div id="s2"></div><div id="s3"></div><div id="s4"></div></div>
+  </div>
+  <main>
 
   <!-- 1 — machine -->
   <div class="pane on" id="p1">
     <h2>This Mac</h2>
     <p class="lead" id="machine">Reading the hardware…</p>
     <div class="box"><table id="models"><tbody></tbody></table></div>
-    <p class="hint" style="margin-top:14px">Sized for five workers at 40k context each.
-      <b style="color:var(--lab2)">Your ceiling is cache, not model size</b> — the kv column is
+    <p class="hint spaced">Sized for five workers at 40k context each.
+      <b class="dim">Your ceiling is cache, not model size</b> — the kv column is
       what fills the machine, and it grows with workers and context, not with the weights.</p>
     <div class="row"><div class="spacer"></div><button class="go" id="to2">Choose a model</button></div>
   </div>
@@ -179,7 +249,7 @@
     <p class="lead">Blokk speaks the OpenAI API, so llama.cpp and MLX are just ports —
       it can run <b>both at once</b>, one per tier. Here is what it picked and why.</p>
     <div class="box" id="plan"></div>
-    <p class="hint" style="margin-top:14px">A suggestion, not a verdict — the numbers behind it
+    <p class="hint spaced">A suggestion, not a verdict — the numbers behind it
       were measured on other people's Macs. Once running, <code>bench.py --compare</code>
       settles it on yours.</p>
     <div class="row"><button class="go ghost" id="back3">Back</button><div class="spacer"></div>
@@ -194,11 +264,18 @@
     <div class="box" id="tierstatus"></div>
     <pre class="log" id="log"></pre>
     <div class="row"><div class="spacer"></div>
-      <button class="go" id="open" style="display:none">Open Blokk</button></div>
+      <button class="go" id="open" hidden>Open Blokk</button></div>
   </div>
 
+</main>
 </div>
 <script>
+// The bar takes the glass only once something is behind it. Drawing it on an
+// unscrolled page puts a seam across the top of a step that has nothing
+// under it yet.
+addEventListener('scroll', () => {
+  document.getElementById('bar').classList.toggle('edge', scrollY > 4);
+}, {passive: true});
 const $=s=>document.querySelector(s);
 const el=h=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild;};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -231,7 +308,7 @@ function step(n){
   try{
     STATE=await get('/api/v1/setup/state');
   }catch(e){
-    $('#machine').innerHTML=`<b style="color:var(--red)">Could not read this Mac.</b><br>
+    $('#machine').innerHTML=`<b class="bad">Could not read this Mac.</b><br>
       ${esc(e.message)}.<br><span class="hint">Blokk is running — this page loaded from it —
       so the setup endpoint itself is stuck or erroring. The terminal it was
       started from will have said why. <b>./blokk doctor</b> checks the rest.</span>`;
@@ -246,9 +323,13 @@ function step(n){
   $('#models').innerHTML=`<thead><tr><th>model</th><th>weights</th><th>kv</th><th>total</th>
     <th>tok/s</th><th></th></tr></thead><tbody>`+STATE.models.map(r=>{
       const v=!r.fits?['no','no fit']:r.batched<18?['slow','sluggish']:['ok','fits'];
+      // data-l is what the column header says. On a phone the header row is
+      // gone and each number carries its own label instead.
       return `<tr class="${r.fits?'':'no'}"><td>${esc(r.name)}</td>
-        <td>${r.weights}G</td><td>${r.kv}G</td><td>${r.total}G</td>
-        <td>${r.tps}</td><td><span class="v ${v[0]}">${v[1]}</span></td></tr>`;
+        <td data-l="weights">${r.weights}G</td><td data-l="kv">${r.kv}G</td>
+        <td data-l="total">${r.total}G</td>
+        <td data-l="tok/s">${r.tps}</td>
+        <td><span class="v ${v[0]}">${v[1]}</span></td></tr>`;
     }).join('')+`</tbody>`;
 
   // Re-rendered rather than reloaded: adding a model used to reload the page,
@@ -358,8 +439,7 @@ $('#to3').onclick=async()=>{
         {shape:SHAPE,slots:FIT.slots,ctx:FIT.ctx})).tiers;
   $('#plan').innerHTML=PLAN.map(t=>`<div class="tier">
     <span class="badge ${t.backend==='mlx'?'mlx':'llama'}">${esc(t.backend)}</span>
-    <div class="body"><div class="m">${esc(t.model)} <span style="color:var(--lab3);
-      font-family:var(--mono);font-size:11px">:${t.port}</span></div>
+    <div class="body"><div class="m">${esc(t.model)} <span class="port">:${t.port}</span></div>
       <div class="w">${esc(t.why)}</div></div>
     <span class="st" id="st-${t.tier}">${STATE.installed[t.backend]?'ready':'to install'}</span>
   </div>`).join('');
@@ -440,7 +520,7 @@ $('#to4').onclick=async()=>{
     $('#open').style.display='';
   }catch(e){
     $('#h4').textContent='Stopped';
-    $('#lead4').innerHTML=`<b style="color:var(--red)">${esc(e.message)}</b><br>
+    $('#lead4').innerHTML=`<b class="bad">${esc(e.message)}</b><br>
       Nothing is half-configured — <code>blokk.conf</code> is written, so you can fix the
       cause and run <code>./run.sh</code>, or reload this page to change the plan.`;
     logLine('--- stopped ---','err');

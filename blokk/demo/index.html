@@ -9,8 +9,39 @@
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+    --tap:44px;
+    /* The dashboard's material, verbatim — this page exists to show what the
+       app looks like, and it had none of it. Chrome is glass; content is
+       not. Two numbers drive the whole thing. */
+    --glass-fill:.72; --glass-blur:30px; --glass-sat:180%;
+  }
+  .glass{
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
+                      rgba(255,255,255,.06)),
+      rgba(18,18,20,var(--glass-fill));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:0 0 0 .5px rgba(0,0,0,.62),
+               inset 0 .6px 0 rgba(255,255,255,.34),
+               inset 0 -.6px 0 rgba(255,255,255,.07),
+               0 10px 34px rgba(0,0,0,.42)}
+  .glass.dense{background:
+      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
+                      rgba(255,255,255,.06)),
+      rgba(18,18,20,calc(var(--glass-fill) + .16))}
+  @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
+    :root{--glass-fill:1;--glass-blur:0px;--glass-sat:100%}
+    .glass{box-shadow:0 0 0 .5px rgba(0,0,0,.7),
+      inset 0 .6px 0 rgba(255,255,255,.14),0 10px 34px rgba(0,0,0,.42)}
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  .dim{color:var(--lab2)} .faint{color:var(--lab3)} .bad{color:var(--red)}
+  .dot{background:var(--c,var(--lab3))}
+  .spaced{margin-top:7px}
+  .scrollbox{max-height:236px;overflow-y:auto;scrollbar-width:none}
+  [hidden]{display:none !important}
+  .trk i,.bar2 i{width:var(--w,0);background:var(--c,var(--lab2))}
   html,body{margin:0;background:var(--void);color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
   .shell{display:flex;gap:20px;justify-content:center;align-items:flex-start;padding:18px 14px 60px;flex-wrap:wrap}
 
@@ -18,14 +49,33 @@
   .phone{width:100%;max-width:400px;background:#000;border-radius:0}
   @media(min-width:520px){.phone{border:1px solid rgba(235,235,245,.13);border-radius:42px;
     overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.75)}}
-  .wrap{display:flex;flex-direction:column;min-height:760px}
-  header{display:flex;align-items:center;gap:13px;padding:22px 20px 14px}
+  /* A phone scrolls inside its own frame, which is what makes the scroll
+     edge effect mean anything: no bar over an unscrolled screen, a uniform
+     one the moment content passes underneath. */
+  .wrap{display:flex;flex-direction:column;height:760px;overflow-y:auto;
+    scrollbar-width:none}
+  .wrap::-webkit-scrollbar{display:none}
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;
+    gap:13px;padding:22px 20px 14px;transition:box-shadow .22s ease}
+  header::before{content:"";position:absolute;inset:0;z-index:-1;opacity:0;
+    pointer-events:none;transition:opacity .22s ease;
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03)),
+      rgba(18,18,20,calc(var(--glass-fill) + .16));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:0 .5px 0 rgba(0,0,0,.6),inset 0 -.6px 0 rgba(255,255,255,.10),
+               0 10px 30px rgba(0,0,0,.34)}
+  header.edge::before{opacity:1}
   .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;position:relative;flex:0 0 auto}
   .avatar svg{width:30px;height:30px;display:block}
   .avatar .on{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:var(--green);border:2.5px solid #000}
   header .who{flex:1}header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
   header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2)}
-  .icobtn{width:38px;height:38px;border-radius:50%;background:var(--card);border:0;color:var(--lab2);font-size:15px;cursor:pointer;display:grid;place-items:center}
+  .icobtn{width:var(--tap);height:var(--tap);border-radius:50%;border:0;
+    color:var(--lab2);font-size:15px;cursor:pointer;display:grid;place-items:center;
+    background:rgba(255,255,255,.09);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.5),inset 0 .6px 0 rgba(255,255,255,.22)}
   main{flex:1;padding:0 20px 20px}
   .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
   .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:22px}
@@ -40,7 +90,9 @@
   .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
   .action.gone{opacity:.3}
   .action .top{display:flex;gap:11px;align-items:flex-start}
-  .glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:13px;flex:0 0 auto;margin-top:1px;color:#000;font-weight:700}
+  .glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
+    font-size:13px;flex:0 0 auto;margin-top:1px;color:#000;font-weight:700;
+    background:var(--c,var(--card2))}
   .action .txt{flex:1;font-size:16.5px;line-height:1.38;letter-spacing:-.012em}
   .action .why{font-size:13.5px;color:var(--lab2);margin:9px 0 0 37px;line-height:1.42}
   .action .why em{font-style:normal;color:var(--amber)}
@@ -51,7 +103,8 @@
   .settled{font-size:13.5px;color:var(--lab2);margin-top:13px;padding-top:13px;border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
   .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
-  .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
+  .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;
+    min-height:var(--tap);cursor:pointer}
   .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
   .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
   .quiet .head .l small{display:block;color:var(--lab2);font-size:13px;margin-top:2px}
@@ -68,7 +121,8 @@
   .runs::-webkit-scrollbar{display:none}
   .run{flex:0 0 auto;width:136px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
   .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
-  .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}
+  .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em;
+    color:var(--c,var(--lab))}
   .run .lb{font-family:var(--mono);font-size:10px;color:var(--lab3);margin-top:4px}
   .health{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:16px}
   .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
@@ -76,9 +130,14 @@
   .hrow .k{color:var(--lab2);width:98px;flex:0 0 auto}
   .trk{flex:1;height:4px;border-radius:2px;background:rgba(235,235,245,.09);overflow:hidden}
   .trk i{display:block;height:100%;border-radius:2px;transition:width .4s}
-  .hrow .v{font-family:var(--mono);font-size:12px;color:var(--lab2);width:80px;text-align:right;flex:0 0 auto}
-  .composer{padding:8px 20px 18px;background:linear-gradient(180deg,transparent,#000 24%)}
-  .bar{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:24px;padding:13px 17px}
+  /* "0 · 0 tok/hr" is wider than 80px and wrapped onto a second line under
+     its own row. The column is as wide as its widest value and no wider. */
+  .hrow .v{font-family:var(--mono);font-size:12px;color:var(--lab2);
+    text-align:right;flex:0 0 auto;white-space:nowrap}
+  .composer{position:sticky;bottom:0;z-index:15;margin-top:auto;
+    padding:10px 20px 18px}
+  .bar{display:flex;align-items:center;gap:12px;border-radius:24px;
+    padding:13px 17px;min-height:var(--tap)}
   .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
 
   /* ── inspector ─────────────────────────────────────── */
@@ -89,7 +148,8 @@
             color:var(--lab3);margin:0 0 11px;font-weight:500;display:flex;justify-content:space-between}
   .panel h3 span{color:var(--lab2)}
   .ctlrow{display:flex;gap:7px;flex-wrap:wrap}
-  .ctlrow button{flex:1;min-width:96px;border:0;border-radius:11px;padding:12px 8px;font-family:var(--ui);
+  .ctlrow button{flex:1;min-width:96px;border:0;border-radius:11px;
+                 padding:12px 8px;min-height:var(--tap);font-family:var(--ui);
                  font-size:13.5px;font-weight:500;background:var(--card);color:var(--lab);cursor:pointer}
   .ctlrow button.go{background:var(--blue);color:#fff}
   .ctlrow button.dan{background:rgba(255,69,58,.18);color:var(--red)}
@@ -150,7 +210,7 @@
       <div class="lede" id="lede">Nothing has run yet.</div>
       <div class="sub" id="lsub">Run the sweep in the panel beside this one.</div>
       <div class="chips" id="chips"></div>
-      <div class="sect" id="s-need" style="display:none">Needs a decision</div>
+      <div class="sect" id="s-need" hidden>Needs a decision</div>
       <div id="actions"></div>
       <div class="sect">Didn't need you</div>
       <div class="quiet" id="quiet"><div class="head" id="qhead">
@@ -160,8 +220,8 @@
       <div class="sect">Overnight</div><div class="runs" id="runs"></div>
       <div class="sect">Health</div><div class="health" id="health"></div>
     </main>
-    <div class="composer"><div class="bar"><span style="color:var(--lab2)">+</span>
-      <span class="ph">Message Blokk</span><span style="color:var(--lab2)">&#127908;</span></div></div>
+    <div class="composer"><div class="bar glass dense"><span class="dim">+</span>
+      <span class="ph">Message Blokk</span><span class="dim">&#127908;</span></div></div>
   </div></div>
 
   <!-- ═══ inspector ═══ -->
@@ -172,11 +232,11 @@
         <button class="go" id="sweep">Run the sweep</button>
         <button id="advance">Advance to 09:00</button>
       </div>
-      <div class="ctlrow" style="margin-top:7px">
+      <div class="ctlrow" class="spaced">
         <button class="dan" id="crash">Pull the power</button>
         <button id="restart" disabled>Restart the Mac</button>
       </div>
-      <div class="ctlrow" style="margin-top:7px">
+      <div class="ctlrow" class="spaced">
         <button id="consolidate">Consolidate</button>
         <button id="reset">Reset</button>
       </div>
@@ -186,7 +246,7 @@
 
     <div class="panel">
       <h3>Journal <span id="jmeta">0 steps</span></h3>
-      <div id="journal" style="max-height:236px;overflow-y:auto;scrollbar-width:none"></div>
+      <div id="journal" class="scrollbox"></div>
     </div>
 
     <div class="panel">
@@ -211,6 +271,16 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// The phone scrolls inside its frame, so the bar's edge tracks that element
+// rather than the window — the same rule as the app: nothing over an
+// unscrolled screen, a uniform bar the moment content passes underneath.
+addEventListener('DOMContentLoaded', () => {
+  const wrap = document.querySelector('.wrap');
+  const head = wrap && wrap.querySelector('header');
+  if (!wrap || !head) return;
+  wrap.addEventListener('scroll',
+    () => head.classList.toggle('edge', wrap.scrollTop > 4), {passive: true});
+});
 /* ═══════════════════════════════════════════════════════════════════════════
    Blokk engine — a faithful port of core/durable.py, core/harness.py and
    flows/morning_sweep.py. Same journal, same replay, same idempotency, same
@@ -533,7 +603,7 @@ function paint(){
     const stale = isStale(a);
     const g = pinned?{g:'\u2731',c:'var(--amber)'}:{g:'\u2709',c:'var(--green)'};
     const card = el(`<div class="action ${pinned?'hold':''} ${stale?'stale':''}">
-      <div class="top"><span class="glyph" style="background:${g.c}">${g.g}</span>
+      <div class="top"><span class="glyph" style="--c:${g.c}">${g.g}</span>
         <span class="txt">${esc(a.body)}</span></div>
       <div class="why">${esc(WNAME[a.workspace_id])} &middot; ${esc(a.title)}
         ${a.evidence&&a.evidence.freshness?' &middot; <em>'+esc(a.evidence.freshness)+'</em>':''}
@@ -551,17 +621,17 @@ function paint(){
   const quiet = [...auto,...done];
   $('#qn').textContent = quiet.length;
   $('#qlist').innerHTML = quiet.length ? quiet.map(q=>`<div class="qi">
-    <span class="dot" style="background:${WCOL[q.workspace_id]}"></span>
+    <span class="dot" style="--c:${WCOL[q.workspace_id]}"></span>
     <span class="t">${esc(q.category.replace(/_/g,' '))}<small>${esc((q.body||'').slice(0,64))}</small></span>
     <span class="m">${esc(q.decision)}</span></div>`).join('')
-    : `<div class="qi"><span class="t" style="color:var(--lab3)">Nothing yet.</span></div>`;
+    : `<div class="qi"><span class="t" class="faint">Nothing yet.</span></div>`;
 
   $('#runs').innerHTML = runs.length ? runs.map(r=>{
     const c = r.status==='suspended'?'var(--blue)':r.status==='done'?'var(--green)':'var(--red)';
     const w = store.journal.filter(j=>j.run_id===r.id&&j.side_effect).length;
     const s = store.journal.filter(j=>j.run_id===r.id).length;
-    return `<div class="run"><div class="w"><span class="dot" style="background:${WCOL[r.workspace_id]}"></span>${esc(r.workspace_id)}</div>
-      <div class="st" style="color:${c}">${r.status==='suspended'?'parked':esc(r.status)}</div>
+    return `<div class="run"><div class="w"><span class="dot" style="--c:${WCOL[r.workspace_id]}"></span>${esc(r.workspace_id)}</div>
+      <div class="st" style="--c:${c}">${r.status==='suspended'?'parked':esc(r.status)}</div>
       <div class="lb">${s} STEPS &middot; ${w} WRITE${w===1?'':'S'}</div></div>`;
   }).join('') : '<div class="run"><div class="lb">NO RUNS YET</div></div>';
 
@@ -569,16 +639,16 @@ function paint(){
   const writes = store.journal.filter(j=>j.side_effect).length;
   $('#health').innerHTML = `
     <div class="hrow"><span class="k">Your attention</span>
-      <span class="trk"><i style="width:${Math.min(100,open.length/8*100)}%;background:${open.length>5?'var(--amber)':'var(--green)'}"></i></span>
+      <span class="trk"><i style="--w:${Math.min(100,open.length/8*100)}%;--c:${open.length>5?'var(--amber)':'var(--green)'}"></i></span>
       <span class="v">${open.length} / 8</span></div>
     <div class="hrow"><span class="k">Parked runs</span>
-      <span class="trk"><i style="width:${Math.min(100,store.waiting.length*25)}%;background:var(--blue)"></i></span>
+      <span class="trk"><i style="--w:${Math.min(100,store.waiting.length*25)}%;--c:var(--blue)"></i></span>
       <span class="v">${store.waiting.length} &middot; 0 tok/hr</span></div>
     <div class="hrow"><span class="k">Day budget</span>
-      <span class="trk"><i style="width:${Math.min(100,tok/4000000*100)}%;background:var(--lab2)"></i></span>
+      <span class="trk"><i style="--w:${Math.min(100,tok/4000000*100)}%;--c:var(--lab2)"></i></span>
       <span class="v">${(tok/1000).toFixed(0)}k / 4M</span></div>
     <div class="hrow"><span class="k">Side effects</span>
-      <span class="trk"><i style="width:${Math.min(100,writes*8)}%;background:var(--amber)"></i></span>
+      <span class="trk"><i style="--w:${Math.min(100,writes*8)}%;--c:var(--amber)"></i></span>
       <span class="v">${writes} journalled</span></div>`;
 
   paintInspector();
@@ -588,7 +658,7 @@ function decide(a, d, card){
   card.querySelectorAll('button').forEach(x=>x.disabled=true);
   const s = el('<div class="settled"></div>');
   if(d==='approve' && isStale(a)){
-    s.innerHTML = `<b style="color:var(--red)">Blocked.</b> A booking landed at 07:34 — those nights are gone.
+    s.innerHTML = `<b class="bad">Blocked.</b> A booking landed at 07:34 — those nights are gone.
       Re-checked at send, not at draft.`;
     store.say('note','stale approval blocked at send — evidence had moved since 04:00');
     card.querySelectorAll('button').forEach(x=>x.disabled=false);
@@ -626,14 +696,14 @@ function paintInspector(){
       ${x.side_effect?'<span class="tag w">write</span>':''}
       ${x.kind==='signal'?'<span class="tag s">signal</span>':''}
       <span class="ms">${x.ms}ms</span></div>`).join('')
-    : '<div class="jrow"><span class="nm" style="color:var(--lab3)">empty</span></div>';
+    : '<div class="jrow"><span class="nm" class="faint">empty</span></div>';
 
   $('#trust').innerHTML = store.trust.map(t=>{
     const pct = t.pinned_manual?100:Math.min(100,t.clean/t.threshold*100);
     const col = t.pinned_manual?'var(--red)':t.auto?'var(--green)':'var(--blue)';
-    return `<div class="trow"><span class="dot" style="background:${WCOL[t.workspace_id]}"></span>
+    return `<div class="trow"><span class="dot" style="--c:${WCOL[t.workspace_id]}"></span>
       <span class="c">${esc(t.category.replace(/_/g,' '))}</span>
-      <span class="bar2"><i style="width:${pct}%;background:${col}"></i></span>
+      <span class="bar2"><i style="--w:${pct}%;--c:${col}"></i></span>
       <span class="st">${t.pinned_manual?'manual':t.auto?'auto':t.clean+'/'+t.threshold}</span></div>`;
   }).join('');
 
@@ -646,7 +716,7 @@ function paintInspector(){
   $('#facts').innerHTML = store.fact.length ? store.fact.map(f=>`
     <div class="trow"><span class="c">${esc(f.text)}</span>
       <span class="st">${(f.confidence*100).toFixed(0)}%</span></div>`).join('')
-    : `<div class="trow"><span class="c" style="color:var(--lab3)">Edit an approval, then press Consolidate.</span></div>`;
+    : `<div class="trow"><span class="c" class="faint">Edit an approval, then press Consolidate.</span></div>`;
 }
 
 // ── controls ─────────────────────────────────────────────────────────────
@@ -664,7 +734,7 @@ $('#crash').onclick = ()=>{
   store.say('crash','power cut mid-sweep — process dead, journal on disk');
   engine.crashAt=null;
   $('#restart').disabled=false; $('#crash').disabled=true;
-  toast('<b style="color:var(--red)">Power gone.</b> A naive agent restarts from step 1 and re-sends everything it already sent.');
+  toast('<b class="bad">Power gone.</b> A naive agent restarts from step 1 and re-sends everything it already sent.');
   paint();
 };
 $('#restart').onclick = ()=>{
