@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS approval (
   revalidate    TEXT,                            -- name of a cheap check
   decision      TEXT,                            -- approve|edit|reject|expired
   edited_body   TEXT,
+  -- What to run if this is approved, and what happened when it was. Ask
+  -- proposes into this column; nothing else may write it, and nothing runs
+  -- until a person decides. See core/actions.py.
+  action        TEXT,
+  result        TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   decided_at    TEXT
 );
@@ -162,6 +167,26 @@ CREATE INDEX IF NOT EXISTS ix_span_run ON span(run_id, at);
 
 -- ---------------------------------------------------------------- guards
 -- Runaway protection. A loose loop can burn a night of tokens in minutes.
+-- What was said in the chat box, so a reload is not amnesia.
+--
+-- One row per turn. Kept per workspace because the chat is scoped to one and
+-- a thread that spanned four businesses would leak the fourth's mail into the
+-- first's answer. `flagged` marks a turn whose tool output contained text
+-- that reads like an instruction: it was quarantined on the way in, and the
+-- mark survives so the panel can keep saying so on a reload.
+CREATE TABLE IF NOT EXISTS message (
+  id            TEXT PRIMARY KEY,
+  thread_id     TEXT NOT NULL,
+  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
+  role          TEXT NOT NULL,                   -- user|assistant|tool
+  content       TEXT NOT NULL,
+  tool_name     TEXT,                            -- set when role='tool'
+  approval_id   TEXT,                            -- set when the turn proposed
+  flagged       INTEGER NOT NULL DEFAULT 0,
+  at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_msg_thread ON message(thread_id, at);
+
 CREATE TABLE IF NOT EXISTS budget (
   workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   day           TEXT NOT NULL,

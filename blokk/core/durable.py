@@ -84,6 +84,28 @@ class Store:
         self.lock = threading.RLock()
         with self.lock:
             self.db.executescript((Path(__file__).parent / "schema.sql").read_text())
+            self._migrate()
+
+    # The schema is applied with CREATE TABLE IF NOT EXISTS, which means a
+    # column added to schema.sql never reaches a database that already
+    # exists — it just silently stays missing until something SELECTs it.
+    # Additive columns only: this runs on every open, on a live file, with
+    # the user's data in it. Anything that rewrites or drops belongs in a
+    # script somebody runs deliberately, not here.
+    ADDED = (
+        ("approval", "action", "TEXT"),        # what to run if this is approved
+        ("approval", "result", "TEXT"),        # what happened when it was
+    )
+
+    def _migrate(self) -> None:
+        for table, column, decl in self.ADDED:
+            have = {r["name"] for r in
+                    self.db.execute(f"PRAGMA table_info({table})")}
+            if not have:
+                continue                        # table not in this schema yet
+            if column not in have:
+                self.db.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def q(self, sql: str, *a) -> list[sqlite3.Row]:
         with self.lock:

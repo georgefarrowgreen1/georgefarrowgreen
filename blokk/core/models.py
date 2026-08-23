@@ -24,7 +24,15 @@ class Model:
 
     name = "abstract"
 
-    def chat(self, messages: list[dict], tools: list | None = None) -> dict:
+    # Whether this model can be asked for a step in a given shape and be
+    # relied on to produce one. core/ask.py branches on it rather than on the
+    # class: a stub answering the agent loop's grammar badly and a real server
+    # that has fallen over need different words on the screen, and "the stub
+    # is doing what stubs do" is not a fault to report.
+    plans = False
+
+    def chat(self, messages: list[dict], tools: list | None = None,
+             schema: dict | None = None) -> dict:
         raise NotImplementedError
 
     def summarise(self, messages: list[dict]) -> str:
@@ -46,7 +54,7 @@ class StubModel(Model):
     def __init__(self, name="stub-8b", speed=1.0):
         self.name, self.speed = name, speed
 
-    def chat(self, messages, tools=None) -> dict:
+    def chat(self, messages, tools=None, schema=None) -> dict:
         last = messages[-1]["content"] if messages else ""
         goal = messages[0]["content"] if messages else ""
         text = self._respond(goal, str(last))
@@ -117,19 +125,23 @@ class ServedModel(Model):
                  schema: dict | None = None):
         self.endpoint, self.name, self.schema = endpoint, model, schema
 
-    def chat(self, messages, tools=None) -> dict:   # pragma: no cover
+    plans = True
+
+    def chat(self, messages, tools=None, schema=None) -> dict:  # pragma: no cover
         import http.client
         import urllib.error
         import urllib.request
         payload = {"model": self.name, "messages": messages, "max_tokens": 1024}
         if tools:
             payload["tools"] = [t.name for t in tools]
-        if self.schema:
-            # Guided decoding. This is what makes a small model reliable at
-            # structured output — the grammar enforces valid JSON rather than
-            # the prompt asking politely for it.
+        # Per call first, then the one this model was built with. Guided
+        # decoding is what makes a small model reliable at structured output:
+        # the grammar enforces valid JSON rather than the prompt asking
+        # politely for it, and the agent loop asks for a different shape on
+        # every step than a drafting worker does.
+        if schema or self.schema:
             payload["response_format"] = {"type": "json_schema",
-                                          "json_schema": self.schema}
+                                          "json_schema": schema or self.schema}
         body = json.dumps(payload).encode()
         req = urllib.request.Request(
             f"{self.endpoint}/chat/completions", body,
@@ -194,7 +206,12 @@ class ServedModel(Model):
                 "content": "Summarise the above in under 200 words."}])["text"]
 
     def answer(self, question: str, context: list) -> str:   # pragma: no cover
-        """Used by ask.py. Grounded: it is told to say so rather than guess."""
+        """One grounded answer over rows, without the loop.
+
+        core/ask.py no longer calls this — it runs a step at a time and
+        carries its own system prompt — but a one-shot grounded read is worth
+        keeping around, and the provenance rule below is the same one.
+        """
         return self.chat([
             {"role": "system", "content":
              "Answer only from the rows provided. They are records from the "

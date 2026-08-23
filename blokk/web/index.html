@@ -62,6 +62,11 @@
     --glass-spec:rgba(255,255,255,.34);
     --glass-under:rgba(255,255,255,.07);
     --glass-edge:rgba(0,0,0,.62);
+    /* The ground behind a full-screen panel. It was rgba(10,10,12,.86)
+       written into .ask directly, so in light mode the header, the bubbles
+       and the composer came up light over a near-black thread — the exact
+       shape of bug that a colour with only one definition always is. */
+    --veil:rgba(10,10,12,.86);
     --on-accent:#000;        /* ink on a saturated fill (the glyph chips) */
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
@@ -147,6 +152,7 @@
       --glass-spec:rgba(255,255,255,.85);
       --glass-under:rgba(16,23,38,.05);
       --glass-edge:rgba(16,23,38,.16);
+      --veil:rgba(242,242,247,.90);
       --on-accent:#fff;
     }
   }
@@ -174,6 +180,7 @@
     --glass-spec:rgba(255,255,255,.85);
     --glass-under:rgba(16,23,38,.05);
     --glass-edge:rgba(16,23,38,.16);
+    --veil:rgba(242,242,247,.90);
     --on-accent:#fff;
   }
 
@@ -474,7 +481,7 @@
      you press it, set in JS, so the circle opens from the button rather
      than from a corner that happens to be near it. */
   .ask{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;
-    background:rgba(10,10,12,.86);
+    background:var(--veil);
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     clip-path:circle(28px at var(--bx,100%) var(--by,100%));
@@ -492,7 +499,7 @@
   .ask .ah{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;
            padding:calc(env(safe-area-inset-top) + var(--sp-4))
                    var(--gutter) var(--sp-3);
-           border-bottom:1px solid rgba(0,0,0,.6);
+           border-bottom:1px solid var(--glass-edge);
            box-shadow:inset 0 -.6px 0 var(--fill-2)}
   .ask .ah h2{flex:1;font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
   .ask .ah .scope{font-family:var(--mono);font-size:9.5px;color:var(--lab3);
@@ -518,7 +525,30 @@
   .prop .pl{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
             color:var(--blue);margin-bottom:8px}
   .prop .pb{font-size:14.5px;line-height:1.42}
-  .prop .pn{font-size:12.5px;color:var(--lab2);margin-top:8px;line-height:1.4}
+  .prop .pn{font-size:12.5px;color:var(--lab2);margin-top:var(--sp-2);line-height:1.4}
+  /* The two taps that make it real. Full height because this is the control
+     that changes the machine, and it is reached with a thumb on a phone. */
+  .prop .pa{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
+  .prop .pa button{flex:1;min-height:var(--tap);border-radius:var(--r-pill);
+                   border:1px solid var(--hair);background:var(--card2);
+                   color:var(--lab);font-family:var(--ui);font-size:14px;
+                   font-weight:500;cursor:pointer}
+  .prop .pa button.yes{background:var(--blue-fill);border-color:transparent;color:#fff}
+  .prop .pa button.no{color:var(--lab2);background:transparent}
+  .prop .pa button.no:hover{background:rgba(255,69,58,.14);color:var(--red)}
+  .prop .pa button:disabled{opacity:.45;cursor:default}
+  /* What it actually did, kept next to what it said it would do. A proposal
+     whose outcome is somewhere else is a proposal you have to go and check. */
+  .prop .pr{font-size:13px;line-height:1.4;margin-top:var(--sp-3);
+            padding-top:var(--sp-3);border-top:1px solid var(--hair);color:var(--lab2)}
+  .prop .pr b{color:var(--lab);font-weight:600}
+  .prop .pr.bad b{color:var(--red)}
+  .prop.pinned .pl::after{content:" · always asks";color:var(--lab3)}
+  .prop.settled{background:var(--card2);border-color:var(--hair)}
+  .prop.settled .pl{color:var(--lab3)}
+  .degraded{font-size:12.5px;line-height:1.4;color:var(--amber);
+            margin:0 0 var(--sp-3);display:flex;gap:var(--sp-2)}
+  .degraded::before{content:"\26A0";flex:0 0 auto}
   .sugg{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
   .sugg button{border:1px solid var(--hair);background:var(--card2);color:var(--lab2);
                border-radius:22px;padding:0 16px;min-height:var(--tap);
@@ -1007,7 +1037,7 @@
   <div class="ah glass">
     <button class="icobtn" id="askclose" aria-label="Close">&#10005;</button>
     <h2>Ask Blokk</h2>
-    <span class="scope">READ-ONLY</span>
+    <span class="scope">READS &middot; PROPOSES</span>
   </div>
   <div class="thread" id="thread">
     <div class="sugg" id="sugg"></div>
@@ -1020,7 +1050,8 @@
               aria-label="Ask Blokk a question"></textarea>
     <button class="go" id="qgo" aria-label="Send">&#8593;</button>
   </div>
-  <div class="readonly">It can read your journal, queue and memory. It cannot send anything.</div>
+  <div class="readonly">It reads your journal, queue and memory, and proposes
+    changes. Nothing runs until you approve it.</div>
   </div>
 </div>
 <div class="toast glass" id="toast" role="status" aria-live="polite"></div>
@@ -1924,8 +1955,11 @@ function announce(msg){ const r=$('#sr'); if(r) r.textContent=msg; }
    auto-reconnect mid-answer, replaying a turn you already read — so we read
    the body with fetch and render AG-UI events as they land.
    ───────────────────────────────────────────────────────────────────────── */
+// Three reads and one ask, in that order. The last one is there because
+// nothing else on this screen says the chat can propose a change — and a
+// capability nobody discovers is a capability that does not exist.
 const SUGG = ['What needs me?', "What did it handle without me?",
-              'Anything close to acting alone?', 'What has it learned?'];
+              'What has it learned?', 'Take a backup'];
 let asking = null;   // AbortController while a turn is in flight
 
 // Where the bubble is, right now. The circle opens from the button rather
@@ -1949,7 +1983,7 @@ function openAsk(seed){
   requestAnimationFrame(()=>requestAnimationFrame(()=>ask.classList.add('open')));
   document.body.style.overflow='hidden';
   const sg=$('#sugg');
-  if(sg && !sg.children.length){
+  if(sg && !sg.children.length && !$('#thread').querySelector('.q')){
     SUGG.forEach(s=>{
       const b=document.createElement('button'); b.textContent=s;
       b.onclick=()=>send(s); sg.append(b);
@@ -1957,6 +1991,7 @@ function openAsk(seed){
   }
   if(seed) $('#qbox').value = seed;
   setTimeout(()=>$('#qbox').focus(), 60);
+  restoreThread();
 }
 function closeAsk(){
   const ask = $('#ask'), bubble = $('#openask');
@@ -2000,6 +2035,91 @@ qbox.addEventListener('keydown', e=>{
 $('#qgo').disabled = true;
 $('#qgo').onclick = ()=>{ if(qbox.value.trim()) send(qbox.value.trim()); };
 
+// ── proposals, in the thread where they were made ───────────────────────────
+// The queue in the dashboard is still the queue. This is the same row, drawn
+// where the sentence that made it is: a proposal you have to go and find is a
+// proposal you approve without rereading what asked for it.
+let THREAD = null;
+
+function propCard(p){
+  const a = p.action || (p.action_json ? JSON.parse(p.action_json) : null);
+  const res = p.result ? (typeof p.result==='string' ? JSON.parse(p.result) : p.result) : null;
+  const settled = !!p.decision;
+  const c = el(`<div class="prop${p.pinned||(a&&a.pinned)?' pinned':''}${settled?' settled':''}"
+      data-id="${esc(p.id||'')}">
+    <div class="pl">Proposal${settled?' &middot; '+esc(p.decision+'d'):' &middot; waiting on you'}</div>
+    <div class="pb">${esc(p.body||'')}</div>
+  </div>`);
+  // The note says nothing has happened yet, so it goes the moment something
+  // has. A card reading "waiting on you" above "Done" is the interface
+  // disagreeing with itself about the only thing it is there to tell you.
+  if(!settled) c.append(el(`<div class="pn">${esc(p.note
+    || 'Nothing has happened yet. This is waiting on you.')}</div>`));
+  if(!settled && p.id){
+    const row = el(`<div class="pa">
+      <button class="yes">Approve</button><button class="no">Reject</button></div>`);
+    row.querySelector('.yes').onclick = () => decide(c, p.id, 'approve');
+    row.querySelector('.no').onclick  = () => decide(c, p.id, 'reject');
+    c.append(row);
+  }
+  if(settled) c.append(el(outcome(p.decision, res)));
+  return c;
+}
+
+function outcome(decision, res){
+  if(decision !== 'approve')
+    return `<div class="pr"><b>Rejected.</b> Nothing ran.</div>`;
+  if(!res) return `<div class="pr"><b>Approved.</b></div>`;
+  return res.ok
+    ? `<div class="pr"><b>Done.</b> ${esc(res.detail||res.action||'')}</div>`
+    // An approved action that failed says so here rather than looking done.
+    // The queue showing it handled while the machine disagrees is the one
+    // outcome this whole path exists to prevent.
+    : `<div class="pr bad"><b>Did not run.</b> ${esc(res.error||'no reason given')}</div>`;
+}
+
+async function decide(card, id, decision){
+  const btns = card.querySelectorAll('.pa button');
+  btns.forEach(b => b.disabled = true);
+  try{
+    const r = await post(`/api/v1/approvals/${id}/decide`, {decision});
+    card.classList.add('settled');
+    card.querySelector('.pl').innerHTML = 'Proposal &middot; ' + esc(decision) + 'd';
+    card.querySelector('.pa').remove();
+    const note = card.querySelector('.pn'); if(note) note.remove();
+    card.append(el(outcome(decision, r.ran)));
+    announce(decision === 'approve'
+      ? (r.ran && r.ran.ok===false ? 'Approved, but it did not run.' : 'Done.')
+      : 'Rejected. Nothing ran.');
+    tick(true);
+  }catch(e){
+    btns.forEach(b => b.disabled = false);
+    card.append(el(`<div class="pr bad"><b>Could not reach the Mac.</b>
+      ${esc(e.message)} — nothing was decided.</div>`));
+  }
+}
+
+// A conversation the phone locking does not end. The transcript lives on the
+// Mac, so what the phone shows after a reload is what the Mac actually holds
+// rather than whatever this tab happened to remember.
+async function restoreThread(){
+  const th = $('#thread');
+  if(th.querySelector('.q')) return;                  // already drawn
+  let d;
+  try{ d = await get('/api/v1/thread'); }catch(e){ return; }
+  if(!d || !d.messages || !d.messages.length) return;
+  THREAD = d.thread;
+  const s = $('#sugg'); if(s) s.style.display='none';
+  for(const m of d.messages){
+    if(m.role === 'user'){ th.append(el(`<div class="q">${esc(m.content)}</div>`)); continue; }
+    if(m.role !== 'assistant') continue;
+    th.append(el(`<div class="a">${esc(m.content)}</div>`));
+    if(m.approval) th.append(propCard({...m.approval, action: m.approval.action
+      ? JSON.parse(m.approval.action) : null}));
+  }
+  th.scrollTop = th.scrollHeight;
+}
+
 async function send(q){
   if(asking) return;                       // one turn at a time
   // B5: hide, don't destroy — the suggestions come back on a fresh thread.
@@ -2024,7 +2144,7 @@ async function send(q){
   try{
     const r = await fetch(API+'/api/v1/ask',{method:'POST',
       headers:{'Content-Type':'application/json',...AUTH},
-      body:JSON.stringify({q}), signal:asking.signal});
+      body:JSON.stringify({q, thread:THREAD}), signal:asking.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
 
     const reader=r.body.getReader(), dec=new TextDecoder();
@@ -2037,6 +2157,7 @@ async function send(q){
         const line = f.split('\n').find(l=>l.startsWith('data: '));
         if(!line) continue;
         const ev = JSON.parse(line.slice(6));
+        if(ev.type==='RUN_STARTED' && ev.thread) THREAD = ev.thread;
         if(ev.type==='TOOL_CALL_START'){
           steps.append(el(`<span class="step live" data-t="${esc(ev.name)}">
             <span class="n">&#9679;</span>${esc(ev.name.replace(/_/g,' '))}</span>`));
@@ -2054,12 +2175,17 @@ async function send(q){
         }
         if(ev.type==='TEXT_MESSAGE_END') ans.innerHTML=esc(text);
         if(ev.type==='PROPOSAL'){
-          th.append(el(`<div class="prop"><div class="pl">Proposal &middot; queued</div>
-            <div class="pb">${esc(ev.text)}</div>
-            <div class="pn">${esc(ev.note||'')} It is in the queue with everything else —
-            nothing has been sent.</div></div>`));
+          th.append(propCard({id:ev.approval_id, body:ev.text, action:ev.action,
+                              note:ev.note, pinned:ev.pinned}));
           setTimeout(()=>tick(true), 400);
-          announce('Proposal queued');
+          announce('Proposal queued. It is waiting on you.');
+        }
+        if(ev.type==='DEGRADED'){
+          // Said, not swallowed. A reply assembled from rows because the
+          // model server is down reads exactly like one it wrote, and that
+          // is the difference between a quiet day and a quiet failure.
+          steps.parentNode.insertBefore(
+            el(`<div class="degraded">${esc(ev.detail)}</div>`), steps);
         }
         if(ev.type==='RUN_FINISHED' && ev.budget_left!==undefined && ev.budget_left<20){
           th.append(el(`<div class="readonly note">

@@ -26,8 +26,8 @@ from urllib.parse import parse_qs, urlparse
 from core.durable import Engine, Store, now
 from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
-from core.ask import ask as run_ask
-from core import nightly, servers as srv
+from core.ask import ask as run_ask, history as ask_history
+from core import actions, nightly, servers as srv
 from core.backends import BACKENDS, pick
 
 import os
@@ -239,9 +239,35 @@ def h_handled(_q):
     """What didn't need you. The number that should grow."""
     return rows(store.q(
         "SELECT a.category, a.title, a.body, w.name AS workspace, w.id AS ws, "
-        "a.decision, a.decided_at FROM approval a "
+        "a.decision, a.decided_at, a.action, a.result FROM approval a "
         "JOIN workspace w ON w.id=a.workspace_id "
         "WHERE a.decision IS NOT NULL ORDER BY a.decided_at DESC LIMIT 20"))
+
+
+def h_thread(q):
+    """The chat, as it was. What a reload redraws from.
+
+    A conversation that vanishes when the phone locks is not a conversation,
+    and rebuilding it from the client's memory would mean the transcript on
+    the phone and the transcript on the Mac could disagree about what was
+    said. One copy, and it is the one on the machine that holds the data.
+
+    Proposal turns come back with the queue row attached, so a card that was
+    approved an hour ago redraws as approved and what it did, not as a live
+    button waiting to be pressed twice.
+    """
+    ws = (q.get("workspace") or ["cottages"])[0]
+    tid = (q.get("thread") or [f"t_{ws}"])[0]
+    out = []
+    for m in ask_history(store, tid):
+        row = dict(m)
+        if row.get("approval_id"):
+            a = store.one("SELECT id,title,body,category,decision,decided_at,"
+                          "action,result FROM approval WHERE id=?",
+                          row["approval_id"])
+            row["approval"] = dict(a) if a else None
+        out.append(row)
+    return {"thread": tid, "workspace": ws, "messages": out}
 
 
 DECISIONS = ("approve", "edit", "reject")
@@ -283,6 +309,29 @@ def h_decide(approval_id, body):
         return {"ok": True, "already": loser["decision"]}
     policy.record(a["workspace_id"], a["category"], decision)
 
+    # ── the only place an action runs ───────────────────────────────────────
+    # Not in core/ask.py, which has no executor in it; not on the way into the
+    # queue; not on reject. Here, after a person has tapped Approve, once —
+    # the UPDATE above is the mutex, so six taps on a flaky connection claim
+    # once and five find the row already decided and never reach this.
+    #
+    # The trust ledger is not consulted and not corrected. It records what the
+    # person decided, and they did decide to approve; an action that then
+    # fails is a failure of the action, not of the judgement.
+    ran = None
+    if decision == "approve" and a["action"]:
+        try:
+            ran = actions.run(store, a["action"])
+        except actions.Rejected as e:
+            ran = {"ok": False, "error": str(e)}
+        except Exception as e:                               # noqa: BLE001
+            # Loud, and on the row. An approved action that quietly did
+            # nothing is the exact shape invariant 6 exists to forbid: the
+            # queue would show it handled and the world would disagree.
+            ran = {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]}
+        store.x("UPDATE approval SET result=? WHERE id=?",
+                json.dumps(ran), approval_id)
+
     # An edit is a diff between what the agent wrote and what you wanted.
     if decision in ("edit", "reject"):
         store.x("""INSERT OR REPLACE INTO episode
@@ -313,6 +362,11 @@ def h_decide(approval_id, body):
     bump()
     out = {"ok": True, "category": a["category"], "now_autonomous": ok,
            "trust": why, "run_resumed": resumed}
+    if ran is not None:
+        # Reported, not just stored. The person who tapped Approve is the one
+        # owed the answer to "and then what happened".
+        out["ran"] = ran
+        out["ok"] = bool(ran.get("ok"))
     if resume_error:
         out["run_error"] = resume_error
     return out
@@ -445,7 +499,7 @@ def h_kill(_body):
     return {"stopped": n, "queue_held": True}
 
 
-def _ask_stream(q, workspace):
+def _ask_stream(q, workspace, thread=None):
     """Wraps the ask generator so a PROPOSAL lands in the approval queue.
 
     This is the only place the chat surface touches the database, and it
@@ -454,7 +508,10 @@ def _ask_stream(q, workspace):
     """
     ws = workspace or "cottages"
     run_id = None
-    for ev in run_ask(store, q, router.small, workspace):
+    tid = thread or f"t_{ws}"
+    for ev in run_ask(store, q, router.small, workspace, thread=thread):
+        if ev["type"] == "RUN_STARTED":
+            tid = ev.get("thread") or tid
         if ev["type"] == "PROPOSAL":
             # A chat turn is a run. Giving it a real row keeps the foreign key
             # honest and means a proposal can be traced back like any other
@@ -465,13 +522,35 @@ def _ask_stream(q, workspace):
                            (id,workspace_id,workflow,status,input,ended_at)
                            VALUES(?,?,'ask','done',?,?)""",
                         run_id, ws, json.dumps({"q": q}), now().isoformat())
-            aid = f"a_ask_{abs(hash(ev['text'])) % 10**8}"
-            store.x("""INSERT OR REPLACE INTO approval
-                       (id,run_id,workspace_id,category,title,body,evidence)
-                       VALUES(?,?,?,?,?,?,?)""",
-                    aid, run_id, ws, "asked_for",
+            # A fresh id every time, deliberately. The first version keyed
+            # the row on hash(text), so asking for the same thing twice did
+            # an INSERT OR REPLACE over the earlier row — and if that row had
+            # already been approved and run, the replace wiped its decision
+            # and its result and put it back in the queue as undecided. A
+            # decision that has been made is a fact; nothing in the chat box
+            # gets to un-make it.
+            aid = f"a_ask_{secrets.token_hex(6)}"
+            act = ev.get("action")
+            store.x("""INSERT INTO approval
+                       (id,run_id,workspace_id,category,title,body,evidence,
+                        action)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    aid, run_id, ws,
+                    # The trust ledger buckets by category, so a proposal to
+                    # act counts toward the bucket that action belongs to,
+                    # not toward "you asked for something in chat".
+                    (act or {}).get("category") or "asked_for",
                     "You asked for this in chat", ev["text"],
-                    json.dumps({"sources": ["you"], "via": "ask"}))
+                    json.dumps({"sources": ["you"], "via": "ask"}),
+                    json.dumps(act) if act else None)
+            # The transcript row for this turn was written inside ask(),
+            # before the queue had an id for it, and the event carries that
+            # row's id. Point it at the queue row now, so a reload redraws the
+            # proposal card attached to the sentence that proposed it rather
+            # than as a loose paragraph.
+            if ev.get("message_id"):
+                store.x("UPDATE message SET approval_id=? WHERE id=?",
+                        aid, ev["message_id"])
             bump()
             ev = {**ev, "approval_id": aid}
         yield ev
@@ -958,6 +1037,7 @@ ROUTES_GET = [
     (r"^/api/v1/runs$", h_runs),
     (r"^/api/v1/runs/([\w]+)$", h_run),
     (r"^/api/v1/approvals$", h_approvals),
+    (r"^/api/v1/thread$", h_thread),
     (r"^/api/v1/handled$", h_handled),
     (r"^/api/v1/memory/([\w]+)$", h_memory),
 ]
@@ -1167,7 +1247,8 @@ class Handler(BaseHTTPRequestHandler):
             q = (body.get("q") or "").strip()[:500]
             if not q:
                 return self._send(400, {"error": "empty question"})
-            return self._sse(_ask_stream(q, body.get("workspace")))
+            return self._sse(_ask_stream(q, body.get("workspace"),
+                                         body.get("thread")))
         body = self._read_body()
         if body is None:
             return
