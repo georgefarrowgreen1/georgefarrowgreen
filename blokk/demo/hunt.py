@@ -965,6 +965,46 @@ try:
     probe("A34 pruning backups deletes the newest, and sometimes this one",
           backup_prune)
 
+    # ── 35. trust that only goes up ─────────────────────────────────────
+    def trust_revoked():
+        # may_act answers on `auto` and never looks at `clean` again, so
+        # resetting the counter on a rejection did nothing to a category that
+        # had already graduated: you reject tonight's send, and tomorrow
+        # night it sends the next one without asking. A ledger that can only
+        # ratchet upwards is not a ledger.
+        import sys as _s, tempfile
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.harness import Policy
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+             " VALUES('w','W',1,'[]')")
+        pol = Policy(st)
+        for _ in range(20):
+            pol.record("w", "reply", "approve")
+        if not pol.may_act("w", "reply")[0]:
+            return (True, "twenty clean approvals did not graduate it")
+        pol.record("w", "reply", "reject")
+        allowed, why = pol.may_act("w", "reply")
+        if allowed:
+            return (True, "a rejected category still acts alone — the "
+                          "autonomy survived the rejection")
+        for _ in range(19):
+            pol.record("w", "reply", "approve")
+        if pol.may_act("w", "reply")[0]:
+            return (True, "it graduated again on nineteen, not twenty")
+        pol.record("w", "reply", "approve")
+        if not pol.may_act("w", "reply")[0]:
+            return (True, "it could not be re-earned")
+        # An edit is a correction, not a veto. It must not revoke.
+        pol.record("w", "reply", "edit")
+        if not pol.may_act("w", "reply")[0]:
+            return (True, "an edit revoked autonomy; only a rejection should")
+        return (False, "a rejection takes the autonomy back, and it has to be "
+                       "earned again from zero")
+    probe("A35 a rejection resets the counter but leaves the autonomy",
+          trust_revoked)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

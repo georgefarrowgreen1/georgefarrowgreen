@@ -112,9 +112,16 @@ class Policy:
             workspace_id, category,
         )
         if decision == "reject":
-            # A rejection isn't a slow decline, it's a reset.
+            # A rejection isn't a slow decline, it's a reset — and the reset
+            # has to include the autonomy, not just the counter that earned
+            # it. may_act answers on `auto` and never looks at `clean` again,
+            # so clearing the counter alone left a graduated category acting
+            # alone for ever: you reject tonight's send, and tomorrow night
+            # it sends the next one without asking. Trust that can only
+            # ratchet upwards is not a trust ledger.
             self.store.x(
-                "UPDATE trust SET clean=0 WHERE workspace_id=? AND category=?",
+                "UPDATE trust SET clean=0, auto=0 "
+                "WHERE workspace_id=? AND category=?",
                 workspace_id, category,
             )
         self.store.x(

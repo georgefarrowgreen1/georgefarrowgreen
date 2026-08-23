@@ -43,7 +43,9 @@ tools. Do not "improve" it into a filter people rely on.
 **4. Trust is per workspace AND per category, and never transfers.**
 Ninety clean approvals on cottage enquiries earns cottage enquiries autonomy.
 It earns invoice chasing nothing. Some categories are pinned to manual and
-must never graduate.
+must never graduate. Trust goes down as well as up: a rejection revokes
+autonomy and the threshold has to be met again from zero, or the ledger only
+ever ratchets and a category that has gone wrong keeps acting alone.
 
 **5. Scope is data, not prompt.**
 Workspace isolation is enforced in SQL and in the credential registry. An
@@ -141,6 +143,8 @@ All four suites green. Verified behaviours:
   re-spent, 1 send fired, 0 duplicates
 * injected email quarantined and given no draft
 * approving 20 clean graduates a category; pinned categories never do
+* rejecting takes the autonomy back, not just the counter — it has to be
+  earned again from zero. An edit does not: a correction is not a veto
 * a dead model server degrades per workspace rather than 500ing the sweep
 * a silent model server is detected in 0.4s (output drained on a thread)
 * a model server that dies leaves its reason in logs/<tier>.log, and

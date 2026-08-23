@@ -82,7 +82,9 @@ class Policy {
              this.store.trust.push(t); }
     if (decision==='approve') t.clean++;
     if (decision==='edit')    t.edited++;
-    if (decision==='reject'){ t.rejected++; t.clean=0; }   // a reset, not a slow decline
+    // A reset, not a slow decline — and it takes the autonomy with it, or a
+    // graduated category keeps acting alone through every rejection.
+    if (decision==='reject'){ t.rejected++; t.clean=0; t.auto=0; }
     if (t.clean>=t.threshold && !t.pinned_manual) t.auto=1;
     return t;
   }

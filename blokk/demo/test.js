@@ -59,6 +59,16 @@ for(let i=0;i<25;i++) p.record('cottages','access_question','approve');
 ok('pinned access_question never graduates (25 clean approvals)', p.mayAct('cottages','access_question')[0]===false);
 p.record('cottages','rate_change','reject');
 ok('reject resets the clean counter to 0', p.row('cottages','rate_change').clean===0);
+// And the autonomy with it. mayAct answers on `auto` and never looks at the
+// counter again, so a graduated category kept acting alone through every
+// rejection that followed.
+{
+  const t = p.record('biz2','invoice_chase','approve');   // 19 -> 20, graduates
+  ok('20 clean graduates invoice_chase', p.mayAct('biz2','invoice_chase')[0]===true);
+  p.record('biz2','invoice_chase','reject');
+  ok('a rejection takes autonomy back', p.mayAct('biz2','invoice_chase')[0]===false);
+  ok('and it starts from zero again', t.clean===0 && t.auto===0);
+}
 
 // 5 — autonomy actually skips the queue on the next sweep
 s=seed(); p=new Policy(s); e=new Engine(s,p,clock);
