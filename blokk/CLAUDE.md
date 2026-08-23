@@ -41,6 +41,26 @@ read-only *by construction* — there is no write tool in that file, and adding
 one would reopen the injection trifecta through the front door. If Ask needs
 to act, it queues a proposal.
 
+Ask can now propose, and this is where the three files split. `core/ask.py`
+writes one thing: an undecided row, plus the transcript and the day's meter.
+`core/actions.py` holds every executor and is the only place that says what
+Blokk may do to itself; it re-validates on the way in *and* on the way out,
+because a proposal is JSON a model wrote after reading a stranger's email and
+sits in a queue in between. `api/server.py:h_decide` is the only caller of
+`actions.run`, on approve only, and records what happened on the row.
+
+Adding an action means adding it to `ACTIONS` and nothing else — the grammar
+Ask is given is built from that dict, so the catalogue cannot drift from what
+exists. Two things must stay true of anything you add: it operates on Blokk,
+not on the outside world (sending is a connector that does not exist yet, and
+it will arrive behind this queue rather than through the chat box); and if
+being wrong is expensive — opening a route out, deleting something — it is
+`pinned=True` and never graduates, because the cost of being wrong does not
+scale with how often you have been right.
+
+Probes A49–A54 in `demo/hunt.py` hold this shape, and each is mutation-tested:
+break the invariant and exactly one of them goes red.
+
 **3. Untrusted content is data, never instruction — and outbound is a gate.**
 Anything fetched from outside — an email body, a web page, a forecast — carries
 `provenance` and goes through `quarantine_read` before reaching a model. The

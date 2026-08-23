@@ -2041,13 +2041,19 @@ $('#qgo').onclick = ()=>{ if(qbox.value.trim()) send(qbox.value.trim()); };
 // proposal you approve without rereading what asked for it.
 let THREAD = null;
 
+// approve -> approved, reject -> rejected, edit -> edited. The first version
+// appended a "d" and produced "rejectd" on every rejected card.
+const PAST = {approve:'approved', reject:'rejected', edit:'edited',
+              expired:'expired'};
+
 function propCard(p){
   const a = p.action || (p.action_json ? JSON.parse(p.action_json) : null);
   const res = p.result ? (typeof p.result==='string' ? JSON.parse(p.result) : p.result) : null;
   const settled = !!p.decision;
   const c = el(`<div class="prop${p.pinned||(a&&a.pinned)?' pinned':''}${settled?' settled':''}"
       data-id="${esc(p.id||'')}">
-    <div class="pl">Proposal${settled?' &middot; '+esc(p.decision+'d'):' &middot; waiting on you'}</div>
+    <div class="pl">Proposal${settled?' &middot; '+esc(PAST[p.decision]||p.decision)
+                                     :' &middot; waiting on you'}</div>
     <div class="pb">${esc(p.body||'')}</div>
   </div>`);
   // The note says nothing has happened yet, so it goes the moment something
@@ -2084,7 +2090,8 @@ async function decide(card, id, decision){
   try{
     const r = await post(`/api/v1/approvals/${id}/decide`, {decision});
     card.classList.add('settled');
-    card.querySelector('.pl').innerHTML = 'Proposal &middot; ' + esc(decision) + 'd';
+    card.querySelector('.pl').innerHTML =
+      'Proposal &middot; ' + esc(PAST[decision] || decision);
     card.querySelector('.pa').remove();
     const note = card.querySelector('.pn'); if(note) note.remove();
     card.append(el(outcome(decision, r.ran)));
