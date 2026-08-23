@@ -1214,6 +1214,10 @@ async function paintSources(extra){
   // The ref field means three different things depending on the kind, so it
   // says which one as you pick.
   const REF_HINT = {
+    web: ['one page — https://example.com/prices',
+          'Adding this lets that workspace reach that one host, and nothing '
+          + 'else new. Nothing fetches it on its own: you ask, with peek, and '
+          + 'what comes back is quarantined before anything reads it.'],
     weather: ['a town, or coordinates — "Newcastle upon Tyne" or 54.97,-1.61',
               'Adding this lets that workspace reach open-meteo.com, and '
               + 'nothing else new. What leaves is a latitude and a longitude.'],

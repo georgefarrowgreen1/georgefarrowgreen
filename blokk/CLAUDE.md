@@ -26,7 +26,13 @@ randomness, no `uuid4`. Every side effect goes through
 `ctx.activity(..., side_effect=True)`, which carries an idempotency key
 derived from run and step. On restart the journal replays: completed steps
 return recorded results without executing. Use `ctx.now()` and `ctx.uuid()`,
-never the real ones.
+never the real ones — and **call them from workflow level, never from inside
+an activity body**. `ctx.now()` is itself a journalled step: called inside an
+activity it happens on the first run and not on the replay, because the body
+does not run the second time, and every step after it then comes back holding
+the step before's result. Steps are matched by number; `durable.py` now checks
+the recorded name too and raises `Nondeterministic` rather than handing back
+the wrong one.
 
 **2. One write path.**
 Everything that changes the world funnels through the approval queue and the
@@ -56,6 +62,15 @@ through the gate, and anything where the URL comes from content rather than
 config must. A connector that reaches outward returns **fields, never prose**
 — hand a small model a paragraph from a stranger and it paraphrases it; hand
 it numbers and it can say something true.
+
+`core/connectors/web.py` is the hard case: with a fetch tool the attacker
+chooses *which* page you read, so the content and the destination are both
+theirs. It is bounded by three things — the host is on the workspace's
+allowlist, the page comes back as fields with provenance `untrusted` and the
+quarantine flag already on it, and **nothing reads one on its own**. Ask must
+never get a fetch tool: it holds mail and calendar in the same context, so a
+model that could also name a URL is the injection trifecta with a way out.
+The nightly sweep does not fetch pages either. A person asks, with `peek`.
 
 **4. Trust is per workspace AND per category, and never transfers.**
 Ninety clean approvals on cottage enquiries earns cottage enquiries autonomy.
@@ -107,8 +122,11 @@ worse than an error.
                        agent cannot reach a model
     core/qr.py         QR for the phone URL, no dependency
     core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
-                       weather (the only one that leaves, and only through
-                       core/egress.py), keychain, and the fake world
+                       weather and web (the two that leave, and only through
+                       core/egress.py), keychain, and the fake world.
+                       free_windows() is shared: the real calendar and the
+                       sample world must not disagree about what "free on
+                       Saturday morning" means
     flows/             workflow definitions
     api/server.py      control plane. Stdlib http.server. Holds credentials
     web/               dashboard, setup wizard, sources, phone, update and
@@ -186,6 +204,16 @@ All four suites green. Verified behaviours:
   is refused by the rule that should refuse it, not by a 404 on the way out
 * the weather connector returns days as numbers and a code-table word, with
   no free text from the far end for an instruction to hide in
+* a dry day and a free window produce one card, not seven, and the same one
+  on a replay. A 09:00 UTC meeting reads as 10:00 in the summer and 09:00 in
+  the winter; an all-day event blocks the day; a window that has passed is
+  not offered
+* a step whose journalled name is not the one being replayed says so, naming
+  the run, the step and both names — it used to hand back the previous step's
+  result and fail three lines later on a type error
+* a web page arrives as text and a title with the quarantine flag on both,
+  script and style gone, and the display:none block kept — that is where an
+  instruction meant for a model and not for you goes
 
 ## Not built yet
 

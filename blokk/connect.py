@@ -45,10 +45,11 @@ def main() -> int:
     if cmd == "add":
         if len(args) < 4:
             print("usage: connect.py add <workspace> <kind> <ref>")
-            print("       kinds: imap caldav messages ical maildir weather")
-            print("       ref  : a keychain service name, 'local', or — for")
+            print("       kinds: imap caldav messages ical maildir weather web")
+            print("       ref  : a keychain service name, or 'local', or")
             print("              weather — a town or coordinates:")
-            print("                       \"Newcastle upon Tyne\" or 54.97,-1.61")
+            print("                        \"Newcastle upon Tyne\" or 54.97,-1.61")
+            print("              web     — one page: https://example.com/prices")
             return 1
         r = sources.add(store, args[1], args[2], args[3])
         if r.get("error"):
@@ -57,7 +58,7 @@ def main() -> int:
         # Not every ref is a keychain service. Calling a place name one sends
         # somebody looking through Keychain Access for an entry that was
         # never meant to exist.
-        where = ("for " if r["kind"] in sources.IS_PLACE else
+        where = ("for " if r["kind"] in sources.REACHES_OUT else
                  "using keychain service ") + f"'{r['keychain_ref']}'"
         print(f"added {r['kind']} to {r['workspace_id']} {where} (read scope)")
         if r.get("note"):

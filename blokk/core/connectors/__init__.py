@@ -184,6 +184,12 @@ def wire(store) -> Registry:
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(ws, "messages", AppleMessages())
+            elif kind == "web":
+                # Handed the store and the workspace for the same reason as
+                # weather: those two are what core/egress.py needs to answer
+                # "may this workspace talk to that host".
+                from core.connectors.web import Web
+                REGISTRY.add(ws, "web", Web(ref, store=store, workspace_id=ws))
             elif kind == "weather":
                 # The only connector that reaches off the machine, so it is
                 # the only one handed the store and the workspace: both are

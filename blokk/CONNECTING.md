@@ -107,6 +107,32 @@ Each business gets its own Keychain entry and its own row:
 One leak should cost you one business. Never point two workspaces at the same
 credential — the isolation is the credential, not a rule in a prompt.
 
+## 5. The two that reach off the machine
+
+Everything above reads something you already have. These two do not, so they
+go through `core/egress.py` and they are the only things that can.
+
+    python3 connect.py add personal weather "Newcastle upon Tyne"
+    python3 connect.py add personal web https://www.gov.uk/bank-holidays
+
+Adding one allows exactly the hosts it needs, for that workspace only, and
+removing it takes them away again:
+
+    python3 connect.py egress            what each workspace may reach
+    python3 connect.py egress log 20     what has actually left, and when
+    python3 connect.py egress deny personal www.gov.uk
+
+**Weather** sends a latitude and a longitude, rounded, and nothing else. No
+key, no account, no credential to keep. It returns days as numbers and a word
+from a code table, so nothing writes prose you would have to trust.
+
+**Web** reads one page, when you ask — `connect.py peek personal web`. Nothing
+fetches it on its own: not the nightly sweep, and never Ask, which holds your
+mail and calendar in the same context and so must never be given a tool that
+names a URL. What comes back is text and a title with the markup gone and the
+quarantine flag already on it. Text hidden with `display:none` is kept on
+purpose: that is where an instruction meant for a model and not for you goes.
+
 ## Writing your own
 
 `core/connectors/__init__.py` has the contract. Three rules:

@@ -15,11 +15,17 @@ import re
 
 KINDS = {"imap": "mail", "maildir": "mail",
          "caldav": "calendar", "ical": "calendar",
-         "messages": "messages", "weather": "weather"}
-# The one source that reaches off this machine. Its "ref" is not a keychain
-# name but a place — a town or coordinates — because it has no
-# credential to keep and needs to know where you are.
+         "messages": "messages", "weather": "weather", "web": "web"}
+# KINDS is not a label: the value is the name the connector is registered
+# under in core/connectors, and test() and peek() both look a source up by
+# it. Calling the web one "a page" here read better in the panel and made
+# every web source report "not loaded".
+# The two sources that reach off this machine. Neither "ref" is a keychain
+# name: weather takes a place, because it has no credential to keep and
+# needs to know where you are, and web takes the address of one page.
 IS_PLACE = ("weather",)
+IS_URL = ("web",)
+REACHES_OUT = IS_PLACE + IS_URL
 # The two that read this Mac's own files need no credential — and no network,
 # and no app-specific password. They need Full Disk Access, which core/local.py
 # checks for and explains.
@@ -95,7 +101,20 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
     if not ref:
         return {"error": ("a place is required — a town, or coordinates "
                           "like 54.97,-1.61" if kind in IS_PLACE
+                          else "the address of one page, https://…"
+                          if kind in IS_URL
                           else "a keychain service name is required")}
+    if kind in IS_URL:
+        from urllib.parse import urlparse
+        u = urlparse(ref)
+        if u.scheme == "http":
+            return {"error": f"{ref!r} is http. Blokk reads pages over https "
+                             f"only — plain http puts the request, and "
+                             f"anything in it, on the wire in the clear."}
+        if u.scheme != "https" or not u.hostname:
+            return {"error": f"{ref!r} is not a page address. It wants the "
+                             f"whole thing, starting https:// — for example "
+                             f"https://example.com/prices"}
     if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
         known = ", ".join(w["id"] for w in workspaces(store))
         return {"error": f"no workspace '{ws}'. Known: {known}"}
@@ -110,6 +129,18 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
         # the browser, the database and this process.
         out["keychain_hint"] = (
             f"security add-generic-password -s {ref} -a you@icloud.com -w")
+    if kind in IS_URL:
+        # One host, the one in the address you gave. Not the page: an
+        # allowlist of URLs would be a list nobody could reason about, and
+        # the gate matches hosts.
+        from core import egress
+        host = urlparse(ref).hostname.lower()
+        egress.allow(store, ws, host)
+        out["egress"] = [host]
+        out["note"] = (f"{ws} may now reach {host} — and nothing else new. "
+                       f"What comes back is quarantined before anything "
+                       f"reads it, and nothing in Blokk fetches it on its "
+                       f"own: you ask, with peek.")
     if kind in IS_PLACE:
         # A source that leaves the machine is no use without permission to.
         # Adding it and then refusing every request it makes would be the
@@ -125,9 +156,28 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
 
 
 def remove(store, ws: str, kind: str) -> dict:
+    # Read before the delete: for a web source the host to close is derived
+    # from the ref, and after the DELETE there is nothing left to derive it
+    # from.
+    was = store.one("SELECT keychain_ref FROM credential "
+                    "WHERE workspace_id=? AND kind=?", ws, kind)
     store.x("DELETE FROM credential WHERE workspace_id=? AND kind=?", ws, kind)
     note = ("The keychain entry is untouched — delete it yourself if you "
             "meant to revoke access.")
+    if kind in IS_URL and was:
+        from urllib.parse import urlparse
+
+        from core import egress
+        host = (urlparse(was["keychain_ref"]).hostname or "").lower()
+        # Only if nothing else still points at it. Two web sources on the
+        # same host would otherwise take each other's permission away.
+        others = [r["keychain_ref"] for r in store.q(
+            "SELECT keychain_ref FROM credential WHERE workspace_id=? "
+            "AND kind IN ('web')", ws)]
+        if host and not any(
+                (urlparse(o).hostname or "").lower() == host for o in others):
+            if not egress.disallow(store, ws, host).get("error"):
+                note = f"{ws} can no longer reach {host}. " + note
     if kind in IS_PLACE:
         # Adding the source opened the allowlist; removing it has to close it
         # again. A permission that is granted automatically and revoked only
@@ -169,6 +219,12 @@ def describe(kind: str, state: dict) -> str:
                 + (f", newest {state['newest']}" if state.get("newest") else "")
                 + (f"; in {boxes}" if boxes else "")
                 + ("; more on disk than it walked" if state.get("capped") else ""))
+    if "url" in state and "title" in state:
+        return (f"{state['title'] or '(no title)'} — {state.get('chars', 0)} "
+                f"characters"
+                + ("; reads like an instruction, not a page"
+                   if state.get("instruction_like") else "")
+                + f"; {state.get('sends', '')}")
     if "place" in state:
         return (f"{state['place']} ({state.get('at','')}) — {state.get('today','')}"
                 f"; sends {state.get('sends', 'a location')}")
@@ -273,6 +329,14 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
     elif getattr(c, "events", None):
         window = "the next 90 days"
         rows = c.events(days=90)
+    elif getattr(c, "read", None) and getattr(c, "kind", "") == "web":
+        # One row, because it is one page. Shown as the fields a workflow
+        # would get, quarantine flag and all.
+        window = "the page as it is right now"
+        page = c.read()
+        rows = [{"from": page["url"], "subject": page["title"] or "(no title)",
+                 "provenance": page["provenance"], "body": page["text"],
+                 "instruction_like": page["instruction_like"]}]
     elif getattr(c, "forecast", None):
         window = "the next 5 days"
         # The body is the fields, not a second copy of the sentence: peek is

@@ -37,6 +37,8 @@ Then, in order:
 | `./blokk` | attach a model through the wizard |
 | `python3 bench.py --serve http://127.0.0.1:8081/v1` | confirm the batching gain is real |
 | `python3 connect.py add cottages messages local` | your own data, read-only |
+| `python3 connect.py add personal weather "Newcastle"` | a forecast. A lat and a lon leave; nothing else |
+| `python3 connect.py egress` | what each may reach — `egress log`, what left |
 
 ## Docs
 
