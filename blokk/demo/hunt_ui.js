@@ -227,6 +227,17 @@ probe('B9  a slow sweep is reported as a failed one',
                 : 'same names, different colours');
 }
 
+// B16 — "up to date" with what?
+// The clone was on main, main was twenty commits behind the branch the work
+// was on, and ./blokk update said "already up to date". True, useless, and
+// it sends you looking for a feature that was never in the checkout.
+{
+  const up = js.match(/async function paintUpdate\(\)\{[\s\S]*?\n\}/);
+  probe('B16 the update panel says up to date without saying with what',
+    !up || !/elsewhere/.test(up[0]),
+    'it names the branch, and any branch carrying newer work');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

@@ -1284,6 +1284,85 @@ try:
     probe("A41 a sweep that failed at 04:00 is never tried again that day",
           failed_sweep_retry)
 
+    # ── 42. up to date with what ────────────────────────────────────────
+    def update_elsewhere():
+        # A clone on main, main twenty commits behind the branch the work was
+        # actually on, and ./blokk update said "already up to date". True, and
+        # useless: it sends you looking for a feature that was never in the
+        # checkout. Built here rather than read off this repo, because the
+        # answer depends on which branch the checkout happens to be on.
+        import sys as _s, subprocess as sp, tempfile, shutil
+        _s.path.insert(0, ".")
+        from api.server import _elsewhere
+        root = pathlib.Path(tempfile.mkdtemp())
+        up, clone = root / "origin", root / "clone"
+
+        def git(where, *a):
+            return sp.run(["git", *a], cwd=str(where), capture_output=True,
+                          text=True, timeout=60)
+
+        try:
+            up.mkdir()
+            git(up, "init", "-q", "-b", "main")
+            git(up, "config", "user.email", "t@t")
+            git(up, "config", "user.name", "t")
+            (up / "blokk").mkdir()
+            (up / "blokk" / "a.txt").write_text("one")
+            git(up, "add", "-A"); git(up, "commit", "-qm", "first")
+            # An old branch to sit on, so that main — which is what
+            # refs/remotes/origin/HEAD points at — is ahead of the checkout.
+            # Without that the bare "origin" ref counts zero and the trap it
+            # carries stays invisible.
+            git(up, "checkout", "-qb", "old")
+            git(up, "checkout", "-q", "main")
+            (up / "blokk" / "a.txt").write_text("one and a half")
+            git(up, "commit", "-qam", "something on main")
+            # A branch with a slash in its name, which is the shape every
+            # branch in this repo has.
+            git(up, "checkout", "-qb", "claude/work")
+            (up / "blokk" / "a.txt").write_text("two")
+            git(up, "commit", "-qam", "the work you are looking for")
+            (up / "blokk" / "a.txt").write_text("three")
+            git(up, "commit", "-qam", "and more of it")
+            git(up, "checkout", "-q", "main")
+            git(root, "clone", "-q", str(up), str(clone))
+            # Some clones do not write refs/remotes/origin/HEAD, and it is
+            # the ref whose short name is the bare word "origin" — the one
+            # the listing used to offer as somewhere to check out.
+            git(clone, "remote", "set-head", "origin", "-a")
+            git(clone, "checkout", "-q", "old")
+            work = clone / "blokk"
+
+            out = _elsewhere("old", where=work)
+            names = [b["branch"] for b in out]
+            if "claude/work" not in names:
+                return (True, f"a branch with a slash in its name was not "
+                              f"listed: {names}")
+            if "origin" in names or "" in names:
+                # refs/remotes/origin/HEAD shortens to the bare word "origin",
+                # and stripping the prefix off that leaves nothing at all.
+                return (True, "it offers the remote's HEAD as somewhere to "
+                              "check out, which is not a branch")
+            if "old" in names:
+                return (True, "it lists the branch you are already on")
+            ahead = [b["ahead"] for b in out if b["branch"] == "claude/work"][0]
+            if ahead != 3:
+                return (True, f"it says {ahead} commits ahead, not 3")
+            for n in names:
+                if git(work, "rev-parse", "--verify",
+                       f"origin/{n}").returncode:
+                    return (True, f"{n!r} is not a branch on origin")
+            # And on the branch itself there is nowhere else to go.
+            git(clone, "checkout", "-q", "claude/work")
+            if _elsewhere("claude/work", where=work):
+                return (True, "it still points somewhere from the branch that "
+                              "has everything")
+            return (False, "it names the branch with the work on it, and "
+                           "nothing else")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+    probe("A42 up to date, without saying what with", update_elsewhere)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

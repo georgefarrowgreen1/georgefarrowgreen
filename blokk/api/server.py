@@ -774,14 +774,45 @@ def h_doctor(_q):
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def _git(*args, timeout=60) -> tuple[int, str]:
+def _git(*args, timeout=60, where=None) -> tuple[int, str]:
+    # `where` so the branch listing below can be pointed at a fixture repo and
+    # actually tested; everything in production leaves it alone.
     import subprocess
     try:
-        r = subprocess.run(["git", *args], cwd=str(ROOT), timeout=timeout,
+        r = subprocess.run(["git", *args], cwd=str(where or ROOT), timeout=timeout,
                            capture_output=True, text=True)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     except Exception as e:                                       # noqa: BLE001
         return 1, str(e)
+
+
+def _elsewhere(branch: str, where=None) -> list[dict]:
+    """Branches on origin carrying work this one does not have.
+
+    "Up to date" is only a useful sentence if it can also say that the code
+    you are looking for is on another branch. Told plainly: on this repo the
+    answer is usually yes, and the old message sent you looking for a feature
+    that was never in the clone.
+    """
+    _, refs = _git("for-each-ref", "--format=%(refname:short)",
+                   "refs/remotes/origin/", where=where)
+    out = []
+    for ref in refs.split():
+        # refs/remotes/origin/HEAD shortens to the bare word "origin", which
+        # is not a branch anyone can check out.
+        if ref == "origin" or ref == f"origin/{branch}":
+            continue
+        code, n = _git("rev-list", "--count", f"HEAD..{ref}", "--", ".",
+                       where=where)
+        try:
+            ahead = int(n.strip()) if not code else 0
+        except ValueError:
+            ahead = 0
+        if ahead:
+            _, subject = _git("log", "-1", "--format=%s", ref, where=where)
+            out.append({"branch": ref[len("origin/"):], "ahead": ahead,
+                        "at": subject.strip()[:80]})
+    return sorted(out, key=lambda r: -r["ahead"])[:4]
 
 
 def h_update_check(_body):
@@ -800,21 +831,26 @@ def h_update_check(_body):
     if branch == "HEAD":
         return {"clone": True, "error": "Detached HEAD — git checkout main first."}
     _, dirty = _git("status", "--porcelain", "--", ".")
-    code, out = _git("fetch", "--quiet", "origin", branch, timeout=120)
+    # Every branch, not just this one, so "up to date" can also say that the
+    # work is somewhere else.
+    code, out = _git("fetch", "--quiet", "origin", timeout=120)
     if code:
         return {"clone": True, "error": f"Could not reach GitHub: {out.strip()[:200]}"}
-    _, local = _git("rev-parse", "HEAD")
-    _, remote = _git("rev-parse", f"origin/{branch}")
-    if local.strip() == remote.strip():
-        _, at = _git("log", "-1", "--format=%h %s")
-        return {"clone": True, "behind": 0, "branch": branch, "at": at.strip()}
+    # "Nothing to pull", not "the same commit". A clone sitting one commit
+    # ahead of origin has nothing to pull either, and comparing hashes sent
+    # it down the path that reports what is coming — which was nothing.
     _, log = _git("log", "--oneline", "--no-decorate",
                   f"HEAD..origin/{branch}", "--", ".")
+    commits = [ln for ln in log.splitlines() if ln.strip()]
+    other = _elsewhere(branch)
+    if not commits:
+        _, at = _git("log", "-1", "--format=%h %s")
+        return {"clone": True, "behind": 0, "branch": branch, "at": at.strip(),
+                "elsewhere": other}
     schema = _git("diff", "--quiet", f"HEAD..origin/{branch}",
                   "--", "core/schema.sql")[0] != 0
-    commits = [ln for ln in log.splitlines() if ln.strip()]
     return {"clone": True, "branch": branch, "behind": len(commits),
-            "commits": commits[:20], "schema": schema,
+            "commits": commits[:20], "schema": schema, "elsewhere": other,
             "dirty": [ln for ln in dirty.splitlines() if ln.strip()][:20]}
 
 

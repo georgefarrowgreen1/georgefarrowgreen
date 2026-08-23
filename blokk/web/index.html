@@ -1261,9 +1261,23 @@ async function paintUpdate(){
     body.innerHTML = `<p>${esc(r.detail || r.error)}</p>`;
     return;
   }
+  // "Up to date" on its own sent someone looking for a feature that was on
+  // a branch this clone was not on. Say what it is up to date *with*, and
+  // where the newer work is.
+  const other = r.elsewhere || [];
+  const away = other.length ? `
+    <p class="warn">…with <code>${esc(r.branch)}</code>. There is newer work
+      on ${other.length === 1 ? 'another branch' : 'other branches'}:</p>
+    <ul>${other.map(b => `<li>${esc(b.branch)} — ${b.ahead} commit${
+      b.ahead === 1 ? '' : 's'} this one does not have</li>`).join('')}</ul>
+    <p class="sub">To move this clone onto one, in a terminal:</p>
+    <pre>git checkout ${esc(other[0].branch)} &amp;&amp; ./blokk update</pre>
+    <p class="sub">Your blokk.db and blokk.conf are not in git, so they stay
+      where they are.</p>` : '';
   if(r.behind === 0){
     body.innerHTML = `<p>Up to date.</p>
       <p class="sub">On <code>${esc(r.branch)}</code>, at ${esc(r.at)}.</p>
+      ${away}
       <button class="mini" id="up-again">Check again</button>`;
     $('#up-again').onclick = paintUpdate;
     return;
@@ -1277,6 +1291,7 @@ async function paintUpdate(){
       backup first — the ⚯ panel has one, or <code>connect.py backup</code>.</p>` : ''}
     ${dirty ? `<p class="warn">You have ${dirty} edited file${dirty===1?'':'s'}
       here, so this will refuse rather than overwrite them.</p>` : ''}
+    ${away}
     <button class="mini go" id="up-go">Update and restart</button>
     <pre id="uplog" style="display:none"></pre>`;
 

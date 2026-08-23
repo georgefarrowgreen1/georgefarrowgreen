@@ -60,12 +60,50 @@ fi
 good "working tree clean"
 
 step "Fetching"
-git fetch --quiet origin "$BRANCH" || { warn "Could not reach GitHub. Are you online?"; exit 1; }
+# Every branch, not just this one. "Up to date" is only a useful sentence if
+# it can also tell you that the work is somewhere else — which is the state
+# this repo is in most of the time, and the state in which the old message
+# said "already up to date" and left you looking for the missing feature.
+git fetch --quiet origin || { warn "Could not reach GitHub. Are you online?"; exit 1; }
 
 LOCAL="$(git rev-parse HEAD)"
 REMOTE="$(git rev-parse "origin/$BRANCH")"
+# Anything on another branch of origin that this one does not have. Counted
+# over blokk/ only, like everything else here.
+#
+# Two traps in here, both found by running it. `refs/remotes/origin/*` with a
+# glob matches one path component, so it silently skips every branch with a
+# slash in its name — which is most of them. And refs/remotes/origin/HEAD
+# shortens to the bare word "origin", which is not a branch you can check out
+# and made the advice below say `git checkout origin`.
+elsewhere() {
+  git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/' \
+    | grep -v '^origin$' | grep -v "^origin/$BRANCH\$" \
+    | while read -r ref; do
+        n="$(git rev-list --count "HEAD..$ref" -- . 2>/dev/null || echo 0)"
+        [ "$n" -gt 0 ] && printf '%s\t%s\n' "$n" "${ref#origin/}"
+      done | sort -rn | head -4
+}
+
 if [ "$LOCAL" = "$REMOTE" ]; then
   good "already up to date ($(git log -1 --format=%h) on $BRANCH)"
+  OTHER="$(elsewhere)"
+  if [ -n "$OTHER" ]; then
+    say ""
+    warn "…with $BRANCH. There is newer work on another branch:"
+    say ""
+    printf '%s\n' "$OTHER" | while IFS="$(printf '\t')" read -r n ref; do
+      say "    ${ref}"
+      say "      ${DIM}$n commit(s) $BRANCH does not have — $(git log -1 --format='%s' "origin/$ref" 2>/dev/null | cut -c1-52)${OFF}"
+    done
+    TOP="$(printf '%s\n' "$OTHER" | head -1 | cut -f2)"
+    say ""
+    say "  To move this clone onto one:"
+    say ""
+    say "    git checkout $TOP && ./blokk update"
+    say ""
+    say "  ${DIM}Your blokk.db and blokk.conf are not in git, so they stay put.${OFF}"
+  fi
   exit 0
 fi
 
