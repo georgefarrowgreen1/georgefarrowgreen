@@ -342,14 +342,29 @@ class Engine:
         self.store.x("UPDATE run SET status='running' WHERE id=?", run_id)
         self._drive(run_id)
 
-    def sweep_deadlines(self) -> int:
-        """Expire waits. A workflow parked forever is a leak you find in a year."""
+    def sweep_deadlines(self) -> list[str]:
+        """Expire waits. A workflow parked forever is a leak you find in a year.
+
+        Returns the runs it woke, because what those runs were holding is the
+        caller's business, not the journal's: an approval whose run has
+        finished is a draft the phone will keep offering and nothing will
+        ever send.
+        """
         stale = self.store.q(
             "SELECT run_id, signal FROM waiting WHERE deadline < ?", now().isoformat()
         )
+        woken = []
         for row in stale:
-            self.signal(row["run_id"], row["signal"], {"expired": True})
-        return len(stale)
+            try:
+                self.signal(row["run_id"], row["signal"], {"expired": True})
+                woken.append(row["run_id"])
+            except Exception:                                     # noqa: BLE001
+                # One run that cannot be woken must not leave the rest parked.
+                # signal() has already removed the wait and _drive has marked
+                # the run failed, so there is nothing here to undo — only a
+                # loop to keep going.
+                continue
+        return woken
 
     def resume_all(self, background: bool = False, on_done=None) -> list[str]:
         """Called on boot. Anything that was running when the power went is

@@ -1042,6 +1042,52 @@ try:
     probe("A36 an unknown decision is written to the row and then raises",
           bad_decision)
 
+    # ── 37. the draft nothing will ever send ────────────────────────────
+    def expired_approvals():
+        # A run parks for 48 hours holding its drafts. When that runs out the
+        # wait expires and the run finishes — but its approvals stayed in the
+        # queue with no decision, so the phone kept offering a draft nothing
+        # would ever send. Approving it recorded trust, resumed nothing, and
+        # said nothing about why. The schema has named this decision since
+        # the beginning and nothing ever wrote it.
+        import sys as _s
+        from datetime import timedelta as T
+        _s.path.insert(0, ".")
+        from api.server import engine, store, expire_waits
+        from core.durable import now as _now
+        from flows.morning_sweep import _queue
+
+        @engine.workflow("a_probe37")
+        def parked(ctx, payload):
+            ctx.activity("read", lambda: "x")
+            _queue(ctx, store, "availability_reply", "a draft", "why",
+                   {"sources": []})
+            ctx.signal_wait("approval", timeout_hours=48)
+            return {}
+
+        rid = engine.start("a_probe37", "cottages", {})
+        try:
+            if store.one("SELECT status FROM run WHERE id=?", rid)["status"] \
+                    != "suspended":
+                return (False, "the run did not park; nothing to expire")
+            store.x("UPDATE waiting SET deadline=? WHERE run_id=?",
+                    (_now() - T(hours=1)).isoformat(), rid)
+            expire_waits()
+            left = store.one("SELECT COUNT(*) c FROM approval "
+                             "WHERE decision IS NULL AND run_id=?", rid)["c"]
+            if left:
+                return (True, f"{left} approval(s) left in the queue after "
+                              f"the run holding them finished")
+            d = store.one("SELECT decision FROM approval WHERE run_id=?", rid)
+            if not d or d["decision"] != "expired":
+                return (True, f"the approval is {d and d['decision']!r}, "
+                              f"not 'expired'")
+            return (False, "an expired wait takes its drafts out of the queue")
+        finally:
+            store.x("DELETE FROM run WHERE id=?", rid)
+    probe("A37 an expired wait leaves its drafts in the queue for ever",
+          expired_approvals)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

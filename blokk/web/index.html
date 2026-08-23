@@ -224,6 +224,9 @@
   .qi .t{flex:1;font-size:14px;line-height:1.35}
   .qi .t small{display:block;color:var(--lab2);font-size:12.5px;margin-top:2px}
   .qi .m{font-family:var(--mono);font-size:11px;color:var(--lab3)}
+  /* An approval that timed out is in this list because it is decided, not
+     because it went well. It should not read the same as one you approved. */
+  .qi .m.gone{color:var(--amber)}
 
   .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
   .runs::-webkit-scrollbar{display:none}
@@ -966,7 +969,8 @@ function paint(h, ap, handled, runs){
   $('#qlist').innerHTML = handled.length
     ? handled.map(q=>`<div class="qi"><span class="dot" style="background:${WCOL[q.ws]||'var(--lab3)'}"></span>
         <span class="t">${esc(q.title||q.category)}<small>${esc((q.body||'').slice(0,72))}</small></span>
-        <span class="m">${esc(q.decision)}</span></div>`).join('')
+        <span class="m ${q.decision === 'expired' ? 'gone' : ''}">${
+          esc(q.decision)}</span></div>`).join('')
     : `<div class="qi"><span class="t" style="color:var(--lab3)">Nothing yet. Run the sweep, then decide something.</span></div>`;
 
   $('#runs').innerHTML = runs.map(r=>{

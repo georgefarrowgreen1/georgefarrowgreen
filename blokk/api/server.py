@@ -46,7 +46,9 @@ policy = Policy(store)
 NIGHTLY = nightly.Nightly(
     store,
     sweep=lambda since: sweep_all(since=since),
-    expire=lambda: engine.sweep_deadlines())
+    # A lambda, not the function: NIGHTLY is built here at import time and
+    # expire_waits is defined several hundred lines below it.
+    expire=lambda: expire_waits())
 
 # ── access ──────────────────────────────────────────────────────────────────
 # The server binds 0.0.0.0 so the phone can reach it, which means everyone
@@ -730,6 +732,25 @@ def h_setup_write(body):
     return {"ok": True, "conf": conf, "path": str(srv.CONF)}
 
 
+def expire_waits() -> int:
+    """Expire parked runs, and take their approvals out of the queue with them.
+
+    A run whose 48 hours ran out is finished. The approvals it was holding
+    stayed in the queue with no decision, so the phone kept offering a draft
+    that nothing would ever send — approving it recorded trust, resumed
+    nothing, and said nothing about why. The schema has named this decision
+    since the beginning; nothing ever wrote it.
+    """
+    woken = engine.sweep_deadlines()
+    if woken:
+        marks = ",".join("?" * len(woken))
+        store.x(f"UPDATE approval SET decision='expired', decided_at=? "
+                f"WHERE decision IS NULL AND run_id IN ({marks})",
+                now().isoformat(), *woken)
+        bump()
+    return len(woken)
+
+
 _DOCTOR: dict = {"at": 0.0, "report": None}
 
 
@@ -1150,7 +1171,7 @@ def serve(port=8080):
     # Mac with a few interrupted sweeps behind it sat silent for minutes on
     # every start, with nothing on screen to say why.
     resumed = engine.resume_all(background=True, on_done=bump)
-    expired = engine.sweep_deadlines()
+    expired = expire_waits()
     NIGHTLY.start()
     ip, host = lan_ip(), socket.gethostname().split(".")[0].lower()
     phone = f"http://{ip}:{port}/?t={TOKEN}"
