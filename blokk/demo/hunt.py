@@ -2428,6 +2428,96 @@ try:
         return (False, "a plain .ics and a maildir both read")
     probe("A63 only Apple's own file layouts can be wired", portable_formats)
 
+    def streams_as_it_writes():
+        # A 12B model takes several seconds to write a paragraph. Delivered
+        # in one lump at the end, every turn is six seconds of blank panel;
+        # delivered as it is written, it reads as fast. The catch is that the
+        # loop asks for JSON under a grammar, so what arrives is
+        # {"do":"reply","say":"Hel — and the answer has to be dug out of a
+        # partial object without ever showing a broken escape.
+        import sys as _s, json as _j, threading as _th, time as _t
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.ask import ask as run_ask, say_so_far
+        from core.models import ServedModel
+
+        REPLY = [""]
+        SSE = [True]
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length') or 0)
+                body = _j.loads(self.rfile.read(n) or b"{}")
+                text = REPLY[0]
+                if not body.get("stream") or not SSE[0]:
+                    b = _j.dumps({"choices": [{"message": {"content": text}}],
+                                  "usage": {}}).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(b)))
+                    self.end_headers(); self.wfile.write(b); return
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream')
+                self.end_headers()
+                for i in range(0, len(text), 2):
+                    f = {"choices": [{"delta": {"content": text[i:i + 2]}}]}
+                    self.wfile.write(f"data: {_j.dumps(f)}\n\n".encode())
+                    self.wfile.flush()
+                self.wfile.write(b"data: [DONE]\n\n"); self.wfile.flush()
+
+        srv = HTTPServer(('127.0.0.1', 8179), H)
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        st = Store('blokk.db')
+        m = ServedModel(endpoint="http://127.0.0.1:8179/v1", model="probe")
+
+        # Every prefix of a growing object must decode to a prefix of the
+        # truth. A half-decoded \uXXXX on the screen is never taken back.
+        for full in ["Hello there.", "a line\nand another", "café open",
+                     'quote " inside', "back\\slash"]:
+            doc = _j.dumps({"do": "reply", "say": full})
+            for k in range(doc.index('"say"'), len(doc) + 1):
+                got = say_so_far(doc[:k])
+                if not full.startswith(got):
+                    return (True, f"a partial object decoded to {got!r}, "
+                                  f"which is not a prefix of {full!r}")
+            if say_so_far(doc) != full:
+                return (True, f"the whole object decoded to "
+                              f"{say_so_far(doc)!r}, not {full!r}")
+
+        def run(reply, sse=True):
+            REPLY[0] = reply; SSE[0] = sse
+            st.x("UPDATE budget SET tool_calls=0")
+            out = []
+            for ev in run_ask(st, "what needs me?", m, "cottages"):
+                if ev["type"] == "TEXT_MESSAGE_CONTENT":
+                    out.append(ev["delta"])
+            return out
+        try:
+            long = "Two things need you, and the second one is the rate change."
+            deltas = run(_j.dumps({"do": "reply", "say": long}))
+            if "".join(deltas) != long:
+                return (True, f"streamed text came out as {''.join(deltas)[:60]!r}")
+            if len(deltas) < 5:
+                return (True, f"arrived in {len(deltas)} pieces, which is a "
+                              f"lump, not a stream")
+            # A server with no SSE must still answer, in one piece.
+            one = run(_j.dumps({"do": "reply", "say": "No streaming here."}),
+                      sse=False)
+            if "".join(one) != "No streaming here.":
+                return (True, f"a non-streaming server broke it: {one}")
+            # Cut off mid-object: what was shown stays shown.
+            half = run('{"do":"reply","say":"half an answ')
+            if "".join(half) != "half an answ":
+                return (True, f"a truncated stream lost what it had said: {half}")
+            return (False, f"{len(deltas)} pieces, exact text, and it survives "
+                           f"a server with no SSE and a cut-off object")
+        finally:
+            srv.shutdown()
+    probe("A64 a model's answer arrives in one lump after the wait",
+          streams_as_it_writes)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

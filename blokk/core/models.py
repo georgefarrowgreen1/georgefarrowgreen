@@ -201,6 +201,66 @@ class ServedModel(Model):
             "model": self.name,
         }
 
+    def stream(self, messages, schema=None):        # pragma: no cover
+        """The same completion, arriving as it is written.
+
+        chat() is one POST that returns when the model has finished, so with
+        real weights an answer lands after several seconds of nothing at all.
+        The difference between that and this is the difference between a
+        product that feels broken and one that feels quick, and it is one
+        flag on the request.
+
+        Yields text fragments. Falls back to one fragment if the server does
+        not do SSE — plenty of OpenAI-compatible servers do not, and a chat
+        box that breaks on those is worse than one that is occasionally not
+        incremental.
+        """
+        import http.client
+        import urllib.error
+        import urllib.request
+        payload = {"model": self.name, "messages": messages,
+                   "max_tokens": 1024, "stream": True}
+        if schema or self.schema:
+            payload["response_format"] = {"type": "json_schema",
+                                          "json_schema": schema or self.schema}
+        req = urllib.request.Request(
+            f"{self.endpoint}/chat/completions", json.dumps(payload).encode(),
+            {"Content-Type": "application/json", "Accept": "text/event-stream"})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                if "text/event-stream" not in (r.headers.get("Content-Type") or ""):
+                    # Answered the whole thing at once. Take it and say so by
+                    # yielding it in one piece rather than failing.
+                    d = json.loads(r.read())
+                    yield (d.get("choices", [{}])[0].get("message", {})
+                           .get("content") or "")
+                    return
+                for raw in r:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    body = line[5:].strip()
+                    if body == "[DONE]":
+                        return
+                    try:
+                        d = json.loads(body)
+                    except ValueError:
+                        continue
+                    delta = (d.get("choices") or [{}])[0].get("delta") or {}
+                    piece = delta.get("content")
+                    if piece:
+                        yield piece
+        except urllib.error.URLError as e:
+            raise ModelUnreachable(
+                f"no model server at {self.endpoint} ({e.reason}). "
+                f"Start it with ./run.sh, or ./setup.sh --stubs to run without "
+                f"one.") from e
+        except (OSError, http.client.HTTPException) as e:
+            raise ModelUnreachable(
+                f"the model server at {self.endpoint} closed the connection "
+                f"part way through its answer ({type(e).__name__}). It may "
+                f"have run out of memory — check its log.") from e
+
     def summarise(self, messages):                  # pragma: no cover
         return self.chat(messages + [{"role": "user",
                 "content": "Summarise the above in under 200 words."}])["text"]

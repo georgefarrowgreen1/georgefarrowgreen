@@ -484,8 +484,32 @@ def ask(store, question: str, model, workspace: str | None = None,
             messages.append({"role": "user", "content": json.dumps(
                 {"note": "This is the last step. Answer now from what you "
                          "have read, with do=reply."})})
-        move, why = _decide(model, messages, schema, question, gathered,
-                            tools, known)
+        move, why, live = None, "", False
+        for item in _steps(model, messages, schema, question, gathered,
+                           tools, known):
+            if item[0] == "text":
+                # The answer, arriving. Opened here rather than below because
+                # by the time the step parses it is already on the screen.
+                if not live:
+                    live = True
+                    yield {"type": "TEXT_MESSAGE_START"}
+                yield {"type": "TEXT_MESSAGE_CONTENT", "delta": item[1]}
+            else:
+                move, why = item[1], item[2]
+        if live:
+            yield {"type": "TEXT_MESSAGE_END"}
+            said = move.get("already_said") or ""
+            remember(store, thread, ws, "assistant", said, flagged=flagged)
+            answered = True
+            if why:
+                yield {"type": "DEGRADED", "detail": why}
+            if gathered:
+                yield {"type": "SOURCES",
+                       "rows": [{"tool": n, "count": len(r)} for n, r in gathered],
+                       "flagged": flagged}
+            yield {"type": "RUN_FINISHED", "steps": steps,
+                   "budget_left": left, "degraded": why or None}
+            return
         if why and not degraded:
             # Invariant 6: the model being unreachable is not allowed to look
             # like the model having nothing to say.
@@ -593,6 +617,121 @@ def ask(store, question: str, model, workspace: str | None = None,
                "flagged": flagged}
     yield {"type": "RUN_FINISHED", "steps": steps, "budget_left": left,
            "degraded": degraded or None}
+
+
+# ── streaming a step ────────────────────────────────────────────────────────
+# The loop asks for one JSON object per step, so what arrives token by token
+# is `{"do":"reply","say":"Hel`. Nobody can read that. But the answer is in
+# there, growing, and showing it as it grows is the difference between a chat
+# box that feels quick and one that sits blank for six seconds — which, with
+# a 12B model on a laptop, is every single turn.
+#
+# So: watch the buffer for the `say` string and emit whatever of it is
+# complete. `do` is declared first in the schema and guided decoding emits
+# properties in schema order, so by the time `say` opens we already know
+# whether this step is a reply worth showing or a "let me check" line that
+# belongs on a tool chip.
+SAY = re.compile(r'"say"\s*:\s*"')
+
+
+def say_so_far(buf: str) -> str:
+    """The decoded `say` value in a partial JSON object, as far as it goes.
+
+    Stops before an incomplete escape rather than guessing at it: half of a
+    \\uXXXX is not a character, and emitting it puts a replacement glyph on
+    the screen that never gets taken back.
+    """
+    m = SAY.search(buf)
+    if not m:
+        return ""
+    i, out = m.end(), []
+    while i < len(buf):
+        c = buf[i]
+        if c == '"':
+            break                     # the string closed; this is all of it
+        if c == "\\":
+            esc = buf[i + 1:i + 2]
+            if not esc:
+                break                 # a backslash and nothing yet
+            if esc == "u":
+                if len(buf) < i + 6:
+                    break             # \uXXXX still arriving
+                try:
+                    out.append(chr(int(buf[i + 2:i + 6], 16)))
+                except ValueError:
+                    pass
+                i += 6
+                continue
+            out.append({"n": "\n", "t": "\t", "r": "\r", "b": "\b",
+                        "f": "\f"}.get(esc, esc))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _looks_like_a_reply(buf: str) -> bool:
+    return bool(re.search(r'"do"\s*:\s*"reply"', buf))
+
+
+def _steps(model, messages, schema, question, gathered, tools, known):
+    """One step, as it happens.
+
+    Yields ("text", delta) while a reply is being written, then exactly one
+    ("move", move, why). Everything that is not a streaming model server
+    takes the same shape with the text arriving in one go — the caller does
+    not branch on which.
+    """
+    if model is None or not getattr(model, "plans", False):
+        yield ("move", _plan(question, gathered, tools, known), "")
+        return
+    if not hasattr(model, "stream"):
+        move, why = _decide(model, messages, schema, question, gathered,
+                            tools, known)
+        yield ("move", move, why)
+        return
+    buf, shown, streamed = "", 0, False
+    try:
+        for piece in model.stream(messages, schema=schema):
+            buf += piece
+            if not _looks_like_a_reply(buf):
+                continue
+            text = say_so_far(buf)
+            if len(text) > shown:
+                streamed = True
+                yield ("text", text[shown:])
+                shown = len(text)
+    except Exception as e:                                      # noqa: BLE001
+        if streamed:
+            # Half an answer is on the screen. Ending the turn with a
+            # deterministic replacement would rewrite what the person just
+            # watched appear, so keep what was said and say what stopped it.
+            yield ("move", {"do": "reply", "say": ""},
+                   f"The answer stopped part way through: {_why(e)}")
+            return
+        yield ("move", _plan(question, gathered, tools, known), _why(e))
+        return
+    move = _parse(buf)
+    if move is None:
+        if streamed:
+            # Words are already on the screen and they came from the model.
+            # Saying they were assembled from the rows would be untrue about
+            # the half the person just watched arrive.
+            yield ("move", {"do": "reply", "say": "",
+                            "already_said": say_so_far(buf)},
+                   "That answer stopped part way through — the model's reply "
+                   "ended before it was finished.")
+            return
+        yield ("move", _plan(question, gathered, tools, known),
+               "The model did not answer in the shape this asks for, so this "
+               "reply was assembled from the rows rather than written.")
+        return
+    if streamed:
+        # Already on the screen, word by word. Handing it back as the move's
+        # `say` would print the whole answer a second time.
+        move = {**move, "say": "", "already_said": say_so_far(buf)}
+    yield ("move", move, "")
 
 
 def _decide(model, messages, schema, question, gathered, tools,
