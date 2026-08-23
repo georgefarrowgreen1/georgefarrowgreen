@@ -367,17 +367,24 @@ class Engine:
         """
         rows = [r["id"] for r in self.store.q(
             "SELECT id FROM run WHERE status='running'")]
+        def drive(rid) -> None:
+            try:
+                self._drive(rid)
+            except Exception:                                     # noqa: BLE001
+                pass           # _drive has marked and journalled it already
+
+        # The guard belongs to resuming, not to resuming in a thread. Without
+        # it here, one run whose workflow raises stops the loop, and every
+        # stranded run behind it stays stranded — the one thing this method
+        # exists to prevent, in the one path a caller can watch.
         if not background:
             for rid in rows:
-                self._drive(rid)
+                drive(rid)
             return rows
 
         def drive_all():
             for rid in rows:
-                try:
-                    self._drive(rid)
-                except Exception:                                 # noqa: BLE001
-                    pass       # _drive has marked and journalled it already
+                drive(rid)
                 if on_done:
                     on_done()
         if rows:

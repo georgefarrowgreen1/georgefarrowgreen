@@ -63,6 +63,7 @@ def read_since(fn, since, now, limit: int = 50) -> list:
     one of the two callers is a workflow and workflows do not get a clock.
     """
     import inspect
+    import math
     try:
         args = inspect.signature(fn).parameters
     except (TypeError, ValueError):                    # a builtin, or a mock
@@ -70,11 +71,16 @@ def read_since(fn, since, now, limit: int = 50) -> list:
     kw: dict = {}
     if "limit" in args:
         kw["limit"] = limit
-    hours = max(1, int((now - since).total_seconds() // 3600) + 1)
+    # Ceiling of the real gap, not floor-plus-one. The fudge turned a
+    # twenty-four hour window into twenty-five hours, and then the day
+    # rounding turned that into two days — so every nightly sweep re-read
+    # the whole of the previous night, triaged it again, and spent a second
+    # night's tokens doing it.
+    secs = max(1.0, (now - since).total_seconds())
     if "days" in args:
-        kw["days"] = max(1, (hours + 23) // 24)
+        kw["days"] = max(1, math.ceil(secs / 86400))
     elif "hours" in args:
-        kw["hours"] = hours
+        kw["hours"] = max(1, math.ceil(secs / 3600))
     elif "hour" in args:
         kw["hour"] = since.strftime("%Y-%m-%dT%H")
     return list(fn(**kw))

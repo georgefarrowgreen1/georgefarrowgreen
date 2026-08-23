@@ -116,6 +116,38 @@ def lan_ip() -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════ handlers
+# ── reading a request body ──────────────────────────────────────────────────
+# Everything below arrives as JSON from a phone, a browser, or curl, and none
+# of the three is obliged to send what the handler expects. A field read
+# straight out of a dict and used as though it were a string turns a typo into
+# a 500 with a Python message in it, which tells the person holding the phone
+# nothing at all. These do the reading, and say what was wrong with it.
+class BadField(Exception):
+    """Carries a sentence for the caller, not a traceback."""
+
+
+def text(body: dict, key: str, default: str = "", limit: int = 400) -> str:
+    v = body.get(key, default)
+    if v is None:
+        v = default
+    if not isinstance(v, str):
+        raise BadField(f"'{key}' should be text, not {type(v).__name__}")
+    if len(v) > limit:
+        raise BadField(f"'{key}' is {len(v)} characters; the limit is {limit}")
+    return v.strip()
+
+
+def number(body: dict, key: str, default: int, lo: int, hi: int) -> int:
+    v = body.get(key, default)
+    if v is None or v == "":
+        return default
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        raise BadField(f"'{key}' should be a number, not {v!r}") from None
+    return max(lo, min(hi, n))
+
+
 def h_health(_q):
     open_appr = store.one("SELECT COUNT(*) c FROM approval WHERE decision IS NULL")["c"]
     return {
@@ -356,7 +388,7 @@ def h_schedule_set(body):
     silently means "never" is the failure this whole file was written to fix.
     """
     try:
-        at = nightly.set_at(store, str(body.get("at", "")))
+        at = nightly.set_at(store, text(body, "at", limit=16))
     except ValueError as e:
         return {"error": str(e)}, 400
     bump()
@@ -469,7 +501,7 @@ def _local_models(ram_gb: float) -> list[dict]:
 
 def h_models_add(body):
     from core import weights
-    out = weights.add(ROOT, (body.get("path") or "").strip())
+    out = weights.add(ROOT, text(body, "path", limit=1024))
     if out.get("error"):
         return out, 400
     _KV_CACHE.clear()                 # a new file to read the geometry from
@@ -479,7 +511,7 @@ def h_models_add(body):
 
 def h_models_remove(body):
     from core import weights
-    out = weights.remove(ROOT, (body.get("name") or "").strip())
+    out = weights.remove(ROOT, text(body, "name", limit=255))
     if out.get("error"):
         return out, 400
     _KV_CACHE.clear()
@@ -501,7 +533,8 @@ def h_sources(_q):
 
 def h_workspace_add(body):
     from core import sources
-    r = sources.workspace_add(store, body.get("id", ""), body.get("name", ""))
+    r = sources.workspace_add(store, text(body, "id", limit=64),
+                              text(body, "name", limit=200))
     if not r.get("error"):
         bump()
     return r
@@ -516,7 +549,7 @@ def h_workspace_remove(body):
     someone taps by accident.
     """
     from core import sources
-    wid = body.get("id", "")
+    wid = text(body, "id", limit=64)
     if not store.one("SELECT 1 FROM workspace WHERE id=?", wid):
         return {"error": f"no workspace '{wid}'"}
     counts = {t: store.one(f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?",
@@ -584,8 +617,9 @@ def h_sources_peek(body):
     quarantine verdict with them. Whatever renders this escapes it.
     """
     from core import sources
-    out = sources.peek(store, body.get("workspace", ""), body.get("name", ""),
-                       min(int(body.get("n", 5) or 5), 20))
+    out = sources.peek(store, text(body, "workspace", limit=64),
+                       text(body, "name", limit=64),
+                       number(body, "n", 5, 1, 20))
     return (out, 404) if out.get("error") else out
 
 
@@ -649,7 +683,7 @@ def h_setup_state(_q):
 def h_setup_plan(body):
     """Which backend for which tier, and why. The rule lives in backends.py."""
     from core.plan import build
-    shape = body.get("shape", "small")
+    shape = text(body, "shape", "small", limit=300)
     if shape.startswith("local:"):
         # No backend choice to make: MLX cannot read GGUF, so a file on disk
         # is always llama.cpp. backends.py is skipped rather than consulted.
@@ -664,13 +698,21 @@ def h_setup_plan(body):
                                   "download, and llama.cpp is the only thing "
                                   "that reads GGUF"}]}
     return {"tiers": build(shape,
-                           int(body.get("slots", 4)),
-                           int(body.get("ctx", 32768)) // 1000)}
+                           number(body, "slots", 4, 1, 64),
+                           number(body, "ctx", 32768, 1024, 1_000_000) // 1000)}
 
 
 def h_setup_write(body):
-    conf = srv.write_conf(body.get("mode", "servers"), body.get("tiers", []),
-                          int(body.get("slots", 4)), int(body.get("ctx", 32768)))
+    tiers = body.get("tiers", [])
+    if not isinstance(tiers, list) or not all(isinstance(t, dict) for t in tiers):
+        raise BadField("'tiers' should be a list of tier objects")
+    for t in tiers:
+        missing = [k for k in ("tier", "backend", "alias", "port") if not t.get(k)]
+        if missing:
+            raise BadField(f"a tier is missing {', '.join(missing)}")
+    conf = srv.write_conf(text(body, "mode", "servers", limit=32), tiers,
+                          number(body, "slots", 4, 1, 64),
+                          number(body, "ctx", 32768, 1024, 1_000_000))
     bump()
     return {"ok": True, "conf": conf, "path": str(srv.CONF)}
 
@@ -1032,6 +1074,11 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 try:
                     out = fn(*m.groups(), body)
+                except BadField as e:
+                    # Malformed input is the caller's mistake, and 400 with a
+                    # sentence is the answer. It used to be a 500 with a
+                    # Python exception in it, which reads as "Blokk broke".
+                    return self._send(400, {"error": str(e)})
                 except Exception as e:              # noqa: BLE001
                     return self._send(500, {"error": str(e)})
                 code = 200

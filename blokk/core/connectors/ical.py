@@ -61,6 +61,25 @@ def _as_date(value: str) -> date | None:
     return None
 
 
+_DUR = re.compile(r"^[+-]?P(?:(\d+)W)?(?:(\d+)D)?"
+                  r"(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$", re.I)
+
+
+def _duration(text: str) -> timedelta | None:
+    """RFC 5545 DURATION — P3D, PT1H30M, P1W — as a timedelta.
+
+    An event may carry DURATION *instead of* DTEND, and Calendar writes it
+    that way for anything created from a template. Ignoring it made a
+    three-night booking one day long, which makes gaps() offer two booked
+    nights as free — the confident wrong answer this file exists to avoid.
+    """
+    m = _DUR.fullmatch((text or "").strip())
+    if not m or not any(m.groups()):
+        return None
+    w, d, h, mi, sec = (int(x or 0) for x in m.groups())
+    return timedelta(weeks=w, days=d, hours=h, minutes=mi, seconds=sec)
+
+
 def _expand(ev: dict, lo: date, hi: date) -> list[tuple[date, date]]:
     """Every occurrence of one event that touches [lo, hi]."""
     start, end = ev["start"], ev["end"]
@@ -153,10 +172,32 @@ def _read(root: Path) -> tuple[list[dict], list[str]]:
                 s = _as_date(_prop(block, "DTSTART")[1])
                 if not s:
                     continue
-                e = _as_date(_prop(block, "DTEND")[1]) or s
                 allday = "VALUE=DATE" in _prop(block, "DTSTART")[0]
-                if allday and e > s:
-                    e -= timedelta(days=1)      # DTEND is exclusive for dates
+                e = _as_date(_prop(block, "DTEND")[1])
+                if e:
+                    if allday and e > s:
+                        e -= timedelta(days=1)  # DTEND is exclusive for dates
+                else:
+                    # No DTEND: DTEND = DTSTART + DURATION, and the same
+                    # exclusive rule applies to the result.
+                    dur = _duration(_prop(block, "DURATION")[1])
+                    if dur is None:
+                        e = s
+                    elif allday:
+                        # Ambiguity resolves toward busy, so a duration that
+                        # ends part way through a day still takes that day.
+                        whole = -(-int(dur.total_seconds()) // 86400)
+                        e = s + timedelta(days=max(0, whole - 1))
+                    else:
+                        start_h = 0
+                        raw = _prop(block, "DTSTART")[1]
+                        if "T" in raw and len(raw) >= 11:
+                            try:
+                                start_h = int(raw.split("T", 1)[1][:2])
+                            except ValueError:
+                                start_h = 0
+                        over = start_h * 3600 + int(dur.total_seconds())
+                        e = s + timedelta(days=over // 86400)
                 exd = set()
                 for params, value in re.findall(r"^EXDATE([^:\r\n]*):(.*)$",
                                                 block, re.M):

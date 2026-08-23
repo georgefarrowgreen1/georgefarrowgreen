@@ -41,8 +41,15 @@ def listing(root: Path) -> list[dict]:
 
 def add(root: Path, path: str) -> dict:
     """Link one .gguf, or every .gguf in a folder."""
-    p = Path(path).expanduser()
-    if not p.exists():
+    try:
+        p = Path(path).expanduser()
+        here = p.exists()
+    except OSError as e:
+        # A path too long for the filesystem raises out of exists() rather
+        # than answering False, and the traceback names neither the field nor
+        # what to do about it.
+        return {"error": f"that path will not open: {e.strerror or e}"}
+    if not here:
         return {"error": f"nothing at {p}"}
     files = sorted(p.glob("*.gguf")) if p.is_dir() else [p]
     if not files:
@@ -81,7 +88,11 @@ def remove(root: Path, name: str) -> dict:
     if "/" in name or name in ("", ".", ".."):
         return {"error": "bad name"}
     f = _dir(root) / name
-    if not (f.exists() or f.is_symlink()):
+    try:
+        here = f.exists() or f.is_symlink()
+    except OSError as e:
+        return {"error": f"that name will not open: {e.strerror or e}"}
+    if not here:
         return {"error": f"no {name} in models/"}
     if not f.is_symlink():
         return {"error": f"{name} is a real file in models/, not a link. "

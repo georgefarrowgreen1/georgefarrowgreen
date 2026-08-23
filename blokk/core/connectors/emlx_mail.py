@@ -58,7 +58,13 @@ def _emlx(path: Path) -> email.message.Message | None:
     try:
         length = int(raw[:nl].strip())
     except ValueError:
-        length = len(raw)                  # not prefixed; take it as a message
+        # Not prefixed, or the prefix is not a number. Taking the rest of the
+        # file as the message then swallows the plist Apple staples to the
+        # end, and that XML travels all the way into a draft — the body a
+        # model reads is supposed to be the mail and nothing else.
+        rest = raw[nl + 1:]
+        cut = rest.rfind(b"<?xml")
+        length = (cut if cut > 0 else len(rest))
     body = raw[nl + 1:nl + 1 + length]
     try:
         return email.message_from_bytes(body, policy=email.policy.default)

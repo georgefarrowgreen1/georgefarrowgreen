@@ -779,6 +779,149 @@ try:
     probe("A29 a sweep that runs late reads a fixed window anyway",
           sweep_window)
 
+    # ── 30. the same mail, twice, every night ───────────────────────────
+    def window_arithmetic():
+        # read_since translates "since this moment" into whatever unit each
+        # connector counts in. It floored the gap and added one for safety,
+        # and the day rounding then doubled that: a twenty-four hour window
+        # asked for two days. Every nightly sweep re-read the previous night,
+        # triaged it again, and spent a second night's tokens on it.
+        import sys as _s
+        from datetime import datetime as D, timedelta as T, timezone as Z
+        _s.path.insert(0, ".")
+        from core.connectors import read_since
+        now = D(2026, 8, 23, 4, 0, tzinfo=Z.utc)
+        class Days:
+            def search_since(self, hour="", limit=50, days=None):
+                return [days]
+        class Hours:
+            def since(self, hours=12, limit=40):
+                return [hours]
+        cases = [(T(hours=24), 1, 24), (T(hours=31), 2, 31),
+                 (T(minutes=2), 1, 1), (T(days=60), 60, 1440)]
+        for gap, want_d, want_h in cases:
+            got_d = read_since(Days().search_since, now - gap, now)[0]
+            got_h = read_since(Hours().since, now - gap, now)[0]
+            if got_d != want_d or got_h != want_h:
+                return (True, f"a {gap} window asked for {got_d} day(s) and "
+                              f"{got_h} hour(s), wanted {want_d} and {want_h}")
+        return (False, "a night is a night, in whichever unit it is asked for")
+    probe("A30 a nightly sweep asks for two nights of mail", window_arithmetic)
+
+    # ── 31. a typo answered with a traceback ────────────────────────────
+    def malformed_input():
+        # Every body here arrives from a phone, a browser or curl, and none of
+        # the three is obliged to send what the handler expects. A field read
+        # straight out of a dict and used as a string turns a typo into a 500
+        # carrying a Python message, which on a phone reads as "Blokk broke".
+        cases = [
+            ('/api/v1/sources/peek', {'workspace': 'cottages', 'name': 'mail',
+                                      'n': 'lots'}),
+            ('/api/v1/workspaces/add', {'id': ['a'], 'name': 'x'}),
+            ('/api/v1/workspaces/add', {'id': 'a' * 5000, 'name': 'x'}),
+            ('/api/v1/setup/plan', {'shape': None}),
+            ('/api/v1/setup/write', {'mode': 'servers', 'tiers': [{}]}),
+            ('/api/v1/setup/write', {'mode': 'servers', 'tiers': 'nope'}),
+            ('/api/v1/models/add', {'path': 'a' * 4000}),
+            ('/api/v1/models/remove', {'name': 'a' * 4000}),
+            ('/api/v1/schedule', {'at': {'hour': 4}}),
+        ]
+        for path, body in cases:
+            try:
+                po(path, body)
+            except urllib.error.HTTPError as e:
+                if e.code == 500:
+                    return (True, f"{path} answered 500 to {list(body)}: "
+                                  f"{e.read()[:80]}")
+                detail = json.loads(e.read() or b'{}').get('error', '')
+                if e.code == 400 and not detail:
+                    return (True, f"{path} refused {list(body)} with no reason")
+            except Exception as e:                               # noqa: BLE001
+                return (True, f"{path} raised {type(e).__name__}")
+        return (False, "malformed input is refused with a sentence, not a "
+                       "traceback")
+    probe("A31 malformed input answers with a 500 and a Python message",
+          malformed_input)
+
+    # ── 32. a booking that reads as one night ───────────────────────────
+    def ics_duration():
+        # An event may carry DURATION instead of DTEND, and Calendar writes it
+        # that way for anything made from a template. Ignoring it made a
+        # three-night booking one day long — and a gaps() that offers two
+        # booked nights as free is the one failure that reaches a guest.
+        import sys as _s, tempfile, shutil
+        from datetime import date as D, timedelta as T
+        _s.path.insert(0, ".")
+        from core.connectors.ical import LocalCalendar
+        root = pathlib.Path(tempfile.mkdtemp()) / "Calendars"
+        ev = root / "a.caldav" / "b.calendar" / "Events"
+        ev.mkdir(parents=True)
+        (ev.parent / "Info.plist").write_text(
+            "<plist><dict><key>Title</key><string>C</string></dict></plist>")
+        start = (D.today() + T(days=3)).isoformat().replace("-", "")
+        (ev / "e.ics").write_text(
+            f"BEGIN:VEVENT\nSUMMARY:Booked\n"
+            f"DTSTART;VALUE=DATE:{start}\nDURATION:P3D\nEND:VEVENT\n")
+        try:
+            evs = LocalCalendar(root=root).events(days=20)
+            if not evs:
+                return (True, "an event with DURATION and no DTEND vanished")
+            span = (D.fromisoformat(evs[0]["end"])
+                    - D.fromisoformat(evs[0]["start"])).days
+            if span != 2:                  # three nights, inclusive end
+                return (True, f"three nights read as {span + 1} day(s)")
+            free = [g["from"] for g in LocalCalendar(root=root).gaps(days=20)]
+            booked = (D.today() + T(days=4)).isoformat()
+            if any(f <= booked <= f for f in free):
+                return (True, "a booked night was offered as free")
+            return (False, "DURATION is read, and the nights it covers are busy")
+        finally:
+            shutil.rmtree(root.parent, ignore_errors=True)
+    probe("A32 a calendar event with DURATION and no DTEND is one day long",
+          ics_duration)
+
+    # ── 33. one poisonous run strands the rest ──────────────────────────
+    def resume_poison():
+        # Resuming is the payoff of the journal, and it happens on boot with
+        # nobody watching. The background path guarded each run; the
+        # synchronous one did not, so a workflow that raised stopped the loop
+        # and every stranded run behind it stayed stranded — silently, since
+        # the exception went to whoever called it and no further.
+        import sys as _s, tempfile
+        _s.path.insert(0, ".")
+        from core.durable import Store, Engine
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        eng = Engine(st)
+        st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+             " VALUES('w','W',1,'[]')")
+        drove = []
+
+        @eng.workflow("fine")
+        def fine(ctx, payload):
+            drove.append(ctx.run_id)
+            return {}
+
+        @eng.workflow("poison")
+        def poison(ctx, payload):
+            raise RuntimeError("this one always dies")
+
+        for i, wf in enumerate(("fine", "poison", "fine")):
+            st.x("INSERT INTO run(id,workspace_id,workflow,status,input)"
+                 " VALUES(?,?,?,'running','{}')", f"r{i}", "w", wf)
+        try:
+            eng.resume_all()                   # the synchronous path
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"resuming raised {type(e).__name__} and stopped")
+        if len(drove) != 2:
+            return (True, f"only {len(drove)} of 2 healthy runs resumed")
+        states = {r["id"]: r["status"]
+                  for r in st.q("SELECT id,status FROM run")}
+        if states.get("r1") != "failed":
+            return (True, f"the poisonous run is {states.get('r1')}, not failed")
+        return (False, "one run that dies is marked failed and the rest still run")
+    probe("A33 one run that dies on resume strands every run behind it",
+          resume_poison)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
