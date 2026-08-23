@@ -1,5 +1,5 @@
 """Adversarial pass. Tries to break it rather than confirm it works."""
-import json, pathlib, subprocess, sys, tempfile, threading, time, urllib.request, urllib.error, sqlite3, socket
+import json, os, pathlib, subprocess, sys, tempfile, threading, time, urllib.request, urllib.error, sqlite3, socket
 p=subprocess.Popen([sys.executable,'-m','api.server','8099'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1.5)
 B='http://localhost:8099'
@@ -2645,6 +2645,66 @@ try:
                        "refused with the fix in the sentence")
     probe("A67 a source can point at a folder that does not exist",
           a_folder_that_is_not_there)
+
+    def adding_a_source_finishes():
+        # `connect.py add` is the first thing anybody runs, and two things
+        # about it were wrong. It printed a `security add-generic-password`
+        # command to go and run in another window — one context switch at
+        # exactly the moment somebody is deciding whether this is worth the
+        # bother. And its follow-up check sat on an unanswering mail server
+        # until the socket gave up, with nothing on screen.
+        import sys as _s, subprocess as _sp, tempfile as _tf
+        env = dict(os.environ, BLOKK_PROBE="1")
+        md = pathlib.Path(_tf.mkdtemp()) / "cur"
+        md.mkdir(parents=True)
+        (md / "1700000000.M1P2.host:2,S").write_text(
+            "From: a@b.c\nSubject: hi\n\nbody\n")
+
+        def run(*a, seconds=45):
+            return _sp.run([_s.executable, "connect.py", *a],
+                           capture_output=True, text=True, timeout=seconds,
+                           stdin=_sp.DEVNULL, env=env)
+        try:
+            # A local folder: no password step, and it says what it read.
+            r = run("add", "cottages", "maildir", str(md.parent))
+            if "keychain service" in r.stdout:
+                return (True, "a folder is announced as a keychain service, "
+                              "which sends people hunting through Keychain "
+                              "Access for an entry that does not exist")
+            if "message(s)" not in r.stdout:
+                return (True, f"added a readable mailbox and said nothing "
+                              f"about it: {r.stdout[-120:]!r}")
+            # A credential source with nobody to prompt: print the command,
+            # do not hang waiting for an answer that cannot come.
+            r = run("add", "cottages", "imap", "blokk-probe-mail")
+            if "add-generic-password" not in r.stdout:
+                return (True, "no way to prompt, and no command printed either")
+            if "still trying" not in r.stdout and "raised" not in r.stdout \
+                    and "message(s)" not in r.stdout:
+                return (True, f"the check said nothing: {r.stdout[-140:]!r}")
+        except _sp.TimeoutExpired:
+            return (True, "connect.py add never came back — a mail server "
+                          "that is not answering hangs the whole thing")
+        finally:
+            st = sqlite3.connect('blokk.db')
+            st.execute("DELETE FROM credential WHERE workspace_id='cottages'")
+            st.commit(); st.close()
+        # The password path exists and never puts the secret anywhere but the
+        # keychain: no argv, no database, no log.
+        src = open("connect.py").read()
+        if "getpass" not in src:
+            return (True, "the password would be typed in the clear")
+        if "keychain.put" not in src:
+            return (True, "nothing stores it; it is still a command to go and "
+                          "run somewhere else")
+        for bad in ("print(pw", "print(password", "\"password\": pw"):
+            if bad in src:
+                return (True, f"the password reaches somewhere it should not: {bad}")
+        return (False, "a folder is not called a credential, the check is "
+                       "bounded, and the password is prompted hidden and kept "
+                       "only in the keychain")
+    probe("A68 adding a source hangs, or sends you elsewhere for the password",
+          adding_a_source_finishes)
 
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():

@@ -12,6 +12,7 @@ Wire real data in, one source at a time.
     python3 connect.py add cottages messages local
     python3 connect.py test                          prove every credential works
     python3 connect.py peek cottages mail 6          see what it would actually read
+    python3 connect.py keychain blokk-cottages-mail  store a password, hidden
     python3 connect.py remove cottages imap
     python3 connect.py ask "what needs me?"           every event, in the open
 
@@ -38,6 +39,95 @@ DB = Path(__file__).parent / "blokk.db"
 KINDS = sources.KINDS
 
 
+def _store_password(ref: str) -> bool:
+    """Prompt for the account and password, and put them in the keychain.
+
+    Returns False if there is nobody to prompt — a script, a pipe, a cron —
+    in which case the caller prints the command instead. It never returns
+    the password and never writes it anywhere but the keychain.
+    """
+    import getpass
+
+    if not sys.stdin.isatty():
+        return False
+    try:
+        from core.connectors import keychain
+    except ImportError:
+        return False
+    print(f"\nThis one needs a password, kept in your keychain under "
+          f"'{ref}'.")
+    print("  Blokk stores only the name. The password goes straight to "
+          "macOS and is read back at the moment it is used.")
+    print("  For iCloud that is an app-specific password from "
+          "appleid.apple.com, not your Apple ID password.")
+    print("  Press Enter on either line to skip and do it yourself later.")
+    try:
+        acct = input("  address / account: ").strip()
+        if not acct:
+            return False
+        pw = getpass.getpass("  password (not shown): ")
+        if not pw:
+            return False
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    try:
+        keychain.put(ref, acct, pw)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  could not write to the keychain: {e}")
+        return False
+    finally:
+        del pw
+    # Read it back rather than trusting the write. `security` exits 0 on
+    # plenty of things that did not end with a usable entry.
+    try:
+        keychain.secret(ref)
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  stored, but reading it back failed: {e}")
+        return False
+    print(f"  stored for {acct}.")
+    return True
+
+
+def _check_one(store, ws: str, kind: str) -> None:
+    """Say whether the source works, now, rather than at 04:00.
+
+    `connect.py test` has always existed and has always been a separate
+    thing to remember. The moment somebody wants the answer is the moment
+    they finish adding it.
+    """
+    import threading
+
+    out: dict = {}
+
+    def go():
+        try:
+            from core.connectors import wire
+            c = wire(store).get(ws, sources.KINDS[kind])
+            if c is None:
+                out["msg"] = "wired, but nothing built a reader for it."
+                return
+            state = c.check() if hasattr(c, "check") else {"ok": True}
+            out["msg"] = sources.describe(kind, state)
+        except Exception as e:                                   # noqa: BLE001
+            out["msg"] = (f"it is added, but reading it raised "
+                          f"{type(e).__name__}: {str(e)[:160]}\n"
+                          f"  Nothing is lost — fix that and it will work.")
+
+    # On a thread with a deadline. A mail server that is not answering takes
+    # its own sweet time about saying so — the first version of this sat
+    # silent until the socket gave up, which is the same "is it working or is
+    # it hung" question the model server used to pose.
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    t.join(12)
+    if t.is_alive():
+        print("  still trying to reach it after 12s. It is added either way;")
+        print("  python3 connect.py test will say how it went.")
+        return
+    print("  " + out.get("msg", "nothing to report."))
+
+
 def main() -> int:
     store = Store(DB)
     args = sys.argv[1:]
@@ -59,16 +149,41 @@ def main() -> int:
         # Not every ref is a keychain service. Calling a place name one sends
         # somebody looking through Keychain Access for an entry that was
         # never meant to exist.
-        where = ("for " if r["kind"] in sources.REACHES_OUT else
-                 "using keychain service ") + f"'{r['keychain_ref']}'"
+        # A place is not a keychain service, and neither is a folder. Saying
+        # so sends people hunting through Keychain Access for an entry that
+        # was never meant to exist.
+        ref = r["keychain_ref"]
+        if r["kind"] in sources.REACHES_OUT:
+            where = f"for '{ref}'"
+        elif r["kind"] in sources.NEEDS_NOTHING:
+            where = ("from this Mac's own folder" if ref.lower() == "local"
+                     else f"reading {ref}")
+        else:
+            where = f"using keychain service '{ref}'"
         print(f"added {r['kind']} to {r['workspace_id']} {where} (read scope)")
         if r.get("note"):
             print("  " + r["note"])
-        if r.get("keychain_hint"):
-            print("\nIf you have not put the password in the keychain yet:")
-            print("  " + r["keychain_hint"])
-        print("\nNow run:  python3 connect.py test")
+        if r["kind"] in sources.NEEDS_KEYCHAIN and "--no-password" not in args:
+            # The step everybody stalls on. It was printed as a command to go
+            # and run in another window, which is one context switch too many
+            # at the exact moment somebody is deciding whether this is worth
+            # the bother. Ask for it here and put it away — the password is
+            # read with getpass, handed to `security`, and never touches the
+            # database, this process's argv, the shell history or the log.
+            if _store_password(r["keychain_ref"]) is False and \
+                    r.get("keychain_hint"):
+                print("\nWhen you are ready, put the password in yourself:")
+                print("  " + r["keychain_hint"])
+        print("\nChecking it...")
+        _check_one(store, r["workspace_id"], r["kind"])
         return 0
+
+    if cmd == "keychain":
+        if len(args) < 2:
+            print("usage: connect.py keychain <service-name>")
+            print("       stores or replaces the password for one source")
+            return 1
+        return 0 if _store_password(args[1]) else 1
 
     if cmd == "remove":
         if len(args) < 3:
