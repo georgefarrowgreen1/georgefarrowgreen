@@ -21,20 +21,84 @@
 
     /* One scale, because eleven ad-hoc font sizes is not a design, it is a
        history of small decisions. Everything below picks from these. */
-    --t-lede:27px; --t-title:21px; --t-card:16.5px; --t-body:15px;
+    --t-lede:27px; --t-title:21px; --t-card:17px; --t-body:15px;
     --t-meta:13.5px; --t-small:12.5px; --t-mono:11.5px;
     --sp-1:6px; --sp-2:11px; --sp-3:16px; --sp-4:22px; --sp-5:28px;
     --r-lg:18px; --r-md:13px; --r-sm:10px;
     --rail:320px;        /* the status column on a wide screen */
     --gutter:20px;
+
+    /* ── Liquid Glass, as iOS 27 does it ──────────────────────────────
+       Chrome is glass; content is not. A card you are reading a stranger's
+       words off does not want the wall behind it showing through — Apple
+       puts the material on bars, sheets and controls, and leaves what you
+       are reading opaque. Everything below is driven by two numbers so the
+       transparency control has one place to turn.
+
+       --glass-fill  0 = clear, 1 = solid. Raised by the slider, and pinned
+                     to 1 by Reduce Transparency or Increase Contrast.
+       --glass-blur  the diffusion. iOS 27's change was to diffuse busy
+                     content harder, so this is deliberately heavy. */
+    --glass-fill:.72;
+    --glass-blur:30px;
+    --glass-sat:180%;
   }
+  /* One material. The darkened outer edge and the bright specular top are
+     the two things iOS 27 added to it, and they are what stop a glass bar
+     dissolving into whatever happens to be behind it. */
+  .glass{
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
+                      rgba(255,255,255,.06)),
+      rgba(18,18,20,var(--glass-fill));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:
+      0 0 0 .5px rgba(0,0,0,.62),                 /* darkened edge */
+      inset 0 .6px 0 rgba(255,255,255,.34),       /* specular, top */
+      inset 0 -.6px 0 rgba(255,255,255,.07),      /* and a hint below */
+      0 10px 34px rgba(0,0,0,.42);
+  }
+  /* A bar that sits over dense content carries more fill than one at the top
+     of the page. Same material, further along it — iOS 27's readability pass
+     was exactly this: diffuse harder where there is more to diffuse. */
+  .glass.dense{background:
+      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
+                      rgba(255,255,255,.06)),
+      rgba(18,18,20,calc(var(--glass-fill) + .16))}
+
+  /* Reduce Transparency and Increase Contrast are not suggestions. Both
+     land here, and both make the material a surface rather than a window. */
+  @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
+    :root{--glass-fill:1;--glass-blur:0px;--glass-sat:100%}
+    .glass{box-shadow:0 0 0 .5px rgba(0,0,0,.7),
+      inset 0 .6px 0 rgba(255,255,255,.14),0 10px 34px rgba(0,0,0,.42)}
+  }
+
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
   body{min-height:100vh;display:flex;flex-direction:column}
   .wrap{width:100%;max-width:440px;margin:0 auto;flex:1;display:flex;flex-direction:column}
 
 
-  header{display:flex;align-items:center;gap:13px;padding:calc(env(safe-area-inset-top) + 16px) 20px 14px}
+  /* The scroll edge effect: nothing at the top of the page, a uniform bar
+     the moment content passes underneath. Drawing the bar unconditionally
+     puts a seam across an empty screen; not drawing it at all leaves white
+     text over a stranger's mail. */
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;
+    gap:10px;padding:calc(env(safe-area-inset-top) + 14px) var(--gutter) 12px;
+    transition:box-shadow .22s ease,background .22s ease}
+  header::before{content:"";position:absolute;inset:0;left:50%;width:100vw;
+    transform:translateX(-50%);z-index:-1;opacity:0;pointer-events:none;
+    transition:opacity .22s ease;
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03)),
+      rgba(18,18,20,var(--glass-fill));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:0 .5px 0 rgba(0,0,0,.6),inset 0 -.6px 0 rgba(255,255,255,.10),
+               0 10px 30px rgba(0,0,0,.34)}
+  header.edge::before{opacity:1}
   .avatar{width:46px;height:46px;border-radius:13px;background:var(--card);display:grid;place-items:center;
           position:relative;flex:0 0 auto}
   .avatar .logo{width:30px;height:30px;display:block}
@@ -43,16 +107,40 @@
   .avatar .on.off{background:var(--red)}
   header .who{flex:1;min-width:0}
   header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
-  header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2)}
+  /* One line, always. Four 40px targets and a 46px avatar leave this about
+     90px on a small phone, and a title that wraps to three lines makes the
+     bar taller than the content it is floating over. */
+  header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header .who h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* Glyphs before this were ⚯ ▫ ⚙ ↻, which nobody has ever been able to read
      — the user had to be told in prose what each one opened. Drawn icons on a
      phone, and the word as well as soon as the window is wide enough for it. */
-  .tools{display:flex;align-items:center;gap:7px;flex:0 0 auto}
-  .icobtn{height:38px;min-width:38px;padding:0;border-radius:19px;background:var(--card);
-          border:0;color:var(--lab2);font-size:var(--t-small);font-family:var(--ui);
+  .tools{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  @media (min-width:900px){.tools{gap:7px}}
+  /* An SE is 320 points wide. Four targets, an avatar and a name do not fit
+     on one line there, and the name is the half you keep — a bar reading
+     "B…" over "4 r…" is worse than one with no subtitle at all. */
+  @media (max-width:374px){
+    header .who p{display:none}
+    header .who h1{font-size:19px}
+    .avatar{width:38px;height:38px;border-radius:11px}
+    .avatar .logo{width:24px;height:24px}
+    .icobtn{height:38px;min-width:38px}
+    /* Refresh is the one that can go: the page polls every four seconds and
+       again whenever it comes back to the foreground, so the button is a
+       shortcut to something that already happened. */
+    #refresh{display:none}
+  }
+  .icobtn{height:40px;min-width:40px;padding:0;border-radius:19px;border:0;
+          color:var(--lab2);font-size:var(--t-small);font-family:var(--ui);
           cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-          gap:7px;flex:0 0 auto;text-decoration:none;transition:background .15s,color .15s}
-  .icobtn:hover{background:#2A2A2D;color:var(--lab)}
+          gap:7px;flex:0 0 auto;text-decoration:none;
+          background:rgba(255,255,255,.09);
+          box-shadow:0 0 0 .5px rgba(0,0,0,.5),inset 0 .6px 0 rgba(255,255,255,.22);
+          transition:background .15s,color .15s,transform .12s}
+  .icobtn:hover{background:rgba(255,255,255,.16);color:var(--lab)}
+  .icobtn:active{transform:scale(.94)}
   .icobtn svg{width:18px;height:18px;flex:0 0 auto}
   .icobtn .lbl{display:none}
   @media (min-width:900px){
@@ -66,8 +154,24 @@
   main{flex:1;padding:0 var(--gutter) 84px}
   .foot{margin:26px 0 4px;text-align:center}
   .foot button{background:none;border:0;color:var(--lab3);font-size:12.5px;
-    font-family:var(--ui);padding:8px;cursor:pointer}
+    font-family:var(--ui);padding:11px 8px;cursor:pointer}
   .foot button:hover{color:var(--lab2)}
+  .foot .dot2{color:var(--lab3);font-size:12.5px}
+  dialog .slid{display:flex;align-items:center;gap:12px;margin:16px 0 6px;
+    font-size:var(--t-small);color:var(--lab3)}
+  dialog .slid input[type=range]{flex:1;margin:0;padding:0;height:28px;
+    -webkit-appearance:none;appearance:none;background:none}
+  dialog .slid input[type=range]::-webkit-slider-runnable-track{height:6px;
+    border-radius:3px;background:rgba(235,235,245,.16);
+    box-shadow:inset 0 .5px 0 rgba(0,0,0,.5)}
+  dialog .slid input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
+    width:26px;height:26px;border-radius:50%;background:#fff;margin-top:-10px;
+    box-shadow:0 1px 4px rgba(0,0,0,.5),0 0 0 .5px rgba(0,0,0,.3)}
+  dialog .slid input[type=range]::-moz-range-track{height:6px;border-radius:3px;
+    background:rgba(235,235,245,.16)}
+  dialog .slid input[type=range]::-moz-range-thumb{width:26px;height:26px;
+    border:0;border-radius:50%;background:#fff}
+  dialog .slid input[type=range]:disabled{opacity:.4}
   .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
   .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:24px}
   .sect{font-size:13px;color:var(--lab3);margin:28px 0 12px;font-weight:500}
@@ -78,27 +182,34 @@
   .chip .t{color:var(--lab3);font-size:12px}
   .chip.warn{border-color:rgba(255,214,10,.28)} .chip.warn .t{color:var(--amber)}
 
-  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);border-radius:18px;
-          padding:16px;margin-bottom:11px;transition:opacity .3s}
+  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);
+          border-radius:20px;padding:16px;margin-bottom:11px;
+          box-shadow:inset 0 .6px 0 rgba(255,255,255,.13),0 2px 10px rgba(0,0,0,.3);
+          transition:opacity .3s}
   .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
   .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
   .action.gone{opacity:.3}
   .action .top{display:flex;gap:11px;align-items:flex-start}
   .glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:13px;
          flex:0 0 auto;margin-top:1px;color:#000;font-weight:700}
-  .action .txt{flex:1;font-size:16.5px;line-height:1.38;letter-spacing:-.012em}
+  .action .txt{flex:1;font-size:var(--t-card);line-height:1.4;letter-spacing:-.014em}
   .action .why{font-size:13.5px;color:var(--lab2);margin:9px 0 0 37px;line-height:1.42}
   .action .why em{font-style:normal;color:var(--amber)}
   .pair{display:flex;gap:10px;margin-top:15px}
-  .pair button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:16px;
-               font-weight:500;background:rgba(255,255,255,.055);color:var(--lab2);cursor:pointer}
+  .pair button{flex:1;border:0;border-radius:calc(20px - 16px + 8px);padding:14px;font-family:var(--ui);
+               font-size:16px;font-weight:500;background:rgba(255,255,255,.055);
+               color:var(--lab2);cursor:pointer;transition:transform .12s ease,
+               background .15s ease;box-shadow:inset 0 .6px 0 rgba(255,255,255,.10)}
+  .pair button:active:not(:disabled){transform:scale(.97)}
   .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
   .pair button:disabled{opacity:.4}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:13px;padding-top:13px;
            border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
 
-  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:18px;overflow:hidden}
+  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:20px;
+         overflow:hidden;box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
+  .quiet .head:active{background:rgba(255,255,255,.04)}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
   .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
   .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
@@ -116,13 +227,16 @@
 
   .runs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px 2px}
   .runs::-webkit-scrollbar{display:none}
-  .run{flex:0 0 auto;width:152px;background:var(--card2);border:1px solid var(--hair);border-radius:16px;padding:13px}
+  .run{flex:0 0 auto;width:152px;background:var(--card2);border:1px solid var(--hair);
+       border-radius:16px;padding:13px;
+       box-shadow:inset 0 .6px 0 rgba(255,255,255,.07)}
   .run .w{display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:9px}
   .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}
   .run .lb{font-family:var(--mono);font-size:10.5px;color:var(--lab3);margin-top:4px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-  .health{background:var(--card2);border:1px solid var(--hair);border-radius:18px;padding:16px}
+  .health{background:var(--card2);border:1px solid var(--hair);border-radius:20px;
+          padding:16px;box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
   .hrow{display:flex;align-items:center;gap:11px;font-size:13.5px;margin-top:12px}
   .hrow:first-child{margin-top:0}
   .hrow .k{color:var(--lab2);width:92px;flex:0 0 auto}
@@ -135,17 +249,25 @@
   .hrow.plain .v{margin-left:auto}
 
   .ctl{display:flex;gap:9px;margin-top:12px}
-  .ctl button{flex:1;border:0;border-radius:13px;padding:14px;font-family:var(--ui);font-size:15px;
-              font-weight:500;background:var(--card);color:var(--lab);cursor:pointer}
-  .ctl button.go{background:var(--blue);color:#fff}
+  .ctl button{flex:1;border:0;border-radius:14px;padding:14px;font-family:var(--ui);
+              font-size:15px;font-weight:500;background:rgba(255,255,255,.08);
+              color:var(--lab);cursor:pointer;transition:transform .12s ease,
+              background .15s ease;box-shadow:inset 0 .6px 0 rgba(255,255,255,.12)}
+  .ctl button:hover{background:rgba(255,255,255,.13)}
+  .ctl button:active:not(:disabled){transform:scale(.97)}
+  .ctl button.go{background:var(--blue);color:#fff;
+    box-shadow:inset 0 .6px 0 rgba(255,255,255,.3),0 4px 14px rgba(10,132,255,.32)}
+  .ctl button.go:hover{background:#1E90FF}
   .ctl button:disabled{opacity:.4}
 
   /* ask — the composer expands into a thread rather than navigating away,
      so you never lose your place in the brief */
   .ask{position:fixed;inset:0;background:#000;z-index:40;display:none;flex-direction:column}
   .ask.on{display:flex}
-  .ask .ah{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 16px) 20px 13px;
-           border-bottom:1px solid var(--hair)}
+  .ask .ah{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;
+           padding:calc(env(safe-area-inset-top) + 16px) 20px 13px;
+           border-bottom:1px solid rgba(0,0,0,.6);
+           box-shadow:inset 0 -.6px 0 rgba(255,255,255,.10)}
   .ask .ah h2{flex:1;font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em}
   .ask .ah .scope{font-family:var(--mono);font-size:9.5px;color:var(--lab3);
                   background:var(--card);padding:5px 9px;border-radius:7px}
@@ -174,10 +296,9 @@
   .sugg{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
   .sugg button{border:1px solid var(--hair);background:var(--card2);color:var(--lab2);
                border-radius:16px;padding:9px 13px;font-family:var(--ui);font-size:13px;cursor:pointer}
-  .askbar{flex:0 0 auto;padding:8px 16px calc(env(safe-area-inset-bottom) + 14px);
-          background:linear-gradient(180deg,transparent,#000 24%)}
-  .askbar .row{display:flex;align-items:flex-end;gap:9px;background:var(--card);
-               border-radius:24px;padding:8px 8px 8px 17px}
+  .askbar{flex:0 0 auto;padding:8px 16px calc(env(safe-area-inset-bottom) + 14px)}
+  .askbar .row{display:flex;align-items:flex-end;gap:9px;border-radius:24px;
+               padding:8px 8px 8px 17px}
   .askbar textarea{flex:1;background:none;border:0;color:var(--lab);font-family:var(--ui);
                    font-size:16px;line-height:1.4;resize:none;max-height:110px;padding:8px 0;outline:none}
   .askbar .go{width:38px;height:38px;border-radius:50%;border:0;background:var(--blue);color:#fff;
@@ -187,15 +308,24 @@
                 color:var(--red);font-size:13px;cursor:pointer;flex:0 0 auto}
   .readonly{font-size:11.5px;color:var(--lab3);text-align:center;margin-top:9px;line-height:1.4}
 
-  .composer{position:sticky;bottom:0;padding:8px 20px calc(env(safe-area-inset-bottom) + 14px);
-            background:linear-gradient(180deg,transparent,#000 24%)}
-  .bar{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:24px;padding:13px 17px}
+  .composer{position:sticky;bottom:0;z-index:15;
+            padding:10px var(--gutter) calc(env(safe-area-inset-bottom) + 14px)}
+  .bar{display:flex;align-items:center;gap:12px;border-radius:24px;padding:13px 17px;
+       cursor:pointer;transition:transform .12s ease}
+  .bar:active{transform:scale(.985)}
   .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
 
-  .toast{position:fixed;left:50%;transform:translate(-50%,150%);bottom:90px;width:calc(100% - 40px);
-         max-width:400px;background:#2C2C2E;border-radius:14px;padding:14px 16px;font-size:14px;
-         line-height:1.4;transition:transform .3s cubic-bezier(.3,1.2,.5,1);z-index:9}
-  .toast.up{transform:translate(-50%,0)}
+  .toast{position:fixed;left:50%;transform:translate(-50%,150%);bottom:96px;
+         width:calc(100% - 40px);max-width:400px;border-radius:16px;padding:14px 16px;
+         font-size:14px;line-height:1.4;z-index:30;
+         opacity:0;visibility:hidden;
+         transition:transform .34s cubic-bezier(.32,1.28,.5,1),opacity .2s ease,
+                    visibility 0s linear .34s}
+  /* Hidden, not merely pushed down: parked at 150% of its own height it
+     still had a corner on screen, and with the material on it that corner
+     reads as a panel someone forgot to finish. */
+  .toast.up{transform:translate(-50%,0);opacity:1;visibility:visible;
+    transition:transform .34s cubic-bezier(.32,1.28,.5,1),opacity .2s ease}
   @media (prefers-reduced-motion:reduce){.toast,.trk i{transition:none}}
   /* Anything you can reach with Tab has to show where you are — links and
      the div-shaped buttons included, which the button-only rule missed. */
@@ -230,10 +360,50 @@
      One component. A <dialog> defaults to a white sheet, which against this
      app reads as a broken page rather than a panel, so all of it is here —
      once, rather than copied per dialog and drifting apart. */
-  dialog{border:0;padding:22px;border-radius:var(--r-lg);color:var(--lab);
-    background:var(--card);font-family:var(--ui);width:calc(100vw - 32px);
-    max-height:calc(100vh - 48px);overflow:auto}
-  dialog::backdrop{background:rgba(0,0,0,.62)}
+  /* iOS presents these as sheets: up from the bottom edge on a phone, with a
+     grabber, and a centred panel once there is a window to centre it in. The
+     material is the same one the bars use. */
+  dialog{border:0;padding:22px;color:var(--lab);font-family:var(--ui);
+    max-height:88vh;overflow:auto;
+    /* The UA sets max-width:calc(100% - 38px) on a dialog. A sheet that comes
+       up from the bottom edge and stops 38px short of it is not a sheet. */
+    max-width:100%;
+    position:fixed;left:0;right:0;bottom:0;top:auto;margin:0;width:100%;
+    border-radius:22px 22px 0 0;
+    padding-bottom:calc(22px + env(safe-area-inset-bottom));
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.03) 30%,
+                      rgba(255,255,255,.05)),
+      rgba(22,22,24,calc(var(--glass-fill) + .22));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:0 0 0 .5px rgba(0,0,0,.66),
+               inset 0 .6px 0 rgba(255,255,255,.30),
+               0 -18px 60px rgba(0,0,0,.5)}
+  dialog[open]{animation:sheet .34s cubic-bezier(.32,1.12,.4,1)}
+  @keyframes sheet{from{transform:translateY(14px);opacity:.4}}
+  /* The grabber. It says "this came up from the bottom and goes back down",
+     which is the one thing a sheet has to say. */
+  dialog::before{content:"";display:block;width:38px;height:5px;border-radius:3px;
+    background:rgba(235,235,245,.28);margin:-8px auto 14px}
+  dialog::backdrop{background:rgba(0,0,0,.5);
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+  @media (min-width:600px){
+    dialog{position:fixed;top:50%;left:50%;right:auto;bottom:auto;
+      transform:translate(-50%,-50%);width:calc(100vw - 32px);
+      border-radius:22px;padding-bottom:22px;max-height:calc(100vh - 64px);
+      box-shadow:0 0 0 .5px rgba(0,0,0,.66),
+                 inset 0 .6px 0 rgba(255,255,255,.30),
+                 0 24px 70px rgba(0,0,0,.55)}
+    dialog[open]{animation:panel .28s cubic-bezier(.32,1.12,.4,1)}
+    @keyframes panel{from{transform:translate(-50%,-50%) scale(.96);opacity:0}}
+    dialog::before{display:none}
+    /* Only once it is a panel does a panel have a width. */
+    #phonedlg{max-width:340px} #srcdlg{max-width:420px}
+    #schedlg{max-width:420px}  #appdlg{max-width:420px}
+    #updlg{max-width:540px}
+  }
+  @media (prefers-reduced-motion:reduce){dialog[open]{animation:none}}
   dialog h2{margin:0 0 10px;font-size:18px;letter-spacing:-.01em}
   dialog p{margin:0 0 10px;font-size:13px;color:var(--lab2);line-height:1.45}
   dialog .sub{font-size:var(--t-small);color:var(--lab3);margin:8px 0 0;
@@ -245,10 +415,12 @@
     color:var(--lab);font-size:15px;font-family:var(--ui)}
   dialog select:focus-visible,dialog input:focus-visible{outline:2px solid var(--blue);
     outline-offset:1px;border-color:transparent}
-  dialog .mini{padding:9px 12px;border:1px solid var(--hair);border-radius:var(--r-sm);
+  dialog .mini{padding:10px 13px;min-height:38px;border:1px solid var(--hair);border-radius:var(--r-sm);
     background:var(--card2);color:var(--lab);font-size:13px;font-family:var(--ui);
     cursor:pointer}
-  dialog .mini:hover{background:#2A2A2D}
+  dialog .mini:hover{background:rgba(255,255,255,.14)}
+  dialog .mini:active{transform:scale(.97)}
+  dialog .mini{transition:transform .12s ease,background .15s ease}
   dialog .mini.go{width:100%;background:var(--blue);border-color:transparent;
     color:#fff;font-weight:600;margin-top:2px}
   dialog .mini.danger{color:var(--red)}
@@ -270,12 +442,11 @@
     background:var(--card2)}
   dialog .addbox .mini.danger{width:100%;margin-top:8px}
   dialog .warn{color:var(--amber)}
-  #phonedlg{max-width:340px} #srcdlg{max-width:420px}
-  #schedlg{max-width:420px}  #updlg{max-width:540px}
+
   #updlg ul{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--lab2);
     line-height:1.5;font-family:var(--mono)}
-  .hrow.night{cursor:pointer;border-radius:var(--r-sm);margin-left:-6px;
-    margin-right:-6px;padding:5px 6px}
+  .hrow.night{cursor:pointer;border-radius:var(--r-sm);margin:6px -6px 0;
+    padding:8px 6px}
   .hrow.night:hover{background:rgba(235,235,245,.05)}
   .hrow.night:focus-visible{outline:2px solid #fff;outline-offset:1px}
   .hrow .v.good{color:var(--green)} .hrow .v.bad{color:var(--red)}
@@ -393,6 +564,20 @@
        outright if anything is edited. Restarting still refuses unless run.sh
        is watching, because exit 75 with nobody there is a stop, not a
        restart — and from a phone that is unrecoverable. -->
+  <dialog id="appdlg">
+    <h2>Appearance</h2>
+    <p>The bars, sheets and controls are glass — they take their colour from
+      whatever is behind them. How much of it comes through is yours.</p>
+    <div class="slid">
+      <span>Clear</span>
+      <input type="range" id="glass" min="0" max="100" step="1"
+             aria-label="How opaque the glass is">
+      <span>Opaque</span>
+    </div>
+    <div id="appnote" class="sub"></div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
+
   <dialog id="schedlg">
     <h2>When Blokk sweeps</h2>
     <div id="schebody">…</div>
@@ -453,15 +638,16 @@
     <!-- Updating belongs where a version number belongs, and a sixth circle
          in the header left "9 runs · 3 parked" wrapping onto four lines on a
          390px phone. It is a twice-a-month action; it can be a word. -->
-    <div class="foot"><button id="update">Check for updates</button></div>
+    <div class="foot"><button id="appearance">Appearance</button><span
+      class="dot2">·</span><button id="update">Check for updates</button></div>
    </aside>
   </main>
 
-  <div class="composer"><div class="bar" id="openask" role="button" tabindex="0"><span style="color:var(--lab2)">+</span>
+  <div class="composer"><div class="bar glass dense" id="openask" role="button" tabindex="0"><span style="color:var(--lab2)">+</span>
     <span class="ph" id="ph">Ask about anything above</span><span style="color:var(--lab2)">🎙</span></div></div>
 </div>
 <div class="ask" id="ask" role="dialog" aria-modal="true" aria-label="Ask Blokk">
-  <div class="ah">
+  <div class="ah glass">
     <button class="icobtn" id="askclose" aria-label="Close">&#10005;</button>
     <h2>Ask Blokk</h2>
     <span class="scope">READ-ONLY</span>
@@ -469,7 +655,7 @@
   <div class="thread" id="thread">
     <div class="sugg" id="sugg"></div>
   </div>
-  <div class="askbar"><div class="row">
+  <div class="askbar"><div class="row glass dense">
     <textarea id="qbox" rows="1" placeholder="Ask about anything above"
               aria-label="Ask Blokk a question"></textarea>
     <button class="go" id="qgo" aria-label="Send">&#8593;</button>
@@ -477,7 +663,7 @@
   <div class="readonly">It can read your journal, queue and memory. It cannot send anything.</div>
   </div>
 </div>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="toast glass" id="toast" role="status" aria-live="polite"></div>
 <div id="sr" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
 
 <script>
@@ -574,6 +760,16 @@ function toast(m){ const t=$('#toast'); t.innerHTML=m; t.classList.add('up');
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('up'),3600); }
 
 let ver = -1, busy = false, lastDoc = 0;
+
+// The scroll edge effect. iOS 27 draws a uniform bar the moment content
+// passes under a floating one, and nothing before that — so the top of an
+// unscrolled page has no seam across it, and text never sits on text.
+(function scrollEdge(){
+  const h = document.querySelector('header');
+  const set = () => h.classList.toggle('edge', window.scrollY > 2);
+  addEventListener('scroll', set, {passive:true});
+  set();
+})();
 
 // Its own cadence, because it is not tied to the version counter — a model
 // server dying changes nothing in the database, so a page waiting for a
@@ -1108,6 +1304,52 @@ async function paintUpdate(){
 }
 
 $('#update').onclick = () => { $('#updlg').showModal(); paintUpdate(); };
+
+/* ── Appearance ─────────────────────────────────────────────────────────────
+   iOS 27 added a slider for exactly this, because a material that takes its
+   colour from whatever is behind it is not equally readable behind
+   everything. One number drives both the fill and the diffusion; it lives in
+   localStorage, so it is this browser's preference and never leaves it.
+   ───────────────────────────────────────────────────────────────────────── */
+const GLASS_KEY = 'blokk-glass', GLASS_DEFAULT = 58;
+// The OS setting wins. Someone who has asked the system for less transparency
+// has already answered this question, and answering it again for them in an
+// app they cannot see the setting in is the wrong way round.
+const REDUCED = matchMedia('(prefers-reduced-transparency: reduce)').matches
+             || matchMedia('(prefers-contrast: more)').matches;
+
+function applyGlass(v){
+  const t = Math.min(100, Math.max(0, +v || 0)) / 100;
+  const r = document.documentElement.style;
+  r.setProperty('--glass-fill', (0.34 + 0.66 * t).toFixed(3));
+  // Squared, so the diffusion holds up through the middle of the range and
+  // then goes to nothing: at fully opaque there is nothing behind to diffuse
+  // and the blur is pure cost.
+  r.setProperty('--glass-blur', Math.round(34 * (1 - t * t)) + 'px');
+}
+const glassPref = (() => {
+  try{ return localStorage.getItem(GLASS_KEY); }catch{ return null; }
+})();
+if(!REDUCED) applyGlass(glassPref === null ? GLASS_DEFAULT : glassPref);
+
+$('#appearance').onclick = () => {
+  const dlg = $('#appdlg'), range = $('#glass'), note = $('#appnote');
+  range.value = glassPref === null ? GLASS_DEFAULT : glassPref;
+  if(REDUCED){
+    range.disabled = true;
+    note.textContent = 'Your Mac is set to Reduce Transparency or Increase '
+      + 'Contrast, so Blokk is showing everything solid. That setting wins '
+      + 'over this one.';
+  }else{
+    note.textContent = 'Clear looks better over a quiet screen; opaque reads '
+      + 'better over a full one. Kept in this browser only.';
+    range.oninput = e => {
+      applyGlass(e.target.value);
+      try{ localStorage.setItem(GLASS_KEY, e.target.value); }catch{}
+    };
+  }
+  dlg.showModal();
+};
 
 $('#phone').onclick = async () => {
   const dlg = $('#phonedlg'); const body = $('#phonebody');

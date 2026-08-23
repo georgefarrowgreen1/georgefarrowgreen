@@ -89,9 +89,12 @@ worse than an error.
                        keychain, and the fake world
     flows/             workflow definitions
     api/server.py      control plane. Stdlib http.server. Holds credentials
-    web/               dashboard, setup wizard, sources, phone and update
-                       panels, PWA. Parity with connect.py is deliberate:
-                       both call core/sources.py, neither reimplements it
+    web/               dashboard, setup wizard, sources, phone, update and
+                       appearance panels, PWA. Parity with connect.py is
+                       deliberate: both call core/sources.py, neither
+                       reimplements it. The look is iOS 27 Liquid Glass —
+                       chrome is glass, content is not, and Reduce
+                       Transparency wins over the in-app slider
     demo/              browser port of the engine + the test suites
     brand/             the mark, generated parametrically
 

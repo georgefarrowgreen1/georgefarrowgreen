@@ -167,6 +167,49 @@ probe('B9  a slow sweep is reported as a failed one',
     perDialog > 0, 'one dialog component, four widths');
 }
 
+// B14 — Liquid Glass, and the two ways to get it wrong
+{
+  const css = h.split('<style>')[1].split('</'+'style>')[0];
+  // Chrome is glass. Content is not: a card you are reading a stranger's
+  // words off must not have the wall showing through it, and iOS puts the
+  // material on bars, sheets and controls only.
+  const glassed = ['action','quiet','health','run{','chip'].filter(k => {
+    const i = css.indexOf('.' + k);
+    return i !== -1 && /backdrop-filter/.test(css.slice(i, i + 400));
+  });
+  probe('B14 the material is on the content, not just the chrome',
+    glassed.length > 0, glassed.length ? glassed.join(',') : 'bars and sheets only');
+  // Reduce Transparency and Increase Contrast are settings, not hints.
+  probe('B14a glass ignores Reduce Transparency',
+    !/prefers-reduced-transparency/.test(css) || !/prefers-contrast/.test(css),
+    'both pin the material solid');
+  // iOS 27 added these two. Without them a glass bar dissolves into whatever
+  // is behind it and the edge of the toolbar disappears.
+  probe('B14b the glass has no edge and no specular highlight',
+    !/darkened edge/.test(css) || !/inset 0 \.6px 0 rgba\(255,255,255/.test(css),
+    'darkened outer edge, bright inner top');
+  // The scroll edge effect is conditional by definition: no bar until
+  // something is under it.
+  probe('B14c the toolbar bar is drawn before anything scrolls under it',
+    !/header\.edge::before\{opacity:1\}/.test(css) || !/header::before[^}]*opacity:0/.test(css),
+    'the bar appears on scroll, and not before');
+  const js2 = js;
+  probe('B14d the transparency setting is not remembered',
+    !/localStorage\.setItem\(GLASS_KEY/.test(js2), 'kept per browser');
+  probe('B14e the OS setting loses to the app setting',
+    !/if\(!REDUCED\) applyGlass/.test(js2), 'the system setting wins');
+  // A <dialog> carries a UA max-width of calc(100% - 38px). A sheet that
+  // comes up from the bottom edge and stops short of it is not a sheet.
+  probe('B14f the bottom sheet stops short of the screen edge',
+    !/max-width:100%/.test(css), 'the UA max-width is overridden');
+  // 44pt is the target size, not the drawn size.
+  const small = ['.icobtn{height:38px', '.icobtn{height:36px']
+    .filter(k => css.includes(k) && !css.slice(css.indexOf(k) - 300, css.indexOf(k))
+      .includes('max-width:374px'));
+  probe('B14g the toolbar targets are under 40px on a normal phone',
+    small.length > 0, small.length ? small.join() : 'targets are 40px and up');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

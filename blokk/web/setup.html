@@ -10,8 +10,23 @@
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
   }
+  /* Liquid Glass, as iOS 27 does it — the same two numbers as the dashboard,
+     the same darkened edge and specular top, the same accessibility clamp. */
+  :root{--glass-fill:.72;--glass-blur:26px;--glass-sat:180%}
+  .glass{
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035) 42%,
+                      rgba(255,255,255,.06)),
+      rgba(18,18,20,var(--glass-fill));
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    box-shadow:0 0 0 .5px rgba(0,0,0,.62),inset 0 .6px 0 rgba(255,255,255,.34),
+               inset 0 -.6px 0 rgba(255,255,255,.07),0 10px 34px rgba(0,0,0,.42)}
+  @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
+    :root{--glass-fill:1;--glass-blur:0px;--glass-sat:100%}
+  }
   *{box-sizing:border-box}
-  html,body{margin:0;background:var(--void);color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
+  html,body{margin:0;background:#000;color:var(--lab);font-family:var(--ui);-webkit-font-smoothing:antialiased}
   .page{max-width:760px;margin:0 auto;padding:38px 24px 90px}
 
   header{display:flex;align-items:center;gap:15px;margin-bottom:34px}
@@ -28,7 +43,8 @@
   .lead{font-size:15.5px;line-height:1.5;color:var(--lab2);margin:0 0 26px;max-width:60ch}
   .lead b{color:var(--lab);font-weight:600}
 
-  .box{background:var(--card);border:1px solid var(--hair);border-radius:16px;padding:18px}
+  .box{background:var(--card);border:1px solid var(--hair);border-radius:20px;padding:18px;
+       box-shadow:inset 0 .6px 0 rgba(255,255,255,.08)}
   .box+.box{margin-top:9px}
   .mono{font-family:var(--mono)}
 
@@ -45,7 +61,8 @@
   .v.no{background:rgba(255,69,58,.14);color:var(--red)}
 
   .cards{display:grid;gap:10px}
-  .card-opt{background:var(--card);border:1.5px solid var(--hair);border-radius:16px;
+  .card-opt{background:var(--card);border:1.5px solid var(--hair);border-radius:18px;
+            box-shadow:inset 0 .6px 0 rgba(255,255,255,.09);
             padding:17px 18px;cursor:pointer;transition:border-color .15s,background .15s}
   .card-opt:hover{border-color:rgba(235,235,245,.2)}
   .card-opt[aria-pressed="true"]{border-color:var(--blue);background:rgba(10,132,255,.07)}
@@ -69,9 +86,16 @@
   .tier .st{font-family:var(--mono);font-size:10px;color:var(--lab3);flex:0 0 auto;margin-top:4px}
   .tier .st.up{color:var(--green)}
 
-  button.go{border:0;border-radius:12px;padding:14px 26px;font-family:var(--ui);font-size:15.5px;
-            font-weight:500;background:var(--blue);color:#fff;cursor:pointer}
-  button.ghost{background:var(--card2);color:var(--lab)}
+  button.go{border:0;border-radius:14px;padding:14px 26px;font-family:var(--ui);
+            font-size:15.5px;font-weight:500;background:var(--blue);color:#fff;
+            cursor:pointer;transition:transform .12s ease,background .15s ease;
+            box-shadow:inset 0 .6px 0 rgba(255,255,255,.3),
+                       0 4px 14px rgba(10,132,255,.32)}
+  button.go:hover:not(:disabled){background:#1E90FF}
+  button.go:active:not(:disabled){transform:scale(.97)}
+  button.ghost{background:rgba(255,255,255,.08);color:var(--lab);
+    box-shadow:inset 0 .6px 0 rgba(255,255,255,.12)}
+  button.ghost:hover{background:rgba(255,255,255,.13)}
   button.go:disabled{opacity:.35;cursor:default}
   .row{display:flex;gap:10px;align-items:center;margin-top:24px}
   .row .spacer{flex:1}
