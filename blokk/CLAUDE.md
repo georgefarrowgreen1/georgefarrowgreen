@@ -109,6 +109,10 @@ worse than an error.
 
 Or `./test.sh`. All four must print `0 issues found` / `pass`.
 
+Two things the suites cannot see, so check them by hand when you touch the
+banner or the CLI: the QR block only runs when stdout is a **terminal**, and
+every harness here redirects — A40 opens a pty for exactly that reason.
+
 Two entries in `hunt.py` report `ok` because they are **choices, not defects**:
 loopback is trusted without a token (A1), and episodes outlive the approvals
 they came from (A7). Do not "fix" them.

@@ -1189,10 +1189,17 @@ def serve(port=8080):
     # The whole point: nobody types a token off a screen correctly, and the
     # two things people leave out — the :port and the ?t= — are exactly the
     # two that turn this into "it doesn't connect".
-    if tty and qr.width(phone) <= cols - 4:
-        for line in qr.render(phone).splitlines():
-            print("     " + line)
-        print()
+    # Guarded, because qr raises rather than shrugging when a URL is longer
+    # than version 10 holds — and the link is only long when someone has set
+    # a long BLOKK_TOKEN, which is a reasonable thing to do and not a reason
+    # for the control plane to die on the last line of its own banner.
+    try:
+        if tty and qr.width(phone) <= cols - 4:
+            for line in qr.render(phone).splitlines():
+                print("     " + line)
+            print()
+    except ValueError:
+        print(f"     {D}(the link is too long to draw as a QR code){O}\n")
     print(f"     {G}{phone}{O}")
     print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}{O}\n")
 

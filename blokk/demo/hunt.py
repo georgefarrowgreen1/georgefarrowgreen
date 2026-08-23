@@ -1180,6 +1180,58 @@ try:
     probe("A39 a model server answering 200 with rubbish crashes the sweep",
           served_rubbish)
 
+    # ── 40. a long token stops it starting ──────────────────────────────
+    def long_token():
+        # The banner draws a QR of the phone link, and qr.matrix raises rather
+        # than shrugging when a URL is longer than version 10 holds. That call
+        # was unguarded, so `BLOKK_TOKEN=$(openssl rand -hex 128) ./blokk`
+        # died on the last line of its own banner — and only on a terminal,
+        # because the QR is skipped when stdout is a pipe. Every test harness
+        # in this repo redirects.
+        import os as _o, pty, select as _sel, subprocess as _sp, socket as _sk
+        env = dict(_o.environ, BLOKK_TOKEN="z" * 220, COLUMNS="400")
+        m, sl = pty.openpty()
+        proc = _sp.Popen([sys.executable, "-m", "api.server", "8090"],
+                         env=env, stdout=sl, stderr=sl, stdin=sl, close_fds=True)
+        _o.close(sl)
+        try:
+            out, deadline, alive = b"", time.time() + 20, False
+            while time.time() < deadline:
+                r, _, _ = _sel.select([m], [], [], 0.2)
+                if r:
+                    try:
+                        out += _o.read(m, 65536)
+                    except OSError:
+                        break
+                if proc.poll() is not None:
+                    break
+                s = _sk.socket()
+                ok = s.connect_ex(("127.0.0.1", 8090)) == 0
+                s.close()
+                if ok:
+                    try:
+                        urllib.request.urlopen(
+                            "http://127.0.0.1:8090/api/v1/health", timeout=3)
+                        alive = True
+                        break
+                    except Exception:                            # noqa: BLE001
+                        pass
+            if proc.poll() is not None:
+                tail = out.decode(errors="replace").strip().splitlines()[-1:]
+                return (True, f"it exited {proc.poll()} on a terminal: "
+                              f"{tail and tail[0][:70]}")
+            if not alive:
+                return (True, "it started but never answered")
+            return (False, "a long token costs you the QR code, not the boot")
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:                                    # noqa: BLE001
+                proc.kill()
+            _o.close(m)
+    probe("A40 a long BLOKK_TOKEN stops the control plane starting", long_token)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
