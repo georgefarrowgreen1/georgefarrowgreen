@@ -520,6 +520,45 @@ probe('B18 a run that could not resume is not mentioned at all',
     bad.length ? `${bad.length}, e.g. ${bad[0]}` : 'every gap is a multiple of 4');
 }
 
+// B27 — the bubble, and the microphone that never worked
+// The composer was a bar the width of the screen, which meant it spent the
+// whole page sitting on top of the card underneath it, and it carried a
+// microphone for a feature that does not exist — nothing in Blokk takes
+// dictation. A control that does nothing is worse than a missing one: it
+// is a promise.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  for (const f of ['web/index.html', 'demo/index.html']) {
+    const src = fs.readFileSync(f, 'utf8');
+    // The glyph, not the word — a comment is free to explain why the
+    // control went, and the first version of this probe failed on the
+    // comment that did exactly that.
+    probe(`B27 ${f} offers a microphone that takes no dictation`,
+      /&#127908;|\u{1F399}/u.test(src),
+      'no control for a feature that is not there');
+  }
+  // The panel opens from where the bubble is, not from a corner near it.
+  // Both ends of the transition have to be centred on the button. Checking
+  // that `--bx` appears somewhere passed happily with the closed state
+  // pinned to the corner and only the open one following the bubble.
+  const flatCss = css.replace(/\s/g, '');
+  const ends = flatCss.match(/clip-path:circle\([^)]*\)/g) || [];
+  probe('B27a the panel opens from a corner rather than from the bubble',
+    ends.length < 2 || !ends.every(e => /var\(--bx/.test(e))
+      || !/getBoundingClientRect/.test(js),
+    'both ends of the circle are centred on the button, measured at press');
+  // display:none halfway through a transition is a panel vanishing rather
+  // than shrinking; never removing it is a panel covering the whole app.
+  probe('B27b closing the panel hides it mid-animation, or never',
+    !/transitionend/.test(js) || !/setTimeout\([\s\S]{0,80}?fired/.test(js),
+    'it waits for the circle, with a timeout behind it');
+  // A bubble that is 56 points is still a target.
+  const bub = css.match(/\n  \.bubble\{[^}]*\}/);
+  probe('B27c the bubble is smaller than a fingertip',
+    !bub || parseFloat((bub[0].match(/width:(\d+)px/) || [0, 0])[1]) < 44,
+    'it is 56');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

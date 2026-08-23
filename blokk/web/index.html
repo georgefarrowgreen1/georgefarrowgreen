@@ -341,8 +341,25 @@
 
   /* ask — the composer expands into a thread rather than navigating away,
      so you never lose your place in the brief */
-  .ask{position:fixed;inset:0;background:#000;z-index:40;display:none;flex-direction:column}
+  /* The panel is the bubble, grown. --bx/--by are where the bubble is when
+     you press it, set in JS, so the circle opens from the button rather
+     than from a corner that happens to be near it. */
+  .ask{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;
+    background:rgba(10,10,12,.86);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
+    clip-path:circle(28px at var(--bx,100%) var(--by,100%));
+    transition:clip-path .42s cubic-bezier(.32,.9,.3,1)}
   .ask.on{display:flex}
+  .ask.open{clip-path:circle(150% at var(--bx,100%) var(--by,100%))}
+  /* The contents arrive a beat after the circle passes them, so it reads
+     as one thing opening rather than a panel behind a hole. */
+  .ask .ah,.ask .thread,.ask .askbar{opacity:0;transition:opacity .2s ease .12s}
+  .ask.open .ah,.ask.open .thread,.ask.open .askbar{opacity:1}
+  @media (prefers-reduced-motion:reduce){
+    .ask{transition:none}
+    .ask.on{clip-path:none}
+    .ask .ah,.ask .thread,.ask .askbar{transition:none;opacity:1}}
   .ask .ah{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;
            padding:calc(env(safe-area-inset-top) + var(--sp-4))
                    var(--gutter) var(--sp-3);
@@ -380,8 +397,14 @@
   .sugg button:hover{background:rgba(255,255,255,.12);color:var(--lab)}
   .askbar{flex:0 0 auto;
     padding:var(--sp-2) var(--sp-4) calc(env(safe-area-inset-bottom) + var(--sp-4))}
-  .askbar .row{display:flex;align-items:flex-end;gap:8px;border-radius:var(--r-pill);
-               padding:8px 8px 8px 16px}
+  .askbar .row{display:flex;align-items:flex-end;gap:var(--sp-2);
+               border-radius:var(--r-pill);
+               padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4)}
+  /* What it is, at the size of the thing it is looking through. The
+     microphone that used to sit at the other end of this row was a control
+     for a feature that does not exist — nothing here takes dictation. */
+  .askbar .mag{width:18px;height:18px;flex:0 0 auto;color:var(--lab3);
+    align-self:center;margin-bottom:1px}
   .askbar textarea{flex:1;background:none;border:0;color:var(--lab);font-family:var(--ui);
                    font-size:16px;line-height:1.4;resize:none;max-height:110px;
                    min-height:var(--tap);padding:12px 0;outline:none}
@@ -394,13 +417,36 @@
   .readonly.note{text-align:left;margin:2px 0 16px}
   .readonly.note.wide{margin-bottom:16px}
 
-  .composer{position:sticky;bottom:0;z-index:15;
-            padding:var(--sp-3) var(--gutter)
-                    calc(env(safe-area-inset-bottom) + var(--sp-4))}
-  .bar{display:flex;align-items:center;gap:var(--sp-3);border-radius:var(--r-pill);
-       padding:var(--sp-3) var(--sp-4);min-height:var(--tap);
-       cursor:pointer;transition:transform .12s ease}
-  .bar:active{transform:scale(.985)}
+  /* ── the bubble ──────────────────────────────────────────────────────
+     A bar the width of the screen spends the whole page covering the card
+     underneath it, which is what it was doing in the corner of every
+     screenshot. A bubble covers 56 points in one corner, and it is also
+     the thing the panel comes out of: opening is the bubble growing into
+     the panel from exactly where it sits, not a screen arriving from
+     somewhere else. */
+  .composer{position:fixed;right:var(--gutter);z-index:15;
+            bottom:calc(env(safe-area-inset-bottom) + var(--sp-4))}
+  .bubble{width:56px;height:56px;border:0;border-radius:var(--r-pill);
+    display:grid;place-items:center;cursor:pointer;color:var(--lab);
+    position:relative;
+    transition:transform .2s cubic-bezier(.32,1.12,.4,1),opacity .18s ease}
+  .bubble svg{width:24px;height:24px}
+  .bubble:hover{transform:scale(1.05)}
+  .bubble:active{transform:scale(.94)}
+  /* Opening: the bubble hands over to the panel and gets out of the way. */
+  .bubble.handoff{transform:scale(.6);opacity:0;pointer-events:none}
+  /* A run is going. Not decoration — it is the only place the dashboard
+     says "working" once you have scrolled past the runs. */
+  .bubble .ring{position:absolute;inset:-4px;border-radius:var(--r-pill);
+    border:2px solid var(--blue);opacity:0;pointer-events:none}
+  .bubble.busy .ring{animation:ring 1.8s ease-out infinite}
+  @keyframes ring{
+    0%{opacity:.55;transform:scale(1)}
+    70%{opacity:0;transform:scale(1.35)}
+    100%{opacity:0;transform:scale(1.35)}}
+  @media (prefers-reduced-motion:reduce){
+    .bubble,.bubble:hover,.bubble:active{transition:none;transform:none}
+    .bubble.busy .ring{animation:none;opacity:.55}}
   .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
 
   .toast{position:fixed;left:50%;transform:translate(-50%,150%);bottom:96px;
@@ -671,7 +717,7 @@
     .col-main{max-width:660px;padding-bottom:48px}
     main{padding-bottom:24px}
     .col-side{position:sticky;top:var(--sp-4)}
-    .composer{margin-right:calc(var(--rail) + var(--sp-6))}
+
     /* In the rail these are a list, not a carousel: nothing to swipe with
        on a Mac, and a horizontal scroller you cannot see the end of hides
        the workspace that failed. */
@@ -810,8 +856,17 @@
    </aside>
   </main>
 
-  <div class="composer"><div class="bar glass dense" id="openask" role="button" tabindex="0"><span class="dim">+</span>
-    <span class="ph" id="ph">Ask about anything above</span><span class="dim">🎙</span></div></div>
+  <div class="composer">
+    <button class="bubble glass dense" id="openask" aria-expanded="false"
+            aria-controls="ask" aria-label="Ask Blokk">
+      <span class="ring" aria-hidden="true"></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20.5 11.4a7.6 7.6 0 0 1-8.2 7.5L7 21l.6-3.5A7.6 7.6 0 1 1 20.5 11.4Z"/>
+        <path d="M9 11h.01M12.5 11h.01M16 11h.01"/>
+      </svg>
+    </button>
+  </div>
 </div>
 <div class="ask" id="ask" role="dialog" aria-modal="true" aria-label="Ask Blokk">
   <div class="ah glass">
@@ -823,6 +878,9 @@
     <div class="sugg" id="sugg"></div>
   </div>
   <div class="askbar"><div class="row glass dense">
+    <svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
     <textarea id="qbox" rows="1" placeholder="Ask about anything above"
               aria-label="Ask Blokk a question"></textarea>
     <button class="go" id="qgo" aria-label="Send">&#8593;</button>
@@ -1168,6 +1226,10 @@ function nightWords(s){
 }
 
 function paintHealth(h){
+  // The bubble is the only chrome left at the bottom of the screen, so it
+  // is where "something is running" has to show once you have scrolled
+  // past the runs.
+  $('#openask').classList.toggle('busy', !!h.running);
   const a=h.attention_budget, sp=h.spend[0]||{tokens:0,max_tokens:4000000};
   const sch=h.schedule||{};
   // A bar means "how full", so it is only drawn where there is a ceiling to
@@ -1697,8 +1759,25 @@ const SUGG = ['What needs me?', "What did it handle without me?",
               'Anything close to acting alone?', 'What has it learned?'];
 let asking = null;   // AbortController while a turn is in flight
 
+// Where the bubble is, right now. The circle opens from the button rather
+// than from a corner near it, so the panel is visibly the same object —
+// and it still lands right when the layout moves it (a rail appears, the
+// safe area changes, the window is resized mid-session).
+function fromBubble(){
+  const b = $('#openask').getBoundingClientRect();
+  const ask = $('#ask');
+  ask.style.setProperty('--bx', `${Math.round(b.left + b.width / 2)}px`);
+  ask.style.setProperty('--by', `${Math.round(b.top + b.height / 2)}px`);
+}
 function openAsk(seed){
-  $('#ask').classList.add('on');
+  fromBubble();
+  const ask = $('#ask');
+  ask.classList.add('on');
+  $('#openask').classList.add('handoff');
+  $('#openask').setAttribute('aria-expanded', 'true');
+  // A frame between display and the class that animates, or the browser
+  // has nothing to transition *from* and the panel simply appears.
+  requestAnimationFrame(()=>requestAnimationFrame(()=>ask.classList.add('open')));
   document.body.style.overflow='hidden';
   const sg=$('#sugg');
   if(sg && !sg.children.length){
@@ -1711,11 +1790,33 @@ function openAsk(seed){
   setTimeout(()=>$('#qbox').focus(), 60);
 }
 function closeAsk(){
-  $('#ask').classList.remove('on'); document.body.style.overflow='';
+  const ask = $('#ask'), bubble = $('#openask');
+  fromBubble();                       // it may have moved since it opened
+  ask.classList.remove('open');
+  bubble.setAttribute('aria-expanded', 'false');
+  document.body.style.overflow='';
   if(asking){ asking.abort(); asking=null; }
+  // Hide it once the circle has closed, not before — display:none mid
+  // transition is the panel vanishing rather than shrinking. The timeout
+  // is the backstop for the case transitionend never fires (reduced
+  // motion, a tab in the background), because a panel that never gets
+  // display:none is a panel covering the whole app.
+  const done = () => {
+    ask.classList.remove('on');
+    bubble.classList.remove('handoff');
+    bubble.focus({preventScroll:true});
+  };
+  const reduced = matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(reduced) return done();
+  let fired = false;
+  const once = e => { if(e.propertyName!=='clip-path') return;
+    fired = true; ask.removeEventListener('transitionend', once); done(); };
+  ask.addEventListener('transitionend', once);
+  setTimeout(()=>{ if(!fired){ ask.removeEventListener('transitionend', once); done(); } }, 520);
 }
+// A real <button>, so Enter and Space arrive as clicks and the hand-rolled
+// keydown that used to be here is gone.
 $('#openask').onclick = ()=>openAsk();
-$('#openask').onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();openAsk();} };
 $('#askclose').onclick = closeAsk;
 document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#ask').classList.contains('on')) closeAsk(); });
 

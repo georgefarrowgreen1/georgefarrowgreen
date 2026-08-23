@@ -145,11 +145,24 @@
      its own row. The column is as wide as its widest value and no wider. */
   .hrow .v{font-family:var(--mono);font-size:12px;color:var(--lab2);
     text-align:right;flex:0 0 auto;white-space:nowrap}
+  /* The bubble, as the app has it: a bar the width of the screen spends the
+     whole page covering the card underneath it. */
   .composer{position:sticky;bottom:0;z-index:15;margin-top:auto;
-    padding:8px 20px 16px}
-  .bar{display:flex;align-items:center;gap:12px;border-radius:var(--r-pill);
-    padding:12px 16px;min-height:var(--tap)}
-  .bar .ph{flex:1;font-size:16px;color:var(--lab3)}
+    padding:var(--sp-3) 20px 20px;display:flex;justify-content:flex-end}
+  .bubble{width:56px;height:56px;border:0;border-radius:var(--r-pill);
+    display:grid;place-items:center;color:var(--lab);cursor:pointer;
+    position:relative;transition:transform .2s cubic-bezier(.32,1.12,.4,1)}
+  .bubble svg{width:24px;height:24px}
+  .bubble:hover{transform:scale(1.05)}
+  .bubble:active{transform:scale(.94)}
+  .bubble .ring{position:absolute;inset:-4px;border-radius:var(--r-pill);
+    border:2px solid var(--blue);opacity:0;pointer-events:none}
+  .bubble.busy .ring{animation:ring 1.8s ease-out infinite}
+  @keyframes ring{0%{opacity:.55;transform:scale(1)}
+    70%,100%{opacity:0;transform:scale(1.35)}}
+  @media (prefers-reduced-motion:reduce){
+    .bubble,.bubble:hover,.bubble:active{transition:none;transform:none}
+    .bubble.busy .ring{animation:none;opacity:.55}}
 
   /* ── inspector ─────────────────────────────────────── */
   .insp{width:100%;max-width:400px;display:flex;flex-direction:column;gap:8px}
@@ -232,8 +245,16 @@
       <div class="sect">Overnight</div><div class="runs" id="runs"></div>
       <div class="sect">Health</div><div class="health" id="health"></div>
     </main>
-    <div class="composer"><div class="bar glass dense"><span class="dim">+</span>
-      <span class="ph">Message Blokk</span><span class="dim">&#127908;</span></div></div>
+    <div class="composer">
+      <button class="bubble glass dense" id="bubble" aria-label="Ask Blokk">
+        <span class="ring" aria-hidden="true"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20.5 11.4a7.6 7.6 0 0 1-8.2 7.5L7 21l.6-3.5A7.6 7.6 0 1 1 20.5 11.4Z"/>
+          <path d="M9 11h.01M12.5 11h.01M16 11h.01"/>
+        </svg>
+      </button>
+    </div>
   </div></div>
 
   <!-- ═══ inspector ═══ -->
@@ -585,6 +606,10 @@ function isStale(a){ return !!a.revalidate && HOUR>=9 && a.created_hour<9; }
 function paint(){
   const open = store.approval.filter(a=>!a.decision);
   const runs = store.run;
+  // Same as the app: the bubble is the last piece of chrome on the screen,
+  // so it is where "a run is in flight" shows.
+  $('#bubble').classList.toggle('busy',
+    runs.some(r => r.status === 'running'));
   const auto = store.approval.filter(a=>a.decision==='auto');
   const done = store.approval.filter(a=>a.decision && a.decision!=='auto');
 
