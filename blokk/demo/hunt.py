@@ -1088,6 +1088,98 @@ try:
     probe("A37 an expired wait leaves its drafts in the queue for ever",
           expired_approvals)
 
+    # ── 38. a typo answered with a stack trace ──────────────────────────
+    def cli_usage():
+        # Half the verbs read args[1] and args[2] straight off the command
+        # line. `connect.py peek` with nothing after it came back as an
+        # IndexError and four frames of connect.py, which tells you about its
+        # internals instead of your mistake — and this is the CLI you reach
+        # for when the GUI is not showing you your mail.
+        import subprocess as sp
+        short = ["", "peek", "peek cottages", "add", "add ws", "add ws imap",
+                 "remove", "remove ws", "workspace", "workspace add",
+                 "workspace add id", "workspace remove", "backup verify",
+                 "backup verify nope.db", "list", "test", "local", "clean",
+                 "nonsense"]
+        raised = []
+        for line in short:
+            r = sp.run([sys.executable, "connect.py", *line.split()],
+                       capture_output=True, text=True, timeout=60)
+            if "Traceback" in (r.stderr + r.stdout):
+                raised.append(line or "(no verb)")
+        if raised:
+            return (True, f"{len(raised)} answered with a traceback: "
+                          f"{', '.join(raised[:4])}")
+        return (False, "every verb with too few arguments prints a usage line")
+    probe("A38 connect.py answers a missing argument with a traceback",
+          cli_usage)
+
+    # ── 39. a model server answering 200 with rubbish ───────────────────
+    def served_rubbish():
+        # ModelUnreachable is the one failure the rest of the system knows how
+        # to degrade around, per workspace, without taking the night with it.
+        # Everything a misbehaving server can do short of refusing the
+        # connection went past it: an HTML error page from a proxy came back
+        # as a JSONDecodeError, a body with no choices as a KeyError, a
+        # connection dropped mid-answer as IncompleteRead. And a null content
+        # — which llama-server returns when a grammar leaves nothing to say —
+        # went straight into a draft and on to an approval whose body column
+        # is NOT NULL.
+        import sys as _s, json as _j, threading, socketserver
+        import http.server as hs
+        _s.path.insert(0, ".")
+        from core.models import ServedModel, ModelUnreachable
+        mode = {"m": "garbage"}
+
+        class H(hs.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                if mode["m"] == "truncated":
+                    self.send_response(200)
+                    self.send_header("Content-Length", "500")
+                    self.end_headers()
+                    self.wfile.write(b'{"choices":[{"mess')
+                    return
+                body = {"garbage": b"<html>502 Bad Gateway</html>",
+                        "empty": b"",
+                        "no-choices": b'{"id":"x"}',
+                        "null": b'{"choices":[{"message":{"content":null}}]}'
+                        }[mode["m"]]
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        socketserver.TCPServer.allow_reuse_address = True
+        srv = socketserver.TCPServer(("127.0.0.1", 8187), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            m = ServedModel("http://127.0.0.1:8187/v1", "probe")
+            for bad in ("garbage", "empty", "no-choices", "truncated"):
+                mode["m"] = bad
+                try:
+                    m.chat([{"role": "user", "content": "hi"}])
+                    return (True, f"a {bad} response was accepted as an answer")
+                except ModelUnreachable:
+                    pass
+                except Exception as e:                           # noqa: BLE001
+                    return (True, f"a {bad} response raised "
+                                  f"{type(e).__name__}, which nothing catches")
+            mode["m"] = "null"
+            out = m.chat([{"role": "user", "content": "hi"}])
+            if out["text"] is None:
+                return (True, "a null content became a draft body of None")
+            return (False, "anything that is not a chat completion is "
+                           "ModelUnreachable, and a null content is empty text")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+    probe("A39 a model server answering 200 with rubbish crashes the sweep",
+          served_rubbish)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

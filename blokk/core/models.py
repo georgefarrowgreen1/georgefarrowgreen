@@ -118,6 +118,7 @@ class ServedModel(Model):
         self.endpoint, self.name, self.schema = endpoint, model, schema
 
     def chat(self, messages, tools=None) -> dict:   # pragma: no cover
+        import http.client
         import urllib.error
         import urllib.request
         payload = {"model": self.name, "messages": messages, "max_tokens": 1024}
@@ -135,7 +136,7 @@ class ServedModel(Model):
             {"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
-                d = json.loads(r.read())
+                raw = r.read()
         except urllib.error.URLError as e:
             # Say which endpoint and what to do. "Connection refused" at 04:00
             # in a log file is not an actionable error message.
@@ -143,10 +144,46 @@ class ServedModel(Model):
                 f"no model server at {self.endpoint} ({e.reason}). "
                 f"Start it with ./run.sh, or ./setup.sh --stubs to run without "
                 f"one.") from e
-        u = d.get("usage", {})
+        except (OSError, http.client.HTTPException) as e:
+            # A connection that dies mid-body arrives as IncompleteRead —
+            # an HTTPException, not an OSError, so catching sockets is not
+            # enough — and
+            # a JSONDecodeError three frames up says nothing about which
+            # server or what to do about it.
+            raise ModelUnreachable(
+                f"the model server at {self.endpoint} closed the connection "
+                f"part way through its answer ({type(e).__name__}). It may "
+                f"have run out of memory — check its log.") from e
+
+        # Everything below is a server answering 200 with something that is
+        # not a chat completion: an HTML error page from a proxy, an empty
+        # body, a JSON object with no choices in it. Each one used to arrive
+        # as a JSONDecodeError or a KeyError from inside this method, which
+        # degrades per workspace like anything else — but tells whoever reads
+        # the failure nothing about which of their servers is misbehaving.
+        def unusable(why: str) -> ModelUnreachable:
+            return ModelUnreachable(
+                f"the model server at {self.endpoint} answered with something "
+                f"that is not a chat completion: {why}. Is {self.endpoint} "
+                f"really a model server?")
+
+        try:
+            d = json.loads(raw)
+        except ValueError as e:
+            head = raw[:60].decode("utf-8", "replace").strip() or "an empty body"
+            raise unusable(f"{head!r}") from e
+        if not isinstance(d, dict) or not d.get("choices"):
+            raise unusable("no choices in the response")
+        message = d["choices"][0].get("message")
+        if not isinstance(message, dict):
+            raise unusable("a choice with no message in it")
+        u = d.get("usage") or {}
         return {
-            "text": d["choices"][0]["message"].get("content", ""),
-            "tool_call": (d["choices"][0]["message"].get("tool_calls") or [None])[0],
+            # A server that returns a null content — llama-server does it when
+            # a grammar leaves nothing to say — must not put None into a draft
+            # and on to an approval whose body column is NOT NULL.
+            "text": message.get("content") or "",
+            "tool_call": (message.get("tool_calls") or [None])[0],
             "tokens_in": u.get("prompt_tokens", 0),
             "tokens_out": u.get("completion_tokens", 0),
             "model": self.name,

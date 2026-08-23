@@ -59,6 +59,10 @@ def main() -> int:
         return 0
 
     if cmd == "remove":
+        if len(args) < 3:
+            print("usage: connect.py remove <workspace> <imap|caldav|messages"
+                  "|ical|maildir>")
+            return 1
         print(sources.remove(store, args[1], args[2])["detail"]
               .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
         return 0
@@ -84,6 +88,11 @@ def main() -> int:
                     return 1
                 target = folder / rows[0]["name"]
             r = backup.verify(target)
+            if r.get("error"):
+                # Printing "None (? workspaces)" for a file that is not there
+                # reads like a verdict on the backup rather than on the path.
+                print(f"  {r['error']}")
+                return 1
             print(f"  {target.name}: {r.get('integrity') or r.get('detail')}"
                   f"  ({r.get('workspaces','?')} workspaces)")
             return 0 if r.get("ok") else 1
@@ -191,6 +200,11 @@ def main() -> int:
     if cmd == "peek":
         # The important one. Look at what it would actually read before you
         # let anything downstream act on it.
+        if len(args) < 3:
+            print("usage: connect.py peek <workspace> <mail|calendar|messages>"
+                  " [n]")
+            print("       connect.py list   shows what is wired")
+            return 1
         out = sources.peek(store, args[1], args[2],
                            int(args[3]) if len(args) > 3 else 5)
         if out.get("error"):
