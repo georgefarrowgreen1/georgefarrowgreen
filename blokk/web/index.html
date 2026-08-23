@@ -2147,7 +2147,7 @@ async function send(q){
   go.parentNode.append(stop);
 
   asking = new AbortController();
-  let text='';
+  let text='', proposed=false, finished=false, tools=0, degraded='';
   try{
     const r = await fetch(API+'/api/v1/ask',{method:'POST',
       headers:{'Content-Type':'application/json',...AUTH},
@@ -2165,7 +2165,7 @@ async function send(q){
         if(!line) continue;
         const ev = JSON.parse(line.slice(6));
         if(ev.type==='RUN_STARTED' && ev.thread) THREAD = ev.thread;
-        if(ev.type==='TOOL_CALL_START'){
+        if(ev.type==='TOOL_CALL_START'){ tools++;
           steps.append(el(`<span class="step live" data-t="${esc(ev.name)}">
             <span class="n">&#9679;</span>${esc(ev.name.replace(/_/g,' '))}</span>`));
           th.scrollTop=th.scrollHeight;
@@ -2182,18 +2182,20 @@ async function send(q){
         }
         if(ev.type==='TEXT_MESSAGE_END') ans.innerHTML=esc(text);
         if(ev.type==='PROPOSAL'){
+          proposed=true;
           th.append(propCard({id:ev.approval_id, body:ev.text, action:ev.action,
                               note:ev.note, pinned:ev.pinned}));
           setTimeout(()=>tick(true), 400);
           announce('Proposal queued. It is waiting on you.');
         }
-        if(ev.type==='DEGRADED'){
+        if(ev.type==='DEGRADED'){ degraded=ev.detail||'';
           // Said, not swallowed. A reply assembled from rows because the
           // model server is down reads exactly like one it wrote, and that
           // is the difference between a quiet day and a quiet failure.
           steps.parentNode.insertBefore(
             el(`<div class="degraded">${esc(ev.detail)}</div>`), steps);
         }
+        if(ev.type==='RUN_FINISHED') finished=true;
         if(ev.type==='RUN_FINISHED' && ev.budget_left!==undefined && ev.budget_left<20){
           th.append(el(`<div class="readonly note">
             ${ev.budget_left} question${ev.budget_left===1?'':'s'} left in today's allowance.</div>`));
@@ -2211,6 +2213,17 @@ async function send(q){
       }
     }
     ans.innerHTML=esc(text);
+    // A turn that ends having said nothing is the one outcome this panel is
+    // not allowed to render, and for a while it rendered it as a blank space
+    // where the answer goes — which reads as "it ignored you". Whatever went
+    // quiet upstream, it gets a sentence here, and the sentence says what did
+    // arrive so the next question is answerable.
+    if(!text.trim() && !proposed) ans.innerHTML = `<div class="err">
+      <b>Nothing came back.</b> ${finished
+        ? `The turn finished${tools?` after reading ${tools} source${tools===1?'':'s'}`:''}
+           without saying anything${degraded?`, and reported: ${esc(degraded)}`:''}.`
+        : 'The connection ended part way through.'}
+      Ask again, and if it keeps happening run <code>./blokk doctor</code>.</div>`;
   }catch(e){
     ans.innerHTML = e.name==='AbortError'
       ? esc(text)+'<div class="readonly note">Stopped.</div>'

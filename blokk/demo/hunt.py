@@ -2077,6 +2077,62 @@ try:
     probe("A54 a destructive action can graduate to acting alone",
           pinned_never_graduates)
 
+    def never_silent():
+        # Every shape a model server can answer with, including the ones that
+        # are not answers. The claim is not that the reply is good — with no
+        # weights it is assembled from rows — but that there is one. A turn
+        # that produces no text renders as a blank space in the panel, which
+        # reads as "it ignored you", and that is the report that arrived.
+        import sys as _s, threading as _th, json as _j
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.ask import ask as run_ask
+        from core.models import ServedModel
+
+        REPLY = [""]
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                b = _j.dumps({"choices": [{"message": {"content": REPLY[0]}}],
+                              "usage": {}}).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(b)))
+                self.end_headers(); self.wfile.write(b)
+
+        srv = HTTPServer(('127.0.0.1', 8187), H)
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        st = Store('blokk.db')
+        m = ServedModel(endpoint="http://127.0.0.1:8187/v1", model="probe")
+        shapes = {
+            "always reads": '{"do":"read","read":"open_approvals","say":"Checking."}',
+            "invents a tool": '{"do":"read","read":"send_email","say":"On it."}',
+            "proposes nonsense": '{"do":"propose","action":"os.system","args":{},"say":"Done."}',
+            "empty body": '',
+            "prose, not a step": 'Hello there!',
+            "an empty reply": '{"do":"reply","say":""}',
+            "null everything": '{"do":null,"say":null}',
+        }
+        try:
+            mute = []
+            for name, reply in shapes.items():
+                REPLY[0] = reply
+                st.x("UPDATE budget SET tool_calls=0")
+                said = "".join(e.get("delta", "") for e in
+                               run_ask(st, "Hi", m, "cottages")
+                               if e["type"] == "TEXT_MESSAGE_CONTENT")
+                if not said.strip():
+                    mute.append(name)
+            return (bool(mute), "a turn said nothing when the model: "
+                    + ", ".join(mute) if mute
+                    else f"{len(shapes)} model behaviours, every one answered")
+        finally:
+            srv.shutdown()
+    probe("A55 a chat turn can end without saying anything", never_silent)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

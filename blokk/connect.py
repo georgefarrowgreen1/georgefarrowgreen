@@ -13,6 +13,7 @@ Wire real data in, one source at a time.
     python3 connect.py test                          prove every credential works
     python3 connect.py peek cottages mail 6          see what it would actually read
     python3 connect.py remove cottages imap
+    python3 connect.py ask "what needs me?"           every event, in the open
 
 Nothing here stores a password. `add` records a keychain service name; the
 password goes in the keychain separately, and Blokk reads it at call time.
@@ -259,6 +260,40 @@ def main() -> int:
             print(f"  body : {r['body'][:160].strip()}")
         print(f"\n{out['count']} rows. Nothing was written, nothing was marked read.")
         return 0
+
+    if cmd == "ask":
+        # The chat panel with the lid off. It runs the same generator the
+        # server streams, in this process, and prints every event — so when
+        # the panel shows nothing, this says whether nothing was produced,
+        # or something was produced and did not arrive. Those are different
+        # faults with different fixes and the screen cannot tell them apart.
+        if len(args) < 2:
+            print('usage: connect.py ask "your question" [workspace]')
+            return 1
+        from core import models
+        from core.ask import ask as run_ask
+        m = models._from_env().small
+        how = ("asks the model for each step" if getattr(m, "plans", False)
+               else "no weights — the deterministic planner")
+        print(f"  model : {m.name} ({type(m).__name__}, {how})")
+        said, n = [], 0
+        for ev in run_ask(store, args[1], m,
+                          args[2] if len(args) > 2 else None):
+            n += 1
+            kind = ev["type"]
+            if kind == "TEXT_MESSAGE_CONTENT":
+                said.append(ev["delta"]); continue
+            rest = {k: v for k, v in ev.items() if k != "type"}
+            print(f"  {kind:22} {json.dumps(rest, default=str)[:120]}")
+        text = "".join(said)
+        print(f"\n  {n} events")
+        if text:
+            print(f"  answer: {text}")
+        else:
+            # The whole point of the command.
+            print("  answer: NOTHING — the turn produced no text. That is a "
+                  "fault in this file's neighbours, not in your question.")
+        return 0 if text else 1
 
     print(__doc__)
     return 0

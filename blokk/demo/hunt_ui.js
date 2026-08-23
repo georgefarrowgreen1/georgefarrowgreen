@@ -638,6 +638,39 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
 }
 
+// B29 — a turn that says nothing must not render as a blank space
+// This is the one the photo showed: two questions, two empty answers, and no
+// way to tell "it ignored you" from "it broke". Whatever goes quiet upstream,
+// the panel has to put a sentence on the screen — so the guard is asserted
+// here rather than left to whichever failure happens to be live that week.
+{
+  const send = js.slice(js.indexOf('async function send(q)'));
+  const body = send.slice(0, send.indexOf('\ntick(true);'));
+  probe('B29 an empty answer renders as a blank space',
+    !/!text\.trim\(\)\s*&&\s*!proposed/.test(body),
+    'a turn that says nothing says so, and names what did arrive');
+  // …and it must not fire on a turn that only proposed, which legitimately
+  // has no prose in the answer area at all.
+  probe('B29a the empty-answer guard fires on a proposal-only turn',
+    !/proposed=true/.test(body),
+    'a proposal counts as an answer');
+}
+
+// B30 — the panel's ground must be a token, not a colour
+// It was rgba(10,10,12,.86) written straight into .ask, so in light mode the
+// header, the bubbles and the composer came up light over a near-black
+// thread. A colour with one definition can only ever be right once.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  const askRule = css.slice(css.indexOf('.ask{'), css.indexOf('.ask.on{'));
+  probe('B30 the ask panel pins its ground to one theme',
+    /background:\s*(#|rgba?\()/.test(askRule),
+    'the panel takes its ground from --veil');
+  const defs = (css.match(/--veil\s*:/g) || []).length;
+  probe('B30a --veil is not defined in all three theme states',
+    defs < 3, `${defs} definitions: bare, prefers-dark, and [data-theme]`);
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

@@ -323,12 +323,20 @@ def ask(store, question: str, model, workspace: str | None = None,
 
     schema = step_schema(tools)
     known = [r["id"] for r in store.q("SELECT id FROM workspace")]
+    answered = False
     gathered: list[tuple[str, list]] = []
     flagged = False
     degraded = ""
     steps = 0
 
     for steps in range(1, MAX_STEPS + 1):
+        if steps == MAX_STEPS:
+            # One step left, so stop offering the option of another read.
+            # A model that can still ask for one will, and then the turn ends
+            # on a tool call with nothing said.
+            messages.append({"role": "user", "content": json.dumps(
+                {"note": "This is the last step. Answer now from what you "
+                         "have read, with do=reply."})})
         move, why = _decide(model, messages, schema, question, gathered,
                             tools, known)
         if why and not degraded:
@@ -336,6 +344,19 @@ def ask(store, question: str, model, workspace: str | None = None,
             # like the model having nothing to say.
             degraded = why
             yield {"type": "DEGRADED", "detail": why}
+
+        if move["do"] == "read" and move.get("read") not in tools:
+            # It asked for a tool that is not there. Its "say" for that step
+            # is "let me check" — a sentence about work it is about to do, and
+            # publishing that as the answer ends the turn on a promise. Hand
+            # back the list and let it choose again.
+            messages.append({"role": "user", "content": json.dumps(
+                {"refused": f"there is no tool called {move.get('read')!r}",
+                 "tools": sorted(tools)})})
+            if steps < MAX_STEPS:
+                continue
+            move = {"do": "reply", "say": _summarise(gathered) if gathered
+                    else "I could not find a way to look that up."}
 
         if move["do"] == "read" and move.get("read") in tools:
             okay, left = _meter(store, ws)
@@ -403,7 +424,21 @@ def ask(store, question: str, model, workspace: str | None = None,
         answer = move.get("say") or "I did not find anything to say about that."
         yield from _say(answer)
         remember(store, thread, ws, "assistant", answer, flagged=flagged)
+        answered = True
         break
+
+    if not answered:
+        # The loop ran out of steps still reading. Before this, the turn
+        # simply ended: six tool calls, no sentence, and a chat panel showing
+        # an empty space where the answer goes. Silence is the one thing a
+        # turn is not allowed to be — and there is no need for it here,
+        # because everything those steps read is sitting in `gathered`.
+        answer = (_summarise(gathered) if gathered else
+                  "I could not work out how to answer that one. Try asking "
+                  "for a specific thing — the queue, last night's runs, what "
+                  "is wired up.")
+        yield from _say(answer)
+        remember(store, thread, ws, "assistant", answer, flagged=flagged)
 
     if gathered:
         yield {"type": "SOURCES",
