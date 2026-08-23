@@ -181,9 +181,32 @@ def bundles(root: Path) -> list[Path]:
         return []
 
 
-def _read(root: Path) -> tuple[list[dict], list[str]]:
-    """Every event on disk, and the calendar names they came from."""
-    events, names = [], []
+def loose_ics(root: Path) -> list[Path]:
+    """Plain .ics files, the ones not inside a .calendar bundle.
+
+    An .ics file is the one calendar format everything exports: Google,
+    Outlook, Fastmail, a subscription URL saved to disk, the file a venue
+    emails you. This reader wanted Apple's .calendar bundle layout, so none
+    of them could be wired at all — the source added, and then read nothing,
+    which is the quiet half-state this codebase keeps having to fix.
+    """
+    try:
+        inside = {b for b in bundles(root)}
+        return sorted(f for f in root.rglob("*.ics")
+                      if f.is_file()
+                      and not any(b in f.parents for b in inside))
+    except OSError:
+        return []
+
+
+def _calendars(root: Path) -> list[tuple[str, list[Path]]]:
+    """Everything readable under here: Apple's bundles, then loose .ics.
+
+    One list so the parse below runs once over both. The alternative was a
+    second copy of a forty-line loop, and two copies of that loop is two
+    answers to "is this all-day event busy on its last day".
+    """
+    out: list[tuple[str, list[Path]]] = []
     for bundle in bundles(root):
         title = bundle.name
         info = bundle / "Info.plist"
@@ -195,8 +218,22 @@ def _read(root: Path) -> tuple[list[dict], list[str]]:
                     title = m.group(1)
             except OSError:
                 pass
+        out.append((title, sorted((bundle / "Events").glob("*.ics"))))
+    loose = loose_ics(root)
+    if loose:
+        # Named for what it is. A file called basic.ics from an export is not
+        # a calendar name anybody recognises, and there may be several.
+        out.append((f"{len(loose)} calendar file"
+                    f"{'' if len(loose) == 1 else 's'}", loose))
+    return out
+
+
+def _read(root: Path) -> tuple[list[dict], list[str]]:
+    """Every event on disk, and the calendar names they came from."""
+    events, names = [], []
+    for title, files in _calendars(root):
         names.append(title)
-        for f in sorted((bundle / "Events").glob("*.ics")):
+        for f in files:
             try:
                 text = _unfold(f.read_text(errors="replace"))
             except OSError:

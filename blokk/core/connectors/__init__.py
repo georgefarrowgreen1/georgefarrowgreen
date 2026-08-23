@@ -157,6 +157,16 @@ class Registry:
 REGISTRY = Registry()
 
 
+def _root(ref: str):
+    """A folder to read, or None for the app's own place on this Mac.
+
+    "local" is the word connect.py has always used for "wherever the Apple
+    app keeps it". Anything else is a path.
+    """
+    ref = (ref or "").strip()
+    return None if ref.lower() in ("", "local", "default") else ref
+
+
 def wire(store) -> Registry:
     """Build the registry from the credential table.
 
@@ -176,11 +186,17 @@ def wire(store) -> Registry:
                 from core.connectors.caldav_cal import IcloudCalendar
                 REGISTRY.add(ws, "calendar", IcloudCalendar(ref))
             elif kind == "maildir":
+                # ref is "local" for the Mac's own archive, or a folder. Both
+                # connectors have taken a root since they were written and
+                # nothing ever passed one, so a mailbox exported to disk, a
+                # second Mail location or a shared calendar directory could
+                # not be wired at all — the source added fine and then read
+                # somewhere else.
                 from core.connectors.emlx_mail import LocalMail
-                REGISTRY.add(ws, "mail", LocalMail())
+                REGISTRY.add(ws, "mail", LocalMail(root=_root(ref)))
             elif kind == "ical":
                 from core.connectors.ical import LocalCalendar
-                REGISTRY.add(ws, "calendar", LocalCalendar())
+                REGISTRY.add(ws, "calendar", LocalCalendar(root=_root(ref)))
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(ws, "messages", AppleMessages())

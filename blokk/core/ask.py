@@ -151,6 +151,91 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         return [{"sweeps_at": at or "off", "last_sweep": last["at"],
                  "last_status": last["status"]}]
 
+    # ── your data, not Blokk's ──────────────────────────────────────────
+    # Everything above reads Blokk's own tables. Everything below reads the
+    # businesses, which is what anybody actually wants to ask about, and it
+    # is a different kind of read: the rows come from outside — a stranger's
+    # mail, a guest's name, a page somebody else wrote — so every one of them
+    # goes through the quarantine on the way past.
+    #
+    # Offered only for sources that are wired. A tool the model can name and
+    # cannot use is a step it wastes and a sentence it has to apologise for,
+    # and with the grammar built from this dict, not offering it is the same
+    # as it not existing.
+    def _peek(name: str, n: int = 6):
+        from core import sources as _src
+        out = _src.peek(store, workspace_scope, name, n)
+        if out.get("error"):
+            # A source that cannot be read says so, with the fix. The model
+            # is told this is a fact about the source, not a refusal.
+            return [{"unreadable": out["error"], "fix": out.get("fix", "")}]
+        rows = []
+        for r in out.get("rows", []):
+            rows.append({"from": r.get("from"), "subject": r.get("subject"),
+                         "body": (r.get("body") or "")[:400],
+                         "when": r.get("date") or r.get("at") or "",
+                         "provenance": r.get("provenance", "untrusted"),
+                         "_flagged": bool(r.get("instruction_like"))})
+        return [{"window": out.get("window", "")}] + rows if rows else \
+               [{"window": out.get("window", ""), "nothing": "no rows in that window"}]
+
+    def read_mail(**_):
+        return _peek("mail", MAX_ROWS)
+
+    def read_calendar(**_):
+        return _peek("calendar", MAX_ROWS)
+
+    def read_messages(**_):
+        return _peek("messages", MAX_ROWS)
+
+    def read_page(**_):
+        return _peek("web", 1)
+
+    def forecast(**_):
+        return _peek("weather", 7)
+
+    def free_nights(**_):
+        """Which nights nobody has booked. The question a cottage gets asked."""
+        from core.connectors import wire
+        c = wire(store).get(workspace_scope, "calendar")
+        if c is None:
+            return [{"unreadable": "no calendar is wired to this workspace",
+                     "fix": "Add one from Sources."}]
+        try:
+            # gaps() first: it answers "which nights are unbooked", which is
+            # the cottage's question and the one people actually ask.
+            # open_windows() answers "is there a free morning this week",
+            # which is yours. Both return dicts — an earlier version here
+            # unpacked them as (start, end) pairs and raised ValueError into
+            # the middle of an answer.
+            if hasattr(c, "gaps"):
+                return [dict(g) for g in c.gaps(days=90)][:MAX_ROWS]
+            if hasattr(c, "open_windows"):
+                return [dict(w) for w in c.open_windows(days=14)][:MAX_ROWS]
+        except Exception as e:                                   # noqa: BLE001
+            return [{"unreadable": f"{type(e).__name__}: {e}"[:200]}]
+        return [{"unreadable": "that calendar cannot answer this one"}]
+
+    def this_mac(**_):
+        """What is on this Mac that Blokk could read but is not reading.
+
+        Here so "what can I connect?" is answerable without a terminal. It
+        looks at folders, not at their contents — nothing is opened, and the
+        answer is the same one the Sources panel shows.
+        """
+        from core import local
+        sur = local.survey()
+        if not sur.get("mac"):
+            return [{"note": sur.get("note", "not a Mac")}]
+        wired = {r["kind"] for r in store.q(
+            "SELECT kind FROM credential WHERE workspace_id=?",
+            workspace_scope)} if workspace_scope else set()
+        return [{"what": s["what"], "kind": s["kind"],
+                 "kind_local": s.get("kind_local"),
+                 "state": s["state"], "detail": s["detail"],
+                 "already_wired": (s.get("kind_local") or s["kind"]) in wired}
+                for s in sur.get("sources", [])]
+
     tools = [
         ReadTool("open_approvals",  "what is waiting on you right now", open_approvals),
         ReadTool("what_was_handled", "what it decided without you", what_was_handled),
@@ -160,7 +245,29 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         ReadTool("learned_facts",   "what it has learned from your corrections", learned_facts),
         ReadTool("sources_state",   "what is wired up, and what each workspace may reach", sources_state),
         ReadTool("schedule_state",  "when the night shift runs and how the last one went", schedule_state),
+        ReadTool("this_mac",        "what is on this Mac that could be wired up but is not", this_mac),
     ]
+
+    # One tool per wired source, and none for a source that is not there.
+    wired = {r["kind"] for r in store.q(
+        "SELECT kind FROM credential WHERE workspace_id=?", workspace_scope)} \
+        if workspace_scope else set()
+    OVER = (
+        ("imap",     "read_mail",     "the actual mail, most recent first", read_mail),
+        ("maildir",  "read_mail",     "the actual mail, most recent first", read_mail),
+        ("caldav",   "read_calendar", "what is in the calendar", read_calendar),
+        ("ical",     "read_calendar", "what is in the calendar", read_calendar),
+        ("caldav",   "free_nights",   "which nights nobody has booked", free_nights),
+        ("ical",     "free_nights",   "which nights nobody has booked", free_nights),
+        ("messages", "read_messages", "recent messages", read_messages),
+        ("web",      "read_page",     "the page it is watching, as it is now", read_page),
+        ("weather",  "forecast",      "the forecast where you are", forecast),
+    )
+    have = {t.name for t in tools}
+    for kind, name, desc, fn in OVER:
+        if kind in wired and name not in have:
+            tools.append(ReadTool(name, desc, fn))
+            have.add(name)
     return {t.name: t for t in tools}
 
 
@@ -312,7 +419,17 @@ def scope_for(store, workspace: str | None) -> str:
     """
     if workspace and store.one("SELECT 1 FROM workspace WHERE id=?", workspace):
         return workspace
-    row = store.one("SELECT id FROM workspace WHERE active=1 ORDER BY id LIMIT 1")
+    # With one workspace this is that one. With four it was whichever sorted
+    # first, which is a coin toss dressed up as a decision — "biz2", because
+    # b comes before c. The one with something waiting on you is the one you
+    # opened the chat about; failing that, the one that ran most recently.
+    row = store.one(
+        "SELECT w.id FROM workspace w "
+        "LEFT JOIN approval a ON a.workspace_id=w.id AND a.decision IS NULL "
+        "LEFT JOIN run r ON r.workspace_id=w.id "
+        "WHERE w.active=1 "
+        "GROUP BY w.id "
+        "ORDER BY COUNT(a.id) DESC, MAX(r.started_at) DESC, w.id LIMIT 1")
     return row["id"] if row else ""
 
 
@@ -340,7 +457,10 @@ def ask(store, question: str, model, workspace: str | None = None,
     yield {"type": "RUN_STARTED", "scope": workspace or "all workspaces",
            "thread": thread, "budget_left": left}
 
-    tools = build_tools(store, workspace)
+    # The resolved one, not the argument. build_tools scopes its SQL and
+    # decides which sources exist by it, so handing it the unresolved value
+    # would offer a mail tool for a workspace nobody is looking at.
+    tools = build_tools(store, ws)
     past = history(store, thread)
     remember(store, thread, ws, "user", question)
 
@@ -568,6 +688,16 @@ def _only_say(text: str, scope: str) -> Iterator[dict]:
     yield {"type": "RUN_FINISHED", "steps": 0, "budget_left": 0}
 
 
+def _day(iso: str) -> str:
+    """2026-08-26 as "Wed 26 Aug". A date somebody can picture."""
+    from datetime import date
+    try:
+        d = date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return str(iso)
+    return d.strftime("%a %-d %b") if hasattr(d, "strftime") else str(iso)
+
+
 def _stream(text: str, size: int = 3):
     """Chunked so the front end can render token-by-token."""
     words = text.split(" ")
@@ -622,6 +752,24 @@ INTENT = (
     ("add_source",  r"\b(add|wire|connect|hook up)\b.*"
                     r"\b(source|mail|imap|calendar|caldav|ical|weather|page|web)\b"),
 )
+
+# What a read tool needs behind it, said in the words of somebody who has not
+# read core/sources.py. The second half is the shortest true route to having it.
+NEEDS = {
+    "read_mail":     ("mailbox", "Mail.app's own archive needs no password — "
+                                 "ask me to add a maildir source."),
+    "read_calendar": ("calendar", "The Calendar app's own files need no "
+                                  "password — ask me to add an ical source."),
+    "free_nights":   ("calendar", "The Calendar app's own files need no "
+                                  "password — ask me to add an ical source."),
+    "read_messages": ("Messages archive", "Ask me to add a messages source; "
+                                          "it needs no password either."),
+    "read_page":     ("page", "Ask me to add a web source and give me the "
+                              "address."),
+    "forecast":      ("place", "Ask me to add a weather source for a town, "
+                               "and it will only ever send a latitude and a "
+                               "longitude."),
+}
 
 ACTIONY = re.compile(
     r"\b(send|reply|email|book|cancel|refund|pay|delete|move|reschedule|"
@@ -700,12 +848,24 @@ def _plan(question: str, gathered: list, tools: dict,
                     "runs and what is wired up, and propose changes to how I "
                     "run."}
 
-    want = [n for n in _route(ql) if n in tools]
+    routed = _route(ql)
+    want = [n for n in routed if n in tools]
     done = {n for n, _ in gathered}
     for name in want:
         if name not in done:
             return {"do": "read", "read": name, "term": _term(q),
                     "say": f"Checking {name.replace('_', ' ')}."}
+    # Asked about a source that is not wired. Before this it fell through to
+    # "I am not sure what you are after" — which is a shrug at somebody who
+    # asked a perfectly clear question, and hides the one thing they need to
+    # know, which is that the source is not connected yet.
+    missing = [n for n in routed if n not in tools and n in NEEDS]
+    if missing and not gathered:
+        what, how = NEEDS[missing[0]]
+        return {"do": "reply", "say":
+                f"No {what} is wired to this workspace yet, so I have nothing "
+                f"to read. {how} Ask me what is on this Mac and I will tell "
+                f"you what is here already."}
     if not gathered:
         return {"do": "reply", "say":
                 "I am not sure what you are after. I can tell you what is "
@@ -876,6 +1036,28 @@ def _route(ql: str) -> list[str]:
     if any(w in ql for w in ("schedule", "night shift", "what time", "when does",
                              "when do", "how often")):
         return ["schedule_state"]
+    # Your data first, when the question is obviously about it. Answering
+    # "what's in my inbox?" with the size of the approval queue is answering
+    # a question nobody asked.
+    if any(w in ql for w in ("connect", "wire up", "set up", "this mac",
+                             "what can i add", "hook up")):
+        picks.append("this_mac")
+    if any(w in ql for w in ("mail", "email", "inbox", "e-mail", "message from",
+                             "wrote", "enquir", "enquiry", "booking")):
+        picks.append("read_mail")
+    if any(w in ql for w in ("free", "available", "vacan", "empty night",
+                             "spare night", "open night")):
+        picks.append("free_nights")
+    if any(w in ql for w in ("calendar", "diary", "booked", "event", "meeting",
+                             "appointment")):
+        picks.append("read_calendar")
+    if any(w in ql for w in ("message", "text", "imessage", "whatsapp")):
+        picks.append("read_messages")
+    if any(w in ql for w in ("weather", "forecast", "rain", "dry", "sunny",
+                             "temperature")):
+        picks.append("forecast")
+    if any(w in ql for w in ("page", "website", "web page", "prices page")):
+        picks.append("read_page")
     if any(w in ql for w in ("wait", "queue", "approve", "decide", "need me", "pending")):
         picks.append("open_approvals")
     if any(w in ql for w in ("handle", "alone", "without me", "auto", "did it")):
@@ -888,8 +1070,10 @@ def _route(ql: str) -> list[str]:
         picks.append("learned_facts")
     if any(w in ql for w in ("step", "journal", "when did", "history", "log")):
         picks.append("search_journal")
-    if any(w in ql for w in ("source", "wired", "connect", "reach", "allow",
-                             "mail", "calendar", "weather")):
+    # Not "mail", "calendar" or "weather" any more: those have tools of their
+    # own now, and listing what is wired is not an answer to a question about
+    # what is in it.
+    if any(w in ql for w in ("source", "wired", "reach", "allow", "allowlist")):
         picks.append("sources_state")
     if any(w in ql for w in ("schedule", "night shift", "what time", "when does")):
         picks.append("schedule_state")
@@ -936,6 +1120,79 @@ def _summarise(gathered: list) -> str:
                     by.setdefault(r["workspace_id"], []).append(r["kind"])
                 parts.append("wired up: " + "; ".join(
                     f"{w} — {', '.join(k)}" for w, k in by.items()) + ".")
+        elif tool in ("read_mail", "read_calendar", "read_messages",
+                      "read_page"):
+            # Subjects and senders, never the body. With no weights there is
+            # nothing here that can safely summarise a stranger's paragraph,
+            # and inventing a gist of somebody's email is worse than listing
+            # what arrived.
+            bad = next((r for r in rows if r.get("unreadable")), None)
+            if bad:
+                parts.append(f"that source is not readable: {bad['unreadable']}"
+                             + (f" {bad.get('fix', '')}" if bad.get("fix") else ""))
+                continue
+            window = next((r.get("window") for r in rows if r.get("window")), "")
+            items = [r for r in rows if r.get("subject") or r.get("from")]
+            one, many = {"read_mail": ("message", "messages"),
+                         "read_calendar": ("entry", "entries"),
+                         "read_messages": ("message", "messages"),
+                         "read_page": ("page", "pages")}[tool]
+            if not items:
+                parts.append(f"nothing in {window or 'that window'}.")
+                continue
+            listed = "; ".join(
+                f"{(r.get('subject') or '(no subject)')[:60]}"
+                + (f" — {r['from']}" if r.get("from") else "")
+                for r in items[:4])
+            parts.append(f"{len(items)} {one if len(items) == 1 else many}"
+                         + (f" in {window}" if window else "") + ": " + listed + ".")
+        elif tool == "free_nights":
+            bad = next((r for r in rows if r.get("unreadable")), None)
+            if bad:
+                parts.append(bad["unreadable"] + ".")
+            elif not rows:
+                parts.append("nothing free in the window I can see.")
+            else:
+                # gaps() counts nights and open_windows() counts hours in a
+                # named day. Both are "free", and saying which is which is
+                # the difference between planning a stay and planning a call.
+                def _one(r):
+                    if r.get("nights"):
+                        return (f"{r['nights']} night"
+                                f"{'' if r['nights'] == 1 else 's'} "
+                                f"from {_day(r.get('from', ''))}")
+                    return (f"{r.get('day', '')} "
+                            f"{r.get('from', '')}–{r.get('to', '')}").strip()
+                parts.append("free: " + "; ".join(_one(r) for r in rows[:5]) + ".")
+        elif tool == "forecast":
+            bad = next((r for r in rows if r.get("unreadable")), None)
+            if bad:
+                parts.append(bad["unreadable"] + ".")
+            else:
+                days = [r for r in rows if r.get("subject")]
+                parts.append("forecast: " + "; ".join(
+                    f"{r.get('from', '')} {r.get('subject', '')}"
+                    for r in days[:4]) + "." if days else "no forecast.")
+        elif tool == "this_mac":
+            if not rows or rows[0].get("note"):
+                parts.append(rows[0]["note"] if rows else "nothing to survey.")
+            else:
+                ready = [r for r in rows if r["state"] == "ready"
+                         and not r["already_wired"]]
+                on = [r for r in rows if r["already_wired"]]
+                blocked = [r for r in rows if r["state"] == "blocked"]
+                bits = []
+                if ready:
+                    bits.append("ready to wire up: "
+                                + ", ".join(r["what"] for r in ready))
+                if on:
+                    bits.append("already wired: "
+                                + ", ".join(r["what"] for r in on))
+                if blocked:
+                    bits.append(", ".join(r["what"] for r in blocked)
+                                + " needs Full Disk Access before I can read it")
+                parts.append("; ".join(bits) + "." if bits
+                             else "nothing on this Mac that I can read.")
         elif tool == "schedule_state" and rows:
             r = rows[0]
             parts.append(f"the night shift runs at {r['sweeps_at']}; "

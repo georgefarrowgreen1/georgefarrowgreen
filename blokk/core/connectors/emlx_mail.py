@@ -47,11 +47,22 @@ def _mailbox(path: Path) -> str:
 
 
 def _emlx(path: Path) -> email.message.Message | None:
-    """Strip the length prefix and the trailing plist, parse the rest."""
+    """Strip the length prefix and the trailing plist, parse the rest.
+
+    A plain RFC822 file — .eml, or a maildir message with no extension at all
+    — has neither, so it parses as itself. That is the whole of what makes a
+    real maildir readable here: every other mail client on earth writes one,
+    and this reader wanted Apple's .emlx or nothing.
+    """
     try:
         raw = path.read_bytes()
     except OSError:
         return None
+    if path.suffix.lower() != ".emlx":
+        try:
+            return email.message_from_bytes(raw, policy=email.policy.default)
+        except Exception:                  # noqa: BLE001
+            return None
     nl = raw.find(b"\n")
     if nl == -1:
         return None
@@ -86,8 +97,34 @@ def _text(msg) -> str:
     return re.sub(r"[ \t]*\n[ \t]*", "\n", re.sub(r"[ \t]{2,}", " ", s)).strip()
 
 
+# A maildir names its messages by a unique id with no extension, and puts
+# them in cur/ and new/. Recognising those is the difference between reading
+# Apple Mail and reading every mail client there is — Fastmail, mbsync,
+# offlineimap, a Thunderbird export, an archive somebody handed you on a
+# drive. Nothing about the rest of this file cared that the bytes came from
+# an .emlx; it only ever looked for the extension.
+MAILDIR_BOX = ("cur", "new")
+
+
+def _is_mail(p: Path) -> bool:
+    if not p.is_file() or p.name.startswith("."):
+        return False
+    name = p.name.lower()
+    if name.endswith(".emlx"):
+        return not name.endswith(".partial.emlx")     # a body not downloaded
+    if name.endswith(".eml"):
+        return True
+    # Anything directly inside cur/ or new/, whatever it is called. That is
+    # the maildir spec, and the filenames are not extensionless — they look
+    # like 1700000000.M12P34.host:2,S, so a rule about suffixes rejects every
+    # real one. The directory is what makes a maildir a maildir.
+    return p.parent.name in MAILDIR_BOX
+
+
 class LocalMail:
-    """Reads ~/Library/Mail. Cannot send — there is no method that could."""
+    """Reads a mail archive on disk: Apple Mail's, or any maildir.
+
+    Cannot send — there is no method that could."""
 
     writes = False
 
@@ -111,9 +148,9 @@ class LocalMail:
         """
         found = []
         try:
-            for p in self.root.rglob("*.emlx"):
-                if p.name.endswith(".partial.emlx"):
-                    continue               # a body Mail has not downloaded
+            for p in self.root.rglob("*"):
+                if not _is_mail(p):
+                    continue
                 try:
                     found.append((p.stat().st_mtime, p))
                 except OSError:
@@ -141,10 +178,12 @@ class LocalMail:
         if not files:
             return {"ok": False, "messages_seen": 0, "mailboxes": [],
                     "looked_in": str(self.root),
-                    "detail": f"no .emlx files anywhere under {self.root}. "
-                              f"Mail may be storing nothing locally, or Blokk "
-                              f"cannot read that folder — Full Disk Access, "
-                              f"granted to the app that starts Blokk."}
+                    "detail": f"no messages anywhere under {self.root} — "
+                              f"nothing in a cur/ or new/ folder, and no "
+                              f".emlx or .eml files. Either Mail is storing "
+                              f"nothing locally, or Blokk cannot read that "
+                              f"folder — Full Disk Access, granted to the app "
+                              f"that starts Blokk."}
         return {"ok": True, "messages_seen": len(files),
                 "capped": getattr(self, "_capped", False),
                 "newest": newest, "mailboxes": boxes[:12],
