@@ -218,7 +218,10 @@ class Supervisor:
                     pass
 
         deadline = time.time() + 1800          # a cold 20GB pull is not quick
+        began = time.time()
         last_poll = 0.0
+        last_beat = 0.0
+        last_line = ""
         try:
             while time.time() < deadline:
                 try:
@@ -228,17 +231,33 @@ class Supervisor:
                             self.logs[tier.name].append(line)
                             self.logs[tier.name] = self.logs[tier.name][-400:]
                         note(line)
+                        last_line = line
                         yield {"type": "LOG", "tier": tier.name, "line": line}
                 except queue.Empty:
                     pass
 
                 now_t = time.time()
+                # A heartbeat, because loading is silent. llama-server prints
+                # a great deal while it downloads and almost nothing while it
+                # maps twelve billion parameters off a laptop disk, so a
+                # server that is working looked exactly like a server that had
+                # hung — for up to the full thirty minutes. Whoever is waiting
+                # is owed the elapsed time, the last thing it said, and where
+                # the rest of what it said is written down.
+                if now_t - last_beat >= 3.0:
+                    last_beat = now_t
+                    yield {"type": "WAITING", "tier": tier.name,
+                           "port": tier.port,
+                           "seconds": int(now_t - began),
+                           "last": last_line,
+                           "log": str(log_path(tier.name))}
                 if now_t - last_poll >= 1.0:
                     last_poll = now_t
                     if alive(tier.port, timeout=0.5):
                         note(f"--- answering on :{tier.port}")
                         yield {"type": "READY", "tier": tier.name,
-                               "port": tier.port}
+                               "port": tier.port,
+                               "seconds": int(now_t - began)}
                         return
                     if proc.poll() is not None:
                         # The line that says *why* is the last one written,
@@ -264,12 +283,16 @@ class Supervisor:
                         note(f"--- exited with code {proc.returncode}")
                         yield {"type": "ERROR", "tier": tier.name,
                                "message": f"exited with code {proc.returncode}",
-                               "log": tail}
+                               "log": tail,
+                               "log_file": str(log_path(tier.name)),
+                               "seconds": int(now_t - began)}
                         return
 
             note("--- gave up waiting after 30 minutes")
             yield {"type": "ERROR", "tier": tier.name,
-                   "message": "did not answer within 30 minutes"}
+                   "message": "did not answer within 30 minutes",
+                   "log": "\n".join(self.logs[tier.name][-6:]),
+                   "log_file": str(log_path(tier.name))}
         finally:
             # Also runs when the browser closes the SSE stream mid-start and
             # this generator is collected — otherwise the handle leaks and the

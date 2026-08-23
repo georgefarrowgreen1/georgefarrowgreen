@@ -596,6 +596,14 @@ $('#to4').onclick=async()=>{
         if(ev.type==='STARTED') logLine('$ '+ev.command);
         if(ev.type==='LOG'){ logLine(ev.line);
           $('#w-'+t.tier).textContent=ev.line.slice(0,72); }
+        // Loading a 12B model prints one line and then nothing for a minute.
+        // Without this the wizard sits on that one line and looks frozen —
+        // the same silence that made the terminal look hung.
+        if(ev.type==='WAITING'){
+          $('#w-'+t.tier).textContent = ev.last
+            ? `${ev.seconds}s — ${ev.last.slice(0,58)}`
+            : `loading, ${ev.seconds}s — it has not printed anything yet`;
+        }
         if(ev.type==='READY'){ ok=true;
           $('#s-'+t.tier).outerHTML=`<span class="st up" id="s-${t.tier}">up</span>`;
           $('#w-'+t.tier).textContent=`answering on :${t.port}`;

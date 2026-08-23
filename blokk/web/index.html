@@ -2040,6 +2040,10 @@ $('#qgo').onclick = ()=>{ if(qbox.value.trim()) send(qbox.value.trim()); };
 // where the sentence that made it is: a proposal you have to go and find is a
 // proposal you approve without rereading what asked for it.
 let THREAD = null;
+// The same three-line warning on every turn is a wall, and a wall is skimmed.
+// Said in full the first time it appears, then kept to one line for as long
+// as it stays true — still visible, still per turn, no longer shouting.
+let lastDegraded = '';
 
 // approve -> approved, reject -> rejected, edit -> edited. The first version
 // appended a "d" and produced "rejectd" on every rejected card.
@@ -2188,12 +2192,17 @@ async function send(q){
           setTimeout(()=>tick(true), 400);
           announce('Proposal queued. It is waiting on you.');
         }
-        if(ev.type==='DEGRADED'){ degraded=ev.detail||'';
+        if(ev.type==='DEGRADED'){
           // Said, not swallowed. A reply assembled from rows because the
           // model server is down reads exactly like one it wrote, and that
           // is the difference between a quiet day and a quiet failure.
-          steps.parentNode.insertBefore(
-            el(`<div class="degraded">${esc(ev.detail)}</div>`), steps);
+          degraded=ev.detail||'';
+          const again = degraded===lastDegraded;
+          lastDegraded = degraded;
+          steps.parentNode.insertBefore(el(`<div class="degraded">${
+            again ? 'Still no model server — this answer was assembled from '
+                    +'the rows, not written.'
+                  : esc(degraded)}</div>`), steps);
         }
         if(ev.type==='RUN_FINISHED') finished=true;
         if(ev.type==='RUN_FINISHED' && ev.budget_left!==undefined && ev.budget_left<20){

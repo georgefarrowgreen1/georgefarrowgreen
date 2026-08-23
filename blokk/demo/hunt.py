@@ -2133,6 +2133,100 @@ try:
             srv.shutdown()
     probe("A55 a chat turn can end without saying anything", never_silent)
 
+    def start_says_something():
+        # A model server loading twelve billion parameters off a laptop disk
+        # prints one line and then nothing for a minute. run.sh only echoed
+        # lines containing download/%/error/failed, so the whole load was
+        # silent — and a thirty-minute silent wait is indistinguishable from
+        # a hang. That is what "startup is hanging on boot" turned out to be.
+        import sys as _s, os as _os, tempfile as _tf
+        _s.path.insert(0, ".")
+        import core.servers as CS
+        from core.servers import Supervisor, Tier
+
+        script = pathlib.Path(_tf.mkdtemp()) / "quiet.py"
+        script.write_text(
+            "import json,sys,time\n"
+            "from http.server import BaseHTTPRequestHandler,HTTPServer\n"
+            "print('build: 4321', flush=True)\n"
+            "time.sleep(9)\n"
+            "class H(BaseHTTPRequestHandler):\n"
+            "    def log_message(self,*a): pass\n"
+            "    def do_GET(self):\n"
+            "        b=json.dumps({'data':[]}).encode()\n"
+            "        self.send_response(200)\n"
+            "        self.send_header('Content-Length',str(len(b)))\n"
+            "        self.end_headers(); self.wfile.write(b)\n"
+            "HTTPServer(('127.0.0.1',8184),H).serve_forever()\n")
+        was, CS.installed = CS.installed, lambda b: True
+        t = Tier(name="SMALL", backend="llama.cpp", alias="q", port=8184)
+        t.command = lambda: [_s.executable, str(script)]
+        sup = Supervisor()
+        try:
+            beats, ready = [], False
+            for ev in sup.start(t):
+                if ev["type"] == "WAITING":
+                    beats.append(ev)
+                if ev["type"] == "READY":
+                    ready = True
+            if not ready:
+                return (True, "the fake server never came up, so this proves nothing")
+            if not beats:
+                return (True, "nine seconds of loading and not one word about it")
+            if not all("seconds" in b and "log" in b for b in beats):
+                return (True, "it says it is waiting without saying for how "
+                              "long or where the log is")
+            # The last thing the server said has to travel with the beat, or
+            # the wait says "still going" and nothing about what it is doing.
+            if not any(b.get("last") for b in beats[2:]):
+                return (True, "the heartbeat never carries the last line")
+            return (False, f"{len(beats)} heartbeats, each with elapsed, the "
+                           f"last line and the log path")
+        finally:
+            CS.installed = was
+            sup.stop_all()
+    probe("A56 a model server loading in silence looks like a hang",
+          start_says_something)
+
+    def start_names_the_cause():
+        import sys as _s, tempfile as _tf
+        _s.path.insert(0, ".")
+        import core.servers as CS
+        from core.servers import Supervisor, Tier
+        script = pathlib.Path(_tf.mkdtemp()) / "dies.py"
+        script.write_text("import sys\n"
+                          "print('load_tensors: loading model')\n"
+                          "print('error: unable to allocate backend buffer')\n"
+                          "sys.exit(1)\n")
+        was, CS.installed = CS.installed, lambda b: True
+        t = Tier(name="SMALL", backend="llama.cpp", alias="q", port=8183)
+        t.command = lambda: [_s.executable, str(script)]
+        try:
+            err = [e for e in Supervisor().start(t) if e["type"] == "ERROR"]
+            if not err:
+                return (True, "it died and nothing said so")
+            e = err[0]
+            if "allocate backend buffer" not in (e.get("log") or ""):
+                return (True, f"the exit code without the reason: {e}")
+            if not e.get("log_file"):
+                return (True, "no path to the rest of what it said")
+            return (False, "the exit code, the last six lines, and the log path")
+        finally:
+            CS.installed = was
+    probe("A57 a model server that dies reports the code and not the cause",
+          start_names_the_cause)
+
+    def runsh_stops_what_it_starts():
+        src = open("run.sh").read()
+        if "PIDS=()" in src and "PIDS+=" not in src:
+            return (True, "cleanup() loops over a list nothing ever appends to, "
+                          "so Ctrl-C kills no model server")
+        if ".blokk.models.pid" not in src:
+            return (True, "nothing records what was started, so nothing can "
+                          "stop it")
+        return (False, "the pids are written down, and the trap reads them")
+    probe("A58 Ctrl-C leaves the model servers running", runsh_stops_what_it_starts)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
