@@ -11,16 +11,25 @@ copies a consistent snapshot of a live database, which is exactly this job.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+# Both shapes: the millisecond names written now, and the second-granularity
+# ones already sitting in somebody's backups folder.
+_NAME = re.compile(r"blokk-(\d{4}-\d{2}-\d{2}-\d{6}(?:-\d{3})?)(?:-(\d+))?\.db")
+
 
 def _stamp() -> str:
-    # Seconds, not minutes. Two backups a minute apart is not a silly thing to
-    # do — before and after something risky is exactly when you want them —
-    # and at minute granularity the second silently replaced the first.
-    return datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    # Milliseconds, not seconds, not minutes. Two backups a minute apart is
+    # not a silly thing to do — before and after something risky is exactly
+    # when you want them — and at each coarser granularity the fix was a -2
+    # suffix, which then got recycled: after a prune freed the base name, the
+    # next backup took it again, and the numbering stopped saying anything
+    # about the order they were made in. A name nothing else can hold ends
+    # the whole argument.
+    return datetime.now().strftime("%Y-%m-%d-%H%M%S-%f")[:-3]
 
 
 def make(db: str | Path, into: str | Path | None = None,
@@ -67,15 +76,50 @@ def make(db: str | Path, into: str | Path | None = None,
     finally:
         c.close()
 
-    pruned = prune(folder, keep)
+    # Never the one just taken. Six backups inside one second and keep=3 had
+    # prune delete this file and make() then fall over stat-ing it — the
+    # backup you asked for, gone, and a traceback where the path should be.
+    pruned = prune(folder, keep, spare=out)
     return {"ok": True, "path": str(out), "bytes": out.stat().st_size,
             "holds": held, "pruned": pruned, "kept": keep}
 
 
-def prune(folder: str | Path, keep: int = 14) -> list[str]:
-    old = sorted(Path(folder).glob("blokk-*.db"))
+def _by_age(folder: Path) -> list[Path]:
+    """Oldest first, by mtime.
+
+    Not by name. Two backups inside one second are named blokk-X.db and
+    blokk-X-2.db, and '-' sorts before '.', so the *newer* one came first in
+    a lexicographic list — which had prune keeping the older of every pair
+    and deleting the newer. mtime has sub-second resolution and no such
+    argument with itself.
+    """
+    out = []
+    for p in folder.glob("blokk-*.db"):
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue                      # vanished under us; nothing to sort
+        # Within one mtime, order by the counter that made the name unique:
+        # blokk-X.db came first, then -2, then -3. Comparing those as strings
+        # puts -2 before the plain one, because '-' sorts before '.'.
+        # blokk-YYYY-MM-DD-HHMMSS[-n].db, and the stamp has hyphens of its
+        # own — splitting on the first or the last one reads a date part as
+        # the counter and puts every file in the same bucket.
+        m = _NAME.fullmatch(p.name)
+        stamp = m.group(1) if m else p.name
+        nth = int(m.group(2)) if m and m.group(2) else 1
+        out.append((mtime, stamp, nth, p))
+    out.sort()
+    return [p for _, _, _, p in out]
+
+
+def prune(folder: str | Path, keep: int = 14,
+          spare: Path | None = None) -> list[str]:
+    old = _by_age(Path(folder))
     gone = []
     for p in old[:-keep] if keep > 0 else []:
+        if spare is not None and p == spare:
+            continue
         try:
             p.unlink()
             gone.append(p.name)
@@ -89,8 +133,11 @@ def listing(folder: str | Path) -> list[dict]:
     if not folder.exists():
         return []
     out = []
-    for p in sorted(folder.glob("blokk-*.db"), reverse=True):
-        st = p.stat()
+    for p in reversed(_by_age(folder)):     # newest first, by mtime
+        try:
+            st = p.stat()
+        except OSError:
+            continue
         out.append({"name": p.name, "bytes": st.st_size,
                     "at": datetime.fromtimestamp(st.st_mtime).isoformat(" ", "seconds")})
     return out

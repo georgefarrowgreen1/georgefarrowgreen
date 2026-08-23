@@ -922,6 +922,49 @@ try:
     probe("A33 one run that dies on resume strands every run behind it",
           resume_poison)
 
+    # ── 34. the backup that deletes itself ──────────────────────────────
+    def backup_prune():
+        # make() prunes to the newest `keep`, and it sorted them by name.
+        # Two backups inside one second are blokk-X.db and blokk-X-2.db, and
+        # '-' sorts before '.', so the newer of every pair came first and
+        # prune kept the older. Worse: the file it had just written could be
+        # in the doomed half, and make() then fell over stat-ing it — the
+        # backup you asked for gone, and a traceback where the path should be.
+        import sys as _s, tempfile, shutil, sqlite3 as sq, os as _o
+        _s.path.insert(0, ".")
+        from core import backup as bk
+        d = pathlib.Path(tempfile.mkdtemp())
+        src = d / "real.db"
+        sq.connect(src).executescript("CREATE TABLE t(x); INSERT INTO t VALUES(1)")
+        try:
+            made = []
+            for _ in range(6):
+                r = bk.make(src, into=d / "k", keep=3)
+                if not r.get("ok"):
+                    return (True, f"a backup failed: {r}")
+                made.append(pathlib.Path(r["path"]))
+            if not made[-1].exists():
+                return (True, "the backup just taken was pruned away")
+            if len(set(made)) != len(made):
+                return (True, "two backups were given the same name — after a "
+                              "prune freed one, the next took it back")
+            # Same second, same mtime: the ordering has to come from the name
+            # the writer chose, in the order it chose them.
+            for f in made:
+                if f.exists():
+                    _o.utime(f, (1_700_000_000, 1_700_000_000))
+            bk.prune(d / "k", 2)
+            left = {p.name for p in (d / "k").glob("*.db")}
+            want = {made[-1].name, made[-2].name}
+            if left != want:
+                return (True, f"kept {sorted(left)}, wanted the newest two "
+                              f"{sorted(want)}")
+            return (False, "the newest survive, and never the one just taken")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+    probe("A34 pruning backups deletes the newest, and sometimes this one",
+          backup_prune)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
