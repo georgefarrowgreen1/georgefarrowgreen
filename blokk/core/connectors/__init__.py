@@ -139,6 +139,14 @@ def wire(store) -> Registry:
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(ws, "messages", AppleMessages())
+            elif kind == "weather":
+                # The only connector that reaches off the machine, so it is
+                # the only one handed the store and the workspace: both are
+                # what core/egress.py needs to answer "may this workspace
+                # talk to that host".
+                from core.connectors.weather import Weather
+                REGISTRY.add(ws, "weather",
+                             Weather(ref, store=store, workspace_id=ws))
         except Exception as e:                                   # noqa: BLE001
             # A broken connector must not take the sweep with it. Log and
             # fall through to the fake, so the other four still run.

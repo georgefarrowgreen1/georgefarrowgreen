@@ -441,6 +441,12 @@
   dialog .srow:last-of-type{border-bottom:0}
   dialog .srow small{display:block;color:var(--lab3);font-size:11px;
     font-family:var(--mono)}
+  /* The allowlist is the only thing standing between a connector and the
+     internet, so it is on the workspace row rather than behind a panel. */
+  dialog .host{border:1px solid var(--hair);background:var(--card2);
+    color:var(--lab2);border-radius:7px;padding:1px 6px;margin:2px 2px 0 0;
+    font-family:var(--mono);font-size:10.5px;cursor:pointer}
+  dialog .host:hover{color:var(--red);border-color:rgba(255,69,58,.4)}
   dialog .addbox{margin:12px 0;padding:12px;border-radius:var(--r-md);
     background:var(--card2)}
   dialog .addbox .mini.danger{width:100%;margin-top:8px}
@@ -1102,7 +1108,13 @@ async function paintSources(extra){
   const wsrows = SRC.workspaces.map(w => `
     <div class="srow">
       <div><b>${esc(w.id)}</b> · ${esc(w.name || w.id)}
-        ${w.sample ? '<small>sample — invented data</small>' : ''}</div>
+        ${w.sample ? '<small>sample — invented data</small>' : ''}
+        ${(w.egress || []).length
+          ? `<small>may reach ${(w.egress || []).map(h =>
+              `<button class="host" data-deny="${esc(w.id)}|${esc(h)}"
+                title="Stop ${esc(w.id)} reaching ${esc(h)}">${esc(h)} ✕</button>`
+             ).join(' ')}</small>`
+          : '<small>reaches nothing off this Mac</small>'}</div>
       <span><button class="mini danger" data-wsrm="${esc(w.id)}">remove</button></span>
     </div>`).join('');
   const wsbox = `
@@ -1142,6 +1154,7 @@ async function paintSources(extra){
       <select id="s-ws">${wsopts}</select>
       <select id="s-kind">${kopts}</select>
       <input id="s-ref" placeholder="keychain service name (or: local)" />
+      <p class="sub" id="s-hint" style="margin:0 0 7px"></p>
       <button class="mini go" id="s-add">Add</button>
       <p class="sub">Read-only. No password is stored here — you put that in the
         keychain yourself, and Blokk reads it at call time.</p>
@@ -1169,6 +1182,11 @@ async function paintSources(extra){
     paintSources(`<p class="ok2">Removed ${esc((r.removed||[]).join(', '))}.
       ${(r.left||[]).length ? '' : 'No workspaces left — add one above.'}</p>`);
   };
+  body.querySelectorAll('[data-deny]').forEach(b => b.onclick = async () => {
+    const [ws, host] = b.dataset.deny.split('|');
+    const r = await post('/api/v1/egress/deny', {workspace: ws, host});
+    paintSources(`<p class="sub">${esc(r.detail || r.error)}</p>`);
+  });
   body.querySelectorAll('[data-wsrm]').forEach(b => b.onclick = async () => {
     // Two taps, and the second one says what goes. The schema cascades:
     // approvals, runs, journal, trust, memory. It is not recoverable.
@@ -1186,6 +1204,22 @@ async function paintSources(extra){
     paintSources(r.error ? `<p class="no">${esc(r.error)}</p>`
       : `<p class="sub">Removed ${esc(r.id)} and everything in it.</p>`);
   });
+
+  // The ref field means three different things depending on the kind, so it
+  // says which one as you pick.
+  const REF_HINT = {
+    weather: ['a town, or coordinates — "Newcastle upon Tyne" or 54.97,-1.61',
+              'Adding this lets that workspace reach open-meteo.com, and '
+              + 'nothing else new. What leaves is a latitude and a longitude.'],
+    ical: ['local', ''], maildir: ['local', ''], messages: ['local', ''],
+  };
+  const refHint = () => {
+    const k = $('#s-kind').value, h = REF_HINT[k];
+    $('#s-ref').placeholder = h ? h[0] : 'keychain service name';
+    $('#s-hint').textContent = h ? h[1] : '';
+  };
+  $('#s-kind').onchange = refHint;
+  refHint();
 
   $('#s-add').onclick = async () => {
     const r = await post('/api/v1/sources/add', {

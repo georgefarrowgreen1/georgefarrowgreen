@@ -15,7 +15,11 @@ import re
 
 KINDS = {"imap": "mail", "maildir": "mail",
          "caldav": "calendar", "ical": "calendar",
-         "messages": "messages"}
+         "messages": "messages", "weather": "weather"}
+# The one source that reaches off this machine. Its "ref" is not a keychain
+# name but a place — a town or coordinates — because it has no
+# credential to keep and needs to know where you are.
+IS_PLACE = ("weather",)
 # The two that read this Mac's own files need no credential — and no network,
 # and no app-specific password. They need Full Disk Access, which core/local.py
 # checks for and explains.
@@ -89,7 +93,9 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
     if kind not in KINDS:
         return {"error": f"kind must be one of {', '.join(KINDS)}"}
     if not ref:
-        return {"error": "a keychain service name is required"}
+        return {"error": ("a place is required — a town, or coordinates "
+                          "like 54.97,-1.61" if kind in IS_PLACE
+                          else "a keychain service name is required")}
     if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
         known = ", ".join(w["id"] for w in workspaces(store))
         return {"error": f"no workspace '{ws}'. Known: {known}"}
@@ -104,13 +110,40 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
         # the browser, the database and this process.
         out["keychain_hint"] = (
             f"security add-generic-password -s {ref} -a you@icloud.com -w")
+    if kind in IS_PLACE:
+        # A source that leaves the machine is no use without permission to.
+        # Adding it and then refusing every request it makes would be the
+        # kind of silent half-state this codebase keeps having to fix.
+        from core import egress
+        from core.connectors.weather import HOSTS
+        for host in HOSTS:
+            egress.allow(store, ws, host)
+        out["egress"] = list(HOSTS)
+        out["note"] = (f"{ws} may now reach {', '.join(HOSTS)} — and nothing "
+                       f"else new. What leaves is a latitude and a longitude.")
     return out
 
 
 def remove(store, ws: str, kind: str) -> dict:
     store.x("DELETE FROM credential WHERE workspace_id=? AND kind=?", ws, kind)
-    return {"ok": True, "detail": "The keychain entry is untouched — delete it "
-                                  "yourself if you meant to revoke access."}
+    note = ("The keychain entry is untouched — delete it yourself if you "
+            "meant to revoke access.")
+    if kind in IS_PLACE:
+        # Adding the source opened the allowlist; removing it has to close it
+        # again. A permission that is granted automatically and revoked only
+        # by hand is a ratchet, and this codebase has already been bitten
+        # once by exactly that shape in the trust ledger. Only revoke what
+        # nothing left in this workspace still needs.
+        from core import egress
+        from core.connectors.weather import HOSTS
+        still = {r["kind"] for r in store.q(
+            "SELECT kind FROM credential WHERE workspace_id=?", ws)}
+        if not still & set(IS_PLACE):
+            gone = [h for h in HOSTS
+                    if not egress.disallow(store, ws, h).get("error")]
+            if gone:
+                note = (f"{ws} can no longer reach {', '.join(gone)}. " + note)
+    return {"ok": True, "detail": note}
 
 
 def describe(kind: str, state: dict) -> str:
@@ -136,6 +169,9 @@ def describe(kind: str, state: dict) -> str:
                 + (f", newest {state['newest']}" if state.get("newest") else "")
                 + (f"; in {boxes}" if boxes else "")
                 + ("; more on disk than it walked" if state.get("capped") else ""))
+    if "place" in state:
+        return (f"{state['place']} ({state.get('at','')}) — {state.get('today','')}"
+                f"; sends {state.get('sends', 'a location')}")
     if "messages" in state or "chats" in state:
         return ", ".join(f"{k} {v}" for k, v in state.items() if k != "ok")
     return ", ".join(f"{k} {v}" for k, v in state.items() if k != "ok")
@@ -237,6 +273,16 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
     elif getattr(c, "events", None):
         window = "the next 90 days"
         rows = c.events(days=90)
+    elif getattr(c, "forecast", None):
+        window = "the next 5 days"
+        # The body is the fields, not a second copy of the sentence: peek is
+        # where you check what a workflow is actually handed, and what it is
+        # handed is numbers.
+        rows = [{"from": d["date"], "subject": d["summary"],
+                 "provenance": d["provenance"],
+                 "body": f"high {d['high_c']}°C, low {d['low_c']}°C, "
+                         f"rain {d['rain_chance']}%, wind {d['wind_kph']} km/h"}
+                for d in c.forecast(days=5)]
     elif getattr(c, "gaps", None):
         # The sample calendar answers "which nights are free" and nothing
         # else. Show that rather than an empty list with no explanation.

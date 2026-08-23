@@ -238,6 +238,32 @@ probe('B9  a slow sweep is reported as a failed one',
     'it names the branch, and any branch carrying newer work');
 }
 
+// B17 — the allowlist has to be visible, and revocable, where people look
+// core/egress.py is the only way anything leaves this Mac, and the list it
+// checks against grows on its own: adding a weather source allows two hosts.
+// If the workspace row does not render them, the list only exists in sqlite3
+// and nobody ever revokes anything.
+{
+  const rows = js.match(/const wsrows = SRC\.workspaces\.map[\s\S]*?\.join\(''\);/);
+  const r = rows ? rows[0] : '';
+  probe('B17 the workspace row does not say what it can reach',
+    !/w\.egress/.test(r) || !/may reach/.test(r) || !/data-deny/.test(r),
+    'each host is a chip on the row that owns it');
+  // A workspace that reaches nothing must say so. A blank space reads the
+  // same as a feature that has not shipped, and this is the one claim in the
+  // product people check.
+  probe('B17a a workspace that reaches nothing renders as silence',
+    !/reaches nothing/.test(r),
+    'the empty case is a sentence');
+  // The host comes out of the database, and goes into an attribute.
+  probe('B17b a host is interpolated into an attribute unescaped',
+    /data-deny="\$\{(?!esc\()/.test(r) || !/esc\(h\)/.test(r),
+    'escaped in both the attribute and the label');
+  probe('B17c the ✕ on a host does not revoke anything',
+    !/\/api\/v1\/egress\/deny/.test(js) || !/data-deny/.test(js),
+    'it posts to egress/deny and repaints from the server');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

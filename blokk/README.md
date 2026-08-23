@@ -5,7 +5,11 @@ and calendars overnight — at 04:00 by default, or when the lid next opens if
 the Mac was asleep — queues anything that needs a decision, acts alone on the
 categories that have earned it, and learns from your corrections.
 
-Nothing leaves the machine. Stdlib only — no `pip install` for Blokk itself.
+Your mail and calendars never leave the machine. A few sources have to reach
+outwards — a forecast is not on your Mac — so the rule is stated exactly:
+nothing leaves except requests you allowed, to hosts you named, and
+`logs/egress.log` says what left. Stdlib only — no `pip install` for Blokk
+itself.
 
 ```bash
 ./blokk

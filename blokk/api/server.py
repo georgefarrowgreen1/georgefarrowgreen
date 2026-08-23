@@ -535,10 +535,12 @@ def h_models_remove(body):
 
 
 def h_sources(_q):
-    from core import local, sources
-    return {"workspaces": [{**w, "sample": w["id"] in sources.SAMPLE}
+    from core import egress, local, sources
+    return {"workspaces": [{**w, "sample": w["id"] in sources.SAMPLE,
+                            "egress": egress.allowlist_for(store, w["id"])}
                            for w in sources.workspaces(store)],
             "sample": sources.is_sample(store),
+            "egress_log": egress.recent(12),
             "sources": sources.listing(store),
             "local": local.survey(),
             "kinds": [{"id": k, "reads": v,
@@ -623,6 +625,24 @@ def h_sources_remove(body):
 def h_sources_test(_body):
     from core import sources
     return sources.test(store)
+
+
+def h_egress_allow(body):
+    from core import egress
+    r = egress.allow(store, text(body, "workspace", limit=64),
+                     text(body, "host", limit=253))
+    if not r.get("error"):
+        bump()
+    return (r, 400) if r.get("error") else r
+
+
+def h_egress_deny(body):
+    from core import egress
+    r = egress.disallow(store, text(body, "workspace", limit=64),
+                        text(body, "host", limit=253))
+    if not r.get("error"):
+        bump()
+    return (r, 400) if r.get("error") else r
 
 
 def h_sources_peek(body):
@@ -941,6 +961,8 @@ ROUTES_POST = [
     (r"^/api/v1/sources/remove$", h_sources_remove),
     (r"^/api/v1/sources/test$", h_sources_test),
     (r"^/api/v1/sources/peek$", h_sources_peek),
+    (r"^/api/v1/egress/allow$", h_egress_allow),
+    (r"^/api/v1/egress/deny$", h_egress_deny),
     (r"^/api/v1/update/check$", h_update_check),
     (r"^/api/v1/restart$", h_restart),
     (r"^/api/v1/setup/plan$", h_setup_plan),

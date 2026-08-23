@@ -44,14 +44,24 @@ def main() -> int:
 
     if cmd == "add":
         if len(args) < 4:
-            print("usage: connect.py add <workspace> <imap|caldav|messages> <keychain-ref>")
+            print("usage: connect.py add <workspace> <kind> <ref>")
+            print("       kinds: imap caldav messages ical maildir weather")
+            print("       ref  : a keychain service name, 'local', or — for")
+            print("              weather — a town or coordinates:")
+            print("                       \"Newcastle upon Tyne\" or 54.97,-1.61")
             return 1
         r = sources.add(store, args[1], args[2], args[3])
         if r.get("error"):
             print(r["error"])
             return 1
-        print(f"added {r['kind']} to {r['workspace_id']} using keychain service "
-              f"'{r['keychain_ref']}' (read scope)")
+        # Not every ref is a keychain service. Calling a place name one sends
+        # somebody looking through Keychain Access for an entry that was
+        # never meant to exist.
+        where = ("for " if r["kind"] in sources.IS_PLACE else
+                 "using keychain service ") + f"'{r['keychain_ref']}'"
+        print(f"added {r['kind']} to {r['workspace_id']} {where} (read scope)")
+        if r.get("note"):
+            print("  " + r["note"])
         if r.get("keychain_hint"):
             print("\nIf you have not put the password in the keychain yet:")
             print("  " + r["keychain_hint"])
@@ -156,6 +166,35 @@ def main() -> int:
         left = sources.workspaces(store)
         print(f"\n{len(left)} workspace(s) left: "
               f"{', '.join(w['id'] for w in left) or 'none — add one'}")
+        return 0
+
+    if cmd == "egress":
+        # What each workspace may reach, and nothing reaches anything that is
+        # not on its list. This is the only list in the system that decides
+        # whether something leaves the machine.
+        from core import egress
+        sub = args[1] if len(args) > 1 else "list"
+        if sub in ("allow", "deny", "disallow"):
+            if len(args) < 4:
+                print(f"usage: connect.py egress {sub} <workspace> <host>")
+                return 1
+            fn = egress.allow if sub == "allow" else egress.disallow
+            r = fn(store, args[2], args[3])
+            print("  " + (r.get("error") or r["detail"]))
+            return 1 if r.get("error") else 0
+        if sub == "log":
+            lines = egress.recent(int(args[2]) if len(args) > 2 else 20)
+            if not lines:
+                print("  Nothing has left this machine.")
+                return 0
+            for ln in lines:
+                print("  " + ln)
+            return 0
+        for w in sources.workspaces(store):
+            hosts = egress.allowlist_for(store, w["id"])
+            print(f"  {w['id']:<14} {', '.join(hosts) if hosts else '(nothing)'}")
+        print("\n  connect.py egress allow <workspace> <host>")
+        print("  connect.py egress log [n]        what has actually left")
         return 0
 
     if cmd == "local":

@@ -7,7 +7,8 @@ anything.
 
 A local agent runtime for several small businesses on one Mac. It sweeps mail,
 calendar and other sources overnight, queues anything needing a decision, and
-learns from the corrections. Nothing leaves the machine.
+learns from the corrections. Your content never leaves the machine; the few
+requests that do go out are named per workspace and logged — see invariant 3.
 
 Stdlib only — no `pip install` for Blokk itself. That constraint is
 deliberate: this has to still boot in two years on a machine nobody has
@@ -34,11 +35,27 @@ read-only *by construction* — there is no write tool in that file, and adding
 one would reopen the injection trifecta through the front door. If Ask needs
 to act, it queues a proposal.
 
-**3. Untrusted content is data, never instruction.**
-Anything fetched from outside — an email body, a web page — carries
+**3. Untrusted content is data, never instruction — and outbound is a gate.**
+Anything fetched from outside — an email body, a web page, a forecast — carries
 `provenance` and goes through `quarantine_read` before reaching a model. The
 regex in there is triage, not defence; the defence is that the reader has no
 tools. Do not "improve" it into a filter people rely on.
+
+The other direction is `core/egress.py`, the only place anything leaves. Not
+"nothing leaves the machine" any more, but the narrower claim: *nothing leaves
+except requests you allowed, to hosts you named, and the log says exactly what
+left.* Every fetch checks the workspace's own allowlist with dot-anchored
+suffix matching (`icloud.com` must not match `evil-icloud.com`), refuses any
+host resolving to a non-public address, re-checks every redirect hop, caps
+size and time, and appends to `logs/egress.log` whether it succeeded or not.
+Two callers of `urlopen` are outside it and both are deliberate: the model
+server is loopback, which is not egress, and `core/connectors/caldav_cal.py`
+predates this file — it talks to one host you configured, with your
+credential, over a URL no data chooses. Anything **new** that fetches goes
+through the gate, and anything where the URL comes from content rather than
+config must. A connector that reaches outward returns **fields, never prose**
+— hand a small model a paragraph from a stranger and it paraphrases it; hand
+it numbers and it can say something true.
 
 **4. Trust is per workspace AND per category, and never transfers.**
 Ninety clean approvals on cottage enquiries earns cottage enquiries autonomy.
@@ -81,6 +98,8 @@ worse than an error.
     core/gguf.py       bounded GGUF header reader; KV cache arithmetic
     core/weights.py    the models/ folder: symlink a .gguf in, take it out
     core/sources.py    add/remove/peek a data source; shared by CLI and GUI
+    core/egress.py     the only way out: per-workspace allowlist, no private
+                       addresses, redirects re-checked, logs/egress.log
     core/local.py      what this Mac will hand over without a password
     core/backup.py     online snapshot of blokk.db, and verifying one
     core/regression.py twenty frozen examples and the assertions on them
@@ -88,7 +107,8 @@ worse than an error.
                        agent cannot reach a model
     core/qr.py         QR for the phone URL, no dependency
     core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
-                       keychain, and the fake world
+                       weather (the only one that leaves, and only through
+                       core/egress.py), keychain, and the fake world
     flows/             workflow definitions
     api/server.py      control plane. Stdlib http.server. Holds credentials
     web/               dashboard, setup wizard, sources, phone, update and
@@ -161,11 +181,17 @@ All four suites green. Verified behaviours:
   of them there); a reader that finds nothing says ok: False, not ok: True
   next to an empty list
 * a backup taken mid-write is a consistent snapshot, and never overwrites
+* the egress gate turns away a lookalike host, a host on another workspace's
+  list, plain http, and loopback even when somebody allowlists it — and each
+  is refused by the rule that should refuse it, not by a 404 on the way out
+* the weather connector returns days as numbers and a code-table word, with
+  no free text from the far end for an instruction to hide in
 
 ## Not built yet
 
-* `core/sandbox.py` — needed before code mode. gVisor or a microVM **plus an
-  egress allowlist**; kernel isolation with open outbound is worth nothing.
+* `core/sandbox.py` — needed before code mode. gVisor or a microVM; the egress
+  allowlist half of it now exists (`core/egress.py`), but kernel isolation
+  does not, and isolation with open outbound is worth nothing.
 * a real `answer()` on `ServedModel` is wired but unexercised against weights.
   The regression runner exists (`./regress.py`) and is honest that stub prose
   makes its numbers meaningless — they start counting when weights are on.
@@ -174,6 +200,9 @@ All four suites green. Verified behaviours:
   and it belongs behind the trust gate like everything else that writes.
 * Ask can search Blokk's own state but not the mail and calendar content it
   read. Six tools, none of them full-text.
+* CalDAV does not go through `core/egress.py` — it wants PROPFIND and REPORT,
+  which `fetch()` does not do. Worth routing when the gate learns methods; the
+  host is fixed and configured, so it is a tidiness gap, not an open door.
 * `span` has no writer and `skill` is decorative. Both are in the schema
   ahead of the code that will use them.
 

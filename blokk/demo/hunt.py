@@ -1363,6 +1363,231 @@ try:
             shutil.rmtree(root, ignore_errors=True)
     probe("A42 up to date, without saying what with", update_elsewhere)
 
+    # ── 43. the gate everything off this machine goes through ───────────
+    def egress_gate():
+        # workspace.egress_allow has been in the schema since the first commit
+        # and was enforced by nothing. Now that something reads the web, four
+        # rules stand between a hostile page and the model, and every one of
+        # them is the sort that looks fine until it is tested.
+        import sys as _s, tempfile
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import egress as eg
+
+        # 1. Suffix matching anchored to a dot. `endswith(entry)` — the
+        #    obvious version — allows evil-icloud.com under icloud.com, which
+        #    makes the whole list decoration.
+        allow = ["icloud.com", "api.open-meteo.com"]
+        for host, want in [("icloud.com", True), ("imap.mail.icloud.com", True),
+                           ("ICLOUD.COM", True), ("icloud.com.", True),
+                           ("evil-icloud.com", False), ("noticloud.com", False),
+                           ("icloud.com.attacker.net", False),
+                           ("open-meteo.com", False), ("", False)]:
+            if eg.host_allowed(allow, host) is not want:
+                return (True, f"{host!r} was {'refused' if want else 'allowed'}")
+
+        # 2. Nothing that is not a public address. Without this, "fetch a URL"
+        #    reads the router, the printer, or a metadata endpoint.
+        for addr, want in [("127.0.0.1", True), ("::1", True),
+                           ("10.0.0.5", True), ("192.168.1.69", True),
+                           ("169.254.169.254", True), ("0.0.0.0", True),
+                           ("not-an-ip", True), ("8.8.8.8", False)]:
+            if eg.private(addr) is not want:
+                return (True, f"{addr} counted as "
+                              f"{'public' if want else 'private'}")
+
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+             " VALUES('w','W',1,'[\"api.open-meteo.com\"]')")
+        # 3. https only, and the list is per workspace.
+        st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+             " VALUES('other','O',1,'[]')")
+        # Each case names the rule that has to be the one refusing it. The
+        # first version of this probe only checked that Refused came out —
+        # which it does for a 404, for a dead port, for anything. Both of
+        # those pass while the gate is wide open, so the assertion is on the
+        # sentence: refused by *this* rule, not refused by the weather.
+        cases = [
+            ("w", "http://api.open-meteo.com/x", "plain http",
+             "only https"),
+            ("w", "https://overpass-api.de/x", "a host not on the list",
+             "not on this workspace's list"),
+            ("w", "https://api.open-meteo.com.attacker.net/x", "a lookalike",
+             "not on this workspace's list"),
+            ("other", "https://api.open-meteo.com/x", "another workspace's list",
+             "not on this workspace's list"),
+            # 4. Loopback stays refused even when somebody puts it on the list.
+            ("loop", "https://localhost/admin", "an allowlisted loopback host",
+             "on this machine or this network"),
+        ]
+        st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+             " VALUES('loop','L',1,'[\"localhost\"]')")
+        for ws, url, why, rule in cases:
+            try:
+                eg.fetch(st, ws, url, timeout=5)
+                return (True, f"{why} was allowed through")
+            except eg.Refused as e:
+                if rule not in str(e):
+                    return (True, f"{why} was turned away, but by the wrong "
+                                  f"rule — expected {rule!r}, got {str(e)[:70]!r}")
+        # And urllib must not be the thing deciding where a redirect goes.
+        # Anything other than None here — a raise included — means this
+        # handler is not the one saying no.
+        try:
+            handled = eg._NoRedirect().redirect_request(
+                urllib.request.Request("https://api.open-meteo.com/x"),
+                None, 302, "", {}, "https://evil.example/x")
+        except Exception:                                        # noqa: BLE001
+            handled = "raised"
+        if handled is not None:
+            return (True, "redirects are followed without being re-checked")
+        return (False, "lookalikes, loopback, plain http and another "
+                       "workspace's list are all refused")
+    probe("A43 anything can reach anything once one connector goes online",
+          egress_gate)
+
+    # ── 43a. and the panel that is supposed to show it ──────────────────
+    def egress_visible():
+        # A gate nobody can see is a gate nobody audits. The allowlist grows
+        # by itself — adding a weather source allows two hosts — so if the
+        # workspace row does not say what it may reach, hosts accumulate
+        # somewhere only sqlite3 can read them.
+        d = g('/api/v1/sources')
+        ws = d.get("workspaces") or []
+        if not ws:
+            return (True, "no workspaces came back at all")
+        missing = [w["id"] for w in ws if "egress" not in w]
+        if missing:
+            return (True, f"{missing[0]} came back with no egress field — the "
+                          f"row in the panel reads w.egress and would render "
+                          f"'reaches nothing' whatever the list says")
+        if not all(isinstance(w["egress"], list) for w in ws):
+            return (True, "egress came back as something other than a list")
+        if "egress_log" not in d:
+            return (True, "the sources panel cannot show what has left")
+        # And denying is a real write, not a repaint.
+        wid = ws[0]["id"]
+        po('/api/v1/egress/allow', {"workspace": wid, "host": "example.com"})
+        after = [w for w in g('/api/v1/sources')["workspaces"]
+                 if w["id"] == wid][0]["egress"]
+        if "example.com" not in after:
+            return (True, "a host allowed through the API did not come back")
+        po('/api/v1/egress/deny', {"workspace": wid, "host": "example.com"})
+        after = [w for w in g('/api/v1/sources')["workspaces"]
+                 if w["id"] == wid][0]["egress"]
+        if "example.com" in after:
+            return (True, "denying a host left it on the list")
+        # And a missing host is a sentence, not one with a hole in it.
+        for b in ({"workspace": wid}, {"workspace": wid, "host": "  "}):
+            try:
+                po('/api/v1/egress/deny', b)
+                return (True, "denying nothing in particular reported success")
+            except urllib.error.HTTPError as e:
+                msg = json.loads(e.read()).get("error", "")
+                if not msg.strip() or msg.strip().startswith("is not on"):
+                    return (True, f"the error for a missing host reads {msg!r}")
+        return (False, "every workspace says what it may reach, and the ✕ "
+                       "on a host is a write")
+    probe("A43a the allowlist is only visible to sqlite3", egress_visible)
+
+    # ── 43b. and it has to close again ──────────────────────────────────
+    def egress_ratchet():
+        # Adding a weather source opens two hosts by itself. If removing it
+        # does not close them, the allowlist only ever grows — which is the
+        # shape of the trust-ledger bug this suite already carries a probe
+        # for, one layer down.
+        ws = "gatetest"
+        po('/api/v1/workspaces/add', {"id": ws, "name": "Gate test"})
+        try:
+            po('/api/v1/egress/allow', {"workspace": ws, "host": "mine.example"})
+            r = po('/api/v1/sources/add',
+                   {"workspace": ws, "kind": "weather", "ref": "54.97,-1.61"})
+            if r.get("error"):
+                return (True, f"a weather source would not attach: {r['error']}")
+            def listed():
+                return [w for w in g('/api/v1/sources')["workspaces"]
+                        if w["id"] == ws][0]["egress"]
+            after_add = listed()
+            if "api.open-meteo.com" not in after_add:
+                return (True, "a source was attached that every request will "
+                              "then be refused — added, and not allowed")
+            po('/api/v1/sources/remove', {"workspace": ws, "kind": "weather"})
+            after_rm = listed()
+            left = [h for h in after_add if h in after_rm and h != "mine.example"]
+            if left:
+                return (True, f"{left[0]} is still reachable after the source "
+                              f"that opened it was removed")
+            if "mine.example" not in after_rm:
+                return (True, "removing a source revoked a host somebody "
+                              "allowed by hand")
+            return (False, "adding opens the two hosts, removing closes them, "
+                           "and a hand-added host is left alone")
+        finally:
+            po('/api/v1/workspaces/remove', {"id": ws, "confirm": True})
+    probe("A43b the allowlist only ever grows", egress_ratchet)
+
+    # ── 44. the forecast, without the network ───────────────────────────
+    def weather_fields():
+        # Fields, never prose: a small model handed a paragraph of forecast
+        # copy paraphrases it badly, and free text from outside is where an
+        # instruction hides. Parsed here from a fixture so the suite does not
+        # depend on somebody else's uptime.
+        import sys as _s, tempfile
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.connectors import weather as W
+
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        st.x("INSERT INTO workspace(id,name,active,egress_allow)"
+             " VALUES('w','W',1,'[]')")
+        w = W.Weather("54.97,-1.61", store=st, workspace_id="w")
+
+        here = w.where()
+        if (here["lat"], here["lon"]) != (54.97, -1.61):
+            return (True, f"coordinates came back as {here}")
+
+        canned = {"daily": {
+            "time": ["2026-08-23", "2026-08-24", "2026-08-25"],
+            "weather_code": [0, 61, 95],
+            "temperature_2m_max": [21.4, 17.0, 15.2],
+            "temperature_2m_min": [11.1, 12.0, 10.0],
+            "precipitation_probability_max": [5, 70, 90],
+            "wind_speed_10m_max": [12.0, 48.0, 20.0]}}
+        real, W.egress.fetch_json = W.egress.fetch_json, lambda *a, **k: canned
+        try:
+            days = w.forecast(days=3)
+            if len(days) != 3:
+                return (True, f"three days in, {len(days)} out")
+            if days[0]["label"] != "clear" or days[2]["label"] != "thunderstorms":
+                return (True, f"codes read as {[d['label'] for d in days]}")
+            if any(d["provenance"] != "external" for d in days):
+                return (True, "a day came back without provenance on it")
+            # Nothing in a row may be free text from the far end. Every
+            # string here is built from a code table and numbers.
+            for d in days:
+                for k, v in d.items():
+                    if isinstance(v, str) and k not in ("date", "summary",
+                                                        "label", "provenance"):
+                        return (True, f"unexpected free text in {k!r}")
+            dry = w.dry_windows(days=3)
+            if [d["date"] for d in dry] != ["2026-08-23"]:
+                return (True, f"dry days came out as {[d['date'] for d in dry]}")
+        finally:
+            W.egress.fetch_json = real
+
+        # No location is a sentence, not a stack trace.
+        blank = W.Weather("", store=st, workspace_id="w")
+        try:
+            blank.check()
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"an unset location raised {type(e).__name__}")
+        if blank.check().get("ok") is not False:
+            return (True, "an unset location reported ok")
+        return (False, "codes, thresholds and provenance all hold, and the "
+                       "rows carry no free text from outside")
+    probe("A44 the forecast arrives as prose a model has to trust",
+          weather_fields)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
