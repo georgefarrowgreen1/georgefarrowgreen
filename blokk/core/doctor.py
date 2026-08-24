@@ -332,7 +332,7 @@ def sources_and_chat() -> list[str]:
         # on the screen somebody opens to find out what Blokk is doing to
         # their machine.
         verb = ("sending" if kind == "smtp"
-                else "writing" if kind in sources.WRITES_A_FOLDER
+                else "writing" if kind in sources.WRITES
                 else "reading")
         row(label, _c(verb, GREEN) if ok else _c("nothing there", AMBER),
             sources.describe(kind, state)[:70])

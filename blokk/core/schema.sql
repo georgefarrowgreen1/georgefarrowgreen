@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS approval (
   -- read out of the body at send time. A recipient parsed out of prose is a
   -- recipient a model can move, and moving it is the whole attack.
   recipient     TEXT,
+  -- Set the moment a send succeeds. A draft with this set is never sent
+  -- again, whatever asks: an apology for a duplicate is worse than a
+  -- missing reply, and the recipient is the one who finds out.
+  sent_at       TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   decided_at    TEXT
 );

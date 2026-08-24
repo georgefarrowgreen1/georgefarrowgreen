@@ -404,6 +404,19 @@ def _hold_dates(store, workspace, title, start, end, note=None, where=None,
     into = None
     why = ""
     try:
+        # Already there? The uid is written into the event's description
+        # precisely so a second approval of the same booking is findable.
+        # Without this the .ics was replaced — it is keyed on the booking —
+        # and Calendar quietly gained a duplicate beside the first, which is
+        # the shape of thing somebody discovers when the diary says two
+        # parties are arriving.
+        if calendar_app.find(out["uid"]):
+            return {"ok": True, "uid": out["uid"], "file": out["file"],
+                    "folder": out["folder"], "replaced": out["replaced"],
+                    "calendar": "already there",
+                    "detail": (f"Already in your diary \u2014 nothing was "
+                               f"added twice. The .ics in {out['folder']} was "
+                               f"refreshed.")}
         added = calendar_app.add(title, s, e, calendar=_hold_calendar(store,
                                                                      workspace),
                                  note=note or "", where=where or "",
@@ -510,6 +523,22 @@ def _send_reply(store, workspace, approval, **_):
             f"that draft has not been approved — it is "
             f"{row['decision'] or 'still waiting on you'}. Approve it first; "
             f"sending is a separate decision on purpose.")
+    already = row["sent_at"] if "sent_at" in row.keys() else None
+    if already:
+        raise Rejected(
+            f"that draft was already sent at {already}. It is not sent again "
+            f"— a duplicate is worse than a missing reply, and the person "
+            f"who finds out is the one who received it.")
+    # Time-of-check versus time-of-use, on the one path where it reaches
+    # somebody. A quote true at 04:00 may be sold by the evening, and the
+    # queue already knows how to say so — it was just never asked here.
+    if row["revalidate"]:
+        from api.server import _stale
+        if _stale(row):
+            raise Rejected(
+                f"that draft was written against facts that have since "
+                f"changed ({row['revalidate']}), so it is not sent. Re-run "
+                f"the check from the queue and approve it again.")
     to = (row["recipient"] or "").strip() if "recipient" in row.keys() else ""
     if not to:
         raise Rejected(
@@ -536,6 +565,12 @@ def _send_reply(store, workspace, approval, **_):
         out = sender.send(to, _subject_for(row), text, expected=to)
     except SendRefused as e:
         raise Rejected(str(e)) from None
+    # Marked before anything is returned, and marked even though the send
+    # already happened — the window between the two is the one where a
+    # crash would let it go twice.
+    from core.durable import now as _now
+    store.x("UPDATE approval SET sent_at=? WHERE id=?",
+            _now().isoformat(), approval)
     return {"ok": True, "sent": True, "to": out["to"],
             "detail": f"Sent to {out['to']} via {out['via']}. "
                       f"{out['left_today']} left in today's cap."}

@@ -166,7 +166,13 @@ def add(title: str, start, end, *, calendar: str = "", note: str = "",
     # string is parsed by whatever the Mac's locale says, and 03/09 is two
     # different days either side of the Atlantic.
     def stamp(d: datetime, name: str) -> str:
+        # `day` first, and to 1. AppleScript dates are mutated field by
+        # field and each assignment normalises: run this on the 31st and
+        # `set month to 2` is 31 February, which rolls forward to 3 March,
+        # and the day set afterwards lands in the wrong month. Going to the
+        # 1st first means every intermediate state is a real date.
         return (f'set {name} to (current date)\n'
+                f'set day of {name} to 1\n'
                 f'set year of {name} to {d.year}\n'
                 f'set month of {name} to {d.month}\n'
                 f'set day of {name} to {d.day}\n'

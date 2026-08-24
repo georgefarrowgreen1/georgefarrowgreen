@@ -106,8 +106,15 @@ recorded recipient cannot be sent at all, which is what makes that a rule
 rather than a preference; `smtp_mail.Smtp.send` re-checks the address it is
 handed against the one on the row and refuses if they differ.
 
+A draft is sent once. `approval.sent_at` is set the moment it goes and every
+guard refuses a second attempt — nothing marked it before, so the same draft
+could go twice and the person who finds out is the one who received it. A
+draft carrying `revalidate` is re-checked at send: a quote true at 04:00 may
+be sold by the evening, and the queue already knew how to say so.
+
 One recipient, plain text, no attachments, no HTML, a size cap, and twenty a
-day per workspace. Each refusal is by the rule that should refuse it — a
+day per workspace, counted off `sent_at` in the same timezone it is written
+in. Each refusal is by the rule that should refuse it — a
 header injection is caught as a line break, not as "too many addresses",
 because a refusal wearing the wrong name is one nobody can act on, and one
 that vanishes the day the other rule is loosened. A93 covers all of it and is
@@ -225,7 +232,12 @@ worse than an error.
     core/sandbox.py    where a script Blokk did not write is run: no network,
                        no home directory, a fresh environment, rlimits and a
                        timeout that kills the process *group*. Refuses rather
-                       than running unconfined
+                       than running unconfined — and every path in its
+                       wrapper is shell-quoted with a failed mount fatal,
+                       because an unquoted scratch path with a space in it
+                       made the binds fail, the exec run anyway, and run()
+                       return ok on a script that had just read the real
+                       /home
     core/skills.py     procedural memory over that boundary. A skill earns
                        `promoted` by running clean and is retired by failing,
                        the trust ledger's shape for the trust ledger's reason
@@ -401,6 +413,11 @@ All four suites green. Verified behaviours:
 * a step whose journalled name is not the one being replayed says so, naming
   the run, the step and both names — it used to hand back the previous step's
   result and fail three lines later on a type error
+* a probe that builds the state it is checking for cannot see that state
+  never being built. A93 wrote its own approval row with raw SQL and passed
+  on a build where the sweep never filled the column it reads, so nothing a
+  person would ever queue could be sent. It goes through `_queue` and the
+  real sweep now
 * a script Blokk did not write runs with no network, no /home, /Users or
   /root, none of the parent's environment, a memory ceiling, and a timeout
   that takes anything it forked — proved by making the child sleep past the

@@ -18,7 +18,7 @@ and a stock Mac can build between them:
                       namespace on Linux, denied by the profile on macOS
     no time           a wall-clock timeout, killed by process group so a
                       script that forks cannot outlive it
-    no size           RLIMIT_AS, RLIMIT_FSIZE, RLIMIT_NPROC, RLIMIT_CORE
+    no size           RLIMIT_AS, RLIMIT_FSIZE, RLIMIT_CORE
     no secrets        a scrubbed environment, and the keychain is a
                       subprocess this cannot reach without the network or
                       the binary
@@ -53,28 +53,46 @@ from pathlib import Path
 # should be it hitting a wall rather than the Mac swapping.
 MEM_BYTES = 512 * 1024 * 1024
 FILE_BYTES = 8 * 1024 * 1024
-MAX_PROCS = 64
 TIMEOUT = 20
 MAX_OUTPUT = 256 * 1024
+# The child's own ceiling on what it may write, enforced by the kernel
+# rather than by slicing afterwards. Slicing after communicate() means the
+# whole thing was already in this process's memory — so a script printing in
+# a loop exhausted Blokk and not itself, which is the wrong way round.
+# RLIMIT_FSIZE covers files; a pipe needs the pipe closed, so stdout and
+# stderr go to files under the scratch directory and are read back capped.
+OUT_BYTES = 4 * 1024 * 1024
 
 # The seatbelt profile. Deny by default, then allow the few things a script
-# needs to be a script at all. `file-write*` is granted only under the
+# needs to be a script at all — including `process-exec`, without which
+# nothing runs: `(deny default)` denies that too, and a profile that cannot
+# start a process is not a strict sandbox, it is a broken one. The read
+# paths cover where macOS Pythons actually live (the system one, the
+# Command Line Tools one, Homebrew, /usr/local) rather than where the
+# system one alone does. `file-write*` is granted only under the
 # scratch directory, which is passed in as a parameter rather than
 # interpolated — a path with a quote in it would otherwise end the string
 # and the rest of the profile with it.
 SEATBELT = """(version 1)
 (deny default)
 (allow process-fork)
+(allow process-exec)
 (allow sysctl-read)
+(allow mach-lookup)
+(allow file-read-metadata)
 (allow file-read*
   (subpath "/usr/lib") (subpath "/usr/bin") (subpath "/usr/share")
-  (subpath "/System") (subpath "/Library/Frameworks")
-  (subpath (param "SCRATCH")) (literal "/dev/null") (literal "/dev/urandom"))
+  (subpath "/usr/local") (subpath "/opt/homebrew")
+  (subpath "/Library/Developer/CommandLineTools")
+  (subpath "/Library/Frameworks") (subpath "/System")
+  (subpath "/private/var/db/dyld") (subpath "/private/etc")
+  (subpath (param "SCRATCH")) (literal "/dev/null") (literal "/dev/urandom")
+  (literal "/dev/random"))
 (allow file-write*
   (subpath (param "SCRATCH")) (literal "/dev/null"))
 (allow signal (target self))
 (deny network*)
-(deny file-read* (subpath "/Users"))
+(deny file-read* (subpath "/Users") (subpath "/Volumes"))
 """
 
 
@@ -102,6 +120,25 @@ def capable() -> tuple[bool, str]:
         if not shutil.which("sandbox-exec"):
             return (False, "sandbox-exec is missing, which should not happen "
                            "on a Mac. Nothing will be run.")
+        # Actually run something through the profile. Finding the binary is
+        # not the same as the profile working, and this whole file rests on
+        # never being wrong about whether there is a boundary — a `which`
+        # that says yes on a Mac where nothing can exec is exactly the
+        # confident wrong answer it is supposed to prevent.
+        probe = tempfile.mkdtemp(prefix="blokk-sandbox-check-")
+        try:
+            r = subprocess.run(
+                ["sandbox-exec", "-p", SEATBELT, "-D", f"SCRATCH={probe}",
+                 sys.executable, "-I", "-S", "-c", "print(1)"],
+                capture_output=True, text=True, timeout=20)
+            if r.returncode != 0 or "1" not in (r.stdout or ""):
+                return (False, f"the sandbox profile will not run a script "
+                               f"on this Mac: "
+                               f"{(r.stderr or '').strip()[:160]}")
+        except (OSError, subprocess.SubprocessError) as e:
+            return (False, f"sandbox-exec will not run: {e}")
+        finally:
+            shutil.rmtree(probe, ignore_errors=True)
         return (True, "")
     if platform.system() == "Linux":
         if not shutil.which("unshare"):
@@ -139,9 +176,15 @@ def _env(scratch: Path) -> dict:
 
 def _limits() -> None:
     """Applied in the child, between fork and exec."""
+    # NPROC is deliberately not here. It counts every process the *real
+    # user* owns, machine-wide — not the ones this sandbox started — so a
+    # cap of 64 on somebody's own Mac fails the first fork because their
+    # browser is open. A limit that fires on innocent work and not on the
+    # thing it was aimed at is worse than none: it makes the sandbox look
+    # broken and teaches whoever hits it to raise it until it stops firing.
+    # Runaway forking is caught by the timeout, which kills the group.
     for what, soft in ((resource.RLIMIT_AS, MEM_BYTES),
                        (resource.RLIMIT_FSIZE, FILE_BYTES),
-                       (resource.RLIMIT_NPROC, MAX_PROCS),
                        (resource.RLIMIT_CORE, 0)):
         try:
             resource.setrlimit(what, (soft, soft))
@@ -179,11 +222,33 @@ def _wrap(argv: list[str], scratch: Path, blank: Path) -> list[str]:
     # only inside this namespace and are gone when it exits; nothing on the
     # real filesystem is touched, and a bind that fails (the path does not
     # exist on this machine) is skipped rather than taking the run with it.
+    # Quoted, and fatal. Both halves were wrong and each alone is enough to
+    # turn this into a sandbox that quietly is not one:
+    #
+    #   * the paths were interpolated raw, so a scratch directory with a
+    #     space in it made `mount --bind` fail on usage;
+    #   * a failed mount only skipped its own `&&`, so the exec ran anyway.
+    #
+    # Together: run() returned ok:True on a script that had just read the
+    # real /home. That is the exact failure this file's docstring says it
+    # exists to prevent, and it was one shell line wide.
+    #
+    # `|| exit 97` makes any failure stop before exec. 97 is picked to be
+    # distinguishable from a script's own exit code, and run() turns it into
+    # a sentence rather than a number.
+    q = _sh_quote
     binds = " ".join(
-        f'[ -d {h} ] && mount --bind {blank} {h};' for h in HOMES)
-    inner = " ".join(_sh_quote(a) for a in argv)
+        f"if [ -d {q(h)} ]; then mount --bind {q(str(blank))} {q(h)} "
+        f"|| exit 97; fi;" for h in HOMES)
+    inner = " ".join(q(a) for a in argv)
     return ["unshare", "-r", "-n", "-m", "--", "/bin/sh", "-c",
-            f"{binds} exec {inner}"]
+            f"set -e; {binds} exec {inner}"]
+
+
+# The exit code the wrapper uses when it could not build the boundary. Not
+# 1: a script exiting 1 is ordinary, and confusing "your script failed" with
+# "there was no sandbox" is how the second one goes unnoticed.
+NO_BOUNDARY = 97
 
 
 def _sh_quote(arg: str) -> str:
@@ -218,12 +283,38 @@ def run(code: str, *, timeout: int = TIMEOUT, stdin: str = "",
     blank.mkdir(exist_ok=True)
     argv = _wrap([sys.executable, "-I", "-S", str(script)], root, blank)
     try:
+        # To files, not pipes. A pipe means communicate() holds everything
+        # the child writes in this process; a file means the child's own
+        # RLIMIT_FSIZE stops it, and what is read back here is capped.
+        out_f = (root / ".stdout").open("w+", encoding="utf-8",
+                                        errors="replace")
+        err_f = (root / ".stderr").open("w+", encoding="utf-8",
+                                        errors="replace")
         proc = subprocess.Popen(
             argv, cwd=str(root), env=_env(root), preexec_fn=_limits,
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True)
+            stdin=subprocess.PIPE, stdout=out_f, stderr=err_f, text=True,
+            # A script is under no obligation to write UTF-8, and strict
+            # decoding turned "it printed some bytes" into a
+            # UnicodeDecodeError out of run() — a type skills.run does not
+            # catch, so the failure counter never moved and such a skill
+            # could never be retired.
+            encoding="utf-8", errors="replace")
+        def collected():
+            """What the child wrote, capped, and whether it was cut."""
+            got = []
+            for fh in (out_f, err_f):
+                try:
+                    fh.flush()
+                    fh.seek(0)
+                    got.append(fh.read(MAX_OUTPUT + 1))
+                except (OSError, ValueError):
+                    got.append("")
+            cut = any(len(g) > MAX_OUTPUT for g in got)
+            return got[0][:MAX_OUTPUT], got[1][:MAX_OUTPUT], cut
+
         try:
-            out, err = proc.communicate(stdin, timeout=timeout)
+            proc.communicate(stdin, timeout=timeout)
+            out, err, cut = collected()
             timed = False
         except subprocess.TimeoutExpired:
             # The group, not the process. A script that forked and then slept
@@ -233,29 +324,38 @@ def run(code: str, *, timeout: int = TIMEOUT, stdin: str = "",
             except (ProcessLookupError, PermissionError):
                 proc.kill()
             try:
-                # Bounded, because the pipes are only certainly closed if
-                # the *group* died. Killing the process alone leaves a
-                # forked child holding the other end and this waits for
-                # ever — which turned a broken sandbox from a red test into
-                # a hung one, and a hang is the worse of the two: a red says
-                # what is wrong and a hang says nothing at all.
-                out, err = proc.communicate(timeout=5)
+                # Bounded, because stdin is still a pipe and a forked child
+                # can hold it. A hang here said nothing at all where a red
+                # says what is wrong.
+                proc.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                out, err = "", ("something the script started is still "
-                                "holding its output open — the process group "
-                                "was not killed")
+            out, err, cut = collected()
             timed = True
+        if not timed and proc.returncode == NO_BOUNDARY:
+            # The wrapper stopped before exec, so nothing ran — which is the
+            # right outcome and a useless one to report as "exit 97".
+            raise Unavailable(
+                f"the boundary could not be built, so nothing was run: "
+                f"{(err or '').strip()[:200] or 'a bind mount failed'}")
         result = {
             "ok": not timed and proc.returncode == 0,
             "code": proc.returncode,
-            "out": (out or "")[:MAX_OUTPUT],
-            "err": (err or "")[:MAX_OUTPUT],
+            "out": out or "",
+            "err": err or "",
             "timed_out": timed,
-            "truncated": len(out or "") > MAX_OUTPUT,
+            # Either stream. It only counted stdout, so a script that wrote
+            # a novel to stderr was reported as complete.
+            "truncated": cut,
             "confined": platform.system(),
         }
     finally:
+        for fh in (locals().get("out_f"), locals().get("err_f")):
+            try:
+                if fh:
+                    fh.close()
+            except OSError:
+                pass
         if own:
             shutil.rmtree(root, ignore_errors=True)
     if timed:

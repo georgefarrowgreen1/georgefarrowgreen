@@ -47,6 +47,10 @@ READS_A_FOLDER = ("maildir", "ical")
 # has to exist, or a typo'd path builds a tree three levels deep somewhere
 # nobody will ever look.
 WRITES_A_FOLDER = ("ics_out",)
+# Everything that is not read-only. `scopes` is the column that answers
+# "what may this credential do", and smtp — the only one that reaches
+# another person — was being written into it as ["read"].
+WRITES = WRITES_A_FOLDER + ("smtp",)
 
 
 SAMPLE = ("cottages", "biz2", "biz3", "personal")
@@ -116,7 +120,7 @@ def listing(store) -> list[dict]:
                     # it is actually reading rather than implying all of it.
                     "only": only,
                     "reads": KINDS.get(r["kind"], r["kind"]),
-                    "writes": r["kind"] in WRITES_A_FOLDER})
+                    "writes": r["kind"] in WRITES})
     return out
 
 
@@ -171,7 +175,7 @@ def add(store, ws: str, kind: str, ref: str,
     # the first commit, which was true of every connector there was; putting
     # a writer in under the same word makes the column a decoration, and it
     # is the column that answers "what is this credential allowed to do".
-    scopes = ["write"] if kind in WRITES_A_FOLDER else ["read"]
+    scopes = ["write"] if kind in WRITES else ["read"]
     store.x("""INSERT OR REPLACE INTO credential
                (id,workspace_id,kind,keychain_ref,scopes,only)
                VALUES(?,?,?,?,?,?)""",

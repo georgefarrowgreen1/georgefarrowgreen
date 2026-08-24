@@ -71,17 +71,27 @@ def add(store, name: str, description: str, code: str,
     # this to disagree with itself, and a backup of blokk.db that does not
     # contain the skills is a backup that restores a system missing half its
     # procedural memory.
+    # Counters carried forward only while the code is the same. Adding a
+    # *changed* skill starts it over: the runs behind a script belong to
+    # that script, and keeping the failures while resetting the status to
+    # candidate made the documented "fix it and add it again" path retire
+    # it again on its first run. Re-adding an identical one is a no-op and
+    # should not wipe what it has earned.
+    prior = store.one("SELECT code_ref, runs, failures FROM skill WHERE id=?",
+                      sid)
+    same = prior is not None and prior["code_ref"] == code
     store.x("""INSERT OR REPLACE INTO skill
                (id,workspace_id,name,description,code_ref,runs,failures,status)
-               VALUES(?,?,?,?,?,
-                      COALESCE((SELECT runs FROM skill WHERE id=?),0),
-                      COALESCE((SELECT failures FROM skill WHERE id=?),0),
-                      'candidate')""",
+               VALUES(?,?,?,?,?,?,?,'candidate')""",
             sid, workspace, name, str(description).strip()[:400], code,
-            sid, sid)
+            prior["runs"] if same else 0,
+            prior["failures"] if same else 0)
     return {"ok": True, "id": sid, "name": name, "status": "candidate",
-            "note": f"Recorded, not trusted. {PROMOTE_AFTER} clean runs "
-                    f"promote it; {RETIRE_AFTER} failures retire it."}
+            "restarted": not same,
+            "note": (f"Recorded, not trusted. {PROMOTE_AFTER} clean runs "
+                     f"promote it; {RETIRE_AFTER} failures retire it."
+                     + ("" if same else " The code changed, so it starts "
+                                        "over from nothing."))}
 
 
 def listing(store, workspace: str | None = None,

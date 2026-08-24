@@ -155,7 +155,12 @@ def register(engine, store):
                         "drawn_from": _drawn_from(m),
                         "checked_at": _hour(ctx)},
                        # time-of-check vs time-of-use: re-run before the send
-                       revalidate="calendar_gap")
+                       revalidate="calendar_gap",
+                       # From the From header of the message this answers and
+                       # from nowhere else. A quarantined message never gets
+                       # here, so no address a stranger wrote into a body can
+                       # become one this can send to.
+                       recipient=_reply_to(m))
                 out["queued"] += 1
 
         # ---- 4b. a dry day with an hour in it -------------------------------
@@ -471,9 +476,11 @@ def _queue(ctx, store, category, body, why, evidence, revalidate=None,
         f"queue.{category}",
         lambda: store.x(
             """INSERT OR REPLACE INTO approval
-               (id,run_id,workspace_id,category,title,body,evidence,revalidate)
-               VALUES(?,?,?,?,?,?,?,?)""",
+               (id,run_id,workspace_id,category,title,body,evidence,
+                revalidate,recipient)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
             aid, ctx.run_id, ctx.workspace_id, category, why, body,
-            json.dumps(evidence), revalidate) or {"approval_id": aid},
+            json.dumps(evidence), revalidate,
+            recipient or None) or {"approval_id": aid},
         side_effect=True,
     )

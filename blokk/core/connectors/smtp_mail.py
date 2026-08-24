@@ -40,7 +40,6 @@ import re
 import smtplib
 import ssl
 
-from datetime import date
 from email.message import EmailMessage
 
 from core.connectors.keychain import account, secret
@@ -163,17 +162,32 @@ class Smtp:
         else:
             smtp = smtplib.SMTP(self.host, self.port, timeout=TIMEOUT)
             smtp.starttls(context=ctx)
-        smtp.login(account(self.ref), secret(self.ref))
+        try:
+            smtp.login(account(self.ref), secret(self.ref))
+        except Exception:
+            # The caller's `with` never sees this object if login raises, so
+            # nothing else would ever close it. A stale password plus a
+            # doctor run on a timer is a slow file-descriptor leak.
+            try:
+                smtp.close()
+            except Exception:                                    # noqa: BLE001
+                pass
+            raise
         return smtp
 
     # -------------------------------------------------------------- caps
     def sent_today(self) -> int:
         if self.store is None:
             return 0
+        # Counted off sent_at, and compared in the same frame it is written
+        # in. It was date(decided_at) — stored UTC — against date.today() —
+        # local — so west of Greenwich the cap silently reset each evening
+        # and handed out a fresh twenty. Whichever frame is chosen, both
+        # sides have to be in it.
         row = self.store.one(
             "SELECT COUNT(*) n FROM approval WHERE workspace_id=? "
-            "AND decision IN ('approve','edit') AND result LIKE '%\"sent\": true%' "
-            "AND date(decided_at)=?", self.workspace_id, date.today().isoformat())
+            "AND sent_at IS NOT NULL AND date(sent_at)=date('now','localtime')",
+            self.workspace_id)
         return int(row["n"]) if row else 0
 
     # -------------------------------------------------------------- send

@@ -698,7 +698,7 @@ def h_sources(_q):
             # "reads holds", which is the opposite of what ics_out does and
             # the only claim in that list anybody checks.
             "kinds": [{"id": k, "reads": v,
-                       "writes": k in sources.WRITES_A_FOLDER,
+                       "writes": k in sources.WRITES,
                        "keychain": k in sources.NEEDS_KEYCHAIN}
                       for k, v in sources.KINDS.items()]}
 

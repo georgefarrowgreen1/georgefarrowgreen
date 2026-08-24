@@ -103,6 +103,11 @@ class Store:
         # a model can move. This is written when the draft is queued, from
         # the message that was read, and the sender refuses anything else.
         ("approval", "recipient", "TEXT"),
+        # When it was sent, and to whom. Not derived from `result` — that
+        # column belongs to the decision and is rewritten by it. Without a
+        # mark of its own, every guard in _send_reply passes a second time
+        # and the guest gets the same message twice.
+        ("approval", "sent_at", "TEXT"),
     )
 
     def _migrate(self) -> None:

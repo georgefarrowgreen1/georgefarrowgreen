@@ -4865,6 +4865,11 @@ try:
         _src.add(st2, "cottages", "ics_out", str(holds))
         _CC.REGISTRY._by_ws.clear()
         CA.available = lambda: (True, "")
+        # find() is consulted before add() so a re-approved hold is not
+        # duplicated, so it has to be stood in for too — otherwise this
+        # reaches a real osascript and the refusal under test never happens.
+        real_find = CA.find
+        CA.find = lambda *a2, **k2: []
         CA.add = lambda *a2, **k2: (_ for _ in ()).throw(
             CA.CalendarError("Calendar said no"))
         try:
@@ -4872,7 +4877,7 @@ try:
                 "workspace": "cottages", "title": "the Shaws",
                 "start": SOON, "end": SOON_END}))
         finally:
-            CA.available, CA.add = real, real_add
+            CA.available, CA.add, CA.find = real, real_add, real_find
         if not list(holds.glob("*.ics")):
             return (True, "Calendar refused and no file was written — the "
                           "person is left with no record at all")
@@ -4881,6 +4886,29 @@ try:
         if "Calendar said no" not in str(ran.get("calendar_note", "")):
             return (True, f"Calendar refused and the reason is not carried: "
                           f"{ran.get('calendar_note')!r}")
+
+        # Approving the same hold twice must not put two events in the
+        # diary. The .ics is keyed on the booking so it is replaced; the
+        # calendar entry was not checked at all, so it gained a duplicate
+        # beside the first — which somebody discovers when the diary says
+        # two parties are arriving.
+        seen_add = []
+        CA.add = lambda *a2, **k2: (seen_add.append(k2.get("uid")),
+                                    {"ok": True, "calendar": "Bookings"})[1]
+        CA.find = lambda uid, **k2: ["the Shaws"] if uid in seen_add else []
+        try:
+            args = {"workspace": "cottages", "title": "the Shaws",
+                    "start": SOON, "end": SOON_END}
+            actions.run(st2, actions.propose("hold_dates", args))
+            again = actions.run(st2, actions.propose("hold_dates", args))
+        finally:
+            CA.available, CA.add, CA.find = real, real_add, real_find
+        if len(seen_add) != 1:
+            return (True, f"the same hold was added to Calendar "
+                          f"{len(seen_add)} times")
+        if "already" not in str(again.get("detail", "")).lower():
+            return (True, f"a second approval does not say it was already "
+                          f"there: {again.get('detail')!r}")
         return (False, "a guest's name cannot leave its string literal, a "
                        "newline is escaped and a control character refused, "
                        "the file is written before Calendar is asked, and "
@@ -4902,6 +4930,31 @@ try:
         from core.connectors import smtp_mail as SM
         from core.connectors.smtp_mail import Smtp, SendRefused
 
+        # 0. The sweep's own drafts carry a recipient. Calling _queue
+        #    directly proves _queue; it says nothing about whether the one
+        #    place that queues a reply passes the address in, and that call
+        #    site was missing entirely — every real draft was unsendable and
+        #    both this probe and the mutation tests were happy.
+        po('/api/v1/reset'); po('/api/v1/sweep')
+        rows = []
+        for _ in range(60):
+            rows = [a for a in g('/api/v1/approvals')
+                    if a["category"] == "availability_reply"]
+            if rows:
+                break
+            time.sleep(0.1)
+        if not rows:
+            return (True, "the sweep queued no drafted reply to check")
+        live = Store("blokk.db")
+        for a in rows:
+            got = live.one("SELECT recipient FROM approval WHERE id=?", a["id"])
+            if not (got and got["recipient"]):
+                return (True, f"the sweep queued {a['id']} with no recipient, "
+                              f"so nothing it drafts can ever be sent")
+            if "@" not in got["recipient"]:
+                return (True, f"the queued recipient is not an address: "
+                              f"{got['recipient']!r}")
+
         # 1. Off unless it was turned on. No credential, no send — and in
         #    particular no quietly reusing the IMAP password already there.
         db = pathlib.Path(_tf.mkdtemp()) / "s.db"
@@ -4913,10 +4966,39 @@ try:
         _C.REGISTRY._by_ws.clear()
         st.x("INSERT OR REPLACE INTO run(id,workspace_id,workflow,status,input)"
              " VALUES('r_send','cottages','probe','done','{}')")
-        st.x("INSERT OR REPLACE INTO approval"
-             "(id,run_id,workspace_id,category,title,body,decision,recipient)"
-             " VALUES('a_sendprobe','r_send','cottages','availability_reply',"
-             "'t','Yes, that week is free.','approve','guest@example.com')")
+        # Through _queue, not raw SQL. Writing the row by hand is what let
+        # this pass on a build where the recipient never reached the INSERT
+        # and _reply_to had no caller at all: the sender was proved and the
+        # thing that fills the column it reads was not. A probe that
+        # constructs the state it is checking for is a probe that cannot see
+        # the state never being constructed.
+        from flows import morning_sweep as _ms
+
+        class _Ctx:
+            run_id, workspace_id, step = "r_send", "cottages", 1
+
+            def activity(self, _name, fn, **_kw):
+                return fn()
+
+        _ms._queue(_Ctx(), st, "availability_reply",
+                   "Yes, that week is free.", "the Shaws asked",
+                   {"sources": ["mail"],
+                    "drawn_from": _ms._drawn_from(
+                        {"from": "Hall, Jennifer <guest@example.com>",
+                         "subject": "Late August?", "body": "any chance?"})},
+                   recipient=_ms._reply_to(
+                       {"from": "Hall, Jennifer <guest@example.com>"}))
+        queued = st.one("SELECT id, recipient FROM approval WHERE run_id="
+                        "'r_send' ORDER BY created_at DESC")
+        if queued is None or not queued["recipient"]:
+            return (True, "a drafted reply is queued with no recipient on it "
+                          "— nothing that goes through the sweep can ever be "
+                          "sent")
+        if queued["recipient"] != "guest@example.com":
+            return (True, f"the queued recipient is "
+                          f"{queued['recipient']!r}")
+        st.x("UPDATE approval SET id='a_sendprobe', decision='approve' "
+             "WHERE id=?", queued["id"])
         try:
             actions.run(st, {"name": "send_reply",
                              "args": {"workspace": "cottages",
@@ -4975,6 +5057,23 @@ try:
                               "attachment can carry what nobody read")
             if "free" not in msg.get_content():
                 return (True, "the approved text is not what went out")
+
+            # 2b. And not twice. Nothing marked a draft as sent, so every
+            #     guard passed again on a second attempt and the guest got
+            #     the same message a second time — the failure the person
+            #     who receives it discovers, not the person who sent it.
+            before = len(sent)
+            try:
+                actions.run(st, {"name": "send_reply",
+                                 "args": {"workspace": "cottages",
+                                          "approval": "a_sendprobe"}})
+                return (True, "the same draft was sent twice")
+            except actions.Rejected as e:
+                if "already sent" not in str(e):
+                    return (True, f"a second send refused for the wrong "
+                                  f"reason: {str(e)[:70]}")
+            if len(sent) != before:
+                return (True, "it refused the second send and sent it anyway")
 
             # 3. The address cannot be moved on the way out. This is the
             #    whole defence: a model that has read a stranger's mail can
@@ -5178,6 +5277,42 @@ try:
             return (True, f"a sandboxed script read a home directory: "
                           f"{home['out'].strip()[:90]}")
 
+        # 3b. And with a space in the scratch path. The bind-mount command
+        #     was built by interpolating the paths raw, so a directory with
+        #     a space in it made `mount --bind` fail on usage — and a failed
+        #     mount only skipped its own `&&`, so the exec ran regardless.
+        #     run() returned ok:True on a script that had just read the real
+        #     /home. One shell line wide, and the exact failure this file
+        #     says it exists to prevent.
+        odd = pathlib.Path(_tf.mkdtemp()) / "a dir with spaces"
+        odd.mkdir()
+        spaced = sandbox.run(
+            "import pathlib\n"
+            "for p in ('/home', '/Users', '/root'):\n"
+            "    try:\n"
+            "        got = list(pathlib.Path(p).iterdir())\n"
+            "    except Exception:\n"
+            "        got = []\n"
+            "    if got:\n"
+            "        print('SAW', p)\n"
+            "print('done')\n", scratch=odd)
+        if "SAW" in spaced["out"]:
+            return (True, "a scratch path with a space in it defeated the "
+                          "bind mounts and the script read a home directory")
+
+        # 3c. A mount that fails for any other reason must stop before exec.
+        #     Skipping it and running anyway is how the above happened.
+        real_wrap = sandbox._wrap
+        sandbox._wrap = lambda a, sc, _b: real_wrap(
+            a, sc, pathlib.Path("/definitely/not/here"))
+        try:
+            sandbox.run("print('ran unconfined')")
+            return (True, "a bind mount failed and the script ran anyway")
+        except sandbox.Unavailable:
+            pass
+        finally:
+            sandbox._wrap = real_wrap
+
         # 4. Nothing of this process's environment goes with it. A filter
         #    is a list of what to remove and is wrong the day somebody adds
         #    a variable; this is a fresh environment, so the test is that
@@ -5221,6 +5356,30 @@ try:
         if (pen / "survived").exists():
             return (True, "the script was killed and something it started "
                           "carried on and wrote a file afterwards")
+
+        # 5b. A runaway script must exhaust itself, not Blokk. The cap was
+        #     applied after communicate() had already buffered everything
+        #     into *this* process, so a print loop was the parent's problem.
+        #     And it only measured stdout, so a novel on stderr reported as
+        #     complete.
+        flood = sandbox.run("import sys\n"
+                            "for _ in range(200000): sys.stdout.write('x'*200)\n")
+        if len(flood["out"]) > 2 * 1024 * 1024:
+            return (True, f"{len(flood['out']):,} characters came back — the "
+                          f"cap is not stopping the parent buffering it")
+        if not flood["truncated"]:
+            return (True, "output was cut and it did not say so")
+        noisy = sandbox.run("import sys\nsys.stderr.write('e'*(400*1024))\n")
+        if not noisy["truncated"]:
+            return (True, "a truncated stderr is reported as complete")
+
+        # 5c. A script writing bytes that are not UTF-8 must come back as a
+        #     result, not as a UnicodeDecodeError out of run() — a type
+        #     skills.run does not catch, so the failure never counted and
+        #     such a skill could never be retired.
+        raw = sandbox.run("import sys; sys.stdout.buffer.write(b'\\xff\\xfe ok')")
+        if not raw["ok"]:
+            return (True, f"a script writing raw bytes failed: {raw}")
 
         # 6. And skills. The table has been in the schema since the first
         #    commit with nothing using it — a table of scripts and nowhere
