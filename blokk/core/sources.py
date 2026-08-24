@@ -16,7 +16,7 @@ import re
 KINDS = {"imap": "mail", "maildir": "mail",
          "caldav": "calendar", "ical": "calendar",
          "messages": "messages", "weather": "weather", "web": "web",
-         "ics_out": "holds"}
+         "ics_out": "holds", "smtp": "send"}
 # KINDS is not a label: the value is the name the connector is registered
 # under in core/connectors, and test() and peek() both look a source up by
 # it. Calling the web one "a page" here read better in the panel and made
@@ -36,7 +36,7 @@ REACHES_OUT = IS_PLACE + IS_URL + IS_FIXED_HOST
 # The two that read this Mac's own files need no credential — and no network,
 # and no app-specific password. They need Full Disk Access, which core/local.py
 # checks for and explains.
-NEEDS_KEYCHAIN = ("imap", "caldav")
+NEEDS_KEYCHAIN = ("imap", "caldav", "smtp")
 # The three that need nothing at all: no password, no network, no account.
 # "local" points them at the Apple app's own folder; anything else is a path,
 # which is how an exported mailbox or a shared calendar directory gets wired.
@@ -533,6 +533,10 @@ def describe(kind: str, state: dict) -> str:
         return str(state)
     if state.get("ok") is False:
         return state.get("detail", "found nothing to read")
+    if "sent_today" in state:
+        return (f"{state.get('from', '?')} via {state.get('host', '?')} — "
+                f"{state['sent_today']} sent today. Logged in and hung up; "
+                f"nothing was sent by this check.")
     if "waiting" in state and "folder" in state:
         n = state["waiting"]
         return (f"{state['folder']} \u2014 "

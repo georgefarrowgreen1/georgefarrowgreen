@@ -211,6 +211,14 @@ def wire(store) -> Registry:
                 from core.connectors.ical import LocalCalendar
                 REGISTRY.add(ws, "calendar",
                              LocalCalendar(root=_root(ref), only=only))
+            elif kind == "smtp":
+                # The only connector that reaches another person. Handed the
+                # store and the workspace because its daily cap is counted
+                # from that workspace's own approvals — a rate limit that is
+                # global is a rate limit one busy business spends for four.
+                from core.connectors.smtp_mail import Smtp
+                REGISTRY.add(ws, "send",
+                             Smtp(ref, store=store, workspace_id=ws))
             elif kind == "ics_out":
                 # The one writer. Registered like any other connector, and
                 # reached only from an approved action — nothing in a sweep

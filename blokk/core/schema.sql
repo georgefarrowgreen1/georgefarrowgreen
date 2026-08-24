@@ -92,6 +92,10 @@ CREATE TABLE IF NOT EXISTS approval (
   -- until a person decides. See core/actions.py.
   action        TEXT,
   result        TEXT,
+  -- Who this is addressed to, captured when the draft was made rather than
+  -- read out of the body at send time. A recipient parsed out of prose is a
+  -- recipient a model can move, and moving it is the whole attack.
+  recipient     TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   decided_at    TEXT
 );

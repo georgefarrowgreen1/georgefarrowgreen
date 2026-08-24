@@ -12,6 +12,7 @@ through a single approval gate.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 from core.connectors import read_since, wire
@@ -442,7 +443,28 @@ def _drawn_from_facts(*items) -> list[dict]:
             for k, label, when, detail in items]
 
 
-def _queue(ctx, store, category, body, why, evidence, revalidate=None):
+ADDRESS_IN = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+
+def _reply_to(m: dict) -> str:
+    """The address a reply to this message would go to, or "".
+
+    Taken from the From header of the message that was read, and from
+    nowhere else. Not from the body, not from anything a model produced,
+    not from a "please reply to" line inside somebody's mail — those are
+    all text a stranger wrote, and a recipient a stranger can choose is the
+    attack this whole design is arranged around.
+
+    Empty when the reader did not give one, which is honest: a draft with no
+    recorded recipient simply cannot be sent, and that is the right outcome
+    rather than a guess.
+    """
+    found = ADDRESS_IN.search(str(m.get("from") or ""))
+    return found.group(0).lower() if found else ""
+
+
+def _queue(ctx, store, category, body, why, evidence, revalidate=None,
+           recipient: str = ""):
     """Every write in the system funnels through here."""
     aid = f"a_{ctx.run_id[2:]}_{ctx.step}"
     ctx.activity(

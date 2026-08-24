@@ -137,6 +137,40 @@ Holds are `pinned`: they never graduate to happening on their own, however
 many you approve. A file appearing in a folder off the back of a sentence in
 a guest's email is exactly what the queue is there to stop.
 
+## 3b. Sending — the one that reaches somebody else
+
+Everything else here reads, or writes on this Mac. This one puts a message in
+another person's inbox, and you cannot take it back.
+
+    security add-generic-password -s blokk-cottages-smtp@smtp.fastmail.com:465 \
+        -a you@yourdomain.co.uk -w
+    python3 connect.py add cottages smtp blokk-cottages-smtp@smtp.fastmail.com:465
+    python3 connect.py test        # logs in and hangs up. Sends nothing.
+
+The server is the part of the reference after the `@`. iCloud and Gmail want
+an app-specific password, not your account one.
+
+**It is off until you do that.** No credential, no send — there is no default
+host and no reusing the IMAP password you already gave it.
+
+What it will not do, whatever anything asks:
+
+  * send to anyone but the address recorded on the draft when it was made,
+    which comes from the From header of the message being answered and never
+    from a body. A "please reply to …" line inside somebody's mail is text a
+    stranger wrote;
+  * send a draft you have not approved, or one belonging to another
+    workspace;
+  * send to more than one person, or accept a recipient or subject with a
+    line break in it — that is how a Bcc gets added by somebody who was only
+    supposed to be writing a subject line;
+  * send HTML or an attachment. Plain text only: both of the others are ways
+    for something to travel that nobody read on the screen that approved it;
+  * send more than twenty a day per workspace.
+
+Sends are pinned to manual for ever. Twenty correct sends do not make the
+twenty-first safe to do unasked, and there is no setting that changes it.
+
 ## 4. Per workspace, not per account
 
 Each business gets its own Keychain entry and its own row:

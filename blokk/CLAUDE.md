@@ -52,8 +52,8 @@ sits in a queue in between. `api/server.py:h_decide` is the only caller of
 Adding an action means adding it to `ACTIONS` and nothing else — the grammar
 Ask is given is built from that dict, so the catalogue cannot drift from what
 exists. Two things must stay true of anything you add: it reaches nobody
-(sending is a connector that does not exist yet, and it will arrive behind this
-queue rather than through the chat box); and if being wrong is expensive —
+unless it is shaped like `send_reply` below — behind this queue, pinned, and
+taking an id rather than an address; and if being wrong is expensive —
 opening a route out, deleting something, putting a file somewhere — it is
 `pinned=True` and never graduates, because the cost of being wrong does not
 scale with how often you have been right.
@@ -90,6 +90,28 @@ a turn they cannot see. The flagged row is quoted on the card, never hidden:
 the one message worth looking at yourself must not be the one that is not
 there. A86 stages that turn and fails if the citation, the flag or the warning
 goes missing.
+
+**Sending is the one that reaches another person, and it is shaped by that.**
+`send_reply` takes an *approval id* and nothing else — not a recipient, not a
+body, not a subject. Everything about where it goes and what it says was fixed
+when the draft was made and read by a person; this action only says "that one,
+now". An action that took its own `to` and `text` would let a model write the
+words, choose the reader and ask for it in one step, which is the entire thing
+the queue exists to prevent.
+
+`approval.recipient` is taken from the From header of the message being
+answered and from nowhere else — never from a body, because a "please reply
+to" line inside somebody's mail is text a stranger wrote. A draft with no
+recorded recipient cannot be sent at all, which is what makes that a rule
+rather than a preference; `smtp_mail.Smtp.send` re-checks the address it is
+handed against the one on the row and refuses if they differ.
+
+One recipient, plain text, no attachments, no HTML, a size cap, and twenty a
+day per workspace. Each refusal is by the rule that should refuse it — a
+header injection is caught as a line break, not as "too many addresses",
+because a refusal wearing the wrong name is one nobody can act on, and one
+that vanishes the day the other rule is loosened. A93 covers all of it and is
+mutation-tested seven ways.
 
 **Memory is only real if it reaches a prompt.** Corrections become episodes,
 episodes consolidate into facts, and `core/harness.py:learned_block` is what
@@ -372,6 +394,10 @@ All four suites green. Verified behaviours:
 * a step whose journalled name is not the one being replayed says so, naming
   the run, the step and both names — it used to hand back the previous step's
   result and fail three lines later on a type error
+* a reply can actually be sent, and only ever the one that was approved, to
+  only the address on the row it was drafted against. Unwired, unapproved,
+  another workspace's, no recorded recipient, a moved address, a Bcc smuggled
+  into a recipient or a subject: each refused, each by its own rule
 * an approved hold goes into Calendar.app itself where macOS allows it, and
   writes the .ics either way — the file first, so a Calendar that refuses
   never leaves somebody with no record. A guest called

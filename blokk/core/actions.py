@@ -486,6 +486,80 @@ def _say_hold(a: dict) -> str:
             f"the {_ord(e.day)}. {lands}")
 
 
+def _send_reply(store, workspace, approval, **_):
+    """Send a draft that is already in the queue, to the address it was
+    written to.
+
+    Deliberately takes an approval id rather than a recipient and a body.
+    Everything that decides where this goes and what it says was fixed when
+    the draft was made and a person read it; this action only says "that
+    one, now". A send action that took its own `to` and `text` would let a
+    model write the words, choose the reader and ask for it in one step,
+    which is the whole thing the queue exists to prevent.
+    """
+    import core.connectors as _C
+    row = store.one("SELECT * FROM approval WHERE id=?", approval)
+    if row is None:
+        raise Rejected(f"there is no queued item with id {approval!r}")
+    if row["workspace_id"] != workspace:
+        # Scope is data, not prompt. Invariant 5.
+        raise Rejected(f"that draft belongs to {row['workspace_id']}, not to "
+                       f"{workspace}")
+    if row["decision"] not in ("approve", "edit"):
+        raise Rejected(
+            f"that draft has not been approved — it is "
+            f"{row['decision'] or 'still waiting on you'}. Approve it first; "
+            f"sending is a separate decision on purpose.")
+    to = (row["recipient"] or "").strip() if "recipient" in row.keys() else ""
+    if not to:
+        raise Rejected(
+            "that draft has no recorded recipient, so there is nobody to "
+            "send it to. Only drafts written in reply to a message somebody "
+            "sent you carry one.")
+    # The edited text if a person corrected it, the original if not. The
+    # thing that goes out is the thing that was on the screen.
+    text = row["body"]
+    if row["decision"] == "edit" and row["edited_body"]:
+        try:
+            text = (json.loads(row["edited_body"]) or {}).get("preview") or text
+        except ValueError:
+            text = row["edited_body"]
+    sender = _C.wire(store).get(workspace, "send")
+    if sender is None:
+        raise Rejected(
+            f"{_own(workspace)} has no way to send. Sending is off until you "
+            f"wire it: connect.py add {workspace} smtp "
+            f"blokk-{workspace}-smtp@smtp.example.com:465, and a keychain "
+            f"entry to go with it.")
+    from core.connectors.smtp_mail import SendRefused
+    try:
+        out = sender.send(to, _subject_for(row), text, expected=to)
+    except SendRefused as e:
+        raise Rejected(str(e)) from None
+    return {"ok": True, "sent": True, "to": out["to"],
+            "detail": f"Sent to {out['to']} via {out['via']}. "
+                      f"{out['left_today']} left in today's cap."}
+
+
+def _subject_for(row) -> str:
+    """A reply's subject, from the message it answers."""
+    try:
+        ev = json.loads(row["evidence"] or "{}")
+        for c in ev.get("drawn_from") or []:
+            subj = str(c.get("subject") or "").strip()
+            if subj:
+                return subj if subj.lower().startswith("re:") else f"Re: {subj}"
+    except (ValueError, TypeError):
+        pass
+    return "Re: your enquiry"
+
+
+def _say_send(a: dict) -> str:
+    return (f"Send the approved draft {a.get('approval', '')} \u2014 this one "
+            f"leaves this Mac and reaches the person it is addressed to. "
+            f"Nothing else in Blokk does that.")
+
+
 ACTIONS: dict[str, Action] = {a.name: a for a in (
     Action("sweep_now", "Run the sweep now, across every workspace.",
            run=_sweep, category="blokk_run"),
@@ -498,6 +572,16 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
            phrase=_say_add),
     Action("add_workspace", "Add a workspace called {workspace}.",
            args=("workspace",), optional=("name",), run=_add_workspace),
+    # The only action that reaches another person. Pinned, permanently: a
+    # category earns the right to act alone by being right twenty times, and
+    # what that would buy here is mail going to a guest off the back of a
+    # sentence in somebody else's email. There is no number of correct sends
+    # that makes the twenty-first safe to skip.
+    Action("send_reply",
+           "Send the approved draft {approval}.",
+           args=("workspace", "approval"),
+           pinned=True, category="send_mail",
+           run=_send_reply, phrase=_say_send),
     # The only action that writes outside blokk.db, and pinned for it. A
     # category earns the right to act alone by being right twenty times;
     # what that buys elsewhere is a workspace renamed without asking. Here
@@ -599,6 +683,8 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
                 v = _as_date(v).isoformat()
             except ValueError as ex:
                 raise Rejected(str(ex)) from None
+        if key == "approval" and not re.match(r"^a_[A-Za-z0-9_]{1,64}$", v):
+            raise Rejected(f"{v!r} is not the id of a queued item")
         if key == "title" and len(v) < 2:
             raise Rejected("a hold needs something to call it")
         if key == "note" and len(v) < 4:

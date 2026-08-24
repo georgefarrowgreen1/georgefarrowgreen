@@ -97,6 +97,12 @@ class Store:
         ("approval", "result", "TEXT"),        # what happened when it was
         ("message", "kind", "TEXT"),           # text | draft
         ("credential", "only", "TEXT"),        # which calendars / mailboxes
+        # Who a draft is addressed to. The column the send path has been
+        # waiting for, and the reason it is here rather than dug out of the
+        # body at send time: a recipient parsed out of prose is a recipient
+        # a model can move. This is written when the draft is queued, from
+        # the message that was read, and the sender refuses anything else.
+        ("approval", "recipient", "TEXT"),
     )
 
     def _migrate(self) -> None:

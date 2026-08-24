@@ -4889,6 +4889,207 @@ try:
     probe("A92 writing into Calendar.app needs a signed bundle",
           calendar_app_is_reachable_and_a_name_is_not_a_command)
 
+    def sending_reaches_a_person_and_only_the_right_one():
+        # The first thing Blokk can do to somebody else. Everything else
+        # reads, or writes a file on this Mac; a mistake here lands in a
+        # guest's inbox and cannot be taken back. So this probe is almost
+        # entirely about what it refuses.
+        import sys as _s9, sqlite3 as _sq, tempfile as _tf, inspect as _i9
+        _s9.path.insert(0, ".")
+        from core.durable import Store
+        from core import actions, sources
+        import core.connectors as _C
+        from core.connectors import smtp_mail as SM
+        from core.connectors.smtp_mail import Smtp, SendRefused
+
+        # 1. Off unless it was turned on. No credential, no send — and in
+        #    particular no quietly reusing the IMAP password already there.
+        db = pathlib.Path(_tf.mkdtemp()) / "s.db"
+        a_ = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        b_ = _sq.connect(str(db)); a_.backup(b_); b_.close(); a_.close()
+        st = Store(db)
+        st.x("DELETE FROM credential WHERE workspace_id='cottages'")
+        sources.add(st, "cottages", "maildir", "local")
+        _C.REGISTRY._by_ws.clear()
+        st.x("INSERT OR REPLACE INTO run(id,workspace_id,workflow,status,input)"
+             " VALUES('r_send','cottages','probe','done','{}')")
+        st.x("INSERT OR REPLACE INTO approval"
+             "(id,run_id,workspace_id,category,title,body,decision,recipient)"
+             " VALUES('a_sendprobe','r_send','cottages','availability_reply',"
+             "'t','Yes, that week is free.','approve','guest@example.com')")
+        try:
+            actions.run(st, {"name": "send_reply",
+                             "args": {"workspace": "cottages",
+                                      "approval": "a_sendprobe"}})
+            return (True, "it sent with no send credential wired at all")
+        except actions.Rejected as e:
+            if "no way to send" not in str(e):
+                return (True, f"unwired refused for the wrong reason: {e}")
+
+        # Wire it, with the socket and the keychain stood in for. What is
+        # being tested is the rules, not smtplib.
+        real_acct, real_secret = SM.account, SM.secret
+        SM.account = lambda ref: "me@cottages.co.uk"
+        SM.secret = lambda ref: "app-specific"
+        sent = []
+
+        class FakeSMTP:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def send_message(self, msg):
+                sent.append(msg)
+
+        try:
+            sources.add(st, "cottages", "smtp",
+                        "blokk-cottages-smtp@smtp.example.com:465")
+            _C.REGISTRY._by_ws.clear()
+            sender = _C.wire(st).get("cottages", "send")
+            if sender is None:
+                return (True, "a wired smtp source does not appear in the "
+                              "registry as 'send'")
+            # On the class, not the instance: _send_reply calls wire() for
+            # itself and gets whatever the registry hands back, which is not
+            # necessarily the object this line is holding.
+            real_connect = Smtp._connect
+            Smtp._connect = lambda _self: FakeSMTP()
+
+            # 2. It goes to the address on the row, and the message that
+            #    leaves is the message that was approved.
+            out = actions.run(st, {"name": "send_reply",
+                                   "args": {"workspace": "cottages",
+                                            "approval": "a_sendprobe"}})
+            if not out.get("sent") or out.get("to") != "guest@example.com":
+                return (True, f"the send did not happen or went elsewhere: "
+                              f"{out}")
+            if not sent:
+                return (True, "it reported a send with nothing on the wire")
+            msg = sent[-1]
+            if msg["To"] != "guest@example.com":
+                return (True, f"To: is {msg['To']!r}")
+            if msg.is_multipart():
+                return (True, "it sent multipart — an HTML part or an "
+                              "attachment can carry what nobody read")
+            if "free" not in msg.get_content():
+                return (True, "the approved text is not what went out")
+
+            # 3. The address cannot be moved on the way out. This is the
+            #    whole defence: a model that has read a stranger's mail can
+            #    suggest any words it likes and the reader is not one of the
+            #    things it can suggest.
+            try:
+                sender.send("evil@example.com", "s", "b",
+                            expected="guest@example.com")
+                return (True, "the recipient was changed on the way out")
+            except SendRefused:
+                pass
+            for bad, rule in (
+                    ("guest@example.com\nBcc: evil@x.com", "line break"),
+                    ("a@b.co, c@d.co", "more than one"),
+                    # No separator in it, so it is not a list — it is just
+                    # not an address, and that is the rule that should say so.
+                    ("nonsense", "not an email address")):
+                try:
+                    sender.send(bad, "s", "b")
+                    return (True, f"{bad!r} was accepted as a recipient")
+                except SendRefused as e:
+                    if rule not in str(e):
+                        return (True, f"{bad!r} refused by the wrong rule: "
+                                      f"{str(e)[:70]}")
+            try:
+                sender.send("guest@example.com", "hi\nBcc: evil@x.com", "b")
+                return (True, "a subject with a header in it was accepted")
+            except SendRefused:
+                pass
+
+            # 4. A draft nobody approved does not go, and neither does one
+            #    belonging to another workspace. Scope is data, invariant 5.
+            st.x("INSERT OR REPLACE INTO approval"
+                 "(id,run_id,workspace_id,category,title,body,recipient)"
+                 " VALUES('a_undecided','r_send','cottages','x','t','b',"
+                 "'guest@example.com')")
+            for aid, want in (("a_undecided", "has not been approved"),
+                              ("a_nosuch", "no queued item")):
+                try:
+                    actions.run(st, {"name": "send_reply",
+                                     "args": {"workspace": "cottages",
+                                              "approval": aid}})
+                    return (True, f"{aid} was sent")
+                except actions.Rejected as e:
+                    if want not in str(e):
+                        return (True, f"{aid}: {str(e)[:70]}")
+            st.x("UPDATE approval SET workspace_id='biz2' WHERE id='a_undecided'")
+            st.x("UPDATE approval SET decision='approve' WHERE id='a_undecided'")
+            try:
+                actions.run(st, {"name": "send_reply",
+                                 "args": {"workspace": "cottages",
+                                          "approval": "a_undecided"}})
+                return (True, "a draft from another workspace was sent")
+            except actions.Rejected as e:
+                if "belongs to" not in str(e):
+                    return (True, f"cross-workspace refused wrongly: {e}")
+
+            # 5. A draft with no recorded recipient cannot be sent at all.
+            #    That is what makes "the address comes from the header" a
+            #    rule rather than a preference.
+            st.x("UPDATE approval SET recipient=NULL, workspace_id='cottages' "
+                 "WHERE id='a_undecided'")
+            try:
+                actions.run(st, {"name": "send_reply",
+                                 "args": {"workspace": "cottages",
+                                          "approval": "a_undecided"}})
+                return (True, "a draft with no recipient was sent somewhere")
+            except actions.Rejected as e:
+                if "no recorded recipient" not in str(e):
+                    return (True, f"no-recipient refused wrongly: {e}")
+        finally:
+            SM.account, SM.secret = real_acct, real_secret
+            if "real_connect" in dir():
+                Smtp._connect = real_connect
+
+        # 6. The recipient is taken from the From header of the message
+        #    that was read, never from its body. An address a stranger
+        #    writes into their own text must not become one this can send to.
+        from flows.morning_sweep import _reply_to
+        if _reply_to({"from": "Hall <j@example.com>",
+                      "body": "please reply to evil@x.com"}) != "j@example.com":
+            return (True, "the recipient can be chosen from inside a body")
+        # A From with nothing usable in it and an address sitting in the
+        # body. Reading both and taking the first match passes the case
+        # above — the header's address is first — and fails here, which is
+        # the case that matters: it is the one where a stranger's chosen
+        # address is the only one on offer.
+        if _reply_to({"from": "no address here",
+                      "body": "please reply to evil@x.com"}):
+            return (True, "with no address in the From, one from the body "
+                          "became the recipient")
+
+        # 7. Pinned, permanently. There is no number of correct sends that
+        #    makes the twenty-first safe to do unasked.
+        if not actions.ACTIONS["send_reply"].pinned:
+            return (True, "the action that reaches another person can "
+                          "graduate to acting alone")
+
+        # 8. And it takes an approval id, not a recipient and a body. An
+        #    action that took its own `to` and `text` would let a model write
+        #    the words, choose the reader and ask for it in one step.
+        args = set(actions.ACTIONS["send_reply"].args) | \
+            set(actions.ACTIONS["send_reply"].optional)
+        for leak in ("to", "recipient", "body", "text", "subject"):
+            if leak in args:
+                return (True, f"send_reply takes {leak!r}, so the model that "
+                              f"drafts can also address")
+        return (False, "off until wired, one recipient fixed when the draft "
+                       "was made and unchangeable on the way out, plain text "
+                       "only, no unapproved or cross-workspace draft, no "
+                       "draft without a recorded recipient, the address from "
+                       "the header and never the body, and pinned for ever")
+    probe("A93 sending is not built, and when it is it will be the dangerous one",
+          sending_reaches_a_person_and_only_the_right_one)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

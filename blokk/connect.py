@@ -23,8 +23,10 @@ Suggested order, and it is not arbitrary:
     messages   local, no credential, read-only. Prove the plumbing.
     imap       one mailbox, read-only, for a fortnight.
     caldav     once you trust the mail path.
-    ics_out    the one that writes: a folder Blokk drops .ics files into.
-               It never edits your diary — you open the file yourself.
+    ics_out    a folder Blokk drops .ics files into, and Calendar.app
+               itself where macOS lets it.
+    smtp       last, and only when you have watched the drafts for a while.
+               The one that reaches somebody else.
 """
 import json
 import sys
@@ -138,7 +140,9 @@ def main() -> int:
         if len(args) < 4:
             print("usage: connect.py add <workspace> <kind> <ref>")
             print("       kinds: imap caldav messages ical maildir weather web\n"
-                  "              ics_out (the only one Blokk writes to)")
+                  "              ics_out (writes .ics files here)\n"
+                  "              smtp (the only one that reaches "
+                  "another person)")
             print("       ref  : a keychain service name, or 'local', or")
             print("              weather — a town or coordinates:")
             print("                        \"Newcastle upon Tyne\" or 54.97,-1.61")
