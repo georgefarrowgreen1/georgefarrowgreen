@@ -65,6 +65,29 @@ class BudgetExceeded(Exception):
 
 
 # --------------------------------------------------------------------- store
+class NeedsUnify(RuntimeError):
+    """This database predates the change that removed workspaces.
+
+    Carried as its own type so an entrypoint can print the sentence rather
+    than a traceback. The message is the whole instruction.
+    """
+
+
+def _split(sql: str) -> tuple[str, str]:
+    """schema.sql, in two halves: what makes tables and what indexes them.
+
+    An index cannot be created over a column that a migration has not added
+    yet, and on an existing database the migration is the only thing that
+    adds one. So the indexes are applied after it, and the file stays one
+    readable document rather than being split into two on disk.
+    """
+    tables, indexes = [], []
+    for stmt in sql.split(";"):
+        (indexes if "CREATE" in stmt.upper() and "INDEX" in stmt.upper()
+         else tables).append(stmt)
+    return ";".join(tables) + ";", ";".join(indexes) + ";"
+
+
 class Store:
     """One connection, serialised.
 
@@ -83,8 +106,27 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.lock = threading.RLock()
         with self.lock:
-            self.db.executescript((Path(__file__).parent / "schema.sql").read_text())
+            # Three steps, and the order is the whole point.
+            #
+            # schema.sql is applied with CREATE TABLE IF NOT EXISTS, so on a
+            # database that already exists every CREATE TABLE is a no-op and
+            # the tables keep whatever columns they had. _migrate() is what
+            # adds a new one. An index over a new column therefore cannot be
+            # in the same executescript as the tables: on an existing file
+            # the column is not there yet, and the whole script raises.
+            #
+            # It did. Adding `credential.name` and a unique index over it
+            # meant every Mac with a database older than that change opened
+            # to `sqlite3.OperationalError: no such column: name`, thrown
+            # from this line, before _migrate() on the line below could add
+            # it. Every suite passed because they all start by deleting
+            # blokk.db and re-seeding, where CREATE TABLE really does run.
+            tables, indexes = _split(
+                (Path(__file__).parent / "schema.sql").read_text())
+            self.db.executescript(tables)
             self._migrate()
+            self._check_shape()
+            self.db.executescript(indexes)
 
     # The schema is applied with CREATE TABLE IF NOT EXISTS, which means a
     # column added to schema.sql never reaches a database that already
@@ -113,6 +155,31 @@ class Store:
         # and the guest gets the same message twice.
         ("approval", "sent_at", "TEXT"),
     )
+
+    def _check_shape(self) -> None:
+        """Refuse a database that still has workspaces in it.
+
+        Everything below this line writes rows without a workspace_id, and
+        the old tables declare it NOT NULL with a foreign key to a table
+        that no longer exists. Left to find out on its own, the app starts,
+        looks fine, and fails on the first write of the night with a
+        constraint error nobody can act on.
+
+        So it is said here, once, at the only moment where the whole
+        instruction fits in one sentence. ./blokk unify takes a backup
+        first, reports exactly what it merged, and names every host the
+        merged allowlist opened up.
+        """
+        have = {r["name"] for r in self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if "workspace" in have:
+            raise NeedsUnify(
+                f"{self.path} still has workspaces in it, and this version "
+                f"has one space instead of four.\n\n"
+                f"  Collapse it, with a backup taken first:\n"
+                f"      ./blokk unify\n\n"
+                f"  It says what it merged and what that opened up. Nothing "
+                f"is changed until it runs.")
 
     def _migrate(self) -> None:
         for table, column, decl in self.ADDED:

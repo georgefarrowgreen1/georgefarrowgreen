@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from core.durable import Engine, Store, now
+from core.durable import Engine, NeedsUnify, Store, now
 from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import (ask as run_ask, history as ask_history,
@@ -38,7 +38,15 @@ ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 DB = ROOT / "blokk.db"
 
-store = Store(DB)
+try:
+    store = Store(DB)
+except NeedsUnify as _e:
+    # Printed, not raised. This is the first thing somebody sees on the
+    # update that removed workspaces, and eleven frames of traceback ending
+    # in "no such column" is not an instruction.
+    print(f"\n  \033[33mBlokk cannot open its database yet.\033[0m\n")
+    print("  " + str(_e).replace("\n", "\n  ") + "\n")
+    raise SystemExit(1)
 engine = Engine(store)
 policy = Policy(store)
 

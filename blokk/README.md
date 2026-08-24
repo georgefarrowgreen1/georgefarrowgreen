@@ -1,9 +1,18 @@
 # Blokk
 
-A local agent runtime for several small businesses on one Mac. It reads mail
-and calendars overnight — at 04:00 by default, or when the lid next opens if
+A local agent runtime for one Mac. It reads mail and calendars overnight — at 04:00 by default, or when the lid next opens if
 the Mac was asleep — queues anything that needs a decision, acts alone on the
 categories that have earned it, and learns from your corrections.
+
+**Updating from a version with workspaces?** Blokk used to keep one
+workspace per business. It has one space now, so a database made before that
+change has to be collapsed once — and it will say so and refuse to start
+rather than failing later on a constraint:
+
+    ./blokk unify
+
+It takes a backup first, prints what it merged, and names every host the
+single allowlist opened up. Nothing changes until you run it.
 
 Your mail and calendars never leave the machine. A few sources have to reach
 outwards — a forecast is not on your Mac — so the rule is stated exactly:

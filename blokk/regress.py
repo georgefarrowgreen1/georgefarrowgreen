@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from core import regression                                       # noqa: E402
-from core.durable import Store                                    # noqa: E402
+from core.durable import NeedsUnify, Store                                    # noqa: E402
 from core.models import router                                     # noqa: E402
 
 DB = Path(__file__).parent / "blokk.db"
@@ -28,7 +28,11 @@ DB = Path(__file__).parent / "blokk.db"
 
 
 def main() -> int:
-    store = Store(DB)
+    try:
+        store = Store(DB)
+    except NeedsUnify as e:
+        print(f"\n  {e}\n")
+        return 1
     args = sys.argv[1:]
     cmd = args[0] if args else "run"
 

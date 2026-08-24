@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from core.durable import Store                                    # noqa: E402
+from core.durable import NeedsUnify, Store                                    # noqa: E402
 from core import sources                                          # noqa: E402
 
 DB = Path(__file__).parent / "blokk.db"
@@ -136,7 +136,11 @@ def _check_one(store, name: str) -> None:
 
 
 def main() -> int:
-    store = Store(DB)
+    try:
+        store = Store(DB)
+    except NeedsUnify as e:
+        print(f"\n  {e}\n")
+        return 1
     args = sys.argv[1:]
     cmd = args[0] if args else "list"
 

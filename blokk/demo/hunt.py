@@ -6323,6 +6323,131 @@ try:
     probe("A105 a forecast does not say which place it is for",
           forecast_names_the_place)
 
+    # ── 106. the update lands on a database that already exists ─────────
+    def opens_an_older_database():
+        # Every suite in this repo starts by deleting blokk.db and seeding a
+        # new one, so every one of them exercises CREATE TABLE and none of
+        # them exercises the path a person is actually on: an update landing
+        # on the database they have been using for weeks.
+        #
+        # That gap shipped a crash. schema.sql gained `credential.name` and
+        # a unique index over it. On an existing database CREATE TABLE IF
+        # NOT EXISTS is a no-op, so the column was not there, and the index
+        # in the same executescript raised `no such column: name` — from
+        # Store.__init__, before the migration on the next line could add
+        # it. Every Mac with a database older than that change opened to a
+        # traceback and would not start.
+        #
+        # So this builds databases in older shapes and opens them, which is
+        # the only way to see that class of fault at all.
+        import sys as _s, re as _re, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store, NeedsUnify
+        from core import sources as _src
+
+        here = pathlib.Path(_tf.mkdtemp())
+        schema = open('core/schema.sql').read()
+
+        # 1. Already unified, but predating every column ADDED has since
+        #    added. Opening it must migrate, index and work — not raise.
+        def drop(sql: str, table: str, column: str) -> str:
+            """Take one column out of one CREATE TABLE, and nothing else.
+
+            Scoped to the block, because these names repeat: `kind` is a
+            column on four tables and an unscoped substitution took it off
+            whichever one came first.
+            """
+            m = _re.search(rf"CREATE TABLE IF NOT EXISTS {table} \((.*?)\);",
+                           sql, _re.S)
+            if not m:
+                return sql
+            body = _re.sub(rf"\n\s*{column}\s+[^,)]*,", "", m.group(1), count=1)
+            return sql[:m.start(1)] + body + sql[m.end(1):]
+
+        older = schema
+        for table, column, _decl in Store.ADDED:
+            older = drop(older, table, column)
+        # …and every index over one of those columns, which could not have
+        # existed on a database written before the column did.
+        for _t, column, _d in Store.ADDED:
+            older = _re.sub(rf"CREATE[^;]*INDEX[^;]*\({column}\)[^;]*;", "", older)
+        db = here / "older.db"
+        c = _sq.connect(str(db))
+        c.executescript(older)
+        c.execute("INSERT INTO credential(id,kind,keychain_ref) "
+                  "VALUES('c1','maildir','local')")
+        c.commit()
+        was = {r[1] for r in c.execute("PRAGMA table_info(credential)")}
+        c.close()
+        if "name" in was:
+            return (True, "the fixture kept the column it is meant to be "
+                          "missing, so this proves nothing")
+        try:
+            st = Store(db)
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"an existing database that predates a column "
+                          f"raises on open: {type(e).__name__}: {e}")
+        now = {r["name"] for r in st.q("PRAGMA table_info(credential)")}
+        missing = [col for _t, col, _d in Store.ADDED
+                   if _t == "credential" and col not in now]
+        if missing:
+            return (True, f"opening it did not add {missing}")
+        # The index over the migrated column has to exist afterwards, or the
+        # rule it enforces — two sources cannot share a name — is not on.
+        idx = st.q("SELECT name FROM sqlite_master WHERE type='index' "
+                   "AND name='ux_cred_name'")
+        if not idx:
+            return (True, "the column was added and its unique index was not, "
+                          "so two sources could take the same name")
+        if not _src.listing(st):
+            return (True, "the row that was already in it did not survive")
+
+        # 2. And a database from before workspaces were removed must be
+        #    refused by name, with the one command that fixes it — not left
+        #    to fail at 04:00 on a NOT NULL it cannot satisfy.
+        theirs = here / "theirs.db"
+        c = _sq.connect(str(theirs))
+        c.executescript("""
+            CREATE TABLE workspace (id TEXT PRIMARY KEY, name TEXT NOT NULL,
+              active INTEGER NOT NULL DEFAULT 1,
+              egress_allow TEXT NOT NULL DEFAULT '[]');
+            CREATE TABLE credential (id TEXT PRIMARY KEY,
+              workspace_id TEXT NOT NULL, kind TEXT NOT NULL,
+              keychain_ref TEXT NOT NULL, scopes TEXT NOT NULL DEFAULT '[]');
+        """)
+        c.execute("INSERT INTO workspace(id,name) VALUES('cottages','C')")
+        c.commit(); c.close()
+        try:
+            Store(theirs)
+            return (True, "a database still full of workspaces opened as "
+                          "though it were fine — every write after this is a "
+                          "constraint error nobody can act on")
+        except NeedsUnify as e:
+            if "blokk unify" not in str(e):
+                return (True, f"it refused without naming the fix: {str(e)[:80]}")
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"it refused with {type(e).__name__}, which is a "
+                          f"traceback rather than an instruction: {e}")
+
+        # 3. The guard in front of `rm -f blokk.db` has to see it too. It
+        #    returned "" for anything it could not open, which test.sh reads
+        #    as "nothing worth keeping".
+        import importlib
+        realdb = importlib.import_module('demo.realdb')
+        keep, realdb.DB = realdb.DB, theirs
+        try:
+            said = realdb.real()
+        finally:
+            realdb.DB = keep
+        if not said:
+            return (True, "test.sh would delete a database it cannot open "
+                          "without backing it up first")
+        return (False, "an older database migrates, indexes and keeps its "
+                       "rows; one with workspaces in it is refused by name "
+                       "and never deleted unbacked")
+    probe("A106 an update lands on a database that already exists",
+          opens_an_older_database)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

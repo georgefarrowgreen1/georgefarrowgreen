@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core.durable import Store                                    # noqa: E402
+from core.durable import NeedsUnify, Store                                    # noqa: E402
 
 DB = Path(__file__).resolve().parent.parent / "blokk.db"
 
@@ -23,8 +23,18 @@ def real() -> str:
         return ""
     try:
         st = Store(DB)
+    except NeedsUnify:
+        # A database that predates the change that removed workspaces. This
+        # returned "" for anything it could not open, so test.sh read it as
+        # "nothing worth keeping" and deleted somebody's un-migrated setup
+        # on the next line. The one state where the guard matters most is
+        # the one it was blind to.
+        return ("a setup from before workspaces were removed, which this "
+                "cannot read until ./blokk unify has run")
     except Exception:                                            # noqa: BLE001
-        return ""
+        # Anything else unreadable is still not nothing. Saying so costs a
+        # backup nobody needed; staying quiet costs the database.
+        return "a database this could not open to check"
     # seed.py writes facts, skills and episodes of its own and stamps which
     # ones they are. Without that this counted them as yours, so the guard
     # fired on every run after the first — backing up a copy of the sample
