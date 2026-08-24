@@ -441,13 +441,15 @@ probe('B18 a run that could not resume is not mentioned at all',
 // B23 — the gutter, between 900 and 1080
 // The wide layout used to zero the page's horizontal padding and rely on
 // the wrap being narrower than the window. That holds at 1440 and not at
-// 1024: the wrap fills the window, and the header, the queue and the rail
-// all sat flush against both edges of an iPad in landscape.
+// 1024: the wrap fills the window, and the header and the queue sat flush
+// against both edges of an iPad in landscape. The number the wrap stops at
+// has changed once already (1080 when there was a status rail beside the
+// queue, narrower now that there is not), so this checks the shape of the
+// rule — measure plus gutter — rather than the number of the day.
 {
   const css = h.split('<style>')[1].split('</' + 'style>')[0];
-  // There are three `min-width:900px` blocks in this sheet — two of them
-  // are one line about the toolbar. Take the one that carries the layout,
-  // not the first one that matches.
+  // There are several `min-width:900px` blocks in this sheet, most of them
+  // one line about something small. Take the one that carries the layout.
   let block = '';
   for (const m of css.matchAll(/@media\s*\(min-width:\s*900px\)\s*\{/g)) {
     let depth = 0, one = '';
@@ -457,28 +459,150 @@ probe('B18 a run that could not resume is not mentioned at all',
         one = css.slice(m.index, j + 1); break;
       }
     }
-    if (/grid-template-columns/.test(one)) { block = one; break; }
+    if (/\.wrap\s*\{[^}]*max-width/.test(one)) { block = one; break; }
   }
   const flat = block.replace(/\s+/g, ' ');
   probe('B23 the page sits flush against the edge on a 1024 screen',
-    /padding-left: ?0[;}]/.test(flat) || !/max-width: ?calc\(1080px/.test(flat),
-    'the measure is 1080 and the gutter is on top of it');
+    !flat || /padding-left: ?0[;}]/.test(flat)
+      || !/\.wrap ?\{ ?max-width: ?calc\([^}]*var\(--gutter\) ?\* ?2\)/.test(flat),
+    'the wrap stops at the measure and the gutter is on top of it');
 }
 
-// B24 — one piece of glass, not four
+// B23a — one measure, not three
+// The wide layout had a 1080 page, a 660 queue and a 760 chat panel: three
+// different edges down the same Mac screen, none of them lining up with
+// another. They are one token now, and this is the check that they stay
+// one — a stray 720px here reintroduces the second edge invisibly.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  const wide = css.slice(css.indexOf('@media (min-width:900px)'));
+  // Widths that set where a column of content stops. Anything under 300 is
+  // a control, an icon or a gap, not a measure.
+  const stray = [];
+  for (const m of wide.matchAll(/(max-width|100vw ?- ?)(?: ?: ?)?\s*(\d{3,})px/g)) {
+    if (+m[2] >= 300) stray.push(m[0].trim());
+  }
+  probe('B23a the wide layout carries more than one measure',
+    stray.length > 0,
+    stray.length ? stray.join(', ') : 'every measure on a wide screen is --measure');
+}
+
+// B24 — one piece of glass in the bar
 // iOS 26 groups the controls of a bar into a single glass container with
 // the items inside it. Four separate lozenges, each with its own material
 // and its own edge, read as four surfaces floating at different depths —
-// which is what this had.
+// which is what this had, and the four are one button now. Either shape is
+// fine; two bare lozenges side by side is not.
+{
+  const head = h.slice(h.indexOf('<header>'), h.indexOf('</header>'));
+  const lozenges = (head.match(/class="[^"]*\bglass\b/g) || []).length;
+  probe('B24 the bar is made of several separate pieces of glass',
+    lozenges > 1, `the bar carries ${lozenges} piece of glass`);
+}
+
+// B24a — and the piece of glass actually has a material
+// .icobtn blanks its background (a button's UA style is a grey fill) and
+// comes after .glass in the sheet, so for a while the bar button was a
+// blur with an edge and no fill — glass in name only. Whatever carries
+// .glass in the bar has to put a background back.
 {
   const css = h.split('<style>')[1].split('</' + 'style>')[0];
-  const tools = css.match(/\n  \.tools\{[^}]*\}/);
-  const ico = css.match(/\n  \.icobtn\{[^}]*\}/);
-  probe('B24 every toolbar item carries its own material',
-    !/class="tools glass"/.test(h)
-      || !/border-radius:var\(--r-pill\)/.test(tools ? tools[0] : '')
-      || /background:rgba/.test(ico ? ico[0] : ''),
-    'the group is the glass; the items are regions of it');
+  const head = h.slice(h.indexOf('<header>'), h.indexOf('</header>'));
+  const cls = (head.match(/class="([^"]*\bglass\b[^"]*)"/) || [, ''])[1]
+    .split(/\s+/).filter(c => c && c !== 'glass');
+  // Which of the element's own classes blank the background after .glass?
+  const blanks = cls.filter(c => {
+    const r = css.match(new RegExp('\\n  \\.' + c + '\\{[^}]*\\}'));
+    return r && /background:\s*(transparent|none)/.test(r[0])
+             && css.indexOf(r[0]) > css.indexOf('.glass{');
+  });
+  const restored = blanks.filter(c =>
+    new RegExp('\\.' + c + '\\.glass\\{[^}]*background:').test(css)
+    || new RegExp('\\.glass\\.' + c + '\\{[^}]*background:').test(css));
+  const bare = blanks.filter(c => !restored.includes(c));
+  probe('B24a the bar button is glass in name only',
+    bare.length > 0,
+    bare.length ? `${bare.join(', ')} blanks the fill and never puts it back`
+      : blanks.length ? `${blanks.join(', ')} blanks the fill and puts it back`
+                      : 'nothing blanks the material after .glass');
+}
+
+// B33a — the page asks for a file that is not there
+// With no <link rel="icon"> the browser goes and asks for /favicon.ico on
+// its own. Nothing serves it, so every load of every page ended in a 404
+// and a red line in the console — which is how a console stops being a
+// place anybody looks. There is an /icon.svg and it is served; say so.
+{
+  for (const f of ['web/index.html', 'web/setup.html']) {
+    const src = fs.readFileSync(f, 'utf8');
+    const head = src.slice(0, src.indexOf('</head>'));
+    probe(`B33a ${f} leaves the browser to guess at /favicon.ico`,
+      !/<link[^>]*rel="icon"[^>]*href="\/icon\.svg"/.test(head),
+      'the icon is declared, so nothing goes looking for favicon.ico');
+  }
+}
+
+// B34 — the dashboard is decisions, and the settings are in the menu
+// What used to be here: a four-icon toolbar at the top of every screen, a
+// 320-point status rail down the side of every Mac window, and a health
+// card of five numbers that were fine — all of it permanent, all of it
+// competing with the one or two things that actually wanted a person. The
+// rule now is that the page shows what needs a decision; everything that is
+// settings, configuration or a number to glance at is one button away.
+//
+// Two halves, because either one alone is a hole: the named controls have
+// to be *in* the menu, and nothing new may quietly appear back on the page.
+{
+  const menu = h.slice(h.indexOf('<dialog id="menudlg">'),
+                       h.indexOf('</dialog>', h.indexOf('<dialog id="menudlg">')));
+  const main = h.slice(h.indexOf('<main>'), h.indexOf('</main>'));
+  const settings = ['sweep', 'nightrow', 'sources', 'setup', 'runs', 'health',
+                    'phone', 'appearance', 'update', 'reset'];
+  const strays = settings.filter(id => !menu.includes(`id="${id}"`))
+    .map(id => main.includes(`id="${id}"`) ? `${id} is on the page` : `${id} is gone`);
+  probe('B34 a settings control is not in the menu',
+    strays.length > 0,
+    strays.length ? strays.join(', ')
+                  : `all ${settings.length} are behind the one button`);
+}
+
+// B34a — and nothing permanent creeps back onto the page
+// The list is empty on purpose. A decision renders into #actions and a
+// disclosure into #quiet, both from script; anything hard-coded into main
+// is a control that will be there on every screen forever, which is the
+// thing that was wrong with the toolbar. Adding one should be a decision
+// somebody makes here, not a diff nobody reads.
+{
+  const main = h.slice(h.indexOf('<main>'), h.indexOf('</main>'));
+  const ALLOWED = [];
+  const found = [...main.matchAll(/<(button|a)\b[^>]*>/g)]
+    .map(m => (m[0].match(/id="([^"]+)"/) || [, `<${m[1]}> with no id`])[1])
+    .filter(k => !ALLOWED.includes(k));
+  probe('B34a a permanent control sits on the dashboard',
+    found.length > 0,
+    found.length ? found.join(', ') : 'the page carries decisions, not controls');
+}
+
+// B35 — no dead row in the menu
+// Every row moved into the sheet kept the id its old control had, so the
+// handlers bound without being touched. That is exactly the change that
+// looks right and does nothing if one id is mistyped: the row draws, the
+// chevron says it opens, and the tap goes nowhere.
+{
+  const menu = h.slice(h.indexOf('<dialog id="menudlg">'),
+                       h.indexOf('</dialog>', h.indexOf('<dialog id="menudlg">')));
+  const js = h.slice(h.lastIndexOf('<scr' + 'ipt>'));
+  const dead = [];
+  for (const m of menu.matchAll(/<(button|a)\s+class="mrow[^"]*"([^>]*)>/g)) {
+    const attrs = m[2];
+    const id = (attrs.match(/id="([^"]+)"/) || [, ''])[1];
+    if (/href="[^"]+"/.test(attrs)) continue;      // a link needs no handler
+    if (!id) { dead.push('a row with no id'); continue; }
+    if (!new RegExp(`\\$\\('#${id}'\\)\\s*\\.onclick`).test(js)) dead.push(id);
+  }
+  probe('B35 a menu row does nothing when you tap it',
+    dead.length > 0,
+    dead.length ? dead.join(', ') : 'every row is a link or has a handler');
 }
 
 // B25 — three files, one set of corners

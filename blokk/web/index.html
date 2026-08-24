@@ -8,6 +8,10 @@
 <meta name="theme-color" content="#000000">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icon.svg">
+<!-- Without this Chromium and Safari go and ask for /favicon.ico, which
+     is not a file this serves: a 404 and a console error on every single
+     page load, which is exactly how a console stops being read. -->
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <title>Blokk</title>
 <style>
   /* ── the palette ──────────────────────────────────────────────────────
@@ -99,7 +103,11 @@
     --r-lg:18px; --r-md:13px; --r-sm:10px;
     --r-pill:999px;
     --r-sheet:30px;      /* a sheet's top corners, near the display's own */
-    --rail:320px;        /* the status column on a wide screen */
+    /* One measure for the whole product on a wide screen: the header, the
+       queue and the chat all stop at the same place. It used to be three
+       numbers — a 1080 page, a 660 queue and a 760 chat — which read as
+       three edges down a Mac screen. */
+    --measure:660px;
     --gutter:20px;
     /* 44 points. Not a guideline — it is the size of a fingertip, and every
        control in this file is measured against it by hunt_ui.js. A control
@@ -188,11 +196,15 @@
   /* One material. The darkened outer edge and the bright specular top are
      the two things iOS 26 added to it, and they are what stop a glass bar
      dissolving into whatever happens to be behind it. */
-  .glass{
-    background:
+  /* Named so it can be put back where a later rule has to blank the
+     background first — a button, whose UA style is a grey fill. The inner
+     tokens resolve where the value is used, so this still flips per theme. */
+  :root{--glass-bg:
       linear-gradient(180deg,var(--glass-hi),var(--glass-hi2) 42%,
                       var(--glass-hi3)),
-      rgba(var(--glass-tint),var(--glass-fill));
+      rgba(var(--glass-tint),var(--glass-fill))}
+  .glass{
+    background:var(--glass-bg);
     -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-sat));
     box-shadow:
@@ -280,23 +292,11 @@
   /* Glyphs before this were ⚯ ▫ ⚙ ↻, which nobody has ever been able to read
      — the user had to be told in prose what each one opened. Drawn icons on a
      phone, and the word as well as soon as the window is wide enough for it. */
-  /* One capsule, not four circles. iOS 26 groups the controls of a bar
-     into a single piece of glass with the items sitting inside it, rather
-     than giving each one its own pill — the glass is a surface the bar is
-     made of, and four separate lozenges read as four separate surfaces
-     floating at different depths. The group is a pill and so are the items
-     in it, which is concentric at any padding. */
-  .tools{display:flex;align-items:center;gap:2px;flex:0 0 auto;
-    padding:3px;border-radius:var(--r-pill)}
-  @media (min-width:900px){.tools{gap:3px}}
-  /* Targets are 44 now rather than 40, which is 16 more points of toolbar,
-     and the subtitle is what paid for it: "4 runs · 1 parked" became
-     "4 runs · 1 …" on a 390-point phone. Refresh is the one that can go —
-     the page polls every four seconds and again whenever it comes back to
-     the foreground, so the button is a shortcut to something that already
-     happened. Without it: 46 + 10 + (3 × 44 + 2 × 6) = 200, leaving ~190
-     for the name on the narrowest phone this rule covers. */
-  @media (max-width:430px){ #refresh{display:none} }
+  /* There is one control in the bar now, so the iOS 26 rule about grouping
+     several of them into a single piece of glass has nothing left to group:
+     the button is the glass. The four it replaced — sources, the model,
+     the phone, refresh — were each a fortnightly errand holding permanent
+     residence at the top of every screen. They are in the menu. */
   /* An SE is 320 points wide. Even three targets, an avatar and a name do
      not fit on one line there, and the name is the half you keep — a bar
      reading "B…" over "4 r…" is worse than one with no subtitle at all. */
@@ -306,9 +306,10 @@
     .avatar{width:38px;height:38px;border-radius:11px}
     .avatar .logo{width:24px;height:24px}
   }
-  /* Inside the group the item carries no material of its own — it is a
-     region of the same piece of glass, and it only lights up under the
-     finger. */
+  /* Bare inside a sheet header, where the sheet is already a surface;
+     glass in the bar, where it is the only thing between you and the page
+     behind it. The transparent background here used to win over .glass by
+     source order alone, which left the bar button a blur with no fill. */
   .icobtn{height:var(--tap);min-width:var(--tap);padding:0;
           border-radius:var(--r-pill);border:0;
           color:var(--lab2);font-size:var(--t-small);font-family:var(--ui);
@@ -318,11 +319,8 @@
   .icobtn:hover{background:var(--fill-3);color:var(--lab)}
   .icobtn:active{transform:scale(.94)}
   .icobtn svg{width:18px;height:18px;flex:0 0 auto}
-  .icobtn .lbl{display:none}
-  @media (min-width:900px){
-    .icobtn{padding:0 16px 0 12px}
-    .icobtn .lbl{display:inline}
-  }
+  .icobtn.glass{background:var(--glass-bg)}
+  .icobtn.glass:hover{color:var(--lab)}
 
   /* Room for the composer, which is sticky and would otherwise sit on top of
      whatever is last on the page. In one column that is the foot of main; in
@@ -492,6 +490,44 @@
      drawn at count×25% was a shape with no meaning in it. */
   .hrow.plain .v{margin-left:auto}
 
+  /* ── the menu ────────────────────────────────────────────────────────
+     An inset grouped list: rows in one rounded container, separators inset
+     to the text, container inset from the edges. Same shape as the sources
+     sheet, because two different list styles in one app is two apps. */
+  dialog .group.menu{margin:0 0 var(--sp-5)}
+  dialog .mrow{display:flex;align-items:center;gap:var(--sp-3);width:100%;
+    min-height:var(--tap);padding:var(--sp-2) var(--sp-4);background:none;
+    border:0;border-top:1px solid var(--hair);color:var(--lab);
+    font:inherit;font-size:15px;text-align:left;text-decoration:none;
+    cursor:pointer}
+  dialog .mrow:first-child{border-top:0}
+  dialog .mrow:hover{background:var(--fill-3)}
+  dialog .mrow:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+  dialog .mrow .k{flex:1;min-width:0}
+  dialog .mrow .v{color:var(--lab3);font-size:13px;text-align:right;
+    max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* A chevron on every row that opens something, and none on the ones that
+     just do it. The difference is what tells you which is which before you
+     press it. */
+  dialog .mrow::after{content:'\203A';color:var(--lab3);flex:0 0 auto}
+  dialog .mrow.danger .k{color:var(--red)}
+  dialog .mrow.danger::after{content:''}
+  dialog #sweep::after{content:''}
+  /* The runs and the numbers sit inside the sheet now. They were an aside
+     on the dashboard, sticky, taking a third of a wide screen to say
+     everything is fine. */
+  dialog .runs{margin:0 0 var(--sp-4)}
+  dialog .health{margin:0 0 var(--sp-5)}
+  /* The one thing that came back out: something actually wrong. */
+  .trouble{display:flex;gap:var(--sp-3);align-items:flex-start;
+    margin:0 0 var(--sp-4);padding:var(--sp-3) var(--sp-4);
+    border-radius:var(--r-card);font-size:13.5px;line-height:1.45;
+    color:var(--amber);
+    background:color-mix(in srgb,var(--amber) 12%,transparent)}
+  .trouble b{color:var(--amber)}
+  .trouble button{min-height:var(--tap);padding:0 var(--sp-3);border:0;
+    border-radius:var(--r-pill);background:var(--fill-3);color:var(--lab);
+    font:inherit;font-size:13px;cursor:pointer;flex:0 0 auto}
   .ctl{display:flex;gap:8px;margin-top:12px}
   .ctl button{flex:1;border:0;border-radius:var(--r-pill);padding:12px;
     min-height:var(--tap);font-family:var(--ui);
@@ -798,8 +834,14 @@
   dialog::backdrop{background:rgba(0,0,0,.5);
     -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
   @media (min-width:600px){
+    /* A sheet is a sheet at any size. Without the max-width this was
+       100vw - 32px all the way up, so on a Mac the menu was a 1400-point
+       panel with the label at one edge of the screen and its value at the
+       other — the same defect the page had before the rail came out. Same
+       measure as the page, so an open sheet lines up with what is under it. */
     dialog{position:fixed;top:50%;left:50%;right:auto;bottom:auto;
-      transform:translate(-50%,-50%);width:calc(100vw - 32px);
+      transform:translate(-50%,-50%);
+      width:min(calc(100vw - 32px), var(--measure));
       border-radius:var(--r-sheet);padding-bottom:var(--sheet-pad);
       max-height:calc(100vh - 64px);
       box-shadow:0 0 0 .5px rgba(0,0,0,.66),
@@ -981,24 +1023,25 @@
      Last in the file on purpose: these override base rules of equal
      specificity, and a media query earlier in the sheet loses every
      one of those fights silently. */
-  /* A Mac is not a large phone. Below 900px this is one column, exactly as
-     before; above it the queue keeps a readable measure and everything that
-     is *status* rather than *decision* moves into a rail beside it, instead
-     of two thirds of a desktop screen being black. */
+  /* A Mac is not a large phone — but it is not a dashboard either. What is
+     here is a short list of decisions, and it does not get better for being
+     spread across 1400 points. Everything that is *status* rather than
+     *decision* is in the menu; what is left keeps a readable measure and
+     sits in the middle of the window. */
   @media (min-width:900px){
-    /* The measure is 1080; the gutter is on top of it. Zeroing the padding
-       here instead was right only once the window was wider than the wrap —
-       between 900 and 1080 the wrap fills the window, and the queue, the
-       header and the rail all sat flush against both edges of the screen. */
-    .wrap{max-width:calc(1080px + var(--gutter) * 2)}
-    main{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);
-         gap:var(--sp-6);align-items:start}
+    /* The gutter is on top of the measure, not carved out of it. Zeroing the
+       padding here instead was right only once the window was wider than the
+       wrap — below that the wrap fills the window and everything in it sat
+       flush against both edges of the screen. */
+    .wrap{max-width:calc(var(--measure) + var(--gutter) * 2)}
     /* A decision is a sentence to read. Past about 70 characters the eye
        loses the line, so the column stops growing long before the window
-       does — the extra width goes to the rail, not to longer lines. */
-    .col-main{max-width:660px;padding-bottom:48px}
+       does. It used to be the left of two, with a 320px status rail beside
+       it; the rail is in the menu now, and a grid still reserving its track
+       would leave the reading column pinned to the left of a wide window
+       with a hole beside it. One column, centred. */
+    .col-main{max-width:var(--measure);margin:0 auto;padding-bottom:48px}
     main{padding-bottom:24px}
-    .col-side{position:sticky;top:var(--sp-4)}
 
     /* In the rail these are a list, not a carousel: nothing to swipe with
        on a Mac, and a horizontal scroller you cannot see the end of hides
@@ -1006,9 +1049,10 @@
     /* Ask was a phone sheet stretched to the window: an answer running the
        full 1280px, and a composer a metre wide. The bar stays full width so
        the rule under it does; what you read does not. */
-    .ask .ah{padding-left:max(20px,calc((100vw - 760px)/2));
-             padding-right:max(20px,calc((100vw - 760px)/2))}
-    .ask .thread,.askbar{max-width:760px;margin-left:auto;margin-right:auto;width:100%}
+    .ask .ah{padding-left:max(20px,calc((100vw - var(--measure))/2));
+             padding-right:max(20px,calc((100vw - var(--measure))/2))}
+    .ask .thread,.askbar{max-width:var(--measure);
+      margin-left:auto;margin-right:auto;width:100%}
     .ask .q{max-width:70%}
 
     .runs{flex-direction:column;overflow:visible;margin:0;padding:0;gap:var(--sp-2)}
@@ -1037,16 +1081,17 @@
   <polygon points="256,96 418,188 256,280 94,188" class="slot"/>
   </g></svg><span class="on" id="live"></span></div>
     <div class="who"><h1>Blokk</h1><p id="whosub">connecting…</p></div>
-    <nav class="tools glass" aria-label="Blokk settings">
-    <button class="icobtn" id="sources" aria-label="Data sources"
-      title="Data sources"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9.5 14.5 14.5 9.5"/><path d="M7.8 11.2 6 13a3.9 3.9 0 0 0 5.5 5.5l1.8-1.8"/><path d="M16.2 12.8 18 11a3.9 3.9 0 0 0-5.5-5.5l-1.8 1.8"/></svg><span class="lbl">Sources</span></button>
-    <button class="icobtn" id="phone" aria-label="Open on your phone"
-      title="Open on your phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="3" width="10" height="18" rx="2.4"/><path d="M11 18h2"/></svg><span class="lbl">Phone</span></button>
-    <a class="icobtn" id="setup" href="/setup.html"
-      aria-label="Set up the model" title="Set up the model"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></svg><span class="lbl">Model</span></a>
-    <button class="icobtn" id="refresh" aria-label="Refresh now"
-      title="Refresh now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/></svg><span class="lbl">Refresh</span></button>
-    </nav>
+    <!-- One button, not four. Sources, the model, the phone and a refresh
+         are all things you do once a fortnight or never; a row of them sits
+         at the top of every screen forever, competing with the one thing
+         that actually needs a person. Refresh went entirely — the page
+         polls every four seconds and always did, so the button was a
+         placebo. -->
+    <button class="icobtn menu glass" id="openmenu" aria-label="Menu"
+      aria-haspopup="dialog" title="Menu"><svg viewBox="0 0 24 24"
+      fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/>
+      <circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/>
+      </svg></button>
   </header>
 
   <!-- Updating from here was deliberately absent, on the grounds that loopback
@@ -1059,6 +1104,49 @@
        outright if anything is edited. Restarting still refuses unless run.sh
        is watching, because exit 75 with nobody there is a stop, not a
        restart — and from a phone that is unrecoverable. -->
+  <!-- Everything that is settings, configuration or a number to glance at.
+       An inset grouped list, which is what iOS uses for exactly this and
+       what the sources sheet already uses two dialogs down. The ids are the
+       ones the old controls had, so every handler below still binds to the
+       same thing — this is a move, not a rewrite. -->
+  <dialog id="menudlg">
+    <h2>Settings</h2>
+    <div class="sect2">Tonight</div>
+    <div class="group menu">
+      <button class="mrow" id="sweep"><span class="k">Run the sweep now</span>
+        <span class="v" id="sweepv"></span></button>
+      <button class="mrow" id="nightrow"><span class="k">Night shift</span>
+        <span class="v" id="nightv">—</span></button>
+    </div>
+
+    <div class="sect2">What it reads</div>
+    <div class="group menu">
+      <button class="mrow" id="sources"><span class="k">Sources</span>
+        <span class="v" id="srcv"></span></button>
+      <a class="mrow" id="setup" href="/setup.html"><span class="k">Model</span>
+        <span class="v" id="modelv"></span></a>
+    </div>
+
+    <div class="sect2">How it is running</div>
+    <div class="runs" id="runs"></div>
+    <div class="health" id="health"></div>
+
+    <div class="sect2">This Mac</div>
+    <div class="group menu">
+      <button class="mrow" id="phone"><span class="k">Open on your phone</span></button>
+      <button class="mrow" id="appearance"><span class="k">Appearance</span></button>
+      <button class="mrow" id="update"><span class="k">Check for updates</span>
+        <span class="v" id="verv"></span></button>
+    </div>
+
+    <div class="sect2">Starting over</div>
+    <div class="group menu">
+      <button class="mrow danger" id="reset"><span class="k">Reset the queue and the runs</span>
+        <span class="v">keeps what it learned</span></button>
+    </div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
+
   <dialog id="appdlg">
     <h2>Appearance</h2>
     <div class="seg" role="radiogroup" aria-label="Theme">
@@ -1109,6 +1197,10 @@
    <div class="col-main">
     <div id="offline"></div>
     <div id="modelnote"></div>
+    <!-- Health moved into the menu, which is right for five rows of numbers
+         that are fine. It is not right for the one that is not fine, so
+         anything wrong comes back out here where it will be read. -->
+    <div id="trouble"></div>
     <div class="lede" id="lede" role="status" aria-live="polite">…</div>
     <div class="sub" id="lsub"></div>
     <div class="chips" id="chips"></div>
@@ -1125,22 +1217,6 @@
     </div>
    </div>
 
-   <aside class="col-side">
-    <div class="sect">Overnight</div>
-    <div class="runs" id="runs"></div>
-
-    <div class="sect">Health</div>
-    <div class="health" id="health"></div>
-    <div class="ctl">
-      <button id="reset">Reset</button>
-      <button id="sweep" class="go">Run the sweep</button>
-    </div>
-    <!-- Updating belongs where a version number belongs, and a sixth circle
-         in the header left "9 runs · 3 parked" wrapping onto four lines on a
-         390px phone. It is a twice-a-month action; it can be a word. -->
-    <div class="foot"><button id="appearance">Appearance</button><span
-      class="dot2">·</span><button id="update">Check for updates</button></div>
-   </aside>
   </main>
 
   <div class="composer">
@@ -1544,6 +1620,23 @@ function paint(h, ap, handled, runs){
   }).join('') || '<div class="run"><div class="lb">no runs yet</div></div>';
 
   paintHealth(h);
+  paintTrouble(h);
+  paintMenu(h, runs);
+}
+
+// What each menu row says without being opened. A settings list where every
+// row is a word and a chevron makes you open all of them to find the one
+// that has changed.
+function paintMenu(h, runs){
+  const set = (id, text) => { const n = $('#' + id); if(n) n.textContent = text; };
+  const sch = h.schedule || {};
+  set('sweepv', h.running ? 'running now' : (sch.last
+      ? 'last ' + sch.last.slice(11, 16) : 'not yet today'));
+  set('verv', h.version ? 'v' + h.version : '');
+  const wired = (SRC && SRC.sources) ? SRC.sources.length : null;
+  set('srcv', wired === null ? '' : wired === 0 ? 'nothing wired — sample world'
+      : `${wired} wired`);
+  set('modelv', h.model_note ? 'not set up' : '');
 }
 
 // What the night shift is doing, in the fewest words that are still true.
@@ -1558,6 +1651,36 @@ function nightWords(s){
   if(s.due) return s.at + ' · due now';
   if(s.last) return s.at + ' · swept ' + s.last.slice(11, 16);
   return s.at + ' · not yet run';
+}
+
+// What is actually wrong, in one sentence, or "" when nothing is. Health
+// belongs in the menu when it is five rows of numbers that are fine; the row
+// that is not fine has to come back out to the screen somebody is reading.
+function trouble(h){
+  const s = h.schedule || {};
+  if(s.error)
+    return {say: `The night shift failed: ${s.error}`, menu: true};
+  if(s.on === false)
+    return {say: 'The night shift is off, so nothing sweeps on its own.',
+            menu: true};
+  if((s.retrying || []).length)
+    return {say: `Retrying ${s.retrying.join(', ')} after a failure.`,
+            menu: true};
+  const a = h.attention_budget;
+  if(a && a.used > a.limit)
+    return {say: `${a.used} things are waiting on you, and the day's limit `
+                 + `is ${a.limit}.`, menu: false};
+  return null;
+}
+
+function paintTrouble(h){
+  const t = trouble(h);
+  const box = $('#trouble');
+  if(!t){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="trouble"><span class="k">${esc(t.say)}</span>${
+    t.menu ? '<button id="troublego">Open the menu</button>' : ''}</div>`;
+  const b = $('#troublego');
+  if(b) b.onclick = () => $('#menudlg').showModal();
 }
 
 function paintHealth(h){
@@ -1581,18 +1704,16 @@ function paintHealth(h){
       <span class="v">${h.suspended} waiting on a signal</span></div>
     <div class="hrow plain"><span class="k">Side effects</span>
       <span class="v">${h.handled} journalled</span></div>
-    <div class="hrow plain night" id="nightrow" role="button" tabindex="0"
-      title="Change when Blokk sweeps"><span class="k">Night shift</span>
-      <span class="v ${sch.error || (sch.retrying||[]).length ? 'bad'
-        : sch.on ? 'good' : ''}">${
-        esc(nightWords(sch))}</span></div>`;
-  const row = $('#nightrow');
-  if(row){
-    row.onclick = openSchedule;
-    // A div with role=button and no key handler is a button only for people
-    // using a mouse. Same shape as #qhead and #openask above.
-    row.onkeydown = e => { if(e.key === 'Enter' || e.key === ' '){
-      e.preventDefault(); openSchedule(); } };
+    <div class="hrow plain"><span class="k">Read overnight</span>
+      <span class="v">${h.handled + (a.used || 0)} message(s)</span></div>`;
+  // The night shift moved to a real <button> in the menu, so it needs no
+  // role, no tabindex and no key handler of its own — which is three fewer
+  // things to get wrong than the div with role=button it replaced.
+  const nv = $('#nightv');
+  if(nv){
+    nv.textContent = nightWords(sch);
+    nv.className = 'v ' + (sch.error || (sch.retrying || []).length ? 'bad'
+                           : sch.on ? 'good' : '');
   }
 }
 
@@ -2129,7 +2250,6 @@ $('#phone').onclick = async () => {
   }catch(e){ body.innerHTML = `<p class="no">Could not check: ${esc(e.message)}</p>`; }
 };
 
-$('#refresh').onclick = ()=> tick(true);
 $('#sweep').onclick = async e=>{
   if(busy) return; busy=true; e.target.disabled=true; e.target.textContent='Sweeping…';
   // The sweep is the longest thing here: it runs the workflow for every
@@ -2159,6 +2279,27 @@ $('#reset').onclick = async ()=>{
   toast('Runs cleared. <b>Trust and learned facts kept</b> — otherwise you could never watch them move.');
   tick(true);
 };
+
+// ── the menu ──────────────────────────────────────────────────────────
+// One button for everything that is not a decision. Painted when it opens
+// rather than every four seconds: a sheet nobody has open does not need
+// repainting, and the numbers in it are a glance, not a live feed.
+$('#openmenu').onclick = () => {
+  const d = $('#menudlg');
+  d.showModal();
+  tick(true);
+};
+$('#nightrow').onclick = () => { $('#menudlg').close(); openSchedule(); };
+// Sources, appearance, phone and updates each open their own sheet, so the
+// menu gets out of the way first — two stacked dialogs is a dead end on a
+// phone, where the second one's backdrop swallows the first one's close.
+for(const id of ['sources', 'appearance', 'phone', 'update']){
+  const b = $('#' + id);
+  if(!b) continue;
+  const was = b.onclick;
+  b.onclick = (e) => { $('#menudlg').close(); if(was) was.call(b, e); };
+}
+
 
 // Screen-reader announcements. Without this the count changes silently.
 function announce(msg){ const r=$('#sr'); if(r) r.textContent=msg; }
