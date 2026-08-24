@@ -11,14 +11,19 @@ hard part — headers, encodings, multipart — so this is mostly about finding
 the right files and not reading 40,000 of them.
 
 Search, don't list, same as every other connector. Mail sorts nothing for
-you, so the filter here is the file's own mtime: newest first, stop early.
-Reading the whole archive to answer one question spends the context another
-worker needed.
+you, so the walk goes in mtime order — one stat each, no reads — and stops
+early. But the *window* is the message's own Date header, not the mtime: a
+Time Machine restore or a migration sets every mtime to the moment the
+archive landed, and a window built on that matches everything. Reading the
+whole archive to answer one question spends the context another worker
+needed; matching the whole archive because the files were copied is worse,
+because it looks like it worked.
 """
 from __future__ import annotations
 
 import os
 import email
+import email.utils
 import email.policy
 import re
 from datetime import datetime, timedelta
@@ -157,6 +162,37 @@ def catalogue(root: Path) -> list[dict]:
             for box, n in sorted(counts.items(), key=lambda kv: -kv[1])]
 
 
+# How many consecutive messages that are out of the window by BOTH their own
+# date and their mtime end the walk. Both, because the walk is in mtime order
+# and mtime is the only thing that says anything about what comes next: on an
+# archive whose mtimes were all reset, none of them is ever old, the walk
+# never stops early, and the answer is right rather than fast.
+SETTLED = 50
+
+
+def _sent_at(msg) -> "datetime | None":
+    """When the message says it was sent, or None.
+
+    email.utils does the parsing; a header from the wild is malformed often
+    enough that this must never raise. A message with no readable Date is
+    not dropped — the caller falls back to the file's mtime, which is what
+    the whole window used to be.
+    """
+    raw = msg.get("Date")
+    if not raw:
+        return None
+    try:
+        d = email.utils.parsedate_to_datetime(str(raw))
+    except (TypeError, ValueError, IndexError):
+        return None
+    if d is None:
+        return None
+    # Compared against a naive cutoff, so make it naive local time. A
+    # tz-aware and a naive datetime raise TypeError on <, which inside a
+    # sweep is one connector taking the night down.
+    return d.astimezone().replace(tzinfo=None) if d.tzinfo else d
+
+
 class LocalMail:
     """Reads a mail archive on disk: Apple Mail's, or any maildir.
 
@@ -264,13 +300,46 @@ class LocalMail:
         return self._since(cutoff, limit)
 
     def _since(self, cutoff, limit: int) -> list[dict]:
-        out = []
-        for p in self._files():
-            if datetime.fromtimestamp(p.stat().st_mtime) < cutoff:
-                break                      # newest first, so nothing older follows
+        """Messages whose own Date is inside the window, newest first.
+
+        The window used to be a comparison against the file's mtime, with a
+        break on the first file older than the cutoff. That is right on a Mac
+        that has downloaded its mail and left it alone, and wrong on every
+        Mac that has not: a Time Machine restore, a migration to a new
+        machine, a rebuilt mailbox or a plain copy of the archive all set
+        every mtime to the moment it landed. Then "since last night" matched
+        the entire archive, the sweep re-triaged years of mail and spent a
+        night's tokens doing it, and "newest first" became directory order.
+
+        So the filter and the sort are the message's own Date header, with
+        mtime only as the fallback for a message that has none. Reading a
+        header means opening the file, which is what mtime was avoiding, so
+        the walk still goes in mtime order and stops once it has seen
+        SETTLED files in a row that are genuinely too old. On a healthy
+        archive that is the first fifty; on a restored one it keeps going,
+        which is slower and correct rather than fast and wrong.
+        """
+        out, stale = [], 0
+        for p in self._files()[:SCAN_CAP]:
             msg = _emlx(p)
             if msg is None:
                 continue
+            touched = datetime.fromtimestamp(p.stat().st_mtime)
+            when = _sent_at(msg) or touched
+            if when < cutoff:
+                # Only count toward stopping if the *mtime* is old too. The
+                # walk is in mtime order, so that is the only thing that says
+                # anything about what comes next; stopping on the date alone
+                # read the archive in whatever order a restore left it, hit
+                # fifty old ones early, and returned nothing at all — which
+                # is a worse answer than the whole archive, because an empty
+                # list looks like an empty mailbox.
+                if touched < cutoff:
+                    stale += 1
+                    if stale >= SETTLED:
+                        break
+                continue
+            stale = 0
             out.append({
                 "id": p.stem,
                 "from": str(msg.get("From", "")),
@@ -281,7 +350,13 @@ class LocalMail:
                 # Everything here came from outside. quarantine_read decides
                 # what a model is allowed to see of it; this only labels it.
                 "provenance": "external",
+                "_when": when,
             })
             if len(out) >= limit:
                 break
+        # Sorted on the real date, because the walk was in mtime order and
+        # that is the thing this method just stopped trusting.
+        out.sort(key=lambda r: r["_when"], reverse=True)
+        for r in out:
+            r.pop("_when", None)
         return out

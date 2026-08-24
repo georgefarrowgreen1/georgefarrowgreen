@@ -734,6 +734,38 @@ probe('B18 a run that could not resume is not mentioned at all',
                    : 'everything hidden in JS has a [hidden] rule to match');
 }
 
+// B33 — the quarantine rule exists twice, in two languages
+// demo/engine.js is a port of core/harness.py, and the injection triage
+// regex is the piece most easily left behind: it is one line in each file,
+// they are never read side by side, and a demo that flags less than the
+// real thing is a demo that lies about the guarantee it exists to show.
+// Compared as a set of alternatives rather than character by character —
+// Python and JS spell a regex differently, and the thing that must agree
+// is what it catches.
+{
+  const py = fs.readFileSync('core/harness.py', 'utf8');
+  const js = fs.readFileSync('demo/engine.js', 'utf8');
+  const bits = (src, tag) => {
+    const m = src.match(tag);
+    if (!m) return null;
+    let body = m[1]
+      .replace(/\s*(#|\/\/)[^\n]*/g, '')       // comments in either language
+      .replace(/["'\n\s]|r"|\/i|re\.I|,/g, '');  // quoting, flags, joins
+    // Python's is re.compile("(...)"), JS's is /(...)/i, so one capture
+    // carries the outer group and the other does not. Stripping it is the
+    // difference between comparing the rules and comparing the brackets.
+    while (body.startsWith('(') && body.endsWith(')')) body = body.slice(1, -1);
+    return body.split('|').map(x => x.trim()).filter(Boolean).sort().join('|');
+  };
+  const a = bits(py, /INSTRUCTIONISH = re\.compile\(([\s\S]*?)\)\s*\n\n/);
+  const b = bits(js, /const INSTRUCTIONISH =\s*\/\(([\s\S]*?)\)\/i;/);
+  probe('B33 the demo flags different text from the real thing',
+    !a || !b || a !== b,
+    (!a || !b) ? 'could not read one of the two regexes'
+      : a === b ? 'both files catch the same set of phrases'
+      : `they differ: python has ${a.length} chars, js ${b.length}`);
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.

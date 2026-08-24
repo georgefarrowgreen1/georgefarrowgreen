@@ -189,57 +189,48 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         return [{"window": out.get("window", "")}] + rows if rows else \
                [{"window": out.get("window", ""), "nothing": "no rows in that window"}]
 
-    def _hits(rows, term: str, keep: int):
-        """The rows that mention it, newest first.
 
-        Filtered here rather than asked of the connector, because the three
-        readers disagree about what a search is — IMAP has SEARCH, a maildir
-        is a folder, a calendar is neither — and a filter that works the same
-        everywhere is worth more than one that is fast in one place. The
-        window is whatever the connector already reads; this narrows it.
+    def _find(name: str, term: str, days: int = 0):
+        """A search that goes back further than the panel does.
+
+        With no term this lists the recent window, which is what "what is in
+        the diary" means. With one it is a different job: the row somebody is
+        asking about is months old more often than not, and matching inside
+        the sixty rows peek happens to hold answered "nothing" for anything
+        older. "Nothing" is the wrong answer to give confidently.
         """
-        want = [w for w in re.findall(r"[\w']{3,}", term.lower())]
-        if not want:
-            return rows[:keep]
-        out = []
-        for r in rows:
-            hay = " ".join(str(r.get(k) or "") for k in
-                           ("from", "subject", "body", "when")).lower()
-            score = sum(1 for w in want if w in hay)
-            if score:
-                out.append((score, r))
-        out.sort(key=lambda x: -x[0])
-        return [r for _, r in out[:keep]]
+        from core import sources as _src
+        if not term:
+            return _peek(name, 60)[:MAX_ROWS + 1]
+        out = _src.find(store, workspace_scope, name, term,
+                        days=days or _src.FIND_DAYS, limit=MAX_ROWS)
+        if out.get("error"):
+            return [{"unreadable": out["error"], "fix": out.get("fix", "")}]
+        # What was searched goes in front of the rows, found or not. A model
+        # handed a bare empty list says there is no such email; handed the
+        # count and the window, it says where it looked — and that is the
+        # sentence that gets somebody to say "try last spring".
+        head = {"searched": f"{out['searched']} row(s) in {out['window']}",
+                "matches": out["found"]}
+        if out.get("capped"):
+            head["note"] = ("stopped at the scan limit \u2014 there may be "
+                            "older ones it did not reach")
+        rows = [{k: v for k, v in r.items() if k != "instruction_like"}
+                | {"_flagged": r["instruction_like"]} for r in out["rows"]]
+        if not rows:
+            head["nothing"] = (f"nothing mentioning {term!r} in what it "
+                               f"searched \u2014 say a wider window or "
+                               f"another word to try again")
+        return [head] + rows
 
-    def read_mail(term: str = "", **_):
-        rows = _peek("mail", 60)
-        if not term or (rows and rows[0].get("unreadable")):
-            return rows[:MAX_ROWS + 1]
-        head = [r for r in rows if "window" in r][:1]
-        found = _hits([r for r in rows if r.get("subject") or r.get("from")],
-                      term, MAX_ROWS)
-        if not found:
-            return head + [{"nothing": f"nothing mentioning {term!r} in "
-                                       f"{(head[0].get('window') if head else 'that window')}"}]
-        return head + found
+    def read_mail(term: str = "", days: int = 0, **_):
+        return _find("mail", term, days)
 
-    def read_calendar(term: str = "", **_):
-        rows = _peek("calendar", 60)
-        if not term or (rows and rows[0].get("unreadable")):
-            return rows[:MAX_ROWS + 1]
-        head = [r for r in rows if "window" in r][:1]
-        found = _hits([r for r in rows if r.get("subject") or r.get("from")],
-                      term, MAX_ROWS)
-        return head + (found or [{"nothing": f"nothing mentioning {term!r}"}])
+    def read_calendar(term: str = "", days: int = 0, **_):
+        return _find("calendar", term, days)
 
-    def read_messages(term: str = "", **_):
-        rows = _peek("messages", 60)
-        if not term or (rows and rows[0].get("unreadable")):
-            return rows[:MAX_ROWS + 1]
-        head = [r for r in rows if "window" in r][:1]
-        found = _hits([r for r in rows if r.get("subject") or r.get("from")],
-                      term, MAX_ROWS)
-        return head + (found or [{"nothing": f"nothing mentioning {term!r}"}])
+    def read_messages(term: str = "", days: int = 0, **_):
+        return _find("messages", term, days)
 
     def read_page(**_):
         return _peek("web", 1)
@@ -308,13 +299,13 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         if workspace_scope else set()
     OVER = (
         # kind, tool, what it is, the reader, where the rows come from
-        ("imap",     "read_mail",     "the mail — newest first, or set term to search it", read_mail, "outside"),
-        ("maildir",  "read_mail",     "the mail — newest first, or set term to search it", read_mail, "yours"),
-        ("caldav",   "read_calendar", "the calendar — or set term to search it", read_calendar, "outside"),
-        ("ical",     "read_calendar", "the calendar — or set term to search it", read_calendar, "yours"),
+        ("imap",     "read_mail",     "the mail. No term lists the recent ones; a term searches two years of it, or set days", read_mail, "outside"),
+        ("maildir",  "read_mail",     "the mail. No term lists the recent ones; a term searches two years of it, or set days", read_mail, "yours"),
+        ("caldav",   "read_calendar", "the calendar. No term lists what is coming; a term searches it, or set days", read_calendar, "outside"),
+        ("ical",     "read_calendar", "the calendar. No term lists what is coming; a term searches it, or set days", read_calendar, "yours"),
         ("caldav",   "free_nights",   "which nights nobody has booked", free_nights, "outside"),
         ("ical",     "free_nights",   "which nights nobody has booked", free_nights, "yours"),
-        ("messages", "read_messages", "messages — or set term to search them", read_messages, "yours"),
+        ("messages", "read_messages", "messages. No term lists the recent ones; a term searches back through them", read_messages, "yours"),
         ("web",      "read_page",     "the page it is watching, as it is now", read_page, "outside"),
         ("weather",  "forecast",      "the forecast where you are", forecast, "outside"),
     )
@@ -355,6 +346,11 @@ def step_schema(tools: dict) -> dict:
                 "draft": {"type": "string"},
                 "read": {"type": "string", "enum": sorted(tools)},
                 "term": {"type": "string"},
+                # How far back to search, in days. Without it a
+                # search covers two years, which is the right
+                # default and the wrong one for "did anyone
+                # write this week".
+                "days": {"type": "integer"},
                 "action": {"type": "string", "enum": sorted(actions.ACTIONS)},
                 "args": {
                     "type": "object",
@@ -702,7 +698,9 @@ def ask(store, question: str, model, workspace: str | None = None,
                 yield {"type": "TOOL_CALL_START", "name": name, "desc": t.desc,
                        "say": move.get("say", "")}
                 try:
-                    rows = list(t.fn(term=move.get("term") or _term(question)))
+                    rows = list(t.fn(
+                        term=move.get("term") or _term(question),
+                        days=move.get("days") or 0))
                 except Exception as e:                          # noqa: BLE001
                     rows = []
                     yield {"type": "TOOL_CALL_END", "name": name, "rows": 0,

@@ -223,7 +223,10 @@ they came from (A7). Do not "fix" them.
 
 `demo/engine.js` is a port of `core/durable.py` and `core/harness.py`. **If
 you change a threshold or a rule in Python, change it there too and re-run
-`journey.js`**, or the two drift and the demo starts lying.
+`journey.js`**, or the two drift and the demo starts lying. `INSTRUCTIONISH`
+was the one most easily missed — one line in each file, in two languages,
+never read side by side. B33 compares them as sets of alternatives now, so a
+phrase added to one and not the other fails the suite.
 
 ## Conventions
 
@@ -339,6 +342,14 @@ All four suites green. Verified behaviours:
   a booking that leaves on the 6th and one that arrives on the 6th do not
   clash; the same hold approved twice is one file; and what it writes reads
   back through Blokk's own parser with the comma in the guest's name intact
+* a search reaches two years back rather than the sixty rows the panel is
+  holding, says what it searched when it finds nothing ("300 rows in the last
+  730 days") rather than just "nothing", narrows on request, and still flags
+  an instruction it finds down there
+* the mail window is the message's own Date header, not the file's mtime. A
+  Time Machine restore or a migration sets every mtime to now; on mtime that
+  made "since last night" match the whole archive, so the sweep re-triaged
+  years of mail and paid for it
 * a web page arrives as text and a title with the quarantine flag on both,
   script and style gone, and the display:none block kept — that is where an
   instruction meant for a model and not for you goes
@@ -376,8 +387,10 @@ All four suites green. Verified behaviours:
 * writing *into* Calendar.app needs EventKit, a signed bundle and a consent
   dialog — a different kind of program from this one. The .ics drop is the
   halfway house, and it is labelled as one everywhere it appears.
-* Ask can search Blokk's own state but not the mail and calendar content it
-  read. Six tools, none of them full-text.
+* Ask searches the content now, two years back by default, and says what it
+  searched when it finds nothing. What it does not do is rank: matching is a
+  count of query words in the row, so "the Shaws" and "the Shaws' dog" score
+  the same. Good enough to find the thread; not a search engine.
 * CalDAV does not go through `core/egress.py` — it wants PROPFIND and REPORT,
   which `fetch()` does not do. Worth routing when the gate learns methods; the
   host is fixed and configured, so it is a tidiness gap, not an open door.

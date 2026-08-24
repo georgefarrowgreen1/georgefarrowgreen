@@ -99,8 +99,10 @@ class Policy {
 }
 
 // ── quarantine: fields out, never prose a later agent might obey ──────────
+// Kept in step with core/harness.py by hand — the two drift and the demo
+// starts lying about what the real thing flags.
 const INSTRUCTIONISH =
-  /(ignore (all |any )?(previous|prior) instructions|system ?note|you are now|disregard the above|forward .{0,40}to\b)/i;
+  /(ignore (all |any |your |the )?(previous |prior |above |earlier )?instructions|system ?note|you are now|disregard (the above|everything|all)|forward .{0,40}to\b|send .{0,40}(code|password|key) to)/i;
 
 function quarantine_read(raw){
   return { text: raw.slice(0,4000), instruction_like: INSTRUCTIONISH.test(raw), provenance:'untrusted' };

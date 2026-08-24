@@ -287,6 +287,94 @@ def remove(store, ws: str, kind: str) -> dict:
     return {"ok": True, "detail": note}
 
 
+# How far back a search goes when nobody says. peek's window is sixty days
+# because it answers "can Blokk see my mail"; a search answers "what did the
+# Shaws say", and the Shaws wrote in March. A search that quietly stops at
+# sixty days does not say "I did not look" — it says "nothing", which is a
+# confident wrong answer on the one question somebody came here to ask.
+FIND_DAYS = 730
+FIND_SCAN = 4000           # rows pulled before matching, per search
+
+
+def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
+         limit: int = 12) -> dict:
+    """Look for words in what a source actually holds, not just its recent rows.
+
+    Separate from peek() because the two answer different questions. peek is
+    "show me what Blokk can see", so it takes a narrow window and shows the
+    newest of it. This is "find the one about the dog", so it takes a wide
+    one, matches, and — the part that matters — reports what it searched even
+    when it finds nothing.
+
+    Every row is untrusted text from outside and carries its quarantine
+    verdict, exactly as it does through peek. Searching does not make a
+    stranger's mail any less a stranger's.
+    """
+    from datetime import datetime, timedelta
+    from core.connectors import wire, read_since
+    from core.harness import quarantine_read
+
+    words = [w for w in re.findall(r"[\w']{2,}", (term or "").lower())]
+    if not words:
+        return {"error": "a search needs a word to look for",
+                "fix": "Say what to look for — a name, a place, a booking."}
+    c = wire(store).get(ws, name)
+    if c is None:
+        return {"error": f"nothing named '{name}' for {ws}",
+                "fix": "Add a source for it first."}
+
+    days = max(1, min(int(days or FIND_DAYS), 3650))
+    rows, window = [], f"the last {days} days"
+    fn = getattr(c, "search_since", None) or getattr(c, "since", None)
+    try:
+        if fn:
+            now = datetime.now()
+            rows = read_since(fn, now - timedelta(days=days), now, FIND_SCAN)
+        elif getattr(c, "events", None):
+            rows = c.events(days=days)
+            window = f"the next {days} days"
+        else:
+            return {"error": f"'{name}' cannot be searched",
+                    "fix": "It answers specific questions rather than "
+                           "holding a list of things with words in them."}
+    except Exception as e:                                        # noqa: BLE001
+        # A source that cannot be read must not come back as "no matches".
+        return {"error": f"{type(e).__name__}: {e}"[:200], "readable": False,
+                "fix": "The source is wired but not answering."}
+
+    rows = list(rows)
+    hits = []
+    for r in rows:
+        hay = " ".join(str(r.get(k) or "") for k in
+                       ("from", "subject", "body", "summary", "at", "date",
+                        "start", "mailbox", "calendar")).lower()
+        score = sum(1 for w in words if w in hay)
+        if score:
+            hits.append((score, r))
+    # Best match first, and a row that mentions two of the words beats one
+    # that mentions the same word twice.
+    hits.sort(key=lambda x: -x[0])
+
+    out = []
+    for _, r in hits[:limit]:
+        body = r.get("body") or r.get("summary") or ""
+        q = quarantine_read(body)
+        out.append({"from": r.get("from") or r.get("start", ""),
+                    "subject": r.get("subject") or r.get("summary", ""),
+                    "when": r.get("at") or r.get("date") or r.get("start", ""),
+                    "where": r.get("mailbox") or r.get("calendar") or "",
+                    "provenance": r.get("provenance", "untrusted"),
+                    "instruction_like": bool(q["instruction_like"]),
+                    "body": body[:600].strip()})
+    # Searched is not the same as found, and the difference is the whole
+    # answer when a search comes back empty. "Nothing" on its own invites
+    # "there is no such email"; "nothing in 1,240 messages back to March"
+    # invites "look further back", which is the true next step.
+    return {"ok": True, "term": term, "window": window,
+            "searched": len(rows), "found": len(hits), "rows": out,
+            "capped": len(rows) >= FIND_SCAN}
+
+
 def describe(kind: str, state: dict) -> str:
     """A check() result as a sentence.
 
@@ -470,6 +558,13 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
         q = quarantine_read(body)
         out.append({"from": r.get("from") or r.get("start", ""),
                     "subject": r.get("subject") or r.get("summary", ""),
+                    # When it arrived, carried through. It was dropped here,
+                    # so every row the panel and the chat saw was undated —
+                    # and a model with today's date in its prompt still could
+                    # not answer "when did they write", on data where the
+                    # connector knew all along.
+                    "at": r.get("at") or r.get("date") or r.get("start", ""),
+                    "where": r.get("mailbox") or r.get("calendar") or "",
                     "provenance": r.get("provenance", "?"),
                     "instruction_like": bool(q["instruction_like"]),
                     "body": body[:400].strip()})

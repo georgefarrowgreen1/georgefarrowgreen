@@ -134,8 +134,14 @@ class Policy:
 
 # ------------------------------------------------------------------ quarantine
 INSTRUCTIONISH = re.compile(
-    r"(ignore (all |any )?(previous|prior) instructions|system ?note|"
-    r"you are now|disregard the above|forward .{0,40}to\b)",
+    # "previous" and "prior" only, for a long time — so "ignore your
+    # instructions" and "ignore all instructions", which is what anybody
+    # actually types, went past unflagged. Widened to the determiners rather
+    # than to a cleverer rule: this is triage and the list below is the shape
+    # of the thing, not a filter anybody should be relying on.
+    r"(ignore (all |any |your |the )?(previous |prior |above |earlier )?"
+    r"instructions|system ?note|you are now|disregard (the above|everything|"
+    r"all)|forward .{0,40}to\b|send .{0,40}(code|password|key) to)",
     re.I,
 )
 
