@@ -384,7 +384,7 @@ WHAT YOU CAN READ
 WHAT YOU CAN PROPOSE
 {catalogue}
 
-RULES THAT DO NOT BEND
+{learned}RULES THAT DO NOT BEND
 You cannot do anything yourself. A proposal is a row in the approval queue
 that does nothing until they tap approve, and saying otherwise is a lie about
 your own machine. Never claim something is done.
@@ -397,8 +397,23 @@ that, say plainly that it does not exist yet.
 """
 
 
-def _system(tools: dict) -> str:
+def _system(tools: dict, store=None, ws: str = "") -> str:
+    """The prompt, with whatever this workspace has taught it.
+
+    The learned rules go in the prompt rather than being left in a table for
+    the `learned_facts` tool to fetch. A rule the model has to decide to look
+    up is a rule it applies when it happens to think of it, which is not what
+    somebody means when they have corrected the same thing three times.
+    """
+    block = ""
+    if store is not None and ws:
+        from core.harness import learned_block
+        try:
+            block = learned_block(store, ws)
+        except Exception:                                        # noqa: BLE001
+            block = ""                       # memory is not load-bearing here
     return SYSTEM.format(
+        learned=(block + "\n") if block else "",
         tools="\n".join(f"  {n} — {t.desc}" for n, t in sorted(tools.items())),
         catalogue="\n".join(
             f"  {a['name']}({', '.join(a['needs']) or ''}) — {a['does']}"
@@ -565,7 +580,7 @@ def ask(store, question: str, model, workspace: str | None = None,
     past = history(store, thread)
     remember(store, thread, ws, "user", question)
 
-    messages = [{"role": "system", "content": _system(tools)}]
+    messages = [{"role": "system", "content": _system(tools, store, ws)}]
     messages += _for_model(past)
     messages.append({"role": "user", "content": question})
 

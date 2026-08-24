@@ -269,6 +269,49 @@ class Harness:
 
 
 # ------------------------------------------------------------- consolidation
+MIN_CONFIDENCE = 0.5      # below this it is a guess, not a rule
+MAX_RULES = 12            # a system prompt is not a filing cabinet
+
+
+def learned(store, workspace_id: str, limit: int = MAX_RULES) -> list[str]:
+    """What this workspace has taught it, as sentences for a prompt.
+
+    This function is the point of the whole memory half of the system and it
+    did not exist. Corrections were recorded, episodes were consolidated into
+    facts, facts were stored and could be read from the chat — and then no
+    prompt anywhere contained them. "It learns from your corrections" ended in
+    a table nothing read.
+
+    Ordered by confidence and capped, because a rule that arrives at position
+    thirty in a system prompt is a rule the model does not follow. A fact
+    below MIN_CONFIDENCE is one edit's worth of evidence: worth keeping,
+    worth showing you, not worth steering a draft with.
+    """
+    rows = store.q(
+        "SELECT text, confidence FROM fact "
+        "WHERE workspace_id=? AND retired_at IS NULL AND confidence >= ? "
+        "ORDER BY confidence DESC, created_at DESC LIMIT ?",
+        workspace_id, MIN_CONFIDENCE, limit)
+    return [r["text"] for r in rows]
+
+
+def learned_block(store, workspace_id: str, limit: int = MAX_RULES) -> str:
+    """The same, as a labelled block, or "" when there is nothing to say.
+
+    Labelled as corrections rather than dropped in as prose: these came from
+    a person editing the agent's work, and a model that cannot tell a learned
+    rule from the rest of its instructions will eventually treat one of them
+    as optional.
+    """
+    rules = learned(store, workspace_id, limit)
+    if not rules:
+        return ""
+    return ("WHAT THIS PERSON HAS CORRECTED YOU ON BEFORE\n"
+            "These come from their own edits to your earlier drafts. Follow "
+            "them.\n"
+            + "\n".join(f"  - {t}" for t in rules))
+
+
 def consolidate(store, workspace_id: str, model) -> list[dict]:
     """Weekly, in a batch. Episodes in, facts out.
 

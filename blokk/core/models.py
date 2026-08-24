@@ -283,7 +283,98 @@ class ServedModel(Model):
         ])["text"]
 
     def derive_facts(self, episodes):               # pragma: no cover
-        raise NotImplementedError("wire up when weights are in place")
+        """Read the diffs and name the rule behind them.
+
+        Raised NotImplementedError until now, which meant the memory half of
+        the product worked on a Mac with no weights and 500'd on one with
+        them. "It learns from your corrections" was true only where there was
+        nothing doing the learning.
+
+        Two rules hold the output honest. Every fact has to cite the episodes
+        it came from, because `forget()` deletes a conclusion by walking back
+        to its evidence and a fact with no evidence can never be erased. And
+        a rule needs at least two episodes behind it: one edit is a mood,
+        two is a preference, and a system that generalises from a single
+        correction is one that gets more annoying the more you use it.
+        """
+        if len(episodes) < 2:
+            return []
+        seen = {str(e.get("id")) for e in episodes}
+        out = self.chat(
+            [{"role": "system", "content": DERIVE},
+             {"role": "user", "content": json.dumps({"corrections": [
+                 {"id": str(e.get("id")), "category": e.get("category"),
+                  "you_wrote": (e.get("before") or "")[:1200],
+                  "they_changed_it_to": (e.get("after") or "")[:1200]}
+                 for e in episodes[:20]]})}],
+            schema=DERIVE_SCHEMA)
+        text = out.get("text") or ""
+        if "{" not in text:
+            return []
+        try:
+            d = json.loads(text[text.index("{"):text.rindex("}") + 1])
+        except ValueError:
+            return []
+        facts = []
+        for f in (d.get("rules") or []) if isinstance(d, dict) else []:
+            if not isinstance(f, dict):
+                continue
+            text_ = str(f.get("text") or "").strip()
+            frm = [i for i in (f.get("from") or []) if str(i) in seen]
+            # Both checks matter. A rule citing episodes that were not in the
+            # batch is a rule the model made up a provenance for, and one
+            # citing a single episode is a mood.
+            if not text_ or len(text_) > 200 or len(frm) < 2:
+                continue
+            facts.append({
+                "text": text_,
+                # Earned, not asserted. Asking a model how confident it is
+                # gets you a number it likes the sound of; counting the
+                # corrections behind a rule gets you one that means something.
+                "confidence": min(0.95, 0.4 + 0.18 * len(frm)),
+                "from": [str(i) for i in frm],
+            })
+        return facts[:8]
+
+
+DERIVE = """These are corrections. For each one, the person read what the
+agent wrote and changed it. The diff between the two is the signal.
+
+Name the rules behind them. A rule is a standing instruction the agent should
+follow next time — "always names the dog charge", "never quotes a night
+without checking the calendar", "signs off with the first name only".
+
+  Say it as an instruction, in one line, under twenty words.
+  Only name a rule you can see in at least two of the corrections. One edit
+  is a mood; a system that generalises from it gets more irritating the more
+  it is used.
+  Cite the ids of every correction the rule came from. A rule with no
+  evidence behind it cannot be erased later when the evidence is deleted.
+  If nothing recurs, return no rules at all. That is a normal answer."""
+
+DERIVE_SCHEMA = {
+    "name": "derived_rules",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "rules": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "from": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["text", "from"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["rules"],
+        "additionalProperties": False,
+    },
+}
 
 
 # ------------------------------------------------------------------ router

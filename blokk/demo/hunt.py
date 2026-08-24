@@ -3068,6 +3068,192 @@ try:
     probe("A74 the doctor cannot say whether your mail is being read",
           doctor_answers_the_real_questions)
 
+    # ── the learning loop, end to end ───────────────────────────────────
+    def learning_reaches_a_prompt():
+        # Corrections were recorded, episodes consolidated into facts, facts
+        # stored and readable from the chat — and then handed to no model at
+        # all. "It learns from your corrections" ended in a table nothing
+        # read. Both prompts have to carry them or the whole half is theatre.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.harness import learned, learned_block
+        from core.ask import _system, build_tools
+        from flows.morning_sweep import _draft_prompt
+
+        tmp = pathlib.Path(_tf.mkdtemp()) / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
+        st = Store(tmp)
+        st.x("DELETE FROM fact WHERE workspace_id='cottages'")
+        st.x("INSERT INTO fact(id,workspace_id,text,confidence) "
+             "VALUES('f_probe','cottages','always names the dog charge',0.8)")
+        # …and one below the bar, which is evidence of one edit. Worth
+        # keeping, worth showing, not worth steering a draft with.
+        st.x("INSERT INTO fact(id,workspace_id,text,confidence) "
+             "VALUES('f_weak','cottages','signs off with a kiss',0.2)")
+
+        rules = learned(st, "cottages")
+        if "always names the dog charge" not in rules:
+            return (True, f"a confident rule is not surfaced: {rules}")
+        if any("kiss" in r for r in rules):
+            return (True, "a rule with one edit behind it steers drafts")
+
+        chat = _system(build_tools(st, "cottages"), st, "cottages")
+        if "always names the dog charge" not in chat:
+            return (True, "the chat's system prompt does not contain what "
+                          "this workspace has taught it")
+        draft = _draft_prompt(st, "cottages", [], None)
+        if "always names the dog charge" not in draft:
+            return (True, "the drafting prompt does not contain it either")
+
+        # A workspace that has learned nothing must not get an empty heading.
+        st.x("DELETE FROM fact WHERE workspace_id='cottages'")
+        if learned_block(st, "cottages"):
+            return (True, "an empty heading is added when nothing is learned")
+        if "CORRECTED YOU ON" in _system(build_tools(st, "cottages"), st,
+                                         "cottages"):
+            return (True, "the chat prompt keeps the heading with no rules")
+        return (False, "confident rules reach both prompts, weak ones do "
+                       "not, and nothing learned adds nothing")
+    probe("A75 what it learns is never given to a model",
+          learning_reaches_a_prompt)
+
+    def drafting_knows_what_was_read():
+        # The entire system prompt was "Draft a reply.", sent with the email
+        # body and nothing else — not the calendar gaps the same run had
+        # computed two steps earlier, and no rule against inventing one.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from flows.morning_sweep import _draft_prompt
+        st = Store('blokk.db')
+
+        with_gaps = _draft_prompt(st, "cottages",
+                                  [{"from": "2026-08-23", "nights": 3}], None)
+        if "2026-08-23" not in with_gaps:
+            return (True, "the calendar it just read is not in the prompt")
+        for rule in ("untrusted", "Never invent"):
+            if rule not in with_gaps:
+                return (True, f"the drafting prompt has no rule about {rule!r}")
+        # No gaps has to say so out loud. A prompt that simply omits the
+        # calendar invites a model to fill the hole.
+        none = _draft_prompt(st, "cottages", [], None)
+        if "no free nights" not in none.lower():
+            return (True, "with nothing free the prompt says nothing about "
+                          "it, which is an invitation to invent some")
+        return (False, "the gaps, the rates, the corrections and the rule "
+                       "against inventing are all in it")
+    probe("A76 the drafting prompt ignores everything the run just read",
+          drafting_knows_what_was_read)
+
+    def triage_decides_something():
+        # It ran on every message, was journalled, cost tokens, and nothing
+        # read it: routing was substring checks further down. Now it routes —
+        # but it can only ever add to what a person sees, never take a
+        # message out of the category that is pinned to manual.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from flows.morning_sweep import _triaged, _kind
+
+        for raw, why in (({"text": "prose, not json"}, "prose"),
+                         ({"text": ""}, "an empty answer"),
+                         ({"text": '{"sorted":[{"i":9,"kind":"access"}]}'},
+                          "an index that is not in the batch"),
+                         ({"text": '{"sorted":[{"i":0,"kind":"made up"}]}'},
+                          "a kind that is not one of the kinds")):
+            if _triaged(raw, 2):
+                return (True, f"{why} was accepted as a sort")
+
+        handrail = {"subject": "Steps?", "body": "is there a handrail"}
+        if _kind(0, handrail, {0: "other"}) != "access":
+            return (True, "the model talked an access question out of the "
+                          "category that is pinned to manual")
+        if _kind(0, {"subject": "Parking", "body": "can we park close"},
+                 {0: "access"}) != "access":
+            return (True, "the model spotted an access question the word "
+                          "list misses and it was ignored")
+        if _kind(0, {"subject": "Late availability?", "body": "two adults"},
+                 {0: "other"}) != "availability":
+            return (True, "a keyword availability was talked out of a draft")
+        if _kind(0, {"subject": "Receipt", "body": "your statement"},
+                 {}) != "other":
+            return (True, "with no model answer, everything becomes work")
+        # And the sweep asks for a shape, not for prose.
+        src = open("flows/morning_sweep.py").read()
+        if "schema=TRIAGE_SCHEMA" not in src:
+            return (True, "triage is asked for JSON by politeness rather than "
+                          "by a grammar")
+        return (False, "unparseable sorts are ignored, the access floor "
+                       "cannot be lowered, and the model can only add work")
+    probe("A77 the triage call is paid for and thrown away",
+          triage_decides_something)
+
+    def facts_from_real_weights():
+        # ServedModel.derive_facts raised NotImplementedError, so the memory
+        # half worked on a Mac with no weights and 500'd on one with them.
+        import sys as _s, json as _j, threading as _th
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        _s.path.insert(0, ".")
+        from core.models import ServedModel
+
+        REPLY = [""]
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                b = _j.dumps({"choices": [{"message": {"content": REPLY[0]}}],
+                              "usage": {}}).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(b)))
+                self.end_headers(); self.wfile.write(b)
+
+        srv = HTTPServer(('127.0.0.1', 8176), H)
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        m = ServedModel(endpoint="http://127.0.0.1:8176/v1", model="probe")
+        eps = [{"id": f"e{i}", "category": "availability_reply",
+                "before": "The week is free.",
+                "after": "The week is free. The dog charge applies."}
+               for i in range(4)]
+        try:
+            REPLY[0] = _j.dumps({"rules": [
+                {"text": "always names the dog charge", "from": ["e0", "e1"]}]})
+            got = m.derive_facts(eps)
+            if len(got) != 1 or "dog charge" not in got[0]["text"]:
+                return (True, f"a clean answer produced {got}")
+            if got[0]["from"] != ["e0", "e1"]:
+                return (True, "a fact does not carry the episodes it came "
+                              "from, so forget() can never reach it")
+            # Every way a model can be wrong about this.
+            for reply, why in (
+                (_j.dumps({"rules": [{"text": "made up", "from": ["e0", "nope"]}]}),
+                 "provenance the model invented"),
+                (_j.dumps({"rules": [{"text": "one edit", "from": ["e0"]}]}),
+                 "a rule with a single correction behind it"),
+                (_j.dumps({"rules": [{"text": "", "from": ["e0", "e1"]}]}),
+                 "an empty rule"),
+                (_j.dumps({"rules": [{"text": "x" * 300, "from": ["e0", "e1"]}]}),
+                 "an essay instead of a rule"),
+                ("not json at all", "prose"),
+                ("", "nothing"),
+            ):
+                REPLY[0] = reply
+                if m.derive_facts(eps):
+                    return (True, f"{why} was accepted")
+            REPLY[0] = _j.dumps({"rules": [
+                {"text": "fine", "from": ["e0", "e1"]}]})
+            if m.derive_facts(eps[:1]):
+                return (True, "one correction was generalised into a rule")
+            return (False, "rules are derived, must cite two of the batch's "
+                           "own episodes, and every malformed answer is "
+                           "dropped")
+        finally:
+            srv.shutdown()
+    probe("A78 memory cannot be consolidated on a Mac with weights",
+          facts_from_real_weights)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

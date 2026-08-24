@@ -61,6 +61,15 @@ scale with how often you have been right.
 Probes A49–A54 in `demo/hunt.py` hold this shape, and each is mutation-tested:
 break the invariant and exactly one of them goes red.
 
+**Memory is only real if it reaches a prompt.** Corrections become episodes,
+episodes consolidate into facts, and `core/harness.py:learned_block` is what
+puts those facts in front of a model. For a long time nothing did — the chat
+could *read* the fact table through a tool and neither prompt contained it, so
+"it learns from your corrections" ended in a table nothing read. Any new
+surface that drafts or answers on the person's behalf gets that block, and a
+fact below `MIN_CONFIDENCE` is one edit's worth of evidence: worth keeping,
+worth showing them, not worth steering a draft with.
+
 **3. Untrusted content is data, never instruction — and outbound is a gate.**
 Anything fetched from outside — an email body, a web page, a forecast — carries
 `provenance` and goes through `quarantine_read` before reaching a model. The
