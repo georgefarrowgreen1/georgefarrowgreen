@@ -222,6 +222,13 @@ worse than an error.
     core/doctor.py     why the phone cannot reach this Mac, and why the
                        agent cannot reach a model
     core/qr.py         QR for the phone URL, no dependency
+    core/sandbox.py    where a script Blokk did not write is run: no network,
+                       no home directory, a fresh environment, rlimits and a
+                       timeout that kills the process *group*. Refuses rather
+                       than running unconfined
+    core/skills.py     procedural memory over that boundary. A skill earns
+                       `promoted` by running clean and is retired by failing,
+                       the trust ledger's shape for the trust ledger's reason
     core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
                        ics_out (a .ics file per approved hold, keyed on the
                        booking so a replay overwrites) and calendar_app
@@ -394,6 +401,11 @@ All four suites green. Verified behaviours:
 * a step whose journalled name is not the one being replayed says so, naming
   the run, the step and both names — it used to hand back the previous step's
   result and fail three lines later on a type error
+* a script Blokk did not write runs with no network, no /home, /Users or
+  /root, none of the parent's environment, a memory ceiling, and a timeout
+  that takes anything it forked — proved by making the child sleep past the
+  kill and try to write a file. Where no boundary can be built it refuses
+  rather than running unconfined, which is the branch the whole file rests on
 * a reply can actually be sent, and only ever the one that was approved, to
   only the address on the row it was drafted against. Unwired, unapproved,
   another workspace's, no recorded recipient, a moved address, a Bcc smuggled
@@ -469,19 +481,21 @@ All four suites green. Verified behaviours:
 
 ## Not built yet
 
-* `core/sandbox.py` — needed before code mode. gVisor or a microVM; the egress
-  allowlist half of it now exists (`core/egress.py`), but kernel isolation
-  does not, and isolation with open outbound is worth nothing.
+* the sandbox is **not** gVisor and not a microVM, and a native escape gets
+  out of it. Those are the right answer for genuinely hostile code and both
+  are a dependency this project will not take. What is there is defence in
+  depth against a script that is *wrong*, and a serious obstacle to one that
+  is malicious — read it as that and no further. If code mode ever runs
+  something a stranger wrote, this is the line to revisit first.
 * the *quality* of what a model writes is still unmeasured — `./regress.py`
   is honest that stub prose makes its numbers meaningless, and they start
   counting when real weights are on. The plumbing underneath is no longer
   unexercised: `demo/fakeserver.py` is a real OpenAI-compatible server and
   A91 drives every path over HTTP.
-* sending is a separate connector, deliberately not written: it needs a
-  `recipient` on `approval` and it belongs behind the trust gate like
-  everything else that writes. `ics_out` is the only connector with
-  `writes = True`, and it writes a file to a folder on this Mac — nothing
-  addressed, nothing off the machine, nobody told.
+* sending exists and is off until you wire it. What is deliberately *not*
+  built is anything that sends without a person deciding each one:
+  `send_reply` is pinned for ever, and there is no batch, no "reply to all of
+  these" and no scheduled send. That is not a gap to be filled in later.
 * Calendar.app is written to through `osascript`, not EventKit — so there is
   no signed bundle and macOS still asks the person once, with its own dialog.
   What that leaves unbuilt is a *quieter* path: an EventKit build would not
@@ -493,9 +507,6 @@ All four suites green. Verified behaviours:
   them, bounded by `FIND_SCAN`, so it stays honest on one Mac's archive and
   would not stay honest on ten. If that day comes the answer is SQLite's own
   FTS5, not a bigger loop.
-* `skill` is still decorative. It is the thing code mode runs, so it lands
-  with `core/sandbox.py` or not at all — a table of scripts and no boundary
-  to run them behind is worse than neither.
 
 ## If you are picking this up cold
 

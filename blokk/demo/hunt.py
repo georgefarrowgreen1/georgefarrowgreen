@@ -5090,6 +5090,194 @@ try:
     probe("A93 sending is not built, and when it is it will be the dangerous one",
           sending_reaches_a_person_and_only_the_right_one)
 
+    def the_sandbox_is_a_boundary_or_it_refuses():
+        # Code mode needs somewhere to run a script Blokk did not write.
+        # gVisor and microVMs are the right answer for genuinely hostile
+        # code and both are a dependency this project will not take, so
+        # what is here is the strongest boundary the stdlib and a stock Mac
+        # can build. The thing that must hold is not that it is unbreakable
+        # — it is that it never quietly is not a sandbox.
+        import sys as _sA, sqlite3 as _sq, tempfile as _tf
+        _sA.path.insert(0, ".")
+        from core.durable import Store
+        from core import sandbox, skills
+
+        able, why = sandbox.capable()
+        if not able:
+            # Nothing to test the boundary of, but one thing still must be
+            # true: it refuses rather than running anyway.
+            try:
+                sandbox.run("print(1)")
+                return (True, f"it cannot build a sandbox ({why}) and ran the "
+                              f"script regardless")
+            except sandbox.Unavailable:
+                return (False, f"no sandbox on this machine, and it refuses "
+                               f"rather than running unconfined: {why[:60]}")
+
+        # 0. When no boundary can be built, nothing runs. Asked by making
+        #    capable() say no rather than by finding a machine where it does
+        #    — on a box that can confine, that branch is unreachable and
+        #    untested, and it is the branch the whole file rests on: a
+        #    sandbox that quietly is not one is the point at which the
+        #    caller stops thinking about it.
+        real_capable = sandbox.capable
+        sandbox.capable = lambda: (False, "pretending this machine cannot")
+        try:
+            try:
+                sandbox.run("print('should not run')")
+                return (True, "it ran a script after saying it could not "
+                              "build a sandbox")
+            except sandbox.Unavailable:
+                pass
+            try:
+                from core import skills as _sk0
+                _sk0.run(Store("blokk.db"), "anything")
+                return (True, "a skill ran with no sandbox available")
+            except Exception as e:                               # noqa: BLE001
+                if "nothing was run" not in str(e) and "no skill" not in str(e):
+                    return (True, f"a skill with no sandbox failed oddly: "
+                                  f"{type(e).__name__}: {e}")
+        finally:
+            sandbox.capable = real_capable
+
+        # 1. It runs an ordinary script and gives back what it printed.
+        got = sandbox.run("print(6*7)")
+        if got["out"].strip() != "42":
+            return (True, f"an ordinary script did not run: {got}")
+
+        # 2. No network. This is the half of isolation that the egress
+        #    allowlist already does for Blokk's own code and could not do
+        #    for somebody else's.
+        net = sandbox.run(
+            "import socket\n"
+            "try:\n"
+            "    socket.create_connection(('1.1.1.1', 53), timeout=3)\n"
+            "    print('REACHED')\n"
+            "except Exception as e:\n"
+            "    print('refused')\n")
+        if "REACHED" in net["out"]:
+            return (True, "a sandboxed script reached the network")
+
+        # 3. No home directory. Taking the network away and leaving the
+        #    filesystem readable means a script cannot phone home and can
+        #    read every file in $HOME on the way to not phoning home — the
+        #    mount namespace exists for exactly this and the network
+        #    namespace does not provide it.
+        home = sandbox.run(
+            "import pathlib\n"
+            "for p in ('/home', '/Users', '/root'):\n"
+            "    d = pathlib.Path(p)\n"
+            "    try:\n"
+            "        got = list(d.iterdir())\n"
+            "    except Exception:\n"
+            "        got = []\n"
+            "    if got:\n"
+            "        print('SAW', p, got[:2])\n"
+            "print('done')\n")
+        if "SAW" in home["out"]:
+            return (True, f"a sandboxed script read a home directory: "
+                          f"{home['out'].strip()[:90]}")
+
+        # 4. Nothing of this process's environment goes with it. A filter
+        #    is a list of what to remove and is wrong the day somebody adds
+        #    a variable; this is a fresh environment, so the test is that
+        #    almost nothing is in it.
+        import os as _os
+        _os.environ["BLOKK_PROBE_SECRET"] = "hunter2"
+        try:
+            env = sandbox.run("import os, json; print(json.dumps(sorted(os.environ)))")
+        finally:
+            _os.environ.pop("BLOKK_PROBE_SECRET", None)
+        if "BLOKK_PROBE_SECRET" in env["out"]:
+            return (True, "the parent's environment went into the sandbox")
+        for leak in ("HTTPS_PROXY", "AWS", "TOKEN", "KEY"):
+            if leak in env["out"].upper():
+                return (True, f"{leak} reached the sandbox's environment")
+
+        # 5. A ceiling on memory, and a timeout that takes the children too.
+        #    A script that forks and sleeps would otherwise survive the kill
+        #    that was meant to stop it.
+        big = sandbox.run("x = bytearray(900*1024*1024); print('allocated')")
+        if big["ok"] or "allocated" in big["out"]:
+            return (True, "there is no memory ceiling")
+        # The timeout must take the children too, and "it timed out" does
+        # not prove that — an orphan carries on regardless. So the child is
+        # made to prove it: it sleeps past the kill and then writes a file.
+        # If that file appears, something survived being stopped.
+        pen = pathlib.Path(_tf.mkdtemp())
+        try:
+            sandbox.run(
+                "import os, time, pathlib\n"
+                "if os.fork() == 0:\n"
+                "    time.sleep(4)\n"
+                "    pathlib.Path('survived').write_text('yes')\n"
+                "    os._exit(0)\n"
+                "time.sleep(30)\n", timeout=2, scratch=pen)
+            return (True, "a script that never ends was not killed")
+        except sandbox.Failed as e:
+            if not e.timed_out:
+                return (True, f"it stopped for the wrong reason: {e}")
+        time.sleep(5)
+        if (pen / "survived").exists():
+            return (True, "the script was killed and something it started "
+                          "carried on and wrote a file afterwards")
+
+        # 6. And skills. The table has been in the schema since the first
+        #    commit with nothing using it — a table of scripts and nowhere
+        #    safe to run them is worse than neither.
+        db = pathlib.Path(_tf.mkdtemp()) / "sk.db"
+        a_ = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        b_ = _sq.connect(str(db)); a_.backup(b_); b_.close(); a_.close()
+        st = Store(db)
+        st.x("DELETE FROM skill")
+        skills.add(st, "nights", "nights between two dates",
+                   "import sys\nfrom datetime import date\n"
+                   "a, b = sys.stdin.read().split()\n"
+                   "print((date.fromisoformat(b) - date.fromisoformat(a)).days)")
+        r = skills.run(st, "nights", "2026-09-03 2026-09-06")
+        if r["out"].strip() != "3":
+            return (True, f"a skill did not run: {r}")
+        if r["status"] != "candidate":
+            return (True, "a skill is trusted the moment it is written")
+
+        # It earns its status by running, and loses it the same way — the
+        # trust ledger's shape, for the trust ledger's reason.
+        for _ in range(4):
+            r = skills.run(st, "nights", "2026-09-03 2026-09-06")
+        if r["status"] != "promoted":
+            return (True, f"five clean runs did not promote it: {r['status']}")
+        skills.add(st, "broke", "always fails", "raise SystemExit(3)")
+        for _ in range(3):
+            bad = skills.run(st, "broke")
+        if bad["status"] != "retired":
+            return (True, f"three failures did not retire it: {bad['status']}")
+        try:
+            skills.run(st, "broke")
+            return (True, "a retired skill was run again")
+        except skills.SkillError:
+            pass
+
+        # 7. Nothing in skills.py runs anything outside the sandbox.
+        import ast as _ast, inspect as _insp
+        tree = _ast.parse(_insp.getsource(skills))
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Attribute) and node.attr in (
+                    "Popen", "run", "system", "exec", "call", "check_output"):
+                owner = getattr(node.value, "id", "")
+                if owner in ("subprocess", "os"):
+                    return (True, f"skills.py calls {owner}.{node.attr} "
+                                  f"directly, outside the sandbox")
+            if isinstance(node, _ast.Name) and node.id in ("eval", "exec",
+                                                           "compile"):
+                return (True, f"skills.py calls {node.id}() on a stored script")
+        return (False, "no network, no home directory, no inherited "
+                       "environment, a memory ceiling and a timeout that "
+                       "takes the children — and a skill earns its status by "
+                       "running, is retired by failing, and never runs "
+                       "outside the boundary")
+    probe("A94 code mode has nowhere safe to run anything",
+          the_sandbox_is_a_boundary_or_it_refuses)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
