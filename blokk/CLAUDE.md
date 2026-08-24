@@ -145,6 +145,16 @@ every argument against `ACTIONS` rather than trusting what the model wrote,
 and nothing runs without a person tapping approve. A62 stages exactly that
 attack through the mail tool and fails if a proposal comes out of it.
 
+**Unwired is not the same as unavailable.** The prompt carries a `NOT WIRED
+YET` block — every source in `NEEDS` that this workspace has not connected,
+each with the one line that connects it — and a rule saying not to answer
+"I don't have access to that" about something one approval away. Without it
+the prompt listed what exists and said nothing about what could, so a Mac
+with weights answered a question about the weather with *"I'm sorry, but I
+don't have access to weather information"*: true of the model, false of
+Blokk. The right sentence had existed for a long time and lived only in the
+no-weights planner, which is the path almost nobody is on. A95 covers both.
+
 Two smaller rules that fall out of this. A read tool declares where its rows
 come from — `blokk` for its own tables, `yours` for files on this Mac,
 `outside` for anything through the egress gate — because the panel prints a
@@ -413,6 +423,9 @@ All four suites green. Verified behaviours:
 * a step whose journalled name is not the one being replayed says so, naming
   the run, the step and both names — it used to hand back the previous step's
   result and fail three lines later on a type error
+* asked about something not connected, it says so and how to connect it —
+  on the model path as well as the no-weights one. A rule that exists in
+  only one of the two is a rule most people never meet
 * a probe that builds the state it is checking for cannot see that state
   never being built. A93 wrote its own approval row with raw SQL and passed
   on a build where the sweep never filled the column it reads, so nothing a

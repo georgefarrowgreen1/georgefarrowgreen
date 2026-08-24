@@ -5437,6 +5437,98 @@ try:
     probe("A94 code mode has nowhere safe to run anything",
           the_sandbox_is_a_boundary_or_it_refuses)
 
+    def unwired_is_not_no_such_capability():
+        # Asked "what's the weather", a Mac with weights answered "I'm sorry,
+        # but I don't have access to weather information." True of the model
+        # and false of Blokk: there is a weather connector and it is one
+        # approval away. The right sentence existed and lived only in the
+        # no-weights planner, so the model path — the one anybody with
+        # weights is on — never saw it.
+        import sys as _sB
+        _sB.path.insert(0, ".")
+        from core.durable import Store
+        from core import ask
+
+        st = Store("blokk.db")
+        tools = ask.build_tools(st, "cottages")
+        block = ask._unwired_block(tools)
+
+        # 1. Whatever is not wired is named in the prompt, with its route.
+        missing = [n for n in ask.NEEDS if n not in tools]
+        if missing and not block:
+            return (True, f"{len(missing)} source(s) are unwired and the "
+                          f"prompt does not mention any of them")
+        for n in missing:
+            if n not in block:
+                return (True, f"{n} is unwired and not in the prompt")
+            what, how = ask.NEEDS[n]
+            if how.split(".")[0][:24] not in block:
+                return (True, f"{n} is named with no route to wiring it")
+
+        # 2. And it reaches the assembled prompt, not just the helper. A
+        #    block built and never interpolated is the shape of half the
+        #    bugs in this file's history.
+        prompt = ask._system(tools, st, "cottages")
+        if missing and "NOT WIRED YET" not in prompt:
+            return (True, "the unwired block is built and never reaches the "
+                          "prompt")
+        for n in missing:
+            if n not in prompt:
+                return (True, f"{n} is missing from the assembled prompt")
+
+        # 3. The rule that turns that list into behaviour. Naming what is
+        #    unwired is not enough on its own — a model handed a list still
+        #    has to be told that "no access" is the wrong word for it.
+        # Whitespace collapsed: the prompt is wrapped for a human to read,
+        # so any phrase long enough to be worth asserting spans a newline.
+        low = " ".join(prompt.lower().split())
+        if "do not say you have no access" not in low:
+            return (True, "nothing tells it that unwired is not the same as "
+                          "having no access")
+
+        # 4. Nothing wired is listed as missing. Checked against a workspace
+        #    that actually has something wired: on a machine where nothing
+        #    is, this loop has nothing to iterate and passes whatever the
+        #    code does — which is not a check, it is a coincidence.
+        import sqlite3 as _sqA, tempfile as _tfA
+        from core import sources as _srcA
+        import core.connectors as _CA
+        wdb = pathlib.Path(_tfA.mkdtemp()) / "w.db"
+        a_ = _sqA.connect("file:blokk.db?mode=ro", uri=True)
+        b_ = _sqA.connect(str(wdb)); a_.backup(b_); b_.close(); a_.close()
+        wst = Store(wdb)
+        wst.x("DELETE FROM credential WHERE workspace_id='cottages'")
+        _srcA.add(wst, "cottages", "maildir", "local")
+        _CA.REGISTRY._by_ws.clear()
+        wired_tools = ask.build_tools(wst, "cottages")
+        if "read_mail" not in wired_tools:
+            return (True, "wiring a mailbox did not offer the mail tool")
+        wired_block = ask._unwired_block(wired_tools)
+        for n in wired_tools:
+            if n in ask.NEEDS and n in wired_block:
+                return (True, f"{n} is wired and the prompt says it is not")
+        if "read_mail" in ask._system(wired_tools, wst, "cottages").split(
+                "NOT WIRED YET")[-1].split("WHAT YOU CAN PROPOSE")[0]:
+            return (True, "a wired mailbox appears under NOT WIRED YET")
+
+        # 5. And the no-weights path still says the same thing, so the two
+        #    surfaces cannot tell somebody different stories about the same
+        #    missing source.
+        if "forecast" in missing:
+            move = ask._plan("what's the weather like tomorrow?", [], tools,
+                             ["cottages"], "cottages")
+            said = str(move.get("say", "")).lower()
+            if "weather source" not in said and "not wired" not in said \
+                    and "no place" not in said:
+                return (True, f"without weights it does not offer the route "
+                              f"either: {said[:80]!r}")
+        return (False, "what is not connected is named in the prompt with the "
+                       "line that connects it, the model is told that unwired "
+                       "is not the same as unavailable, and the no-weights "
+                       "path says the same thing")
+    probe("A95 asked about the weather it says it has no access, not that it is unwired",
+          unwired_is_not_no_such_capability)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
