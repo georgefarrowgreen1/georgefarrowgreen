@@ -3306,8 +3306,25 @@ try:
         if not any(r["state"] == "pass" for r in out["results"]):
             return (True, "nothing passed at all, so the assertions are not "
                           "being evaluated")
+        # And the CLI people are told to run. regress.py is what CLAUDE.md,
+        # the doctor's own to-do list and README all point at, and nothing
+        # ran it — so it sat there printing a column that had been removed
+        # from under it and raising KeyError on every row. A wrapper nobody
+        # exercises is a wrapper that is broken.
+        import subprocess as _sp
+        for argv, want in (([], "held"), (["list"], "\n"),
+                           (["add"], "usage:")):
+            r = _sp.run([sys.executable, "regress.py", *argv],
+                        capture_output=True, text=True, timeout=180)
+            if "Traceback" in (r.stdout + r.stderr):
+                return (True, f"regress.py {' '.join(argv) or '(no verb)'} "
+                              f"answered with a traceback: "
+                              f"{r.stderr.strip()[-90:]}")
+            if want not in r.stdout:
+                return (True, f"regress.py {' '.join(argv) or '(no verb)'} "
+                              f"printed {r.stdout.strip()[:70]!r}")
         return (False, f"{out['total']} examples, every one built from a live "
-                       f"prompt and run")
+                       f"prompt and run, and the CLI that runs them works")
     probe("A79 the regression suite is empty and measures prompts nothing sends",
           frozen_examples_measure_what_ships)
 

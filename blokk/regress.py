@@ -48,14 +48,14 @@ def main() -> int:
             return 0
         for r in rows:
             was = {1: "pass", 0: "FAIL", None: "-"}[r["last_pass"]]
-            print(f"  {was:<5} {r['workspace_id']:<10} {r['name']}")
+            print(f"  {was:<5} {r['name']}")
         return 0
 
     if cmd == "add":
-        if len(args) < 5:
-            print("usage: regress.py add <workspace> <name> <expect> <prompt...>")
+        if len(args) < 4:
+            print("usage: regress.py add <name> <expect> <prompt...>")
             return 1
-        r = regression.add(store, args[1], args[2], " ".join(args[4:]), args[3])
+        r = regression.add(store, args[1], " ".join(args[3:]), args[2])
         print(r.get("error") or f"froze {r['name']}")
         return 1 if r.get("error") else 0
 
@@ -67,7 +67,7 @@ def main() -> int:
     for r in out["results"]:
         mark = {"pass": " ok  ", "fail": "FAIL ", "unreachable": " ??  "}[r["state"]]
         flag = "  <-- changed since last run" if r.get("changed") else ""
-        print(f"  {mark} {r['workspace_id']:<10} {r['name']}{flag}")
+        print(f"  {mark} {r['name']}{flag}")
         for b in r.get("broke", []):
             print(f"          {b}")
         if r["state"] == "unreachable":
