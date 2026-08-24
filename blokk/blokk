@@ -4,6 +4,7 @@
 #   ./blokk            set up if needed, then run
 #   ./blokk 8080       on a different port
 #   ./blokk update     pull the latest code and restart
+#   ./blokk autoupdate off | notify | apply | (nothing, to ask)
 #   ./blokk doctor     why the phone cannot reach this Mac
 #   ./blokk unify      collapse a database that still has workspaces in it
 #
@@ -14,6 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 # Checked before PORT, so neither can be mistaken for one.
 [ "${1:-}" = "update" ] && exec ./update.sh
+[ "${1:-}" = "autoupdate" ] && exec python3 -m core.autoupdate "${2:-}"
 [ "${1:-}" = "doctor" ] && exec python3 -m core.doctor "${2:-8080}"
 [ "${1:-}" = "unify" ] && exec python3 -m core.unify
 

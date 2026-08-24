@@ -28,7 +28,7 @@ from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import (ask as run_ask, history as ask_history,
                       _thread_id as ask_thread_id)
-from core import actions, nightly, servers as srv
+from core import actions, autoupdate, nightly, servers as srv
 from core.backends import BACKENDS, pick
 
 import os
@@ -52,6 +52,7 @@ policy = Policy(store)
 
 # Built here, started in serve(). Handlers read its state, and a module that
 # is imported by a test or by hunt.py must not quietly start sweeping.
+UPDATER = autoupdate.Updater(store)
 NIGHTLY = nightly.Nightly(
     store,
     sweep=lambda since: sweep_all(since=since),
@@ -971,6 +972,22 @@ def _elsewhere(branch: str, where=None) -> list[dict]:
     return sorted(out, key=lambda r: -r["ahead"])[:4]
 
 
+def h_auto_update(body):
+    """Read the switch, or move it. Never fetches on a read.
+
+    A dashboard that asked "is there an update" by running git fetch would
+    turn every paint into a network call, which is the thing the manual-only
+    design was avoiding in the first place.
+    """
+    want = (body or {}).get("mode")
+    if want is not None:
+        try:
+            autoupdate.set_mode(store, str(want))
+        except ValueError as e:
+            return {"error": str(e)}
+    return UPDATER.state()
+
+
 def h_update_check(_body):
     """Is there anything to pull? Asked, never volunteered.
 
@@ -1073,6 +1090,9 @@ def h_setup_stop(_body):
 
 
 ROUTES_GET = [
+    # Reading the switch is a read: it never fetches. The POST of the same
+    # path is what moves it.
+    (r"^/api/v1/update/auto$", lambda _q: UPDATER.state()),
     (r"^/api/v1/phone$", h_phone),
     (r"^/api/v1/sources$", h_sources),
     (r"^/api/v1/sources/inside$", h_inside),
@@ -1099,6 +1119,7 @@ ROUTES_POST = [
     (r"^/api/v1/egress/allow$", h_egress_allow),
     (r"^/api/v1/egress/deny$", h_egress_deny),
     (r"^/api/v1/update/check$", h_update_check),
+    (r"^/api/v1/update/auto$", lambda b: h_auto_update(b)),
     (r"^/api/v1/restart$", h_restart),
     (r"^/api/v1/setup/plan$", h_setup_plan),
     (r"^/api/v1/setup/write$", h_setup_write),
@@ -1505,6 +1526,7 @@ def serve(port=8080):
     resumed = engine.resume_all(background=True, on_done=bump)
     expired = expire_waits()
     NIGHTLY.start()
+    UPDATER.start()
     host = socket.gethostname().split(".")[0].lower()
     from core import doctor as _doc
     ranked = _doc.phone_addresses(port)

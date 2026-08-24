@@ -6575,6 +6575,167 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 111. updating on its own, quietly ───────────────────────────────
+    def autoupdate_is_quiet():
+        # update.sh refused to be automatic for a reason worth keeping: "a
+        # machine that quietly fetches code is a machine whose behaviour you
+        # cannot pin to a moment." Automatic is fine. *Quiet* is not, and
+        # neither is automatic-by-default, nor applying the one update that
+        # touches somebody's data without them.
+        #
+        # Driven against a real origin and a real clone. A mock of git would
+        # agree with whatever I believed when I wrote it, and two of the
+        # things this checks — that a fast-forward is refused over local
+        # edits, and that untracked files are not local edits — are git's
+        # behaviour and not this file's.
+        import sys as _s, shutil, subprocess as _sp
+        _s.path.insert(0, ".")
+        import core.autoupdate as AU
+        from core.durable import Store as _St
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+
+        def sh(cwd, *a):
+            return _sp.run(a, cwd=str(cwd), env=env, capture_output=True,
+                           text=True, check=False)
+
+        W = pathlib.Path(tempfile.mkdtemp())
+        org = W / "origin"
+        (org / "blokk" / "core").mkdir(parents=True)
+        (org / "blokk" / "core" / "schema.sql").write_text("CREATE TABLE a(x);\n")
+        (org / "blokk" / "core" / "thing.py").write_text("V = 1\n")
+        sh(org, "git", "init", "-q", "-b", "main", ".")
+        sh(org, "git", "add", "-A"); sh(org, "git", "commit", "-qm", "v1")
+        sh(W, "git", "clone", "-q", str(org), "clone")
+        clone = W / "clone" / "blokk"
+        (clone / "logs").mkdir(parents=True, exist_ok=True)
+
+        keep_root, keep_log = AU.ROOT, AU.LOG
+        AU.ROOT, AU.LOG = clone, clone / "logs" / "update.log"
+        try:
+            shutil.copy("blokk.db", clone / "blokk.db")
+            st = _St(clone / "blokk.db")
+
+            # 1. Off unless somebody said otherwise, and off means no fetch.
+            #    The key is cleared first: this database has been through the
+            #    suite and carries whatever the last probe left. Reading a
+            #    value that is already set is not a test of what an unset one
+            #    does, and the first version of this could not fail.
+            st.x("DELETE FROM setting WHERE key=?", AU.KEY)
+            if AU.mode(st) != "off":
+                return (True, f"a database nobody has configured reports "
+                              f"automatic updates as {AU.mode(st)!r}")
+            if AU.once(st).get("ran") is not False:
+                return (True, "switched off, it went and looked anyway — "
+                              "which is the version ping the manual-only "
+                              "design existed to avoid")
+
+            # 2. An ordinary commit is applied, and backed up on the way.
+            AU.set_mode(st, "apply")
+            (org / "blokk" / "core" / "thing.py").write_text("V = 2\n")
+            sh(org, "git", "add", "-A"); sh(org, "git", "commit", "-qm", "v2")
+            out = AU.once(st)
+            if not out.get("applied"):
+                return (True, f"an ordinary commit was not applied with "
+                              f"automatic updates on: "
+                              f"{out.get('found', {}).get('why_not')!r}")
+            if (clone / "core" / "thing.py").read_text().strip() != "V = 2":
+                return (True, "it reported applying an update it did not apply")
+            res = out.get("result", {})
+            if not res.get("backup") or not pathlib.Path(res["backup"]).exists():
+                return (True, "it updated without taking a backup first")
+            if not str(res.get("revert", "")).startswith("git -C "):
+                return (True, "there is no recorded way back from an update "
+                              "it applied on its own")
+
+            # 3. A schema change waits for a person. It is the one that
+            #    touches their data.
+            (org / "blokk" / "core" / "schema.sql").write_text("CREATE TABLE a(x,y);\n")
+            sh(org, "git", "add", "-A"); sh(org, "git", "commit", "-qm", "v3")
+            st.x("DELETE FROM setting WHERE key=?", AU.CHECKED_KEY)
+            out = AU.once(st)
+            if out.get("applied"):
+                return (True, "it applied a schema change on its own — the "
+                              "one update that touches somebody's database")
+            if "schema" not in (out.get("found", {}).get("why_not") or ""):
+                return (True, "a schema change is held back without saying "
+                              "that is why")
+            if (clone / "core" / "schema.sql").read_text().strip() != "CREATE TABLE a(x);":
+                return (True, "the schema moved anyway")
+            # Both guards, not just the one the scheduler happens to hit
+            # first. once() stops on can_apply and apply() stops on its own
+            # check; removing either alone left this green, which means one
+            # of them was never being tested at all.
+            direct = AU.apply(st)
+            if direct.get("ok"):
+                return (True, "apply() itself will take a schema change "
+                              "unasked — the scheduler's own check is the "
+                              "only thing standing in front of somebody's "
+                              "database")
+            if not direct.get("needs_you"):
+                return (True, "a schema change held back by apply() is not "
+                              "marked as one waiting for a person")
+            # ...and a person can still say yes.
+            if not AU.apply(st, force=True).get("ok"):
+                return (True, "a person cannot apply a schema change either, "
+                              "so it is not held back, it is blocked")
+
+            # 4. Local edits stop it — and untracked files are not edits.
+            #    Counting them meant an updater that refused every night over
+            #    a stray file and reported itself switched on the whole time.
+            (clone / "a-note.txt").write_text("mine\n")
+            (org / "blokk" / "core" / "thing.py").write_text("V = 3\n")
+            sh(org, "git", "add", "-A"); sh(org, "git", "commit", "-qm", "v4")
+            st.x("DELETE FROM setting WHERE key=?", AU.CHECKED_KEY)
+            out = AU.once(st)
+            if not out.get("applied"):
+                return (True, f"an untracked file stopped an update: "
+                              f"{out.get('found', {}).get('why_not')!r}")
+            (clone / "core" / "thing.py").write_text("V = 3  # mine\n")
+            st.x("DELETE FROM setting WHERE key=?", AU.CHECKED_KEY)
+            (org / "blokk" / "core" / "thing.py").write_text("V = 4\n")
+            sh(org, "git", "add", "-A"); sh(org, "git", "commit", "-qm", "v5")
+            got = AU.apply(st, force=True)
+            if got.get("ok"):
+                return (True, "it wrote over an edited file, with force at "
+                              "that — there is no argument that should do it")
+            if (clone / "core" / "thing.py").read_text().strip() != "V = 3  # mine":
+                return (True, "the edit was lost")
+            # git refuses this merge on its own, so "the file survived" is a
+            # test of git and passes however this file is written. What is
+            # this file's to get right is the sentence: a refusal that names
+            # the wrong cause sends somebody to run git pull --rebase over a
+            # working tree whose only problem is an unsaved edit.
+            if "uncommitted" not in (got.get("detail") or ""):
+                return (True, f"refused for the wrong reason: "
+                              f"{str(got.get('detail'))[:80]!r} — the cause "
+                              f"is an edited file, not the branch")
+
+            # 5. The moment is written down. That is the whole objection.
+            events = [r.get("event") for r in AU.history(30)]
+            for want in ("mode", "checked", "applied"):
+                if want not in events:
+                    return (True, f"nothing records {want!r}, so 'when did "
+                                  f"this change' has no answer")
+            rec = next(r for r in AU.history(30) if r.get("event") == "applied")
+            for field in ("at", "from", "to"):
+                if not rec.get(field):
+                    return (True, f"the record of an applied update has no "
+                                  f"{field!r}")
+        finally:
+            AU.ROOT, AU.LOG = keep_root, keep_log
+
+        # 6. And the shipped default is off, in the file rather than in a
+        #    database somebody could have touched.
+        src = open("core/autoupdate.py").read()
+        if 'got if got in MODES else OFF' not in src:
+            return (True, "an unrecognised setting does not fall back to off")
+        return (False, "off until switched on, once a day at most, backed up "
+                       "before applying, a schema change left for a person, "
+                       "never over your edits, and every check and apply "
+                       "written down with a way back")
+    probe("A111 updating on its own, quietly", autoupdate_is_quiet)
+
     # ── 110. asked about the weather, answered with a table ─────────────
     def weather_is_not_an_answer():
         # "Still unable to ask it what the weather is like and for it to

@@ -270,6 +270,11 @@ worse than an error.
     core/local.py      what this Mac will hand over without a password
     core/backup.py     online snapshot of blokk.db, and verifying one
     core/regression.py twenty frozen examples and the assertions on them
+    core/autoupdate.py updating on its own without going quiet about it:
+                       off until switched on, once a day at most, a schema
+                       change always left for a person, backed up first,
+                       never over your edits, and every check and apply in
+                       logs/update.log with the commit to go back to
     core/doctor.py     why the phone cannot reach this Mac, and why the
                        agent cannot reach a model
     core/qr.py         QR for the phone URL, no dependency
@@ -586,6 +591,16 @@ All four suites green. Verified behaviours:
   over a day at 85%. A figure that did not come back is said to be missing
   rather than counted as zero, and a rate limit from the far end reads as a
   sentence instead of arriving as its own JSON
+* updating can happen on its own, and update.sh's objection to that still
+  holds — "a machine that quietly fetches code is a machine whose behaviour
+  you cannot pin to a moment". The answer is not to refuse, it is to write
+  the moment down. `./blokk autoupdate notify|apply` switches it on; unset
+  reads as off, so a Mac nobody has configured makes no call it was not
+  asked to make. It looks once a day at most, backs up before applying,
+  leaves a schema change for a person, refuses over edited files — and
+  records every check and apply with the commit to reset back to. Untracked
+  files are not edits: counting them meant an updater that refused every
+  night over a stray file and reported itself switched on the whole time
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted
