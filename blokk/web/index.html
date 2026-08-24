@@ -568,6 +568,29 @@
     border:1px solid var(--hair);background:var(--field);color:var(--lab);
     font-family:var(--ui);font-size:15px}
   .prop .pfield input:focus{outline:2px solid var(--blue);outline-offset:1px}
+  /* A draft is a thing you copy, so it takes the shape of a thing you copy:
+     the text exactly as it will be pasted, on its own ground, with one
+     control. Not a speech bubble — this is not the assistant talking. */
+  .draft{background:var(--card2);border:1px solid var(--hair);
+         border-radius:var(--r-card);padding:var(--sp-4);
+         margin:0 0 var(--sp-4)}
+  .draft .dl{display:flex;align-items:center;gap:var(--sp-3);
+             margin-bottom:var(--sp-3)}
+  .draft .dl b{flex:1;min-width:0;font-family:var(--mono);font-size:9px;
+               letter-spacing:.1em;text-transform:uppercase;color:var(--lab3);
+               font-weight:400}
+  .draft .dt{font-size:15.5px;line-height:1.5;white-space:pre-wrap;
+             font-family:var(--ui);color:var(--lab)}
+  .draft .dn{font-size:12.5px;color:var(--lab3);line-height:1.4;
+             margin-top:var(--sp-3);padding-top:var(--sp-3);
+             border-top:1px solid var(--hair)}
+  .draft .copy{flex:0 0 auto;min-height:var(--tap);padding:0 var(--sp-4);
+               border:1px solid var(--hair);border-radius:var(--r-pill);
+               background:var(--card);color:var(--lab);font-family:var(--ui);
+               font-size:13.5px;font-weight:500;cursor:pointer}
+  .draft .copy:hover{background:var(--fill-3)}
+  .draft .copy.done{color:var(--green);border-color:transparent;
+                    background:rgba(48,209,88,.16)}
   /* What it actually did, kept next to what it said it would do. A proposal
      whose outcome is somewhere else is a proposal you have to go and check. */
   .prop .pr{font-size:13px;line-height:1.4;margin-top:var(--sp-3);
@@ -1996,7 +2019,7 @@ function announce(msg){ const r=$('#sr'); if(r) r.textContent=msg; }
 // Three reads and one ask, in that order. The last one is there because
 // nothing else on this screen says the chat can propose a change — and a
 // capability nobody discovers is a capability that does not exist.
-const SUGG = ['What needs me?', "What did it handle without me?",
+const SUGG = ['What needs me?', 'Draft a reply to the last enquiry',
               'What has it learned?', 'Take a backup'];
 let asking = null;   // AbortController while a turn is in flight
 
@@ -2188,6 +2211,32 @@ let lastDegraded = '';
 const PAST = {approve:'approved', reject:'rejected', edit:'edited',
               expired:'expired'};
 
+function draftCard(text, note){
+  const d = el(`<div class="draft">
+    <div class="dl"><b>Draft</b><button class="copy">Copy</button></div>
+    <div class="dt"></div>
+    <div class="dn">${esc(note || 'Nothing has been sent. Copy it wherever it goes.')}</div>
+  </div>`);
+  // textContent, not innerHTML: this is the text exactly as it will be
+  // pasted, and a draft that mentions <b> is a draft, not markup.
+  d.querySelector('.dt').textContent = text || '';
+  d.querySelector('.copy').onclick = async (e) => {
+    const b = e.currentTarget;
+    try{ await navigator.clipboard.writeText(text || ''); }
+    catch{
+      // No clipboard permission, or an insecure origin. Select it so Cmd-C
+      // still works rather than leaving a dead button.
+      const r = document.createRange();
+      r.selectNodeContents(d.querySelector('.dt'));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      b.textContent = 'Press \u2318C'; return;
+    }
+    b.textContent = 'Copied'; b.classList.add('done');
+    setTimeout(()=>{ b.textContent='Copy'; b.classList.remove('done'); }, 1600);
+  };
+  return d;
+}
+
 function propCard(p){
   const a = p.action || (p.action_json ? JSON.parse(p.action_json) : null);
   // A corrected proposal shows the corrected sentence when it is redrawn.
@@ -2341,6 +2390,7 @@ async function restoreThread(){
   for(const m of d.messages){
     if(m.role === 'user'){ th.append(el(`<div class="q">${esc(m.content)}</div>`)); continue; }
     if(m.role !== 'assistant') continue;
+    if(m.kind === 'draft'){ th.append(draftCard(m.content)); continue; }
     th.append(el(`<div class="a">${esc(m.content)}</div>`));
     if(m.approval) th.append(propCard({...m.approval, action: m.approval.action
       ? JSON.parse(m.approval.action) : null}));
@@ -2368,7 +2418,8 @@ async function send(q){
   go.parentNode.append(stop);
 
   asking = new AbortController();
-  let text='', proposed=false, finished=false, tools=0, degraded='', failed='';
+  let text='', proposed=false, drafted=false, finished=false,
+      tools=0, degraded='', failed='';
   try{
     const r = await fetch(API+'/api/v1/ask',{method:'POST',
       headers:{'Content-Type':'application/json',...AUTH},
@@ -2419,6 +2470,12 @@ async function send(q){
                               note:ev.note, pinned:ev.pinned}));
           setTimeout(()=>tick(true), 400);
           announce('Proposal queued. It is waiting on you.');
+        }
+        if(ev.type==='DRAFT'){
+          drafted = true;
+          th.append(draftCard(ev.text, ev.note));
+          th.scrollTop = th.scrollHeight;
+          announce('Draft ready. Nothing has been sent.');
         }
         if(ev.type==='DEGRADED'){
           // Said, not swallowed. A reply assembled from rows because the
@@ -2471,7 +2528,7 @@ async function send(q){
     // where the answer goes — which reads as "it ignored you". Whatever went
     // quiet upstream, it gets a sentence here, and the sentence says what did
     // arrive so the next question is answerable.
-    if(!text.trim() && !proposed) ans.innerHTML = `<div class="err">
+    if(!text.trim() && !proposed && !drafted) ans.innerHTML = `<div class="err">
       <b>Nothing came back.</b> ${failed
         ? `It stopped on: ${esc(failed)}.`
         : finished

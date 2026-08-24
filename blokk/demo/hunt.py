@@ -2290,7 +2290,10 @@ try:
         js = open("web/index.html").read().split("<script>")[1]
         if "failed = ev.message" not in js:
             return (True, "RUN_ERROR is painted into the element and not kept")
-        tail = js[js.index("if(!text.trim() && !proposed)"):][:400]
+        # Found by its start, not by the whole condition. Pinning the exact
+        # text meant adding one more thing that counts as an answer — a
+        # draft — made this probe raise rather than report.
+        tail = js[js.index("if(!text.trim()"):][:500]
         if "failed" not in tail:
             return (True, "the empty-answer fallback ignores what actually "
                           "went wrong")
@@ -3401,6 +3404,111 @@ try:
                        "taken back, and saying it twice stores it once")
     probe("A80 it can only learn from corrections, never from being told",
           teaching_it_directly)
+
+    def it_can_write_things():
+        # "Draft me an email for a meeting at 10am next Tuesday" came back as
+        # "I don't have the ability to draft or send emails right now." It
+        # does have the ability to draft — drafting is most of what it is for
+        # — and the prompt had folded drafting and sending into one refusal.
+        import sys as _s, json as _j, threading as _th
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.ask import ask as run_ask, _system, build_tools, history
+        from core.models import ServedModel
+
+        store = Store('blokk.db')
+        prompt = _system(build_tools(store, "cottages"), store, "cottages")
+        # It has to know what day it is, or "next Tuesday" is a guess — and a
+        # wrong date in a draft reaches whoever it is sent to.
+        from datetime import datetime, timedelta
+        now = datetime.now().astimezone()
+        for d in (0, 1, 7):
+            want = (now + timedelta(days=d)).date().isoformat()
+            if want not in prompt:
+                return (True, f"the prompt does not name {want}, so a date "
+                              f"that far out has to be counted")
+        if "DRAFTING IS NOT SENDING" not in prompt:
+            return (True, "nothing in the prompt distinguishes writing "
+                          "something from delivering it")
+
+        REPLY = [""]
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                b = _j.dumps({"choices": [{"message": {"content": REPLY[0]}}],
+                              "usage": {}}).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(b)))
+                self.end_headers(); self.wfile.write(b)
+
+        srv = HTTPServer(('127.0.0.1', 8173), H)
+        _th.Thread(target=srv.serve_forever, daemon=True).start()
+        m = ServedModel(endpoint="http://127.0.0.1:8173/v1", model="probe")
+        thread = "t_probe_draft"
+        store.x("DELETE FROM message WHERE thread_id=?", thread)
+        try:
+            body = "Hi Ada,\n\nCould we meet at 10am on Tuesday?\n\nGeorge"
+            REPLY[0] = _j.dumps({"do": "draft", "say": "Here it is.",
+                                 "draft": body})
+            store.x("UPDATE budget SET tool_calls=0")
+            drafts, said = [], []
+            for ev in run_ask(store, "draft me an email", m, "cottages",
+                              thread=thread):
+                if ev["type"] == "DRAFT":
+                    drafts.append(ev["text"])
+                if ev["type"] == "TEXT_MESSAGE_CONTENT":
+                    said.append(ev["delta"])
+            if not drafts:
+                return (True, "a draft came back as ordinary conversation, "
+                              "so there is nothing to copy")
+            if drafts[0] != body:
+                return (True, "the draft was altered on the way out — "
+                              "whitespace in a draft is the draft")
+            if body in "".join(said):
+                return (True, "the draft was said as prose as well, so it "
+                              "appears twice")
+
+            # It survives a reload as a draft, not as a paragraph.
+            kinds = [m2["kind"] for m2 in history(store, thread)]
+            if "draft" not in kinds:
+                return (True, "the transcript does not record it as a draft, "
+                              "so a reload loses the copy button")
+            drafted = [m2 for m2 in history(store, thread)
+                       if m2["kind"] == "draft"]
+            if drafted[0]["content"] != body:
+                return (True, "the stored draft is not what was shown")
+
+            # An empty draft is not a draft.
+            REPLY[0] = _j.dumps({"do": "draft", "say": "Here.", "draft": "  "})
+            store.x("UPDATE budget SET tool_calls=0")
+            if any(e["type"] == "DRAFT" for e in
+                   run_ask(store, "draft me an email", m, "cottages",
+                           thread=thread)):
+                return (True, "an empty draft was offered as one")
+        finally:
+            srv.shutdown()
+            store.x("DELETE FROM message WHERE thread_id=?", thread)
+
+        # And with no weights it says it cannot write *here* — not that it
+        # cannot write. Those are different sentences and only one is true.
+        from core.ask import CANNOT, WRITE_ME
+        if CANNOT.search("draft me an email"):
+            return (True, "asking for a draft matches the list of things it "
+                          "cannot do")
+        if not WRITE_ME.search("draft me an email"):
+            return (True, "asking for a draft is not recognised as asking it "
+                          "to write something")
+        if not CANNOT.search("send the guest an email"):
+            return (True, "asking it to send something is no longer refused")
+        return (False, "it drafts, the text survives untouched and comes back "
+                       "as a draft, and sending is still the thing it "
+                       "cannot do")
+    probe("A81 it refuses to draft, which is most of what it is for",
+          it_can_write_things)
 
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():

@@ -95,6 +95,7 @@ class Store:
     ADDED = (
         ("approval", "action", "TEXT"),        # what to run if this is approved
         ("approval", "result", "TEXT"),        # what happened when it was
+        ("message", "kind", "TEXT"),           # text | draft
     )
 
     def _migrate(self) -> None:

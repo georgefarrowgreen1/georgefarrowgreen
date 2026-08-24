@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS message (
   thread_id     TEXT NOT NULL,
   workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   role          TEXT NOT NULL,                   -- user|assistant|tool
+  kind          TEXT NOT NULL DEFAULT 'text',    -- text|draft
   content       TEXT NOT NULL,
   tool_name     TEXT,                            -- set when role='tool'
   approval_id   TEXT,                            -- set when the turn proposed
