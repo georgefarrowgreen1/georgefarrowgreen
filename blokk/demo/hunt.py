@@ -3254,6 +3254,73 @@ try:
     probe("A78 memory cannot be consolidated on a Mac with weights",
           facts_from_real_weights)
 
+    def frozen_examples_measure_what_ships():
+        # core/regression.py exists to catch the failure where nothing
+        # crashes: you swap the model for a smaller one, the drafts quietly
+        # get worse, and a guest reads one. It had zero examples on every
+        # machine, nothing ran it, and the examples it would have frozen
+        # carried their own copies of prompts — "Draft a reply.", "Triage.
+        # Return JSON only." — that the product had long stopped sending.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import regression
+        from core.models import Router, StubModel
+
+        # A fresh install has a baseline. An empty table is a safety net with
+        # no net in it.
+        n = sqlite3.connect('blokk.db').execute(
+            "SELECT COUNT(*) FROM regression").fetchone()[0]
+        if n < 10:
+            return (True, f"a seeded database holds {n} frozen examples")
+
+        # Every example must name a prompt the code still builds. This is the
+        # drift the whole change is about: rename one and this goes red on
+        # the next run rather than silently measuring nothing.
+        live = [e for e in regression.STARTER if e[2].startswith("prompt:")]
+        if len(live) < len(regression.STARTER):
+            stale = [e[1] for e in regression.STARTER
+                     if not e[2].startswith("prompt:")]
+            return (True, f"{len(stale)} example(s) carry their own copy of a "
+                          f"prompt instead of the live one: {stale[:2]}")
+        for e in regression.STARTER:
+            name = e[2][len("prompt:"):]
+            try:
+                built = regression.live_prompt(name, Store('blokk.db'), e[0])
+            except Exception as ex:                              # noqa: BLE001
+                return (True, f"{e[1]!r} names prompt {name!r}, which no "
+                              f"longer builds: {ex}")
+            if len(built) < 40:
+                return (True, f"prompt {name!r} resolved to {len(built)} "
+                              f"characters, which is not a prompt")
+
+        # And the runner runs. A model that is not answering is an outage,
+        # not a regression, and must be reported as its own thing.
+        tmp = pathlib.Path(_tf.mkdtemp()) / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
+        st = Store(tmp)
+        out = regression.run(st, Router(small=StubModel(), large=StubModel()))
+        if out["total"] < 10:
+            return (True, "the runner found nothing to run")
+        if out["unreachable"]:
+            bad = [r["name"] for r in out["results"]
+                   if r["state"] == "unreachable"]
+            return (True, f"{out['unreachable']} example(s) could not be run: "
+                          f"{bad[:2]}")
+        if out["ran"] != out["total"]:
+            return (True, "not every frozen example was run")
+        # The stub answers one drafting string for everything, so the content
+        # assertions are not the claim here — that the harness resolves,
+        # runs and records every one of them is.
+        if not any(r["state"] == "pass" for r in out["results"]):
+            return (True, "nothing passed at all, so the assertions are not "
+                          "being evaluated")
+        return (False, f"{out['total']} examples, every one built from a live "
+                       f"prompt and run")
+    probe("A79 the regression suite is empty and measures prompts nothing sends",
+          frozen_examples_measure_what_ships)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

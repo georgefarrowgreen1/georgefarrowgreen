@@ -49,4 +49,13 @@ for fid, wid, t, c, src in FACTS:
     s.x("""INSERT OR REPLACE INTO fact(id,workspace_id,text,confidence,source_episodes)
            VALUES(?,?,?,?,?)""", fid, wid, t, c, json.dumps(src))
 
-print(f"seeded {DB}  ({len(WS)} workspaces, {len(TRUST)} trust rows, {len(SKILLS)} skills)")
+# The frozen examples, so a fresh install has a baseline to compare against
+# when the model is swapped. Without this the regression table was empty on
+# every machine and the safety net for "the drafts quietly got worse" was a
+# CLI nobody knew to run.
+from core import regression                                      # noqa: E402
+
+frozen = regression.seed(s)
+
+print(f"seeded {DB}  ({len(WS)} workspaces, {len(TRUST)} trust rows, "
+      f"{len(SKILLS)} skills, {frozen} frozen examples)")

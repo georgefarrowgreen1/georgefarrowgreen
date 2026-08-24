@@ -333,6 +333,34 @@ def sources_and_chat() -> list[str]:
         if not ok:
             todo.append(f"{label}: {state.get('detail', 'nothing to read')[:90]}")
 
+    # What the frozen examples said last time anyone looked. Not re-run
+    # here: twenty-two calls to a 12B model is a minute of somebody's life
+    # and this command should answer in seconds. The date is the point — a
+    # baseline measured against weights you have since swapped is not a
+    # baseline.
+    try:
+        rows = store.q("SELECT last_pass, last_run_at FROM regression")
+        ran = [r for r in rows if r["last_run_at"]]
+        if not rows:
+            row("drafts", _c("no baseline", AMBER),
+                "python3 regress.py seed")
+            todo.append("Freeze a baseline so a model swap cannot quietly "
+                        "make the drafts worse: python3 regress.py seed")
+        elif not ran:
+            row("drafts", _c("never measured", AMBER),
+                f"{len(rows)} frozen — python3 regress.py")
+            todo.append("Measure the frozen examples once: python3 regress.py")
+        else:
+            held = sum(1 for r in ran if r["last_pass"])
+            when = (ran[0]["last_run_at"] or "")[:16].replace("T", " ")
+            row("drafts", _c(f"{held}/{len(ran)} held", GREEN if held == len(ran)
+                             else AMBER), f"last measured {when}")
+            if held < len(ran):
+                todo.append(f"{len(ran) - held} frozen example(s) stopped "
+                            f"holding: python3 regress.py")
+    except Exception as e:                                       # noqa: BLE001
+        row("drafts", _c("unknown", AMBER), f"{type(e).__name__}: {e}"[:60])
+
     print(f"\n  {_c('Does the chat box work?', BOLD)}\n")
     try:
         from core import models

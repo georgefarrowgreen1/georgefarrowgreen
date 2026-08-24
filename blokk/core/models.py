@@ -67,9 +67,27 @@ class StubModel(Model):
         }
 
     def _respond(self, goal: str, last: str) -> str:
-        if "triage" in goal.lower():
-            return json.dumps({"needs_reply": 2, "filed": 31, "escalate": 1})
-        if "draft" in goal.lower():
+        """Keyed on the prompts the product actually sends.
+
+        It matched the word "triage" and the word "draft", which were the
+        whole of the old one-line prompts. Those prompts are gone, so a stub
+        run of the sweep answered "Nothing found." to a drafting call and
+        returned a shape triage could not read — the stub had quietly stopped
+        exercising the paths it exists to exercise.
+        """
+        g = goal.lower()
+        if "sort each message" in g or "triage" in g:
+            # The shape the sweep asks for. An empty sort is a valid answer
+            # and the keyword floor still routes everything, so the stub
+            # exercises the merge rather than short-circuiting it.
+            n = last.count('"i":')
+            return json.dumps({"sorted": [{"i": i, "kind": "other"}
+                                          for i in range(min(n, 12))]})
+        if "these are corrections" in g:
+            # Deriving a rule needs a judgement the stub does not have.
+            # derive_facts() on the stub does it arithmetically instead.
+            return json.dumps({"rules": []})
+        if "drafting a reply" in g or "draft" in g:
             return ("The last week of August is free. That's the shoulder rate, "
                     "and the £25 dog charge applies. Shall I hold it for you?")
         return "Nothing found."
