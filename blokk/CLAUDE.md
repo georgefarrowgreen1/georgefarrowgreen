@@ -553,6 +553,13 @@ All four suites green. Verified behaviours:
 * an explicit choice beats the OS in both directions, and system follows the
   OS while the app is open; theme-color follows the ground so the browser's
   own chrome does too
+* the link for the phone is printed once, whole, with the port and the
+  token in it, and the sentence under it says what typing the address on
+  its own does — :80, nothing listening, and Safari calling that "the
+  network connection was lost". The firewall is named there too, not only
+  in a row further up, and a browser that arrives without the key gets a
+  page rather than {"error": "token required"} — a page that carries no
+  token
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted
