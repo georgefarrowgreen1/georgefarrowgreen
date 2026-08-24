@@ -374,6 +374,10 @@ All four suites green. Verified behaviours:
   holding, says what it searched when it finds nothing ("300 rows in the last
   730 days") rather than just "nothing", narrows on request, and still flags
   an instruction it finds down there
+* the diary can be asked about the past. events() started at today, so
+  "when did the Shaws last stay" answered nothing found — which reads as
+  never, not as never looked. A search covers both directions; the panel
+  still shows only what is coming
 * "the Shaws" no longer matches every row containing "the", "art" no longer
   matches "Start of season", a query of nothing but common words is refused
   rather than answered with everything, and a name in the subject outranks

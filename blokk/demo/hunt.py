@@ -4311,6 +4311,84 @@ try:
     probe("A87 searching for 'the Shaws' matches every row containing 'the'",
           search_ranks_honestly)
 
+    def the_diary_has_a_past():
+        # events() started at today, so every question about what happened
+        # came back as nothing found — which reads as never, not as never
+        # looked. "When did the Shaws last stay" is the commonest thing
+        # anybody asks a cottage diary and it was unanswerable.
+        import sys as _s4, sqlite3 as _sq, tempfile as _tf
+        _s4.path.insert(0, ".")
+        from datetime import date as _d, timedelta as _td
+        from core.durable import Store
+        from core import sources
+        import core.connectors as _C
+        from core.connectors.ical import LocalCalendar
+
+        tmp = pathlib.Path(_tf.mkdtemp())
+        cal = tmp / "Bookings.calendar" / "Events"; cal.mkdir(parents=True)
+        (tmp / "Bookings.calendar" / "Info.plist").write_text(
+            "<key>Title</key>\n<string>Bookings</string>")
+        today = _d.today()
+
+        def ev(uid, summary, start, nights):
+            end = start + _td(days=nights)
+            (cal / f"{uid}.ics").write_text(
+                f"BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:{uid}\n"
+                f"SUMMARY:{summary}\n"
+                f"DTSTART;VALUE=DATE:{start:%Y%m%d}\n"
+                f"DTEND;VALUE=DATE:{end:%Y%m%d}\n"
+                "END:VEVENT\nEND:VCALENDAR\n")
+
+        ev("a", "the Shaws, party of 4", today - _td(days=200), 3)
+        ev("b", "the Bakers", today + _td(days=30), 4)
+        ev("c", "the Shaws again", today - _td(days=600), 2)
+
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        st.x("DELETE FROM credential WHERE workspace_id='cottages'")
+        sources.add(st, "cottages", "ical", str(tmp))
+        _C.REGISTRY._by_ws.clear()
+
+        # 1. A search finds what already happened.
+        out = sources.find(st, "cottages", "calendar", "Shaws")
+        found = [r["subject"] for r in out["rows"]]
+        if len(found) != 2:
+            return (True, f"a past booking is unreachable: {found}")
+        if "either side" not in out["window"]:
+            return (True, f"the window does not say it looks back: "
+                          f"{out['window']}")
+
+        # 2. Nearest to today first. The tiebreak was the row's position on
+        #    the assumption that readers give newest first — mail does, a
+        #    calendar gives oldest first, so on a diary "when did they last
+        #    stay" answered with the visit before last.
+        if found[0] != "the Shaws, party of 4":
+            return (True, f"the older visit came first: {found}")
+
+        # 3. peek is still what is coming. Widening it here would put last
+        #    year's bookings on the screen somebody opens to see the week.
+        ahead = LocalCalendar(root=tmp).events(days=365)
+        if any(r["start"] < today.isoformat() for r in ahead):
+            return (True, "the default window now includes the past, so the "
+                          "panel shows old bookings as if they were coming")
+
+        # 4. Both calendars answer the same question the same way, or the
+        #    answer depends on which one a workspace happens to be wired to.
+        import inspect as _insp
+        from core.connectors.caldav_cal import IcloudCalendar
+        for cls in (LocalCalendar, IcloudCalendar):
+            if "back" not in _insp.signature(cls.events).parameters:
+                return (True, f"{cls.__name__}.events cannot look back, so "
+                              f"the two calendars disagree about the window")
+        return (False, "a search covers both directions and says so, the "
+                       "nearest visit comes first, the panel still shows "
+                       "only what is coming, and both calendars take the "
+                       "same window")
+    probe("A88 the diary can only be asked about the future",
+          the_diary_has_a_past)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

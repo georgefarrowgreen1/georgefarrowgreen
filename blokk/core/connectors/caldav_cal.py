@@ -70,8 +70,16 @@ class IcloudCalendar:
         names = [e.text for e in ET.fromstring(x).findall(".//d:displayname", NS) if e.text]
         return {"ok": True, "home": self._home, "calendars": names}
 
-    def events(self, days: int = 90) -> list[dict]:
-        start = datetime.now(timezone.utc).strftime("%Y%m%dT000000Z")
+    def events(self, days: int = 90, back: int = 0) -> list[dict]:
+        """Occurrences in the window. `back` opens it behind today.
+
+        Kept in step with ical.py on purpose: the two calendars must not
+        disagree about what "in the window" means, or the same question
+        answers differently depending on which one a workspace happens to
+        be wired to.
+        """
+        start = (datetime.now(timezone.utc) - timedelta(days=max(0, back))
+                 ).strftime("%Y%m%dT000000Z")
         end = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y%m%dT000000Z")
         body = ('<c:calendar-query xmlns:d="DAV:" '
                 'xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:getetag/>'

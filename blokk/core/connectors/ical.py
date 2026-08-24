@@ -399,9 +399,16 @@ class LocalCalendar:
         return {"ok": True, "calendars": names, "events_on_disk": len(events),
                 "in_next_90_days": len(window), "looked_in": str(self.root)}
 
-    def events(self, days: int = 90) -> list[dict]:
-        lo = date.today()
-        hi = lo + timedelta(days=days)
+    def events(self, days: int = 90, back: int = 0) -> list[dict]:
+        """Every occurrence in the window, oldest first.
+
+        `back` opens the window behind today. It was forward-only, which is
+        right for "what is coming" and silently wrong for every question
+        about what happened: "when did the Shaws last stay" came back as
+        nothing found, which reads as never, not as never looked.
+        """
+        lo = date.today() - timedelta(days=max(0, back))
+        hi = date.today() + timedelta(days=days)
         events, _ = _read(self.root, self.only)
         out = []
         for ev in events:

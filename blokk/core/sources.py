@@ -309,6 +309,38 @@ FIELD_WEIGHT = (("subject", 3), ("summary", 3), ("from", 3),
 PREFIX_MIN = 4          # "Shaw" may match "Shaws"; "art" may not match "start"
 
 
+def _nearness(row: dict) -> float:
+    """How far this row is from today, in days. Bigger is further.
+
+    The tiebreak between two equally good matches used to be the row's
+    position in the list, on the assumption that the reader gives newest
+    first. Mail does; a calendar gives oldest first, so on a diary the
+    tiebreak quietly preferred the oldest — "when did the Shaws last stay"
+    answered with the visit before last.
+
+    Distance from today rather than recency, because a diary holds both
+    directions: the nearest booking is the one being asked about, whether
+    it is next month or last March.
+    """
+    from datetime import date as _d, datetime as _dt
+    raw = str(row.get("at") or row.get("date") or row.get("start") or "")
+    if not raw:
+        return 10 ** 6
+    when = None
+    try:
+        when = _dt.fromisoformat(raw[:19]).date()
+    except ValueError:
+        try:
+            import email.utils as _eu
+            parsed = _eu.parsedate_to_datetime(raw)
+            when = parsed.date() if parsed else None
+        except (TypeError, ValueError, IndexError):
+            when = None
+    if when is None:
+        return 10 ** 6
+    return abs((when - _d.today()).days)
+
+
 def _score(row: dict, wanted: list[str], phrase: str) -> float:
     """How well one row answers the query. 0 means it does not.
 
@@ -403,8 +435,21 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
             now = datetime.now()
             rows = read_since(fn, now - timedelta(days=days), now, FIND_SCAN)
         elif getattr(c, "events", None):
-            rows = c.events(days=days)
-            window = f"the next {days} days"
+            # Both directions. A calendar read forward-only answers "when
+            # did the Shaws last stay" with nothing found, which reads as
+            # never rather than as never looked — and most questions about
+            # a diary are about what happened, not what is coming.
+            import inspect as _i
+            try:
+                takes_back = "back" in _i.signature(c.events).parameters
+            except (TypeError, ValueError):
+                takes_back = False
+            if takes_back:
+                rows = c.events(days=days, back=days)
+                window = f"the {days} days either side of today"
+            else:
+                rows = c.events(days=days)
+                window = f"the next {days} days"
         else:
             return {"error": f"'{name}' cannot be searched",
                     "fix": "It answers specific questions rather than "
@@ -419,15 +464,14 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
     for i, r in enumerate(rows):
         sc = _score(r, wanted, raw.strip())
         if sc:
-            # The reader gives newest first, so the index is a recency
-            # tiebreak that costs nothing to compute and keeps two equally
-            # good matches in the order somebody expects.
-            hits.append((sc, -i, r))
-    hits.sort(key=lambda x: (-x[0], -x[1]))
+            hits.append((sc, _nearness(r), i, r))
+    # Best match first, then nearest to today, then whatever order the
+    # reader gave — so the sort is total and two runs agree.
+    hits.sort(key=lambda x: (-x[0], x[1], x[2]))
 
     out = []
     best = hits[0][0] if hits else 0
-    for sc, _, r in hits[:limit]:
+    for sc, _near, _i, r in hits[:limit]:
         body = r.get("body") or r.get("summary") or ""
         q = quarantine_read(body)
         out.append({"from": r.get("from") or r.get("start", ""),
