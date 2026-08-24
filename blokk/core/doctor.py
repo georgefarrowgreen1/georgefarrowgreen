@@ -522,6 +522,36 @@ def sources_and_chat() -> list[str]:
     return todo
 
 
+def _https_tries() -> dict:
+    """How many times a browser tried HTTPS on the plain-HTTP port.
+
+    Written by api/server.py when it turns a TLS ClientHello away. The
+    doctor is a separate process and cannot ask the server anything, so
+    the count goes through a file. Missing or unreadable means none —
+    a diagnostic that raises about its own diagnostics is worse than one
+    that says nothing.
+    """
+    import json
+    try:
+        d = json.loads((ROOT / "logs" / "https-on-http.json").read_text())
+        return {"n": int(d.get("n", 0)), "last": float(d.get("last", 0.0))}
+    except (OSError, ValueError, TypeError):
+        return {"n": 0, "last": 0.0}
+
+
+def _ago(ts: float) -> str:
+    """"4 minutes ago", not an epoch. Nobody reads an epoch at 23:53."""
+    import time
+    if not ts:
+        return "at some point"
+    secs = max(0, int(time.time() - ts))
+    for size, name in ((86400, "day"), (3600, "hour"), (60, "minute")):
+        if secs >= size:
+            n = secs // size
+            return f"{n} {name}{'s' if n > 1 else ''} ago"
+    return "just now"
+
+
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
     print(f"\n  {_c('Can your phone reach this Mac?', BOLD)}\n")
@@ -582,6 +612,23 @@ def main() -> int:
         print(f"  {_c('80, where nothing is listening, and Safari calls that', DIM)}")
         lost = "the network connection was lost"
         print(f"  {_c(chr(8220) + lost + chr(8221) + '.', DIM)}")
+        print(f"  {_c('The http:// matters as much. Without it Safari upgrades', DIM)}")
+        print(f"  {_c('the address and tries HTTPS, which this does not speak —', DIM)}")
+        print(f"  {_c('and reports that with the same sentence. Scan the QR and', DIM)}")
+        print(f"  {_c('none of this comes up.', DIM)}")
+
+        # And whether it has actually happened, which is the difference
+        # between a warning and a diagnosis. The server writes the count
+        # because this runs as its own process and cannot ask it.
+        tries = _https_tries()
+        if tries["n"]:
+            when, n = _ago(tries["last"]), tries["n"]
+            print()
+            print(f"  {_c('This has already happened:', AMBER)} something spoke "
+                  f"HTTPS to")
+            line = f"port {port} {n} time(s), last {when}. That is a browser"
+            print(f"  {_c(line, DIM)}")
+            print(f"  {_c('given the address without the http:// in front.', DIM)}")
         # Only on a terminal, and only if it fits: a QR wider than the
         # window wraps into noise no camera can read. A40 opens a pty
         # because every harness here redirects stdout.

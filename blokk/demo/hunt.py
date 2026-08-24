@@ -6575,6 +6575,98 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 109. the phone speaks HTTPS and is answered in plaintext ────────
+    def https_on_the_http_port():
+        # The address bar read "192.168.1.69:8080/?t=..." — port and token
+        # both right, and still "the network connection was lost". No
+        # scheme. Safari upgrades a scheme-less address and tries HTTPS, so
+        # what arrived here was a TLS ClientHello.
+        #
+        # This used to answer one in plaintext: readline() found a 0x0a
+        # among the hello's random bytes, parse_request rejected the line,
+        # and out went "HTTP/1.1 400" to a client waiting for a TLS record.
+        # The browser reads "HTTP/" as a record header, calls the version
+        # wrong and gives up — the same sentence, naming neither TLS nor
+        # the missing scheme. A hello with no 0x0a was worse: readline()
+        # blocked until the phone timed out.
+        #
+        # Checked over a real socket. A ClientHello is five bytes of record
+        # header and this is the one probe where sending the real thing
+        # costs nothing.
+        import socket as _sk
+        hello = (bytes.fromhex("1603010020")
+                 + bytes.fromhex("0100001c0303") + b"\x00" * 26)
+        try:
+            c = _sk.create_connection(("127.0.0.1", 8099), 5)
+        except OSError as e:
+            return (True, f"could not open a socket to the server: {e}")
+        try:
+            c.sendall(hello)
+            c.settimeout(5)
+            try:
+                back = c.recv(64)
+            except _sk.timeout:
+                return (True, "a ClientHello got no answer at all — the "
+                              "server sat on it until the phone gave up, "
+                              "which is the slow half of the same bug")
+        finally:
+            c.close()
+        if back[:5] == b"HTTP/":
+            return (True, "a TLS ClientHello was answered with plaintext "
+                          "HTTP — the browser reads that as a broken TLS "
+                          "server and reports the connection as lost")
+        if not back:
+            return (True, "a ClientHello was met with a bare close, which "
+                          "says nothing a browser can act on")
+        if back[:1] != b"\x15":
+            return (True, f"a ClientHello got {back[:8]!r}, which is neither "
+                          f"a TLS alert nor anything else useful")
+        # level fatal(2), and a description that means "not this protocol"
+        if back[5:6] != b"\x02":
+            return (True, "the alert is not fatal, so the client is entitled "
+                          "to keep waiting for a handshake that will never "
+                          "come")
+
+        # And it has to be counted, or the Mac knows and says nothing —
+        # which is the whole of invariant 6.
+        import json as _j, pathlib as _pl
+        rec = _pl.Path("logs/https-on-http.json")
+        if not rec.exists():
+            return (True, "the attempt is turned away and never recorded, so "
+                          "nothing can tell somebody it happened")
+        try:
+            n = int(_j.loads(rec.read_text()).get("n", 0))
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"the record is unreadable: {type(e).__name__}")
+        if n < 1:
+            return (True, "the record exists and counts nothing")
+
+        # The doctor has to be able to read it, and to say what it means.
+        src = open('core/doctor.py').read()
+        if "https-on-http.json" not in src:
+            return (True, "the server writes the count and the doctor never "
+                          "reads it")
+        for want, missing in (("http://", "the scheme itself"),
+                              ("HTTPS", "what the browser tried instead")):
+            if want not in src:
+                return (True, f"the doctor never mentions {missing}")
+
+        # The banner says it too — that is where somebody is standing.
+        bsrc = open('api/server.py').read()
+        banner = bsrc[bsrc.index("def serve("):]
+        if "http://" not in banner or "HTTPS" not in banner:
+            return (True, "the banner prints the link and never says the "
+                          "scheme is the part being dropped")
+
+        # Plain HTTP must be completely untouched by all of this.
+        if g('/api/v1/health').get('ok') is not True:
+            return (True, "turning TLS away broke ordinary HTTP")
+        return (False, "a ClientHello is answered with a fatal TLS alert "
+                       "rather than plaintext, counted where the doctor can "
+                       "read it, and named by both the doctor and the banner")
+    probe("A109 the phone speaks HTTPS and is answered in plaintext",
+          https_on_the_http_port)
+
     # ── 108. blaming a privacy feature for the network's fault ──────────
     def blames_private_relay():
         # "check that iCloud Private Relay is off" was the last line of the

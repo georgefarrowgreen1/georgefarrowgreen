@@ -568,6 +568,14 @@ All four suites green. Verified behaviours:
   apart. Private Relay's one real part in this was the utun interface it
   puts on the Mac, which the old lan_ip() picked and printed. The `.local`
   link is the one a lookup can cost you, and it is labelled as such
+* a browser that speaks HTTPS to the plain-HTTP port is answered with a
+  fatal TLS alert, not with plaintext. Safari upgrades an address typed
+  without a scheme, so what arrives is a ClientHello; this used to reply
+  "HTTP/1.1 400" to a client waiting for a TLS record, which the browser
+  reads as a broken TLS server and reports as "the network connection was
+  lost" — the same sentence as a wrong port, naming neither TLS nor the
+  missing http://. A hello with no 0x0a in it hung instead. The attempt is
+  counted in logs/, and `./blokk doctor` says how many and how long ago
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

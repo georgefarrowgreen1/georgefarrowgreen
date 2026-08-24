@@ -805,7 +805,11 @@ def h_phone(_q):
     url = f"http://{usable[0]['ip']}:{port}/?t={TOKEN}" if usable else ""
     state, note = doctor.firewall()
     out = {"url": url, "addresses": found, "tried": len(usable),
-           "firewall": {"state": state, "note": note}}
+           "firewall": {"state": state, "note": note},
+           # Somebody typing the address without http:// shows up here and
+           # nowhere else — the phone reports it as a lost connection and
+           # this end saw a TLS ClientHello it had to turn away.
+           "https_attempts": https_attempts()}
     if url:
         try:
             out["qr"] = qr.svg(url)
@@ -1112,8 +1116,102 @@ ROUTES_POST = [
 ]
 
 
+# A browser handed an address with no scheme tries HTTPS first. Safari on
+# iOS and macOS both do, so what arrives on this plain-HTTP port is a TLS
+# ClientHello — and this is where "it will not connect over the network"
+# ends up for somebody who typed the address rather than scanning the QR.
+#
+# The file is how ./blokk doctor finds out. The doctor runs as its own
+# process and cannot ask the server anything, so the server leaves the
+# count where it can be read. Two numbers, no addresses: who tried is not
+# needed to explain what happened, and this is not a place to start
+# keeping a list of the devices on somebody's wifi.
+HTTPS_TRIES = ROOT / "logs" / "https-on-http.json"
+_https = {"n": 0, "last": 0.0, "written": 0.0}
+_https_lock = threading.Lock()
+
+
+def note_https_attempt() -> dict:
+    """Count one, and persist at most once a second.
+
+    Bounded on purpose. A client in a retry loop can produce these as fast
+    as it can open sockets, and a log that grows with an error is a second
+    failure sitting behind the first.
+    """
+    import time as _t
+    with _https_lock:
+        _https["n"] += 1
+        _https["last"] = _t.time()
+        stale = _https["last"] - _https["written"] > 1.0
+        snap = {"n": _https["n"], "last": _https["last"]}
+        if stale:
+            _https["written"] = _https["last"]
+    if stale:
+        try:
+            HTTPS_TRIES.parent.mkdir(parents=True, exist_ok=True)
+            HTTPS_TRIES.write_text(json.dumps(snap))
+        except OSError:
+            pass                # a diagnostic that cannot write is not a fault
+    return snap
+
+
+def https_attempts() -> dict:
+    """What the file says, for whoever is asking — server or doctor."""
+    try:
+        d = json.loads(HTTPS_TRIES.read_text())
+        return {"n": int(d.get("n", 0)), "last": float(d.get("last", 0.0))}
+    except (OSError, ValueError, TypeError):
+        return {"n": 0, "last": 0.0}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    # 0x16 is a TLS handshake record and 0x03 0x0X its version; no HTTP
+    # method begins with either byte, so this cannot be a real request.
+    #
+    # What used to happen: readline() found a 0x0a among the hello's random
+    # bytes, parse_request rejected the line, and this replied
+    # "HTTP/1.1 400 ..." in plaintext to a client waiting for a TLS record.
+    # The browser reads "HTTP/" as a record header, decides the version is
+    # wrong and gives up — which iOS reports as "Safari can't open the page
+    # because the network connection was lost", naming neither TLS nor the
+    # missing http://. A hello with no 0x0a in it was worse: readline()
+    # blocked until the phone gave up, and the same message came back after
+    # a wait.
+    #
+    # A TLS alert is the one answer a TLS client can actually read. It says
+    # this port does not speak TLS, rather than impersonating a broken one,
+    # and it is what a browser needs to see before it will fall back to
+    # http:// on its own.
+    TLS_ALERT = bytes.fromhex("15030100020246")   # fatal, protocol_version
+    _tls_checked = False
+
+    def handle_one_request(self):
+        # First request on the connection only. After that self.rfile may be
+        # holding buffered bytes, and peeking the socket underneath it would
+        # be looking at the wrong end of the stream. A ClientHello is always
+        # the first thing on a connection anyway.
+        if not self._tls_checked:
+            self._tls_checked = True
+            if self._spoke_tls():
+                return
+        return super().handle_one_request()
+
+    def _spoke_tls(self) -> bool:
+        try:
+            head = self.connection.recv(3, socket.MSG_PEEK)
+        except OSError:
+            return False
+        if head[:1] != b"\x16" or head[1:2] != b"\x03":
+            return False
+        note_https_attempt()
+        try:
+            self.connection.sendall(self.TLS_ALERT)
+        except OSError:
+            pass                      # it hung up; the count is the point
+        self.close_connection = True
+        return True
 
     def log_message(self, *a):                      # quiet; real logs are spans
         pass
@@ -1466,6 +1564,15 @@ def serve(port=8080):
         # calls that "the network connection was lost".
         print(f"     {D}All of it, including :{port} — the address on its own "
               f"goes nowhere.{O}")
+        # Typed without the http://, Safari upgrades it and tries HTTPS,
+        # which this port does not speak. The phone calls that "the network
+        # connection was lost" and names nothing you could act on, so name
+        # it here. Scanning the QR avoids the whole question: the scheme is
+        # in the code.
+        print(f"     {D}The http:// too — typed without it Safari tries HTTPS, "
+              f"which{O}")
+        print(f"     {D}this does not speak. Scanning the QR gets it right for "
+              f"you.{O}")
         # The second-best one, when there is a real choice. A Mac on both
         # wifi and ethernet has two, and only one of them is the network the
         # phone is on — which is not a thing this can know from here.
