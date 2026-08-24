@@ -544,6 +544,10 @@
   /* The two taps that make it real. Full height because this is the control
      that changes the machine, and it is reached with a thumb on a phone. */
   .prop .pa{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
+  /* `display:flex` on a class beats the browser's own [hidden]{display:none},
+     so setting .hidden on the button row left Approve/Edit/Reject sitting
+     above the edit form they were supposed to make way for. */
+  .prop .pa[hidden]{display:none}
   .prop .pa button{flex:1;min-height:var(--tap);border-radius:var(--r-pill);
                    border:1px solid var(--hair);background:var(--card2);
                    color:var(--lab);font-family:var(--ui);font-size:14px;

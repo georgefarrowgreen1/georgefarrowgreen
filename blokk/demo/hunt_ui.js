@@ -709,6 +709,31 @@ probe('B18 a run that could not resume is not mentioned at all',
     'the workspace and its thread are both remembered, per browser');
 }
 
+// B32 — a row hidden with [hidden] has to actually go
+// `display:flex` on a class beats the browser's own [hidden]{display:none},
+// so hiding the Approve/Edit/Reject row left it sitting above the edit form
+// it was making way for. Any rule that sets a display on a class whose
+// element is hidden in JS needs the matching [hidden] rule.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  const hidden = new Set();
+  for (const m of js.matchAll(/querySelector\('\.([\w-]+)'\)\.hidden\s*=/g))
+    hidden.add(m[1]);
+  const missing = [];
+  for (const cls of hidden) {
+    // Doubled once, not twice: inside a template literal `\\.` is the
+    // string `\.`, which is what RegExp wants. Four made it a literal
+    // backslash, so this matched nothing and the probe could never fire.
+    const sets = new RegExp(`\\.${cls}\\s*\\{[^}]*display\\s*:`).test(css);
+    const guarded = new RegExp(`\\.${cls}\\[hidden\\]`).test(css);
+    if (sets && !guarded) missing.push(`.${cls}`);
+  }
+  probe('B32 a class sets display and is then hidden in JS',
+    missing.length > 0,
+    missing.length ? `${missing[0]} sets display with no [hidden] rule`
+                   : 'everything hidden in JS has a [hidden] rule to match');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.
