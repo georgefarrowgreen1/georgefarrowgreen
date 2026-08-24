@@ -6575,6 +6575,163 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 110. asked about the weather, answered with a table ─────────────
+    def weather_is_not_an_answer():
+        # "Still unable to ask it what the weather is like and for it to
+        # tell me." The connector was fine — it fetched, and the numbers
+        # were right. Everything between it and the screen was not.
+        #
+        #   - every question got the same four-day dump, so "is it going to
+        #     rain tomorrow?" came back as a table with tomorrow in the
+        #     middle of it and the word "tomorrow" nowhere;
+        #   - the days were ISO dates, which is not how anybody asks;
+        #   - peek flattened the measurements into a sentence, so the only
+        #     rain figure downstream was inside a string. Nothing re-parsed
+        #     it, so "will it rain this week" answered "looks dry" over a
+        #     day at 85% — a confidently wrong answer about the weather;
+        #   - and a rate limit from the far end went to the screen as its
+        #     own JSON.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import ask as A, sources as SRC, egress as EG
+        from core.durable import Store as _St
+        import core.connectors.weather as WX
+
+        # A week of real-shaped forecast, with one wet day in it.
+        WEEK = {"daily": {
+            "time": ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27"],
+            "weather_code": [3, 61, 80, 0],
+            "temperature_2m_max": [18.4, 16.1, 17.7, 21.2],
+            "temperature_2m_min": [11.2, 10.8, 11.9, 12.4],
+            "precipitation_probability_max": [10, 85, 60, 0],
+            "wind_speed_10m_max": [14.0, 33.5, 22.1, 9.0]}}
+        GEO = {"results": [{"name": "Newcastle upon Tyne", "admin1": "England",
+                            "country": "United Kingdom",
+                            "latitude": 54.97, "longitude": -1.61}]}
+        keep = (EG.fetch_json, WX.egress.fetch_json)
+        fake = lambda _st, url, **k: GEO if "geocoding" in url else WEEK
+        EG.fetch_json = WX.egress.fetch_json = fake
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "wx.db"
+        import shutil
+        shutil.copy("blokk.db", tmp)
+        try:
+            st = _St(tmp)
+            got = SRC.add(st, "weather", "Newcastle upon Tyne", name="wx")
+            if got.get("error"):
+                return (True, f"could not wire a weather source: {got['error']}")
+            peeked = SRC.peek(st, "wx", 4)
+            rows = peeked.get("rows") or []
+            if not rows:
+                return (True, f"peek returned no rows: {peeked.get('error')}")
+            # The measurements have to survive as measurements.
+            if not isinstance(rows[1].get("rain_chance"), (int, float)):
+                return (True, "peek flattens the forecast into a sentence — "
+                              "the rain chance only exists inside a string, "
+                              "so nothing downstream can compare it")
+            if rows[1]["rain_chance"] != 85:
+                return (True, f"the rain chance came through as "
+                              f"{rows[1].get('rain_chance')!r}, not 85")
+
+            # Rows in the shape _summarise is handed them.
+            days = [{"subject": r["subject"], "from": r["from"],
+                     "place": r["where"], "label": r.get("label"),
+                     "high_c": r.get("high_c"), "low_c": r.get("low_c"),
+                     "rain_chance": r.get("rain_chance"),
+                     "wind_kph": r.get("wind_kph")} for r in rows]
+        finally:
+            EG.fetch_json, WX.egress.fetch_json = keep
+
+        # Today, so "today"/"tomorrow" line up with the fixture's dates.
+        import datetime as _dt
+        real_date = _dt.date
+        class _D(real_date):
+            @classmethod
+            def today(cls):
+                return real_date(2026, 8, 24)
+        _dt.date = _D
+        try:
+            wet = A._forecast_answer(days, "will it rain this week?")
+            tom = A._forecast_answer(days, "is it going to rain tomorrow?")
+            plain = A._forecast_answer(days, "what's the weather like?")
+            thu = A._forecast_answer(days, "is it dry on Thursday?")
+        finally:
+            _dt.date = real_date
+
+        # Every answer leads with its verdict and may list the days under
+        # it. Assert on the lead line: the listing repeats every figure and
+        # every weekday name, so a check against the whole string passes
+        # whatever the verdict says. Two of these could not fail until this
+        # was split out.
+        lead = lambda t: t.split("\n")[0]
+
+        # The one that matters: it must not call a week with an 85% day dry.
+        if re.search(r"\b(dry|no rain|unlikely)\b", lead(wet), re.I):
+            return (True, f"asked whether it will rain in a week holding a "
+                          f"day at 85%, it led with {lead(wet)[:70]!r}")
+        if "85" not in lead(wet):
+            return (True, f"the wet day is not named in the answer about the "
+                          f"week, only in the listing under it: "
+                          f"{lead(wet)[:70]!r}")
+
+        # A day named in the question is the day answered about.
+        if not lead(tom).lower().startswith(("yes", "probably", "possibly",
+                                             "unlikely", "no")):
+            return (True, f"a yes/no question about tomorrow's rain was "
+                          f"answered with {tom[:60]!r}")
+        if "tomorrow" not in lead(tom).lower():
+            return (True, "asked about tomorrow, the answer never says which "
+                          "day it is about")
+        if "85" not in lead(tom):
+            return (True, "the verdict does not carry the figure it is based "
+                          "on, so there is nothing to check it against")
+        if "Thursday" not in lead(thu):
+            return (True, f"a weekday named in the question is not resolved "
+                          f"against the days that came back — it answered "
+                          f"{lead(thu)[:70]!r}")
+
+        # Words, not ISO — for every one of these answers.
+        for name, text in (("week", wet), ("tomorrow", tom),
+                           ("plain", plain), ("thursday", thu)):
+            if re.search(r"20\d\d-\d\d-\d\d", text):
+                return (True, f"the {name} answer still prints an ISO date, "
+                              f"which is not how anybody asks or answers")
+        if "today" not in plain.lower() or "tomorrow" not in plain.lower():
+            return (True, "the plain forecast never says today or tomorrow")
+
+        # Degrees survive. .capitalize() lower-cases everything after the
+        # first character, so 11-18°C became 11-18°c — which reads as almost
+        # right and is exactly the kind of thing an eye skips. Checked on
+        # every answer, not just one: the first version of this looked only
+        # at the plain forecast, which is the one answer that never goes
+        # through _up1, so it could not fail.
+        for name, text in (("week", wet), ("tomorrow", tom),
+                           ("plain", plain), ("thursday", thu)):
+            if "\u00b0c" in text:
+                return (True, f"the {name} answer lower-cased the temperature "
+                              f"unit into \u00b0c")
+
+        # A missing figure is missing, not zero.
+        blind = [dict(d, rain_chance=None) for d in days]
+        out = A._forecast_answer(blind, "is it going to rain tomorrow?")
+        if "0%" in out or "unlikely" in out.lower():
+            return (True, f"a day with no rain figure was answered as though "
+                          f"it were zero: {out[:70]!r}")
+
+        # And the far end's own error text does not reach the screen.
+        rate = ('weather: api.open-meteo.com answered 429 Too Many Requests: '
+                '{"error":true,"reason":"Daily API request limit exceeded."}')
+        said = A._forecast_answer([{"unreadable": rate}])
+        if "{" in said or "429" in said:
+            return (True, "a rate limit is shown as the far end's own JSON")
+        if "rate" not in said.lower() and "limit" not in said.lower():
+            return (True, f"a rate limit is not named as one: {said[:60]!r}")
+        return (False, "the day asked about is the day answered, in words; "
+                       "the rain figure survives as a number and a wet week "
+                       "is never called dry; a missing figure is not zero; "
+                       "and a rate limit reads as a sentence")
+    probe("A110 asked about the weather, answered with a table",
+          weather_is_not_an_answer)
+
     # ── 109. the phone speaks HTTPS and is answered in plaintext ────────
     def https_on_the_http_port():
         # The address bar read "192.168.1.69:8080/?t=..." — port and token

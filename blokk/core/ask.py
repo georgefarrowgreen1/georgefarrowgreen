@@ -256,6 +256,13 @@ def build_tools(store) -> dict[str, ReadTool]:
                 # the town somebody meant or a namesake on another continent.
                 if r.get("where"):
                     row["place"] = r["where"]
+                # And the measurements, when the row has any. Without these
+                # the only rain figure downstream was the one inside the
+                # sentence in `subject`, which is not a number.
+                for k in ("label", "high_c", "low_c", "rain_chance",
+                          "wind_kph"):
+                    if r.get(k) is not None:
+                        row[k] = r[k]
                 rows.append(row)
         if not rows:
             return bad + [{"window": window,
@@ -1106,6 +1113,77 @@ def _day(iso: str) -> str:
     return d.strftime("%a %-d %b") if hasattr(d, "strftime") else str(iso)
 
 
+def _when(iso: str, today=None) -> str:
+    """"today", "tomorrow", then "Wednesday" — and a date once it is far off.
+
+    A forecast is asked about in those words and answered in ISO ones, which
+    is the difference between a sentence and a table. "2026-08-25" is a
+    correct answer to "is it going to rain tomorrow?" and not an answer
+    anybody wanted.
+    """
+    from datetime import date
+    try:
+        d = date.fromisoformat(str(iso)[:10])
+    except ValueError:
+        return str(iso)
+    today = today or date.today()
+    gap = (d - today).days
+    if gap == 0:
+        return "today"
+    if gap == 1:
+        return "tomorrow"
+    if 2 <= gap <= 6:
+        return d.strftime("%A")            # a weekday name is unambiguous
+    return _day(iso)                       # further out, the date itself
+
+
+# Which day somebody is asking about. Nothing clever: the words people
+# actually use, in the order that resolves them unambiguously ("the day
+# after tomorrow" contains "tomorrow", so it has to be tested first).
+_ASKED = (
+    ("day after tomorrow", 2),
+    ("tomorrow", 1),
+    ("tonight", 0), ("today", 0), ("this morning", 0),
+    ("this afternoon", 0), ("this evening", 0), ("right now", 0), ("now", 0),
+)
+
+
+def _asked_about(ql: str, days: list | None = None):
+    """The index of the day a question names, or None if it names none.
+
+    Resolved against the rows rather than against the calendar, so an
+    answer can only ever point at a day that actually came back. "Thursday"
+    with three days of forecast is not answerable, and saying so beats
+    answering about the wrong Thursday.
+    """
+    for word, gap in _ASKED:
+        if word in ql:
+            return gap if days is None or gap < len(days) else None
+    if not days:
+        return None
+    # A weekday name: match it against the days in hand. Nothing is
+    # computed from today's date here — the rows carry their own.
+    from datetime import date
+    for i, r in enumerate(days):
+        try:
+            d = date.fromisoformat(str(r.get("from", ""))[:10])
+        except ValueError:
+            continue
+        if d.strftime("%A").lower() in ql:
+            return i
+    return None
+
+
+def _short_place(name: str) -> str:
+    """"Newcastle upon Tyne", not the gazetteer's full label.
+
+    Open-Meteo returns "Newcastle upon Tyne, England, United Kingdom", which
+    is the right answer to "which one" and the wrong one to say out loud
+    every time. The town is the part somebody recognises.
+    """
+    return (name or "").split(",")[0].strip() or name
+
+
 def _stream(text: str, size: int = 3):
     """Chunked so the front end can render token-by-token."""
     words = text.split(" ")
@@ -1407,7 +1485,7 @@ def _plan(question: str, gathered: list, tools: dict) -> dict:
                 "waiting on you, how the runs went, what I handled on my own, "
                 "or what is wired up — or you can ask me to change something "
                 "and I will propose it."}
-    return {"do": "reply", "say": _summarise(gathered)}
+    return {"do": "reply", "say": _summarise(gathered, question)}
 
 
 def _guess(q: str) -> dict | None:
@@ -1718,7 +1796,146 @@ def _default_reads(tools: dict) -> list[str]:
         else ["open_approvals", "recent_runs"]
 
 
-def _summarise(gathered: list) -> str:
+def _up1(text: str) -> str:
+    """First letter up, the rest untouched.
+
+    str.capitalize() lower-cases everything after the first character, which
+    turns "11-18°C" into "11-18°c" and "34 km/h" into something a unit test
+    would not catch because it looks almost right.
+    """
+    return text[:1].upper() + text[1:] if text else text
+
+
+def _forecast_answer(rows: list, question: str = "") -> str:
+    """The forecast, as an answer to what was asked.
+
+    This used to print four rows of "2026-08-25 light rain, 11-16C, 85%
+    rain" whatever the question was, so "is it going to rain tomorrow?" came
+    back as a table with tomorrow somewhere in the middle of it and the word
+    "tomorrow" nowhere at all. Everything needed to answer it was already in
+    the rows.
+
+    Three things decide the shape: whether the question names a day, whether
+    it asks about rain in particular, and how many days there are to talk
+    about. What it must never do is invent — every number here is one the
+    connector returned, and a figure that did not come back is said to be
+    missing rather than treated as zero.
+    """
+    bad = next((r for r in rows if r.get("unreadable")), None)
+    if bad:
+        return _readable_fault(bad["unreadable"])
+    days = [r for r in rows if r.get("subject")]
+    if not days:
+        return ("The forecast came back with no days in it, which is the "
+                "connector answering rather than failing. Try again in a "
+                "minute; if it keeps happening, ./blokk doctor checks the "
+                "source.")
+
+    where = _short_place(next((r["place"] for r in days if r.get("place")), ""))
+    at = f" in {where}" if where else ""
+    ql = (question or "").lower()
+    idx = _asked_about(ql, days)
+    about_rain = any(w in ql for w in ("rain", "wet", "dry", "umbrella",
+                                       "shower", "snow"))
+
+    def when(r):
+        return _when(r.get("from", ""))
+
+    def detail(r, with_rain=True):
+        """The day in words, built from the fields it actually carries."""
+        bits = []
+        if r.get("label"):
+            bits.append(str(r["label"]))
+        lo, hi = r.get("low_c"), r.get("high_c")
+        if lo is not None and hi is not None:
+            bits.append(f"{round(lo)}\u2013{round(hi)}\u00b0C")
+        elif hi is not None:
+            bits.append(f"up to {round(hi)}\u00b0C")
+        if with_rain and r.get("rain_chance") is not None:
+            bits.append(f"{r['rain_chance']}% rain")
+        wind = r.get("wind_kph")
+        if wind is not None and wind >= 30:
+            bits.append(f"windy at {round(wind)} km/h")
+        # No fields at all means an older row shape; the sentence the
+        # connector wrote is still true, so use it rather than saying
+        # nothing.
+        return ", ".join(bits) if bits else str(r.get("subject", ""))
+
+    def listing(rs):
+        return "\n".join(f"{when(r)}: {detail(r)}" for r in rs)
+
+    # ---- a question that names a day gets that day, and only that day ----
+    if idx is not None:
+        r = days[idx]
+        if about_rain:
+            chance = r.get("rain_chance")
+            if chance is None:
+                return (f"{_up1(when(r))}{at}: {detail(r)}. No rain figure "
+                        f"came back for that day, so I cannot say either "
+                        f"way.")
+            verdict = ("yes, very likely" if chance >= 70 else
+                       "probably" if chance >= 45 else
+                       "possibly" if chance >= 20 else "unlikely")
+            # The chance is stated once, in the verdict — repeating it in
+            # the detail read as two different measurements of the same
+            # thing.
+            return (f"{_up1(verdict)} \u2014 {chance}% chance of rain "
+                    f"{when(r)}{at}. {_up1(detail(r, with_rain=False))}.")
+        return f"{_up1(when(r))}{at}: {detail(r)}."
+
+    # ---- about rain, no day named: name the wet days, not every day ----
+    if about_rain:
+        known = [r for r in days if r.get("rain_chance") is not None]
+        if not known:
+            return (f"No rain figures came back{at}, so I cannot answer that "
+                    f"one.\n" + listing(days[:5]))
+        wet = [r for r in known if r["rain_chance"] >= 45]
+        if not wet:
+            top = max(r["rain_chance"] for r in known)
+            return (f"Looks dry{at} \u2014 nothing above {top}% over the next "
+                    f"{len(known)} days.\n" + listing(days[:5]))
+        # "on tomorrow" is not English; the day words carry their own
+        # preposition and the weekday names do not need one either.
+        names = ", ".join(f"{when(r)} ({r['rain_chance']}%)" for r in wet[:4])
+        return f"Rain{at}: {names}.\n" + listing(days[:5])
+
+    # ---- no day named, not about rain: today first, one day per line ----
+    return f"Forecast{at}\n" + listing(days[:5])
+
+
+def _readable_fault(detail: str) -> str:
+    """A fault a person can act on, not the far end's own words.
+
+    The forecast host answers a rate limit with a JSON body, and that body
+    was going straight to the screen: "weather: api.open-meteo.com answered
+    429 Too Many Requests: {"error":true,"reason":"Daily API request limit
+    exceeded."}". Two rules broken at once — a connector that reaches
+    outward returns fields and never prose, and an error message names what
+    broke and what to do.
+    """
+    d = (detail or "").lower()
+    if "429" in d or "rate" in d or "limit exceeded" in d:
+        return ("The forecast service is rate-limiting this Mac, so there is "
+                "no forecast to give you right now. It clears on its own — "
+                "try again later today. Nothing is wired wrong.")
+    if "no location set" in d or "nowhere called" in d:
+        # This one already names the fix, and it is the connector's to name.
+        return detail.rstrip(".") + "."
+    if "timed out" in d or "timeout" in d:
+        return ("The forecast service did not answer in time. That is the "
+                "network between here and them; try again in a minute.")
+    if "refused" in d or "not allowed" in d or "allowlist" in d:
+        return ("The forecast host is not on the egress allowlist, so the "
+                "request never left. Re-adding the weather source in Sources "
+                "opens it.")
+    # Unknown: say the shape of it without handing over a stranger's JSON.
+    first = (detail or "").split("{")[0].strip().rstrip(":").strip()
+    return ((first or "The forecast could not be read") +
+            ". ./blokk doctor checks the source and says which of the "
+            "faults it is.")
+
+
+def _summarise(gathered: list, question: str = "") -> str:
     """Deterministic answer from the rows. No weights required.
 
     Deliberately says what it read. An ungrounded assistant over your own data
@@ -1804,19 +2021,7 @@ def _summarise(gathered: list) -> str:
                             f"{r.get('from', '')}–{r.get('to', '')}").strip()
                 parts.append("free: " + "; ".join(_one(r) for r in rows[:5]) + ".")
         elif tool == "forecast":
-            bad = next((r for r in rows if r.get("unreadable")), None)
-            if bad:
-                parts.append(bad["unreadable"] + ".")
-            else:
-                days = [r for r in rows if r.get("subject")]
-                where = next((r["place"] for r in days if r.get("place")), "")
-                if not days:
-                    parts.append("no forecast.")
-                else:
-                    head = f"forecast for {where}: " if where else "forecast: "
-                    parts.append(head + "; ".join(
-                        f"{r.get('from', '')} {r.get('subject', '')}"
-                        for r in days[:4]) + ".")
+            parts.append(_forecast_answer(rows, question))
         elif tool == "this_mac":
             if not rows or rows[0].get("note"):
                 parts.append(rows[0]["note"] if rows else "nothing to survey.")

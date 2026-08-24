@@ -611,6 +611,12 @@ def _fix_for(name: str, state: dict) -> str:
     return "connect.py test shows what each wired source can and cannot do."
 
 
+# Row fields that are measurements rather than text. Carried through peek's
+# normalisation as themselves: a number that arrives as part of a sentence
+# is a number nothing downstream can compare, add up or threshold on.
+_NUMERIC = ("label", "high_c", "low_c", "rain_chance", "wind_kph")
+
+
 def peek(store, name: str, n: int = 5) -> dict:
     """What it would actually read. Nothing is written, nothing marked read.
 
@@ -707,19 +713,31 @@ def peek(store, name: str, n: int = 5) -> dict:
                         or (c.where() or {}).get("place") or "")
         except Exception:                                        # noqa: BLE001
             where = ""
-        window = f"the next 5 days{f' in {where}' if where else ''}"
-        # The body is the fields, not a second copy of the sentence: peek is
-        # where you check what a workflow is actually handed, and what it is
-        # handed is numbers.
+        # However many were asked for. This was pinned at five whatever `n`
+        # said, so "what is it doing this week" could not be answered with a
+        # week even though the connector would happily return one.
+        span = max(1, min(int(n or 5), 16))
+        window = f"the next {span} days{f' in {where}' if where else ''}"
+        # The numbers travel as numbers. They used to be flattened into a
+        # sentence in `body` and nowhere else, so anything downstream that
+        # wanted to reason about rain had a string to re-parse and did not
+        # try — which is how "will it rain this week" came back "it looks
+        # dry" over a day at 85%. A confidently wrong answer about the
+        # weather is worse than no weather at all, and this is the whole of
+        # why the connector returns fields rather than prose in the first
+        # place: flattening them here threw that away one layer later.
         rows = [{"from": d["date"], "subject": d["summary"],
                  # One key, read by the normaliser below alongside mailbox
                  # and calendar. It carried two — `place` and a `calendar`
                  # alias — and either alone was enough, so removing one
                  # changed nothing and a probe could not tell.
                  "provenance": d["provenance"], "place": where,
+                 "label": d["label"], "high_c": d["high_c"],
+                 "low_c": d["low_c"], "rain_chance": d["rain_chance"],
+                 "wind_kph": d["wind_kph"],
                  "body": f"high {d['high_c']}°C, low {d['low_c']}°C, "
                          f"rain {d['rain_chance']}%, wind {d['wind_kph']} km/h"}
-                for d in c.forecast(days=5)]
+                for d in c.forecast(days=span)]
     elif getattr(c, "gaps", None):
         # The sample calendar answers "which nights are free" and nothing
         # else. Show that rather than an empty list with no explanation.
@@ -757,7 +775,16 @@ def peek(store, name: str, n: int = 5) -> dict:
                               or r.get("place") or ""),
                     "provenance": r.get("provenance", "?"),
                     "instruction_like": bool(q["instruction_like"]),
-                    "body": body[:400].strip()})
+                    "body": body[:400].strip(),
+                    # Whatever numbers the row came with, kept as numbers.
+                    # This shape was a fixed set of strings, so a forecast's
+                    # rain chance survived only inside the sentence in
+                    # `subject` — and anything that wanted to answer "will it
+                    # rain" had prose to re-parse. It did not, and said
+                    # "looks dry" over a day at 85%. Fields the row does not
+                    # have stay absent rather than arriving as None, so
+                    # "no figure came back" and "0%" stay different answers.
+                    **{k: r[k] for k in _NUMERIC if r.get(k) is not None}})
     # Readable and empty is a real answer, and a different one from
     # unreadable — but "nothing here" on its own is still a shrug. Say what
     # was looked at and what is on disk outside the window, because that is

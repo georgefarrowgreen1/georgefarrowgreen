@@ -576,6 +576,16 @@ All four suites green. Verified behaviours:
   lost" — the same sentence as a wrong port, naming neither TLS nor the
   missing http://. A hello with no 0x0a in it hung instead. The attempt is
   counted in logs/, and `./blokk doctor` says how many and how long ago
+* asked about the weather, it answers the question rather than printing the
+  table. The day named is the day answered about — "tomorrow", not
+  2026-08-25 — a weekday resolves against the days that actually came back,
+  and a rain question gets a verdict with the figure it rests on. The
+  measurements travel as numbers the whole way: peek used to flatten them
+  into a sentence, so the only rain figure downstream was inside a string,
+  nothing re-parsed it, and "will it rain this week" answered "looks dry"
+  over a day at 85%. A figure that did not come back is said to be missing
+  rather than counted as zero, and a rate limit from the far end reads as a
+  sentence instead of arriving as its own JSON
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted
