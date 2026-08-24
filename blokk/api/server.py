@@ -1197,9 +1197,54 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self._send(204, b"")
 
+    # What an unauthenticated browser gets. It used to be the JSON below,
+    # which on a phone is a wall of braces: somebody who typed the address
+    # by hand, or opened a bookmark made before the token existed, got
+    # `{"error": "token required"}` and no way forward. Deliberately carries
+    # no token — this is served to anyone on the network who asks.
+    LOCKED = """<!doctype html><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Blokk — this link is missing its key</title>
+<style>
+ :root{color-scheme:dark light}
+ body{margin:0;min-height:100vh;display:grid;place-items:center;
+      font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+      background:#000;color:#f2f2f7;padding:24px}
+ @media (prefers-color-scheme:light){body{background:#f2f2f7;color:#1c1c1e}}
+ main{max-width:32rem}
+ h1{font-size:22px;margin:0 0 12px;letter-spacing:-.01em}
+ p{margin:0 0 12px;color:#98989f}
+ ol{margin:0;padding-left:20px;color:#98989f}
+ li{margin:6px 0}
+ b{color:inherit;font-weight:600}
+</style>
+<main>
+<h1>This is Blokk, and the link is missing its key.</h1>
+<p>Blokk is running on that Mac. It will not hand anything over to a browser
+   that has not been given the one-time link, so what you are looking at is
+   the door rather than a fault.</p>
+<p><b>On the Mac, either:</b></p>
+<ol>
+<li>open Blokk, tap the &#8943; menu, then <b>Open on your phone</b> — it
+    shows a QR code; or</li>
+<li>run <b>./blokk doctor</b> in the terminal, which prints the whole
+    address, port and key included.</li>
+</ol>
+<p>Scan or copy that, and add it to your home screen — the key is remembered
+   after the first visit.</p>
+</main>"""
+
+    def _wants_html(self) -> bool:
+        return "text/html" in (self.headers.get("Accept") or "")
+
     def do_GET(self):
         u = urlparse(self.path)
         if not self._authorised():
+            # A browser gets a page it can read; curl and the fetch calls the
+            # dashboard makes still get the JSON they parse.
+            if self._wants_html():
+                return self._send(401, self.LOCKED.encode(),
+                                  ctype="text/html; charset=utf-8")
             return self._send(401, {"error": "token required",
                                     "hint": "open the link run.sh printed"})
         q = parse_qs(u.query)
@@ -1407,6 +1452,12 @@ def serve(port=8080):
             print(f"     {D}(the link is too long to draw as a QR code){O}\n")
         print(f"     {G}{phone}{O}")
         print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}{O}")
+        # The two parts people drop are the :port and the ?t=, and dropping
+        # either turns this into an error message that names neither. Typed
+        # without the port it goes to :80, nothing is listening, and Safari
+        # calls that "the network connection was lost".
+        print(f"     {D}All of it, including :{port} — the address on its own "
+              f"goes nowhere.{O}")
         # The second-best one, when there is a real choice. A Mac on both
         # wifi and ethernet has two, and only one of them is the network the
         # phone is on — which is not a thing this can know from here.
@@ -1414,6 +1465,23 @@ def serve(port=8080):
             print(f"     {D}or http://{usable[1]['ip']}:{port}/?t={TOKEN}"
                   f"   ({usable[1]['interface']}){O}")
         print()
+
+    # The single most common reason a phone cannot reach a Mac that is
+    # running, and the Mac has known it all along: macOS accepts the
+    # connection and drops it, which the phone reports as "the network
+    # connection was lost" and nothing else. It was only ever said in
+    # ./blokk doctor and in a panel on the dashboard — neither of which
+    # somebody is looking at while they hold the phone.
+    if usable:
+        try:
+            fw_state, fw_note = _doc.firewall()
+        except Exception:                                        # noqa: BLE001
+            fw_state, fw_note = "", ""
+        if fw_state == "on" and "NOT listed" in fw_note:
+            print(f"     {R}The firewall will drop that connection.{O} python "
+                  f"is not allowed through.")
+            print(f"     {D}System Settings > Network > Firewall > Options, "
+                  f"and add python3.{O}\n")
 
     ms = model_status(probe=True)
     if ms["live"] and ms.get("reachable"):

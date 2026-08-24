@@ -530,27 +530,77 @@ def main() -> int:
     row("control plane", _c("running", GREEN) if up else _c("NOT RUNNING", RED),
         f"port {port}" if up else "start it with ./blokk")
 
-    ips = interfaces()
-    if not ips:
+    found = phone_addresses(port)
+    if not found:
         row("this mac", _c("no network", RED), "no non-loopback address")
-    for i, (name, ip) in enumerate(ips):
-        ok = reachable(ip, port) if up else False
+    for i, r in enumerate(found):
         label = "this mac" if i == 0 else ""
-        row(label, f"{ip:<16}{_c('reachable', GREEN) if ok else _c('no answer', AMBER)}",
-            f"{name}" + ("" if ok else "  — phone cannot use this one"))
+        state = (_c("try this", GREEN) if r["usable"]
+                 else _c(r["kind"], AMBER))
+        row(label, f"{r['ip']:<16}{state}", f"{r['interface']}  — {r['why']}")
 
     state, note = firewall()
     colour = RED if "NOT listed" in note else (GREEN if state == "off" else AMBER)
     row("firewall", _c(state, colour), note)
 
-    good = [ip for n, ip in ips if up and reachable(ip, port)]
+    good = [r for r in found if r["usable"]] if up else []
     print()
     if not up:
         print(f"  {_c('Blokk is not running.', RED)} Start it: ./blokk")
     elif not good:
-        print(f"  {_c('Running, but unreachable from the network.', RED)}")
-        print(f"  {_c('Allow python3 in System Settings > Network > Firewall,', DIM)}")
-        print(f"  {_c('or turn the firewall off while you test.', DIM)}")
+        print(f"  {_c('Running, but no address here is one a phone could use.', RED)}")
+        print(f"  {_c('Everything above is a VPN tunnel, a virtual network or an', DIM)}")
+        print(f"  {_c('interface with nothing behind it. Join wifi, or turn a VPN off.', DIM)}")
+    else:
+        # The whole address, port and token included. Every part of it is
+        # load-bearing and the two people leave out — the :port and the ?t= —
+        # are exactly the two that turn this into "it will not connect".
+        # Typed without the port it goes to :80, where nothing is listening,
+        # and Safari says "the network connection was lost", which names
+        # neither the port nor anything else you could act on.
+        #
+        # The token is read off the file rather than imported from
+        # api.server: importing that module opens the database and would
+        # take the doctor down with it on exactly the machine the doctor
+        # exists to diagnose.
+        token = os.environ.get("BLOKK_TOKEN") or ""
+        tf = ROOT / ".blokk-token"
+        if not token and tf.exists():
+            token = tf.read_text().strip()
+        ip = good[0]["ip"]
+        url = f"http://{ip}:{port}/?t={token}"
+        print(f"  {_c('Open this on the phone, exactly as it is:', BOLD)}")
+        print(f"      {_c(url, GREEN)}")
+        print(f"  {_c(f'The :{port} matters. Typing {ip} on its own goes to port', DIM)}")
+        print(f"  {_c('80, where nothing is listening, and Safari calls that', DIM)}")
+        lost = "the network connection was lost"
+        print(f"  {_c(chr(8220) + lost + chr(8221) + '.', DIM)}")
+        # Only on a terminal, and only if it fits: a QR wider than the
+        # window wraps into noise no camera can read. A40 opens a pty
+        # because every harness here redirects stdout.
+        try:
+            from core import qr
+            import shutil
+            if sys.stdout.isatty() and qr.width(url) <= shutil.get_terminal_size(
+                    (80, 24)).columns - 6:
+                print()
+                for line in qr.render(url).splitlines():
+                    print("      " + line)
+        except Exception:                                        # noqa: BLE001
+            pass
+        if len(good) > 1:
+            print()
+            print(f"  {_c('If that one does nothing, this Mac is also on:', DIM)}")
+            spare = f"http://{good[1]['ip']}:{port}/?t={token}"
+            print(f"      {_c(spare, DIM)}")
+        if "NOT listed" in note:
+            print()
+            print(f"  {_c('And the firewall will drop it anyway:', RED)} python is not "
+                  f"allowed through.")
+            print(f"  {_c('System Settings > Network > Firewall > Options.', DIM)}")
+        print()
+        print(f"  {_c('If it still fails: check the phone is on wifi and not', DIM)}")
+        print(f"  {_c('a guest network, and that iCloud Private Relay is off.', DIM)}")
 
     # Asked whatever the network said. The two faults are independent, and
     # answering only the first sends you back to run this twice.
@@ -577,26 +627,6 @@ def main() -> int:
 
     if not up or not good:
         return 1
-    token = ""
-    tf = ROOT / ".blokk-token"
-    if tf.exists():
-        token = tf.read_text().strip()
-    token = os.environ.get("BLOKK_TOKEN") or token
-    url = f"http://{good[0]}:{port}/?t={token}"
-    print(f"  {_c('Open this on the phone', BOLD)} — same wifi as the Mac:\n")
-    print(f"     {_c(url, GREEN)}\n")
-    try:
-        from core import qr
-        import shutil
-        if sys.stdout.isatty() and qr.width(url) <= shutil.get_terminal_size(
-                (80, 24)).columns - 4:
-            for line in qr.render(url).splitlines():
-                print("     " + line)
-            print()
-    except Exception:
-        pass
-    print(f"  {_c('If it still fails: check the phone is on wifi and not', DIM)}")
-    print(f"  {_c('a guest network, and that iCloud Private Relay is off.', DIM)}\n")
     # Non-zero when anything above needs doing, including a model fault. A
     # doctor that exits 0 while printing "llama-server is not installed" is
     # the silent failure this whole file exists to stop.

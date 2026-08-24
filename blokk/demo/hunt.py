@@ -6448,6 +6448,133 @@ try:
     probe("A106 an update lands on a database that already exists",
           opens_an_older_database)
 
+    # ── 107. the phone gets there and cannot read what it is told ───────
+    def locked_out_of_the_lan():
+        # "Safari can't open the page because the network connection was
+        # lost", on a phone, with the address bar reading a bare 192.168.x.x
+        # and no port. Three separate things have to be true for that to be
+        # answerable, and none of them was:
+        #
+        #   - the address you are told to type has to carry the port, and
+        #     say so, because typing it without one goes to :80 where
+        #     nothing is listening and Safari names neither;
+        #   - the firewall has to be mentioned where somebody is standing
+        #     when they try it, not only in a panel they would have to know
+        #     to open — macOS accepts the connection and drops it, which is
+        #     exactly what that message means;
+        #   - and a browser that arrives without the key has to be given a
+        #     page rather than {"error": "token required"}.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import doctor as D
+
+        # 1. The address, the port and the reason, from ./blokk doctor.
+        keep = (D.interfaces, D.reachable, D.firewall, D.listening,
+                D.models, D.sources_and_chat)
+        # The VPN first, which is the order that broke it: lan_ip() took
+        # whatever came off ifconfig, and a Mac on a VPN lists utun before
+        # en0 often enough that the printed address was the tunnel's.
+        D.interfaces = lambda: [("utun3", "10.8.0.2"), ("en0", "192.168.1.69")]
+        D.reachable = lambda ip, port: True
+        D.firewall = lambda: ("on", "python is NOT listed — this is very "
+                                    "likely your problem")
+        D.listening = lambda port: True
+        D.models = lambda: []
+        D.sources_and_chat = lambda: []
+        import io as _io, contextlib as _cl
+        buf = _io.StringIO()
+        try:
+            with _cl.redirect_stdout(buf):
+                try:
+                    D.main()
+                except SystemExit:
+                    pass
+        finally:
+            (D.interfaces, D.reachable, D.firewall, D.listening,
+             D.models, D.sources_and_chat) = keep
+        out = buf.getvalue()
+        if "192.168.1.69:8080" not in out:
+            return (True, "the doctor never prints the address with its port, "
+                          "which is the part people leave off")
+        if ":8080 matters" not in out and "including :8080" not in out:
+            return (True, "it prints the port and never says the bare address "
+                          "will not work")
+        if "10.8.0.2" in out.split("Open this on the phone")[-1]:
+            return (True, "it offered the VPN address as the one to type")
+        if "Firewall" not in out:
+            return (True, "the firewall is blocking python and the doctor "
+                          "does not say so where the address is")
+
+        # 2. The banner says it too, because that is where somebody is
+        #    standing with the phone in their hand.
+        src = open('api/server.py').read()
+        banner = src[src.index("def serve("):]
+        if "firewall" not in banner.lower():
+            return (True, "the startup banner prints a QR code and never "
+                          "mentions the one thing most likely to eat it")
+        if "goes nowhere" not in banner and "including :" not in banner:
+            return (True, "the banner prints the link without saying every "
+                          "part of it is load-bearing")
+
+        # 3. And a browser with no key gets something readable. The token
+        #    path only exists for a client that is not loopback — from
+        #    127.0.0.1 it is skipped by design — so the request has to come
+        #    in on a real address. Where this machine has none, the page is
+        #    checked in the source instead of over the wire.
+        import urllib.request as _u, urllib.error as _ue
+        ip = ""
+        s_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s_.connect(("192.0.2.1", 9))   # picks a route; sends nothing
+            ip = s_.getsockname()[0]
+        except OSError:
+            pass
+        finally:
+            s_.close()
+        got, body = 0, ""
+        if ip and not ip.startswith("127."):
+            req = _u.Request(f"http://{ip}:8099/",
+                             headers={"Accept": "text/html"})
+            try:
+                _u.urlopen(req, timeout=10)
+                got = 200
+            except _ue.HTTPError as e:
+                got, body = e.code, e.read().decode("utf-8", "replace")
+            except OSError:
+                got = 0                    # nothing listening on that address
+        if got == 200:
+            return (True, "a browser from off this machine was handed the "
+                          "dashboard with no key at all")
+        if got == 401:
+            if "<" not in body:
+                return (True, f"a browser without a key got {body[:60]!r}, "
+                              "which is not something to read on a phone")
+            tok = pathlib.Path(".blokk-token")
+            key = (os.environ.get("BLOKK_TOKEN")
+                   or (tok.read_text().strip() if tok.exists() else ""))
+            if key and key in body:
+                return (True, "the page shown to a browser that has no key "
+                              "hands it the key")
+        # Over the wire or not, the page has to exist and has to be a page.
+        if "LOCKED" not in src:
+            return (True, "there is no page for a browser that arrives "
+                          "without the key")
+        page = src.split("LOCKED = ")[1][:2500]
+        if "<h1" not in page:
+            return (True, "what an unauthenticated browser is sent is not "
+                          "a page")
+        if "TOKEN" in page:
+            return (True, "the page shown to an unauthenticated browser "
+                          "carries the token")
+        if "doctor" not in page and "phone" not in page:
+            return (True, "the locked page does not say how to get a "
+                          "working link")
+        return (False, "the doctor prints the address with its port and why "
+                       "it matters, the banner names the firewall, and a "
+                       "browser without the key gets a page rather than JSON")
+    probe("A107 the phone reaches the Mac and cannot read what it is told",
+          locked_out_of_the_lan)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
