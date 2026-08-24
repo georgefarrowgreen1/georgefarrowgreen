@@ -602,7 +602,7 @@ def ask(store, question: str, model, workspace: str | None = None,
                          "have read, with do=reply."})})
         move, why, live = None, "", False
         for item in _steps(model, messages, schema, question, gathered,
-                           tools, known):
+                           tools, known, ws):
             if item[0] == "text":
                 # The answer, arriving. Opened here rather than below because
                 # by the time the step parses it is already on the screen.
@@ -793,7 +793,8 @@ def _looks_like_a_reply(buf: str) -> bool:
     return bool(re.search(r'"do"\s*:\s*"reply"', buf))
 
 
-def _steps(model, messages, schema, question, gathered, tools, known):
+def _steps(model, messages, schema, question, gathered, tools, known,
+           ws=""):
     """One step, as it happens.
 
     Yields ("text", delta) while a reply is being written, then exactly one
@@ -802,11 +803,11 @@ def _steps(model, messages, schema, question, gathered, tools, known):
     not branch on which.
     """
     if model is None or not getattr(model, "plans", False):
-        yield ("move", _plan(question, gathered, tools, known), "")
+        yield ("move", _plan(question, gathered, tools, known, ws), "")
         return
     if not hasattr(model, "stream"):
         move, why = _decide(model, messages, schema, question, gathered,
-                            tools, known)
+                            tools, known, ws)
         yield ("move", move, why)
         return
     buf, shown, streamed = "", 0, False
@@ -828,7 +829,7 @@ def _steps(model, messages, schema, question, gathered, tools, known):
             yield ("move", {"do": "reply", "say": ""},
                    f"The answer stopped part way through: {_why(e)}")
             return
-        yield ("move", _plan(question, gathered, tools, known), _why(e))
+        yield ("move", _plan(question, gathered, tools, known, ws), _why(e))
         return
     move = _parse(buf)
     if move is None:
@@ -841,7 +842,7 @@ def _steps(model, messages, schema, question, gathered, tools, known):
                    "That answer stopped part way through — the model's reply "
                    "ended before it was finished.")
             return
-        yield ("move", _plan(question, gathered, tools, known),
+        yield ("move", _plan(question, gathered, tools, known, ws),
                "The model did not answer in the shape this asks for, so this "
                "reply was assembled from the rows rather than written.")
         return
@@ -853,7 +854,7 @@ def _steps(model, messages, schema, question, gathered, tools, known):
 
 
 def _decide(model, messages, schema, question, gathered, tools,
-            known) -> tuple[dict, str]:
+            known, ws="") -> tuple[dict, str]:
     """One step from the model, or one step from arithmetic.
 
     Returns the move and, if the model could not produce one, a sentence
@@ -866,7 +867,7 @@ def _decide(model, messages, schema, question, gathered, tools,
         # No weights on this Mac, or the stub. Not a fault and not reported as
         # one: this is the configuration working, and the planner plays the
         # same three moves through the same gates.
-        return _plan(question, gathered, tools, known), ""
+        return _plan(question, gathered, tools, known, ws), ""
     try:
         out = model.chat(messages, schema=schema)
     except TypeError:
@@ -874,13 +875,13 @@ def _decide(model, messages, schema, question, gathered, tools,
         try:
             out = model.chat(messages)
         except Exception as e:                                  # noqa: BLE001
-            return _plan(question, gathered, tools, known), _why(e)
+            return _plan(question, gathered, tools, known, ws), _why(e)
     except Exception as e:                                      # noqa: BLE001
-        return _plan(question, gathered, tools, known), _why(e)
+        return _plan(question, gathered, tools, known, ws), _why(e)
 
     move = _parse(out.get("text") if isinstance(out, dict) else out)
     if move is None:
-        return (_plan(question, gathered, tools, known),
+        return (_plan(question, gathered, tools, known, ws),
                 "The model did not answer in the shape this asks for, so this "
                 "reply was assembled from the rows rather than written.")
     return move, ""
@@ -1005,6 +1006,10 @@ INTENT = (
     ("egress_deny", r"\b(stop|block|deny|revoke|close)\b.*\b(reach\w*|host|access)\b"),
     ("add_workspace", r"\b(add|create|new)\b.*\bworkspace\b"),
     ("remove_source", r"\b(remove|delete|drop|unhook)\b.*\bsource\b"),
+    ("remember",    r"^\s*(?:please\s+)?(?:remember|note|keep in mind|"
+                    r"bear in mind|don'?t forget)\b"),
+    ("forget",      r"^\s*(?:please\s+)?(?:forget|stop (?:saying|doing|"
+                    r"applying)|unlearn)\b"),
     ("remove_workspace", r"\b(delete|remove|drop|get rid of)\b.*\bworkspace\b"),
     ("add_source",  r"\b(add|wire|connect|hook up|read)\b.*"
                     r"\b(source|mail|inbox|email|imap|maildir|calendar|diary|"
@@ -1071,17 +1076,21 @@ def looks_like_an_instruction(q: str) -> bool:
 
 
 def _plan(question: str, gathered: list, tools: dict,
-          known: list[str]) -> dict:
+          known: list[str], ws: str = "") -> dict:
     q = question.strip()
     ql = q.lower()
-    ws = "these businesses"
+    # What the greetings call the place, which is not the workspace id — and
+    # was assigned to `ws`, quietly overwriting the workspace this turn is
+    # scoped to. Everything downstream then tried to propose against a
+    # workspace called "these businesses".
+    them = "these businesses"
 
     if not gathered:
         for pattern, reply in SMALL_TALK:
             if re.search(pattern, ql, re.I):
-                return {"do": "reply", "say": reply.format(ws=ws)}
+                return {"do": "reply", "say": reply.format(ws=them)}
 
-        guess = _guess(q, known)
+        guess = _guess(q, known, ws)
         if guess and "missing" in guess:
             # Understood the verb, could not find the noun. Saying so beats
             # both of the alternatives: proposing with a guessed argument
@@ -1134,7 +1143,7 @@ def _plan(question: str, gathered: list, tools: dict,
     return {"do": "reply", "say": _summarise(gathered)}
 
 
-def _guess(q: str, known: list[str]) -> dict | None:
+def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
     """A sentence to an action and its arguments.
 
     Three answers, not two. A proposal when every argument is in the
@@ -1170,6 +1179,11 @@ def _guess(q: str, known: list[str]) -> dict | None:
                 misses.append("host")
         if "workspace" in act.args:
             w = _workspace_in(q, known, new_ok=(name == "add_workspace"))
+            if not w and name in ("remember", "forget"):
+                # Whichever one they are looking at. Asking "which workspace?"
+                # after somebody types "remember the gate code" is asking them
+                # to repeat what the header already says.
+                w = scope
             if w:
                 args["workspace"] = w
             else:
@@ -1180,6 +1194,21 @@ def _guess(q: str, known: list[str]) -> dict | None:
                 args["kind"] = k
             else:
                 misses.append("kind")
+        if "note" in act.args:
+            # Everything after the verb, cleaned of the framing. What they
+            # said is the rule; this only strips the "remember that".
+            note = re.sub(r"^\s*(?:please\s+)?(?:remember|note|keep in mind|"
+                          r"bear in mind|don'?t forget|forget|unlearn|"
+                          r"stop (?:saying|doing|applying))\b"
+                          r"(?:\s+(?:that|to|about))?[:,]?\s*", "", q,
+                          flags=re.I).strip().rstrip(".")
+            # A workspace named in the framing is scope, not content — but
+            # only strip it from the front, where "for cottages, ..." sits.
+            note = re.sub(r"^(?:for|in)\s+\S+[,:]\s*", "", note).strip()
+            if len(note) < 4:
+                misses.append("thing to remember")
+            else:
+                args["note"] = note
         if "ref" in act.args:
             ref = _ref_for(args.get("kind", ""), q)
             if ref:
@@ -1281,6 +1310,9 @@ def _hint(missing: str, known: list[str], action: str = "") -> str:
         "page address": "the https address of the page.",
         "keychain entry name": "that one is worth doing from Sources, where "
                                "the keychain step is spelled out.",
+        "thing to remember": "say it as an instruction — \"always mention "
+                             "the dog charge\", \"the key safe is on the "
+                             "back door\".",
     }.get(missing, "")
 
 

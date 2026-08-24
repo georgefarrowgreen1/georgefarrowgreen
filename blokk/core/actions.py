@@ -34,6 +34,7 @@ often you have been right.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -191,6 +192,60 @@ def _add_workspace(store, workspace, name=None, **_):
     return {"ok": True, "detail": f"workspace {workspace} added", **out}
 
 
+def _remember(store, workspace, note, **_):
+    """A standing instruction, taught rather than inferred.
+
+    Memory could only fill from corrections: you edited three drafts the same
+    way and a rule was derived. That works and it is slow, and it cannot
+    learn anything you have not already watched it get wrong — "the key safe
+    is on the back door, not the porch" is not a correction to a draft, it is
+    something you know.
+
+    Confidence is fixed at 0.9 and deliberately below certainty. You said it
+    once; a derived rule with five corrections behind it earns 0.94 and
+    should outrank it. Nothing here is retired automatically, because a
+    person's own words are not evidence that expires.
+    """
+    from core.harness import MIN_CONFIDENCE
+    note = " ".join(note.split())
+    if len(note) < 4:
+        raise Rejected("that is too short to be worth remembering")
+    fid = "f_told_" + hashlib.sha256(
+        f"{workspace}:{note.lower()}".encode()).hexdigest()[:10]
+    already = store.one("SELECT id FROM fact WHERE id=?", fid)
+    store.x("""INSERT OR REPLACE INTO fact
+               (id,workspace_id,text,confidence,source_episodes,retired_at)
+               VALUES(?,?,?,?,'[]',NULL)""",
+            fid, workspace, note, max(0.9, MIN_CONFIDENCE))
+    return {"ok": True, "id": fid,
+            "detail": ("that was already remembered, and is again"
+                       if already else f"remembered, for {workspace}")}
+
+
+def _forget(store, workspace, note, **_):
+    """Retire what it knows, by what it says.
+
+    Matched on the text because that is what a person can see. They are
+    reading a sentence in a list and asking for that sentence to stop
+    applying; asking them for its id would be asking them to read the
+    database.
+    """
+    want = " ".join(note.split()).lower()
+    rows = [r for r in store.q(
+        "SELECT id, text FROM fact WHERE workspace_id=? AND retired_at IS NULL",
+        workspace) if want in r["text"].lower()]
+    if not rows:
+        raise Rejected(f"nothing it knows about {workspace} mentions "
+                       f"{note!r}")
+    if len(rows) > 1:
+        raise Rejected(f"{len(rows)} things match {note!r}: "
+                       + "; ".join(r["text"][:60] for r in rows[:3])
+                       + ". Say more of the one you mean.")
+    store.x("UPDATE fact SET retired_at=datetime('now') WHERE id=?",
+            rows[0]["id"])
+    return {"ok": True, "detail": f"forgotten: {rows[0]['text']}"}
+
+
 def _remove_workspace(store, workspace, **_):
     from core import sources
     out = sources.workspace_remove(store, workspace)
@@ -261,6 +316,15 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
            phrase=_say_add),
     Action("add_workspace", "Add a workspace called {workspace}.",
            args=("workspace",), optional=("name",), run=_add_workspace),
+    Action("remember", "Remember, for {workspace}: {note}",
+           args=("workspace", "note"), run=_remember, category="blokk_memory"),
+    # Pinned. Forgetting is the one memory operation that destroys something,
+    # and a rule quietly retired is a rule you go looking for later and
+    # cannot find.
+    Action("forget", "Stop applying what it knows about {note}, for "
+                     "{workspace}.",
+           args=("workspace", "note"), pinned=True, run=_forget,
+           category="blokk_memory"),
     # Pinned. Each of these either opens a route out of the machine or
     # removes something that does not come back, and neither gets safer
     # because the last ninety were fine.
@@ -303,8 +367,10 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
         if not isinstance(v, (str, int)):
             raise Rejected(f"{key!r} has to be text")
         v = str(v).strip()
-        if len(v) > 200:
-            raise Rejected(f"{key!r} is too long")
+        cap = 400 if key == "note" else 200
+        if len(v) > cap:
+            raise Rejected(f"{key!r} is too long — {len(v)} characters, and "
+                           f"the limit is {cap}")
         # Identifiers are identifiers. A workspace called "; DROP" is not one,
         # and neither is a kind that is not one of the kinds.
         if key == "workspace" and not ID.match(v):
@@ -329,6 +395,8 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
             if nightly._hhmm(v) is None:
                 raise Rejected(f"{args[key]!r} is not a time of day. It wants "
                                f"something like 04:00, or 6pm.")
+        if key == "note" and len(v) < 4:
+            raise Rejected("that is too short to be worth remembering")
         if key == "host":
             if not HOSTNAME.match(v):
                 raise Rejected(f"{v!r} is not a hostname. It wants something "

@@ -380,6 +380,12 @@ try:
         finally:
             stop.set()
             th.join(timeout=2)
+            # Its own mess, cleared up. A few hundred rows of "x" were left
+            # in whatever database this was pointed at, and they turn up in
+            # the chat's answer to "what have you learned?" — a probe that
+            # changes what the product says afterwards is a probe with a
+            # side effect nobody signed up for.
+            st.x("DELETE FROM fact WHERE id LIKE 'probe%'")
         if not r.get("ok"):
             return (True, f"the snapshot failed: {r}")
         if not bk.verify(r["path"]).get("ok"):
@@ -3320,6 +3326,81 @@ try:
                        f"prompt and run")
     probe("A79 the regression suite is empty and measures prompts nothing sends",
           frozen_examples_measure_what_ships)
+
+    def teaching_it_directly():
+        # Memory could only fill from corrections: edit three drafts the same
+        # way and a rule is derived. That works and it is slow, and it cannot
+        # learn anything you have not already watched it get wrong. "The key
+        # safe is on the back door" is not a correction to a draft.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core.harness import learned_block
+        from flows.morning_sweep import _draft_prompt
+        import core.actions as A
+
+        store = Store('blokk.db')
+        store.x("DELETE FROM fact WHERE id LIKE 'f_told_%' "
+                "AND workspace_id='cottages'")
+
+        # It reaches the queue as a proposal like anything else.
+        aid = None
+        for ev in ask_stream("remember that the key safe is on the back "
+                             "door, not the porch"):
+            if ev["type"] == "PROPOSAL":
+                aid = ev["approval_id"]
+        if not aid:
+            return (True, "being told something does not reach the queue")
+        if "back door" in learned_block(store, "cottages"):
+            return (True, "it learned something before anyone approved it")
+
+        r = po(f'/api/v1/approvals/{aid}/decide', {"decision": "approve"})
+        if not (r.get("ran") or {}).get("ok"):
+            return (True, f"approving it did nothing: {r}")
+        # And it reaches both prompts, which is the only reason to store it.
+        if "back door" not in learned_block(store, "cottages"):
+            return (True, "approved, and the chat prompt does not have it")
+        if "back door" not in _draft_prompt(store, "cottages", [], None):
+            return (True, "approved, and the drafting prompt does not have it")
+
+        # Taken back, and it stops applying. Pinned, because a rule quietly
+        # retired is one you go looking for later and cannot find.
+        if not A.ACTIONS["forget"].pinned:
+            return (True, "forgetting something can graduate to acting alone")
+        aid2 = None
+        for ev in ask_stream("forget the key safe"):
+            if ev["type"] == "PROPOSAL":
+                aid2 = ev["approval_id"]
+        if not aid2:
+            return (True, "it cannot be told to forget")
+        po(f'/api/v1/approvals/{aid2}/decide', {"decision": "approve"})
+        if "back door" in learned_block(store, "cottages"):
+            return (True, "forgotten, and still steering the drafts")
+
+        # Rejecting teaches nothing.
+        aid3 = None
+        for ev in ask_stream("remember that we never take stag parties"):
+            if ev["type"] == "PROPOSAL":
+                aid3 = ev["approval_id"]
+        po(f'/api/v1/approvals/{aid3}/decide', {"decision": "reject"})
+        if "stag" in learned_block(store, "cottages"):
+            return (True, "a rejected instruction was learned anyway")
+
+        # Told twice is once. A rule the person repeats should not appear
+        # twice in every prompt for the rest of time.
+        first = A.propose("remember", {"workspace": "cottages",
+                                       "note": "gate code is 4471"})
+        A.run(store, first)
+        A.run(store, A.propose("remember", {"workspace": "cottages",
+                                            "note": "Gate code is 4471 "}))
+        if learned_block(store, "cottages").count("4471") != 1:
+            return (True, "saying the same thing twice stores it twice")
+        store.x("DELETE FROM fact WHERE id LIKE 'f_told_%' "
+                "AND workspace_id='cottages'")
+        return (False, "told through the queue, reaches both prompts, can be "
+                       "taken back, and saying it twice stores it once")
+    probe("A80 it can only learn from corrections, never from being told",
+          teaching_it_directly)
 
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
