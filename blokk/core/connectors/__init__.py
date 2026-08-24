@@ -192,8 +192,11 @@ def wire(store) -> Registry:
                 from core.connectors.imap_mail import IcloudMail
                 REGISTRY.add(ws, "mail", IcloudMail(ref))
             elif kind == "caldav":
+                # The store and the workspace, so its requests can go
+                # through core/egress.py like everything else that leaves.
                 from core.connectors.caldav_cal import IcloudCalendar
-                REGISTRY.add(ws, "calendar", IcloudCalendar(ref))
+                REGISTRY.add(ws, "calendar",
+                             IcloudCalendar(ref, store=store, workspace_id=ws))
             elif kind == "maildir":
                 # ref is "local" for the Mac's own archive, or a folder. Both
                 # connectors have taken a root since they were written and

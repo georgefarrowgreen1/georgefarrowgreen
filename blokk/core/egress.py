@@ -163,15 +163,33 @@ def _log(workspace_id: str, url: str, note: str) -> None:
         pass
 
 
+# The methods this gate will make. GET and POST are the web; PROPFIND and
+# REPORT are WebDAV, which is what CalDAV is built on — and not supporting
+# them was the whole reason caldav_cal.py called urlopen itself and stayed
+# outside the only place anything is supposed to leave. Deliberately a list
+# rather than "whatever the caller passes": PUT and DELETE would make this a
+# way to change somebody's calendar, and nothing in Blokk writes over the
+# network.
+METHODS = ("GET", "POST", "PROPFIND", "REPORT")
+
+
 def fetch(store, workspace_id: str, url: str, *, data: bytes | None = None,
           headers: dict | None = None, timeout: int = TIMEOUT,
-          max_bytes: int = MAX_BYTES) -> dict:
+          max_bytes: int = MAX_BYTES, method: str | None = None) -> dict:
     """One request, through the gate. Returns the body as text.
 
     Never follows a redirect it has not re-checked, and never returns more
     than max_bytes. Raises Refused for anything the rules turn down, with a
     sentence that names the host and what to do.
+
+    `method` is for WebDAV. It is checked against METHODS rather than passed
+    through, because a gate that will make any request it is handed is a
+    gate with a hole shaped like whatever the caller wants.
     """
+    verb = (method or ("POST" if data else "GET")).upper()
+    if verb not in METHODS:
+        raise Refused(f"{verb} is not a method this gate makes. It does: "
+                      + ", ".join(METHODS) + ".")
     allow = allowlist_for(store, workspace_id)
     seen = []
     for hop in range(MAX_HOPS + 1):
@@ -181,7 +199,7 @@ def fetch(store, workspace_id: str, url: str, *, data: bytes | None = None,
             _log(workspace_id, url, f"refused: {e}")
             raise
         seen.append(url)
-        req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
+        req = urllib.request.Request(url, data=data, method=verb)
         # A plain, honest agent. Some of these APIs ask for one, and a tool
         # that lies about what it is has no business reading your calendar.
         req.add_header("User-Agent", "Blokk/1 (local agent; one Mac)")

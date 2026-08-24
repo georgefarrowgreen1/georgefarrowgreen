@@ -26,7 +26,13 @@ KINDS = {"imap": "mail", "maildir": "mail",
 # needs to know where you are, and web takes the address of one page.
 IS_PLACE = ("weather",)
 IS_URL = ("web",)
-REACHES_OUT = IS_PLACE + IS_URL
+# CalDAV reaches one fixed host that nothing in the data chooses, which is
+# why it sat outside the gate for so long. It goes through it now, so it
+# needs the same allowlist entry as anything else that leaves — added here
+# rather than left for somebody to discover at 04:00 when every REPORT comes
+# back refused.
+IS_FIXED_HOST = ("caldav",)
+REACHES_OUT = IS_PLACE + IS_URL + IS_FIXED_HOST
 # The two that read this Mac's own files need no credential — and no network,
 # and no app-specific password. They need Full Disk Access, which core/local.py
 # checks for and explains.
@@ -194,6 +200,14 @@ def add(store, ws: str, kind: str, ref: str,
                        f"What comes back is quarantined before anything "
                        f"reads it, and nothing in Blokk fetches it on its "
                        f"own: you ask, with peek.")
+    if kind in IS_FIXED_HOST:
+        from core import egress
+        from core.connectors.caldav_cal import HOST as CAL_HOST
+        egress.allow(store, ws, CAL_HOST)
+        out["egress"] = [CAL_HOST]
+        out["note"] = (f"{ws} may now reach {CAL_HOST} — and nothing else "
+                       f"new. Read-only: this makes PROPFIND and REPORT, and "
+                       f"the gate will not make a method that writes.")
     if kind in IS_PLACE:
         # A source that leaves the machine is no use without permission to.
         # Adding it and then refusing every request it makes would be the
@@ -269,6 +283,15 @@ def remove(store, ws: str, kind: str) -> dict:
                 (urlparse(o).hostname or "").lower() == host for o in others):
             if not egress.disallow(store, ws, host).get("error"):
                 note = f"{ws} can no longer reach {host}. " + note
+    if kind in IS_FIXED_HOST and was:
+        # Adding it opened the allowlist, so removing it closes it again —
+        # only once nothing else in this workspace still needs the host.
+        from core import egress
+        from core.connectors.caldav_cal import HOST as CAL_HOST
+        left = store.q("SELECT kind FROM credential WHERE workspace_id=? "
+                       "AND kind IN ('caldav')", ws)
+        if not left and not egress.disallow(store, ws, CAL_HOST).get("error"):
+            note = f"{ws} can no longer reach {CAL_HOST}. " + note
     if kind in IS_PLACE:
         # Adding the source opened the allowlist; removing it has to close it
         # again. A permission that is granted automatically and revoked only

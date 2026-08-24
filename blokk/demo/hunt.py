@@ -4389,6 +4389,99 @@ try:
     probe("A88 the diary can only be asked about the future",
           the_diary_has_a_past)
 
+    def caldav_goes_through_the_gate():
+        # core/egress.py is "the only place anything leaves", and CalDAV was
+        # the exception — it called urlopen itself, because the gate made
+        # GET and POST and CalDAV is PROPFIND and REPORT. One exception is
+        # fine right up until somebody puts a second one next to it.
+        import sys as _s5, inspect as _insp
+        _s5.path.insert(0, ".")
+        from core.durable import Store
+        from core import egress, sources
+        from core.connectors import caldav_cal
+        from core.connectors.caldav_cal import IcloudCalendar
+
+        # 1. Nothing in that file reaches the network on its own any more.
+        #    Read as code, not as text: the module docstring explains why it
+        #    used to call urlopen, and a search for the word finds the
+        #    explanation and calls it the crime.
+        import ast as _ast
+        src = _insp.getsource(caldav_cal)
+        tree = _ast.parse(src)
+        NET = {"urlopen", "urlretrieve", "socket", "create_connection",
+               "HTTPConnection", "HTTPSConnection"}
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Attribute) and node.attr in NET:
+                return (True, f"caldav_cal calls .{node.attr}() itself")
+            if isinstance(node, _ast.Name) and node.id in NET:
+                return (True, f"caldav_cal calls {node.id}() itself")
+        if "egress" not in src:
+            return (True, "caldav_cal does not go through the gate at all")
+
+        # 2. The gate makes the two WebDAV methods, and refuses the ones
+        #    that would let something change a calendar. Nothing in Blokk
+        #    writes over the network, and a gate that makes whatever it is
+        #    handed has a hole shaped like the caller.
+        for verb in ("PROPFIND", "REPORT"):
+            if verb not in egress.METHODS:
+                return (True, f"the gate cannot make {verb}, so CalDAV "
+                              f"cannot go through it")
+        st = Store("blokk.db")
+        for verb in ("PUT", "DELETE", "MKCALENDAR", "PATCH"):
+            try:
+                egress.fetch(st, "cottages", "https://example.com/",
+                             method=verb)
+                return (True, f"the gate made a {verb} request")
+            except egress.Refused as e:
+                if verb.lower() not in str(e).lower():
+                    return (True, f"{verb} was refused for the wrong reason: "
+                                  f"{e}")
+            except Exception as e:                               # noqa: BLE001
+                return (True, f"{verb} raised {type(e).__name__} rather than "
+                              f"being refused: {e}")
+
+        # 3. A calendar built without a store cannot make a request at all.
+        #    The store is how the gate knows whose allowlist to check, and a
+        #    connector that cannot be checked must fail rather than quietly
+        #    become the exception again.
+        try:
+            IcloudCalendar("blokk-nope")._req("https://caldav.icloud.com/",
+                                              "PROPFIND", "<x/>")
+            return (True, "a storeless calendar made a request anyway")
+        except RuntimeError:
+            pass
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"a storeless calendar failed with "
+                          f"{type(e).__name__}, not a sentence: {e}")
+
+        # 4. Wiring one opens the allowlist for its host, and removing it
+        #    closes it again. Routing through the gate without this would
+        #    mean every REPORT comes back refused, discovered at 04:00.
+        ws = "caldavprobe"
+        po('/api/v1/workspaces/add', {"id": ws, "name": "CalDAV"})
+        try:
+            r = po('/api/v1/sources/add',
+                   {"workspace": ws, "kind": "caldav", "ref": "blokk-probe"})
+            if r.get("error"):
+                return (True, f"caldav would not attach: {r['error'][:70]}")
+            allowed = egress.allowlist_for(st, ws)
+            if caldav_cal.HOST not in allowed:
+                return (True, f"wiring caldav did not open the gate for "
+                              f"{caldav_cal.HOST}: {allowed}")
+            po('/api/v1/sources/remove', {"workspace": ws, "kind": "caldav"})
+            if caldav_cal.HOST in egress.allowlist_for(st, ws):
+                return (True, "removing the source left the host allowed — a "
+                              "permission granted automatically and revoked "
+                              "by hand is a ratchet")
+        finally:
+            po('/api/v1/workspaces/remove', {"id": ws, "confirm": True})
+        return (False, "the one connector outside the gate is inside it, the "
+                       "gate makes PROPFIND and REPORT and refuses anything "
+                       "that writes, a storeless calendar cannot ask, and "
+                       "wiring one opens exactly one host and closes it again")
+    probe("A89 CalDAV is the one thing that leaves without going through the gate",
+          caldav_goes_through_the_gate)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

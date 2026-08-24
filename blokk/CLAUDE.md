@@ -131,10 +131,12 @@ left.* Every fetch checks the workspace's own allowlist with dot-anchored
 suffix matching (`icloud.com` must not match `evil-icloud.com`), refuses any
 host resolving to a non-public address, re-checks every redirect hop, caps
 size and time, and appends to `logs/egress.log` whether it succeeded or not.
-Two callers of `urlopen` are outside it and both are deliberate: the model
-server is loopback, which is not egress, and `core/connectors/caldav_cal.py`
-predates this file — it talks to one host you configured, with your
-credential, over a URL no data chooses. Anything **new** that fetches goes
+One caller of `urlopen` is outside it and it is deliberate: the model server
+is loopback, which is not egress. CalDAV was the other, for the honest reason
+that the gate made GET and POST and CalDAV is PROPFIND and REPORT; the gate
+makes those now (`egress.METHODS`, a fixed list — PUT and DELETE would make
+it a way to change somebody's calendar) and that connector goes through it
+like everything else. Anything **new** that fetches goes
 through the gate, and anything where the URL comes from content rather than
 config must. A connector that reaches outward returns **fields, never prose**
 — hand a small model a paragraph from a stranger and it paraphrases it; hand
@@ -374,6 +376,10 @@ All four suites green. Verified behaviours:
   holding, says what it searched when it finds nothing ("300 rows in the last
   730 days") rather than just "nothing", narrows on request, and still flags
   an instruction it finds down there
+* every connector that leaves goes through the gate. CalDAV was the one
+  exception and is not any more: the gate makes PROPFIND and REPORT, refuses
+  anything that writes, and wiring a caldav source opens exactly one host and
+  closes it again on remove
 * the diary can be asked about the past. events() started at today, so
   "when did the Shaws last stay" answered nothing found — which reads as
   never, not as never looked. A search covers both directions; the panel
@@ -429,9 +435,6 @@ All four suites green. Verified behaviours:
   them, bounded by `FIND_SCAN`, so it stays honest on one Mac's archive and
   would not stay honest on ten. If that day comes the answer is SQLite's own
   FTS5, not a bigger loop.
-* CalDAV does not go through `core/egress.py` — it wants PROPFIND and REPORT,
-  which `fetch()` does not do. Worth routing when the gate learns methods; the
-  host is fixed and configured, so it is a tidiness gap, not an open door.
 * `span` has no writer and `skill` is decorative. Both are in the schema
   ahead of the code that will use them.
 

@@ -5,6 +5,15 @@ Uses the same app-specific password as mail. Stdlib only — urllib plus
 ElementTree, because pulling in a CalDAV library for two REPORT calls is not
 worth the dependency on a machine that has to still boot in two years.
 
+Every request goes through core/egress.py, like everything else that leaves.
+It did not for a long time, for one honest reason: the gate only made GET and
+POST and CalDAV is PROPFIND and REPORT. So this file called urlopen itself
+and was the single exception to "there is one place anything leaves", which
+is the kind of exception that is fine until the day somebody adds a second
+one next to it. The gate makes those two methods now, and the workspace's
+allowlist, the refusal to resolve to a private address, the redirect
+re-check and logs/egress.log all apply here.
+
 Setup:
   security add-generic-password -s blokk-cottages-cal -a you@icloud.com -w
   python3 connect.py add cottages caldav blokk-cottages-cal
@@ -17,13 +26,13 @@ from __future__ import annotations
 
 import base64
 import re
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
 from core.connectors.keychain import account, secret
 
-BASE = "https://caldav.icloud.com"
+HOST = "caldav.icloud.com"
+BASE = f"https://{HOST}"
 NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav"}
 
 
@@ -31,18 +40,38 @@ class IcloudCalendar:
     kind = "caldav"
     writes = False
 
-    def __init__(self, keychain_ref: str):
+    def __init__(self, keychain_ref: str, store=None, workspace_id: str = ""):
+        # Handed the store and the workspace for the same reason the web and
+        # weather connectors are: those two are what core/egress.py needs to
+        # answer "may this workspace talk to that host".
         self.ref = keychain_ref
+        self.store = store
+        self.workspace_id = workspace_id
         self._home: str | None = None
 
     def _req(self, url: str, method: str, body: str, depth="1") -> str:
+        # The gate check comes before the keychain read, on purpose. There is
+        # no reason to take somebody's password out of the keychain for a
+        # request that is about to be refused, and a secret that is never
+        # fetched is a secret that cannot be dropped somewhere.
+        if self.store is None:
+            # No store means nobody can answer whether this workspace may
+            # reach this host, and a connector that cannot be checked does
+            # not get to make the request. This is the path a unit test or a
+            # half-built registry takes, and it should fail loudly rather
+            # than quietly bypassing the only gate there is.
+            raise RuntimeError(
+                "this calendar was built without a store, so its request "
+                "cannot be checked against the workspace's allowlist")
         cred = base64.b64encode(
             f"{account(self.ref)}:{secret(self.ref)}".encode()).decode()
-        r = urllib.request.Request(url, body.encode(), method=method, headers={
-            "Authorization": f"Basic {cred}", "Depth": depth,
-            "Content-Type": "application/xml; charset=utf-8"})
-        with urllib.request.urlopen(r, timeout=30) as resp:
-            return resp.read().decode("utf-8", "replace")
+        headers = {"Authorization": f"Basic {cred}", "Depth": depth,
+                   "Content-Type": "application/xml; charset=utf-8"}
+        from core import egress
+        out = egress.fetch(self.store, self.workspace_id, url,
+                           data=body.encode(), headers=headers,
+                           method=method, timeout=30)
+        return out["text"]
 
     def _calendar_home(self) -> str:
         if self._home:
