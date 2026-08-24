@@ -552,6 +552,18 @@
   .prop .pa button.no{color:var(--lab2);background:transparent}
   .prop .pa button.no:hover{background:rgba(255,69,58,.14);color:var(--red)}
   .prop .pa button:disabled{opacity:.45;cursor:default}
+  .prop .pa button.tweak{flex:0 0 auto;padding:0 var(--sp-4)}
+  /* The arguments, editable. One field per row so a long ref does not
+     squeeze a short time into three characters. */
+  .prop .pedit{display:flex;flex-direction:column;gap:var(--sp-2);
+               margin-top:var(--sp-3)}
+  .prop .pfield{display:flex;align-items:center;gap:var(--sp-3)}
+  .prop .pfield span{flex:0 0 78px;font-size:12.5px;color:var(--lab2)}
+  .prop .pfield input{flex:1;min-width:0;min-height:var(--tap);
+    padding:0 var(--sp-3);border-radius:var(--r-md);
+    border:1px solid var(--hair);background:var(--field);color:var(--lab);
+    font-family:var(--ui);font-size:15px}
+  .prop .pfield input:focus{outline:2px solid var(--blue);outline-offset:1px}
   /* What it actually did, kept next to what it said it would do. A proposal
      whose outcome is somewhere else is a proposal you have to go and check. */
   .prop .pr{font-size:13px;line-height:1.4;margin-top:var(--sp-3);
@@ -2174,6 +2186,11 @@ const PAST = {approve:'approved', reject:'rejected', edit:'edited',
 
 function propCard(p){
   const a = p.action || (p.action_json ? JSON.parse(p.action_json) : null);
+  // A corrected proposal shows the corrected sentence when it is redrawn.
+  if(p.decision === 'edit' && p.edited_body){
+    try{ const e = JSON.parse(p.edited_body); if(e && e.preview) p.body = e.preview; }
+    catch{}
+  }
   const res = p.result ? (typeof p.result==='string' ? JSON.parse(p.result) : p.result) : null;
   const settled = !!p.decision;
   const c = el(`<div class="prop${p.pinned||(a&&a.pinned)?' pinned':''}${settled?' settled':''}"
@@ -2189,9 +2206,16 @@ function propCard(p){
     || 'Nothing has happened yet. This is waiting on you.')}</div>`));
   if(!settled && p.id){
     const row = el(`<div class="pa">
-      <button class="yes">Approve</button><button class="no">Reject</button></div>`);
+      <button class="yes">Approve</button>
+      ${a && a.args && Object.keys(a.args).length ? '<button class="tweak">Edit</button>' : ''}
+      <button class="no">Reject</button></div>`);
     row.querySelector('.yes').onclick = () => decide(c, p.id, 'approve');
     row.querySelector('.no').onclick  = () => decide(c, p.id, 'reject');
+    const tw = row.querySelector('.tweak');
+    // Only where there is something to change. "Take a backup" has no
+    // arguments, and an Edit button over a sentence with no editable part
+    // is a button that can only disappoint.
+    if(tw) tw.onclick = () => openEdit(c, p.id, a);
     c.append(row);
   }
   if(settled) c.append(el(outcome(p.decision, res)));
@@ -2199,8 +2223,10 @@ function propCard(p){
 }
 
 function outcome(decision, res){
-  if(decision !== 'approve')
+  if(decision === 'reject')
     return `<div class="pr"><b>Rejected.</b> Nothing ran.</div>`;
+  if(decision === 'expired')
+    return `<div class="pr"><b>Expired.</b> Nothing ran.</div>`;
   if(!res) return `<div class="pr"><b>Approved.</b></div>`;
   return res.ok
     ? `<div class="pr"><b>Done.</b> ${esc(res.detail||res.action||'')}</div>`
@@ -2210,15 +2236,58 @@ function outcome(decision, res){
     : `<div class="pr bad"><b>Did not run.</b> ${esc(res.error||'no reason given')}</div>`;
 }
 
-async function decide(card, id, decision){
+// What each argument is called, to somebody who is not reading actions.py.
+const ARGWORD = {workspace:'Workspace', kind:'Kind', ref:'Reading',
+                 host:'Host', at:'Time', name:'Name'};
+
+function openEdit(card, id, action){
+  if(card.querySelector('.pedit')) return;
+  const args = action.args || {};
+  const form = el(`<div class="pedit"></div>`);
+  for(const k of Object.keys(args)){
+    const f = el(`<label class="pfield">
+      <span>${esc(ARGWORD[k] || k)}</span>
+      <input type="text" data-arg="${esc(k)}" value="${esc(args[k])}"
+             autocomplete="off" spellcheck="false">
+    </label>`);
+    form.append(f);
+  }
+  const acts = el(`<div class="pa">
+    <button class="yes">Approve as changed</button>
+    <button class="no">Cancel</button></div>`);
+  acts.querySelector('.no').onclick = () => {
+    form.remove(); acts.remove();
+    card.querySelector('.pa').hidden = false;
+  };
+  acts.querySelector('.yes').onclick = () => {
+    const edited = {};
+    form.querySelectorAll('input[data-arg]').forEach(i => {
+      edited[i.dataset.arg] = i.value.trim();
+    });
+    // Sent as an edit, not an approve. The trust ledger counts an edit as
+    // not-clean and that is right: it needed correcting, and a category
+    // should not earn the right to act alone on proposals you keep fixing.
+    decide(card, id, 'edit', edited);
+  };
+  card.querySelector('.pa').hidden = true;
+  card.append(form, acts);
+  const first = form.querySelector('input'); if(first) first.focus();
+}
+
+async function decide(card, id, decision, edited){
   const btns = card.querySelectorAll('.pa button');
   btns.forEach(b => b.disabled = true);
   try{
-    const r = await post(`/api/v1/approvals/${id}/decide`, {decision});
+    const r = await post(`/api/v1/approvals/${id}/decide`,
+      edited ? {decision, edited_body: JSON.stringify(edited)} : {decision});
     card.classList.add('settled');
+    // What it says now, not what it said. A card reading "Move the night
+    // shift to 05:30" above "the night shift now runs at 18:45" is the
+    // interface disagreeing with itself about what you just did.
+    if(r.preview) card.querySelector('.pb').textContent = r.preview;
     card.querySelector('.pl').innerHTML =
       'Proposal &middot; ' + esc(PAST[decision] || decision);
-    card.querySelector('.pa').remove();
+    card.querySelectorAll('.pa, .pedit, .pwhy').forEach(n => n.remove());
     const note = card.querySelector('.pn'); if(note) note.remove();
     card.append(el(outcome(decision, r.ran)));
     announce(decision === 'approve'
@@ -2227,8 +2296,15 @@ async function decide(card, id, decision){
     tick(true);
   }catch(e){
     btns.forEach(b => b.disabled = false);
-    card.append(el(`<div class="pr bad"><b>Could not reach the Mac.</b>
-      ${esc(e.message)} — nothing was decided.</div>`));
+    // A refused correction leaves the row undecided on purpose, so the form
+    // stays up with the reason under it and one keystroke fixes it.
+    const fixable = e.payload && e.payload.undecided;
+    let why = card.querySelector('.pwhy');
+    if(!why){ why = el('<div class="pwhy"></div>');
+              why.className = 'pr bad pwhy'; card.append(why); }
+    why.innerHTML = fixable
+      ? `<b>Not changed.</b> ${esc(e.message)}`
+      : `<b>Could not reach the Mac.</b> ${esc(e.message)} — nothing was decided.`;
   }
 }
 

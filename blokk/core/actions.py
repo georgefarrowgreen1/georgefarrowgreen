@@ -40,6 +40,21 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+# A name with at least one dot and nothing that belongs in a URL. Deliberately
+# not a URL parser: core/egress.py does the real work of deciding what may be
+# reached, and this only has to stop a sentence being built around nonsense.
+HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+                      r"(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", re.I)
+CLOCK = re.compile(r"^\s*(\d{1,2})\s*(?::\s*([0-5]\d))?\s*([ap])\.?m\.?\s*$", re.I)
+
+
+def _as_time(v: str) -> str:
+    """6pm, 6:30 PM, 06:30 — all of them, as HH:MM."""
+    m = CLOCK.match(v)
+    if not m:
+        return v.strip()
+    h = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "p" else 0)
+    return f"{h:02d}:{m.group(2) or '00'}"
 
 
 class _Gap(dict):
@@ -222,6 +237,13 @@ def _say_add(a: dict) -> str:
     return f"Add a {kind} source to {ws}, reading {ref}."
 
 
+def _say_schedule(a: dict) -> str:
+    at = str(a.get("at", "")).strip().lower()
+    if at in ("", "off", "never"):
+        return "Turn the night shift off — nothing will sweep on its own."
+    return f"Move the night shift to {a['at']}."
+
+
 def _say_remove(a: dict) -> str:
     ws, kind = a.get("workspace", ""), a.get("kind", "")
     return f"Stop reading {_own(ws)} {NOUN.get(kind, kind)}."
@@ -233,7 +255,7 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
     Action("backup_now", "Take a backup of blokk.db.",
            run=_backup, category="blokk_run"),
     Action("set_schedule", "Move the night shift to {at}.",
-           args=("at",), run=_schedule),
+           args=("at",), run=_schedule, phrase=_say_schedule),
     Action("add_source", "Wire {kind} into {workspace}, reading {ref}.",
            args=("workspace", "kind", "ref"), run=_add_source,
            phrase=_say_add),
@@ -292,6 +314,25 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
             if v not in sources.KINDS:
                 raise Rejected(f"{v!r} is not a kind. One of: "
                                + ", ".join(sources.KINDS))
+        # Shapes, checked here rather than left to the executor. The executor
+        # does refuse them — loudly, with a sentence — but by then the
+        # proposal has been read, approved and run, and the person is being
+        # told about a typo three steps after they could have fixed it. The
+        # preview is also built from these, so an unchecked value put "Move
+        # the night shift to tea." under an Approve button.
+        if key == "at" and v.lower() not in ("", "off", "never"):
+            from core import nightly
+            # Normalised, not refused. Somebody typing into the edit field is
+            # writing the time the way people write times, and "6pm" is not a
+            # mistake — it is a time this can read perfectly well.
+            v = _as_time(v)
+            if nightly._hhmm(v) is None:
+                raise Rejected(f"{args[key]!r} is not a time of day. It wants "
+                               f"something like 04:00, or 6pm.")
+        if key == "host":
+            if not HOSTNAME.match(v):
+                raise Rejected(f"{v!r} is not a hostname. It wants something "
+                               f"like api.example.com.")
         clean[key] = v
     return act, clean
 
@@ -326,6 +367,38 @@ def run(store, action_json: str | dict) -> dict:
     act, clean = validate(payload.get("name"), payload.get("args") or {})
     out = act.run(store, **clean)
     return {"ok": True, "action": act.name, **(out or {})}
+
+
+def edited(action_json: str | dict, corrections) -> dict:
+    """The proposal, with a person's corrections merged in and re-validated.
+
+    The corrections come from a browser and are treated exactly like the
+    model's arguments were: checked against what the named action declares,
+    with anything unrecognised dropped. A person tapping Edit has more
+    standing than a model, but not the standing to invent an argument the
+    executor has no rule for.
+
+    The action's *name* is not editable. Changing "back up" into "delete the
+    workspace" between the sentence somebody read and the thing that runs is
+    the whole class of bug this queue exists to prevent.
+    """
+    payload = action_json
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload or "{}")
+        except ValueError as e:
+            raise Rejected("this proposal's action is not readable JSON") from e
+    if isinstance(corrections, str):
+        try:
+            corrections = json.loads(corrections or "{}")
+        except ValueError as e:
+            raise Rejected("the corrections are not readable JSON") from e
+    if not isinstance(corrections, dict):
+        raise Rejected("the corrections have to be an object")
+    merged = {**(payload.get("args") or {}), **corrections}
+    act, clean = validate(payload.get("name"), merged)
+    return {"name": act.name, "args": clean, "preview": act.preview(clean),
+            "pinned": act.pinned, "category": act.category}
 
 
 def catalogue() -> list[dict]:

@@ -264,7 +264,7 @@ def h_thread(q):
         row = dict(m)
         if row.get("approval_id"):
             a = store.one("SELECT id,title,body,category,decision,decided_at,"
-                          "action,result FROM approval WHERE id=?",
+                          "action,edited_body,result FROM approval WHERE id=?",
                           row["approval_id"])
             row["approval"] = dict(a) if a else None
         out.append(row)
@@ -295,6 +295,19 @@ def h_decide(approval_id, body):
         return {"ok": False, "blocked": "stale",
                 "detail": "Facts changed since drafting. Re-checked at send, not at draft."}
 
+    # Before the claim, for the same reason the check above it is: a decision
+    # this endpoint cannot carry out must not be recorded as one. The first
+    # version validated the correction *after* claiming, so a typo in the
+    # edit field consumed the decision — the row came back "already edited",
+    # the retry hit the fast path, and the corrected version never ran while
+    # the screen still showed a form waiting to be fixed.
+    corrected = None
+    if decision == "edit" and a["action"]:
+        try:
+            corrected = actions.edited(a["action"], body.get("edited_body"))
+        except actions.Rejected as e:
+            return {"error": str(e), "undecided": True}, 400
+
     # Claim the approval in one statement. The check above is a fast path for
     # the common retry, not the guard: this is a threading server, so six taps
     # on a flaky phone connection all read decision IS NULL and all get here.
@@ -320,9 +333,19 @@ def h_decide(approval_id, body):
     # person decided, and they did decide to approve; an action that then
     # fails is a failure of the action, not of the judgement.
     ran = None
-    if decision == "approve" and a["action"]:
+    if decision in ("approve", "edit") and a["action"]:
+        # An edit is an approve with the arguments corrected. The alternative
+        # was reject-and-retype, which is a strange thing to ask of somebody
+        # who can see the sentence and knows exactly which word is wrong —
+        # and it throws away the correction, which is the most useful thing
+        # they just told the system.
+        #
+        # The trust ledger already treats an edit as not-clean, and that
+        # stands: it needed correcting. What changes is that the corrected
+        # version runs, rather than nothing running at all.
+        todo = corrected or a["action"]
         try:
-            ran = actions.run(store, a["action"])
+            ran = actions.run(store, todo)
         except actions.Rejected as e:
             ran = {"ok": False, "error": str(e)}
         except Exception as e:                               # noqa: BLE001
@@ -332,6 +355,12 @@ def h_decide(approval_id, body):
             ran = {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]}
         store.x("UPDATE approval SET result=? WHERE id=?",
                 json.dumps(ran), approval_id)
+        if corrected:
+            # What actually ran, on the row. The original stays in `action`
+            # and the correction in `edited_body`, so the row reads: this was
+            # proposed, you changed it to that, and here is what happened.
+            store.x("UPDATE approval SET edited_body=? WHERE id=?",
+                    json.dumps(corrected), approval_id)
 
     # An edit is a diff between what the agent wrote and what you wanted.
     if decision in ("edit", "reject"):
@@ -363,11 +392,15 @@ def h_decide(approval_id, body):
     bump()
     out = {"ok": True, "category": a["category"], "now_autonomous": ok,
            "trust": why, "run_resumed": resumed}
+    if corrected:
+        # So the card can show what it now says rather than what it said.
+        out["preview"] = corrected.get("preview")
     if ran is not None:
         # Reported, not just stored. The person who tapped Approve is the one
         # owed the answer to "and then what happened".
         out["ran"] = ran
         out["ok"] = bool(ran.get("ok"))
+
     if resume_error:
         out["run_error"] = resume_error
     return out

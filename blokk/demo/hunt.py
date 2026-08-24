@@ -2831,6 +2831,90 @@ try:
                        "cannot name")
     probe("A71 four businesses share one chat transcript", threads_are_separate)
 
+    def editing_a_proposal():
+        # A proposal that is nearly right could only be approved or rejected,
+        # so fixing one word meant rejecting and retyping the sentence — and
+        # throwing away the correction, which is the most useful thing the
+        # person just said.
+        import sys as _s
+        _s.path.insert(0, ".")
+        import core.actions as A
+        from core import nightly
+        from core.durable import Store
+
+        st = Store('blokk.db')
+        was = nightly.get_at(st)
+        try:
+            # The name is not editable. Turning "back up" into "delete the
+            # workspace" between the sentence somebody read and the thing
+            # that runs is the whole class of bug this queue exists to stop.
+            backup = json.dumps(A.propose("backup_now", {}))
+            swapped = A.edited(backup, {"name": "remove_workspace",
+                                        "workspace": "cottages"})
+            if swapped["name"] != "backup_now":
+                return (True, f"an edit changed the action to "
+                              f"{swapped['name']!r}")
+
+            # Corrections are validated like the model's arguments were.
+            sched = json.dumps(A.propose("set_schedule", {"at": "05:30"}))
+            for bad in ({"at": "tea time"}, {"at": "25:00"}, "not json", []):
+                try:
+                    A.edited(sched, bad)
+                    return (True, f"{bad!r} was accepted as a correction")
+                except A.Rejected:
+                    pass
+            # …and normalised the way people write them.
+            for typed, want in (("6pm", "18:00"), ("6:45 PM", "18:45"),
+                                ("07:00", "07:00")):
+                got = A.edited(sched, {"at": typed})["args"]["at"]
+                if got != want:
+                    return (True, f"{typed!r} became {got!r}, not {want!r}")
+
+            # End to end through the endpoint: a refused correction must not
+            # consume the decision. The first version validated after
+            # claiming the row, so a typo left it "already edited" and the
+            # corrected version could never run.
+            aid = None
+            for ev in ask_stream("move the night shift to 05:30"):
+                if ev["type"] == "PROPOSAL":
+                    aid = ev["approval_id"]
+            if not aid:
+                return (True, "nothing proposed")
+            try:
+                po(f'/api/v1/approvals/{aid}/decide',
+                   {"decision": "edit", "edited_body": '{"at":"tea time"}'})
+                return (True, "a correction that is not a time was accepted")
+            except urllib.error.HTTPError as e:
+                if e.code != 400:
+                    return (True, f"a bad correction answered {e.code}")
+            row = db().execute("SELECT decision FROM approval WHERE id=?",
+                               (aid,)).fetchone()
+            if row["decision"]:
+                return (True, f"a refused correction still decided the row "
+                              f"as {row['decision']!r}, so fixing the typo "
+                              f"can never run")
+            r = po(f'/api/v1/approvals/{aid}/decide',
+                   {"decision": "edit", "edited_body": '{"at":"06:45"}'})
+            if not (r.get("ran") or {}).get("ok"):
+                return (True, f"the corrected version did not run: {r}")
+            if nightly.get_at(Store('blokk.db')) != "06:45":
+                return (True, "it reported running and the schedule did not "
+                              "move")
+            row = db().execute("SELECT decision,edited_body FROM approval "
+                               "WHERE id=?", (aid,)).fetchone()
+            if row["decision"] != "edit":
+                return (True, f"recorded as {row['decision']!r}, so the trust "
+                              f"ledger counts a correction as a clean approval")
+            if "06:45" not in (row["edited_body"] or ""):
+                return (True, "the correction is not on the row, so the card "
+                              "redraws the sentence you replaced")
+            return (False, "the name is fixed, corrections are validated and "
+                           "normalised, a refused one leaves the row open, "
+                           "and the corrected version runs and is recorded")
+        finally:
+            nightly.set_at(Store('blokk.db'), was)
+    probe("A72 a proposal can only be approved or rejected", editing_a_proposal)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
