@@ -2247,8 +2247,9 @@ try:
         dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
         st = Store(tmp)
         sources.workspace_add(st, "mine", "Mine")
-        for w in sources.SAMPLE:
-            sources.workspace_remove(st, w)
+        for w in st.q("SELECT id FROM workspace"):
+            if w["id"] != "mine":
+                sources.workspace_remove(st, w["id"])
 
         def turn(q, store):
             return "".join(e.get("delta", "") for e in
@@ -2728,6 +2729,13 @@ try:
         src = _sq.connect("file:blokk.db?mode=ro", uri=True)
         dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
         st = Store(tmp)
+        # Everything real that is already here goes first. The probe is about
+        # the ranking, and it cannot assert one while somebody's own
+        # workspace — wired, and therefore ranked above a fresh one — is
+        # sitting in the copy it took.
+        for w in st.q("SELECT id FROM workspace"):
+            if w["id"] not in sources.SAMPLE:
+                sources.workspace_remove(st, w["id"])
         sources.workspace_add(st, "mine", "Mine")
         if scope_for(st, None) != "mine":
             return (True, f"with a real workspace present it opened on "
@@ -2914,6 +2922,83 @@ try:
         finally:
             nightly.set_at(Store('blokk.db'), was)
     probe("A72 a proposal can only be approved or rejected", editing_a_proposal)
+
+    def searching_your_own_data():
+        # read_mail handed back the most recent N and nothing else, so "what
+        # did Ada say about the dog?" was unanswerable — and the router did
+        # not even send it to the mail, because the sentence contains no noun
+        # it knew. It fell through to the approval queue, which is an answer
+        # to a question nobody asked.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        import core.connectors as _C
+        from core.ask import ask as run_ask, _term
+        from core.models import StubModel
+
+        # The term is the words worth looking for. It was the first long word
+        # in the sentence, which for "what did Ada say about the dog?" is
+        # "about" — a stop word that matches every email ever written.
+        for q, want in (("what did Ada say about the dog?", {"Ada", "dog"}),
+                        ("anything from Grace about the key safe?",
+                         {"Grace", "key", "safe"})):
+            got = set(_term(q).split())
+            if not want <= got:
+                return (True, f"{q!r} searches for {got} — missing "
+                              f"{want - got}")
+        # A container is not a search. "What's in my inbox?" is a request to
+        # list it, and searching the mailbox for the word "inbox" finds
+        # nothing and reports it, which reads as an empty inbox.
+        for q in ("what's in my inbox?", "what needs me?",
+                  "what's in the calendar?"):
+            if _term(q):
+                return (True, f"{q!r} would be searched for "
+                              f"{_term(q)!r} instead of listed")
+
+        tmp = pathlib.Path(_tf.mkdtemp())
+        md, cal = _fixture(tmp)
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        _C.REGISTRY._by_ws.clear()
+        sources.add(st, "cottages", "maildir", str(md))
+        sources.add(st, "cottages", "ical", str(cal))
+
+        def turn(q):
+            st.x("UPDATE budget SET tool_calls=0")
+            said, flagged = [], False
+            for ev in run_ask(st, q, StubModel(), "cottages"):
+                if ev["type"] == "TEXT_MESSAGE_CONTENT":
+                    said.append(ev["delta"])
+                if ev["type"] == "SOURCES":
+                    flagged = bool(ev.get("flagged"))
+            return "".join(said), flagged
+
+        found, _f = turn("what did Ada say about the availability?")
+        if "ada" not in found.lower():
+            return (True, f"searched for Ada and answered: {found[:80]}")
+        if "statement" in found.lower():
+            return (True, "a search returned mail that does not mention the "
+                          "term, so it is not filtering at all")
+        listed, _f = turn("what's in my inbox?")
+        if "statement" not in listed.lower():
+            return (True, f"listing the inbox lost a message: {listed[:80]}")
+        none, _f = turn("anything about penguins?")
+        if "nothing mentioning" not in none.lower():
+            return (True, f"a search with no hits answered: {none[:80]}")
+        # The quarantine still applies to what a search turns up: the
+        # injected message is the one that mentions "instructions".
+        hit, flagged = turn("anything about instructions?")
+        if not flagged:
+            return (True, "a search found the instruction-shaped mail and did "
+                          "not flag it")
+        return (False, "names and nouns are searched for, containers are "
+                       "listed, no hits says so, and a hit is still "
+                       "quarantined")
+    probe("A73 the chat can only list mail, never look for anything",
+          searching_your_own_data)
 
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():

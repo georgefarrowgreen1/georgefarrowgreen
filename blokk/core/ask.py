@@ -105,6 +105,8 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
                                          *(args + [MAX_ROWS]))]
 
     def search_journal(term: str = "", **_):
+        # One word: this is a LIKE against a step name, not a phrase search.
+        term = (term or "").split(" ")[0]
         sql, args = scope(
             "SELECT j.run_id,j.step,j.name,j.side_effect,j.at FROM journal j "
             "JOIN run r ON r.id=j.run_id WHERE j.name LIKE ?", [f"%{term}%"])
@@ -187,14 +189,57 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         return [{"window": out.get("window", "")}] + rows if rows else \
                [{"window": out.get("window", ""), "nothing": "no rows in that window"}]
 
-    def read_mail(**_):
-        return _peek("mail", MAX_ROWS)
+    def _hits(rows, term: str, keep: int):
+        """The rows that mention it, newest first.
 
-    def read_calendar(**_):
-        return _peek("calendar", MAX_ROWS)
+        Filtered here rather than asked of the connector, because the three
+        readers disagree about what a search is — IMAP has SEARCH, a maildir
+        is a folder, a calendar is neither — and a filter that works the same
+        everywhere is worth more than one that is fast in one place. The
+        window is whatever the connector already reads; this narrows it.
+        """
+        want = [w for w in re.findall(r"[\w']{3,}", term.lower())]
+        if not want:
+            return rows[:keep]
+        out = []
+        for r in rows:
+            hay = " ".join(str(r.get(k) or "") for k in
+                           ("from", "subject", "body", "when")).lower()
+            score = sum(1 for w in want if w in hay)
+            if score:
+                out.append((score, r))
+        out.sort(key=lambda x: -x[0])
+        return [r for _, r in out[:keep]]
 
-    def read_messages(**_):
-        return _peek("messages", MAX_ROWS)
+    def read_mail(term: str = "", **_):
+        rows = _peek("mail", 60)
+        if not term or (rows and rows[0].get("unreadable")):
+            return rows[:MAX_ROWS + 1]
+        head = [r for r in rows if "window" in r][:1]
+        found = _hits([r for r in rows if r.get("subject") or r.get("from")],
+                      term, MAX_ROWS)
+        if not found:
+            return head + [{"nothing": f"nothing mentioning {term!r} in "
+                                       f"{(head[0].get('window') if head else 'that window')}"}]
+        return head + found
+
+    def read_calendar(term: str = "", **_):
+        rows = _peek("calendar", 60)
+        if not term or (rows and rows[0].get("unreadable")):
+            return rows[:MAX_ROWS + 1]
+        head = [r for r in rows if "window" in r][:1]
+        found = _hits([r for r in rows if r.get("subject") or r.get("from")],
+                      term, MAX_ROWS)
+        return head + (found or [{"nothing": f"nothing mentioning {term!r}"}])
+
+    def read_messages(term: str = "", **_):
+        rows = _peek("messages", 60)
+        if not term or (rows and rows[0].get("unreadable")):
+            return rows[:MAX_ROWS + 1]
+        head = [r for r in rows if "window" in r][:1]
+        found = _hits([r for r in rows if r.get("subject") or r.get("from")],
+                      term, MAX_ROWS)
+        return head + (found or [{"nothing": f"nothing mentioning {term!r}"}])
 
     def read_page(**_):
         return _peek("web", 1)
@@ -263,13 +308,13 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         if workspace_scope else set()
     OVER = (
         # kind, tool, what it is, the reader, where the rows come from
-        ("imap",     "read_mail",     "the actual mail, most recent first", read_mail, "outside"),
-        ("maildir",  "read_mail",     "the actual mail, most recent first", read_mail, "yours"),
-        ("caldav",   "read_calendar", "what is in the calendar", read_calendar, "outside"),
-        ("ical",     "read_calendar", "what is in the calendar", read_calendar, "yours"),
+        ("imap",     "read_mail",     "the mail — newest first, or set term to search it", read_mail, "outside"),
+        ("maildir",  "read_mail",     "the mail — newest first, or set term to search it", read_mail, "yours"),
+        ("caldav",   "read_calendar", "the calendar — or set term to search it", read_calendar, "outside"),
+        ("ical",     "read_calendar", "the calendar — or set term to search it", read_calendar, "yours"),
         ("caldav",   "free_nights",   "which nights nobody has booked", free_nights, "outside"),
         ("ical",     "free_nights",   "which nights nobody has booked", free_nights, "yours"),
-        ("messages", "read_messages", "recent messages", read_messages, "yours"),
+        ("messages", "read_messages", "messages — or set term to search them", read_messages, "yours"),
         ("web",      "read_page",     "the page it is watching, as it is now", read_page, "outside"),
         ("weather",  "forecast",      "the forecast where you are", forecast, "outside"),
     )
@@ -1047,7 +1092,7 @@ def _plan(question: str, gathered: list, tools: dict,
                     "runs and what is wired up, and propose changes to how I "
                     "run."}
 
-    routed = _route(ql)
+    routed = _route(ql) or _default_reads(tools)
     want = [n for n in routed if n in tools]
     done = {n for n, _ in gathered}
     for name in want:
@@ -1251,11 +1296,45 @@ def _workspace_in(q: str, known: list[str], new_ok: bool = False) -> str:
     return ""
 
 
+# Function words, not content words. Nothing clever: a name or a noun is what
+# somebody is searching for, and everything here matches half the mailbox.
+STOP = {
+    "the", "and", "but", "for", "not", "you", "your", "yours", "our", "ours",
+    "its", "his", "her", "their", "them", "they", "this", "that", "these",
+    "those", "there", "then", "than", "with", "from", "into", "onto", "over",
+    "under", "about", "any", "all", "some", "each", "every", "much", "many",
+    "more", "most", "one", "two", "who", "how", "why", "what", "when",
+    "where", "which", "whose", "was", "were", "are", "been", "being", "has",
+    "had", "have", "did", "does", "done", "doing", "can", "could", "will",
+    "would", "shall", "should", "may", "might", "must", "just", "like",
+    "want", "need", "know", "look", "find", "read", "show", "tell", "give",
+    "said", "say", "says", "please", "anything", "something", "today",
+    "yesterday", "tomorrow", "now", "get", "got", "put", "let", "off", "out",
+    "back", "here", "yes", "yeah", "okay",
+    # Containers, not contents. "What's in my inbox?" is a request to list
+    # the mailbox, and searching the mailbox for the word "inbox" finds
+    # nothing and reports it, which reads as an empty inbox.
+    "inbox", "mail", "email", "emails", "mailbox", "calendar", "diary",
+    "message", "messages", "queue", "approval", "approvals", "needs",
+    "waiting", "night", "nights", "free", "sweep", "run", "runs",
+}
+
+
 def _term(q: str) -> str:
-    words = [w for w in re.findall(r"[a-z]{4,}", q.lower())
-             if w not in {"what", "when", "which", "does", "have", "with", "that",
-                          "this", "from", "about", "there", "anything", "today"}]
-    return words[0] if words else ""
+    """The words worth looking for, in the order they were said.
+
+    Was the *first* long word and nothing else, which for "what did Ada say
+    about the dog?" is "about" — a stop word that matches every email ever
+    written. Names and nouns are what somebody is searching for and there is
+    usually more than one of them.
+    """
+    words = []
+    for w in re.findall(r"[A-Za-z][\w']*", q):
+        # what's -> what, Ada's -> Ada. The possessive is not part of the name.
+        bare = re.sub(r"'\w{1,2}$", "", w)
+        if len(bare) >= 3 and bare.lower() not in STOP:
+            words.append(bare)
+    return " ".join(words[:5])
 
 
 def _route(ql: str) -> list[str]:
@@ -1289,7 +1368,8 @@ def _route(ql: str) -> list[str]:
         picks.append("forecast")
     if any(w in ql for w in ("page", "website", "web page", "prices page")):
         picks.append("read_page")
-    if any(w in ql for w in ("wait", "queue", "approve", "decide", "need me", "pending")):
+    if any(w in ql for w in ("wait", "queue", "approve", "decide", "need",
+                             "pending", "outstanding")):
         picks.append("open_approvals")
     if any(w in ql for w in ("handle", "alone", "without me", "auto", "did it")):
         picks.append("what_was_handled")
@@ -1301,6 +1381,14 @@ def _route(ql: str) -> list[str]:
         picks.append("learned_facts")
     if any(w in ql for w in ("step", "journal", "when did", "history", "log")):
         picks.append("search_journal")
+    # Somebody, or something they said. "What did Ada say about the dog?" has
+    # no noun this router knows — no "mail", no "inbox" — and fell through to
+    # the approval queue, which is an answer to a question nobody asked. A
+    # question about a person is a question about correspondence.
+    if any(w in ql for w in ("said", "say", "wrote", "sent", "asked", "from ",
+                             "about ", "mention", "reply", "answer")):
+        picks.append("read_mail")
+        picks.append("read_messages")
     # Not "mail", "calendar" or "weather" any more: those have tools of their
     # own now, and listing what is wired is not an answer to a question about
     # what is in it.
@@ -1308,7 +1396,21 @@ def _route(ql: str) -> list[str]:
         picks.append("sources_state")
     if any(w in ql for w in ("schedule", "night shift", "what time", "when does")):
         picks.append("schedule_state")
-    return picks or ["open_approvals", "recent_runs"]
+    return picks
+
+
+def _default_reads(tools: dict) -> list[str]:
+    """What to look at when the question does not say.
+
+    Your own data first, if any of it is wired. The default used to be the
+    approval queue and the run log — Blokk talking about Blokk — which is the
+    right answer to "what needs me?" and the wrong one to almost everything
+    else somebody types into a chat box about their business.
+    """
+    mine = [n for n in ("read_mail", "read_calendar", "read_messages")
+            if n in tools]
+    return mine + ["open_approvals", "recent_runs"] if mine \
+        else ["open_approvals", "recent_runs"]
 
 
 def _summarise(gathered: list) -> str:
@@ -1363,7 +1465,11 @@ def _summarise(gathered: list) -> str:
                              + (f" {bad.get('fix', '')}" if bad.get("fix") else ""))
                 continue
             window = next((r.get("window") for r in rows if r.get("window")), "")
+            empty = next((r.get("nothing") for r in rows if r.get("nothing")), "")
             items = [r for r in rows if r.get("subject") or r.get("from")]
+            if empty and not items:
+                parts.append(empty + ".")
+                continue
             one, many = {"read_mail": ("message", "messages"),
                          "read_calendar": ("entry", "entries"),
                          "read_messages": ("message", "messages"),
