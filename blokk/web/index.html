@@ -570,6 +570,36 @@
             color:var(--blue);margin-bottom:8px}
   .prop .pb{font-size:14.5px;line-height:1.42}
   .prop .pn{font-size:12.5px;color:var(--lab2);margin-top:var(--sp-2);line-height:1.4}
+  /* A proposal made in a turn that had something instruction-shaped in
+     view. Amber, stated on the card, and never a reason to hide the card:
+     the queue is the defence, and a person who cannot see what was read
+     cannot check it. */
+  .prop .pw{margin:var(--sp-2) 0 0;padding:var(--sp-2) var(--sp-3);
+    border-radius:var(--r-card);font-size:12.5px;line-height:1.45;
+    color:var(--amber);
+    background:color-mix(in srgb,var(--amber) 12%,transparent)}
+  /* drawnFrom() is styled under .action; the chat bubble needs the same
+     rules, so the selectors below repeat it rather than the markup
+     carrying a second copy of the block. */
+  .prop .drew{margin:var(--sp-2) 0 0;font-size:13px}
+  .prop .drew summary{min-height:var(--tap);display:flex;align-items:center;
+    color:var(--lab3);cursor:pointer;list-style:none;user-select:none}
+  .prop .drew summary::-webkit-details-marker{display:none}
+  .prop .drew summary::before{content:'\203A';display:inline-block;
+    margin-right:var(--sp-2);transition:transform .15s ease}
+  .prop .drew[open] summary::before{transform:rotate(90deg)}
+  .prop .drew summary:focus-visible{outline:2px solid var(--blue);
+    outline-offset:2px;border-radius:var(--r-pill)}
+  .prop .src{border-left:2px solid var(--hair);padding:0 0 0 var(--sp-3);
+    margin:0 0 var(--sp-3)}
+  .prop .src:last-child{margin-bottom:0}
+  .prop .src.hot{border-left-color:var(--amber)}
+  .prop .src .sh{color:var(--lab2);font-size:12.5px}
+  .prop .src .sw{color:var(--lab3);margin-left:var(--sp-2)}
+  .prop .src .ss{font-weight:600;margin-top:2px}
+  .prop .src blockquote{margin:var(--sp-1) 0 0;color:var(--lab2);
+    font-size:12.5px;line-height:1.45}
+  .prop .src .sf{color:var(--amber);font-size:12px;margin-top:var(--sp-1)}
   /* The two taps that make it real. Full height because this is the control
      that changes the machine, and it is reached with a thumb on a phone. */
   .prop .pa{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
@@ -1182,8 +1212,19 @@ const esc = s => String(s??'').replace(/[&<>"']/g,
 // Every quote in here is somebody else's words. esc() on all four fields,
 // and a flagged one keeps its warning where it is read rather than in a
 // count at the top of the screen.
+// The sweep cites a kind of source; the chat cites the tool it called, and
+// the tool names are code names. Both land here so one renderer covers both
+// and neither prints an identifier at somebody.
 const KINDNOUN = {mail:'From', calendar:'Diary', weather:'Forecast',
-                  messages:'Message', web:'Page', rates:'Rates'};
+                  messages:'Message', web:'Page', rates:'Rates',
+                  read_mail:'From', read_calendar:'Diary',
+                  read_messages:'Message', read_page:'Page',
+                  forecast:'Forecast', free_nights:'Free nights',
+                  open_approvals:'In the queue', what_was_handled:'Handled',
+                  recent_runs:'Recent runs', trust_state:'Trust',
+                  learned_facts:'Learned', sources_state:'Sources',
+                  schedule_state:'Schedule', search_journal:'Journal',
+                  this_mac:'On this Mac'};
 function drawnFrom(a){
   const rows = (a.evidence && a.evidence.drawn_from) || [];
   if(!rows.length) return '';
@@ -1196,8 +1237,9 @@ function drawnFrom(a){
         ${r.when ? '<span class="sw">' + esc(r.when) + '</span>' : ''}</div>
       ${r.subject ? `<div class="ss">${esc(r.subject)}</div>` : ''}
       ${r.quote ? `<blockquote>${esc(r.quote)}</blockquote>` : ''}
-      ${r.flagged ? '<div class="sf">Reads like an instruction — quoted here '
-                  + 'as text, and it got no draft.</div>' : ''}
+      ${r.flagged ? '<div class="sf">Reads like an instruction rather than a '
+                  + 'message. Quoted here as text; nothing in Blokk acts on '
+                  + 'it.</div>' : ''}
     </div>`).join('')}
   </details>`;
 }
@@ -2368,6 +2410,17 @@ function propCard(p){
   // disagreeing with itself about the only thing it is there to tell you.
   if(!settled) c.append(el(`<div class="pn">${esc(p.note
     || 'Nothing has happened yet. This is waiting on you.')}</div>`));
+  // A message that reads like an instruction was in view when this was
+  // proposed. Nothing is allowed to act on one either way — that is what
+  // the approval queue and the validated arguments are for — but somebody
+  // about to tap Approve should be told which turn they are approving.
+  if(p.read_flagged) c.append(el(`<div class="pw">One of the things read this
+    turn reads like an instruction rather than a message. It could not make
+    this happen — only you can — but look at what it says below.</div>`));
+  // The same block the sweep's cards use, from the same evidence shape.
+  const drew = drawnFrom({evidence: {drawn_from:
+    p.drawn_from || (p.evidence && p.evidence.drawn_from) || []}});
+  if(drew) c.append(el(drew));
   if(!settled && p.id){
     const row = el(`<div class="pa">
       <button class="yes">Approve</button>
@@ -2504,7 +2557,8 @@ async function restoreThread(){
     if(m.kind === 'draft'){ th.append(draftCard(m.content)); continue; }
     th.append(el(`<div class="a">${esc(m.content)}</div>`));
     if(m.approval) th.append(propCard({...m.approval, action: m.approval.action
-      ? JSON.parse(m.approval.action) : null}));
+      ? JSON.parse(m.approval.action) : null,
+      read_flagged: !!(m.approval.evidence || {}).read_flagged}));
   }
   th.scrollTop = th.scrollHeight;
 }
@@ -2578,7 +2632,9 @@ async function send(q){
         if(ev.type==='PROPOSAL'){
           proposed=true;
           th.append(propCard({id:ev.approval_id, body:ev.text, action:ev.action,
-                              note:ev.note, pinned:ev.pinned}));
+                              note:ev.note, pinned:ev.pinned,
+                              drawn_from:ev.drawn_from,
+                              read_flagged:ev.read_flagged}));
           setTimeout(()=>tick(true), 400);
           announce('Proposal queued. It is waiting on you.');
         }

@@ -81,6 +81,16 @@ those are the work the queue was supposed to save. Every field in there is a
 stranger's text — A85 checks each one reaches the page through `esc()`, by
 matching brackets rather than by looking at what sits in front of it.
 
+Ask fills it in too, and on that surface it carries one thing more.
+`evidence.read_flagged` says a message that reads like an instruction was in
+the context window when the proposal was made. Nothing is allowed to act on
+one either way — the validated arguments and the queue are what stop it — but
+the person tapping Approve is the last check, and they cannot be the check on
+a turn they cannot see. The flagged row is quoted on the card, never hidden:
+the one message worth looking at yourself must not be the one that is not
+there. A86 stages that turn and fails if the citation, the flag or the warning
+goes missing.
+
 **Memory is only real if it reaches a prompt.** Corrections become episodes,
 episodes consolidate into facts, and `core/harness.py:learned_block` is what
 puts those facts in front of a model. For a long time nothing did — the chat
@@ -352,6 +362,9 @@ All four suites green. Verified behaviours:
   a booking that leaves on the 6th and one that arrives on the 6th do not
   clash; the same hold approved twice is one file; and what it writes reads
   back through Blokk's own parser with the comma in the guest's name intact
+* a chat proposal carries the rows the turn read before it proposed, says so
+  when one of them read like an instruction, and quotes that one rather than
+  hiding it — and all of it survives a reload
 * every proposal carries the rows it was built from — the enquiry behind a
   drafted reply, the forecast and the gap behind an outing, the comparison
   behind a rate — and the card shows them under the proposal. A draft that

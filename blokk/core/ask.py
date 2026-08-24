@@ -79,6 +79,59 @@ class ReadTool:
     source: str = "blokk"
 
 
+def drawn_from(gathered: list, tools: dict, keep: int = 4) -> list[dict]:
+    """What the turn read before it proposed, in the queue's citation shape.
+
+    The sweep's proposals say what they were built from; a chat proposal
+    said {"sources": ["you"]}, which is true of the request and says nothing
+    about the answer. So a card offering to wire a source, hold some dates
+    or remember a rule gave a person no way to tell whether it had looked at
+    anything at all — the same unfalsifiable sentence as an uncited draft,
+    on the surface where a stranger's email is in the context window.
+
+    What is honest to claim here is what it *read*, not which row caused the
+    proposal: nothing knows that but the model, and asking it would be
+    asking the thing under suspicion. So this is the reading list, with the
+    provenance each tool declares and the quarantine verdict already on the
+    rows.
+    """
+    out: list[dict] = []
+    for name, rows in gathered:
+        t = tools.get(name)
+        src = getattr(t, "source", "blokk")
+        for r in rows[:keep]:
+            if not isinstance(r, dict):
+                continue
+            # The header rows a search puts in front of its results — "300
+            # row(s) in the last 730 days" — are about the looking, not a
+            # thing that was read.
+            if "searched" in r or "window" in r or "unreadable" in r:
+                continue
+            subject = str(r.get("subject") or r.get("title") or
+                          r.get("text") or r.get("category") or "")[:200]
+            body = " ".join(str(r.get("body") or r.get("note") or
+                                r.get("detail") or "").split())
+            if not subject and not body:
+                # A trust row or a schedule row is fields, not prose. Say
+                # what it was rather than citing a blank line.
+                body = ", ".join(f"{k}={v}" for k, v in list(r.items())[:4]
+                                 if not str(k).startswith("_"))[:280]
+            out.append({
+                "kind": name,
+                "from": str(r.get("from") or "")[:200],
+                "subject": subject,
+                "when": str(r.get("when") or r.get("at") or
+                            r.get("created_at") or "")[:64],
+                "where": {"yours": "on this Mac", "outside": "off this Mac",
+                          "blokk": "Blokk's own records"}.get(src, src),
+                "quote": body[:280] + ("\u2026" if len(body) > 280 else ""),
+                # Carried from the quarantine that already ran, not decided
+                # again here.
+                "flagged": bool(r.get("_flagged")),
+            })
+    return out
+
+
 def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool]:
     """Every tool here is a SELECT. There is deliberately no INSERT in this file.
 
@@ -747,6 +800,10 @@ def ask(store, question: str, model, workspace: str | None = None,
                 yield {"type": "PROPOSAL", "text": text, "action": proposal,
                        "pinned": proposal["pinned"], "message_id": mid,
                        "thread": thread,
+                       # What it read on the way here, so the card can show
+                       # it exactly as the sweep's cards do.
+                       "drawn_from": drawn_from(gathered, tools),
+                       "read_flagged": flagged,
                        "note": "Nothing has happened yet. This is waiting on you."}
                 yield {"type": "RUN_FINISHED", "steps": steps,
                        "budget_left": left, "proposed": True}

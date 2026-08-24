@@ -208,6 +208,13 @@ def _ev(a) -> dict:
         return v if isinstance(v, dict) else {}
     except (json.JSONDecodeError, TypeError):
         return {"unreadable": True}
+    except (IndexError, KeyError):
+        # The column is not in this SELECT. A caller that forgot it should
+        # get a card without its citation, not a 500 that takes the whole
+        # transcript with it — invariant 6, and the reason it is worth a
+        # line here is that a sqlite3.Row raises IndexError for a missing
+        # key rather than the KeyError anybody would guess.
+        return {}
 
 
 def _stale(a) -> bool:
@@ -264,9 +271,15 @@ def h_thread(q):
         row = dict(m)
         if row.get("approval_id"):
             a = store.one("SELECT id,title,body,category,decision,decided_at,"
-                          "action,edited_body,result FROM approval WHERE id=?",
-                          row["approval_id"])
-            row["approval"] = dict(a) if a else None
+                          "action,edited_body,result,evidence "
+                          "FROM approval WHERE id=?", row["approval_id"])
+            # evidence was not selected, so a proposal redrawn after a reload
+            # lost the list of what the turn had read — the citation was on
+            # the card while the tab stayed open and gone the moment it did
+            # not, which is the worst of both.
+            if a:
+                row["approval"] = dict(a)
+                row["approval"]["evidence"] = _ev(a)
         out.append(row)
     return {"thread": tid, "workspace": ws, "messages": out}
 
@@ -577,7 +590,20 @@ def _ask_stream(q, workspace, thread=None):
                     # not toward "you asked for something in chat".
                     (act or {}).get("category") or "asked_for",
                     "You asked for this in chat", ev["text"],
-                    json.dumps({"sources": ["you"], "via": "ask"}),
+                    # What the turn read before it proposed. It said
+                    # {"sources": ["you"]}, which describes the request and
+                    # nothing about the answer — so a card offering to wire
+                    # a source or hold some dates gave no way to tell
+                    # whether it had looked at anything at all.
+                    #
+                    # read_flagged is the one that matters most: it says a
+                    # message that reads like an instruction was in the
+                    # context window when this was proposed. Nothing is
+                    # allowed to act on it either way, but somebody
+                    # approving this should be told.
+                    json.dumps({"sources": ["you"], "via": "ask",
+                                "drawn_from": ev.get("drawn_from") or [],
+                                "read_flagged": bool(ev.get("read_flagged"))}),
                     json.dumps(act) if act else None)
             # The transcript row for this turn was written inside ask(),
             # before the queue had an id for it, and the event carries that
