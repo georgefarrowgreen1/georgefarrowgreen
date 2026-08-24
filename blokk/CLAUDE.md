@@ -120,6 +120,19 @@ because a refusal wearing the wrong name is one nobody can act on, and one
 that vanishes the day the other rule is loosened. A93 covers all of it and is
 mutation-tested seven ways.
 
+**A message is read with what came before it.** "Washing ?" is a reply, and
+on its own it is unanswerable — so the sweep answered it by asking the sender
+what they meant, which is the question a person would not have had to ask.
+`connectors.conversation_before` normalises three readers' different ideas of
+a thread into one shape: oldest first, both sides, the message itself
+excluded. Your own earlier words matter most, because they are what a
+one-word reply is replying to.
+
+Every line of it is quarantined separately and an instruction found in the
+history flags the message it is context for. Widening the window widens the
+surface: three messages ago reaches the model exactly as easily as this one,
+and a flag lost among the context is worse than no context.
+
 **Memory is only real if it reaches a prompt.** Corrections become episodes,
 episodes consolidate into facts, and `core/harness.py:learned_block` is what
 puts those facts in front of a model. For a long time nothing did — the chat
@@ -462,6 +475,9 @@ All four suites green. Verified behaviours:
   a booking that leaves on the 6th and one that arrives on the 6th do not
   clash; the same hold approved twice is one file; and what it writes reads
   back through Blokk's own parser with the comma in the guest's name intact
+* a one-line reply is drafted with the exchange above it — both sides,
+  oldest first, quarantined line by line, in triage and the draft and on
+  the card
 * a chat proposal carries the rows the turn read before it proposed, says so
   when one of them read like an instruction, and quotes that one rather than
   hiding it — and all of it survives a reload

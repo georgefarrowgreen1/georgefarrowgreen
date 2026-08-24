@@ -52,6 +52,78 @@ class Connector(Protocol):
         ...
 
 
+def conversation_before(reader, who: str, this_body: str = "",
+                        limit: int = 8) -> list[dict]:
+    """What was said before this message, oldest first.
+
+    A text saying "Washing ?" is a reply. Read on its own it is
+    unanswerable, and the sweep answered it the only way it could — by
+    asking the sender what they meant, which is the question a person would
+    not have had to ask. Every message was triaged and drafted from itself
+    with nothing in front of it.
+
+    The three readers disagree about what a thread is, so this asks each in
+    its own terms and hands back one shape:
+
+      * Messages has `thread_with`, which returns both sides — the half
+        somebody sent *and the half you sent*, which is the part that
+        actually explains a one-word reply;
+      * mail has no threading, so the sender's own recent messages are the
+        best available answer and are labelled as that;
+      * anything else has no conversation and says so by returning nothing.
+
+    Every line comes back carrying provenance. Your own words are `self`;
+    theirs stay untrusted, because an instruction planted three messages ago
+    is exactly as dangerous as one planted in this one, and widening the
+    window is what makes that worth saying.
+    """
+    if not who or reader is None:
+        return []
+    rows: list = []
+    try:
+        if hasattr(reader, "thread_with"):
+            rows = list(reader.thread_with(who, limit=limit + 4) or [])
+        elif hasattr(reader, "search_since"):
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            found = read_since(reader, now - timedelta(days=120), now, 200)
+            key = _address(who)
+            rows = [r for r in (found or [])
+                    if key and key in _address(str(r.get("from") or ""))]
+    except Exception:                                            # noqa: BLE001
+        # A reader that cannot answer costs this message its context, not
+        # the sweep. It still gets triaged, just as blind as before.
+        return []
+
+    out = []
+    for r in rows:
+        body = " ".join(str(r.get("body") or r.get("text") or "").split())
+        if not body:
+            continue
+        # The message being answered is not context for itself.
+        if this_body and body[:120] == " ".join(str(this_body).split())[:120]:
+            continue
+        mine = str(r.get("from") or "").lower() in ("you", "me", "self")
+        out.append({"from": "you" if mine else who,
+                    "when": str(r.get("at") or r.get("date") or "")[:64],
+                    "body": body[:600],
+                    "provenance": "self" if mine else "untrusted"})
+        if len(out) >= limit:
+            break
+    # Oldest first: a conversation read backwards is not a conversation.
+    return list(reversed(out))
+
+
+def _address(value: str) -> str:
+    """The bit of a From that identifies somebody — an address or a number."""
+    import re as _re
+    m = _re.search(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+", str(value or ""))
+    if m:
+        return m.group(0).lower()
+    digits = _re.sub(r"[^0-9]", "", str(value or ""))
+    return digits[-9:] if len(digits) >= 7 else ""
+
+
 def read_since(fn, since, now, limit: int = 50) -> list:
     """Call a reader with the window it understands.
 
