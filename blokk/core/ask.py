@@ -244,12 +244,19 @@ def build_tools(store) -> dict[str, ReadTool]:
                 continue
             window = window or out.get("window", "")
             for r in out.get("rows", []):
-                rows.append({"source": name,
-                             "from": r.get("from"), "subject": r.get("subject"),
-                             "body": (r.get("body") or "")[:400],
-                             "when": r.get("date") or r.get("at") or "",
-                             "provenance": r.get("provenance", "untrusted"),
-                             "_flagged": bool(r.get("instruction_like"))})
+                row = {"source": name,
+                       "from": r.get("from"), "subject": r.get("subject"),
+                       "body": (r.get("body") or "")[:400],
+                       "when": r.get("date") or r.get("at") or "",
+                       "provenance": r.get("provenance", "untrusted"),
+                       "_flagged": bool(r.get("instruction_like"))}
+                # Which mailbox, calendar or town this row came from. For a
+                # forecast that is the whole of what identifies it: without
+                # it every answer reads the same whether the geocoder found
+                # the town somebody meant or a namesake on another continent.
+                if r.get("where"):
+                    row["place"] = r["where"]
+                rows.append(row)
         if not rows:
             return bad + [{"window": window,
                            "nothing": "no rows in that window"}]
@@ -1492,7 +1499,25 @@ def _guess(q: str) -> dict | None:
 # because it has no credential to keep, IS_URL takes one page's address, and
 # the rest take the name of a keychain entry. Looking for a URL regardless was
 # why "add a weather source to personal for Bath" quietly became a lookup.
-PLACE = re.compile(r"\b(?:for|in|at|near)\s+([A-Z][\w'-]*(?:[ -][A-Z][\w'-]*)*)")
+#
+# Place names are not runs of capitalised words. This matched
+# `[A-Z]\w*(?:[ -][A-Z]\w*)*`, so it stopped dead at the first lowercase
+# word — and British place names are full of them. "Newcastle upon Tyne"
+# was recorded as "Newcastle", "Weston super Mare" as "Weston", "Bourton on
+# the Water" as "Bourton". The geocoder then found *a* Newcastle, and the
+# forecast that came back was for somewhere else entirely with nothing on
+# screen to say so.
+#
+# A connector word only counts when a capitalised word follows it, so
+# "for Bath and also wire my mail" still stops at Bath.
+JOINERS = ("upon", "on", "in", "under", "over", "super", "next", "the", "by",
+           "le", "la", "de", "du", "of", "and", "cum", "en", "sur", "am",
+           "st", "upon-", "y")
+PLACE = re.compile(
+    r"\b(?:for|in|at|near)\s+"
+    r"([A-Z][\w'\u2019-]*"
+    r"(?:(?:[ -](?:" + "|".join(JOINERS) + r"))*[ -][A-Z][\w'\u2019-]*)*)",
+    re.UNICODE)
 
 
 # What somebody says, and which connector that is. Ordered so the route that
@@ -1784,9 +1809,14 @@ def _summarise(gathered: list) -> str:
                 parts.append(bad["unreadable"] + ".")
             else:
                 days = [r for r in rows if r.get("subject")]
-                parts.append("forecast: " + "; ".join(
-                    f"{r.get('from', '')} {r.get('subject', '')}"
-                    for r in days[:4]) + "." if days else "no forecast.")
+                where = next((r["place"] for r in days if r.get("place")), "")
+                if not days:
+                    parts.append("no forecast.")
+                else:
+                    head = f"forecast for {where}: " if where else "forecast: "
+                    parts.append(head + "; ".join(
+                        f"{r.get('from', '')} {r.get('subject', '')}"
+                        for r in days[:4]) + ".")
         elif tool == "this_mac":
             if not rows or rows[0].get("note"):
                 parts.append(rows[0]["note"] if rows else "nothing to survey.")

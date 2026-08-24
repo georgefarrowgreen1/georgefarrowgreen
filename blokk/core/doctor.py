@@ -91,12 +91,109 @@ def listening(port: int) -> bool:
 
 
 def reachable(ip: str, port: int) -> bool:
+    """Is something listening on this address — asked from *this* machine.
+
+    Read the name carefully, because it was read wrongly for a long time and
+    the phone panel was built on the misreading. This opens a socket from the
+    Mac to one of the Mac's own addresses. The server binds 0.0.0.0, so the
+    connection never leaves the box and it succeeds for *every* address the
+    machine holds: the VPN tunnel, the Docker bridge, the AirDrop link-local,
+    the Parallels adapter, and — as this was written — a reserved TEST-NET
+    address that is by definition unroutable.
+
+    So this answers "am I bound to that port", which is worth knowing. It
+    does not answer "can the phone get here", and nothing running on the Mac
+    can: that is a question about the network between two devices, and only
+    the other device can answer it. phone_addresses() below ranks by what a
+    phone could plausibly route to and says so in those words.
+    """
     s = socket.socket()
     s.settimeout(2.0)
     try:
         return s.connect_ex((ip, port)) == 0
     finally:
         s.close()
+
+
+# Interfaces a phone on your wifi cannot use, whatever they answer when the
+# Mac asks itself. Matched on the prefix, because they are all numbered.
+#
+#   utun/ipsec/ppp  a VPN tunnel. iCloud Private Relay, a work VPN and
+#                   Tailscale all put one here, and the phone is not on it.
+#   awdl/llw        AirDrop and low-latency wifi. Peer-to-peer, not a LAN.
+#   anpi            Apple's own private interface to the co-processor.
+#   bridge/vmenet   Docker, Parallels, UTM, Internet Sharing. Reachable from
+#   vnic/vboxnet    the Mac and from the virtual machines on it, nobody else.
+#   docker/veth     The same, on Linux.
+#   gif/stf         Tunnel pseudo-interfaces.
+#   ap              The hotspot interface, up even when nothing is shared.
+NOT_A_LAN = ("utun", "ipsec", "ppp", "awdl", "llw", "anpi", "bridge",
+             "vmenet", "vnic", "vboxnet", "docker", "veth", "gif", "stf",
+             "ap")
+
+
+def _kind(name: str, ip: str) -> tuple[str, bool, str]:
+    """What this address is, whether a phone can use it, and why not."""
+    n = (name or "").lower().rstrip("0123456789")
+    parts = ip.split(".")
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except (ValueError, IndexError):
+        return "odd", False, "not an address this understands"
+
+    # Address first: a bad address on a good interface is still bad.
+    if (a, b) == (169, 254):
+        return ("link-local", False,
+                "the 169.254 range means this interface asked for an address "
+                "and nothing answered — it is not on a working network")
+    # RFC 5737, reserved for documentation and guaranteed unroutable.
+    if (a, b) in ((192, 0), (198, 51), (203, 0)) and ip.startswith(
+            ("192.0.2.", "198.51.100.", "203.0.113.")):
+        return ("reserved", False,
+                "this range is reserved for documentation and never routes")
+    if n.startswith(NOT_A_LAN):
+        why = f"{name} is not the network your phone is on"
+        if n.startswith(("bridge", "vmenet", "vnic", "vboxnet")):
+            why += " — unless you are sharing this Mac's connection to it"
+        return (n or "?", False, why)
+
+    private = (a == 10 or (a == 172 and 16 <= b <= 31) or (a, b) == (192, 168))
+    if private:
+        return ("lan", True, "a home or office network — this is the one to try")
+    if a == 100 and 64 <= b <= 127:
+        return ("cgnat", True,
+                "a carrier or mesh network (Tailscale uses this range) — it "
+                "works if the phone is on the same one")
+    return ("public", True,
+            "a public address; it will work only if your router lets the "
+            "phone reach it")
+
+
+def phone_addresses(port: int) -> list[dict]:
+    """Every address, ranked by what a phone could actually route to.
+
+    The panel used to take the first thing ifconfig printed that answered a
+    connection from the Mac to itself, which is every address the Mac has.
+    On a machine with a VPN or Docker running — which is most of them — the
+    QR code pointed at a tunnel the phone has never heard of.
+
+    Nothing here is a promise. The Mac cannot test the phone's side, so this
+    ranks and explains rather than claiming, and hands back every candidate
+    so somebody looking at the list can try the next one.
+    """
+    out = []
+    for name, ip in interfaces():
+        kind, usable, why = _kind(name, ip)
+        out.append({"ip": ip, "interface": name, "kind": kind,
+                    "usable": usable, "why": why,
+                    # What the Mac *can* answer: is the server bound here.
+                    "listening": reachable(ip, port)})
+    # Usable first, then a LAN address before a public one, then the lower
+    # interface number — en0 is the built-in wifi on every Mac.
+    order = {"lan": 0, "cgnat": 1, "public": 2}
+    out.sort(key=lambda r: (not r["usable"], not r["listening"],
+                            order.get(r["kind"], 9), r["interface"]))
+    return out
 
 
 def firewall() -> tuple[str, str]:

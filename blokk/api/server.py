@@ -107,7 +107,31 @@ def rows(rs):
     return [dict(r) for r in rs]
 
 
-def lan_ip() -> str:
+def lan_ip(port: int = 0) -> str:
+    """The address to put in front of somebody, best first.
+
+    This used to ask the routing table which source address would be used to
+    reach 10.255.255.255 and print that. On a Mac with a VPN up — iCloud
+    Private Relay, a work VPN, Tailscale — the default route goes through the
+    tunnel, so the banner and the QR code on first run pointed at an address
+    the phone has never heard of. That is the whole of "it will not connect
+    over the network", and it is printed in green with a QR code under it.
+
+    doctor.phone_addresses ranks what a phone could actually route to. The
+    routing-table trick stays as the last resort, because on a machine this
+    cannot read at all some address beats none.
+    """
+    try:
+        from core import doctor
+        ranked = doctor.phone_addresses(port) if port else [
+            {"ip": ip, **dict(zip(("kind", "usable", "why"),
+                                  doctor._kind(name, ip)))}
+            for name, ip in doctor.interfaces()]
+        good = [r for r in ranked if r.get("usable")]
+        if good:
+            return good[0]["ip"]
+    except Exception:                                            # noqa: BLE001
+        pass
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("10.255.255.255", 1))
@@ -765,13 +789,14 @@ def h_phone(_q):
     """
     from core import doctor, qr
     port = SERVING_PORT["n"]
-    ips = doctor.interfaces()
-    reachable = [{"ip": ip, "interface": name, "answers": doctor.reachable(ip, port)}
-                 for name, ip in ips]
-    live = [r for r in reachable if r["answers"]]
-    url = f"http://{live[0]['ip']}:{port}/?t={TOKEN}" if live else ""
+    # Ranked by what a phone could route to, not by what answered a socket
+    # the Mac opened to itself — which is every address it has, including the
+    # VPN tunnel and the Docker bridge. See doctor.reachable's docstring.
+    found = doctor.phone_addresses(port)
+    usable = [r for r in found if r["usable"] and r["listening"]]
+    url = f"http://{usable[0]['ip']}:{port}/?t={TOKEN}" if usable else ""
     state, note = doctor.firewall()
-    out = {"url": url, "addresses": reachable,
+    out = {"url": url, "addresses": found, "tried": len(usable),
            "firewall": {"state": state, "note": note}}
     if url:
         try:
@@ -1329,7 +1354,11 @@ def serve(port=8080):
     resumed = engine.resume_all(background=True, on_done=bump)
     expired = expire_waits()
     NIGHTLY.start()
-    ip, host = lan_ip(), socket.gethostname().split(".")[0].lower()
+    host = socket.gethostname().split(".")[0].lower()
+    from core import doctor as _doc
+    ranked = _doc.phone_addresses(port)
+    usable = [r for r in ranked if r["usable"]]
+    ip = usable[0]["ip"] if usable else lan_ip(port)
     phone = f"http://{ip}:{port}/?t={TOKEN}"
 
     # Under launchd, stdout is a log file: no colour, no QR, nobody watching.
@@ -1342,6 +1371,17 @@ def serve(port=8080):
     print(f"  {B}1{O}  On this Mac      {G}http://localhost:{port}{O}")
     print(f"  {B}2{O}  On your phone    same wifi, then Add to Home Screen\n")
 
+    # Nothing a phone could route to. Said here rather than printing a link
+    # and a QR code that cannot work: the addresses this machine does have
+    # are a VPN tunnel, a virtual bridge or an interface with no network
+    # behind it, and every one of them answers when the Mac asks itself.
+    if not usable:
+        print(f"     {Y}No address a phone could reach.{O}")
+        for r in ranked[:4]:
+            print(f"     {D}{r['interface']:<10} {r['ip']:<16} {r['why']}{O}")
+        print(f"     {D}Join a wifi network, or turn a VPN off, and start "
+              f"this again.{O}\n")
+
     # The whole point: nobody types a token off a screen correctly, and the
     # two things people leave out — the :port and the ?t= — are exactly the
     # two that turn this into "it doesn't connect".
@@ -1349,15 +1389,23 @@ def serve(port=8080):
     # than version 10 holds — and the link is only long when someone has set
     # a long BLOKK_TOKEN, which is a reasonable thing to do and not a reason
     # for the control plane to die on the last line of its own banner.
-    try:
-        if tty and qr.width(phone) <= cols - 4:
-            for line in qr.render(phone).splitlines():
-                print("     " + line)
-            print()
-    except ValueError:
-        print(f"     {D}(the link is too long to draw as a QR code){O}\n")
-    print(f"     {G}{phone}{O}")
-    print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}{O}\n")
+    if usable:
+        try:
+            if tty and qr.width(phone) <= cols - 4:
+                for line in qr.render(phone).splitlines():
+                    print("     " + line)
+                print()
+        except ValueError:
+            print(f"     {D}(the link is too long to draw as a QR code){O}\n")
+        print(f"     {G}{phone}{O}")
+        print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}{O}")
+        # The second-best one, when there is a real choice. A Mac on both
+        # wifi and ethernet has two, and only one of them is the network the
+        # phone is on — which is not a thing this can know from here.
+        if len(usable) > 1:
+            print(f"     {D}or http://{usable[1]['ip']}:{port}/?t={TOKEN}"
+                  f"   ({usable[1]['interface']}){O}")
+        print()
 
     ms = model_status(probe=True)
     if ms["live"] and ms.get("reachable"):

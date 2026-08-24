@@ -2164,21 +2164,37 @@ $('#phone').onclick = async () => {
   body.textContent = 'checking…'; dlg.showModal();
   try{
     const d = await get('/api/v1/phone');
+    // Every address, with what it is and why a phone can or cannot use it.
+    // This said "reachable" or "no answer" next to each one, from a socket
+    // the Mac opened to itself — which succeeds for the VPN tunnel and the
+    // Docker bridge too. It was a claim about a test that never happened.
     const rows = d.addresses.map(a =>
       `<div class="prow"><code>${esc(a.ip)}</code>
-       <span class="${a.answers?'yes':'no'}">${a.answers?'reachable':'no answer'}</span>
-       <small>${esc(a.interface)}</small></div>`).join('');
+       <span class="${a.usable ? 'yes' : 'no'}">${
+         a.usable ? 'try this' : esc(a.kind)}</span>
+       <small>${esc(a.interface)} — ${esc(a.why)}${
+         a.usable && !a.listening ? ' (nothing is listening on it)' : ''}</small>
+       </div>`).join('');
     const fw = d.firewall.state === 'on' && /NOT listed/.test(d.firewall.note)
       ? `<p class="no">The firewall is on and python is not allowed through —
          that is almost certainly why the phone cannot connect. System Settings
          &rsaquo; Network &rsaquo; Firewall.</p>` : '';
+    // More than one candidate is not a failure, but it is worth saying:
+    // only the phone can tell which of them is the network it is on.
+    const alt = d.tried > 1
+      ? `<p class="sub">${d.tried} addresses could work. If this one does
+         not, the others are below — this Mac cannot tell which network your
+         phone is on.</p>` : '';
     body.innerHTML = d.url
       ? `<p>Point the camera at this, on the same wifi as this Mac.</p>
          <div class="qr">${d.qr || ''}</div>
          <p class="link"><code>${esc(d.url)}</code></p>
          <p class="sub">Then Share &rsaquo; Add to Home Screen and it is remembered.</p>
-         ${rows}${fw}`
-      : `<p class="no">Nothing on this Mac is reachable from the network.</p>
+         ${alt}${rows}${fw}`
+      : `<p class="no">No address here is one a phone could reach.</p>
+         <p class="sub">Everything below is a VPN tunnel, a virtual network
+           or an interface with nothing behind it. Join a wifi network, or
+           turn a VPN off, and open this again.</p>
          ${rows}${fw}`;
   }catch(e){ body.innerHTML = `<p class="no">Could not check: ${esc(e.message)}</p>`; }
 };

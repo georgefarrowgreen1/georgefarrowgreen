@@ -487,7 +487,8 @@ def find(store, name: str, term: str, days: int = FIND_DAYS,
         out.append({"from": r.get("from") or r.get("start", ""),
                     "subject": r.get("subject") or r.get("summary", ""),
                     "when": r.get("at") or r.get("date") or r.get("start", ""),
-                    "where": r.get("mailbox") or r.get("calendar") or "",
+                    "where": (r.get("mailbox") or r.get("calendar")
+                              or r.get("place") or ""),
                     "provenance": r.get("provenance", "untrusted"),
                     "instruction_like": bool(q["instruction_like"]),
                     # How well this one answered, relative to the best. A
@@ -694,12 +695,28 @@ def peek(store, name: str, n: int = 5) -> dict:
                  "provenance": page["provenance"], "body": page["text"],
                  "instruction_like": page["instruction_like"]}]
     elif getattr(c, "forecast", None):
-        window = "the next 5 days"
+        # Which place, in the window, so every answer built from these rows
+        # says where it is for. A forecast is the one source whose rows carry
+        # nothing identifying: "clear, 11–19°C" reads exactly the same for
+        # the town you meant and the one three thousand miles away that the
+        # geocoder picked because the name was ambiguous. Naming it is what
+        # makes a wrong one visible.
+        where = ""
+        try:
+            where = str((state or {}).get("place")
+                        or (c.where() or {}).get("place") or "")
+        except Exception:                                        # noqa: BLE001
+            where = ""
+        window = f"the next 5 days{f' in {where}' if where else ''}"
         # The body is the fields, not a second copy of the sentence: peek is
         # where you check what a workflow is actually handed, and what it is
         # handed is numbers.
         rows = [{"from": d["date"], "subject": d["summary"],
-                 "provenance": d["provenance"],
+                 # One key, read by the normaliser below alongside mailbox
+                 # and calendar. It carried two — `place` and a `calendar`
+                 # alias — and either alone was enough, so removing one
+                 # changed nothing and a probe could not tell.
+                 "provenance": d["provenance"], "place": where,
                  "body": f"high {d['high_c']}°C, low {d['low_c']}°C, "
                          f"rain {d['rain_chance']}%, wind {d['wind_kph']} km/h"}
                 for d in c.forecast(days=5)]
@@ -736,7 +753,8 @@ def peek(store, name: str, n: int = 5) -> dict:
                     # not answer "when did they write", on data where the
                     # connector knew all along.
                     "at": r.get("at") or r.get("date") or r.get("start", ""),
-                    "where": r.get("mailbox") or r.get("calendar") or "",
+                    "where": (r.get("mailbox") or r.get("calendar")
+                              or r.get("place") or ""),
                     "provenance": r.get("provenance", "?"),
                     "instruction_like": bool(q["instruction_like"]),
                     "body": body[:400].strip()})

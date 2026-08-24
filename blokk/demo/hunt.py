@@ -6131,6 +6131,198 @@ try:
     probe("A102 wiring a second mailbox silently replaces the first",
           two_of_a_kind)
 
+    # ── 103. the address you are told to type into a phone ──────────────
+    def phone_address_is_not_a_guess():
+        # Two devices, and only one of them was ever asked. reachable() opens
+        # a socket from the Mac to one of the Mac's own addresses; the server
+        # binds 0.0.0.0, so it succeeds for every address the machine has —
+        # the VPN tunnel, the Docker bridge, the AirDrop link-local, and the
+        # reserved TEST-NET address this suite runs on. The panel printed
+        # "reachable" beside each one and put the first in a QR code.
+        #
+        # Nothing on the Mac can answer "can the phone get here". What it can
+        # do is rule out the addresses a phone certainly cannot use, and say
+        # which is which rather than claiming a test it never ran.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import doctor as D
+
+        # A very ordinary Mac: wifi, ethernet, AirDrop, Private Relay, Docker.
+        MAC = [("en0", "192.168.1.42"), ("en1", "10.0.1.7"),
+               ("awdl0", "169.254.212.9"), ("llw0", "169.254.9.9"),
+               ("utun0", "10.8.0.6"), ("utun4", "198.18.0.1"),
+               ("bridge100", "192.168.64.1"), ("vmenet0", "192.168.66.1")]
+        keep_i, keep_r = D.interfaces, D.reachable
+        D.interfaces = lambda: MAC
+        D.reachable = lambda ip, port: True      # bound on 0.0.0.0: all of them
+        try:
+            ranked = D.phone_addresses(8080)
+            by_ip = {r["ip"]: r for r in ranked}
+            if len(ranked) != len(MAC):
+                return (True, f"{len(ranked)} of {len(MAC)} addresses came back")
+            # The ones a phone cannot use, and the reason has to be readable.
+            for ip, what in (("10.8.0.6", "a VPN tunnel"),
+                             ("198.18.0.1", "a VPN tunnel"),
+                             ("169.254.212.9", "an interface with no network"),
+                             ("192.168.64.1", "a virtual bridge"),
+                             ("192.168.66.1", "a virtual network")):
+                r = by_ip[ip]
+                if r["usable"]:
+                    return (True, f"{ip} is {what} and was offered to a phone")
+                if len(r["why"]) < 20:
+                    return (True, f"{ip} was refused with {r['why']!r}, which "
+                                  f"does not say why")
+            for ip in ("192.168.1.42", "10.0.1.7"):
+                if not by_ip[ip]["usable"]:
+                    return (True, f"{ip} is a private LAN address and was not "
+                                  f"offered")
+            # Ranked, not just labelled: the first is the one that goes in
+            # the QR code.
+            if not ranked[0]["usable"]:
+                return (True, f"the first address offered is {ranked[0]['ip']}, "
+                              f"which is {ranked[0]['kind']}")
+            if ranked[0]["ip"] != "192.168.1.42":
+                return (True, f"en0's LAN address did not come first: "
+                              f"{ranked[0]['ip']} on {ranked[0]['interface']}")
+
+            # And a machine with nothing usable says so rather than handing
+            # over an address that cannot work. This is the state the suite's
+            # own container is in.
+            D.interfaces = lambda: [("?", "192.0.2.2")]
+            only = D.phone_addresses(8080)
+            if any(r["usable"] for r in only):
+                return (True, "a reserved documentation address was offered "
+                              "to a phone")
+        finally:
+            D.interfaces, D.reachable = keep_i, keep_r
+
+        # The endpoint has to use the ranking, and never publish a URL built
+        # from an address it just called unusable.
+        d = g('/api/v1/phone')
+        if "addresses" not in d:
+            return (True, "the phone endpoint returns no addresses at all")
+        for r in d["addresses"]:
+            for k in ("usable", "why", "kind", "listening"):
+                if k not in r:
+                    return (True, f"an address came back without {k!r} — the "
+                                  f"panel cannot say what it is")
+            if "answers" in r:
+                return (True, "the endpoint still reports 'answers', which "
+                              "was a socket the Mac opened to itself")
+        if d.get("url"):
+            ip = d["url"].split("//")[1].split(":")[0]
+            row = next((r for r in d["addresses"] if r["ip"] == ip), None)
+            if row is None or not row["usable"]:
+                return (True, f"the URL points at {ip}, which is not one of "
+                              f"the addresses it says a phone can use")
+        return (False, "a VPN, a bridge, a link-local and a reserved address "
+                       "are each refused with a reason, en0's LAN address is "
+                       "offered first, and the URL is one of them")
+    probe("A103 the phone is sent to an address nobody could test",
+          phone_address_is_not_a_guess)
+
+    # ── 104. a place name with a small word in it ───────────────────────
+    def place_names_survive():
+        # PLACE matched runs of Capitalised words, so it stopped at the first
+        # lowercase one — and British place names are full of them. "add
+        # weather for Newcastle upon Tyne" recorded "Newcastle", the geocoder
+        # found *a* Newcastle, and the forecast came back for somewhere else
+        # with nothing on screen to say which. Silently wrong, which is the
+        # worst of the three outcomes.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import ask as _ask
+
+        for said, want in (
+                ("add weather for Newcastle upon Tyne", "Newcastle upon Tyne"),
+                ("add weather for Kingston upon Hull", "Kingston upon Hull"),
+                ("add weather for Weston super Mare", "Weston super Mare"),
+                ("add weather for Bourton on the Water", "Bourton on the Water"),
+                ("add weather for Barrow in Furness", "Barrow in Furness"),
+                ("add weather for Stow on the Wold, please", "Stow on the Wold"),
+                ("add weather for Stoke-on-Trent", "Stoke-on-Trent"),
+                ("add weather for York", "York"),
+                # …and it must not run on into the rest of the sentence: a
+                # joiner only counts when a capitalised word follows it.
+                ("add weather for Bath and also wire my mail", "Bath")):
+            m = _ask.PLACE.search(said)
+            got = m.group(1).strip() if m else None
+            if got != want:
+                return (True, f"{said!r} gave {got!r}, not {want!r}")
+
+        # End to end: the sentence becomes a proposal carrying the whole name.
+        guess = _ask._guess("add a weather source for Newcastle upon Tyne")
+        if not guess or guess.get("action") != "add_source":
+            return (True, f"asking for a weather source proposed {guess!r}")
+        ref = (guess.get("args") or {}).get("ref")
+        if ref != "Newcastle upon Tyne":
+            return (True, f"the proposal would wire {ref!r}")
+        return (False, "a place name keeps its small words, and stops at the "
+                       "end of the name rather than the end of the sentence")
+    probe("A104 a place name is cut off at its first lowercase word",
+          place_names_survive)
+
+    # ── 105. a forecast that never says where it is for ─────────────────
+    def forecast_names_the_place():
+        # Every other source identifies its rows: mail has a sender, the
+        # calendar has a title. A forecast row is "clear, 11-19C" — which
+        # reads exactly the same for the town somebody meant and the namesake
+        # three thousand miles away that the geocoder ranked first. Naming
+        # the place is what makes a wrong one visible instead of silent.
+        import sys as _s, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources as _src, ask as _ask
+        import core.connectors as _C
+        import core.connectors.weather as _W
+        from core.models import StubModel
+
+        DAYS = [{"date": "2026-08-25", "summary": "clear, 11-19C",
+                 "label": "clear", "high_c": 19.0, "low_c": 11.0,
+                 "rain_chance": 5, "wind_kph": 11.0, "provenance": "external"}]
+        WHERE = "Newcastle upon Tyne, England, United Kingdom"
+
+        class Stubbed(_W.Weather):
+            def where(self):
+                return {"lat": 54.97, "lon": -1.61, "place": WHERE}
+            def forecast(self, days=7):
+                return DAYS[:days]
+            def check(self):
+                return {"ok": True, "place": WHERE}
+
+        keep = _W.Weather
+        _W.Weather = Stubbed
+        st = Store(pathlib.Path(_tf.mkdtemp()) / "w.db")
+        try:
+            r = _src.add(st, "weather", "Newcastle upon Tyne")
+            if r.get("error"):
+                return (True, f"could not wire weather: {r['error']}")
+            _C.REGISTRY.clear()
+            out = _src.peek(st, "weather", 5)
+            if out.get("error"):
+                return (True, f"peeking the forecast failed: {out['error']}")
+            if WHERE not in str(out.get("window", "")):
+                return (True, f"the window says {out.get('window')!r} and "
+                              f"never names the place")
+            if not any(WHERE in str(row.get("where", ""))
+                       for row in out.get("rows", [])):
+                return (True, "no forecast row says which place it is for")
+            said = "".join(
+                e.get("delta", "") for e in
+                _ask.ask(st, "what is the weather like tomorrow?", StubModel())
+                if e["type"] == "TEXT_MESSAGE_CONTENT")
+            if "Newcastle upon Tyne" not in said:
+                return (True, f"the answer never names the place: {said[:90]!r}")
+            if "clear" not in said:
+                return (True, f"the answer carries no forecast: {said[:90]!r}")
+        finally:
+            _W.Weather = keep
+            _C.REGISTRY.clear()
+        return (False, "the window, the rows and the answer all name the town "
+                       "the forecast is for")
+    probe("A105 a forecast does not say which place it is for",
+          forecast_names_the_place)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
