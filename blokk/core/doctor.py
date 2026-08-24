@@ -22,6 +22,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,7 +35,10 @@ def _c(s, colour):
 
 
 def row(label, state, detail=""):
-    print(f"  {label:<16}{state}" + (f"  {_c(detail, DIM)}" if detail else ""))
+    # min-width, not fixed width. "georgefg/maildir" is exactly sixteen
+    # characters and ran straight into its own status: "maildirreading".
+    print(f"  {label:<16}" + (" " if len(label) >= 16 else "") + f"{state}"
+          + (f"  {_c(detail, DIM)}" if detail else ""))
 
 
 def interfaces() -> list[tuple[str, str]]:
@@ -257,6 +261,113 @@ def models() -> list[str]:
     return r["todo"]
 
 
+def sources_and_chat() -> list[str]:
+    """Every wired source, and one real chat turn.
+
+    Here because this is the command people run when something is not
+    working, and until now it only looked at the network and the model
+    server. The two questions it could not answer are the two people
+    actually have: is it reading my mail, and does the chat box work.
+
+    Returns what to do about whatever it found.
+    """
+    todo: list[str] = []
+    try:
+        from core.durable import Store
+        from core import sources
+        from core.connectors import wire
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  {_c('could not load Blokk: ' + str(e)[:70], RED)}")
+        return todo
+
+    db = ROOT / "blokk.db"
+    if not db.exists():
+        print(f"\n  {_c('Is it reading your own data?', BOLD)}\n")
+        row("database", _c("MISSING", RED), "run ./blokk once to create it")
+        return ["Start Blokk once: ./blokk"]
+    store = Store(db)
+
+    print(f"\n  {_c('Is it reading your own data?', BOLD)}\n")
+    wired = list(store.q("SELECT workspace_id, kind, keychain_ref FROM "
+                         "credential ORDER BY workspace_id, kind"))
+    if not wired:
+        row("sources", _c("none", AMBER),
+            "every workspace is running on invented data")
+        todo.append("Wire one real source — say \"what can I connect?\" in "
+                    "the chat, or: python3 connect.py local")
+    reg = wire(store)
+    for c in wired:
+        ws, kind = c["workspace_id"], c["kind"]
+        conn = reg.get(ws, sources.KINDS.get(kind, kind))
+        label = f"{ws}/{kind}"
+        if conn is None:
+            row(label, _c("NOT WIRED", RED), "nothing built a reader for it")
+            todo.append(f"{label}: added, but no reader — this is a bug, "
+                        f"please say so")
+            continue
+        # Bounded, per source. One mail server that is not answering must not
+        # be the reason a doctor never finishes.
+        out: dict = {}
+
+        def go(conn=conn, out=out):
+            try:
+                out["state"] = conn.check() if hasattr(conn, "check") else {"ok": True}
+            except Exception as e:                               # noqa: BLE001
+                out["err"] = f"{type(e).__name__}: {e}"
+
+        t = threading.Thread(target=go, daemon=True)
+        t.start()
+        t.join(12)
+        if t.is_alive():
+            row(label, _c("no answer", AMBER), "still trying after 12s")
+            todo.append(f"{label}: not answering — check it is reachable")
+            continue
+        if "err" in out:
+            row(label, _c("CANNOT READ", RED), out["err"][:70])
+            todo.append(f"{label}: {out['err'][:90]}")
+            continue
+        state = out.get("state") or {}
+        ok = state.get("ok", True)
+        row(label, _c("reading", GREEN) if ok else _c("nothing there", AMBER),
+            sources.describe(kind, state)[:70])
+        if not ok:
+            todo.append(f"{label}: {state.get('detail', 'nothing to read')[:90]}")
+
+    print(f"\n  {_c('Does the chat box work?', BOLD)}\n")
+    try:
+        from core import models
+        from core.ask import ask as run_ask, scope_for
+        ws = scope_for(store, None)
+        if not ws:
+            row("chat", _c("no workspace", AMBER), "add one and it will work")
+            return todo
+        m = models._from_env().small
+        said, tools, degraded = [], 0, ""
+        for ev in run_ask(store, "what needs me?", m, ws):
+            if ev["type"] == "TEXT_MESSAGE_CONTENT":
+                said.append(ev["delta"])
+            elif ev["type"] == "TOOL_CALL_END":
+                tools += 1
+            elif ev["type"] == "DEGRADED":
+                degraded = ev["detail"]
+        text = "".join(said).strip()
+        if not text:
+            row("chat", _c("SAYS NOTHING", RED), "a turn produced no answer")
+            todo.append("The chat answered with nothing. That is a bug — "
+                        "python3 connect.py ask \"hi\" prints every step.")
+        else:
+            row("chat", _c("answering", GREEN),
+                f"{tools} read{'' if tools == 1 else 's'}, "
+                f"{len(text)} characters")
+            print(f"    {_c(text[:96], DIM)}")
+        if degraded:
+            row("", _c("degraded", AMBER), degraded[:70])
+    except Exception as e:                                       # noqa: BLE001
+        row("chat", _c("RAISED", RED), f"{type(e).__name__}: {e}"[:70])
+        todo.append(f"The chat raised {type(e).__name__}: {str(e)[:80]}")
+    return todo
+
+
 def main() -> int:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
     print(f"\n  {_c('Can your phone reach this Mac?', BOLD)}\n")
@@ -294,8 +405,18 @@ def main() -> int:
     except Exception as e:                                       # noqa: BLE001
         print(f"  {_c('could not check the model server: ' + str(e)[:60], AMBER)}")
         todo = []
+    # Whatever the network and the model said. Somebody whose phone cannot
+    # reach the Mac still wants to know whether their mail is being read.
+    try:
+        todo += sources_and_chat()
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  {_c('could not check your sources: ' + str(e)[:60], AMBER)}")
+
+    # One list, at the end, after everything has been asked. Printing the
+    # model's half before running the source checks meant the source checks'
+    # own answers were collected and never shown.
     if todo:
-        print(f"\n  {_c('To get real text instead of placeholder:', BOLD)}")
+        print(f"\n  {_c('What to do about it:', BOLD)}")
         for item in todo:
             print(f"    • {item}")
     print()

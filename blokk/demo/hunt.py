@@ -3000,6 +3000,74 @@ try:
     probe("A73 the chat can only list mail, never look for anything",
           searching_your_own_data)
 
+    def doctor_answers_the_real_questions():
+        # `./blokk doctor` is the command people run when something is not
+        # working, and it only looked at the network and the model server.
+        # The two questions anybody actually has — is it reading my mail, and
+        # does the chat box work — it could not answer at all.
+        import sys as _s, subprocess as _sp, tempfile as _tf, shutil as _sh
+        md = pathlib.Path(_tf.mkdtemp()) / "cur"
+        md.mkdir(parents=True)
+        (md / "1700000000.M1P2.host:2,S").write_text(
+            "From: a@b.c\nSubject: hi\n\nbody\n")
+        gone = pathlib.Path(_tf.mkdtemp()) / "vanished"
+        gone.mkdir()
+
+        st = sqlite3.connect('blokk.db')
+        st.execute("DELETE FROM credential WHERE workspace_id='cottages'")
+        st.commit(); st.close()
+        from core.durable import Store
+        from core import sources
+        store = Store('blokk.db')
+        sources.add(store, "cottages", "maildir", str(md.parent))
+        sources.add(store, "cottages", "ical", str(gone))
+        _sh.rmtree(gone)                     # wired, and then taken away
+        try:
+            r = _sp.run([_s.executable, "-m", "core.doctor", "8099"],
+                        capture_output=True, text=True, timeout=120,
+                        stdin=_sp.DEVNULL)
+        except _sp.TimeoutExpired:
+            return (True, "the doctor never came back — a source that is not "
+                          "answering hangs it")
+        finally:
+            st = sqlite3.connect('blokk.db')
+            st.execute("DELETE FROM credential WHERE workspace_id='cottages'")
+            st.commit(); st.close()
+        out = r.stdout
+        for want, why in (
+            ("your own data", "it never looks at your sources"),
+            ("cottages/maildir", "a wired source is not listed"),
+            ("chat box", "it never tries the chat"),
+        ):
+            if want not in out:
+                return (True, why)
+        if "reading" not in out:
+            return (True, "a readable source is not reported as readable")
+        if "CANNOT READ" not in out:
+            return (True, "a source pointing at a folder that has been "
+                          "deleted is reported as fine")
+        if "answering" not in out and "SAYS NOTHING" not in out:
+            return (True, "the chat check reports neither an answer nor a "
+                          "failure")
+        # Everything it found has to reach the list of things to do, and that
+        # list has to be printed after everything has been asked — the first
+        # version printed the model server's half and then collected the
+        # source checks' answers into a list nobody ever saw.
+        todo = out.split("What to do about it:")
+        if len(todo) < 2:
+            return (True, "it found a broken source and suggested nothing")
+        if "cottages/ical" not in todo[1]:
+            return (True, "the broken source is not in the list of things to "
+                          "do about it")
+        # A label exactly as wide as its column ran into its own status.
+        if "maildirreading" in out.replace(" ", "x").replace("x", " ") \
+                or "maildirreading" in out:
+            return (True, "a long label runs into its status")
+        return (False, "sources and the chat are both checked, a dead source "
+                       "is named, and everything found reaches one list")
+    probe("A74 the doctor cannot say whether your mail is being read",
+          doctor_answers_the_real_questions)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
