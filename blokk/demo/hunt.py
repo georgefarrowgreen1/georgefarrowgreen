@@ -4735,6 +4735,160 @@ try:
     probe("A91 nothing has ever spoken HTTP to the model layer",
           served_model_has_never_spoken_http)
 
+    def calendar_app_is_reachable_and_a_name_is_not_a_command():
+        # The .ics drop was the halfway house: honest, and still two steps,
+        # and the second step is the one somebody forgets — a folder of holds
+        # nobody opened is a diary wrong in the direction that sells a bed
+        # twice. EventKit needs a signed bundle; osascript does not, and
+        # Calendar.app is scriptable.
+        #
+        # AppleScript has no placeholders. The script is a string, so a guest
+        # called   Smith" & (do shell script "rm -rf ~") & "   is a command
+        # if it is pasted in and a name if it is not. That is the whole risk
+        # of this file and it is what most of this probe is about.
+        import sys as _s8
+        _s8.path.insert(0, ".")
+        from core.connectors import calendar_app as CA
+        from datetime import date as _dt, timedelta as _tdd
+
+        # Near dates, because hold_dates refuses anything over two years out
+        # — a bound this probe should be respecting rather than tripping.
+        soon = _dt.today() + _tdd(days=40)
+        soon_end = soon + _tdd(days=3)
+        SOON, SOON_END = soon.isoformat(), soon_end.isoformat()
+
+        payload = 'Smith" & (do shell script "touch /tmp/blokk-pwned") & "'
+        out = CA.add(payload, SOON, SOON_END,
+                     calendar='Bookings" & (do shell script "id") & "',
+                     note="a\nnote with\ta tab", where=payload,
+                     uid="blokk-probe", dry_run=True)
+        script = out["script"]
+
+        # Walk the generated script tracking whether we are inside a string
+        # literal, respecting backslash escapes. Anything dangerous has to be
+        # *inside* one; the defence is that the literal is never left.
+        outside, inside_str, esc = [], False, False
+        for ch in script:
+            if esc:
+                esc = False
+                continue
+            if ch == "\\" and inside_str:
+                esc = True
+                continue
+            if ch == '"':
+                inside_str = not inside_str
+                continue
+            if not inside_str:
+                outside.append(ch)
+        loose = "".join(outside)
+        if inside_str:
+            return (True, "the generated script ends inside an unclosed "
+                          "string — the quoting is broken")
+        for danger in ("do shell script", "rm -rf", "touch /tmp",
+                       "system events", " id)"):
+            if danger.lower() in loose.lower():
+                return (True, f"{danger!r} reached the script as code, not "
+                              f"as text")
+
+        # A literal cannot span lines in AppleScript, so a note with a
+        # newline in it must arrive escaped or the whole thing is a syntax
+        # error — reported by osascript, about a file nobody wrote, on a
+        # booking that happened to have a paragraph break in it.
+        for line in script.split("\n"):
+            if line.count('"') % 2:
+                return (True, f"a raw newline is inside a string literal: "
+                              f"{line[:70]!r}")
+        if "\\n" not in script:
+            return (True, "the newline in the note was not escaped")
+
+        # A control character is refused rather than escaped cleverly.
+        # Quietly rewriting somebody's data to make it fit is how an event
+        # ends up called something nobody typed.
+        try:
+            CA._lit("bell\x07here")
+            return (True, "a control character was accepted into a literal")
+        except CA.CalendarError:
+            pass
+
+        # It says whether it can be asked, before anything tries — so "why
+        # did nothing happen" is a sentence and not an osascript exit code.
+        can, why = CA.available()
+        if not can and not why:
+            return (True, "it cannot be used and does not say why")
+
+        # And the queue's own preview tells the truth about which of the two
+        # things will happen on THIS machine. It said "writes a file; it does
+        # not touch Calendar" everywhere, which became a promise it would
+        # break on a Mac — in the direction where somebody approves a hold
+        # believing nothing changes, and their diary changes.
+        # Both branches, on any machine. Reading whichever one this box
+        # happens to be on tests half the behaviour and calls it done — and
+        # the half that matters is the Mac one, which is exactly the half a
+        # Linux runner never reaches.
+        from core import actions
+        real, real_add = CA.available, CA.add
+        try:
+            for pretend, must, mustnt in (
+                    ((True, ""), "Adds it to Calendar", "does not touch"),
+                    ((False, "no Calendar here"), "Writes a .ics",
+                     "Adds it to Calendar")):
+                CA.available = lambda _p=pretend: _p
+                say = actions.propose("hold_dates", {
+                    "workspace": "cottages", "title": "the Shaws",
+                    "start": SOON, "end": SOON_END})["preview"]
+                if must not in say:
+                    return (True, f"with available()={pretend[0]} the preview "
+                                  f"does not say {must!r}: {say[-90:]!r}")
+                if mustnt in say:
+                    return (True, f"with available()={pretend[0]} the preview "
+                                  f"still says {mustnt!r}")
+        finally:
+            CA.available = real
+
+        # The file is written whatever Calendar says. A Calendar that refuses
+        # must not leave somebody with no record at all.
+        # Asked of behaviour, not of source order: a source check passes on
+        # any rearrangement that keeps the two call sites in that order for
+        # some other reason. Make Calendar refuse, and the file has to be
+        # there anyway.
+        import tempfile as _tf, os as _os, sqlite3 as _sq
+        from core.durable import Store
+        from core import sources as _src
+        import core.connectors as _CC
+        holds = pathlib.Path(_tf.mkdtemp())
+        _os.environ["BLOKK_ICS_OUT"] = str(holds)
+        db = holds / "h.db"
+        a_ = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        b_ = _sq.connect(str(db)); a_.backup(b_); b_.close(); a_.close()
+        st2 = Store(db)
+        st2.x("DELETE FROM credential WHERE workspace_id='cottages'")
+        _src.add(st2, "cottages", "ics_out", str(holds))
+        _CC.REGISTRY._by_ws.clear()
+        CA.available = lambda: (True, "")
+        CA.add = lambda *a2, **k2: (_ for _ in ()).throw(
+            CA.CalendarError("Calendar said no"))
+        try:
+            ran = actions.run(st2, actions.propose("hold_dates", {
+                "workspace": "cottages", "title": "the Shaws",
+                "start": SOON, "end": SOON_END}))
+        finally:
+            CA.available, CA.add = real, real_add
+        if not list(holds.glob("*.ics")):
+            return (True, "Calendar refused and no file was written — the "
+                          "person is left with no record at all")
+        if ran.get("calendar"):
+            return (True, "Calendar refused and it says the diary changed")
+        if "Calendar said no" not in str(ran.get("calendar_note", "")):
+            return (True, f"Calendar refused and the reason is not carried: "
+                          f"{ran.get('calendar_note')!r}")
+        return (False, "a guest's name cannot leave its string literal, a "
+                       "newline is escaped and a control character refused, "
+                       "the file is written before Calendar is asked, and "
+                       "the preview says which of the two this machine will "
+                       "actually do")
+    probe("A92 writing into Calendar.app needs a signed bundle",
+          calendar_app_is_reachable_and_a_name_is_not_a_command)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

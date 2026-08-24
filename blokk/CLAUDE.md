@@ -201,8 +201,11 @@ worse than an error.
                        agent cannot reach a model
     core/qr.py         QR for the phone URL, no dependency
     core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
-                       ics_out (the only writer: a .ics file per approved
-                       hold, keyed on the booking so a replay overwrites),
+                       ics_out (a .ics file per approved hold, keyed on the
+                       booking so a replay overwrites) and calendar_app
+                       (the same hold, put in Calendar.app through
+                       osascript — AppleScript has no placeholders, so
+                       _lit() is the whole injection surface),
                        weather and web (the two that leave, and only through
                        core/egress.py), keychain, and the fake world.
                        free_windows() is shared: the real calendar and the
@@ -369,6 +372,13 @@ All four suites green. Verified behaviours:
 * a step whose journalled name is not the one being replayed says so, naming
   the run, the step and both names — it used to hand back the previous step's
   result and fail three lines later on a type error
+* an approved hold goes into Calendar.app itself where macOS allows it, and
+  writes the .ics either way — the file first, so a Calendar that refuses
+  never leaves somebody with no record. A guest called
+  `Smith" & (do shell script "rm -rf ~") & "` is a name and not a command:
+  every value goes in as an escaped AppleScript literal, a newline is escaped
+  (a literal cannot span lines) and a control character is refused outright.
+  The preview says which of the two this machine will actually do
 * a hold refuses over a night the diary already has and names the nights;
   a booking that leaves on the 6th and one that arrives on the 6th do not
   clash; the same hold approved twice is one file; and what it writes reads
@@ -446,9 +456,11 @@ All four suites green. Verified behaviours:
   everything else that writes. `ics_out` is the only connector with
   `writes = True`, and it writes a file to a folder on this Mac — nothing
   addressed, nothing off the machine, nobody told.
-* writing *into* Calendar.app needs EventKit, a signed bundle and a consent
-  dialog — a different kind of program from this one. The .ics drop is the
-  halfway house, and it is labelled as one everywhere it appears.
+* Calendar.app is written to through `osascript`, not EventKit — so there is
+  no signed bundle and macOS still asks the person once, with its own dialog.
+  What that leaves unbuilt is a *quieter* path: an EventKit build would not
+  need the Automation prompt and could write without Calendar.app running.
+  Not worth an app bundle for this.
 * Ask's search ranks on whole words with the stopwords dropped, weights the
   subject and the sender above the body, and labels each hit strong, partial
   or weak. What it is not is an index: every search reads the rows and scores

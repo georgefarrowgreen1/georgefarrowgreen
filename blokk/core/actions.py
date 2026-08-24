@@ -394,12 +394,60 @@ def _hold_dates(store, workspace, title, start, end, note=None, where=None,
         drop = IcsDrop("local")
     out = drop.hold(workspace, title, s, e, note or "", where or "")
     nights = (e - s).days
+    plural = "" if nights == 1 else "s"
+
+    # The file is written first and always, whatever happens next. It is the
+    # thing this machine can definitely do, and a Calendar that refuses must
+    # not leave the person with nothing — the failure mode being avoided is
+    # "it said it could not, and now there is no record of it anywhere".
+    from core.connectors import calendar_app
+    into = None
+    why = ""
+    try:
+        added = calendar_app.add(title, s, e, calendar=_hold_calendar(store,
+                                                                     workspace),
+                                 note=note or "", where=where or "",
+                                 uid=out["uid"])
+        into = added.get("calendar")
+    except calendar_app.CalendarError as e_cal:
+        why = str(e_cal)
+    except Exception as e_cal:                                   # noqa: BLE001
+        why = f"{type(e_cal).__name__}: {e_cal}"
+
+    if into:
+        return {"ok": True, "uid": out["uid"], "file": out["file"],
+                "folder": out["folder"], "replaced": out["replaced"],
+                "calendar": into,
+                "detail": (f"In your diary: {nights} night{plural} under "
+                           f"\u201c{title}\u201d in {into}. The .ics is in "
+                           f"{out['folder']} as well, in case you want it "
+                           f"somewhere else.")}
     return {"ok": True, "uid": out["uid"], "file": out["file"],
             "folder": out["folder"], "replaced": out["replaced"],
+            "calendar": None, "calendar_note": why,
             "detail": (f"{'Replaced' if out['replaced'] else 'Written'}: "
-                       f"{out['file']} — {nights} night"
-                       f"{'' if nights == 1 else 's'} in {out['folder']}. "
-                       f"Double-click it to put it in Calendar.")}
+                       f"{out['file']} \u2014 {nights} night{plural} in "
+                       f"{out['folder']}. Double-click it to put it in "
+                       f"Calendar."
+                       + (f" ({why})" if why else ""))}
+
+
+def _hold_calendar(store, workspace: str) -> str:
+    """Which calendar a hold goes in, when the person has said.
+
+    The `only` on a wired ical source is the list they ticked in the picker,
+    and the first of it is the one they meant — a business that reads
+    "Bookings" and "Dentist" wants the booking in Bookings. Empty means they
+    ticked nothing, which means all of them, which is no answer to *where to
+    write*, so Calendar's own default is used and named in the reply.
+    """
+    try:
+        row = store.one("SELECT only FROM credential WHERE workspace_id=? "
+                        "AND kind='ical'", workspace)
+        chosen = json.loads(row["only"] or "[]") if row else []
+        return str(chosen[0]) if chosen else ""
+    except (ValueError, TypeError, IndexError, KeyError):
+        return ""
 
 
 def _say_hold(a: dict) -> str:
@@ -420,11 +468,22 @@ def _say_hold(a: dict) -> str:
     n = (e - s).days
     span = (f"{s:%-d}\u2013{e:%-d %b}" if s.month == e.month
             else f"{s:%-d %b}\u2013{e:%-d %b}")
+    # What it will actually try, on this machine. Saying "writes a file; it
+    # does not touch Calendar" was true everywhere until Calendar.app became
+    # reachable, and is now a promise this would break on a Mac — in the
+    # direction where somebody approves a hold believing nothing will change
+    # and their diary changes.
+    from core.connectors import calendar_app
+    can, _ = calendar_app.available()
+    lands = ("Adds it to Calendar, if macOS lets Blokk \u2014 it asks you "
+             "once. A .ics file is written either way."
+             if can else
+             "Writes a .ics file for you to open; this machine has no "
+             "Calendar to add it to.")
     return (f"Hold {span} for \u201c{a.get('title', 'a booking')}\u201d "
             f"in {_own(a.get('workspace', ''))} diary \u2014 {n} night"
             f"{'' if n == 1 else 's'}, out on the morning of "
-            f"the {_ord(e.day)}. Writes a file; it does not touch "
-            f"Calendar itself.")
+            f"the {_ord(e.day)}. {lands}")
 
 
 ACTIONS: dict[str, Action] = {a.name: a for a in (
