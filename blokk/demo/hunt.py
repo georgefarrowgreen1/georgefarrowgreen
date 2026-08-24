@@ -6575,6 +6575,102 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 112. the gate names a host and forgets the port ─────────────────
+    def port_is_part_of_the_destination():
+        # The gate checked scheme, host, allowlist and resolution — and
+        # never the port. So https://allowed.example:8080/ went out on the
+        # strength of an entry that says nothing about 8080.
+        #
+        # The way this was found is the point: port 22 on an allowed host
+        # *was* turned away, by a TLS handshake failure. Refused by luck,
+        # not by the rule that should refuse it — sshd does not speak TLS,
+        # and whatever is listening on 8080 very often does.
+        #
+        # It matters most where the URL comes from content rather than
+        # config, which is exactly what web.py is for.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import egress as EG
+        from core.durable import Store as _St
+        import shutil
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "gate.db"
+        shutil.copy("blokk.db", tmp)
+        st = _St(tmp)
+        # One host, nothing else. Set directly so this does not depend on
+        # whatever the suite has already allowed.
+        st.x("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+             EG.KEY, json.dumps(["example.com"]))
+        allow = EG.allowlist(st)
+
+        def refused(url):
+            """Why the gate says no, or None if it said yes."""
+            try:
+                EG.check(allow, url)
+                return None
+            except EG.Refused as e:
+                return str(e)
+
+        # A port nobody named is refused, and refused as a port.
+        for port in (22, 80, 8080, 8443):
+            why = refused(f"https://example.com:{port}/x")
+            if why is None:
+                return (True, f"port {port} on an allowed host went straight "
+                              f"through — the entry names a machine, not a "
+                              f"service on it")
+            if str(port) not in why or "port" not in why.lower():
+                return (True, f"port {port} was refused for the wrong reason: "
+                              f"{why[:70]!r}")
+
+        # 443 is what https means, spelled out or not.
+        for url in ("https://example.com/x", "https://example.com:443/x"):
+            why = refused(url)
+            if why is not None and "port" in why.lower():
+                return (True, f"{url} was refused over its port: {why[:70]!r}")
+
+        # A named port works, and does not spread.
+        st.x("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+             EG.KEY, json.dumps(["example.com", "example.com:8443"]))
+        allow = EG.allowlist(st)
+        if refused("https://example.com:8443/x") is not None:
+            return (True, "a port named on the allowlist is still refused, "
+                          "so there is no way to reach a service on one")
+        if refused("https://example.com:8444/x") is None:
+            return (True, "naming one port allowed its neighbour — the entry "
+                          "has to mean that port and no other")
+        # Through the gate, not through host_allowed directly: passing
+        # exact=True by hand tests the helper and steps straight over the
+        # call site, which is where the flag can go missing. The first
+        # version of this check did exactly that and could not fail.
+        why = refused("https://sub.example.com:8443/x")
+        if why is None or "port" not in why.lower():
+            return (True, f"a port entry is inherited by subdomains, so one "
+                          f"service's permission covers a machine nobody "
+                          f"named: {str(why)[:70]!r}")
+        # A subdomain still inherits the plain host entry: that is the
+        # documented rule and this must not have quietly changed it.
+        if not EG.host_allowed(allow, "sub.example.com"):
+            return (True, "a subdomain no longer inherits its parent's "
+                          "entry — the port rule changed the host rule")
+        # And the dot anchor still holds, which is what the whole list rests
+        # on.
+        if EG.host_allowed(allow, "evil-example.com"):
+            return (True, "the suffix anchor is gone: evil-example.com "
+                          "matches example.com")
+
+        # A port that is not a number is refused as that, not as a crash.
+        why = refused("https://example.com:notaport/x")
+        if why is None:
+            return (True, "a URL with a non-numeric port was accepted")
+        if "number" not in why:
+            return (True, f"a non-numeric port is refused by the wrong rule: "
+                          f"{why[:70]!r}")
+        return (False, "a port nobody named is refused as a port, 443 needs "
+                       "no permission, a named one works and spreads to "
+                       "neither its neighbours nor a subdomain, and the host "
+                       "rules are unchanged")
+    probe("A112 the gate names a host and forgets the port",
+          port_is_part_of_the_destination)
+
     # ── 111. updating on its own, quietly ───────────────────────────────
     def autoupdate_is_quiet():
         # update.sh refused to be automatic for a reason worth keeping: "a

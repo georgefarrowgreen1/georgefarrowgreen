@@ -191,6 +191,13 @@ left.* Every fetch checks the one allowlist with dot-anchored
 suffix matching (`icloud.com` must not match `evil-icloud.com`), refuses any
 host resolving to a non-public address, re-checks every redirect hop, caps
 size and time, and appends to `logs/egress.log` whether it succeeded or not.
+The port counts too. `https` means 443 and needs no permission; any other
+port has to be on the list as `host:port`, matched exactly — a subdomain
+inherits its parent's entry, a port must inherit nothing, or permission for
+one service becomes permission for every service on the machine. This was
+missing, and the way it surfaced is the point: port 22 on an allowed host
+*was* turned away, by a TLS handshake failure. Refused by luck is not
+refused.
 One caller of `urlopen` is outside it and it is deliberate: the model server
 is loopback, which is not egress. CalDAV was the other, for the honest reason
 that the gate made GET and POST and CalDAV is PROPFIND and REPORT; the gate
@@ -601,6 +608,10 @@ All four suites green. Verified behaviours:
   records every check and apply with the commit to reset back to. Untracked
   files are not edits: counting them meant an updater that refused every
   night over a stray file and reported itself switched on the whole time
+* every POST route answers a wrong-typed field with a 4xx rather than a 500
+  — 616 requests, every field holding the wrong kind of thing, no 5xx. And
+  ten taps on the same approval at once produce exactly one decider: the
+  claim is a single conditional UPDATE, so trust cannot move twice on a race
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

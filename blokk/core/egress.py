@@ -68,12 +68,17 @@ class Refused(Exception):
 
 
 # ------------------------------------------------------------------ the rules
-def host_allowed(allowlist, host: str) -> bool:
+def host_allowed(allowlist, host: str, exact: bool = False) -> bool:
     """Is this host covered by one of the allowlist's entries?
 
     Anchored to a dot on purpose. `host.endswith(entry)` — the obvious
     version — allows evil-icloud.com under an entry of icloud.com, which
     turns the whole list into decoration.
+
+    `exact` turns the suffix rule off, and is how a "host:port" entry is
+    checked. A subdomain inherits its parent's permission; a port must not
+    inherit anything, or an entry for one service becomes an entry for
+    every service on the machine.
     """
     host = (host or "").strip().lower().rstrip(".")
     if not host:
@@ -82,7 +87,9 @@ def host_allowed(allowlist, host: str) -> bool:
         entry = str(raw).strip().lower().lstrip("*.").rstrip(".")
         if not entry:
             continue
-        if host == entry or host.endswith("." + entry):
+        if host == entry:
+            return True
+        if not exact and host.endswith("." + entry):
             return True
     return False
 
@@ -124,6 +131,32 @@ def check(allowlist, url: str) -> str:
     host = (u.hostname or "").lower()
     if not host:
         raise Refused(f"{url!r} has no host in it")
+    # A port is part of the destination, and this checked only the name. So
+    # https://allowed.example:8080/ went through on the strength of an entry
+    # that says nothing about 8080 — and the one case anybody tried, port 22,
+    # was turned away by a TLS handshake failure rather than by this gate.
+    # Refused by luck is not refused: sshd does not speak TLS, and whatever
+    # is on 8080 very often does.
+    #
+    # It matters most where the URL comes from content rather than config.
+    # core/connectors/web.py is the hard case by design — the attacker picks
+    # the page — and "a host you named" has to mean the whole address, or a
+    # page on an allowed host can point at a different service on it.
+    #
+    # 443 needs no permission because https means 443. Anything else has to
+    # be named as itself, which keeps a self-hosted CalDAV on 8443 possible
+    # and keeps it something a person typed.
+    try:
+        port = u.port
+    except ValueError:
+        raise Refused(f"{url!r} has a port that is not a number")
+    if port is not None and port != 443:
+        if not host_allowed(allowlist, f"{host}:{port}", exact=True):
+            raise Refused(
+                f"{host} is allowed but port {port} is not. https means 443, "
+                f"and any other port is a different service on the same "
+                f"machine. Add it with:  connect.py egress allow "
+                f"{host}:{port}")
     if not host_allowed(allowlist, host):
         have = ", ".join(str(a) for a in (allowlist or [])) or "nothing"
         raise Refused(
