@@ -51,15 +51,25 @@ sits in a queue in between. `api/server.py:h_decide` is the only caller of
 
 Adding an action means adding it to `ACTIONS` and nothing else — the grammar
 Ask is given is built from that dict, so the catalogue cannot drift from what
-exists. Two things must stay true of anything you add: it operates on Blokk,
-not on the outside world (sending is a connector that does not exist yet, and
-it will arrive behind this queue rather than through the chat box); and if
-being wrong is expensive — opening a route out, deleting something — it is
+exists. Two things must stay true of anything you add: it reaches nobody
+(sending is a connector that does not exist yet, and it will arrive behind this
+queue rather than through the chat box); and if being wrong is expensive —
+opening a route out, deleting something, putting a file somewhere — it is
 `pinned=True` and never graduates, because the cost of being wrong does not
 scale with how often you have been right.
 
-Probes A49–A54 in `demo/hunt.py` hold this shape, and each is mutation-tested:
-break the invariant and exactly one of them goes red.
+`hold_dates` is the one action that writes outside `blokk.db`, and the shape of
+it is the template for anything similar. It drops a `.ics` file in a folder;
+it does not touch Calendar, and nothing it prints says it did. It refuses over
+a night the calendar already has and **names the nights**. Its filename and UID
+come from the booking rather than the clock, so a replay overwrites one file
+instead of leaving four — a writer keyed on `now()` turns every crash into a
+mess somebody cleans up by hand. And it is pinned, because a file appearing in
+somebody's folder off the back of a sentence in a guest's email is the shape of
+the thing this whole design exists to stop.
+
+Probes A49–A54 and A83 in `demo/hunt.py` hold this shape, and each is
+mutation-tested: break the invariant and exactly one of them goes red.
 
 **Memory is only real if it reaches a prompt.** Corrections become episodes,
 episodes consolidate into facts, and `core/harness.py:learned_block` is what
@@ -169,6 +179,8 @@ worse than an error.
                        agent cannot reach a model
     core/qr.py         QR for the phone URL, no dependency
     core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
+                       ics_out (the only writer: a .ics file per approved
+                       hold, keyed on the booking so a replay overwrites),
                        weather and web (the two that leave, and only through
                        core/egress.py), keychain, and the fake world.
                        free_windows() is shared: the real calendar and the
@@ -323,6 +335,10 @@ All four suites green. Verified behaviours:
 * a step whose journalled name is not the one being replayed says so, naming
   the run, the step and both names — it used to hand back the previous step's
   result and fail three lines later on a type error
+* a hold refuses over a night the diary already has and names the nights;
+  a booking that leaves on the 6th and one that arrives on the 6th do not
+  clash; the same hold approved twice is one file; and what it writes reads
+  back through Blokk's own parser with the comma in the guest's name intact
 * a web page arrives as text and a title with the quarantine flag on both,
   script and style gone, and the display:none block kept — that is where an
   instruction meant for a model and not for you goes
@@ -352,9 +368,14 @@ All four suites green. Verified behaviours:
 * a real `answer()` on `ServedModel` is wired but unexercised against weights.
   The regression runner exists (`./regress.py`) and is honest that stub prose
   makes its numbers meaningless — they start counting when weights are on.
-* connectors are read-only. Sending is a separate connector, deliberately not
-  written: it needs a `recipient` on `approval` — the first schema migration —
-  and it belongs behind the trust gate like everything else that writes.
+* sending is a separate connector, deliberately not written: it needs a
+  `recipient` on `approval` and it belongs behind the trust gate like
+  everything else that writes. `ics_out` is the only connector with
+  `writes = True`, and it writes a file to a folder on this Mac — nothing
+  addressed, nothing off the machine, nobody told.
+* writing *into* Calendar.app needs EventKit, a signed bundle and a consent
+  dialog — a different kind of program from this one. The .ics drop is the
+  halfway house, and it is labelled as one everywhere it appears.
 * Ask can search Blokk's own state but not the mail and calendar content it
   read. Six tools, none of them full-text.
 * CalDAV does not go through `core/egress.py` — it wants PROPFIND and REPORT,

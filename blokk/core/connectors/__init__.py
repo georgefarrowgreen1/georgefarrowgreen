@@ -208,6 +208,12 @@ def wire(store) -> Registry:
                 from core.connectors.ical import LocalCalendar
                 REGISTRY.add(ws, "calendar",
                              LocalCalendar(root=_root(ref), only=only))
+            elif kind == "ics_out":
+                # The one writer. Registered like any other connector, and
+                # reached only from an approved action — nothing in a sweep
+                # or a chat turn calls it directly.
+                from core.connectors.ics_out import IcsDrop
+                REGISTRY.add(ws, "holds", IcsDrop(ref))
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(ws, "messages", AppleMessages())

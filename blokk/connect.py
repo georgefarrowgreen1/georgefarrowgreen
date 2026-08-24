@@ -23,7 +23,8 @@ Suggested order, and it is not arbitrary:
     messages   local, no credential, read-only. Prove the plumbing.
     imap       one mailbox, read-only, for a fortnight.
     caldav     once you trust the mail path.
-Leave writes until a category has earned it in the queue.
+    ics_out    the one that writes: a folder Blokk drops .ics files into.
+               It never edits your diary — you open the file yourself.
 """
 import json
 import sys
@@ -136,7 +137,8 @@ def main() -> int:
     if cmd == "add":
         if len(args) < 4:
             print("usage: connect.py add <workspace> <kind> <ref>")
-            print("       kinds: imap caldav messages ical maildir weather web")
+            print("       kinds: imap caldav messages ical maildir weather web\n"
+                  "              ics_out (the only one Blokk writes to)")
             print("       ref  : a keychain service name, or 'local', or")
             print("              weather — a town or coordinates:")
             print("                        \"Newcastle upon Tyne\" or 54.97,-1.61")
@@ -188,7 +190,7 @@ def main() -> int:
     if cmd == "remove":
         if len(args) < 3:
             print("usage: connect.py remove <workspace> <imap|caldav|messages"
-                  "|ical|maildir>")
+                  "|ical|maildir|ics_out>")
             return 1
         print(sources.remove(store, args[1], args[2])["detail"]
               .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
@@ -357,7 +359,8 @@ def main() -> int:
         # The important one. Look at what it would actually read before you
         # let anything downstream act on it.
         if len(args) < 3:
-            print("usage: connect.py peek <workspace> <mail|calendar|messages>"
+            print("usage: connect.py peek <workspace> "
+                  "<mail|calendar|messages|holds>"
                   " [n]")
             print("       connect.py list   shows what is wired")
             return 1

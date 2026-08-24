@@ -3617,6 +3617,159 @@ try:
     probe("A82 wiring a calendar takes the dentist with the bookings",
           choose_what_it_reads)
 
+    def it_can_hold_a_date():
+        # It could read the diary, find three free nights and say so, and
+        # that was where it stopped: somebody read the dates off the screen
+        # and typed them into Calendar. Writing into Calendar.app needs
+        # EventKit and a signed bundle, so the honest halfway house is the
+        # file Calendar already swallows — and a halfway house has to be
+        # labelled as one, refuse to double-book, and survive a replay.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf, os as _os
+        _s.path.insert(0, ".")
+        from datetime import date as _d, timedelta as _td
+        from core.durable import Store
+        from core import sources, actions
+        import core.connectors as _C
+        from core.connectors.ical import LocalCalendar
+        from core.connectors.ics_out import IcsDrop
+
+        tmp = pathlib.Path(_tf.mkdtemp())
+        cal, out = tmp / "cal", tmp / "holds"
+        ev = cal / "Bookings.calendar" / "Events"; ev.mkdir(parents=True)
+        (cal / "Bookings.calendar" / "Info.plist").write_text(
+            "<key>Title</key>\n<string>Bookings</string>")
+        # Somebody is already in, from the 4th to the 6th. Dates relative to
+        # today, or this probe expires quietly the year it was written.
+        base = _d.today() + _td(days=40)
+        taken_in, taken_out = base + _td(days=1), base + _td(days=3)
+        (ev / "a.ics").write_text(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x1\nSUMMARY:the Bakers\n"
+            f"DTSTART;VALUE=DATE:{taken_in:%Y%m%d}\n"
+            f"DTEND;VALUE=DATE:{taken_out:%Y%m%d}\n"
+            "END:VEVENT\nEND:VCALENDAR\n")
+
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        st.x("DELETE FROM credential WHERE workspace_id='cottages'")
+        sources.add(st, "cottages", "ical", str(cal))
+        r = sources.add(st, "cottages", "ics_out", str(out))
+        if r.get("error"):
+            return (True, f"the holds folder would not wire: {r['error']}")
+        # A writer that records itself as read-only makes the scopes column
+        # a decoration, and it is the column that says what a credential may
+        # do.
+        if r.get("scopes") != ["write"]:
+            return (True, f"the one writer is recorded as {r.get('scopes')}")
+        _C.REGISTRY._by_ws.clear()
+
+        # 1. It refuses to write over a night somebody is already in, and
+        #    says which nights rather than saying "clash".
+        over = {"workspace": "cottages", "title": "the Shaws",
+                "start": base.isoformat(),
+                "end": (base + _td(days=3)).isoformat()}
+        try:
+            actions.run(st, actions.propose("hold_dates", over))
+            return (True, "it wrote a hold straight over an existing booking")
+        except actions.Rejected as e:
+            if f"{taken_in:%-d %b}" not in str(e):
+                return (True, f"refused without saying which night: {e}")
+        if out.exists() and list(out.glob("*.ics")):
+            return (True, "refused, and wrote the file anyway")
+
+        # 2. Half-open at both ends: they leave on the morning somebody else
+        #    arrives, and that is not a clash over the same bed.
+        after = {"workspace": "cottages", "title": "the Shaws, party of 4",
+                 "start": taken_out.isoformat(),
+                 "end": (taken_out + _td(days=3)).isoformat(),
+                 "note": "dog, late arrival"}
+        got = actions.run(st, actions.propose("hold_dates", after))
+        if not got.get("ok"):
+            return (True, f"could not hold the free nights: {got}")
+        files = sorted(out.glob("*.ics"))
+        if len(files) != 1:
+            return (True, f"expected one file, found {len(files)}")
+
+        # 3. Approving the same proposal twice is one file, not two. The
+        #    journal replays; a writer keyed on the clock turns every crash
+        #    into a mess somebody has to go and clean up by hand.
+        again = actions.run(st, actions.propose("hold_dates", after))
+        if again["uid"] != got["uid"] or len(list(out.glob("*.ics"))) != 1:
+            return (True, "the same hold written twice left two files")
+        if not again.get("replaced"):
+            return (True, "it overwrote a file and did not say so")
+
+        # 4. What it wrote, the reader in this same codebase reads back —
+        #    including the comma, which is a list separator in this format
+        #    and reached the queue as a backslash for a long time.
+        holds = tmp / "back"
+        (holds / "H.calendar" / "Events").mkdir(parents=True)
+        (holds / "H.calendar" / "Info.plist").write_text(
+            "<key>Title</key>\n<string>H</string>")
+        (holds / "H.calendar" / "Events" / "h.ics").write_text(
+            files[0].read_text())
+        read = LocalCalendar(root=holds).events(days=400)
+        if not read:
+            return (True, "it wrote a file its own reader cannot read")
+        if read[0]["summary"] != after["title"]:
+            return (True, f"the title did not survive: {read[0]['summary']!r}")
+        # DTEND is exclusive and the reader turns it into the last night, so
+        # a three-night hold ends the day before they leave. Off by one here
+        # is a bed sold twice.
+        if read[0]["end"] != (taken_out + _td(days=2)).isoformat():
+            return (True, f"the last night reads as {read[0]['end']}, and "
+                          f"they leave on {taken_out + _td(days=3)}")
+
+        # 5. TEXT values escaped on the way out. Blokk's own reader takes
+        #    the whole line after the colon, so a round trip through it
+        #    cannot see this — but Calendar treats an unescaped comma as a
+        #    list separator and keeps only the half before it, which is how
+        #    "the Shaws, party of 4" becomes an event called "the Shaws".
+        raw = files[0].read_text()
+        # The SUMMARY line specifically. Checking the whole file passed on
+        # an unescaped title, because DESCRIPTION carried the note's comma
+        # and satisfied the search — a probe green for the wrong reason.
+        # read_text() translates newlines, so the CRLF the file really has
+        # is not what comes back here. Split on \n and strip the rest.
+        summary = [ln.rstrip("\r") for ln in raw.splitlines()
+                   if ln.startswith("SUMMARY:")]
+        if len(summary) != 1 or "party of 4" not in summary[0]:
+            return (True, f"no single readable SUMMARY line: {summary}")
+        if "\\," not in summary[0]:
+            return (True, f"a comma in the title is written unescaped \u2014 "
+                          f"Calendar reads it as a list separator: "
+                          f"{summary[0]}")
+        marks = actions.run(st, actions.propose("hold_dates", {
+            **after, "title": "Ruby; back\\door", "start": (
+                taken_out + _td(days=10)).isoformat(),
+            "end": (taken_out + _td(days=12)).isoformat()}))
+        odd = (out / marks["file"]).read_text()
+        if "\\;" not in odd or "\\\\" not in odd:
+            return (True, "a semicolon or a backslash is written unescaped")
+
+        # 6. It never claims the diary was changed, on any surface.
+        said = " ".join([got["detail"], actions.ACTIONS["hold_dates"].preview(
+            actions.validate("hold_dates", after)[1])]).lower()
+        for lie in ("added to your calendar", "in your calendar",
+                    "added to calendar", "booked"):
+            if lie in said:
+                return (True, f"it says {lie!r}, and it did no such thing")
+        if "double-click" not in said and "open" not in said:
+            return (True, "it does not say the file still has to be opened")
+
+        # 7. Pinned. This is the only action that writes outside blokk.db,
+        #    so it must never graduate to acting alone off the back of a
+        #    sentence in a guest's email.
+        if not actions.ACTIONS["hold_dates"].pinned:
+            return (True, "the one action that writes a file can graduate")
+        return (False, "it refuses to double-book and names the nights, "
+                       "holds the free ones, replays to one file, reads back "
+                       "through its own parser, and never says the diary "
+                       "changed")
+    probe("A83 it finds the free nights and cannot write one down",
+          it_can_hold_a_date)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

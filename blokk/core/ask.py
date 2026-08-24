@@ -408,6 +408,10 @@ Answer from rows you actually read. If you have not read them, read them or
 say you do not know. Never invent a guest, a booking, a number or a date.
 Nothing here sends mail or messages anyone, so never say a thing has gone.
 Draft it and say they will need to send it themselves.
+Holding dates writes a file they open, not an entry in Calendar. Propose
+hold_dates when they want nights kept; never say it is in the diary.
+Check the calendar before proposing a hold if you have not already \u2014 it
+refuses over a night that is taken, and finding that out first is better.
 Dates come from RIGHT NOW above. "Next Tuesday" is a date you can work out
 from it; do not guess one, and do not ask them what today is.
 """
@@ -1065,6 +1069,112 @@ SMALL_TALK = (
 # expression. Deliberately narrow: a guess that misses lands on "I am not sure
 # which of these you meant", which is recoverable. A guess that is confidently
 # wrong puts the wrong sentence in the queue with an Approve button under it.
+MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+# 3rd, 3, 03 — the ordinal suffix is noise and people type it.
+DAYN = r"(\d{1,2})(?:st|nd|rd|th)?"
+MONN = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*"
+ISO_RANGE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\s*(?:to|until|till|-|\u2013|"
+                       r"\u2014)\s*(\d{4}-\d{2}-\d{2})\b", re.I)
+# "3rd to the 6th of September", "3-6 Sept", "3 to 6 Sep"
+D_D_M = re.compile(rf"\b{DAYN}\s*(?:to|until|till|-|\u2013|\u2014)\s*(?:the\s+)?"
+                   rf"{DAYN}\s*(?:of\s+)?{MONN}\b", re.I)
+# "September 3 to 6", "Sept 3-6"
+M_D_D = re.compile(rf"\b{MONN}\s+{DAYN}\s*(?:to|until|till|-|\u2013|\u2014)\s*"
+                   rf"(?:the\s+)?{DAYN}\b", re.I)
+# "3rd of September to the 6th of October" — the two-month case, which the
+# one-month patterns above would read as 3 Sept to 6 Sept and be silently,
+# confidently wrong about by a month.
+DM_DM = re.compile(rf"\b{DAYN}\s*(?:of\s+)?{MONN}\s*(?:to|until|till|-|"
+                   rf"\u2013|\u2014)\s*(?:the\s+)?{DAYN}\s*(?:of\s+)?{MONN}\b",
+                   re.I)
+
+
+def _one_day():
+    from datetime import timedelta
+    return timedelta(days=1)
+
+
+def _ymd(day: int, mon: int, after=None):
+    """A day and a month as a real date, in the year that makes sense.
+
+    No year is ever written down in "the 3rd to the 6th of September". In
+    August that means this September; in November it means next year's. The
+    rule is the one a person is using without saying so: the next time that
+    date comes around.
+    """
+    from datetime import date as _date
+    base = after or _date.today()
+    for year in (base.year, base.year + 1):
+        try:
+            d = _date(year, mon, day)
+        except ValueError:
+            continue          # 31 September, and 29 Feb in a common year
+        if d >= base:
+            return d
+    return None
+
+
+def _dates_in(q: str):
+    """(start, end) as ISO strings, or None. Both halves half-open.
+
+    "The 3rd to the 6th" is three nights ending on the morning of the 6th,
+    which is exactly the half-open range .ics wants, so nothing is adjusted
+    here. Somebody who means four nights says "to the 7th".
+    """
+    m = ISO_RANGE.search(q)
+    if m:
+        return m.group(1), m.group(2)
+    m = DM_DM.search(q)
+    if m:
+        d1, mo1, d2, mo2 = m.groups()
+        a = _ymd(int(d1), MONTHS[mo1.lower()[:3]])
+        b = _ymd(int(d2), MONTHS[mo2.lower()[:3]], after=a) if a else None
+        return (a.isoformat(), b.isoformat()) if a and b else None
+    m = D_D_M.search(q)
+    if m:
+        d1, d2, mon = m.groups()
+        mo = MONTHS[mon.lower()[:3]]
+    else:
+        m = M_D_D.search(q)
+        if not m:
+            return None
+        mon, d1, d2 = m.groups()
+        mo = MONTHS[mon.lower()[:3]]
+    # "the 28th to the 2nd of October" names the month of the *leaving*
+    # date, so the arrival is in the month before it. Reading both as
+    # October made 28 Oct run to 2 Oct, which is not backwards to a date
+    # parser — it is next October, and it wrote a hold 339 nights long.
+    if int(d2) <= int(d1):
+        b = _ymd(int(d2), mo)
+        if not b:
+            return None
+        prev = b.replace(day=1) - _one_day()
+        a = _ymd(int(d1), prev.month, after=prev.replace(day=1))
+        if not a or a >= b:
+            return None
+    else:
+        a = _ymd(int(d1), mo)
+        if not a:
+            return None
+        b = _ymd(int(d2), mo, after=a)
+        if not b:
+            return None
+    return a.isoformat(), b.isoformat()
+
+
+# "for the Shaws", "for Mrs Bell", "for the Ruby Cottage lot". What is being
+# held is a name, and it is nearly always after the word "for".
+# Stopped at the words that start a new clause, because "for the Shaws in
+# cottages" is a name and a scope and taking all of it named the booking
+# "the Shaws in cottages". Four words is a long enough name; the clause
+# words end it sooner.
+FOR_WHO = re.compile(
+    r"\bfor\s+((?:the\s+)?[A-Z][\w'-]*"
+    r"(?:\s+(?!in\b|on\b|at\b|from\b|to\b|under\b|please\b)[\w'&-]+){0,4})")
+
+
 INTENT = (
     ("sweep_now",   r"\b(sweep|run it|check the mail|do the round)\b(?!.*\bat\b)"),
     ("backup_now",  r"\b(back ?up|snapshot)\b"),
@@ -1079,6 +1189,10 @@ INTENT = (
     ("forget",      r"^\s*(?:please\s+)?(?:forget|stop (?:saying|doing|"
                     r"applying)|unlearn)\b"),
     ("remove_workspace", r"\b(delete|remove|drop|get rid of)\b.*\bworkspace\b"),
+    ("hold_dates",  r"\b(hold|book|pencil|block|reserve|put)\b.*"
+                    r"\b(in|on|into)?\s*(the\s+)?(diary|calendar|dates?|"
+                    r"nights?|booking)\b|"
+                    r"^\s*(?:please\s+)?(?:hold|pencil|block|reserve)\b"),
     ("add_source",  r"\b(add|wire|connect|hook up|read)\b.*"
                     r"\b(source|mail|inbox|email|imap|maildir|calendar|diary|"
                     r"caldav|ical|ics|messages|imessage|weather|forecast|page|"
@@ -1292,6 +1406,24 @@ def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
                 misses.append("thing to remember")
             else:
                 args["note"] = note
+        if "start" in act.args:
+            span = _dates_in(q)
+            if span:
+                args["start"], args["end"] = span
+            else:
+                misses.append("dates")
+        if "title" in act.args:
+            m = FOR_WHO.search(q)
+            who = (m.group(1).strip() if m else "")
+            # "for cottages" is the workspace, not the guest. Naming the
+            # business as the booking is how a hold ends up called Cottages.
+            if who and who.lower().lstrip("the ").strip() in [
+                    k.lower() for k in known]:
+                who = ""
+            if who:
+                args["title"] = who
+            else:
+                misses.append("name for it")
         if "ref" in act.args:
             ref = _ref_for(args.get("kind", ""), q)
             if ref:

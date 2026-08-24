@@ -15,7 +15,8 @@ import re
 
 KINDS = {"imap": "mail", "maildir": "mail",
          "caldav": "calendar", "ical": "calendar",
-         "messages": "messages", "weather": "weather", "web": "web"}
+         "messages": "messages", "weather": "weather", "web": "web",
+         "ics_out": "holds"}
 # KINDS is not a label: the value is the name the connector is registered
 # under in core/connectors, and test() and peek() both look a source up by
 # it. Calling the web one "a page" here read better in the panel and made
@@ -33,8 +34,13 @@ NEEDS_KEYCHAIN = ("imap", "caldav")
 # The three that need nothing at all: no password, no network, no account.
 # "local" points them at the Apple app's own folder; anything else is a path,
 # which is how an exported mailbox or a shared calendar directory gets wired.
-NEEDS_NOTHING = ("maildir", "ical", "messages")
+NEEDS_NOTHING = ("maildir", "ical", "messages", "ics_out")
 READS_A_FOLDER = ("maildir", "ical")
+# The one that writes a folder rather than reading one. It may name a folder
+# that is not there yet — the point is that Blokk creates it — but its parent
+# has to exist, or a typo'd path builds a tree three levels deep somewhere
+# nobody will ever look.
+WRITES_A_FOLDER = ("ics_out",)
 
 
 SAMPLE = ("cottages", "biz2", "biz3", "personal")
@@ -103,7 +109,8 @@ def listing(store) -> list[dict]:
                     # Which calendars or mailboxes, so the list can say what
                     # it is actually reading rather than implying all of it.
                     "only": only,
-                    "reads": KINDS.get(r["kind"], r["kind"])})
+                    "reads": KINDS.get(r["kind"], r["kind"]),
+                    "writes": r["kind"] in WRITES_A_FOLDER})
     return out
 
 
@@ -141,17 +148,31 @@ def add(store, ws: str, kind: str, ref: str,
         if not folder.is_dir():
             return {"error": f"{ref} is a file. This wants the folder it is "
                              f"in — Blokk reads everything underneath."}
+    if kind in WRITES_A_FOLDER and ref.lower() not in ("local", "default"):
+        from pathlib import Path as _P
+        folder = _P(ref).expanduser()
+        if folder.exists() and not folder.is_dir():
+            return {"error": f"{ref} is a file, not a folder to write into."}
+        if not folder.exists() and not folder.parent.is_dir():
+            return {"error": f"there is nothing at {folder.parent}, so "
+                             f"{ref} cannot be created. Give a folder inside "
+                             f"one that exists, or 'local' for ~/Blokk/Holds."}
     if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
         known = ", ".join(w["id"] for w in workspaces(store))
         return {"error": f"no workspace '{ws}'. Known: {known}"}
     chosen = [str(o).strip() for o in (only or []) if str(o).strip()]
+    # A writer is recorded as one. scopes has said "read" on every row since
+    # the first commit, which was true of every connector there was; putting
+    # a writer in under the same word makes the column a decoration, and it
+    # is the column that answers "what is this credential allowed to do".
+    scopes = ["write"] if kind in WRITES_A_FOLDER else ["read"]
     store.x("""INSERT OR REPLACE INTO credential
                (id,workspace_id,kind,keychain_ref,scopes,only)
                VALUES(?,?,?,?,?,?)""",
-            f"c_{ws}_{kind}", ws, kind, ref, json.dumps(["read"]),
+            f"c_{ws}_{kind}", ws, kind, ref, json.dumps(scopes),
             json.dumps(chosen))
     out = {"ok": True, "workspace_id": ws, "kind": kind, "keychain_ref": ref,
-           "scopes": ["read"], "only": chosen}
+           "scopes": scopes, "only": chosen}
     if chosen:
         out["note"] = ("Reading only " + ", ".join(chosen[:4])
                        + (f" and {len(chosen) - 4} more" if len(chosen) > 4
@@ -278,6 +299,11 @@ def describe(kind: str, state: dict) -> str:
         return str(state)
     if state.get("ok") is False:
         return state.get("detail", "found nothing to read")
+    if "waiting" in state and "folder" in state:
+        n = state["waiting"]
+        return (f"{state['folder']} \u2014 "
+                + (f"{n} hold(s) waiting to be opened" if n
+                   else "writable, nothing waiting"))
     if "calendars" in state:
         n = len(state["calendars"])
         return (f"{n} calendar(s) — {', '.join(state['calendars'][:6])}; "
@@ -423,6 +449,15 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
         window = "free nights in the next 90 days"
         rows = [{"from": g["from"], "subject": g["note"], "provenance": "self"}
                 for g in c.gaps(days=90)]
+    elif getattr(c, "hold", None):
+        # The writer. Peeking at it means "what is sitting in that folder
+        # waiting for me to double-click it" — which is the one question
+        # somebody has about a folder they cannot see from here, and it is
+        # answered by check() rather than by reading any of the files.
+        window = "waiting in the holds folder"
+        rows = [{"from": f, "subject": "not in Calendar until you open it",
+                 "provenance": "self"}
+                for f in (state or {}).get("files", [])]
     else:
         return {"error": f"'{name}' has nothing to peek at",
                 "readable": True, "window": "",

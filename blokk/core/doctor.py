@@ -328,7 +328,11 @@ def sources_and_chat() -> list[str]:
             continue
         state = out.get("state") or {}
         ok = state.get("ok", True)
-        row(label, _c("reading", GREEN) if ok else _c("nothing there", AMBER),
+        # "reading" on the one connector that writes would be the wrong word
+        # on the screen somebody opens to find out what Blokk is doing to
+        # their machine.
+        verb = "writing" if kind in sources.WRITES_A_FOLDER else "reading"
+        row(label, _c(verb, GREEN) if ok else _c("nothing there", AMBER),
             sources.describe(kind, state)[:70])
         if not ok:
             todo.append(f"{label}: {state.get('detail', 'nothing to read')[:90]}")

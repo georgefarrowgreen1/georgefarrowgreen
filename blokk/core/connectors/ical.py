@@ -56,6 +56,29 @@ def _prop(block: str, key: str) -> tuple[str, str]:
     return (m.group(1), m.group(2).strip()) if m else ("", "")
 
 
+def _text(value: str) -> str:
+    r"""Undo RFC 5545 TEXT escaping.
+
+    A comma inside a SUMMARY is written `\,` because an unescaped one is a
+    list separator. Without this, every real calendar entry with a comma in
+    it — which is most bookings, "Smith, party of 4" — reached the queue and
+    the model reading `Smith\, party of 4`, and the person tapping Approve
+    saw the backslash too. Read left to right so `\\,` is a literal
+    backslash followed by a separator, not an escaped comma.
+    """
+    out, i = [], 0
+    while i < len(value):
+        c = value[i]
+        if c == "\\" and i + 1 < len(value):
+            nxt = value[i + 1]
+            out.append({"n": "\n", "N": "\n"}.get(nxt, nxt))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _as_date(value: str) -> date | None:
     v = value.strip().rstrip("Z")
     for fmt in ("%Y%m%dT%H%M%S", "%Y%m%d"):
@@ -306,7 +329,7 @@ def _read(root: Path, only: list[str] | None = None) -> tuple[list[dict], list[s
                     # in this file and the failure that reaches a person is
                     # being told they are free during a meeting.
                     length = timedelta(hours=1)
-                events.append({"summary": _prop(block, "SUMMARY")[1],
+                events.append({"summary": _text(_prop(block, "SUMMARY")[1]),
                                "start": s, "end": e, "calendar": title,
                                "rrule": _prop(block, "RRULE")[1],
                                "exdates": exd, "unparsed": False,

@@ -112,6 +112,31 @@ Same app-specific password works.
     python3 connect.py add cottages caldav blokk-cottages-cal
     python3 connect.py test
 
+## 3a. Somewhere to put holds — the one that writes
+
+Everything else here reads. This one writes, and it is the only one that does:
+
+    python3 connect.py add cottages ics_out local
+
+`local` means `~/Blokk/Holds`; give a folder instead if you want it somewhere
+you will see it, like `~/Desktop/Holds`. Blokk creates it.
+
+When you approve a set of dates, a `.ics` file appears in there. You open it
+and Calendar asks whether to add the event. **Blokk does not put it in your
+diary** — writing into Calendar.app needs EventKit, a signed bundle and a
+consent dialog, which is a different kind of program from this one. Nothing
+in Blokk will ever tell you an entry was added, because it was not.
+
+Two things it does do. It refuses to write over a night your calendar already
+has something on, and names the nights rather than saying "clash" — so wire
+your calendar first, or it has nothing to check against. And the filename
+comes from the booking rather than the clock, so approving the same dates
+twice replaces one file instead of leaving two.
+
+Holds are `pinned`: they never graduate to happening on their own, however
+many you approve. A file appearing in a folder off the back of a sentence in
+a guest's email is exactly what the queue is there to stop.
+
 ## 4. Per workspace, not per account
 
 Each business gets its own Keychain entry and its own row:

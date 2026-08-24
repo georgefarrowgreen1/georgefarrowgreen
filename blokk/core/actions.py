@@ -13,12 +13,16 @@ So the shape is:
 
 Three rules hold the whole thing up.
 
-**Nothing here touches the outside world.** Every action operates on Blokk:
-its workspaces, its sources, its allowlist, its schedule, its backups. There
-is no send. Sending needs a connector that does not exist yet and it will
-arrive the same way as everything else — behind this queue — not through the
-chat box. An agent that can talk to your guests is a different product with a
-different risk, and it is not one you get by accident.
+**Nothing here reaches another person.** Almost every action operates on
+Blokk itself: its workspaces, its sources, its allowlist, its schedule, its
+backups. The one exception is `hold_dates`, which writes a .ics file into a
+folder on this Mac — outside the database, but not off the machine and not to
+anybody. Nothing is addressed, nothing is sent, and no guest learns anything.
+
+There is still no send. Sending needs a connector that does not exist yet and
+it will arrive the same way as everything else — behind this queue — not
+through the chat box. An agent that can talk to your guests is a different
+product with a different risk, and it is not one you get by accident.
 
 **The arguments are validated here, not trusted from the model.** A proposal
 arrives as JSON that a language model wrote after reading, among other
@@ -46,7 +50,21 @@ ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 # reached, and this only has to stop a sentence being built around nonsense.
 HOSTNAME = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?"
                       r"(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", re.I)
+MAX_NIGHTS = 60           # see the length check in validate()
 CLOCK = re.compile(r"^\s*(\d{1,2})\s*(?::\s*([0-5]\d))?\s*([ap])\.?m\.?\s*$", re.I)
+
+
+def _day():
+    from datetime import timedelta
+    return timedelta(days=1)
+
+
+def _ord(n: int) -> str:
+    """1st, 2nd, 3rd, 11th. The teens are the whole reason this exists."""
+    if 11 <= (n % 100) <= 13:
+        return f"{n}th"
+    return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }".replace(
+        " ", "")
 
 
 def _as_time(v: str) -> str:
@@ -264,7 +282,7 @@ FROM = {
 }
 NOUN = {"maildir": "mail", "imap": "mail", "ical": "calendar",
         "caldav": "calendar", "messages": "messages", "weather": "forecast",
-        "web": "page"}
+        "web": "page", "ics_out": "holds folder"}
 
 
 def _own(name: str) -> str:
@@ -304,6 +322,111 @@ def _say_remove(a: dict) -> str:
     return f"Stop reading {_own(ws)} {NOUN.get(kind, kind)}."
 
 
+def _clashes(store, workspace, start, end) -> list[str]:
+    """Which nights in [start, end) something is already booked on.
+
+    The whole value of a hold is that it is not a double-booking, so this
+    asks the calendar Blokk already reads rather than trusting the model's
+    "those nights are free" — which was written before the person spent two
+    days deciding, and may have been written from a gap list that is now
+    stale. Both halves are half-open: a booking that leaves on the 6th and
+    one that arrives on the 6th do not clash over that bed.
+
+    A calendar that cannot be opened returns no clashes and says so through
+    the caller. Refusing to hold anything because a reader is down would
+    make a broken source into a broken business; the hold is a file in a
+    folder, and a person is looking at it either way.
+    """
+    from datetime import date as _d, datetime as _dt, timedelta as _td
+    import core.connectors as _C
+    cal = _C.wire(store).get(workspace, "calendar")
+    if cal is None or not hasattr(cal, "busy"):
+        return []
+    days = max(1, (end - _d.today()).days + 1)
+    hit = []
+    for b_start, b_end in cal.busy(days=min(days, 800)):
+        bs = b_start.date() if isinstance(b_start, _dt) else b_start
+        be = b_end.date() if isinstance(b_end, _dt) else b_end
+        # The overlap of two half-open ranges, said once. It was written as a
+        # guard plus a loop bound, which is the same rule in two places — and
+        # two places is where one of them gets "fixed" and the other quietly
+        # compensates, so neither is ever seen to be wrong. Empty when they
+        # only touch at an endpoint, which is a bed swapped over rather than
+        # a bed sold twice.
+        night, last = max(bs, start), min(be, end)
+        while night < last:
+            hit.append(night.isoformat())
+            night += _td(days=1)
+    return sorted(set(hit))
+
+
+def _hold_dates(store, workspace, title, start, end, note=None, where=None,
+                **_):
+    """Write a hold into the folder Calendar can swallow.
+
+    This is the first action that puts a file outside blokk.db, so it is
+    the first one that can leave a mess. Three things keep it honest:
+
+      * it refuses to write over a night the calendar says is taken, and
+        names the nights rather than saying "clash";
+      * the filename and the UID come from the booking, so approving the
+        same proposal twice replaces one file instead of leaving two;
+      * it says a file is waiting, never that anything was added to a
+        calendar — because nothing was.
+    """
+    from datetime import date as _d
+    from core.connectors.ics_out import IcsDrop, _as_date
+    import core.connectors as _C
+    s, e = _as_date(start), _as_date(end)
+    taken = _clashes(store, workspace, s, e)
+    if taken:
+        nights = ", ".join(_d.fromisoformat(t).strftime("%-d %b")
+                           for t in taken[:6])
+        more = f" and {len(taken) - 6} more" if len(taken) > 6 else ""
+        raise Rejected(f"{_own(workspace)} calendar already has something on "
+                       f"{nights}{more}. Nothing was written. Move the dates, "
+                       f"or take the other booking out first.")
+    drop = _C.wire(store).get(workspace, "holds")
+    if drop is None:
+        # Unwired is the common case on day one, and the default folder is
+        # a perfectly good answer — this is a file in the person's own home
+        # directory, not a credential.
+        drop = IcsDrop("local")
+    out = drop.hold(workspace, title, s, e, note or "", where or "")
+    nights = (e - s).days
+    return {"ok": True, "uid": out["uid"], "file": out["file"],
+            "folder": out["folder"], "replaced": out["replaced"],
+            "detail": (f"{'Replaced' if out['replaced'] else 'Written'}: "
+                       f"{out['file']} — {nights} night"
+                       f"{'' if nights == 1 else 's'} in {out['folder']}. "
+                       f"Double-click it to put it in Calendar.")}
+
+
+def _say_hold(a: dict) -> str:
+    """"Hold 3-6 Sep for the Shaws" — the sentence somebody approves.
+
+    Dates as a person writes them. A preview reading "hold_dates workspace=
+    cottages start=2026-09-03" is accurate and is not a decision anybody can
+    make with their thumb over a button.
+    """
+    from datetime import date as _d
+    try:
+        s = _d.fromisoformat(str(a.get("start", "")))
+        e = _d.fromisoformat(str(a.get("end", "")))
+    except ValueError:
+        gap = "\u2026"
+        return (f"Hold {a.get('start') or gap} to {a.get('end') or gap} "
+                f"for {a.get('title') or 'a booking'}.")
+    n = (e - s).days
+    span = (f"{s:%-d}\u2013{e:%-d %b}" if s.month == e.month
+            else f"{s:%-d %b}\u2013{e:%-d %b}")
+    return (f"Hold {span} for \u201c{a.get('title', 'a booking')}\u201d "
+            f"in {_own(a.get('workspace', ''))} diary \u2014 {n} night"
+            f"{'' if n == 1 else 's'}, out on the morning of "
+            f"the {_ord(e.day)}. Writes a file; it does not touch "
+            f"Calendar itself.")
+
+
 ACTIONS: dict[str, Action] = {a.name: a for a in (
     Action("sweep_now", "Run the sweep now, across every workspace.",
            run=_sweep, category="blokk_run"),
@@ -316,6 +439,18 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
            phrase=_say_add),
     Action("add_workspace", "Add a workspace called {workspace}.",
            args=("workspace",), optional=("name",), run=_add_workspace),
+    # The only action that writes outside blokk.db, and pinned for it. A
+    # category earns the right to act alone by being right twenty times;
+    # what that buys elsewhere is a workspace renamed without asking. Here
+    # it would be a file appearing in somebody's folder off the back of a
+    # sentence in a guest's email, which is the shape of the thing this
+    # whole design exists to stop.
+    Action("hold_dates",
+           "Hold {start} to {end} for {title}, in {workspace}.",
+           args=("workspace", "title", "start", "end"),
+           optional=("note", "where"),
+           pinned=True, category="calendar_hold",
+           run=_hold_dates, phrase=_say_hold),
     Action("remember", "Remember, for {workspace}: {note}",
            args=("workspace", "note"), run=_remember, category="blokk_memory"),
     # Pinned. Forgetting is the one memory operation that destroys something,
@@ -395,6 +530,18 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
             if nightly._hhmm(v) is None:
                 raise Rejected(f"{args[key]!r} is not a time of day. It wants "
                                f"something like 04:00, or 6pm.")
+        if key in ("start", "end"):
+            # Normalised to ISO here so the preview, the clash check and
+            # the file all agree about which day is meant. A model that
+            # writes 03/09/2026 is not making a mistake; leaving it as
+            # text until the executor is.
+            from core.connectors.ics_out import _as_date
+            try:
+                v = _as_date(v).isoformat()
+            except ValueError as ex:
+                raise Rejected(str(ex)) from None
+        if key == "title" and len(v) < 2:
+            raise Rejected("a hold needs something to call it")
         if key == "note" and len(v) < 4:
             raise Rejected("that is too short to be worth remembering")
         if key == "host":
@@ -402,6 +549,30 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
                 raise Rejected(f"{v!r} is not a hostname. It wants something "
                                f"like api.example.com.")
         clean[key] = v
+    # Checks that need two fields at once, so they cannot live in the loop
+    # above. Same reason everything else is checked here: a proposal that is
+    # wrong should say so under the Approve button, not after it.
+    if "start" in clean and "end" in clean:
+        from datetime import date as _date
+        s_, e_ = (_date.fromisoformat(clean["start"]),
+                  _date.fromisoformat(clean["end"]))
+        if e_ <= s_:
+            raise Rejected(
+                f"{e_:%-d %b} is not after {s_:%-d %b} \u2014 a hold needs at "
+                f"least one night, and the leaving date is the morning after "
+                f"the last one. For a single night on the "
+                f"{_ord(s_.day)}, that is {s_ + _day():%Y-%m-%d}.")
+        if s_ < _date.today() - _day():
+            raise Rejected(f"{s_:%-d %b %Y} is in the past")
+        # A hold this long is a misread sentence far more often than it is a
+        # booking. "The 5th to the 5th of March" is a real thing somebody
+        # types and it can be read as 28 nights; better to say the number out
+        # loud than to write a month-long block into a diary.
+        if (e_ - s_).days > MAX_NIGHTS:
+            raise Rejected(
+                f"that is {(e_ - s_).days} nights, {s_:%-d %b} to {e_:%-d %b}. "
+                f"Over {MAX_NIGHTS} looks like a misread date rather than a "
+                f"booking \u2014 write both dates out if you meant it.")
     return act, clean
 
 

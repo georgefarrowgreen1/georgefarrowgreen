@@ -800,6 +800,14 @@
   dialog .srow{display:flex;justify-content:space-between;align-items:center;
     gap:8px;padding:8px 0;border-bottom:1px solid var(--hair);font-size:13px}
   dialog .srow:last-of-type{border-bottom:0}
+  /* The one source that is not read-only, said on the row rather than left
+     to be inferred from its name. Amber, not green: this is the thing to
+     look at twice in a list where everything else only looks. */
+  dialog .srow .wpill{display:inline-block;border-radius:var(--r-pill);
+    padding:1px var(--sp-2);font-size:10.5px;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--amber);
+    border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);
+    vertical-align:1px}
   dialog .srow small{display:block;color:var(--lab3);font-size:11px;
     font-family:var(--mono)}
   /* ── the outbound group ─────────────────────────────────────────────
@@ -1541,7 +1549,8 @@ async function paintSources(extra){
   SRC = await get('/api/v1/sources');
   const wired = SRC.sources.length ? SRC.sources.map(s => `
     <div class="srow">
-      <div><b>${esc(s.workspace_id)}</b> · ${esc(s.reads)}
+      <div><b>${esc(s.workspace_id)}</b> · ${esc(s.reads)}${
+          s.writes ? ' <span class="wpill">writes</span>' : ''}
         <small>${esc(s.keychain_ref)} · ${esc(s.scopes.join(','))}${
           (s.only && s.only.length)
             ? ' · only ' + esc(s.only.join(', ')) : ''}</small></div>
@@ -1556,7 +1565,7 @@ async function paintSources(extra){
   const wsopts = SRC.workspaces.map(w =>
     `<option value="${esc(w.id)}">${esc(w.name || w.id)}</option>`).join('');
   const kopts = SRC.kinds.map(k =>
-    `<option value="${esc(k.id)}">${esc(k.id)} — reads ${esc(k.reads)}</option>`).join('');
+    `<option value="${esc(k.id)}">${esc(k.id)} — ${k.writes ? 'writes' : 'reads'} ${esc(k.reads)}</option>`).join('');
 
   // Your own workspaces, and which are the sample world. Everything is scoped
   // per workspace — credentials, trust, memory — so this is the first thing
@@ -1652,8 +1661,9 @@ async function paintSources(extra){
       <p class="sub hint" id="s-hint"></p>
       <div id="s-inside"></div>
       <button class="mini go" id="s-add">Add</button>
-      <p class="sub">Read-only. No password is stored here — you put that in the
-        keychain yourself, and Blokk reads it at call time.</p>
+      <p class="sub">Every source here is read-only except the holds folder,
+        which Blokk writes .ics files into. No password is stored here — you
+        put that in the keychain yourself, and Blokk reads it at call time.</p>
     </div>
     ${egressbox}
     <button class="rowbtn" id="s-test">Test every credential</button>
@@ -1714,6 +1724,11 @@ async function paintSources(extra){
               'Adding this lets that workspace reach open-meteo.com, and '
               + 'nothing else new. What leaves is a latitude and a longitude.'],
     ical: ['local', ''], maildir: ['local', ''], messages: ['local', ''],
+    ics_out: ['local — or a folder, like ~/Desktop/Holds',
+              'The one source Blokk writes to. It puts a .ics file in that '
+              + 'folder for each set of dates you approve; you double-click '
+              + 'one to add it to Calendar. Blokk cannot put it there itself, '
+              + 'and it never touches what is already in your diary.'],
   };
   const refHint = () => {
     const k = $('#s-kind').value, h = REF_HINT[k];

@@ -323,6 +323,10 @@
     background:var(--fill-2);color:var(--lab3);flex:0 0 auto}
   .srcrow .st.ready{background:rgba(48,209,88,.16);color:var(--green)}
   .srcrow .st.blocked{background:rgba(255,214,10,.16);color:var(--amber)}
+  /* Not a health status. Green here would put the one row that changes
+     something on this Mac in the same colour as "we can read your mail",
+     which is the row somebody should look at twice. */
+  .srcrow .st.writes{background:rgba(255,214,10,.16);color:var(--amber)}
   .srcrow.off{opacity:.55}
   /* What is inside one of them. Shown on request, because a person with
      eleven calendars should not have eleven rows before they have decided
@@ -428,7 +432,7 @@
     <h2>Your own data</h2>
     <p class="lead">Blokk starts on a sample world so you can see it working.
       Point it at something real and the sample goes quiet. Everything here
-      is already on this Mac and needs no password.</p>
+      needs no password and no account.</p>
     <div class="box">
       <label class="fieldlabel" for="wsname">What do you call it?</label>
       <input id="wsname" type="text" placeholder="The cottages"
@@ -740,6 +744,27 @@ $('#wsname').addEventListener('input',()=>{
   refreshWire();
 });
 
+// The one source that is not on this Mac already: a folder Blokk writes
+// into. Offered here because a fresh install that cannot hold a date has to
+// send somebody to the Sources sheet to find out why, and because it needs
+// nothing — no app, no password, no Full Disk Access. It appears even when
+// this is not a Mac and even when nothing local was found, which is why it
+// is a function rather than another row in the loop.
+function holdsRow(box){
+  const wrap = el('<div class="srcwrap"></div>');
+  wrap.append(el(`<label class="srcrow">
+    <input type="checkbox" checked data-kind="ics_out">
+    <span class="tick" aria-hidden="true">&#10003;</span>
+    <span class="who"><b>Somewhere to put holds</b><small>Blokk writes a
+      calendar file into ~/Blokk/Holds when you approve some dates. You
+      open it to put it in Calendar \u2014 it never edits your diary
+      itself.</small></span>
+    <span class="st writes">writes</span>
+  </label>`));
+  wrap.querySelector('input').addEventListener('change', refreshWire);
+  box.append(wrap);
+}
+
 let LOCAL = [];
 async function loadLocal(){
   const box = $('#localsrc');
@@ -749,11 +774,11 @@ async function loadLocal(){
     if(!sur.mac){
       box.innerHTML = `<p class="hint">${esc(sur.note||'No local Apple sources here.')}
         You can still wire mail or a calendar over IMAP or CalDAV from the app.</p>`;
-      LOCAL = []; refreshWire(); return;
+      LOCAL = []; holdsRow(box); refreshWire(); return;
     }
     LOCAL = (sur.sources||[]).filter(x=>x.kind_local || x.kind==='messages');
     if(!LOCAL.length){ box.innerHTML='<p class="hint">Nothing local found.</p>';
-      refreshWire(); return; }
+      holdsRow(box); refreshWire(); return; }
     box.innerHTML='';
     for(const s of LOCAL){
       const ready = s.state==='ready';
@@ -778,6 +803,7 @@ async function loadLocal(){
       wrap.append(row);
       box.append(wrap);
     }
+    holdsRow(box);
     if(LOCAL.some(s=>s.state==='blocked'))
       $('#p5note').textContent = 'Anything marked blocked needs Full Disk '
         + 'Access, granted to the app that starts Blokk, and a restart. You '
@@ -786,7 +812,7 @@ async function loadLocal(){
   }catch(e){
     box.innerHTML = `<p class="hint">Could not read this Mac: ${esc(e.message)}.
       You can wire sources from the app instead.</p>`;
-    LOCAL = []; refreshWire();
+    LOCAL = []; holdsRow(box); refreshWire();
   }
 }
 
