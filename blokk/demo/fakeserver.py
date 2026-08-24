@@ -59,6 +59,17 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):                             # noqa: N802
+        # Half the fixtures here exist to make the client give up mid-answer,
+        # and a client giving up mid-answer is a BrokenPipeError on this
+        # side. Swallowed rather than left to print a traceback into a green
+        # suite: output that is noisy when everything is fine is output
+        # people stop reading.
+        try:
+            self._post()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _post(self):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n)
         try:
