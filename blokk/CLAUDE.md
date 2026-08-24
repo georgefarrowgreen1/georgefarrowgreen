@@ -266,7 +266,12 @@ phrase added to one and not the other fails the suite.
   the GUI deliberately cannot do is take a password.
 * Never put prompt or completion text in span attributes or logs. Hash and
   pointer only; guest names must not end up in a second store with different
-  retention.
+  retention. The writer is `Ctx._span`, called from `_journal` so the two
+  cannot drift — and the trap is `error`: an exception message like "no
+  mailbox for Mrs Shaw" is personal data wearing a diagnostic's clothes, so
+  only the type goes in and the journal row keeps the detail. A90 plants a
+  name and address in a body, a draft and an exception, and fails if any of
+  the three reaches a span.
 * **44 points.** Every control is at least `var(--tap)` on every surface. It
   may look smaller — a slider track is 6px inside a 44px control, the way iOS
   draws one — but the target is not. `hunt_ui.js` B20 reads it off the
@@ -376,6 +381,10 @@ All four suites green. Verified behaviours:
   holding, says what it searched when it finds nothing ("300 rows in the last
   730 days") rather than just "nothing", narrows on request, and still flags
   an instruction it finds down there
+* every journalled step writes a span and every run writes a rollup, carrying
+  the shape and the cost and none of the content. The error column is the
+  exception's *type*: str(e) reads like a diagnostic and is often a guest's
+  name. `./blokk doctor` prints what the week cost, by kind of work
 * every connector that leaves goes through the gate. CalDAV was the one
   exception and is not any more: the gate makes PROPFIND and REPORT, refuses
   anything that writes, and wiring a caldav source opens exactly one host and
@@ -435,8 +444,9 @@ All four suites green. Verified behaviours:
   them, bounded by `FIND_SCAN`, so it stays honest on one Mac's archive and
   would not stay honest on ten. If that day comes the answer is SQLite's own
   FTS5, not a bigger loop.
-* `span` has no writer and `skill` is decorative. Both are in the schema
-  ahead of the code that will use them.
+* `skill` is still decorative. It is the thing code mode runs, so it lands
+  with `core/sandbox.py` or not at all — a table of scripts and no boundary
+  to run them behind is worse than neither.
 
 ## If you are picking this up cold
 

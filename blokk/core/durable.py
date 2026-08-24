@@ -147,6 +147,19 @@ class Store:
                     f"lsof {self.path}") from e
 
 
+# What a step's name says it was. gen_ai.* has a small vocabulary and the
+# span table's `op` column is it; guessing from the step name keeps every
+# workflow from having to declare it, and a workflow that names its steps
+# badly gets a wrong label rather than a missing span.
+def _op_for(name: str) -> str:
+    head = str(name or "").split(".", 1)[0].lower()
+    if head in ("model", "llm", "chat", "draft", "triage", "derive"):
+        return "chat"
+    if head in ("embed", "embeddings"):
+        return "embeddings"
+    return "execute_tool"
+
+
 # ------------------------------------------------------------------- context
 @dataclass
 class Ctx:
@@ -232,7 +245,8 @@ class Ctx:
             except Exception as e:  # noqa: BLE001 - recorded, then re-raised
                 last = e
                 if attempt == retries - 1:
-                    self._journal(step, name, None, error=str(e), ms=0)
+                    self._journal(step, name, None, error=e,
+                                  ms=int((time.time() - started) * 1000))
                     raise
                 time.sleep(backoff * (2**attempt))
         else:  # pragma: no cover
@@ -304,6 +318,48 @@ class Ctx:
             f"{self.run_id}:{step}" if side_effect else None,
             tokens_in, tokens_out, ms,
         )
+        # One span per journalled step, written here because this is the one
+        # place every step — completed or failed — passes through. Written
+        # anywhere else and the two would drift, and a telemetry table that
+        # disagrees with the journal is worse than an empty one.
+        #
+        # What is deliberately NOT in it: the payload. `content_hash` is a
+        # hash of the result and `error` is the exception's *type*, not its
+        # message — a message like "no such calendar 'Smith'" is a guest's
+        # name, and putting it here copies personal data into a second store
+        # with different retention. The journal row at (run_id, step) has the
+        # detail for anybody debugging; the span is the shape and the cost.
+        self._span(step, name, blob, ref, error, ms, tokens_in, tokens_out,
+                   side_effect)
+
+    def _span(self, step, name, blob, ref, error, ms, tokens_in, tokens_out,
+              side_effect) -> None:
+        model = None
+        # Model adapters hand their name back with the usage. Read it off the
+        # payload rather than threading it through every caller.
+        try:
+            payload = json.loads(blob) if blob else None
+            if isinstance(payload, dict):
+                m = payload.get("model") or payload.get("served_by")
+                model = str(m)[:120] if m else None
+        except (ValueError, TypeError):
+            payload = None
+        try:
+            self.store.x(
+                """INSERT OR REPLACE INTO span
+                   (id,run_id,parent_id,op,name,model,tokens_in,tokens_out,
+                    content_hash,ms,error)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                f"s_{self.run_id}_{step}", self.run_id, self.run_id,
+                _op_for(name), str(name)[:120], model, tokens_in, tokens_out,
+                _hash(blob if blob is not None else (ref or "")),
+                ms, type(error).__name__ if isinstance(error, BaseException)
+                else ("error" if error else None))
+        except Exception:                                        # noqa: BLE001
+            # Telemetry must never be the reason a sweep stops. Invariant 6
+            # cuts both ways: nothing may fail silently, and nothing that
+            # only *watches* may take down the thing it is watching.
+            pass
 
     def _check_budget(self) -> None:
         day = now().date().isoformat()
@@ -465,17 +521,22 @@ class Engine:
             # Parked, not finished. Persist what it got through.
             self.store.x("UPDATE run SET result=? WHERE id=?",
                          json.dumps(ctx.progress, default=str), run_id)
+            # A parked run is a state, not an absence. Written with the same
+            # id, so resuming replaces it rather than leaving two.
+            self._run_span(run_id, run["workflow"], "suspended")
             return
         except BudgetExceeded as e:
             self.store.x(
                 "UPDATE run SET status='killed', result=?, ended_at=? WHERE id=?",
                 json.dumps({"stopped": str(e)}), now().isoformat(), run_id)
+            self._run_span(run_id, run["workflow"], "killed", e)
             return
         except Exception as e:          # noqa: BLE001
             self.store.x(
                 "UPDATE run SET status='failed', result=?, ended_at=? WHERE id=?",
                 json.dumps({**ctx.progress, "error": str(e)}, default=str),
                 now().isoformat(), run_id)
+            self._run_span(run_id, run["workflow"], "failed", e)
             raise
         # A workflow is expected to return a dict, and merging one that is
         # not used to blow up here with "'str' object is not a mapping" —
@@ -487,8 +548,60 @@ class Engine:
             "UPDATE run SET status='done', result=?, ended_at=? WHERE id=?",
             json.dumps({**ctx.progress, **(result or {})}, default=str),
             now().isoformat(), run_id)
+        self._run_span(run_id, run["workflow"], "done")
+
+    def _run_span(self, run_id: str, workflow: str, status: str,
+                  error: BaseException | None = None) -> None:
+        """One invoke_agent span per run: the shape and cost of the whole thing.
+
+        The per-step spans say what happened inside; this is the row a person
+        looks at first — did it finish, how long, how much. Written wherever
+        a run stops, including the ways it stops badly, because a run that
+        only shows up in telemetry when it succeeds is telemetry that flatters.
+        """
+        j = self.store.q("SELECT tokens_in,tokens_out,ms FROM journal "
+                         "WHERE run_id=?", run_id)
+        try:
+            self.store.x(
+                """INSERT OR REPLACE INTO span
+                   (id,run_id,parent_id,op,name,model,tokens_in,tokens_out,
+                    content_hash,ms,error)
+                   VALUES(?,?,NULL,'invoke_agent',?,NULL,?,?,NULL,?,?)""",
+                f"s_{run_id}_run", run_id, str(workflow)[:120],
+                sum(r["tokens_in"] for r in j),
+                sum(r["tokens_out"] for r in j),
+                sum(r["ms"] for r in j),
+                type(error).__name__ if error is not None
+                else (None if status == "done" else status))
+        except Exception:                                        # noqa: BLE001
+            pass
 
     # ---------------------------------------------------------------- reading
+    def spend(self, days: int = 7) -> dict:
+        """Where the time and the tokens went, by kind of work.
+
+        The journal answers "what happened in this run". This answers "what
+        is this costing", which is a different question and the one nobody
+        could ask: the span table has been in the schema since the first
+        commit with nothing writing to it, so the honest answer to "how much
+        of the night is the model" was to go and count journal rows by hand.
+        """
+        rows = self.store.q(
+            "SELECT op, COUNT(*) n, SUM(tokens_in) tin, SUM(tokens_out) tout, "
+            "SUM(ms) ms FROM span WHERE at >= datetime('now', ?) "
+            "AND op != 'invoke_agent' GROUP BY op ORDER BY tin+tout DESC",
+            f"-{max(1, int(days))} days")
+        runs = self.store.q(
+            "SELECT COUNT(*) n, SUM(CASE WHEN error IS NULL THEN 0 ELSE 1 END) "
+            "bad FROM span WHERE op='invoke_agent' AND at >= datetime('now', ?)",
+            f"-{max(1, int(days))} days")
+        return {"days": days,
+                "by_op": [{"op": r["op"], "steps": r["n"],
+                           "tokens": (r["tin"] or 0) + (r["tout"] or 0),
+                           "ms": r["ms"] or 0} for r in rows],
+                "runs": runs[0]["n"] if runs else 0,
+                "runs_bad": (runs[0]["bad"] or 0) if runs else 0}
+
     def stats(self, run_id: str) -> dict:
         j = self.store.q("SELECT * FROM journal WHERE run_id=? ORDER BY step", run_id)
         return {

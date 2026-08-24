@@ -4482,6 +4482,114 @@ try:
     probe("A89 CalDAV is the one thing that leaves without going through the gate",
           caldav_goes_through_the_gate)
 
+    def spans_are_written_and_carry_nothing():
+        # The span table had been in the schema since the first commit with
+        # nothing writing to it, so "how much of the night is the model" had
+        # no answer short of counting journal rows by hand. It has a writer
+        # now, and the thing that matters about it is what it does NOT carry.
+        import sys as _s6, sqlite3 as _sq, tempfile as _tf
+        _s6.path.insert(0, ".")
+        from core.durable import Store, Engine, Ctx
+
+        tmp = pathlib.Path(_tf.mkdtemp()) / "s.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(tmp)); src.backup(dst); dst.close(); src.close()
+        st = Store(tmp)
+        st.x("DELETE FROM span"); st.x("DELETE FROM journal")
+        st.x("DELETE FROM run")
+        st.x("INSERT INTO run(id,workspace_id,workflow,status,input) "
+             "VALUES('r_span','cottages','probe','running','{}')")
+
+        secret = "Mrs Shaw, 14 Harbour Terrace, 07700 900123"
+        ctx = Ctx(st, "r_span", "cottages")
+        ctx.activity("mail.search", lambda: {"rows": [{"body": secret}],
+                                             "tokens_in": 11, "tokens_out": 3})
+        ctx.activity("model.draft", lambda: {"text": secret, "model": "qwen3-8b",
+                                             "tokens_in": 40, "tokens_out": 7})
+        try:
+            ctx.activity("mail.broken",
+                         lambda: (_ for _ in ()).throw(
+                             ValueError(f"no mailbox for {secret}")),
+                         retries=1)
+        except ValueError:
+            pass
+
+        spans = [dict(r) for r in st.q("SELECT * FROM span ORDER BY id")]
+        if len(spans) < 3:
+            return (True, f"three steps ran and {len(spans)} spans were "
+                          f"written")
+
+        # 1. Nothing anybody wrote is in here. Not the body, not the draft,
+        #    and not the guest's name inside an exception message — which is
+        #    the one that gets there by accident, because str(e) reads like
+        #    a diagnostic rather than like personal data.
+        for sp in spans:
+            for k, v in sp.items():
+                if isinstance(v, str) and ("Shaw" in v or "Harbour" in v
+                                           or "900123" in v):
+                    return (True, f"span.{k} carries what the step read: "
+                                  f"{v[:60]!r}")
+
+        # 2. A step that failed is still recorded. Telemetry that only
+        #    appears when things work is telemetry that flatters.
+        broke = [s for s in spans if s["name"] == "mail.broken"]
+        if not broke:
+            return (True, "a failed step wrote no span at all")
+        if not broke[0]["error"]:
+            return (True, "a failed step is recorded as if it succeeded")
+        if broke[0]["error"] != "ValueError":
+            return (True, f"error is {broke[0]['error']!r} — it should be the "
+                          f"exception's type, not its message")
+
+        # 3. The shape and the cost are there, which is the whole point.
+        chat = [s for s in spans if s["op"] == "chat"]
+        if not chat:
+            return (True, "a model call is not labelled as one")
+        if chat[0]["tokens_in"] != 40 or chat[0]["tokens_out"] != 7:
+            return (True, f"the usage did not reach the span: {chat[0]}")
+        if chat[0]["model"] != "qwen3-8b":
+            return (True, f"the model name did not reach the span: "
+                          f"{chat[0]['model']!r}")
+        if not chat[0]["content_hash"]:
+            return (True, "no pointer to what was said — hash and pointer is "
+                          "the deal, and this is neither")
+        tools = [s for s in spans if s["op"] == "execute_tool"]
+        if not tools:
+            return (True, "a tool call is not labelled as one")
+
+        # 4. Every attribute is bounded. A span table is indexed and a name
+        #    is a name; a 40kB one is a payload that got in through a field
+        #    nobody was watching.
+        for sp in spans:
+            for k, v in sp.items():
+                if isinstance(v, str) and len(v) > 200:
+                    return (True, f"span.{k} is {len(v)} characters long")
+
+        # 5. Telemetry must never be the reason a sweep stops. Invariant 6
+        #    cuts both ways: nothing may fail silently, and nothing that only
+        #    watches may take down the thing it watches.
+        st.x("DROP TABLE span")
+        try:
+            ctx.activity("mail.search2", lambda: {"ok": True})
+        except Exception as e:                                   # noqa: BLE001
+            return (True, f"a broken span table took the run with it: "
+                          f"{type(e).__name__}: {e}")
+        if not st.q("SELECT 1 FROM journal WHERE name='mail.search2'"):
+            return (True, "the step did not run once telemetry was broken")
+
+        # 6. And it adds up to the question somebody actually asks.
+        st2 = Store("blokk.db")
+        sp = Engine(st2).spend(days=7)
+        if "by_op" not in sp or "runs" not in sp:
+            return (True, f"spend() does not answer what it costs: {sp}")
+        return (False, "a span per step and a rollup per run, carrying the "
+                       "shape and the cost and none of the content — a "
+                       "failed step is recorded as failed, the error is a "
+                       "type not a message, and breaking the table does not "
+                       "break the sweep")
+    probe("A90 the span table has been in the schema with nothing writing to it",
+          spans_are_written_and_carry_nothing)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

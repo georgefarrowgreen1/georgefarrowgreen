@@ -397,6 +397,34 @@ def sources_and_chat() -> list[str]:
     except Exception as e:                                       # noqa: BLE001
         row("chat", _c("RAISED", RED), f"{type(e).__name__}: {e}"[:70])
         todo.append(f"The chat raised {type(e).__name__}: {str(e)[:80]}")
+
+    # ── what the week cost ───────────────────────────────────────────────
+    # The journal answers "what happened in this run". This answers "what is
+    # this costing me", which nobody could ask: the span table had been in
+    # the schema with nothing writing to it, so the only way to know how
+    # much of the night went to the model was to count journal rows by hand.
+    print(f"\n  {_c('What the last week cost', BOLD)}\n")
+    try:
+        from core.durable import Engine
+        sp = Engine(store).spend(days=7)
+        if not sp["by_op"]:
+            row("spend", _c("nothing recorded", AMBER),
+                "no runs in the last 7 days")
+        else:
+            for part in sp["by_op"]:
+                row(part["op"].replace("_", " "),
+                    f"{part['tokens']:,} tokens",
+                    f"{part['steps']} step(s), {part['ms'] / 1000:.1f}s")
+            bad = sp["runs_bad"]
+            row("runs", f"{sp['runs']}",
+                _c(f"{bad} did not finish", AMBER) if bad
+                else "all finished")
+            if bad:
+                todo.append(f"{bad} run(s) in the last week did not finish — "
+                            f"./blokk doctor again after the next sweep, or "
+                            f"look at logs/")
+    except Exception as e:                                       # noqa: BLE001
+        row("spend", _c("unreadable", AMBER), f"{type(e).__name__}: {e}"[:60])
     return todo
 
 
