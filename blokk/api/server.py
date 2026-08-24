@@ -703,10 +703,14 @@ def h_sources_add(body):
     only = body.get("only")
     if not isinstance(only, list):
         only = []
-    out = sources.add(store, (body.get("kind") or "").strip(),
-                      (body.get("ref") or "").strip(),
+    # text(), not .get(...).strip(): a field that arrives as a list or a
+    # number turned a typo from a phone into a 500 carrying a Python
+    # message, which reads on a phone as "Blokk broke". Every other handler
+    # on this surface already went through it.
+    out = sources.add(store, text(body, "kind", limit=40),
+                      text(body, "ref", limit=1000),
                       only=[str(o)[:200] for o in only[:64]],
-                      name=(body.get("name") or "").strip() or None)
+                      name=text(body, "name", limit=64) or None)
     if out.get("error"):
         return out, 400
     bump()

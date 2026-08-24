@@ -835,8 +835,12 @@ try:
         cases = [
             ('/api/v1/sources/peek', {'name': 'mail',
                                       'n': 'lots'}),
-            ('/api/v1/workspaces/add', {'id': ['a'], 'name': 'x'}),
-            ('/api/v1/workspaces/add', {'id': 'a' * 5000, 'name': 'x'}),
+            ('/api/v1/sources/add', {'kind': ['a'], 'ref': 'local'}),
+            ('/api/v1/sources/add', {'kind': 'maildir', 'ref': 'a' * 5000}),
+            ('/api/v1/sources/add', {'kind': 'maildir', 'ref': 'local',
+                                     'name': 'Not An Id!'}),
+            ('/api/v1/sources/remove', {'name': ['a']}),
+            ('/api/v1/egress/allow', {'host': {'a': 1}}),
             ('/api/v1/setup/plan', {'shape': None}),
             ('/api/v1/setup/write', {'mode': 'servers', 'tiers': [{}]}),
             ('/api/v1/setup/write', {'mode': 'servers', 'tiers': 'nope'}),
@@ -2727,9 +2731,11 @@ try:
 
     def setup_ends_on_real_data():
         # The wizard stopped at the model, so a fresh install landed on a
-        # dashboard of four made-up companies with the person's own mail
-        # nowhere in it. The fifth step is the one that makes the first
-        # screen theirs, and it can only offer what needs no password.
+        # dashboard of invented guests with the person's own mail nowhere in
+        # it. The fifth step is the one that makes the first screen theirs,
+        # and it can only offer what needs no password. It used to ask for a
+        # workspace name before any of that — a question about a concept the
+        # product no longer has, standing between somebody and their mail.
         html = open("web/setup.html").read()
         js = html.split("<script>")[1]
         if 'id="p5"' not in html:
@@ -2737,9 +2743,11 @@ try:
                           "model")
         if len([1 for i in range(1, 6) if f'id="s{i}"' in html]) < 5:
             return (True, "the progress bar does not count the new step")
-        for want in ("workspaces/add", "sources/add", "/api/v1/sources"):
+        for want in ("sources/add", "/api/v1/sources"):
             if want not in js:
                 return (True, f"the step cannot {want}")
+        if "workspace" in js:
+            return (True, "the wizard still asks for a workspace")
         # It must only ever offer the credential-free route. Offering imap
         # here puts an app-specific password in the first five minutes,
         # which is where setup dies.

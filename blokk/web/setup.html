@@ -294,9 +294,6 @@
 
   /* Step 5 — your own data. Same materials as the rest, no new ones. */
   .fieldlabel{display:block;font-size:13px;color:var(--lab2);margin-bottom:var(--sp-2)}
-  #wsname{width:100%;box-sizing:border-box;padding:8px 12px;min-height:var(--tap);
-    border-radius:var(--r-md);border:1px solid var(--hair);
-    background:var(--field);color:var(--lab);font-size:15px;font-family:var(--ui)}
   #wsid{margin:var(--sp-2) 0 0}
   #wsid code{font-family:var(--mono);color:var(--lab2)}
   /* The whole row is the control, not the 22px box in it. The box is a
@@ -425,21 +422,16 @@
 
   <!-- 5 — your own data -->
   <!-- Setup used to stop at the model, so a fresh install landed on a
-       dashboard of four invented businesses and the person's actual mail was
-       nowhere. This is the step that makes the first screen theirs: name one
-       workspace, tick what is already on this Mac, done. Everything offered
-       here needs no password, no account and no network. -->
+       dashboard of invented guests and the person's actual mail was nowhere.
+       This is the step that makes the first screen theirs: tick what is
+       already on this Mac, done. Everything offered here needs no password,
+       no account and no network. It used to ask for a workspace name first,
+       which was a question about a concept the product no longer has. -->
   <div class="pane" id="p5">
     <h2>Your own data</h2>
     <p class="lead">Blokk starts on a sample world so you can see it working.
       Point it at something real and the sample goes quiet. Everything here
       needs no password and no account.</p>
-    <div class="box">
-      <label class="fieldlabel" for="wsname">What do you call it?</label>
-      <input id="wsname" type="text" placeholder="The cottages"
-             autocomplete="off" spellcheck="false">
-      <p class="hint" id="wsid">It will be filed under <code>&mdash;</code></p>
-    </div>
     <div class="box" id="localsrc">Looking at this Mac…</div>
     <p class="hint" id="p5note"></p>
     <div class="row">
@@ -734,17 +726,6 @@ $('#to4').onclick=async()=>{
 // why it belongs in the first five minutes rather than in a document.
 $('#open').onclick=()=>{ step(5); loadLocal(); };
 
-const slug = s => (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')
-                          .replace(/^-+|-+$/g,'').slice(0,30);
-
-$('#wsname').addEventListener('input',()=>{
-  const id = slug($('#wsname').value);
-  $('#wsid').innerHTML = id
-    ? `It will be filed under <code>${esc(id)}</code>`
-    : 'It will be filed under <code>&mdash;</code>';
-  refreshWire();
-});
-
 // The one source that is not on this Mac already: a folder Blokk writes
 // into. Offered here because a fresh install that cannot hold a date has to
 // send somebody to the Sources sheet to find out why, and because it needs
@@ -867,8 +848,8 @@ function ticked(){
 }
 function refreshWire(){
   const b = $('#wire');
-  const n = ticked().length, id = slug($('#wsname').value);
-  b.disabled = !id || !n;
+  const n = ticked().length;
+  b.disabled = !n;
   b.textContent = !n ? 'Nothing ticked'
     : `Wire ${n} source${n===1?'':'s'} up`;
 }
@@ -877,18 +858,15 @@ $('#skip5').onclick = ()=>{ location.href='/'; };
 
 $('#wire').onclick = async ()=>{
   const b = $('#wire'); b.disabled = true; b.textContent='Wiring…';
-  const id = slug($('#wsname').value);
-  const name = $('#wsname').value.trim() || id;
   try{
-    const w = await post('/api/v1/workspaces/add', {id, name});
-    // "already exists" is not a failure here — somebody may be running the
-    // wizard a second time, and the sources still need wiring.
-    if(w.error && !/already exists/.test(w.error)) throw new Error(w.error);
     const failed = [];
     for(const kind of ticked()){
       const r = await post('/api/v1/sources/add',
-        {workspace:id, kind, ref:'local', only: chosen(kind)});
-      if(r.error) failed.push(`${kind}: ${r.error}`);
+        {kind, ref:'local', only: chosen(kind)});
+      // Running the wizard a second time is not a failure: the source is
+      // already there, and the rest still need wiring.
+      if(r.error && !/already a source/.test(r.error))
+        failed.push(`${kind}: ${r.error}`);
     }
     if(failed.length){
       $('#p5note').innerHTML = `<b class="bad">Some did not attach.</b><br>
