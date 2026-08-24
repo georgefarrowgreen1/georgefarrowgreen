@@ -4,17 +4,20 @@ Wire real data in, one source at a time.
 
     python3 connect.py list                          what is wired now
     python3 connect.py local                         what this Mac already holds
-    python3 connect.py workspace add georgefg "George Farrow Green"
-    python3 connect.py clean                         drop the sample world
     python3 connect.py backup                        snapshot blokk.db
     python3 connect.py backup list / verify
-    python3 connect.py add cottages imap  blokk-cottages-mail
-    python3 connect.py add cottages messages local
+    python3 connect.py add imap blokk-mail           wire a mailbox
+    python3 connect.py add messages local
     python3 connect.py test                          prove every credential works
-    python3 connect.py peek cottages mail 6          see what it would actually read
-    python3 connect.py keychain blokk-cottages-mail  store a password, hidden
-    python3 connect.py remove cottages imap
+    python3 connect.py peek mail 6                   see what it would actually read
+    python3 connect.py keychain blokk-mail           store a password, hidden
+    python3 connect.py remove mail
     python3 connect.py ask "what needs me?"           every event, in the open
+
+A source has a name. The first mailbox is called `mail` and the first diary
+`calendar`, because that is what they are; wire a second of either and it
+gets `mail2` or a name you choose with `--name`. Two mailboxes are two
+sources and everything reads both.
 
 Nothing here stores a password. `add` records a keychain service name; the
 password goes in the keychain separately, and Blokk reads it at call time.
@@ -92,7 +95,7 @@ def _store_password(ref: str) -> bool:
     return True
 
 
-def _check_one(store, ws: str, kind: str) -> None:
+def _check_one(store, name: str) -> None:
     """Say whether the source works, now, rather than at 04:00.
 
     `connect.py test` has always existed and has always been a separate
@@ -106,12 +109,13 @@ def _check_one(store, ws: str, kind: str) -> None:
     def go():
         try:
             from core.connectors import wire
-            c = wire(store).get(ws, sources.KINDS[kind])
+            reg = wire(store)
+            c = reg.get(name)
             if c is None:
                 out["msg"] = "wired, but nothing built a reader for it."
                 return
             state = c.check() if hasattr(c, "check") else {"ok": True}
-            out["msg"] = sources.describe(kind, state)
+            out["msg"] = sources.describe(reg.role_of(name), state)
         except Exception as e:                                   # noqa: BLE001
             out["msg"] = (f"it is added, but reading it raised "
                           f"{type(e).__name__}: {str(e)[:160]}\n"
@@ -137,8 +141,8 @@ def main() -> int:
     cmd = args[0] if args else "list"
 
     if cmd == "add":
-        if len(args) < 4:
-            print("usage: connect.py add <workspace> <kind> <ref>")
+        if len(args) < 3:
+            print("usage: connect.py add <kind> <ref> [--name <name>]")
             print("       kinds: imap caldav messages ical maildir weather web\n"
                   "              ics_out (writes .ics files here)\n"
                   "              smtp (the only one that reaches "
@@ -148,7 +152,12 @@ def main() -> int:
             print("                        \"Newcastle upon Tyne\" or 54.97,-1.61")
             print("              web     — one page: https://example.com/prices")
             return 1
-        r = sources.add(store, args[1], args[2], args[3])
+        name = None
+        if "--name" in args:
+            i = args.index("--name")
+            if i + 1 < len(args):
+                name = args[i + 1]
+        r = sources.add(store, args[1], args[2], name=name)
         if r.get("error"):
             print(r["error"])
             return 1
@@ -166,7 +175,7 @@ def main() -> int:
                      else f"reading {ref}")
         else:
             where = f"using keychain service '{ref}'"
-        print(f"added {r['kind']} to {r['workspace_id']} {where} (read scope)")
+        print(f"added {r['kind']} as '{r['name']}' {where} (read scope)")
         if r.get("note"):
             print("  " + r["note"])
         if r["kind"] in sources.NEEDS_KEYCHAIN and "--no-password" not in args:
@@ -181,7 +190,7 @@ def main() -> int:
                 print("\nWhen you are ready, put the password in yourself:")
                 print("  " + r["keychain_hint"])
         print("\nChecking it...")
-        _check_one(store, r["workspace_id"], r["kind"])
+        _check_one(store, r["name"])
         return 0
 
     if cmd == "keychain":
@@ -192,12 +201,16 @@ def main() -> int:
         return 0 if _store_password(args[1]) else 1
 
     if cmd == "remove":
-        if len(args) < 3:
-            print("usage: connect.py remove <workspace> <imap|caldav|messages"
-                  "|ical|maildir|ics_out>")
+        if len(args) < 2:
+            print("usage: connect.py remove <name>")
+            print("       the names are what `connect.py list` shows")
             return 1
-        print(sources.remove(store, args[1], args[2])["detail"]
-              .replace("The keychain", f"removed {args[2]} from {args[1]}. The keychain"))
+        out = sources.remove(store, args[1])
+        if out.get("error"):
+            print(out["error"])
+            return 1
+        print(out["detail"].replace(
+            "The keychain", f"removed '{args[1]}'. The keychain"))
         return 0
 
     if cmd == "backup":
@@ -222,12 +235,12 @@ def main() -> int:
                 target = folder / rows[0]["name"]
             r = backup.verify(target)
             if r.get("error"):
-                # Printing "None (? workspaces)" for a file that is not there
+                # Printing "None (? sources)" for a file that is not there
                 # reads like a verdict on the backup rather than on the path.
                 print(f"  {r['error']}")
                 return 1
             print(f"  {target.name}: {r.get('integrity') or r.get('detail')}"
-                  f"  ({r.get('workspaces','?')} workspaces)")
+                  f"  ({r.get('sources','?')} sources)")
             return 0 if r.get("ok") else 1
         r = backup.make(DB)
         if r.get("error"):
@@ -240,69 +253,20 @@ def main() -> int:
             print(f"  pruned {len(r['pruned'])} older than the last {r['kept']}")
         return 0
 
-    if cmd == "workspace":
-        sub = args[1] if len(args) > 1 else "list"
-        if sub == "add":
-            if len(args) < 4:
-                print("usage: connect.py workspace add <id> <name>")
-                return 1
-            r = sources.workspace_add(store, args[2], " ".join(args[3:]))
-            print(r.get("error") or f"added {r['id']} — {r['name']}")
-            return 1 if r.get("error") else 0
-        if sub == "remove":
-            if len(args) < 3:
-                print("usage: connect.py workspace remove <id>")
-                return 1
-            r = sources.workspace_remove(store, args[2])
-            if r.get("error"):
-                print(r["error"])
-                return 1
-            gone = ", ".join(f"{v} {k}" for k, v in r["removed"].items() if v)
-            print(f"removed {r['id']}" + (f", and with it {gone}" if gone else ""))
-            return 0
-        for w in sources.workspaces(store):
-            mark = "  (sample)" if w["id"] in sources.SAMPLE else ""
-            print(f"  {w['id']:<14} {w['name']}{mark}")
-        return 0
-
-    if cmd == "clean":
-        # The sample world is four invented businesses with invented guests in
-        # them. Useful until you have your own; misleading after.
-        sample = sources.is_sample(store)
-        if not sample:
-            print("No sample workspaces left — this is your own data.")
-            return 0
-        if "--yes" not in args:
-            print(f"This removes {len(sample)} sample workspace(s): "
-                  f"{', '.join(sample)}")
-            print("and everything in them — approvals, runs, journal, trust, "
-                  "facts, episodes.")
-            print("\nYour own workspaces are untouched. Nothing outside "
-                  "blokk.db is read or written.")
-            print("\n  connect.py clean --yes    to go ahead")
-            print("  connect.py workspace add <id> <name>   to make your own first")
-            return 1
-        for wid in sample:
-            r = sources.workspace_remove(store, wid)
-            gone = ", ".join(f"{v} {k}" for k, v in r["removed"].items() if v)
-            print(f"  removed {wid}" + (f" ({gone})" if gone else ""))
-        left = sources.workspaces(store)
-        print(f"\n{len(left)} workspace(s) left: "
-              f"{', '.join(w['id'] for w in left) or 'none — add one'}")
-        return 0
-
     if cmd == "egress":
-        # What each workspace may reach, and nothing reaches anything that is
-        # not on its list. This is the only list in the system that decides
-        # whether something leaves the machine.
+        # What anything wired here may reach, and nothing reaches anything
+        # that is not on it. This is the only list in the system that decides
+        # whether something leaves the machine. It used to be one list per
+        # workspace; collapsing them was a widening, which is why
+        # `./blokk unify` names every host it opened up.
         from core import egress
         sub = args[1] if len(args) > 1 else "list"
         if sub in ("allow", "deny", "disallow"):
-            if len(args) < 4:
-                print(f"usage: connect.py egress {sub} <workspace> <host>")
+            if len(args) < 3:
+                print(f"usage: connect.py egress {sub} <host>")
                 return 1
             fn = egress.allow if sub == "allow" else egress.disallow
-            r = fn(store, args[2], args[3])
+            r = fn(store, args[2])
             print("  " + (r.get("error") or r["detail"]))
             return 1 if r.get("error") else 0
         if sub == "log":
@@ -313,10 +277,10 @@ def main() -> int:
             for ln in lines:
                 print("  " + ln)
             return 0
-        for w in sources.workspaces(store):
-            hosts = egress.allowlist_for(store, w["id"])
-            print(f"  {w['id']:<14} {', '.join(hosts) if hosts else '(nothing)'}")
-        print("\n  connect.py egress allow <workspace> <host>")
+        hosts = egress.allowlist(store)
+        print("  " + (", ".join(hosts) if hosts
+                      else "(nothing — nothing can leave this Mac)"))
+        print("\n  connect.py egress allow <host>")
         print("  connect.py egress log [n]        what has actually left")
         return 0
 
@@ -339,13 +303,13 @@ def main() -> int:
     if cmd == "list":
         rows = sources.listing(store)
         if not rows:
-            print("Nothing wired. Every workspace is running on the sample world.\n")
+            print("Nothing wired. Blokk is running on the sample world.\n")
             print("Start with the one that needs no credential:")
-            print("  python3 connect.py add cottages messages local")
+            print("  python3 connect.py add messages local")
             return 0
-        print(f"{'workspace':<12} {'kind':<10} {'keychain ref':<28} scopes")
+        print(f"{'name':<14} {'kind':<10} {'keychain ref':<28} scopes")
         for r in rows:
-            print(f"{r['workspace_id']:<12} {r['kind']:<10} "
+            print(f"{r['name']:<14} {r['kind']:<10} "
                   f"{r['keychain_ref']:<28} {','.join(r['scopes'])}")
         return 0
 
@@ -362,14 +326,12 @@ def main() -> int:
     if cmd == "peek":
         # The important one. Look at what it would actually read before you
         # let anything downstream act on it.
-        if len(args) < 3:
-            print("usage: connect.py peek <workspace> "
-                  "<mail|calendar|messages|holds>"
-                  " [n]")
+        if len(args) < 2:
+            print("usage: connect.py peek <name> [n]")
             print("       connect.py list   shows what is wired")
             return 1
-        out = sources.peek(store, args[1], args[2],
-                           int(args[3]) if len(args) > 3 else 5)
+        out = sources.peek(store, args[1],
+                           int(args[2]) if len(args) > 2 else 5)
         if out.get("error"):
             print(out["error"])
             return 1
@@ -390,7 +352,7 @@ def main() -> int:
         # or something was produced and did not arrive. Those are different
         # faults with different fixes and the screen cannot tell them apart.
         if len(args) < 2:
-            print('usage: connect.py ask "your question" [workspace]')
+            print('usage: connect.py ask "your question"')
             return 1
         from core import models
         from core.ask import ask as run_ask
@@ -399,8 +361,7 @@ def main() -> int:
                else "no weights — the deterministic planner")
         print(f"  model : {m.name} ({type(m).__name__}, {how})")
         said, n = [], 0
-        for ev in run_ask(store, args[1], m,
-                          args[2] if len(args) > 2 else None):
+        for ev in run_ask(store, args[1], m):
             n += 1
             kind = ev["type"]
             if kind == "TEXT_MESSAGE_CONTENT":

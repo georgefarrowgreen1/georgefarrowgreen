@@ -10,7 +10,7 @@ It did not for a long time, for one honest reason: the gate only made GET and
 POST and CalDAV is PROPFIND and REPORT. So this file called urlopen itself
 and was the single exception to "there is one place anything leaves", which
 is the kind of exception that is fine until the day somebody adds a second
-one next to it. The gate makes those two methods now, and the workspace's
+one next to it. The gate makes those two methods now, and the
 allowlist, the refusal to resolve to a private address, the redirect
 re-check and logs/egress.log all apply here.
 
@@ -40,13 +40,12 @@ class IcloudCalendar:
     kind = "caldav"
     writes = False
 
-    def __init__(self, keychain_ref: str, store=None, workspace_id: str = ""):
-        # Handed the store and the workspace for the same reason the web and
+    def __init__(self, keychain_ref: str, store=None):
+        # Handed the store for the same reason the web and
         # weather connectors are: those two are what core/egress.py needs to
-        # answer "may this workspace talk to that host".
+        # answer "is that host on the allowlist".
         self.ref = keychain_ref
         self.store = store
-        self.workspace_id = workspace_id
         self._home: str | None = None
 
     def _req(self, url: str, method: str, body: str, depth="1") -> str:
@@ -55,20 +54,20 @@ class IcloudCalendar:
         # request that is about to be refused, and a secret that is never
         # fetched is a secret that cannot be dropped somewhere.
         if self.store is None:
-            # No store means nobody can answer whether this workspace may
+            # No store means nobody can answer whether Blokk may
             # reach this host, and a connector that cannot be checked does
             # not get to make the request. This is the path a unit test or a
             # half-built registry takes, and it should fail loudly rather
             # than quietly bypassing the only gate there is.
             raise RuntimeError(
                 "this calendar was built without a store, so its request "
-                "cannot be checked against the workspace's allowlist")
+                "cannot be checked against the allowlist")
         cred = base64.b64encode(
             f"{account(self.ref)}:{secret(self.ref)}".encode()).decode()
         headers = {"Authorization": f"Basic {cred}", "Depth": depth,
                    "Content-Type": "application/xml; charset=utf-8"}
         from core import egress
-        out = egress.fetch(self.store, self.workspace_id, url,
+        out = egress.fetch(self.store, url,
                            data=body.encode(), headers=headers,
                            method=method, timeout=30)
         return out["text"]
@@ -104,7 +103,7 @@ class IcloudCalendar:
 
         Kept in step with ical.py on purpose: the two calendars must not
         disagree about what "in the window" means, or the same question
-        answers differently depending on which one a workspace happens to
+        answers differently depending on which one a person happens to
         be wired to.
         """
         start = (datetime.now(timezone.utc) - timedelta(days=max(0, back))

@@ -3,23 +3,33 @@
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
--- ---------------------------------------------------------------- workspaces
--- One row per business. Every other table carries workspace_id.
--- Retrofitting tenancy is miserable; carry it from line one.
-CREATE TABLE IF NOT EXISTS workspace (
-  id            TEXT PRIMARY KEY,
-  name          TEXT NOT NULL,
-  active        INTEGER NOT NULL DEFAULT 1,
-  -- what this workspace may reach. Enforced in the sandbox, not the prompt.
-  egress_allow  TEXT NOT NULL DEFAULT '[]',      -- json array of hostnames
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
+-- There is one space. There used to be a workspace table with one row per
+-- business and a workspace_id on everything else, on the reasoning that
+-- retrofitting tenancy is miserable — which is true, and was the wrong
+-- trade for this. It is one person's Mac. Four businesses meant four
+-- queues to check, four sweeps to wait for, four sets of sources to wire
+-- and a picker in the chat that had to be right before an answer could be,
+-- and the thing they were actually being kept apart from was each other's
+-- mail — which is what the read scope on a credential does, per mailbox,
+-- without a tenancy model over the top of it.
+--
+-- What the boundary was carrying, and where it went:
+--   the egress allowlist  -> one list, in setting. See core/egress.py.
+--   which mail is whose   -> credential.only, per mailbox. Always did this.
+--   trust                 -> per category, which is what it was really for.
+-- See core/unify.py for what happened to a database that predates this.
 
 -- Credential *references* only. Secrets live in the OS keychain.
 -- The control plane resolves these; agents never see them.
 CREATE TABLE IF NOT EXISTS credential (
   id            TEXT PRIMARY KEY,
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
+  -- What you call this one. The row used to be keyed (workspace, kind), so
+  -- there was exactly one mailbox per business and the name was implied. In
+  -- one space that would mean exactly one mailbox, full stop — wiring the
+  -- second would silently replace the first. So a source has a name: `mail`
+  -- for the first of a kind, `mail2` and up after that, or whatever you
+  -- call it. Two mailboxes are two sources and the sweep reads both.
+  name          TEXT NOT NULL DEFAULT '',
   kind          TEXT NOT NULL,                   -- imap | caldav | http | sqlite
   keychain_ref  TEXT NOT NULL,                   -- name in the keychain, never the secret
   scopes        TEXT NOT NULL DEFAULT '[]'
@@ -27,12 +37,12 @@ CREATE TABLE IF NOT EXISTS credential (
   -- Which calendars, or which mailboxes. A JSON list of names,
   -- empty for all of them. See core/sources.py:inside().
   only          TEXT NOT NULL DEFAULT '[]');
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cred_name ON credential(name);
 
 -- ---------------------------------------------------------------- durability
 -- A run is one workflow execution.
 CREATE TABLE IF NOT EXISTS run (
   id            TEXT PRIMARY KEY,
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   workflow      TEXT NOT NULL,                   -- morning_sweep | enquiry_reply | ...
   workflow_ver  INTEGER NOT NULL DEFAULT 1,      -- old runs must replay against old code
   status        TEXT NOT NULL,                   -- running|suspended|done|failed|killed
@@ -42,7 +52,7 @@ CREATE TABLE IF NOT EXISTS run (
   started_at    TEXT NOT NULL DEFAULT (datetime('now')),
   ended_at      TEXT
 );
-CREATE INDEX IF NOT EXISTS ix_run_status ON run(status, workspace_id);
+CREATE INDEX IF NOT EXISTS ix_run_status ON run(status, started_at);
 
 -- THE table. Append-only. Replay reads this and rebuilds state without
 -- calling anything. If you delete one table by accident, make it not this one.
@@ -78,8 +88,7 @@ CREATE TABLE IF NOT EXISTS waiting (
 CREATE TABLE IF NOT EXISTS approval (
   id            TEXT PRIMARY KEY,
   run_id        TEXT NOT NULL REFERENCES run(id) ON DELETE CASCADE,
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
-  category      TEXT NOT NULL,                   -- trust is per workspace+category
+  category      TEXT NOT NULL,                   -- trust is per category
   title         TEXT NOT NULL,
   body          TEXT NOT NULL,
   evidence      TEXT NOT NULL DEFAULT '{}',      -- sources + freshness, for revalidation
@@ -105,9 +114,8 @@ CREATE TABLE IF NOT EXISTS approval (
 );
 CREATE INDEX IF NOT EXISTS ix_appr_open ON approval(decision, created_at);
 
--- Autonomy is earned per workspace+category and never transfers.
+-- Autonomy is earned per category and never transfers between categories.
 CREATE TABLE IF NOT EXISTS trust (
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   category      TEXT NOT NULL,
   clean         INTEGER NOT NULL DEFAULT 0,      -- approved unchanged
   edited        INTEGER NOT NULL DEFAULT 0,
@@ -115,14 +123,13 @@ CREATE TABLE IF NOT EXISTS trust (
   threshold     INTEGER NOT NULL DEFAULT 20,
   auto          INTEGER NOT NULL DEFAULT 0,
   pinned_manual INTEGER NOT NULL DEFAULT 0,      -- some things never graduate
-  PRIMARY KEY (workspace_id, category)
+  PRIMARY KEY (category)
 );
 
 -- ---------------------------------------------------------------- memory
 -- Episodic: what happened. Cheap, append-only, the raw material.
 CREATE TABLE IF NOT EXISTS episode (
   id            TEXT PRIMARY KEY,
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   kind          TEXT NOT NULL,                   -- edit|reject|approve|correction|outcome
   category      TEXT,
   before        TEXT,                            -- what the agent wrote
@@ -135,8 +142,6 @@ CREATE TABLE IF NOT EXISTS episode (
 -- source_episodes is not decoration: without it you cannot honour erasure.
 CREATE TABLE IF NOT EXISTS fact (
   id            TEXT PRIMARY KEY,
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
-  scope         TEXT NOT NULL DEFAULT 'workspace', -- workspace | global (your voice)
   text          TEXT NOT NULL,
   confidence    REAL NOT NULL DEFAULT 0.5,
   source_episodes TEXT NOT NULL DEFAULT '[]',
@@ -147,7 +152,6 @@ CREATE TABLE IF NOT EXISTS fact (
 -- Procedural: how to do it. A verified script beats remembered reasoning.
 CREATE TABLE IF NOT EXISTS skill (
   id            TEXT PRIMARY KEY,
-  workspace_id  TEXT REFERENCES workspace(id) ON DELETE CASCADE, -- null = shared
   name          TEXT NOT NULL,
   description   TEXT NOT NULL,                   -- how the agent finds it
   code_ref      TEXT NOT NULL,                   -- path in the skills dir
@@ -180,15 +184,12 @@ CREATE INDEX IF NOT EXISTS ix_span_run ON span(run_id, at);
 -- Runaway protection. A loose loop can burn a night of tokens in minutes.
 -- What was said in the chat box, so a reload is not amnesia.
 --
--- One row per turn. Kept per workspace because the chat is scoped to one and
--- a thread that spanned four businesses would leak the fourth's mail into the
--- first's answer. `flagged` marks a turn whose tool output contained text
+-- One row per turn. `flagged` marks a turn whose tool output contained text
 -- that reads like an instruction: it was quarantined on the way in, and the
 -- mark survives so the panel can keep saying so on a reload.
 CREATE TABLE IF NOT EXISTS message (
   id            TEXT PRIMARY KEY,
   thread_id     TEXT NOT NULL,
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   role          TEXT NOT NULL,                   -- user|assistant|tool
   kind          TEXT NOT NULL DEFAULT 'text',    -- text|draft
   content       TEXT NOT NULL,
@@ -200,20 +201,18 @@ CREATE TABLE IF NOT EXISTS message (
 CREATE INDEX IF NOT EXISTS ix_msg_thread ON message(thread_id, at);
 
 CREATE TABLE IF NOT EXISTS budget (
-  workspace_id  TEXT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
   day           TEXT NOT NULL,
   tokens        INTEGER NOT NULL DEFAULT 0,
   tool_calls    INTEGER NOT NULL DEFAULT 0,
   max_tokens    INTEGER NOT NULL DEFAULT 4000000,
   max_tool_calls INTEGER NOT NULL DEFAULT 2000,
-  PRIMARY KEY (workspace_id, day)
+  PRIMARY KEY (day)
 );
 
 -- Frozen examples with known-good answers. Run nightly.
 -- Without this a model swap degrades quality silently and a guest finds out first.
 CREATE TABLE IF NOT EXISTS regression (
   id            TEXT PRIMARY KEY,
-  workspace_id  TEXT REFERENCES workspace(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
   input         TEXT NOT NULL,
   expect        TEXT NOT NULL,                   -- assertion, not exact string

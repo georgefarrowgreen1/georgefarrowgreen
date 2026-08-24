@@ -6,15 +6,20 @@ the claim is restated rather than quietly dropped:
     nothing leaves except requests you allowed, to hosts you named, and the
     log says exactly what left.
 
-Your mail still never leaves. The allowlist is per workspace and already in
-the schema — `workspace.egress_allow`, seeded since the first commit and
-enforced, until now, by nothing at all. That is what this file is.
+Your mail still never leaves. There is one allowlist, in `setting`, and
+this file is what enforces it. It used to be per workspace, on the theory
+that one business's sources should not be able to reach another's hosts —
+which sounds right and bought nothing: the hosts were the same handful of
+providers, the list had to be maintained four times, and the thing actually
+keeping one business's mail out of another's replies is the read scope on
+the credential, not the egress list. Collapsing four lists into one is a
+widening, so `./blokk unify` names every host it opened up.
 
 A web page is the most hostile input this system can be handed. Worse than
 email: with a fetch tool an attacker chooses *which* page you read. Four
 things stand between that and the model, and all four are load-bearing.
 
-  * **The host is on this workspace's list.** Suffix matching is anchored to
+  * **The host is on the list.** Suffix matching is anchored to
     a dot, so allowing icloud.com allows imap.mail.icloud.com and does not
     allow evil-icloud.com — which is the mistake that makes an allowlist
     decorative.
@@ -64,7 +69,7 @@ class Refused(Exception):
 
 # ------------------------------------------------------------------ the rules
 def host_allowed(allowlist, host: str) -> bool:
-    """Is this host covered by one of the workspace's entries?
+    """Is this host covered by one of the allowlist's entries?
 
     Anchored to a dot on purpose. `host.endswith(entry)` — the obvious
     version — allows evil-icloud.com under an entry of icloud.com, which
@@ -122,8 +127,8 @@ def check(allowlist, url: str) -> str:
     if not host_allowed(allowlist, host):
         have = ", ".join(str(a) for a in (allowlist or [])) or "nothing"
         raise Refused(
-            f"{host} is not on this workspace's list. It allows: {have}. "
-            f"Add it with:  connect.py egress allow <workspace> {host}")
+            f"{host} is not on the allowlist. It allows: {have}. "
+            f"Add it with:  connect.py egress allow {host}")
     found = addresses(host)
     if not found:
         raise Refused(f"{host} does not resolve. Is this Mac online?")
@@ -137,18 +142,31 @@ def check(allowlist, url: str) -> str:
 
 
 # ------------------------------------------------------------------- fetching
-def allowlist_for(store, workspace_id: str) -> list[str]:
-    row = store.one("SELECT egress_allow FROM workspace WHERE id=?",
-                    workspace_id)
+KEY = "egress_allow"
+
+
+def allowlist(store) -> list[str]:
+    """Every host anything on this Mac may reach. One list.
+
+    A missing row is an empty list, which refuses everything — the safe way
+    round for the only door out. It is never created implicitly: a host gets
+    on here because somebody put it there.
+    """
+    row = store.one("SELECT value FROM setting WHERE key=?", KEY)
     if not row:
         return []
     try:
-        return list(json.loads(row["egress_allow"] or "[]"))
+        return list(json.loads(row["value"] or "[]"))
     except (ValueError, TypeError):
         return []
 
 
-def _log(workspace_id: str, url: str, note: str) -> None:
+def _save(store, hosts: list[str]) -> None:
+    store.x("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
+            KEY, json.dumps(sorted(set(hosts))))
+
+
+def _log(url: str, note: str) -> None:
     """Append-only, and never a reason for the fetch to fail.
 
     This is what answers "what has this thing been talking to" without a
@@ -157,7 +175,7 @@ def _log(workspace_id: str, url: str, note: str) -> None:
     try:
         LOG.parent.mkdir(exist_ok=True)
         with LOG.open("a", errors="replace") as f:
-            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {workspace_id}  "
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  "
                     f"{url}  {note}\n")
     except OSError:
         pass
@@ -173,7 +191,7 @@ def _log(workspace_id: str, url: str, note: str) -> None:
 METHODS = ("GET", "POST", "PROPFIND", "REPORT")
 
 
-def fetch(store, workspace_id: str, url: str, *, data: bytes | None = None,
+def fetch(store, url: str, *, data: bytes | None = None,
           headers: dict | None = None, timeout: int = TIMEOUT,
           max_bytes: int = MAX_BYTES, method: str | None = None) -> dict:
     """One request, through the gate. Returns the body as text.
@@ -190,13 +208,13 @@ def fetch(store, workspace_id: str, url: str, *, data: bytes | None = None,
     if verb not in METHODS:
         raise Refused(f"{verb} is not a method this gate makes. It does: "
                       + ", ".join(METHODS) + ".")
-    allow = allowlist_for(store, workspace_id)
+    allow = allowlist(store)
     seen = []
     for hop in range(MAX_HOPS + 1):
         try:
             check(allow, url)
         except Refused as e:
-            _log(workspace_id, url, f"refused: {e}")
+            _log(url, f"refused: {e}")
             raise
         seen.append(url)
         req = urllib.request.Request(url, data=data, method=verb)
@@ -215,33 +233,33 @@ def fetch(store, workspace_id: str, url: str, *, data: bytes | None = None,
             if e.code in (301, 302, 303, 307, 308):
                 nxt = e.headers.get("Location") or ""
                 if not nxt:
-                    _log(workspace_id, url, f"{e.code} with no Location")
+                    _log(url, f"{e.code} with no Location")
                     raise Refused(f"{url} redirected to nowhere") from e
                 url = urllib.parse.urljoin(url, nxt)
-                _log(workspace_id, seen[-1], f"{e.code} -> {url}")
+                _log(seen[-1], f"{e.code} -> {url}")
                 continue
             body = e.read(2048).decode("utf-8", "replace")
-            _log(workspace_id, url, f"HTTP {e.code}")
+            _log(url, f"HTTP {e.code}")
             raise Refused(f"{urlparse(url).hostname} answered "
                           f"{e.code} {e.reason}: {body[:200]}") from e
         except (urllib.error.URLError, OSError) as e:
-            _log(workspace_id, url, f"failed: {type(e).__name__}")
+            _log(url, f"failed: {type(e).__name__}")
             raise Refused(f"could not reach {urlparse(url).hostname}: "
                           f"{getattr(e, 'reason', e)}") from e
 
         with r:
             raw = r.read(max_bytes + 1)
         if len(raw) > max_bytes:
-            _log(workspace_id, url, f"over {max_bytes} bytes")
+            _log(url, f"over {max_bytes} bytes")
             raise Refused(
                 f"{urlparse(url).hostname} answered with more than "
                 f"{max_bytes // 1024}KB. Blokk reads APIs, not documents.")
-        _log(workspace_id, url, f"{r.status} {len(raw)}B")
+        _log(url, f"{r.status} {len(raw)}B")
         return {"ok": True, "status": r.status, "url": url,
                 "bytes": len(raw), "hops": seen,
                 "text": raw.decode("utf-8", "replace")}
 
-    _log(workspace_id, url, "too many redirects")
+    _log(url, "too many redirects")
     raise Refused(f"{seen[0]} redirected more than {MAX_HOPS} times")
 
 
@@ -256,9 +274,9 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def fetch_json(store, workspace_id: str, url: str, **kw) -> dict:
+def fetch_json(store, url: str, **kw) -> dict:
     """The same, for an endpoint that promised JSON."""
-    out = fetch(store, workspace_id, url, **kw)
+    out = fetch(store, url, **kw)
     try:
         return json.loads(out["text"])
     except ValueError as e:
@@ -268,37 +286,33 @@ def fetch_json(store, workspace_id: str, url: str, **kw) -> dict:
 
 
 # ------------------------------------------------------- managing the list
-def allow(store, workspace_id: str, host: str) -> dict:
+def allow(store, host: str) -> dict:
     host = (host or "").strip().lower().lstrip("*.").rstrip("./")
     if not host or "/" in host or " " in host:
         return {"error": f"{host!r} is not a hostname"}
-    if not store.one("SELECT 1 FROM workspace WHERE id=?", workspace_id):
-        return {"error": f"no workspace '{workspace_id}'"}
-    have = allowlist_for(store, workspace_id)
+    have = allowlist(store)
     if host in have:
         return {"ok": True, "allow": have, "detail": f"{host} was already on it"}
     have.append(host)
-    store.x("UPDATE workspace SET egress_allow=? WHERE id=?",
-            json.dumps(sorted(have)), workspace_id)
-    return {"ok": True, "allow": sorted(have),
-            "detail": f"{workspace_id} may now reach {host}"}
+    _save(store, have)
+    return {"ok": True, "allow": sorted(set(have)),
+            "detail": f"anything wired here may now reach {host}"}
 
 
-def disallow(store, workspace_id: str, host: str) -> dict:
+def disallow(store, host: str) -> dict:
     host = (host or "").strip().lower()
-    have = allowlist_for(store, workspace_id)
+    have = allowlist(store)
     if not host:
-        # Without this the sentence below comes out as " is not on wx's
+        # Without this the sentence below comes out as " is not on the
         # list", which names neither what broke nor what to do about it.
-        return {"error": f"which host? {workspace_id} may reach: "
-                         f"{', '.join(have) if have else 'nothing'}"}
+        return {"error": "which host? The list has: "
+                         + (", ".join(have) if have else "nothing on it")}
     if host not in have:
-        return {"error": f"{host} is not on {workspace_id}'s list"}
+        return {"error": f"{host} is not on the list"}
     have.remove(host)
-    store.x("UPDATE workspace SET egress_allow=? WHERE id=?",
-            json.dumps(have), workspace_id)
+    _save(store, have)
     return {"ok": True, "allow": have,
-            "detail": f"{workspace_id} can no longer reach {host}"}
+            "detail": f"nothing here can reach {host} any more"}
 
 
 def recent(n: int = 40) -> list[str]:

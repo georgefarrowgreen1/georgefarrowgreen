@@ -97,6 +97,10 @@ class Store:
         ("approval", "result", "TEXT"),        # what happened when it was
         ("message", "kind", "TEXT"),           # text | draft
         ("credential", "only", "TEXT"),        # which calendars / mailboxes
+        # What you call this source. Empty on a row written before there
+        # could be two of a kind; core/sources.py reads that as the kind's
+        # own name, which is what it was.
+        ("credential", "name", "TEXT"),
         # Who a draft is addressed to. The column the send path has been
         # waiting for, and the reason it is here rather than dug out of the
         # body at send time: a recipient parsed out of prose is a recipient
@@ -178,7 +182,6 @@ class Ctx:
 
     store: Store
     run_id: str
-    workspace_id: str
     step: int = 0
     replayed: int = 0
     executed: int = 0
@@ -375,17 +378,15 @@ class Ctx:
     def _check_budget(self) -> None:
         day = now().date().isoformat()
         self.store.x(
-            "INSERT OR IGNORE INTO budget(workspace_id,day) VALUES(?,?)",
-            self.workspace_id, day,
+            "INSERT OR IGNORE INTO budget(day) VALUES(?)", day,
         )
         b = self.store.one(
-            "SELECT * FROM budget WHERE workspace_id=? AND day=?", self.workspace_id, day
+            "SELECT * FROM budget WHERE day=?", day
         )
         if b["tool_calls"] >= b["max_tool_calls"] or b["tokens"] >= b["max_tokens"]:
-            raise BudgetExceeded(f"{self.workspace_id} hit its daily ceiling")
+            raise BudgetExceeded("the day's tool-call ceiling is used up")
         self.store.x(
-            "UPDATE budget SET tool_calls=tool_calls+1 WHERE workspace_id=? AND day=?",
-            self.workspace_id, day,
+            "UPDATE budget SET tool_calls=tool_calls+1 WHERE day=?", day,
         )
 
 
@@ -403,16 +404,16 @@ class Engine:
             return fn
         return deco
 
-    def start(self, workflow: str, workspace_id: str, payload: dict | None = None) -> str:
+    def start(self, workflow: str, payload: dict | None = None) -> str:
         run_id = f"r_{uuid.uuid4().hex[:10]}"
         self.store.x(
-            "INSERT INTO run(id,workspace_id,workflow,status,input) VALUES(?,?,?,'running',?)",
-            run_id, workspace_id, workflow, json.dumps(payload or {}),
+            "INSERT INTO run(id,workflow,status,input) VALUES(?,?,'running',?)",
+            run_id, workflow, json.dumps(payload or {}),
         )
         self._drive(run_id)
         return run_id
 
-    def start_background(self, workflow: str, workspace_id: str,
+    def start_background(self, workflow: str,
                          payload: dict | None = None,
                          on_done=None) -> str:
         """Same as start(), but the caller does not wait for the workflow.
@@ -427,8 +428,8 @@ class Engine:
         """
         run_id = f"r_{uuid.uuid4().hex[:10]}"
         self.store.x(
-            "INSERT INTO run(id,workspace_id,workflow,status,input) VALUES(?,?,?,'running',?)",
-            run_id, workspace_id, workflow, json.dumps(payload or {}),
+            "INSERT INTO run(id,workflow,status,input) VALUES(?,?,'running',?)",
+            run_id, workflow, json.dumps(payload or {}),
         )
 
         def drive():
@@ -525,7 +526,7 @@ class Engine:
     def _drive(self, run_id: str) -> None:
         run = self.store.one("SELECT * FROM run WHERE id=?", run_id)
         fn = self.workflows[run["workflow"]]
-        ctx = Ctx(self.store, run_id, run["workspace_id"])
+        ctx = Ctx(self.store, run_id)
         try:
             result = fn(ctx, json.loads(run["input"]))
         except Suspended:

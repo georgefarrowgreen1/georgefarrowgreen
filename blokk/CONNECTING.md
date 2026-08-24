@@ -17,7 +17,7 @@ wherever the Apple app keeps it; a path means that path — an exported
 mailbox, a maildir from any other client, a folder of `.ics` files. Both
 readers take plain formats now, not only Apple's own layouts.
 
-**All of this is in the app too.** Menu › Sources does workspaces, sources,
+**All of this is in the app too.** Menu › Sources does sources,
 the peek, the Full Disk Access check and the credential test; Menu › Check
 for updates pulls an update and restarts. The commands here are the same code
 underneath (`core/sources.py`), so use whichever is in front of you — the
@@ -33,20 +33,21 @@ queue runs it; nothing happens without your tap. It picks the route that
 needs no password wherever one exists, which for Mail, Calendar and Messages
 on this Mac is all three of them.
 
-## 0. A workspace of your own
+## 0. What is here already
 
-The four that ship — cottages, biz2, biz3, personal — are invented, and the
-fake connectors fill gaps *by workspace id*, so a real business living in one
-of them gets handed invented guests for anything not yet wired. Make your own
-before you wire anything real:
+The sample world is one invented inbox with invented guests in it, and it
+fills only what you have not wired. The moment a real mail source is added,
+nothing invented appears for mail again — so there is nothing to clean up
+first and nothing to make before you start:
 
-    python3 connect.py workspace add georgefg "George Farrow Green"
-    python3 connect.py workspace              # what exists now
     python3 connect.py local                  # what this Mac will hand over
 
-Then, once you have your own and it works, take the sample world out:
-
-    python3 connect.py clean --yes
+A source has a name. The first mailbox is `mail`, because that is what it
+is; wire a second and it gets a name of its own, and everything reads both.
+There is no workspace to put it in — Blokk used to keep four, and what they
+were really keeping apart was each other's mail, which is what the read scope
+on a source does. If you have a database from before that, `./blokk unify`
+collapses it and tells you exactly what the merge changed.
 
 ### If a source tests ok but peeks empty
 
@@ -69,9 +70,9 @@ No credential, nothing leaves the Mac, read-only. It proves the plumbing
 before you hand anything an app password.
 
     System Settings → Privacy & Security → Full Disk Access → add Terminal
-    python3 connect.py add cottages messages local
+    python3 connect.py add messages local
     python3 connect.py test
-    python3 connect.py peek cottages messages 6
+    python3 connect.py peek messages 6
 
 Opened `mode=ro&immutable=1`, so a sweep can never write to, lock, or corrupt
 your message history. Without Full Disk Access it fails with "unable to open
@@ -83,14 +84,14 @@ database file", which is not a helpful error — check that first.
    Generate one called "Blokk". Apple shows it once.
 2. Put it in the Keychain:
 
-       security add-generic-password -s blokk-cottages-mail \
+       security add-generic-password -s blokk-mail \
          -a you@icloud.com -w
 
 3. Tell Blokk the service name:
 
-       python3 connect.py add cottages imap blokk-cottages-mail
+       python3 connect.py add imap blokk-mail
        python3 connect.py test
-       python3 connect.py peek cottages mail 10
+       python3 connect.py peek mail 10
 
 `peek` is the step people skip. It prints what the connector actually pulled
 and flags anything shaped like an instruction, so you find out what your
@@ -108,15 +109,15 @@ weaker threading than Gmail. Don't design a workflow that assumes otherwise.
 
 Same app-specific password works.
 
-    security add-generic-password -s blokk-cottages-cal -a you@icloud.com -w
-    python3 connect.py add cottages caldav blokk-cottages-cal
+    security add-generic-password -s blokk-cal -a you@icloud.com -w
+    python3 connect.py add caldav blokk-cal
     python3 connect.py test
 
 ## 3a. Somewhere to put holds — the one that writes
 
 Everything else here reads. This one writes, and it is the only one that does:
 
-    python3 connect.py add cottages ics_out local
+    python3 connect.py add ics_out local
 
 `local` means `~/Blokk/Holds`; give a folder instead if you want it somewhere
 you will see it, like `~/Desktop/Holds`. Blokk creates it.
@@ -142,9 +143,9 @@ a guest's email is exactly what the queue is there to stop.
 Everything else here reads, or writes on this Mac. This one puts a message in
 another person's inbox, and you cannot take it back.
 
-    security add-generic-password -s blokk-cottages-smtp@smtp.fastmail.com:465 \
+    security add-generic-password -s blokk-smtp@smtp.fastmail.com:465 \
         -a you@yourdomain.co.uk -w
-    python3 connect.py add cottages smtp blokk-cottages-smtp@smtp.fastmail.com:465
+    python3 connect.py add smtp blokk-smtp@smtp.fastmail.com:465
     python3 connect.py test        # logs in and hangs up. Sends nothing.
 
 The server is the part of the reference after the `@`. iCloud and Gmail want
@@ -159,47 +160,50 @@ What it will not do, whatever anything asks:
     which comes from the From header of the message being answered and never
     from a body. A "please reply to …" line inside somebody's mail is text a
     stranger wrote;
-  * send a draft you have not approved, or one belonging to another
-    workspace;
+  * send a draft you have not approved;
   * send to more than one person, or accept a recipient or subject with a
     line break in it — that is how a Bcc gets added by somebody who was only
     supposed to be writing a subject line;
   * send HTML or an attachment. Plain text only: both of the others are ways
     for something to travel that nobody read on the screen that approved it;
-  * send more than twenty a day per workspace.
+  * send more than twenty a day, all in.
 
 Sends are pinned to manual for ever. Twenty correct sends do not make the
 twenty-first safe to do unasked, and there is no setting that changes it.
 
-## 4. Per workspace, not per account
+## 4. One credential per mailbox, and a name to tell them apart
 
-Each business gets its own Keychain entry and its own row:
+Two mailboxes are two sources, each with its own Keychain entry:
 
-    python3 connect.py add biz2 imap blokk-biz2-mail
+    python3 connect.py add imap blokk-mail                  # -> 'mail'
+    python3 connect.py add imap blokk-other --name lettings # -> 'lettings'
 
-One leak should cost you one business. Never point two workspaces at the same
-credential — the isolation is the credential, not a rule in a prompt.
+One leak should cost you one mailbox. Never point two sources at the same
+credential — the isolation is the credential, not a rule in a prompt. And
+`only` narrows a source further, to the mailboxes or calendars you tick:
+that is what keeps one part of your life out of another's replies, and it is
+what the four workspaces were really doing before they went.
 
 ## 5. The two that reach off the machine
 
 Everything above reads something you already have. These two do not, so they
 go through `core/egress.py` and they are the only things that can.
 
-    python3 connect.py add personal weather "Newcastle upon Tyne"
-    python3 connect.py add personal web https://www.gov.uk/bank-holidays
+    python3 connect.py add weather "Newcastle upon Tyne"
+    python3 connect.py add web https://www.gov.uk/bank-holidays
 
-Adding one allows exactly the hosts it needs, for that workspace only, and
-removing it takes them away again:
+Adding one allows exactly the hosts it needs and removing it takes them away
+again. There is one list, and it covers everything wired here:
 
-    python3 connect.py egress            what each workspace may reach
+    python3 connect.py egress            what Blokk may reach
     python3 connect.py egress log 20     what has actually left, and when
-    python3 connect.py egress deny personal www.gov.uk
+    python3 connect.py egress deny www.gov.uk
 
 **Weather** sends a latitude and a longitude, rounded, and nothing else. No
 key, no account, no credential to keep. It returns days as numbers and a word
 from a code table, so nothing writes prose you would have to trust.
 
-**Web** reads one page, when you ask — `connect.py peek personal web`. Nothing
+**Web** reads one page, when you ask — `connect.py peek web`. Nothing
 fetches it on its own: not the nightly sweep, and never Ask, which holds your
 mail and calendar in the same context and so must never be given a tool that
 names a URL. What comes back is text and a title with the markup gone and the
@@ -218,7 +222,7 @@ purpose: that is where an instruction meant for a model and not for you goes.
   dicts carrying `provenance`. Anything marked `untrusted` goes through
   `quarantine_read` before it can reach a model.
 
-A connector that raises is logged and skipped — the other workspaces still
+A connector that raises is logged and skipped — everything else still
 sweep. Failing loudly at 04:00 with nobody watching is not a feature.
 
 ## The order that matters

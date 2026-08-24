@@ -7,7 +7,7 @@ the destination are both theirs. Three separate things keep that bounded,
 and none of them is a filter:
 
   * **Where.** Every request goes through core/egress.py, which will only
-    reach a host on this workspace's allowlist. Adding a web source allows
+    reach a host on the allowlist. Adding a web source allows
     exactly the one host in the URL you gave it, and removing it takes that
     host away again.
 
@@ -109,10 +109,9 @@ class Web:
     kind = "web"
     writes = False
 
-    def __init__(self, ref: str = "", store=None, workspace_id: str = ""):
+    def __init__(self, ref: str = "", store=None):
         self.ref = (ref or "").strip()
         self.store = store
-        self.workspace_id = workspace_id
 
     def host(self) -> str:
         return (urlparse(self.ref).hostname or "").lower()
@@ -128,8 +127,8 @@ class Web:
         if not target:
             raise egress.Refused(
                 "no page set for this source. Give it one:  "
-                "connect.py add <workspace> web https://example.com/prices")
-        got = egress.fetch(self.store, self.workspace_id, target,
+                "connect.py add web https://example.com/prices")
+        got = egress.fetch(self.store, target,
                            max_bytes=MAX_BYTES)
         title, text = to_text(got["text"])
         # quarantine_read supplies text, instruction_like and provenance.

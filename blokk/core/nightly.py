@@ -21,7 +21,7 @@ The hard part is not the timer. It is that this runs on a laptop:
 
   * The Mac is awake at 04:00 and someone already pressed Sweep at 23:50.
     The day is the key, so it does not run twice. h_sweep enforces the same
-    rule per workspace; this is the same rule one level up.
+    rule for the sweep; this is the same rule one level up.
 
   * A day is missed entirely. Then the window since the last sweep is 48
     hours, not 12, and the sweep has to be told that rather than assuming.
@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 
 DEFAULT_AT = "04:00"
 FLOOR_DAYS = 7          # a first sweep reads a week, not the whole archive
-RETRY_AFTER = 60        # minutes before a failed workspace is tried again
+RETRY_AFTER = 60        # minutes before a failed sweep is tried again
 
 
 def _hhmm(text: str) -> tuple[int, int] | None:
@@ -166,18 +166,18 @@ def retryable(store, now: datetime, after_min: int = RETRY_AFTER) -> list[str]:
     is that the model server was not up at 04:00; you start it at nine, and
     nothing looks at your mail until tomorrow morning.
 
-    Deliberately keyed on the last attempt per workspace and its age, not on
+    Deliberately keyed on the last attempt and its age, not on
     the date: no calendar arithmetic, so no argument between the local day the
     schedule runs on and the UTC day the journal is written in.
 
-    sweep_all already skips a workspace whose sweep today finished, so asking
+    sweep_all already skips a sweep that finished today, so asking
     it again picks up exactly the ones that failed.
     """
     rows = store.q(
-        """SELECT r.workspace_id, r.status, r.started_at FROM run r
-           JOIN (SELECT workspace_id, MAX(started_at) AS m FROM run
-                  WHERE workflow='morning_sweep' GROUP BY workspace_id) x
-             ON x.workspace_id = r.workspace_id AND x.m = r.started_at
+        """SELECT r.id, r.status, r.started_at FROM run r
+           JOIN (SELECT MAX(started_at) AS m FROM run
+                  WHERE workflow='morning_sweep') x
+             ON x.m = r.started_at
           WHERE r.workflow='morning_sweep' AND r.status='failed'""")
     out = []
     for r in rows:
@@ -186,7 +186,7 @@ def retryable(store, now: datetime, after_min: int = RETRY_AFTER) -> list[str]:
             continue
         age = (now.astimezone() - at).total_seconds() / 60
         if age >= after_min:
-            out.append(r["workspace_id"])
+            out.append(r["id"])
     return sorted(out)
 
 
@@ -226,8 +226,8 @@ class Nightly:
             self.last_error = f"expire: {e}"[:200]
         at = get_at(self.store)
         if not due(now, at, last_sweep(self.store)["date"]):
-            # Not today's window — but a workspace whose sweep failed an hour
-            # ago is worth another go, and only that workspace: sweep_all
+            # Not today's window — but a sweep that failed an hour ago is
+            # worth another go: sweep_all
             # skips the ones that finished.
             if not (_hhmm(at) and retryable(self.store, now)):
                 return False

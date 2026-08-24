@@ -6,8 +6,8 @@ address than the one you typed, the firewall is eating the connection, or you
 are on a different network. Safari says "the network connection was lost" for
 every one of them, which is the least useful sentence in computing.
 
-**Can the agent reach a model?** A dead model server degrades per workspace by
-design — the sweep finishes, and one workspace says "no model server at
+**Can the agent reach a model?** A dead model server degrades by design —
+the sweep finishes, and the run says "no model server at
 http://127.0.0.1:8081/v1 (Connection refused)". Correct, and it leaves you
 holding a port number. Whether the binary is installed, whether a tier is
 configured at all, whether something *else* took the port, and what
@@ -288,18 +288,17 @@ def sources_and_chat() -> list[str]:
     store = Store(db)
 
     print(f"\n  {_c('Is it reading your own data?', BOLD)}\n")
-    wired = list(store.q("SELECT workspace_id, kind, keychain_ref FROM "
-                         "credential ORDER BY workspace_id, kind"))
+    wired = list(store.q("SELECT name, kind, keychain_ref FROM "
+                         "credential ORDER BY id"))
     if not wired:
         row("sources", _c("none", AMBER),
-            "every workspace is running on invented data")
+            "everything is running on invented data")
         todo.append("Wire one real source — say \"what can I connect?\" in "
                     "the chat, or: python3 connect.py local")
     reg = wire(store)
     for c in wired:
-        ws, kind = c["workspace_id"], c["kind"]
-        conn = reg.get(ws, sources.KINDS.get(kind, kind))
-        label = f"{ws}/{kind}"
+        label, kind = c["name"] or c["kind"], c["kind"]
+        conn = reg.get(label)
         if conn is None:
             row(label, _c("NOT WIRED", RED), "nothing built a reader for it")
             todo.append(f"{label}: added, but no reader — this is a bug, "
@@ -370,14 +369,10 @@ def sources_and_chat() -> list[str]:
     print(f"\n  {_c('Does the chat box work?', BOLD)}\n")
     try:
         from core import models
-        from core.ask import ask as run_ask, scope_for
-        ws = scope_for(store, None)
-        if not ws:
-            row("chat", _c("no workspace", AMBER), "add one and it will work")
-            return todo
+        from core.ask import ask as run_ask
         m = models._from_env().small
         said, tools, degraded = [], 0, ""
-        for ev in run_ask(store, "what needs me?", m, ws):
+        for ev in run_ask(store, "what needs me?", m):
             if ev["type"] == "TEXT_MESSAGE_CONTENT":
                 said.append(ev["delta"])
             elif ev["type"] == "TOOL_CALL_END":

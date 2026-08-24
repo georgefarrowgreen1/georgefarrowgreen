@@ -97,16 +97,32 @@ def _as_date(v) -> date:
                      f"2026-09-03.")
 
 
-def uid_for(workspace: str, title: str, start: date, end: date) -> str:
+def uid_for(title: str, start: date, end: date) -> str:
     """The same booking, every time, from any run.
 
     Deliberately not random and deliberately not timestamped: this is the
     idempotency key, and a replay after a crash has to arrive at the same
     one or the journal's guarantee stops at this file.
+
+    The workspace used to be the first thing in this hash. Taking it out
+    changes every UID, which means a hold written before workspaces went
+    away and re-proposed after it would land beside the old file rather
+    than over it — the same booking, twice, in somebody's calendar. hold()
+    sweeps the old one out; see the note there.
     """
-    seed = f"{workspace}|{title.strip().lower()}|{start:%Y%m%d}|{end:%Y%m%d}"
+    seed = f"{title.strip().lower()}|{start:%Y%m%d}|{end:%Y%m%d}"
     return "blokk-" + hashlib.sha256(seed.encode()).hexdigest()[:16] \
            + "@blokk.local"
+
+
+def _stem(title: str) -> str:
+    """The title, squeezed to characters a filename can hold.
+
+    SAFE keeps letters, digits, space, underscore and hyphen and nothing
+    else, which is also what makes it safe to put in a glob pattern below —
+    a booking called "Smith * 3-6" cannot become a wildcard.
+    """
+    return " ".join(SAFE.sub(" ", title).split())[:40].strip() or "hold"
 
 
 def _filename(title: str, start: date, uid: str) -> str:
@@ -115,11 +131,10 @@ def _filename(title: str, start: date, uid: str) -> str:
     The title is squeezed to safe characters — a booking called "Smith/Jones
     3–6" must not write to a directory called Smith.
     """
-    stem = " ".join(SAFE.sub(" ", title).split())[:40].strip() or "hold"
-    return f"{start:%Y-%m-%d} {stem} {uid[6:14]}.ics"
+    return f"{start:%Y-%m-%d} {_stem(title)} {uid[6:14]}.ics"
 
 
-def build(workspace: str, title: str, start, end, note: str = "",
+def build(title: str, start, end, note: str = "",
           where: str = "", stamp: datetime | None = None) -> tuple[str, str]:
     """The file's text and the UID in it. No disk, so it can be shown first.
 
@@ -144,7 +159,7 @@ def build(workspace: str, title: str, start, end, note: str = "",
     if s > date.today() + MAX_AHEAD:
         raise ValueError(f"{s:%-d %b %Y} is over two years out — check the "
                          f"year.")
-    uid = uid_for(workspace, title, s, e)
+    uid = uid_for(title, s, e)
     when = (stamp or datetime.utcnow()).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
@@ -214,20 +229,34 @@ class IcsDrop:
                 "note": "Files written here. Double-click one to put it in "
                         "Calendar — Blokk cannot put it there itself."}
 
-    def hold(self, workspace: str, title: str, start, end, note: str = "",
+    def hold(self, title: str, start, end, note: str = "",
              where: str = "", stamp: datetime | None = None) -> dict:
         """Write one hold. Same booking overwrites, never duplicates."""
-        text, uid = build(workspace, title, start, end, note, where, stamp)
+        text, uid = build(title, start, end, note, where, stamp)
         self.root.mkdir(parents=True, exist_ok=True)
-        path = self.root / _filename(title, _as_date(start), uid)
+        day = _as_date(start)
+        path = self.root / _filename(title, day, uid)
         existing = path.exists()
         # Written whole and moved into place: a half-written .ics that
         # Calendar reads mid-write is a worse outcome than no file.
         tmp = path.with_suffix(".ics.part")
         tmp.write_text(text, encoding="utf-8", newline="")
         tmp.replace(path)
+        # The UID is a hash of the booking, and the workspace used to be the
+        # first thing in it. Any file for this same day and title carrying a
+        # different one is the same booking under the old scheme — leaving it
+        # there is two entries in the calendar for one stay, which is exactly
+        # what "never duplicates" promises not to do.
+        stale = [p for p in self.root.glob(f"{day:%Y-%m-%d} {_stem(title)} *.ics")
+                 if p.name != path.name]
+        for p in stale:
+            try:
+                p.unlink()
+            except OSError:
+                pass
         return {"ok": True, "uid": uid, "path": str(path),
                 "file": path.name, "replaced": existing,
+                "superseded": [p.name for p in stale],
                 "folder": str(self.root)}
 
     def drop(self, uid: str) -> dict:

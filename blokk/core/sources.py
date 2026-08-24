@@ -53,67 +53,46 @@ WRITES_A_FOLDER = ("ics_out",)
 WRITES = WRITES_A_FOLDER + ("smtp",)
 
 
-SAMPLE = ("cottages", "biz2", "biz3", "personal")
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())[:12]
 
 
-def workspace_add(store, wid: str, name: str, egress: list | None = None) -> dict:
-    """A real workspace of your own.
+def name_for(store, kind: str, ref: str) -> str:
+    """What to call a new source of this kind.
 
-    seed.py was the only thing that ever made one, which was fine while the
-    sample world was the point and useless the moment it stopped being.
+    The first mailbox is `mail`, because that is what it is and nobody
+    should have to name it. The second cannot also be `mail`, and silently
+    replacing the first is the failure this exists to stop — so it becomes
+    `mail2`, and a third `mail3`. A person who wants better names can pass
+    one; nothing here insists.
     """
-    wid = (wid or "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,30}", wid or ""):
-        return {"error": "an id is lowercase letters, digits, - and _"}
-    if store.one("SELECT 1 FROM workspace WHERE id=?", wid):
-        return {"error": f"'{wid}' already exists"}
-    if wid in SAMPLE:
-        # core/connectors/fake.py fills gaps by workspace id, so a real
-        # workspace with a sample's name is handed invented guests for
-        # anything not yet wired. "personal" is a name someone would
-        # plausibly choose, so refuse rather than let that happen quietly.
-        return {"error": f"'{wid}' is one of the sample world's names, so it "
-                         f"would be handed invented data for anything not yet "
-                         f"wired. Pick another id."}
-    store.x("INSERT INTO workspace(id,name,active,egress_allow) VALUES(?,?,1,?)",
-            wid, (name or wid).strip(), json.dumps(egress or []))
-    return {"ok": True, "id": wid, "name": (name or wid).strip()}
-
-
-def workspace_remove(store, wid: str) -> dict:
-    """Everything that workspace ever held goes with it.
-
-    The schema cascades — credentials, runs, journal, approvals, trust,
-    episodes, facts. That is the point of removing a workspace, and it is not
-    recoverable, so the caller has to mean it.
-    """
-    if not store.one("SELECT 1 FROM workspace WHERE id=?", wid):
-        return {"error": f"no workspace '{wid}'"}
-    counts = {t: store.one(f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?",
-                           wid)["c"]
-              for t in ("credential", "run", "approval", "trust", "episode",
-                        "fact")}
-    store.x("DELETE FROM workspace WHERE id=?", wid)
-    return {"ok": True, "id": wid, "removed": counts}
-
-
-def is_sample(store) -> list[str]:
-    """Which of the seeded sample workspaces are still here."""
-    return [w["id"] for w in workspaces(store) if w["id"] in SAMPLE]
-
-
-def workspaces(store) -> list[dict]:
-    return [dict(r) for r in store.q("SELECT id,name FROM workspace ORDER BY id")]
+    from core.connectors import ROLE
+    base = ROLE.get(kind, kind)
+    taken = {r["name"] for r in store.q("SELECT name FROM credential")
+             if r["name"]}
+    if base not in taken:
+        return base
+    # Try the reference first — "mail-icloud" says more than "mail2".
+    hint = _slug(ref)
+    if hint and f"{base}-{hint}" not in taken:
+        return f"{base}-{hint}"
+    n = 2
+    while f"{base}{n}" in taken:
+        n += 1
+    return f"{base}{n}"
 
 
 def listing(store) -> list[dict]:
     out = []
-    for r in store.q("SELECT * FROM credential ORDER BY workspace_id"):
+    for r in store.q("SELECT * FROM credential ORDER BY id"):
+        keys = r.keys()
         try:
-            only = json.loads(r["only"] or "[]") if "only" in r.keys() else []
+            only = json.loads(r["only"] or "[]") if "only" in keys else []
         except (ValueError, TypeError):
             only = []
-        out.append({"workspace_id": r["workspace_id"], "kind": r["kind"],
+        out.append({"name": (r["name"] if "name" in keys else "")
+                    or KINDS.get(r["kind"], r["kind"]),
+                    "kind": r["kind"],
                     "keychain_ref": r["keychain_ref"],
                     "scopes": json.loads(r["scopes"]),
                     # Which calendars or mailboxes, so the list can say what
@@ -124,8 +103,8 @@ def listing(store) -> list[dict]:
     return out
 
 
-def add(store, ws: str, kind: str, ref: str,
-        only: list | None = None) -> dict:
+def add(store, kind: str, ref: str, only: list | None = None,
+        name: str | None = None) -> dict:
     if kind not in KINDS:
         return {"error": f"kind must be one of {', '.join(KINDS)}"}
     if not ref:
@@ -167,9 +146,12 @@ def add(store, ws: str, kind: str, ref: str,
             return {"error": f"there is nothing at {folder.parent}, so "
                              f"{ref} cannot be created. Give a folder inside "
                              f"one that exists, or 'local' for ~/Blokk/Holds."}
-    if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
-        known = ", ".join(w["id"] for w in workspaces(store))
-        return {"error": f"no workspace '{ws}'. Known: {known}"}
+    name = (name or "").strip().lower()
+    if name and not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,30}", name):
+        return {"error": "a name is lowercase letters, digits, - and _"}
+    if name and store.one("SELECT 1 FROM credential WHERE name=?", name):
+        return {"error": f"there is already a source called '{name}'"}
+    name = name or name_for(store, kind, ref)
     chosen = [str(o).strip() for o in (only or []) if str(o).strip()]
     # A writer is recorded as one. scopes has said "read" on every row since
     # the first commit, which was true of every connector there was; putting
@@ -177,11 +159,11 @@ def add(store, ws: str, kind: str, ref: str,
     # is the column that answers "what is this credential allowed to do".
     scopes = ["write"] if kind in WRITES else ["read"]
     store.x("""INSERT OR REPLACE INTO credential
-               (id,workspace_id,kind,keychain_ref,scopes,only)
+               (id,name,kind,keychain_ref,scopes,only)
                VALUES(?,?,?,?,?,?)""",
-            f"c_{ws}_{kind}", ws, kind, ref, json.dumps(scopes),
+            f"c_{name}", name, kind, ref, json.dumps(scopes),
             json.dumps(chosen))
-    out = {"ok": True, "workspace_id": ws, "kind": kind, "keychain_ref": ref,
+    out = {"ok": True, "name": name, "kind": kind, "keychain_ref": ref,
            "scopes": scopes, "only": chosen}
     if chosen:
         out["note"] = ("Reading only " + ", ".join(chosen[:4])
@@ -198,18 +180,18 @@ def add(store, ws: str, kind: str, ref: str,
         # the gate matches hosts.
         from core import egress
         host = urlparse(ref).hostname.lower()
-        egress.allow(store, ws, host)
+        egress.allow(store, host)
         out["egress"] = [host]
-        out["note"] = (f"{ws} may now reach {host} — and nothing else new. "
+        out["note"] = (f"Blokk may now reach {host} — and nothing else new. "
                        f"What comes back is quarantined before anything "
                        f"reads it, and nothing in Blokk fetches it on its "
                        f"own: you ask, with peek.")
     if kind in IS_FIXED_HOST:
         from core import egress
         from core.connectors.caldav_cal import HOST as CAL_HOST
-        egress.allow(store, ws, CAL_HOST)
+        egress.allow(store, CAL_HOST)
         out["egress"] = [CAL_HOST]
-        out["note"] = (f"{ws} may now reach {CAL_HOST} — and nothing else "
+        out["note"] = (f"Blokk may now reach {CAL_HOST} — and nothing else "
                        f"new. Read-only: this makes PROPFIND and REPORT, and "
                        f"the gate will not make a method that writes.")
     if kind in IS_PLACE:
@@ -219,9 +201,9 @@ def add(store, ws: str, kind: str, ref: str,
         from core import egress
         from core.connectors.weather import HOSTS
         for host in HOSTS:
-            egress.allow(store, ws, host)
+            egress.allow(store, host)
         out["egress"] = list(HOSTS)
-        out["note"] = (f"{ws} may now reach {', '.join(HOSTS)} — and nothing "
+        out["note"] = (f"Blokk may now reach {', '.join(HOSTS)} — and nothing "
                        f"else new. What leaves is a latitude and a longitude.")
     return out
 
@@ -259,21 +241,25 @@ def inside(kind: str, ref: str) -> dict:
         return {"error": f"{type(e).__name__}: {e}"[:200], "kind": kind,
                 "choosable": True, "found": []}
     return {"kind": kind, "choosable": True, "noun": noun, "found": found,
-            "note": (f"Tick the ones this workspace should read. All of them "
-                     f"if you tick none." if found else
+            "note": ("Tick the ones Blokk should read. All of them "
+                     "if you tick none." if found else
                      f"No {noun}s found there.")}
 
 
-def remove(store, ws: str, kind: str) -> dict:
+def remove(store, name: str) -> dict:
     # Read before the delete: for a web source the host to close is derived
     # from the ref, and after the DELETE there is nothing left to derive it
     # from.
-    was = store.one("SELECT keychain_ref FROM credential "
-                    "WHERE workspace_id=? AND kind=?", ws, kind)
-    store.x("DELETE FROM credential WHERE workspace_id=? AND kind=?", ws, kind)
+    was = store.one("SELECT kind, keychain_ref FROM credential WHERE name=?",
+                    name)
+    if not was:
+        known = ", ".join(r["name"] for r in listing(store)) or "nothing"
+        return {"error": f"no source called '{name}'. Wired: {known}"}
+    kind = was["kind"]
+    store.x("DELETE FROM credential WHERE name=?", name)
     note = ("The keychain entry is untouched — delete it yourself if you "
             "meant to revoke access.")
-    if kind in IS_URL and was:
+    if kind in IS_URL:
         from urllib.parse import urlparse
 
         from core import egress
@@ -281,37 +267,33 @@ def remove(store, ws: str, kind: str) -> dict:
         # Only if nothing else still points at it. Two web sources on the
         # same host would otherwise take each other's permission away.
         others = [r["keychain_ref"] for r in store.q(
-            "SELECT keychain_ref FROM credential WHERE workspace_id=? "
-            "AND kind IN ('web')", ws)]
+            "SELECT keychain_ref FROM credential WHERE kind='web'")]
         if host and not any(
                 (urlparse(o).hostname or "").lower() == host for o in others):
-            if not egress.disallow(store, ws, host).get("error"):
-                note = f"{ws} can no longer reach {host}. " + note
-    if kind in IS_FIXED_HOST and was:
+            if not egress.disallow(store, host).get("error"):
+                note = f"Nothing here can reach {host} now. " + note
+    if kind in IS_FIXED_HOST:
         # Adding it opened the allowlist, so removing it closes it again —
-        # only once nothing else in this workspace still needs the host.
+        # only once nothing else still needs the host.
         from core import egress
         from core.connectors.caldav_cal import HOST as CAL_HOST
-        left = store.q("SELECT kind FROM credential WHERE workspace_id=? "
-                       "AND kind IN ('caldav')", ws)
-        if not left and not egress.disallow(store, ws, CAL_HOST).get("error"):
-            note = f"{ws} can no longer reach {CAL_HOST}. " + note
+        left = store.q("SELECT kind FROM credential WHERE kind='caldav'")
+        if not left and not egress.disallow(store, CAL_HOST).get("error"):
+            note = f"Nothing here can reach {CAL_HOST} now. " + note
     if kind in IS_PLACE:
         # Adding the source opened the allowlist; removing it has to close it
         # again. A permission that is granted automatically and revoked only
         # by hand is a ratchet, and this codebase has already been bitten
-        # once by exactly that shape in the trust ledger. Only revoke what
-        # nothing left in this workspace still needs.
+        # once by exactly that shape in the trust ledger.
         from core import egress
         from core.connectors.weather import HOSTS
-        still = {r["kind"] for r in store.q(
-            "SELECT kind FROM credential WHERE workspace_id=?", ws)}
+        still = {r["kind"] for r in store.q("SELECT kind FROM credential")}
         if not still & set(IS_PLACE):
             gone = [h for h in HOSTS
-                    if not egress.disallow(store, ws, h).get("error")]
+                    if not egress.disallow(store, h).get("error")]
             if gone:
-                note = (f"{ws} can no longer reach {', '.join(gone)}. " + note)
-    return {"ok": True, "detail": note}
+                note = f"Nothing here can reach {', '.join(gone)} now. " + note
+    return {"ok": True, "name": name, "kind": kind, "detail": note}
 
 
 # Words that are in every message and carry no query. Not a linguistics
@@ -420,7 +402,7 @@ FIND_DAYS = 730
 FIND_SCAN = 4000           # rows pulled before matching, per search
 
 
-def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
+def find(store, name: str, term: str, days: int = FIND_DAYS,
          limit: int = 12) -> dict:
     """Look for words in what a source actually holds, not just its recent rows.
 
@@ -449,10 +431,11 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
                           f"{term!r} is only common words \u2014 nothing to "
                           f"look for in it"),
                 "fix": "Say what to look for — a name, a place, a booking."}
-    c = wire(store).get(ws, name)
+    c = wire(store).get(name)
     if c is None:
-        return {"error": f"nothing named '{name}' for {ws}",
-                "fix": "Add a source for it first."}
+        wired = ", ".join(sorted(wire(store).all())) or "nothing"
+        return {"error": f"there is no source called '{name}'",
+                "fix": f"Wired: {wired}."}
 
     days = max(1, min(int(days or FIND_DAYS), 3650))
     rows, window = [], f"the last {days} days"
@@ -577,9 +560,9 @@ def test(store) -> dict:
     rows = store.q("SELECT * FROM credential")
     results, bad = [], 0
     for r in rows:
-        name = KINDS[r["kind"]]
-        label = f"{r['workspace_id']}/{name}"
-        c = reg.get(r["workspace_id"], name)
+        keys = r.keys()
+        label = (r["name"] if "name" in keys else "") or KINDS[r["kind"]]
+        c = reg.get(label)
         if c is None or not hasattr(c, "check"):
             results.append({"label": label, "ok": False, "detail": "not loaded"})
             bad += 1
@@ -615,7 +598,7 @@ def _fix_for(name: str, state: dict) -> str:
         return ("That is the far end refusing on volume, not anything wrong "
                 "here. It usually clears on its own — the message above says "
                 "when.")
-    if any(k in low for k in ("refused", "not on this workspace",
+    if any(k in low for k in ("refused", "not on the allowlist",
                               "allowlist", "http", "resolve", "timed out",
                               "certificate")):
         return ("This one leaves the machine, so it is the network or the "
@@ -627,7 +610,7 @@ def _fix_for(name: str, state: dict) -> str:
     return "connect.py test shows what each wired source can and cannot do."
 
 
-def peek(store, ws: str, name: str, n: int = 5) -> dict:
+def peek(store, name: str, n: int = 5) -> dict:
     """What it would actually read. Nothing is written, nothing marked read.
 
     Every body here is untrusted text from outside, so it goes through
@@ -637,10 +620,11 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
     """
     from core.connectors import wire
     from core.harness import quarantine_read
-    c = wire(store).get(ws, name)
+    c = wire(store).get(name)
     if c is None:
-        return {"error": f"nothing named '{name}' for {ws}",
-                "fix": "Add a source for it first."}
+        wired = ", ".join(sorted(wire(store).all())) or "nothing"
+        return {"error": f"there is no source called '{name}'",
+                "fix": f"Wired: {wired}."}
 
     # Ask whether it can read at all before showing you nothing. An empty list
     # and a source Blokk is not allowed to open look identical here, and this

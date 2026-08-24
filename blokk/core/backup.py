@@ -89,7 +89,7 @@ def make(db: str | Path, into: str | Path | None = None,
     held = {}
     c = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     try:
-        for t in ("workspace", "approval", "episode", "fact", "trust",
+        for t in ("credential", "approval", "episode", "fact", "trust",
                   "journal", "run"):
             try:
                 held[t] = c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
@@ -177,12 +177,12 @@ def verify(path: str | Path) -> dict:
         c = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
         try:
             state = c.execute("PRAGMA integrity_check").fetchone()[0]
-            n = c.execute("SELECT COUNT(*) FROM workspace").fetchone()[0]
+            n = c.execute("SELECT COUNT(*) FROM credential").fetchone()[0]
         finally:
             c.close()
     except sqlite3.Error as e:
         return {"ok": False, "detail": str(e)}
-    return {"ok": state == "ok", "integrity": state, "workspaces": n}
+    return {"ok": state == "ok", "integrity": state, "sources": n}
 
 
 def restore(backup_file: str | Path, db: str | Path) -> dict:

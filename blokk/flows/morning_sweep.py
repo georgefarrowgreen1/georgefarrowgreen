@@ -21,13 +21,12 @@ from core.models import router
 
 
 def register(engine, store):
-    # Resolved once at startup. A workspace sees only its own connectors —
-    # scope is the registry, not a line in a prompt.
+    # Resolved once at startup. What a run may read is what is in the
+    # registry — scope is the registry, not a line in a prompt.
     registry = wire(store)
 
     @engine.workflow("morning_sweep")
     def morning_sweep(ctx, payload):
-        ws = ctx.workspace_id
         # How far back to read, decided by the caller and journalled with the
         # run. A fixed twelve hours meant a night the Mac spent asleep was a
         # night of mail nobody read: the sweep ran late and still looked back
@@ -46,7 +45,6 @@ def register(engine, store):
                          else given.replace(tzinfo=timezone.utc))
             except ValueError:
                 pass                       # a malformed window is not fatal
-        world = registry.for_workspace(ws)
         # ctx.progress, not a local dict: a run that suspends on an approval
         # must still report what it read, or the dashboard chips come up empty.
         out = ctx.progress
@@ -64,22 +62,27 @@ def register(engine, store):
         # back holding the step before's result. Steps are matched by number.
         until = ctx.now()
 
-        def read_mail():
-            src = world["mail"]
-            return [dict(m) for m in
-                    read_since(src.search_since, since, until, limit=50)]
-
-        msgs = ctx.activity("mail.search", read_mail) if world.get("mail") else []
+        # One journalled step per source, named after it. Not one step that
+        # loops: the journal is replayed by step number and name, so a
+        # mailbox wired between a crash and a resume would shift every step
+        # after it and the replay would refuse. A step per source keeps the
+        # names stable and tells you in the journal which mailbox was slow.
+        msgs = []
+        for name, src in registry.by_role("mail"):
+            got = ctx.activity(f"mail.search:{name}", lambda src=src: [
+                dict(m) for m in
+                read_since(src.search_since, since, until, limit=50)])
+            msgs += [{**m, "source": name} for m in got]
 
         # Texts, if a Messages connector is wired. Same treatment as mail:
         # inbound is untrusted and goes through the same quarantine.
-        if world.get("messages"):
+        for name, src in registry.by_role("messages"):
             texts = ctx.activity(
-                "messages.since",
-                lambda: read_since(world["messages"].since, since, until,
-                                   limit=40))
+                f"messages.since:{name}",
+                lambda src=src: read_since(src.since, since, until, limit=40))
             msgs += [{"id": t["id"], "from": t["from"], "at": t["at"],
-                      "subject": "(text message)", "body": t["body"]}
+                      "subject": "(text message)", "body": t["body"],
+                      "source": name}
                      for t in texts if t.get("provenance") != "self"]
 
         scanned = ctx.activity("quarantine", lambda: [
@@ -102,9 +105,13 @@ def register(engine, store):
             got = []
             for m in scanned:
                 who = str(m.get("from") or "")
-                reader = world.get("messages"
-                                   if m.get("subject") == "(text message)"
-                                   else "mail")
+                # The source this one actually came from, not the first of
+                # its kind. With two mailboxes, looking the history up in
+                # the wrong one returns nothing and the reply goes out
+                # answering a question it never saw.
+                reader = registry.get(m.get("source") or "") or registry.first(
+                    "messages" if m.get("subject") == "(text message)"
+                    else "mail")
                 prior = conversation_before(reader, who, m.get("body", ""))
                 checked = []
                 hot = False
@@ -152,13 +159,15 @@ def register(engine, store):
             said = _triaged(raw, len(scanned))
 
         # ---- 3. calendar and rates, in the same pass ------------------------
-        def read_cal():
-            src = world["calendar"]
-            return src.gaps() if hasattr(src, "gaps") else src.events(days=90)
-
-        gaps = ctx.activity("calendar.gaps", read_cal) if world.get("calendar") else []
-        rates = ctx.activity("rates.compare", lambda: world["rates"].compare()) \
-            if world.get("rates") else None
+        # Every diary, one journalled step each, for the same reason the
+        # mailboxes get one each.
+        gaps = []
+        for name, src in registry.by_role("calendar"):
+            gaps += ctx.activity(f"calendar.gaps:{name}", lambda src=src: (
+                src.gaps() if hasattr(src, "gaps") else src.events(days=90)))
+        rates_src = registry.first("rates")
+        rates = ctx.activity("rates.compare", lambda: rates_src.compare()) \
+            if rates_src else None
 
         # What came back with a caveat on it. A connector that degrades says
         # so — fresh=False and a note explaining what it fell back to — and
@@ -194,7 +203,7 @@ def register(engine, store):
                     "model.draft",
                     lambda mm=m: router.large.chat([
                         {"role": "system",
-                         "content": _draft_prompt(store, ws, gaps, rates)},
+                         "content": _draft_prompt(store, gaps, rates)},
                         {"role": "user", "content": json.dumps({
                             # Oldest first, then the message being answered.
                             # A reply drafted without the exchange above it
@@ -229,10 +238,12 @@ def register(engine, store):
         # Either half alone is noise: a forecast you can get from a window,
         # and a free morning you already knew about. Together they are the
         # thing you would otherwise notice on Sunday evening, too late.
-        cal = world.get("calendar")
-        if world.get("weather") and hasattr(cal, "open_windows"):
+        cal = next((c for _, c in registry.by_role("calendar")
+                    if hasattr(c, "open_windows")), None)
+        wx = registry.first("weather")
+        if wx and cal is not None:
             dry = ctx.activity("weather.dry",
-                               lambda: world["weather"].dry_windows(days=7))
+                               lambda: wx.dry_windows(days=7))
             free = ctx.activity("calendar.open",
                                 lambda: cal.open_windows(days=7, min_hours=2))
             pick = _outing(dry, free)
@@ -436,7 +447,7 @@ any.
 """
 
 
-def _draft_prompt(store, ws, gaps, rates) -> str:
+def _draft_prompt(store, gaps, rates) -> str:
     """The prompt the drafting model actually gets.
 
     It was the string "Draft a reply." — sent with the email body and nothing
@@ -464,7 +475,7 @@ def _draft_prompt(store, ws, gaps, rates) -> str:
         known.append(f"Rates: {json.dumps(rates)[:600]}")
     block = ""
     try:
-        block = learned_block(store, ws)
+        block = learned_block(store)
     except Exception:                                            # noqa: BLE001
         block = ""                     # memory is not load-bearing for a draft
     if block:
@@ -565,10 +576,10 @@ def _queue(ctx, store, category, body, why, evidence, revalidate=None,
         f"queue.{category}",
         lambda: store.x(
             """INSERT OR REPLACE INTO approval
-               (id,run_id,workspace_id,category,title,body,evidence,
+               (id,run_id,category,title,body,evidence,
                 revalidate,recipient)
-               VALUES(?,?,?,?,?,?,?,?,?)""",
-            aid, ctx.run_id, ctx.workspace_id, category, why, body,
+               VALUES(?,?,?,?,?,?,?,?)""",
+            aid, ctx.run_id, category, why, body,
             json.dumps(evidence), revalidate,
             recipient or None) or {"approval_id": aid},
         side_effect=True,

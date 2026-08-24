@@ -244,7 +244,7 @@
   .todo{margin-top:8px} .hint{margin:0 0 8px}
   .sronly{position:absolute;width:1px;height:1px;overflow:hidden;
     clip:rect(0 0 0 0);white-space:nowrap}
-  /* The workspace colour arrives as a custom property, not a background. */
+  /* A dot's colour arrives as a custom property, not a background. */
   .dot{background:var(--c,var(--lab3))}
   html,body{margin:0;background:var(--bg);color:var(--lab);font-family:var(--ui);
     -webkit-font-smoothing:antialiased}
@@ -265,8 +265,8 @@
     transition:opacity .22s ease;
     /* The dense fill, not the plain one. A bar floating over a queue of mail
        is the densest thing in this app to sit over, and at .72 a stranger's
-       subject line read straight through it and competed with the workspace
-       name — the exact readability problem iOS 26's pass was about. */
+       subject line read straight through it and competed with the app's
+       own name — the exact readability problem iOS 26's pass was about. */
     background:
       linear-gradient(180deg,var(--glass-hi),var(--glass-hi2)),
       rgba(var(--glass-tint),calc(var(--glass-fill) + .16));
@@ -564,10 +564,10 @@
                    var(--gutter) var(--sp-3);
            border-bottom:1px solid var(--glass-edge);
            box-shadow:inset 0 -.6px 0 var(--fill-2)}
-  /* The title holds its line and the picker takes what is left. h2 was
-     flex:1, so at 430px "Ask Blokk" wrapped to two lines to make room for a
-     workspace name — the title breaking to accommodate a control is the
-     wrong way round. */
+  /* The title holds its line and the controls take what is left. h2 was
+     flex:1, so at 430px "Ask Blokk" wrapped to two lines to make room for
+     what sat beside it — the title breaking to accommodate a control is
+     the wrong way round. */
   .ask .ah h2{flex:0 0 auto;white-space:nowrap;font-size:17px;font-weight:600;
               margin:0;letter-spacing:-.01em}
   .ask .ah .scope{font-family:var(--mono);font-size:11px;color:var(--lab2);
@@ -912,7 +912,7 @@
      The allowlist is the only thing standing between a connector and the
      internet, so it gets a group of its own rather than a row of chips
      inside somebody else's. The chips were 16px tall, wrapped out of the
-     text block on any workspace with two hosts, and carried a destructive
+     text block as soon as there were two hosts, and carried a destructive
      action on a third of a fingertip. */
   dialog .orow{font-size:13px;color:var(--lab2);margin:12px 0 4px;
     padding-left:2px}
@@ -945,8 +945,8 @@
 
   /* A full-width row that is an action, not a form field. iOS puts the
      destructive one at the end of its group, in red, on its own — never
-     next to the button that adds things, which is where "remove the sample
-     world" used to sit looking exactly as important as "add a workspace". */
+     next to the button that adds things, which is where the destructive
+     ones used to sit looking exactly as important as the safe ones. */
   dialog .rowbtn{width:100%;margin:8px 0 0;min-height:var(--tap);
     border:1px solid var(--hair);border-radius:var(--r-pill);background:transparent;
     color:var(--lab);font-size:14.5px;font-family:var(--ui);cursor:pointer;
@@ -1040,9 +1040,9 @@
     .col-main{max-width:var(--measure);margin:0 auto;padding-bottom:48px}
     main{padding-bottom:24px}
 
-    /* In the rail these are a list, not a carousel: nothing to swipe with
-       on a Mac, and a horizontal scroller you cannot see the end of hides
-       the workspace that failed. */
+    /* On a wide screen these are a list, not a carousel: nothing to swipe
+       with on a Mac, and a horizontal scroller you cannot see the end of
+       hides the run that failed. */
     /* Ask was a phone sheet stretched to the window: an answer running the
        full 1280px, and a composer a metre wide. The bar stays full width so
        the rule under it does; what you read does not. */
@@ -1231,12 +1231,6 @@
   <div class="ah glass">
     <button class="icobtn" id="askclose" aria-label="Close">&#10005;</button>
     <h2>Ask Blokk</h2>
-    <!-- Which businesses' data this is about. It was a fixed chip saying
-         READ-ONLY, so a person with four workspaces could not tell which
-         one they were asking about, let alone change it — and the answer
-         to "what needs me?" is a different answer for each. -->
-    <label class="sronly" for="askws">Workspace</label>
-    <select class="scope" id="askws"></select>
     <button class="icobtn" id="asknew" aria-label="Start a new conversation"
             title="New conversation">&#10010;</button>
   </div>
@@ -1317,7 +1311,6 @@ function drawnFrom(a){
   </details>`;
 }
 
-const WCOL = {cottages:'var(--blue)',biz2:'var(--purple)',biz3:'#FF9F0A',personal:'var(--cyan)'};
 
 const TIMEOUT = 8000;
 function withTimeout(ms=TIMEOUT){
@@ -1609,7 +1602,7 @@ function paint(h, ap, handled, runs){
 
   $('#qn').textContent = handled.length;
   $('#qlist').innerHTML = handled.length
-    ? handled.map(q=>`<div class="qi"><span class="dot" style="--c:${WCOL[q.ws]||'var(--lab3)'}"></span>
+    ? handled.map(q=>`<div class="qi">
         <span class="t">${esc(q.title||q.category)}<small>${esc((q.body||'').slice(0,72))}</small></span>
         <span class="m ${q.decision === 'expired' ? 'gone' : ''}">${
           esc(q.decision)}</span></div>`).join('')
@@ -1617,7 +1610,7 @@ function paint(h, ap, handled, runs){
 
   $('#runs').innerHTML = runs.map(r=>{
     const c = r.status==='suspended'?'var(--blue)':r.status==='done'?'var(--green)':'var(--red)';
-    return `<div class="run"><div class="w"><span class="dot" style="--c:${WCOL[r.workspace_id]}"></span>${esc(r.workspace_id)}</div>
+    return `<div class="run"><div class="w">${esc(r.workflow.replace(/_/g,' '))}</div>
       <div class="st" style="--c:${c}">${r.status==='suspended'?'parked':esc(r.status)}</div>
       <div class="lb">${r.steps} steps · ${r.writes} write${r.writes===1?'':'s'}</div></div>`;
   }).join('') || '<div class="run"><div class="lb">no runs yet</div></div>';
@@ -1786,51 +1779,21 @@ async function paintSources(extra){
   SRC = await get('/api/v1/sources');
   const wired = SRC.sources.length ? SRC.sources.map(s => `
     <div class="srow">
-      <div><b>${esc(s.workspace_id)}</b> · ${esc(s.reads)}${
+      <div><b>${esc(s.name)}</b> · ${esc(s.reads)}${
           s.writes ? ' <span class="wpill">writes</span>' : ''}
         <small>${esc(s.keychain_ref)} · ${esc(s.scopes.join(','))}${
           (s.only && s.only.length)
             ? ' · only ' + esc(s.only.join(', ')) : ''}</small></div>
       <span>
-        <button class="mini" data-peek="${esc(s.workspace_id)}|${esc(s.reads)}">Peek</button>
-        <button class="mini quiet" data-rm="${esc(s.workspace_id)}|${esc(s.kind)}">Remove</button>
+        <button class="mini" data-peek="${esc(s.name)}">Peek</button>
+        <button class="mini quiet" data-rm="${esc(s.name)}">Remove</button>
       </span>
     </div>`).join('')
-    : `<p class="sub">Nothing wired — every workspace is running on the sample
-       world. Start with the one that needs no credential: messages.</p>`;
+    : `<p class="sub">Nothing wired — Blokk is running on the sample world.
+       Start with the one that needs no credential: messages.</p>`;
 
-  const wsopts = SRC.workspaces.map(w =>
-    `<option value="${esc(w.id)}">${esc(w.name || w.id)}</option>`).join('');
   const kopts = SRC.kinds.map(k =>
     `<option value="${esc(k.id)}">${esc(k.id)} — ${k.writes ? 'writes' : 'reads'} ${esc(k.reads)}</option>`).join('');
-
-  // Your own workspaces, and which are the sample world. Everything is scoped
-  // per workspace — credentials, trust, memory — so this is the first thing
-  // to set up and, until now, the one thing you had to open a terminal for.
-  // One line of identity, one line of state, one control. The allowlist used
-  // to be a row of 16px chips in here, which wrapped out of the text block
-  // on any workspace with two hosts and put a destructive action on a target
-  // a third of the size of a fingertip. It has its own group now, below.
-  const wsrows = SRC.workspaces.map(w => `
-    <div class="srow">
-      <div><b>${esc(w.id)}</b> · ${esc(w.name || w.id)}
-        <small>${w.sample ? 'sample — invented data · ' : ''}${
-          (w.egress || []).length
-            ? `may reach ${(w.egress || []).map(esc).join(', ')}`
-            : 'reaches nothing off this Mac'}</small></div>
-      <span><button class="mini quiet" data-wsrm="${esc(w.id)}">Remove</button></span>
-    </div>`).join('');
-  const wsbox = `
-    <div class="sect2">Workspaces</div>
-    ${wsrows ? `<div class="group">${wsrows}</div>`
-             : '<p class="sub">None yet.</p>'}
-    <div class="addbox">
-      <input id="w-id" placeholder="id — lowercase, e.g. georgefg" />
-      <input id="w-name" placeholder="name — e.g. George Farrow Green" />
-      <button class="mini go" id="w-add">Add a workspace</button>
-    </div>
-    ${SRC.sample && SRC.sample.length ? `<button class="rowbtn danger"
-      id="w-clean">Remove the sample world (${SRC.sample.length})</button>` : ''}`;
 
   // What this Mac already holds. Worth showing before the add form: two of
   // the three need no credential at all, and the one thing standing in the
@@ -1855,16 +1818,14 @@ async function paintSources(extra){
   // everything that goes the other way, which until now existed only in
   // sqlite3 and a log file. Same grouped-list shape as the rest of the
   // sheet, and the ✕ is a real control rather than a 16px chip.
-  const out = SRC.workspaces.filter(w => (w.egress || []).length);
+  const out = SRC.egress || [];
   const egressbox = `
     <div class="sect2">What can leave this Mac</div>
-    ${out.length ? out.map(w => `
-      <div class="orow"><b>${esc(w.id)}</b></div>
-      <div class="group">${w.egress.map(h => `<div class="hrow2">
+    ${out.length ? `<div class="group">${out.map(h => `<div class="hrow2">
         <code>${esc(h)}</code>
-        <button class="mini quiet" data-deny="${esc(w.id)}|${esc(h)}"
-          title="Stop ${esc(w.id)} reaching ${esc(h)}">Stop</button></div>`).join('')}</div>
-    `).join('') : `<p class="sub">Nothing reaches off this Mac. Adding a
+        <button class="mini quiet" data-deny="${esc(h)}"
+          title="Stop Blokk reaching ${esc(h)}">Stop</button></div>`).join('')}</div>`
+      : `<p class="sub">Nothing reaches off this Mac. Adding a
       weather or web source is what opens a host, one at a time.</p>`}
     ${(SRC.egress_log || []).length ? `
       <div class="sect3">Recently</div>
@@ -1887,12 +1848,11 @@ async function paintSources(extra){
           <span class="en">${esc(verdict)}</span></div>`;
       }).join('')}</div>` : ''}`;
 
-  body.innerHTML = `${wsbox}${localbox}
+  body.innerHTML = `${localbox}
     <div class="sect2">Wired sources</div>${
       SRC.sources.length ? `<div class="group">${wired}</div>` : wired}
     <div class="addbox">
       <div class="sect2">Add a source</div>
-      <select id="s-ws">${wsopts}</select>
       <select id="s-kind">${kopts}</select>
       <input id="s-ref" placeholder="keychain service name (or: local)" />
       <p class="sub hint" id="s-hint"></p>
@@ -1906,59 +1866,19 @@ async function paintSources(extra){
     <button class="rowbtn" id="s-test">Test every credential</button>
     <div id="srcout">${extra || ''}</div>`;
 
-  $('#w-add').onclick = async () => {
-    const r = await post('/api/v1/workspaces/add',
-      {id: $('#w-id').value, name: $('#w-name').value});
-    paintSources(r.error ? `<p class="no">${esc(r.error)}</p>`
-      : `<p class="ok2">Added ${esc(r.id)}. Wire a source to it below.</p>`);
-  };
-  if($('#w-clean')) $('#w-clean').onclick = async (e) => {
-    const b = e.target;
-    if(b.dataset.armed !== '1'){
-      const r = await post('/api/v1/workspaces/clean', {});
-      const n = Object.values(r.holds || {}).reduce((a, h) =>
-        a + Object.values(h).reduce((x, y) => x + y, 0), 0);
-      b.dataset.armed = '1';
-      b.classList.add('armed');       // the second tap is the one that does it
-      b.textContent = `Yes — remove ${r.sample.join(', ')} and ${n} rows`;
-      return;
-    }
-    const r = await post('/api/v1/workspaces/clean', {confirm: true});
-    paintSources(`<p class="ok2">Removed ${esc((r.removed||[]).join(', '))}.
-      ${(r.left||[]).length ? '' : 'No workspaces left — add one above.'}</p>`);
-  };
   body.querySelectorAll('[data-deny]').forEach(b => b.onclick = async () => {
-    const [ws, host] = b.dataset.deny.split('|');
-    const r = await post('/api/v1/egress/deny', {workspace: ws, host});
+    const r = await post('/api/v1/egress/deny', {host: b.dataset.deny});
     paintSources(`<p class="sub">${esc(r.detail || r.error)}</p>`);
   });
-  body.querySelectorAll('[data-wsrm]').forEach(b => b.onclick = async () => {
-    // Two taps, and the second one says what goes. The schema cascades:
-    // approvals, runs, journal, trust, memory. It is not recoverable.
-    if(b.dataset.armed !== '1'){
-      const r = await post('/api/v1/workspaces/remove', {id: b.dataset.wsrm});
-      if(r.error){ paintSources(`<p class="no">${esc(r.error)}</p>`); return; }
-      const n = Object.values(r.holds).reduce((x, y) => x + y, 0);
-      b.dataset.armed = '1';
-      b.classList.add('armed');
-      b.textContent = n ? `remove ${n} rows?` : 'remove — sure?';
-      return;
-    }
-    const r = await post('/api/v1/workspaces/remove',
-                         {id: b.dataset.wsrm, confirm: true});
-    paintSources(r.error ? `<p class="no">${esc(r.error)}</p>`
-      : `<p class="sub">Removed ${esc(r.id)} and everything in it.</p>`);
-  });
-
   // The ref field means three different things depending on the kind, so it
   // says which one as you pick.
   const REF_HINT = {
     web: ['one page — https://example.com/prices',
-          'Adding this lets that workspace reach that one host, and nothing '
+          'Adding this opens the allowlist to that one host, and nothing '
           + 'else new. Nothing fetches it on its own: you ask, with peek, and '
           + 'what comes back is quarantined before anything reads it.'],
     weather: ['a town, or coordinates — "Newcastle upon Tyne" or 54.97,-1.61',
-              'Adding this lets that workspace reach open-meteo.com, and '
+              'Adding this opens the allowlist to open-meteo.com, and '
               + 'nothing else new. What leaves is a latitude and a longitude.'],
     ical: ['local', ''], maildir: ['local', ''], messages: ['local', ''],
     ics_out: ['local — or a folder, like ~/Desktop/Holds',
@@ -2009,8 +1929,7 @@ async function paintSources(extra){
 
   $('#s-add').onclick = async () => {
     const r = await post('/api/v1/sources/add', {
-      workspace: $('#s-ws').value, kind: $('#s-kind').value,
-      ref: $('#s-ref').value,
+      kind: $('#s-kind').value, ref: $('#s-ref').value,
       only: [...document.querySelectorAll('#s-inside input:checked')]
               .map(i => i.value) });
     paintSources(r.error
@@ -2044,15 +1963,13 @@ async function paintSources(extra){
       : '<p class="sub">Nothing to test yet.</p>');
   };
   body.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
-    const [ws, kind] = b.dataset.rm.split('|');
-    const r = await post('/api/v1/sources/remove', {workspace: ws, kind});
+    const r = await post('/api/v1/sources/remove', {name: b.dataset.rm});
     paintSources(`<p class="sub">${esc(r.detail)}</p>`);
   });
   body.querySelectorAll('[data-peek]').forEach(b => b.onclick = async () => {
-    const [ws, name] = b.dataset.peek.split('|');
     showOut('<p class="sub">reading…</p>');
     const r = await post('/api/v1/sources/peek',
-                         {workspace: ws, name, n: 5}, 45000);
+                         {name: b.dataset.peek, n: 5}, 45000);
     // Everything below is somebody else's words. esc() on every field, and the
     // quarantine verdict shown rather than hidden — this is the one screen
     // that deliberately displays untrusted text.
@@ -2268,26 +2185,24 @@ $('#phone').onclick = async () => {
 
 $('#sweep').onclick = async e=>{
   if(busy) return; busy=true; e.target.disabled=true; e.target.textContent='Sweeping…';
-  // The sweep is the longest thing here: it runs the workflow for every
-  // workspace inside the request, and with a real model that is minutes, not
-  // seconds. Twelve seconds of waiting used to end in "Sweep failed" while
-  // the runs above carried on and finished — the sweep is on the Mac, not in
-  // this page, and giving up watching is not the same as it going wrong.
+  // The sweep is the longest thing here, and with a real model it is
+  // minutes, not seconds. Twelve seconds of waiting used to end in "Sweep
+  // failed" while the run carried on and finished — the sweep is on the
+  // Mac, not in this page, and giving up watching is not the same as it
+  // going wrong.
   const r = await post('/api/v1/sweep', {}, 15*60*1000)
     .catch(e=>({error:e.message, timedOut:e.timedOut}));
   if(r.timedOut) toast(`<b>Still sweeping.</b> It runs on the Mac, not in this
-    page, so it carries on — the cards above fill in as each workspace lands.`);
-  else if(r.running && r.started && r.started.length)
-    toast(`<b>Sweeping ${r.started.length} workspace${r.started.length===1?'':'s'}.</b>
-      They run on the Mac; the cards fill in as each lands. Every write is
-      queued, nothing sent.`);
+    page, so it carries on — the cards above fill in when it lands.`);
   else if(r.error) toast(`<b>Sweep failed.</b> ${esc(r.error)}`);
-  else if(!r.started.length)
-    toast(`<b>Already swept today.</b> ${r.already_swept_today.length} workspaces have run —
-      nothing re-queued, so nobody gets a second reply.`);
-  else toast(`Swept ${r.started.length} workspace${r.started.length===1?'':'s'}${
-    r.already_swept_today.length?', '+r.already_swept_today.length+' already done':''}.
-    Every write is queued, nothing sent.`);
+  else if(r.failed && r.failed.length)
+    toast(`<b>Sweep failed.</b> ${esc(r.failed[0].error || '')}`);
+  else if(r.started && r.started.length)
+    toast(`<b>Sweeping.</b> It runs on the Mac; the cards fill in when it
+      lands. Every write is queued, nothing sent.`);
+  else
+    toast(`<b>Already swept today.</b> Nothing was re-queued, so nobody gets
+      a second reply. Nothing is wrong.`);
   e.target.disabled=false; e.target.textContent='Run the sweep'; busy=false; tick(true);
 };
 $('#reset').onclick = async ()=>{
@@ -2358,7 +2273,6 @@ function openAsk(seed){
     drawSuggestions();
   if(seed) $('#qbox').value = seed;
   setTimeout(()=>$('#qbox').focus(), 60);
-  loadScope();
   restoreThread();
 }
 function closeAsk(){
@@ -2391,11 +2305,10 @@ function closeAsk(){
 $('#openask').onclick = ()=>openAsk();
 $('#askclose').onclick = closeAsk;
 $('#asknew').onclick = () => {
-  // A real new id, not null. Null means "the default", which is this
-  // workspace's one thread — so clearing the screen and then reloading
-  // brought the old conversation straight back.
-  THREAD = 't_' + (WS || 'ws').replace(/[^A-Za-z0-9_-]/g,'') + '_'
-           + Math.random().toString(36).slice(2, 8);
+  // A real new id, not null. Null means "the default", which is the standing
+  // thread — so clearing the screen and then reloading brought the old
+  // conversation straight back.
+  THREAD = 't_' + Math.random().toString(36).slice(2, 10);
   rememberThread();
   freshThread(); $('#qbox').focus();
 };
@@ -2427,70 +2340,25 @@ const TOOLNAME = {
 };
 const toolName = n => TOOLNAME[n] || String(n).replace(/_/g,' ');
 
-let THREAD = null, WS = null;
+let THREAD = null;
 
-// Where you were, per workspace. A "new conversation" that a reload throws
-// away is not a new conversation, it is a cleared screen — and the picker
-// showing biz2 while the answer on screen is about another workspace is the
-// interface disagreeing with itself about the only thing it needs to say.
+// Where you were. A "new conversation" that a reload throws away is not a
+// new conversation, it is a cleared screen. This used to be keyed by
+// workspace as well, because the chat was scoped to one and coming back on
+// a different one showed a different transcript; there is one now, so there
+// is one thread to remember.
+//
 // Per viewer, per browser: nothing here is shared and nothing is important
 // enough to be, so a private window or blocked storage just means the
 // server's own default, which is what happened before any of this existed.
 const SEEN = 'blokk-thread';
 function rememberThread(){
   try{
-    if(!WS) return;
-    const all = JSON.parse(localStorage.getItem(SEEN) || '{}');
-    // Which workspace as well as which thread in it. Remembering only the
-    // thread meant a reload came back on whichever workspace the server
-    // would have picked from scratch, and showed that one's conversation —
-    // so "new conversation" survived a reload only if you happened to be in
-    // the workspace the server would have chosen anyway.
-    all._last = WS;
-    if(THREAD) all[WS] = THREAD;
-    localStorage.setItem(SEEN, JSON.stringify(all));
+    if(THREAD) localStorage.setItem(SEEN, THREAD);
   }catch{}
 }
-function recallThread(ws){
-  try{ return (JSON.parse(localStorage.getItem(SEEN) || '{}'))[ws] || null; }
-  catch{ return null; }
-}
-function recallWorkspace(){
-  try{ return (JSON.parse(localStorage.getItem(SEEN) || '{}'))._last || null; }
-  catch{ return null; }
-}
-function syncScope(){
-  const sel = $('#askws');
-  if(sel && WS && [...sel.options].some(o => o.value === WS)) sel.value = WS;
-}
-
-// Which workspace the chat is about, and a way to change it. Filling this
-// from the same list the Sources sheet uses, rather than a second copy that
-// drifts. The server picks a sensible one when nothing is chosen; whatever
-// it picked comes back on RUN_STARTED and is selected here.
-async function loadScope(){
-  const sel = $('#askws');
-  if(sel.options.length) return;
-  let d;
-  try{ d = await get('/api/v1/sources'); }catch(e){ return; }
-  const ws = (d.workspaces || []);
-  if(!ws.length){ sel.hidden = true; return; }
-  for(const w of ws){
-    const o = document.createElement('option');
-    o.value = w.id;
-    o.textContent = (w.name || w.id) + (w.sample ? ' · sample' : '');
-    sel.append(o);
-  }
-  syncScope();
-  sel.onchange = () => {
-    // A different workspace is a different conversation, not the same one
-    // rescoped. Mixing four businesses' mail into one transcript is how the
-    // fourth's guest ends up in the first's answer.
-    WS = sel.value;
-    THREAD = recallThread(WS);   // where you last were in that one
-    freshThread();
-    restoreThread();
-  };
+function recallThread(){
+  try{ return localStorage.getItem(SEEN) || null; }catch{ return null; }
 }
 
 function freshThread(){
@@ -2611,8 +2479,9 @@ function outcome(decision, res){
 }
 
 // What each argument is called, to somebody who is not reading actions.py.
-const ARGWORD = {workspace:'Workspace', kind:'Kind', ref:'Reading',
-                 host:'Host', at:'Time', name:'Name'};
+const ARGWORD = {kind:'Kind', ref:'Reading', host:'Host', at:'Time',
+                 name:'Name', title:'For', note:'Note',
+                 start:'From', end:'To'};
 
 function openEdit(card, id, action){
   if(card.querySelector('.pedit')) return;
@@ -2688,23 +2557,14 @@ async function decide(card, id, decision, edited){
 async function restoreThread(){
   const th = $('#thread');
   if(th.querySelector('.q')) return;                  // already drawn
-  // The server's default is right on a machine that has never been used and
-  // wrong on one that has. Whatever you were last looking at wins, and if
-  // that workspace has since gone the server falls back for us.
-  if(!WS) WS = recallWorkspace();
-  const q = [];
-  if(WS) q.push('workspace=' + encodeURIComponent(WS));
-  const remembered = THREAD || (WS ? recallThread(WS) : null);
-  if(remembered) q.push('thread=' + encodeURIComponent(remembered));
+  const remembered = THREAD || recallThread();
   let d;
-  try{ d = await get('/api/v1/thread' + (q.length ? '?' + q.join('&') : '')); }
-  catch(e){ return; }
+  try{
+    d = await get('/api/v1/thread'
+      + (remembered ? '?thread=' + encodeURIComponent(remembered) : ''));
+  }catch(e){ return; }
   if(!d) return;
-  // Taken even when the thread is empty: this is how the panel learns which
-  // workspace the server picked, and the picker is wrong until it does.
-  WS = d.workspace || WS;
   THREAD = d.thread || THREAD;
-  syncScope();
   rememberThread();
   if(!d.messages || !d.messages.length) return;
   const s = $('#sugg'); if(s) s.style.display='none';
@@ -2745,7 +2605,7 @@ async function send(q){
   try{
     const r = await fetch(API+'/api/v1/ask',{method:'POST',
       headers:{'Content-Type':'application/json',...AUTH},
-      body:JSON.stringify({q, thread:THREAD, workspace:WS}),
+      body:JSON.stringify({q, thread:THREAD}),
       signal:asking.signal});
     if(!r.ok) throw new Error('HTTP '+r.status);
 
@@ -2761,11 +2621,7 @@ async function send(q){
         const ev = JSON.parse(line.slice(6));
         if(ev.type==='RUN_STARTED'){
           if(ev.thread) THREAD = ev.thread;
-          // The server resolves the scope when none was sent.
-          // Showing what it chose beats leaving the picker blank
-          // next to an answer about a workspace nobody named.
-          if(ev.workspace) WS = ev.workspace;
-          syncScope(); rememberThread();
+          rememberThread();
         }
         if(ev.type==='TOOL_CALL_START'){ tools++;
           steps.append(el(`<span class="step live" data-t="${esc(ev.name)}">

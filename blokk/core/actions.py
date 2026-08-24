@@ -14,7 +14,7 @@ So the shape is:
 Three rules hold the whole thing up.
 
 **Nothing here reaches another person.** Almost every action operates on
-Blokk itself: its workspaces, its sources, its allowlist, its schedule, its
+Blokk itself: its sources, its allowlist, its schedule, its
 backups. The one exception is `hold_dates`, which writes a .ics file into a
 folder on this Mac — outside the database, but not off the machine and not to
 anybody. Nothing is addressed, nothing is sent, and no guest learns anything.
@@ -31,10 +31,9 @@ the internet: every field checked against what it is allowed to be, and
 anything unrecognised refused with a sentence rather than passed along.
 
 **Some of them never graduate.** The trust ledger can earn a category the
-right to act alone. Opening a hole in the egress allowlist, deleting a
-workspace and removing a source are pinned to manual for the same reason a
-cottage access question is: the cost of being wrong does not scale with how
-often you have been right.
+right to act alone. Opening a hole in the egress allowlist and removing a
+source are pinned to manual for the same reason an access question is: the
+cost of being wrong does not scale with how often you have been right.
 """
 from __future__ import annotations
 
@@ -131,16 +130,14 @@ def _sweep(store, **_):
     The import points the wrong way — core reaching into api — and that is
     deliberate. sweep_all() owns one rule this cannot duplicate: a sweep is a
     daily event, keyed by the day, so the Mac and the phone both pressing it
-    at 04:00 start one run per workspace and not two. A copy of that rule
+    at 04:00 start one run and not two. A copy of that rule
     living here would be a second opinion about whether today was already
     swept, and the two would eventually disagree. force=True because a person
     has just approved it by name, which is the manual override.
     """
     from api import server
     out = server.sweep_all(force=True)
-    n = len(out.get("started", []))
-    return {"ok": True, "detail": f"sweeping {n} workspace"
-            f"{'' if n == 1 else 's'}", **out}
+    return {"ok": True, "detail": "sweeping", **out}
 
 
 def _backup(store, **_):
@@ -164,53 +161,43 @@ def _schedule(store, at, **_):
                        else "the night shift is off")}
 
 
-def _add_source(store, workspace, kind, ref, **_):
+def _add_source(store, kind, ref, name=None, **_):
     from core import sources
-    out = sources.add(store, workspace, kind, ref)
+    out = sources.add(store, kind, ref, name=name)
     if out.get("error"):
         raise Rejected(out["error"])
     # The same sentence the proposal was approved under, so what it says it
-    # did matches what it said it would do. "maildir added to cottages" is
-    # neither.
+    # did matches what it said it would do. "maildir added" is neither.
     return {"ok": True, **out,
             "detail": out.get("note")
-            or ACTIONS["add_source"].preview(
-                {"workspace": workspace, "kind": kind, "ref": ref})}
+            or ACTIONS["add_source"].preview({"kind": kind, "ref": ref})}
 
 
-def _remove_source(store, workspace, kind, **_):
+def _remove_source(store, name, **_):
     from core import sources
-    out = sources.remove(store, workspace, kind)
+    out = sources.remove(store, name)
     if out.get("error"):
         raise Rejected(out["error"])
     return {"ok": True, **out}
 
 
-def _egress_allow(store, workspace, host, **_):
+def _egress_allow(store, host, **_):
     from core import egress
-    out = egress.allow(store, workspace, host)
+    out = egress.allow(store, host)
     if out.get("error"):
         raise Rejected(out["error"])
     return {"ok": True, "detail": out["detail"]}
 
 
-def _egress_deny(store, workspace, host, **_):
+def _egress_deny(store, host, **_):
     from core import egress
-    out = egress.disallow(store, workspace, host)
+    out = egress.disallow(store, host)
     if out.get("error"):
         raise Rejected(out["error"])
     return {"ok": True, "detail": out["detail"]}
 
 
-def _add_workspace(store, workspace, name=None, **_):
-    from core import sources
-    out = sources.workspace_add(store, workspace, name or workspace)
-    if out.get("error"):
-        raise Rejected(out["error"])
-    return {"ok": True, "detail": f"workspace {workspace} added", **out}
-
-
-def _remember(store, workspace, note, **_):
+def _remember(store, note, **_):
     """A standing instruction, taught rather than inferred.
 
     Memory could only fill from corrections: you edited three drafts the same
@@ -228,19 +215,18 @@ def _remember(store, workspace, note, **_):
     note = " ".join(note.split())
     if len(note) < 4:
         raise Rejected("that is too short to be worth remembering")
-    fid = "f_told_" + hashlib.sha256(
-        f"{workspace}:{note.lower()}".encode()).hexdigest()[:10]
+    fid = "f_told_" + hashlib.sha256(note.lower().encode()).hexdigest()[:10]
     already = store.one("SELECT id FROM fact WHERE id=?", fid)
     store.x("""INSERT OR REPLACE INTO fact
-               (id,workspace_id,text,confidence,source_episodes,retired_at)
-               VALUES(?,?,?,?,'[]',NULL)""",
-            fid, workspace, note, max(0.9, MIN_CONFIDENCE))
+               (id,text,confidence,source_episodes,retired_at)
+               VALUES(?,?,?,'[]',NULL)""",
+            fid, note, max(0.9, MIN_CONFIDENCE))
     return {"ok": True, "id": fid,
             "detail": ("that was already remembered, and is again"
-                       if already else f"remembered, for {workspace}")}
+                       if already else "remembered")}
 
 
-def _forget(store, workspace, note, **_):
+def _forget(store, note, **_):
     """Retire what it knows, by what it says.
 
     Matched on the text because that is what a person can see. They are
@@ -250,11 +236,10 @@ def _forget(store, workspace, note, **_):
     """
     want = " ".join(note.split()).lower()
     rows = [r for r in store.q(
-        "SELECT id, text FROM fact WHERE workspace_id=? AND retired_at IS NULL",
-        workspace) if want in r["text"].lower()]
+        "SELECT id, text FROM fact WHERE retired_at IS NULL")
+        if want in r["text"].lower()]
     if not rows:
-        raise Rejected(f"nothing it knows about {workspace} mentions "
-                       f"{note!r}")
+        raise Rejected(f"nothing it knows mentions {note!r}")
     if len(rows) > 1:
         raise Rejected(f"{len(rows)} things match {note!r}: "
                        + "; ".join(r["text"][:60] for r in rows[:3])
@@ -262,16 +247,6 @@ def _forget(store, workspace, note, **_):
     store.x("UPDATE fact SET retired_at=datetime('now') WHERE id=?",
             rows[0]["id"])
     return {"ok": True, "detail": f"forgotten: {rows[0]['text']}"}
-
-
-def _remove_workspace(store, workspace, **_):
-    from core import sources
-    out = sources.workspace_remove(store, workspace)
-    if out.get("error"):
-        raise Rejected(out["error"])
-    gone = sum((out.get("removed") or {}).values())
-    return {"ok": True, "detail": f"{workspace} is gone, and the {gone} rows "
-            f"that belonged to it", **out}
 
 
 # Where a source actually reads from, said the way somebody would say it.
@@ -291,23 +266,23 @@ def _own(name: str) -> str:
 
 
 def _say_add(a: dict) -> str:
-    ws, kind, ref = a.get("workspace", ""), a.get("kind", ""), a.get("ref", "")
+    kind, ref = a.get("kind", ""), a.get("ref", "")
     noun = NOUN.get(kind, kind)
     if kind in FROM:
         where = FROM[kind] if ref.lower() in ("local", "default") else ref
-        return f"Read {_own(ws)} {noun} from {where}."
+        return f"Read your {noun} from {where}."
     if kind == "imap":
-        return (f"Read {_own(ws)} mail over IMAP, signing in with the "
+        return (f"Read your mail over IMAP, signing in with the "
                 f"keychain entry {ref}.")
     if kind == "caldav":
-        return (f"Read {_own(ws)} calendar over CalDAV, signing in with "
+        return (f"Read your calendar over CalDAV, signing in with "
                 f"the keychain entry {ref}.")
     if kind == "weather":
-        return f"Get {ws} the forecast for {ref} — it sends a latitude and " \
-               f"a longitude, and nothing else."
+        return (f"Get the forecast for {ref} — it sends a latitude and "
+                f"a longitude, and nothing else.")
     if kind == "web":
-        return f"Watch {ref} for {ws}, and let {ws} reach that one host."
-    return f"Add a {kind} source to {ws}, reading {ref}."
+        return f"Watch {ref}, and open the allowlist to that one host."
+    return f"Add a {kind} source, reading {ref}."
 
 
 def _say_schedule(a: dict) -> str:
@@ -318,11 +293,10 @@ def _say_schedule(a: dict) -> str:
 
 
 def _say_remove(a: dict) -> str:
-    ws, kind = a.get("workspace", ""), a.get("kind", "")
-    return f"Stop reading {_own(ws)} {NOUN.get(kind, kind)}."
+    return f"Stop reading the source called {a.get('name', '')}."
 
 
-def _clashes(store, workspace, start, end) -> list[str]:
+def _clashes(store, start, end) -> list[str]:
     """Which nights in [start, end) something is already booked on.
 
     The whole value of a hold is that it is not a double-booking, so this
@@ -339,12 +313,15 @@ def _clashes(store, workspace, start, end) -> list[str]:
     """
     from datetime import date as _d, datetime as _dt, timedelta as _td
     import core.connectors as _C
-    cal = _C.wire(store).get(workspace, "calendar")
-    if cal is None or not hasattr(cal, "busy"):
+    # Every calendar, not one: two diaries in one space means a night is
+    # taken if either of them says so.
+    cals = [c for _, c in _C.wire(store).by_role("calendar")
+            if hasattr(c, "busy")]
+    if not cals:
         return []
     days = max(1, (end - _d.today()).days + 1)
     hit = []
-    for b_start, b_end in cal.busy(days=min(days, 800)):
+    for b_start, b_end in [b for c in cals for b in c.busy(days=min(days, 800))]:
         bs = b_start.date() if isinstance(b_start, _dt) else b_start
         be = b_end.date() if isinstance(b_end, _dt) else b_end
         # The overlap of two half-open ranges, said once. It was written as a
@@ -360,8 +337,7 @@ def _clashes(store, workspace, start, end) -> list[str]:
     return sorted(set(hit))
 
 
-def _hold_dates(store, workspace, title, start, end, note=None, where=None,
-                **_):
+def _hold_dates(store, title, start, end, note=None, where=None, **_):
     """Write a hold into the folder Calendar can swallow.
 
     This is the first action that puts a file outside blokk.db, so it is
@@ -378,21 +354,21 @@ def _hold_dates(store, workspace, title, start, end, note=None, where=None,
     from core.connectors.ics_out import IcsDrop, _as_date
     import core.connectors as _C
     s, e = _as_date(start), _as_date(end)
-    taken = _clashes(store, workspace, s, e)
+    taken = _clashes(store, s, e)
     if taken:
         nights = ", ".join(_d.fromisoformat(t).strftime("%-d %b")
                            for t in taken[:6])
         more = f" and {len(taken) - 6} more" if len(taken) > 6 else ""
-        raise Rejected(f"{_own(workspace)} calendar already has something on "
+        raise Rejected(f"your calendar already has something on "
                        f"{nights}{more}. Nothing was written. Move the dates, "
                        f"or take the other booking out first.")
-    drop = _C.wire(store).get(workspace, "holds")
+    drop = _C.wire(store).first("holds")
     if drop is None:
         # Unwired is the common case on day one, and the default folder is
         # a perfectly good answer — this is a file in the person's own home
         # directory, not a credential.
         drop = IcsDrop("local")
-    out = drop.hold(workspace, title, s, e, note or "", where or "")
+    out = drop.hold(title, s, e, note or "", where or "")
     nights = (e - s).days
     plural = "" if nights == 1 else "s"
 
@@ -417,8 +393,8 @@ def _hold_dates(store, workspace, title, start, end, note=None, where=None,
                     "detail": (f"Already in your diary \u2014 nothing was "
                                f"added twice. The .ics in {out['folder']} was "
                                f"refreshed.")}
-        added = calendar_app.add(title, s, e, calendar=_hold_calendar(store,
-                                                                     workspace),
+        added = calendar_app.add(title, s, e,
+                                 calendar=_hold_calendar(store),
                                  note=note or "", where=where or "",
                                  uid=out["uid"])
         into = added.get("calendar")
@@ -445,18 +421,18 @@ def _hold_dates(store, workspace, title, start, end, note=None, where=None,
                        + (f" ({why})" if why else ""))}
 
 
-def _hold_calendar(store, workspace: str) -> str:
+def _hold_calendar(store) -> str:
     """Which calendar a hold goes in, when the person has said.
 
     The `only` on a wired ical source is the list they ticked in the picker,
-    and the first of it is the one they meant — a business that reads
-    "Bookings" and "Dentist" wants the booking in Bookings. Empty means they
-    ticked nothing, which means all of them, which is no answer to *where to
-    write*, so Calendar's own default is used and named in the reply.
+    and the first of it is the one they meant — somebody who reads "Bookings"
+    and "Dentist" wants the booking in Bookings. Empty means they ticked
+    nothing, which means all of them, which is no answer to *where to write*,
+    so Calendar's own default is used and named in the reply.
     """
     try:
-        row = store.one("SELECT only FROM credential WHERE workspace_id=? "
-                        "AND kind='ical'", workspace)
+        row = store.one("SELECT only FROM credential WHERE kind='ical' "
+                        "ORDER BY id LIMIT 1")
         chosen = json.loads(row["only"] or "[]") if row else []
         return str(chosen[0]) if chosen else ""
     except (ValueError, TypeError, IndexError, KeyError):
@@ -466,9 +442,9 @@ def _hold_calendar(store, workspace: str) -> str:
 def _say_hold(a: dict) -> str:
     """"Hold 3-6 Sep for the Shaws" — the sentence somebody approves.
 
-    Dates as a person writes them. A preview reading "hold_dates workspace=
-    cottages start=2026-09-03" is accurate and is not a decision anybody can
-    make with their thumb over a button.
+    Dates as a person writes them. A preview reading "hold_dates
+    start=2026-09-03" is accurate and is not a decision anybody can make
+    with their thumb over a button.
     """
     from datetime import date as _d
     try:
@@ -494,12 +470,12 @@ def _say_hold(a: dict) -> str:
              "Writes a .ics file for you to open; this machine has no "
              "Calendar to add it to.")
     return (f"Hold {span} for \u201c{a.get('title', 'a booking')}\u201d "
-            f"in {_own(a.get('workspace', ''))} diary \u2014 {n} night"
+            f"in your diary \u2014 {n} night"
             f"{'' if n == 1 else 's'}, out on the morning of "
             f"the {_ord(e.day)}. {lands}")
 
 
-def _send_reply(store, workspace, approval, **_):
+def _send_reply(store, approval, **_):
     """Send a draft that is already in the queue, to the address it was
     written to.
 
@@ -514,10 +490,15 @@ def _send_reply(store, workspace, approval, **_):
     row = store.one("SELECT * FROM approval WHERE id=?", approval)
     if row is None:
         raise Rejected(f"there is no queued item with id {approval!r}")
-    if row["workspace_id"] != workspace:
-        # Scope is data, not prompt. Invariant 5.
-        raise Rejected(f"that draft belongs to {row['workspace_id']}, not to "
-                       f"{workspace}")
+    # This used to check that the approval belonged to the workspace the
+    # proposal named — the concrete form of invariant 5 on this path, and
+    # the thing that stopped a model asking to send one business's draft
+    # under another's name. There is one space now, so there is no line to
+    # cross here and the check would be a tautology. What it was protecting
+    # has not moved: the address is `recipient`, written when the draft was
+    # made from the message that was read, and passed to the sender as
+    # `expected` so the send itself refuses if anything has changed it. A
+    # model still cannot choose who hears about it.
     if row["decision"] not in ("approve", "edit"):
         raise Rejected(
             f"that draft has not been approved — it is "
@@ -553,13 +534,12 @@ def _send_reply(store, workspace, approval, **_):
             text = (json.loads(row["edited_body"]) or {}).get("preview") or text
         except ValueError:
             text = row["edited_body"]
-    sender = _C.wire(store).get(workspace, "send")
+    sender = _C.wire(store).first("send")
     if sender is None:
         raise Rejected(
-            f"{_own(workspace)} has no way to send. Sending is off until you "
-            f"wire it: connect.py add {workspace} smtp "
-            f"blokk-{workspace}-smtp@smtp.example.com:465, and a keychain "
-            f"entry to go with it.")
+            "there is no way to send. Sending is off until you wire it: "
+            "connect.py add smtp you@example.com:465, and a keychain entry "
+            "to go with it.")
     from core.connectors.smtp_mail import SendRefused
     try:
         out = sender.send(to, _subject_for(row), text, expected=to)
@@ -596,17 +576,15 @@ def _say_send(a: dict) -> str:
 
 
 ACTIONS: dict[str, Action] = {a.name: a for a in (
-    Action("sweep_now", "Run the sweep now, across every workspace.",
+    Action("sweep_now", "Read everything wired, now.",
            run=_sweep, category="blokk_run"),
     Action("backup_now", "Take a backup of blokk.db.",
            run=_backup, category="blokk_run"),
     Action("set_schedule", "Move the night shift to {at}.",
            args=("at",), run=_schedule, phrase=_say_schedule),
-    Action("add_source", "Wire {kind} into {workspace}, reading {ref}.",
-           args=("workspace", "kind", "ref"), run=_add_source,
+    Action("add_source", "Wire {kind}, reading {ref}.",
+           args=("kind", "ref"), optional=("name",), run=_add_source,
            phrase=_say_add),
-    Action("add_workspace", "Add a workspace called {workspace}.",
-           args=("workspace",), optional=("name",), run=_add_workspace),
     # The only action that reaches another person. Pinned, permanently: a
     # category earns the right to act alone by being right twenty times, and
     # what that would buy here is mail going to a guest off the back of a
@@ -614,43 +592,40 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
     # that makes the twenty-first safe to skip.
     Action("send_reply",
            "Send the approved draft {approval}.",
-           args=("workspace", "approval"),
+           args=("approval",),
            pinned=True, category="send_mail",
            run=_send_reply, phrase=_say_send),
     # The only action that writes outside blokk.db, and pinned for it. A
     # category earns the right to act alone by being right twenty times;
-    # what that buys elsewhere is a workspace renamed without asking. Here
-    # it would be a file appearing in somebody's folder off the back of a
-    # sentence in a guest's email, which is the shape of the thing this
-    # whole design exists to stop.
+    # what that would buy here is a file appearing in somebody's folder off
+    # the back of a sentence in a guest's email, which is the shape of the
+    # thing this whole design exists to stop.
     Action("hold_dates",
-           "Hold {start} to {end} for {title}, in {workspace}.",
-           args=("workspace", "title", "start", "end"),
+           "Hold {start} to {end} for {title}.",
+           args=("title", "start", "end"),
            optional=("note", "where"),
            pinned=True, category="calendar_hold",
            run=_hold_dates, phrase=_say_hold),
-    Action("remember", "Remember, for {workspace}: {note}",
-           args=("workspace", "note"), run=_remember, category="blokk_memory"),
+    Action("remember", "Remember: {note}",
+           args=("note",), run=_remember, category="blokk_memory"),
     # Pinned. Forgetting is the one memory operation that destroys something,
     # and a rule quietly retired is a rule you go looking for later and
     # cannot find.
-    Action("forget", "Stop applying what it knows about {note}, for "
-                     "{workspace}.",
-           args=("workspace", "note"), pinned=True, run=_forget,
+    Action("forget", "Stop applying what it knows about {note}.",
+           args=("note",), pinned=True, run=_forget,
            category="blokk_memory"),
     # Pinned. Each of these either opens a route out of the machine or
     # removes something that does not come back, and neither gets safer
-    # because the last ninety were fine.
-    Action("egress_allow", "Let {workspace} reach {host}.",
-           args=("workspace", "host"), pinned=True, run=_egress_allow),
-    Action("egress_deny", "Stop {workspace} reaching {host}.",
-           args=("workspace", "host"), pinned=True, run=_egress_deny),
-    Action("remove_source", "Remove {workspace}'s {kind} source.",
-           args=("workspace", "kind"), pinned=True, run=_remove_source,
+    # because the last ninety were fine. More so now than before: the
+    # allowlist is one list, so opening a host opens it for everything
+    # wired here rather than for one business.
+    Action("egress_allow", "Let Blokk reach {host}.",
+           args=("host",), pinned=True, run=_egress_allow),
+    Action("egress_deny", "Stop Blokk reaching {host}.",
+           args=("host",), pinned=True, run=_egress_deny),
+    Action("remove_source", "Remove the source called {name}.",
+           args=("name",), pinned=True, run=_remove_source,
            phrase=_say_remove),
-    Action("remove_workspace",
-           "Delete the workspace {workspace} and everything in it.",
-           args=("workspace",), pinned=True, run=_remove_workspace),
 )}
 
 
@@ -684,10 +659,10 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
         if len(v) > cap:
             raise Rejected(f"{key!r} is too long — {len(v)} characters, and "
                            f"the limit is {cap}")
-        # Identifiers are identifiers. A workspace called "; DROP" is not one,
+        # Identifiers are identifiers. A source called "; DROP" is not one,
         # and neither is a kind that is not one of the kinds.
-        if key == "workspace" and not ID.match(v):
-            raise Rejected(f"{v!r} is not a workspace id")
+        if key == "name" and not ID.match(v):
+            raise Rejected(f"{v!r} is not a source name")
         if key == "kind":
             from core import sources
             if v not in sources.KINDS:
@@ -797,8 +772,8 @@ def edited(action_json: str | dict, corrections) -> dict:
     standing than a model, but not the standing to invent an argument the
     executor has no rule for.
 
-    The action's *name* is not editable. Changing "back up" into "delete the
-    workspace" between the sentence somebody read and the thing that runs is
+    The action's *name* is not editable. Changing "back up" into "remove a
+    source" between the sentence somebody read and the thing that runs is
     the whole class of bug this queue exists to prevent.
     """
     payload = action_json

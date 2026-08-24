@@ -243,25 +243,26 @@ probe('B9  a slow sweep is reported as a failed one',
 // checks against grows on its own: adding a weather source allows two hosts.
 // If the sheet does not render them, the list only exists in sqlite3 and
 // nobody ever revokes anything.
+//
+// This used to be a row per workspace with its own hosts under it. There is
+// one list now, which makes the sheet simpler and the stakes higher: a host
+// on it is a host everything wired here can reach.
 {
-  const rows = js.match(/const wsrows = SRC\.workspaces\.map[\s\S]*?\.join\(''\);/);
-  const r = rows ? rows[0] : '';
   const box = js.match(/const egressbox = `[\s\S]*?\n    \$\{\(SRC\.egress_log[\s\S]*?\n\s*\}\).join\(''\)\}<\/div>` : ''\}`;/);
   const g = box ? box[0] : '';
-  probe('B17 the workspace row does not say what it can reach',
-    !/w\.egress/.test(r) || !/may reach/.test(r),
-    'the row says it, and the group below revokes it');
-  // A workspace that reaches nothing must say so. A blank space reads the
+  probe('B17 the sheet does not say what can leave this Mac',
+    !g || !/SRC\.egress/.test(js) || !/out\.map\(h =>/.test(g),
+    'the group lists every host on the one allowlist');
+  // An allowlist with nothing on it must say so. A blank space reads the
   // same as a feature that has not shipped, and this is the one claim in the
   // product people check.
-  probe('B17a a workspace that reaches nothing renders as silence',
-    !/reaches nothing/.test(r),
+  probe('B17a an allowlist with nothing on it renders as silence',
+    !/Nothing reaches off this Mac/.test(g),
     'the empty case is a sentence');
   // Hosts come out of the database and go into markup and an attribute.
   probe('B17b a host is interpolated into an attribute unescaped',
-    /data-deny="\$\{(?!esc\()/.test(g) || !/esc\(h\)/.test(g)
-      || !/\.map\(esc\)/.test(r),
-    'escaped in the row, the label and the attribute');
+    /data-deny="\$\{(?!esc\()/.test(g) || !/esc\(h\)/.test(g),
+    'escaped in the label and in the attribute');
   probe('B17c the control on a host does not revoke anything',
     !/\/api\/v1\/egress\/deny/.test(js) || !/data-deny/.test(js),
     'it posts to egress/deny and repaints from the server');
@@ -840,35 +841,31 @@ probe('B18 a run that could not resume is not mentioned at all',
     defs < 3, `${defs} definitions: bare, prefers-dark, and [data-theme]`);
 }
 
-// B31 — the chat says which workspace it is about, and lets you change it
-// The header carried a fixed chip reading READ-ONLY, so somebody with four
-// businesses could not tell which one an answer was about — and "what needs
-// me?" is a different answer for each of them.
+// B31 — the chat header, and what survives a reload
+// It used to carry a workspace picker: with four businesses you could not
+// otherwise tell which one an answer was about, and "what needs me?" is a
+// different answer for each. There is one space, so the picker is gone and
+// what is left is the control that was always doing the other half of the
+// work — starting a new conversation — plus the memory that makes it mean
+// something after a reload.
 {
   const head = h.slice(h.indexOf('<div class="ah glass">'));
   const ah = head.slice(0, head.indexOf('</div>'));
-  probe('B31 the chat panel never says which workspace it is about',
-    !/id="askws"/.test(ah), 'a picker in the header, and it is a real select');
+  probe('B31 the chat header still carries a workspace picker',
+    /id="askws"/.test(h), 'there is one space, so there is nothing to pick');
   probe('B31a there is no way to start a new conversation',
-    !/id="asknew"/.test(ah), 'a new-conversation control sits beside it');
-  // The picker must be labelled: a bare <select> in a header reads as
-  // nothing to a screen reader.
-  probe('B31b the workspace picker has no label',
-    !/for="askws"/.test(h), 'labelled, visually hidden');
-  // And what you were last looking at has to survive a reload, or "new
+    !/id="asknew"/.test(ah), 'a new-conversation control sits in the header');
+  // What you were last looking at has to survive a reload, or "new
   // conversation" is a cleared screen rather than a new conversation.
-  // Both halves: which workspace you were in, and which thread in it.
-  // Remembering only the thread meant a reload came back on whichever
-  // workspace the server would have picked from scratch.
-  // Both halves, and both directions. Checking that `_last` merely appears
-  // passed on an implementation that read it and never wrote it — the reader
-  // alone is enough to satisfy a substring test and does nothing at all.
+  // Both directions: checking that the key merely appears passed on an
+  // implementation that read it and never wrote it — the reader alone is
+  // enough to satisfy a substring test and does nothing at all.
   probe('B31c where you were is forgotten on reload',
     !/blokk-thread/.test(js) || !/localStorage\.setItem\(SEEN/.test(js)
       || !/localStorage\.getItem\(SEEN/.test(js)
-      || !/_last\s*=/.test(js) || !/\._last\s*\|\|/.test(js)
-      || !/WS\s*=\s*recallWorkspace\(\)/.test(js),
-    'the workspace and its thread are both remembered, per browser');
+      || !/THREAD = d\.thread \|\| THREAD/.test(js)
+      || !/recallThread\(\)/.test(js),
+    'the thread is remembered, per browser, and read back on load');
 }
 
 // B32 — a row hidden with [hidden] has to actually go

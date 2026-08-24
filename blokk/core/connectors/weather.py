@@ -55,14 +55,13 @@ class Weather:
     kind = "weather"
     writes = False
 
-    def __init__(self, ref: str = "", store=None, workspace_id: str = ""):
+    def __init__(self, ref: str = "", store=None):
         # `ref` is where you are: "54.97,-1.61", or a place name to look up
         # once. Not a keychain reference — this source has no credential, and
         # a field that means two things is a field somebody will fill in
         # wrongly, so connect.py says so in its usage line.
         self.ref = (ref or "").strip()
         self.store = store
-        self.workspace_id = workspace_id
 
     # ------------------------------------------------------------- location
     def _cached(self) -> dict | None:
@@ -92,9 +91,9 @@ class Weather:
         """
         if not self.ref:
             raise egress.Refused(
-                "no location set for this workspace. Give it one — a town, "
+                "no location set. Give it one — a town, "
                 "or coordinates:  "
-                "connect.py add <workspace> weather \"Newcastle upon Tyne\"")
+                "connect.py add weather \"Newcastle upon Tyne\"")
         if "," in self.ref:
             lat, _, lon = self.ref.partition(",")
             try:
@@ -106,7 +105,7 @@ class Weather:
         if got:
             return {**got, "source": "looked up once, remembered"}
         url = f"{GEOCODE}?name={quote(self.ref)}&count=1&language=en&format=json"
-        d = egress.fetch_json(self.store, self.workspace_id, url)
+        d = egress.fetch_json(self.store, url)
         hits = d.get("results") or []
         if not hits:
             # Open-Meteo's geocoder is a gazetteer of place names — it does
@@ -149,7 +148,7 @@ class Weather:
                f"&daily=weather_code,temperature_2m_max,temperature_2m_min,"
                f"precipitation_probability_max,wind_speed_10m_max"
                f"&timezone=auto&forecast_days={days}")
-        d = egress.fetch_json(self.store, self.workspace_id, url)
+        d = egress.fetch_json(self.store, url)
         daily = d.get("daily") or {}
         out = []
         for i, day in enumerate(daily.get("time") or []):

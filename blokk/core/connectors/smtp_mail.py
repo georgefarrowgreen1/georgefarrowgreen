@@ -25,7 +25,7 @@ cannot send twice — which is the failure that would otherwise be discovered
 by the recipient.
 
 **It refuses more than it accepts.** One recipient, no Bcc, no attachments,
-no HTML, a size cap, a rate cap per workspace per day, and a hard refusal to
+no HTML, a size cap, a rate cap per day, and a hard refusal to
 send to more than one address or to anything that does not look like an
 address. Every refusal names itself.
 
@@ -50,7 +50,7 @@ from core.connectors.keychain import account, secret
 ADDRESS = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 MAX_BODY = 100_000            # a reply, not a newsletter
 MAX_SUBJECT = 200
-PER_DAY = 20                  # per workspace. A runaway loop is the fear.
+PER_DAY = 20                  # a day, all in. A runaway loop is the fear.
 TIMEOUT = 30
 
 
@@ -100,11 +100,10 @@ class Smtp:
     kind = "smtp"
     writes = True
 
-    def __init__(self, keychain_ref: str, store=None, workspace_id: str = "",
+    def __init__(self, keychain_ref: str, store=None,
                  host: str = "", port: int = 0):
         self.ref = keychain_ref
         self.store = store
-        self.workspace_id = workspace_id
         # The host comes from the credential, not from anything a model or a
         # message can influence. `blokk-cottages-smtp@smtp.fastmail.com:465`
         # is the whole configuration.
@@ -185,9 +184,8 @@ class Smtp:
         # and handed out a fresh twenty. Whichever frame is chosen, both
         # sides have to be in it.
         row = self.store.one(
-            "SELECT COUNT(*) n FROM approval WHERE workspace_id=? "
-            "AND sent_at IS NOT NULL AND date(sent_at)=date('now','localtime')",
-            self.workspace_id)
+            "SELECT COUNT(*) n FROM approval WHERE sent_at IS NOT NULL "
+            "AND date(sent_at)=date('now','localtime')")
         return int(row["n"]) if row else 0
 
     # -------------------------------------------------------------- send
@@ -219,7 +217,7 @@ class Smtp:
         used = self.sent_today()
         if used >= PER_DAY:
             raise SendRefused(
-                f"{self.workspace_id} has sent {used} today, which is the "
+                f"Blokk has sent {used} today, which is the "
                 f"cap. It resets at midnight. Raise it in core/connectors/"
                 f"smtp_mail.py if you meant to.")
 

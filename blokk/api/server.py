@@ -27,7 +27,7 @@ from core.durable import Engine, Store, now
 from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import (ask as run_ask, history as ask_history,
-                      scope_for as ask_scope, _thread_id as ask_thread_id)
+                      _thread_id as ask_thread_id)
 from core import actions, nightly, servers as srv
 from core.backends import BACKENDS, pick
 
@@ -170,22 +170,21 @@ def h_health(_q):
     }
 
 
-def h_workspaces(_q):
-    out = []
-    for w in store.q("SELECT * FROM workspace ORDER BY name"):
-        t = rows(store.q("SELECT * FROM trust WHERE workspace_id=?", w["id"]))
-        out.append({**dict(w), "egress_allow": json.loads(w["egress_allow"]),
-                    "trust": t, "auto_categories": sum(1 for x in t if x["auto"])})
-    return out
+def h_trust(_q):
+    """The ledger, and what it may act on alone. One space, so one list.
+
+    This was /workspaces and returned a row per business with its trust
+    nested inside. What anybody ever wanted off it was the trust and the
+    allowlist, which are now what it is.
+    """
+    t = rows(store.q("SELECT * FROM trust ORDER BY category"))
+    return {"trust": t, "auto_categories": sum(1 for x in t if x["auto"]),
+            "egress_allow": egress.allowlist(store)}
 
 
-def h_runs(q):
-    sql, args = "SELECT * FROM run WHERE 1=1", []
-    if q.get("workspace"):
-        sql += " AND workspace_id=?"
-        args.append(q["workspace"][0])
-    sql += " ORDER BY started_at DESC LIMIT 30"
-    return [{**dict(r), **engine.stats(r["id"])} for r in store.q(sql, *args)]
+def h_runs(_q):
+    return [{**dict(r), **engine.stats(r["id"])} for r in store.q(
+        "SELECT * FROM run ORDER BY started_at DESC LIMIT 30")]
 
 
 def h_run(run_id, _q):
@@ -228,16 +227,13 @@ def _stale(a) -> bool:
 def h_approvals(_q):
     out = []
     for a in store.q(
-        "SELECT a.*, w.name AS workspace FROM approval a "
-        "JOIN workspace w ON w.id=a.workspace_id "
-        "WHERE a.decision IS NULL ORDER BY a.created_at"
+        "SELECT * FROM approval WHERE decision IS NULL ORDER BY created_at"
     ):
         d = dict(a)
         d["evidence"] = _ev(a)
         d["stale"] = _stale(a)
         pin = store.one(
-            "SELECT pinned_manual FROM trust WHERE workspace_id=? AND category=?",
-            a["workspace_id"], a["category"])
+            "SELECT pinned_manual FROM trust WHERE category=?", a["category"])
         d["pinned"] = bool(pin["pinned_manual"]) if pin else False
         out.append(d)
     return out
@@ -246,10 +242,9 @@ def h_approvals(_q):
 def h_handled(_q):
     """What didn't need you. The number that should grow."""
     return rows(store.q(
-        "SELECT a.category, a.title, a.body, w.name AS workspace, w.id AS ws, "
-        "a.decision, a.decided_at, a.action, a.result FROM approval a "
-        "JOIN workspace w ON w.id=a.workspace_id "
-        "WHERE a.decision IS NOT NULL ORDER BY a.decided_at DESC LIMIT 20"))
+        "SELECT category, title, body, decision, decided_at, action, result "
+        "FROM approval WHERE decision IS NOT NULL "
+        "ORDER BY decided_at DESC LIMIT 20"))
 
 
 def h_thread(q):
@@ -264,8 +259,7 @@ def h_thread(q):
     approved an hour ago redraws as approved and what it did, not as a live
     button waiting to be pressed twice.
     """
-    ws = ask_scope(store, (q.get("workspace") or [None])[0])
-    tid = ask_thread_id((q.get("thread") or [None])[0], ws)
+    tid = ask_thread_id((q.get("thread") or [None])[0])
     out = []
     for m in ask_history(store, tid):
         row = dict(m)
@@ -281,7 +275,7 @@ def h_thread(q):
                 row["approval"] = dict(a)
                 row["approval"]["evidence"] = _ev(a)
         out.append(row)
-    return {"thread": tid, "workspace": ws, "messages": out}
+    return {"thread": tid, "messages": out}
 
 
 DECISIONS = ("approve", "edit", "reject")
@@ -334,7 +328,7 @@ def h_decide(approval_id, body):
     if not claimed:
         loser = store.one("SELECT decision FROM approval WHERE id=?", approval_id)
         return {"ok": True, "already": loser["decision"]}
-    policy.record(a["workspace_id"], a["category"], decision)
+    policy.record(a["category"], decision)
 
     # ── the only place an action runs ───────────────────────────────────────
     # Not in core/ask.py, which has no executor in it; not on the way into the
@@ -378,9 +372,9 @@ def h_decide(approval_id, body):
     # An edit is a diff between what the agent wrote and what you wanted.
     if decision in ("edit", "reject"):
         store.x("""INSERT OR REPLACE INTO episode
-                   (id,workspace_id,kind,category,before,after)
-                   VALUES(?,?,?,?,?,?)""",
-                f"e_{approval_id}", a["workspace_id"], decision,
+                   (id,kind,category,before,after)
+                   VALUES(?,?,?,?,?)""",
+                f"e_{approval_id}", decision,
                 a["category"], a["body"], body.get("edited_body"))
 
     still = store.one(
@@ -401,7 +395,7 @@ def h_decide(approval_id, body):
             # one that did not, which is invariant 6 backwards.
             resume_error = f"{type(e).__name__}: {e}"
 
-    ok, why = policy.may_act(a["workspace_id"], a["category"])
+    ok, why = policy.may_act(a["category"])
     bump()
     out = {"ok": True, "category": a["category"], "now_autonomous": ok,
            "trust": why, "run_resumed": resumed}
@@ -442,61 +436,57 @@ def h_recheck(approval_id, _body):
     return {"ok": True, "still_valid": True, "checked_at": ev["checked_at"]}
 
 
-def h_memory(ws, _q):
+def h_memory(_q):
     return {
-        "episodes": store.one("SELECT COUNT(*) c FROM episode WHERE workspace_id=?", ws)["c"],
+        "episodes": store.one("SELECT COUNT(*) c FROM episode")["c"],
         "unconsolidated": store.one(
-            "SELECT COUNT(*) c FROM episode WHERE workspace_id=? AND consolidated=0", ws)["c"],
+            "SELECT COUNT(*) c FROM episode WHERE consolidated=0")["c"],
         "facts": rows(store.q(
             "SELECT id,text,confidence,source_episodes FROM fact "
-            "WHERE workspace_id=? AND retired_at IS NULL ORDER BY confidence DESC", ws)),
+            "WHERE retired_at IS NULL ORDER BY confidence DESC")),
         "skills": rows(store.q(
             "SELECT name,description,runs,failures,status FROM skill "
-            "WHERE workspace_id IS NULL OR workspace_id=? ORDER BY runs DESC", ws)),
+            "ORDER BY runs DESC")),
     }
 
 
 def sweep_all(force: bool = False, since: str = "") -> dict:
-    """Idempotent per workspace per day.
+    """Idempotent per day.
 
     Without this, the Mac and the phone both pressing sweep at 04:00 starts
-    two runs per workspace and every guest gets two replies. A sweep is a
-    daily event, so the day is the key. force=true is the manual override.
+    two runs and every guest gets two replies. A sweep is a daily event, so
+    the day is the key. force=true is the manual override.
 
     Shared with the night shift rather than reimplemented for it: a scheduler
     with its own copy of "have we already swept" is a scheduler that
     eventually disagrees with the button.
     """
     day = now().date().isoformat()
-    started, skipped, failed = [], [], []
-    for w in store.q("SELECT id FROM workspace WHERE active=1"):
-        existing = store.one(
-            "SELECT id FROM run WHERE workspace_id=? AND workflow='morning_sweep' "
-            "AND date(started_at)=? AND status IN ('running','suspended','done')",
-            w["id"], day)
-        if existing and not force:
-            skipped.append(existing["id"])
-            continue
-        try:
-            # Started, not finished. The workflow runs every workspace's
-            # sweep, which with real weights is minutes — holding the request
-            # open for that made the page give up and call it a failure. The
-            # runs are journalled and resumable, and the poll shows them.
-            started.append(engine.start_background(
-                "morning_sweep", w["id"], payload={"since": since} if since
-                else None, on_done=bump))
-        except Exception as e:                                   # noqa: BLE001
-            # The run is already marked failed and journalled, so it is
-            # resumable once whatever broke is fixed. Losing three good
-            # workspaces because the fourth could not reach the model server
-            # is the wrong trade.
-            failed.append({"workspace": w["id"], "error": str(e)[:200]})
-    bump()
-    out = {"started": started, "already_swept_today": skipped,
-           "running": True}
-    if failed:
-        out["failed"] = failed
-    return out
+    existing = store.one(
+        "SELECT id FROM run WHERE workflow='morning_sweep' "
+        "AND date(started_at)=? AND status IN ('running','suspended','done')",
+        day)
+    if existing and not force:
+        bump()
+        return {"started": [], "already_swept_today": [existing["id"]],
+                "running": True}
+    try:
+        # Started, not finished. With real weights the sweep is minutes —
+        # holding the request open for that made the page give up and call
+        # it a failure. The run is journalled and resumable, and the poll
+        # shows it.
+        run_id = engine.start_background(
+            "morning_sweep", payload={"since": since} if since else None,
+            on_done=bump)
+        bump()
+        return {"started": [run_id], "already_swept_today": [],
+                "running": True}
+    except Exception as e:                                       # noqa: BLE001
+        # The run is already marked failed and journalled, so it is
+        # resumable once whatever broke is fixed.
+        bump()
+        return {"started": [], "already_swept_today": [], "running": True,
+                "failed": [{"error": str(e)[:200]}]}
 
 
 def h_sweep(body):
@@ -546,19 +536,16 @@ def h_kill(_body):
     return {"stopped": n, "queue_held": True}
 
 
-def _ask_stream(q, workspace, thread=None):
+def _ask_stream(q, thread=None):
     """Wraps the ask generator so a PROPOSAL lands in the approval queue.
 
     This is the only place the chat surface touches the database, and it
     writes exactly one kind of row: an undecided approval. It cannot send, and
     it cannot mark anything decided.
     """
-    # The same resolution ask() does, so the approval row and the transcript
-    # cannot end up scoped to different workspaces.
-    ws = ask_scope(store, workspace)
     run_id = None
-    tid = ask_thread_id(thread, ws)
-    for ev in run_ask(store, q, router.small, workspace, thread=thread):
+    tid = ask_thread_id(thread)
+    for ev in run_ask(store, q, router.small, thread=thread):
         if ev["type"] == "RUN_STARTED":
             tid = ev.get("thread") or tid
         if ev["type"] == "PROPOSAL":
@@ -568,9 +555,9 @@ def _ask_stream(q, workspace, thread=None):
             if run_id is None:
                 run_id = f"r_ask{abs(hash(q)) % 10**8}"
                 store.x("""INSERT OR REPLACE INTO run
-                           (id,workspace_id,workflow,status,input,ended_at)
-                           VALUES(?,?,'ask','done',?,?)""",
-                        run_id, ws, json.dumps({"q": q}), now().isoformat())
+                           (id,workflow,status,input,ended_at)
+                           VALUES(?,'ask','done',?,?)""",
+                        run_id, json.dumps({"q": q}), now().isoformat())
             # A fresh id every time, deliberately. The first version keyed
             # the row on hash(text), so asking for the same thing twice did
             # an INSERT OR REPLACE over the earlier row — and if that row had
@@ -581,10 +568,9 @@ def _ask_stream(q, workspace, thread=None):
             aid = f"a_ask_{secrets.token_hex(6)}"
             act = ev.get("action")
             store.x("""INSERT INTO approval
-                       (id,run_id,workspace_id,category,title,body,evidence,
-                        action)
-                       VALUES(?,?,?,?,?,?,?,?)""",
-                    aid, run_id, ws,
+                       (id,run_id,category,title,body,evidence,action)
+                       VALUES(?,?,?,?,?,?,?)""",
+                    aid, run_id,
                     # The trust ledger buckets by category, so a proposal to
                     # act counts toward the bucket that action belongs to,
                     # not toward "you asked for something in chat".
@@ -687,10 +673,7 @@ def h_models_remove(body):
 
 def h_sources(_q):
     from core import egress, local, sources
-    return {"workspaces": [{**w, "sample": w["id"] in sources.SAMPLE,
-                            "egress": egress.allowlist_for(store, w["id"])}
-                           for w in sources.workspaces(store)],
-            "sample": sources.is_sample(store),
+    return {"egress": egress.allowlist(store),
             "egress_log": egress.recent(12),
             "sources": sources.listing(store),
             "local": local.survey(),
@@ -715,71 +698,15 @@ def h_inside(q):
     return sources.inside(kind, ref)
 
 
-def h_workspace_add(body):
-    from core import sources
-    r = sources.workspace_add(store, text(body, "id", limit=64),
-                              text(body, "name", limit=200))
-    if not r.get("error"):
-        bump()
-    return r
-
-
-def h_workspace_remove(body):
-    """Removing a workspace takes everything in it. Say what, and mean it.
-
-    Two-step by construction: without confirm it reports what would go, and
-    the caller sends the same request again with the counts it was shown.
-    A dialog that deletes six months of decisions on one tap is a dialog
-    someone taps by accident.
-    """
-    from core import sources
-    wid = text(body, "id", limit=64)
-    if not store.one("SELECT 1 FROM workspace WHERE id=?", wid):
-        return {"error": f"no workspace '{wid}'"}
-    counts = {t: store.one(f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?",
-                           wid)["c"]
-              for t in ("credential", "run", "approval", "trust", "episode",
-                        "fact")}
-    if not body.get("confirm"):
-        return {"confirm": True, "id": wid, "holds": counts}
-    r = sources.workspace_remove(store, wid)
-    if not r.get("error"):
-        bump()
-    return r
-
-
-def h_workspace_clean(body):
-    """Remove the sample world — four invented businesses with invented guests.
-
-    Useful until you have your own workspace; actively misleading after, and
-    the fake connectors fill gaps by workspace id, so leaving them wired means
-    invented data sitting next to real data.
-    """
-    from core import sources
-    sample = sources.is_sample(store)
-    if not sample:
-        return {"ok": True, "removed": [], "detail":
-                "No sample workspaces left — this is your own data."}
-    if not body.get("confirm"):
-        holds = {w: {t: store.one(
-            f"SELECT COUNT(*) c FROM {t} WHERE workspace_id=?", w)["c"]
-            for t in ("run", "approval", "episode", "fact")} for w in sample}
-        return {"confirm": True, "sample": sample, "holds": holds}
-    out = [sources.workspace_remove(store, w) for w in sample]
-    bump()
-    return {"ok": True, "removed": [r["id"] for r in out if r.get("ok")],
-            "left": sources.workspaces(store)}
-
-
 def h_sources_add(body):
     from core import sources
     only = body.get("only")
     if not isinstance(only, list):
         only = []
-    out = sources.add(store, (body.get("workspace") or "").strip(),
-                      (body.get("kind") or "").strip(),
+    out = sources.add(store, (body.get("kind") or "").strip(),
                       (body.get("ref") or "").strip(),
-                      only=[str(o)[:200] for o in only[:64]])
+                      only=[str(o)[:200] for o in only[:64]],
+                      name=(body.get("name") or "").strip() or None)
     if out.get("error"):
         return out, 400
     bump()
@@ -788,7 +715,7 @@ def h_sources_add(body):
 
 def h_sources_remove(body):
     from core import sources
-    out = sources.remove(store, body.get("workspace", ""), body.get("kind", ""))
+    out = sources.remove(store, text(body, "name", limit=64))
     bump()
     return out
 
@@ -800,8 +727,7 @@ def h_sources_test(_body):
 
 def h_egress_allow(body):
     from core import egress
-    r = egress.allow(store, text(body, "workspace", limit=64),
-                     text(body, "host", limit=253))
+    r = egress.allow(store, text(body, "host", limit=253))
     if not r.get("error"):
         bump()
     return (r, 400) if r.get("error") else r
@@ -809,8 +735,7 @@ def h_egress_allow(body):
 
 def h_egress_deny(body):
     from core import egress
-    r = egress.disallow(store, text(body, "workspace", limit=64),
-                        text(body, "host", limit=253))
+    r = egress.disallow(store, text(body, "host", limit=253))
     if not r.get("error"):
         bump()
     return (r, 400) if r.get("error") else r
@@ -823,8 +748,7 @@ def h_sources_peek(body):
     quarantine verdict with them. Whatever renders this escapes it.
     """
     from core import sources
-    out = sources.peek(store, text(body, "workspace", limit=64),
-                       text(body, "name", limit=64),
+    out = sources.peek(store, text(body, "name", limit=64),
                        number(body, "n", 5, 1, 20))
     return (out, 404) if out.get("error") else out
 
@@ -1116,20 +1040,17 @@ ROUTES_GET = [
     (r"^/api/v1/health$", h_health),
     (r"^/api/v1/doctor$", h_doctor),
     (r"^/api/v1/schedule$", h_schedule),
-    (r"^/api/v1/workspaces$", h_workspaces),
+    (r"^/api/v1/trust$", h_trust),
     (r"^/api/v1/runs$", h_runs),
     (r"^/api/v1/runs/([\w]+)$", h_run),
     (r"^/api/v1/approvals$", h_approvals),
     (r"^/api/v1/thread$", h_thread),
     (r"^/api/v1/handled$", h_handled),
-    (r"^/api/v1/memory/([\w]+)$", h_memory),
+    (r"^/api/v1/memory$", h_memory),
 ]
 ROUTES_POST = [
     (r"^/api/v1/models/add$", h_models_add),
     (r"^/api/v1/models/remove$", h_models_remove),
-    (r"^/api/v1/workspaces/add$", h_workspace_add),
-    (r"^/api/v1/workspaces/remove$", h_workspace_remove),
-    (r"^/api/v1/workspaces/clean$", h_workspace_clean),
     (r"^/api/v1/sources/add$", h_sources_add),
     (r"^/api/v1/sources/remove$", h_sources_remove),
     (r"^/api/v1/sources/test$", h_sources_test),
@@ -1147,10 +1068,10 @@ ROUTES_POST = [
     (r"^/api/v1/schedule$", h_schedule_set),
     (r"^/api/v1/reset$", h_reset),
     (r"^/api/v1/kill$", h_kill),
-    (r"^/api/v1/memory/([\w]+)/consolidate$",
-     lambda ws, _b: {"new_facts": consolidate(store, ws, router.small)}),
-    (r"^/api/v1/memory/([\w]+)/forget$",
-     lambda ws, b: forget(store, ws, b.get("episode_ids", []))),
+    (r"^/api/v1/memory/consolidate$",
+     lambda _b: {"new_facts": consolidate(store, router.small)}),
+    (r"^/api/v1/memory/forget$",
+     lambda b: forget(store, b.get("episode_ids", []))),
 ]
 
 
@@ -1330,8 +1251,7 @@ class Handler(BaseHTTPRequestHandler):
             q = (body.get("q") or "").strip()[:500]
             if not q:
                 return self._send(400, {"error": "empty question"})
-            return self._sse(_ask_stream(q, body.get("workspace"),
-                                         body.get("thread")))
+            return self._sse(_ask_stream(q, body.get("thread")))
         body = self._read_body()
         if body is None:
             return

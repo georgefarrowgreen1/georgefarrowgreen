@@ -46,8 +46,7 @@ class SkillError(RuntimeError):
     pass
 
 
-def add(store, name: str, description: str, code: str,
-        workspace: str | None = None) -> dict:
+def add(store, name: str, description: str, code: str) -> dict:
     """Record a skill. Does not run it, and does not promote it."""
     name = str(name or "").strip().lower()
     if not NAME.match(name):
@@ -61,11 +60,8 @@ def add(store, name: str, description: str, code: str,
                          f"{MAX_CODE:,}")
     if not str(code or "").strip():
         raise SkillError("an empty skill does nothing")
-    if workspace and not store.one("SELECT 1 FROM workspace WHERE id=?",
-                                   workspace):
-        raise SkillError(f"no workspace {workspace!r}")
     sid = "sk_" + hashlib.sha256(
-        f"{workspace or ''}:{name}".encode()).hexdigest()[:12]
+        name.encode()).hexdigest()[:12]
     # The code lives in code_ref, which the schema calls "path in the skills
     # dir". It holds the source itself here: a path is a second place for
     # this to disagree with itself, and a backup of blokk.db that does not
@@ -81,9 +77,9 @@ def add(store, name: str, description: str, code: str,
                       sid)
     same = prior is not None and prior["code_ref"] == code
     store.x("""INSERT OR REPLACE INTO skill
-               (id,workspace_id,name,description,code_ref,runs,failures,status)
-               VALUES(?,?,?,?,?,?,?,'candidate')""",
-            sid, workspace, name, str(description).strip()[:400], code,
+               (id,name,description,code_ref,runs,failures,status)
+               VALUES(?,?,?,?,?,?,'candidate')""",
+            sid, name, str(description).strip()[:400], code,
             prior["runs"] if same else 0,
             prior["failures"] if same else 0)
     return {"ok": True, "id": sid, "name": name, "status": "candidate",
@@ -94,22 +90,19 @@ def add(store, name: str, description: str, code: str,
                                         "over from nothing."))}
 
 
-def listing(store, workspace: str | None = None,
-            include_retired: bool = False) -> list[dict]:
+def listing(store, include_retired: bool = False) -> list[dict]:
     """What is available, and how much it has earned."""
-    rows = store.q("SELECT id,workspace_id,name,description,runs,failures,"
+    rows = store.q("SELECT id,name,description,runs,failures,"
                    "status FROM skill ORDER BY status, name")
     out = []
     for r in rows:
-        if workspace and r["workspace_id"] not in (None, workspace):
-            continue
         if r["status"] == "retired" and not include_retired:
             continue
         out.append(dict(r))
     return out
 
 
-def run(store, name: str, argument: str = "", workspace: str | None = None,
+def run(store, name: str, argument: str = "",
         timeout: int = sandbox.TIMEOUT) -> dict:
     """Run a recorded skill in the sandbox, and record what happened.
 
@@ -118,11 +111,10 @@ def run(store, name: str, argument: str = "", workspace: str | None = None,
     time, and the runs behind it count for nothing.
     """
     row = store.one(
-        "SELECT * FROM skill WHERE name=? AND (workspace_id IS NULL "
-        "OR workspace_id=?) ORDER BY workspace_id IS NULL LIMIT 1",
-        str(name or "").strip().lower(), workspace)
+        "SELECT * FROM skill WHERE name=? LIMIT 1",
+        str(name or "").strip().lower())
     if row is None:
-        known = ", ".join(s["name"] for s in listing(store, workspace)) or "none"
+        known = ", ".join(s["name"] for s in listing(store)) or "none"
         raise SkillError(f"no skill called {name!r}. There are: {known}")
     if row["status"] == "retired":
         raise SkillError(
@@ -167,11 +159,10 @@ def run(store, name: str, argument: str = "", workspace: str | None = None,
                                  f"exited {out.get('code')}")}
 
 
-def forget(store, name: str, workspace: str | None = None) -> dict:
+def forget(store, name: str) -> dict:
     """Take a skill out. Nothing here is retired automatically for ever."""
-    row = store.one("SELECT id,name FROM skill WHERE name=? AND "
-                    "(workspace_id IS NULL OR workspace_id=?)",
-                    str(name or "").strip().lower(), workspace)
+    row = store.one("SELECT id,name FROM skill WHERE name=?",
+                    str(name or "").strip().lower())
     if row is None:
         raise SkillError(f"no skill called {name!r}")
     store.x("DELETE FROM skill WHERE id=?", row["id"])

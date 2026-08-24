@@ -58,9 +58,8 @@ def real() -> str:
     # — unless the suites did it, which is what the stamp records.
     try:
         was = set(seeded.get("auto", []))
-        auto = sum(1 for r in st.q("SELECT workspace_id,category FROM trust "
-                                   "WHERE auto=1")
-                   if f'{r["workspace_id"]}|{r["category"]}' not in was)
+        auto = sum(1 for r in st.q("SELECT category FROM trust WHERE auto=1")
+                   if r["category"] not in was)
     except Exception:                                            # noqa: BLE001
         auto = 0
     if auto:
@@ -92,13 +91,18 @@ def stamp() -> str:
                   for t in TABLES}
         # trust has no id, and the suites graduate a category on purpose —
         # so without this the "a fortnight of approvals" line fired every
-        # run too. The pair is the key.
-        seeded["auto"] = [f'{r["workspace_id"]}|{r["category"]}' for r in
-                          st.q("SELECT workspace_id,category FROM trust "
-                               "WHERE auto=1")]
+        # run too. The category is the key.
+        seeded["auto"] = [r["category"] for r in
+                          st.q("SELECT category FROM trust WHERE auto=1")]
         st.x("INSERT OR REPLACE INTO setting(key,value) "
              "VALUES('sample_world',?)", json.dumps(seeded))
-    except Exception:                                            # noqa: BLE001
+    except Exception as e:                                       # noqa: BLE001
+        # Said out loud. This swallowed everything and returned "", so when
+        # the trust key changed shape the stamp silently stopped being
+        # written and the only symptom was the guard shouting again on every
+        # run — about the seed, which is the exact noise it exists to stop.
+        print(f"  note: could not stamp the sample world: "
+              f"{type(e).__name__}: {e}")
         return ""
     return str(sum(len(v) for v in seeded.values()))
 

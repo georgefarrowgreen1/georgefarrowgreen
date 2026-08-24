@@ -5,10 +5,19 @@ anything.
 
 ## What Blokk is
 
-A local agent runtime for several small businesses on one Mac. It sweeps mail,
-calendar and other sources overnight, queues anything needing a decision, and
-learns from the corrections. Your content never leaves the machine; the few
-requests that do go out are named per workspace and logged — see invariant 3.
+A local agent runtime on one Mac. It sweeps mail, calendar and other sources
+overnight, queues anything needing a decision, and learns from the
+corrections. Your content never leaves the machine; the few requests that do
+go out are named on one allowlist and logged — see invariant 3.
+
+It used to be "for several small businesses", with a workspace table and a
+`workspace_id` on almost everything. That is gone. Four queues to check, four
+sweeps to wait for, four sets of sources to wire and a picker in the chat
+that had to be right before an answer could be — for a product that runs on
+one person's Mac. What the businesses actually needed keeping out of was each
+other's mail, and that is `credential.only`, per mailbox, which was doing the
+job underneath the tenancy model all along. `core/unify.py` collapses a
+database that still has workspaces in it; `./blokk unify` runs it.
 
 Stdlib only — no `pip install` for Blokk itself. That constraint is
 deliberate: this has to still boot in two years on a machine nobody has
@@ -113,8 +122,7 @@ draft carrying `revalidate` is re-checked at send: a quote true at 04:00 may
 be sold by the evening, and the queue already knew how to say so.
 
 One recipient, plain text, no attachments, no HTML, a size cap, and twenty a
-day per workspace, counted off `sent_at` in the same timezone it is written
-in. Each refusal is by the rule that should refuse it — a
+day, counted off `sent_at` in the same timezone it is written in. Each refusal is by the rule that should refuse it — a
 header injection is caught as a line break, not as "too many addresses",
 because a refusal wearing the wrong name is one nobody can act on, and one
 that vanishes the day the other rule is loosened. A93 covers all of it and is
@@ -159,7 +167,7 @@ and nothing runs without a person tapping approve. A62 stages exactly that
 attack through the mail tool and fails if a proposal comes out of it.
 
 **Unwired is not the same as unavailable.** The prompt carries a `NOT WIRED
-YET` block — every source in `NEEDS` that this workspace has not connected,
+YET` block — every source in `NEEDS` that is not connected,
 each with the one line that connects it — and a rule saying not to answer
 "I don't have access to that" about something one approval away. Without it
 the prompt listed what exists and said nothing about what could, so a Mac
@@ -179,7 +187,7 @@ not offering it is the same as it not existing.
 The other direction is `core/egress.py`, the only place anything leaves. Not
 "nothing leaves the machine" any more, but the narrower claim: *nothing leaves
 except requests you allowed, to hosts you named, and the log says exactly what
-left.* Every fetch checks the workspace's own allowlist with dot-anchored
+left.* Every fetch checks the one allowlist with dot-anchored
 suffix matching (`icloud.com` must not match `evil-icloud.com`), refuses any
 host resolving to a non-public address, re-checks every redirect hop, caps
 size and time, and appends to `logs/egress.log` whether it succeeded or not.
@@ -196,24 +204,37 @@ it numbers and it can say something true.
 
 `core/connectors/web.py` is the hard case: with a fetch tool the attacker
 chooses *which* page you read, so the content and the destination are both
-theirs. It is bounded by three things — the host is on the workspace's
-allowlist, the page comes back as fields with provenance `untrusted` and the
+theirs. It is bounded by three things — the host is on the allowlist,
+the page comes back as fields with provenance `untrusted` and the
 quarantine flag already on it, and **nothing reads one on its own**. Ask must
 never get a fetch tool: it holds mail and calendar in the same context, so a
 model that could also name a URL is the injection trifecta with a way out.
 The nightly sweep does not fetch pages either. A person asks, with `peek`.
 
-**4. Trust is per workspace AND per category, and never transfers.**
-Ninety clean approvals on cottage enquiries earns cottage enquiries autonomy.
-It earns invoice chasing nothing. Some categories are pinned to manual and
-must never graduate. Trust goes down as well as up: a rejection revokes
-autonomy and the threshold has to be met again from zero, or the ledger only
-ever ratchets and a category that has gone wrong keeps acting alone.
+**4. Trust is per category, and never transfers.**
+Ninety clean approvals on availability enquiries earns availability enquiries
+autonomy. It earns invoice chasing nothing. Some categories are pinned to
+manual and must never graduate. Trust goes down as well as up: a rejection
+revokes autonomy and the threshold has to be met again from zero, or the
+ledger only ever ratchets and a category that has gone wrong keeps acting
+alone.
+
+The key used to be (workspace, category). Collapsing it is the one merge in
+`core/unify.py` that can hand out autonomy nobody earned, so it takes the
+*most conservative* of the rows that land on one category — the minimum clean
+count, the maximum edited and rejected, `auto` only where every row had it,
+and pinned if any row was. Nineteen clean approvals on one business's
+enquiries is not nineteen on a category that now covers both.
 
 **5. Scope is data, not prompt.**
-Workspace isolation is enforced in SQL and in the credential registry. An
-agent told not to look at another workspace will eventually look at another
-workspace.
+What an agent may read is the tools in `build_tools()` and the sources in the
+connector registry, both built from tables in SQL. Nothing a model says adds
+a table, a column, a row or a connector to either. This used to be about
+workspace isolation and read the same way for the same reason: an agent told
+not to look at something will eventually look at it, so the boundary has to
+be somewhere it cannot reach. What bounds a read now is `credential.only` —
+which mailboxes, which calendars — and what bounds a write is the approval
+queue.
 
 **6. Fail loudly, degrade locally.**
 One broken connector must not take the night's sweep. One malformed row must
@@ -227,7 +248,7 @@ worse than an error.
                        ./blokk update  ./blokk doctor
     setup.sh / run.sh  terminal equivalents; share core/plan.py + core/servers.py
     bench.py           sizes the machine; --serve measures; --compare settles
-    connect.py         data sources, workspaces, backups — CLI over core/sources.py
+    connect.py         data sources, egress, backups — CLI over core/sources.py
     regress.py         run the frozen examples against whatever is attached
     seed.py            sample world, safe to re-run
 
@@ -244,7 +265,7 @@ worse than an error.
     core/gguf.py       bounded GGUF header reader; KV cache arithmetic
     core/weights.py    the models/ folder: symlink a .gguf in, take it out
     core/sources.py    add/remove/peek a data source; shared by CLI and GUI
-    core/egress.py     the only way out: per-workspace allowlist, no private
+    core/egress.py     the only way out: one allowlist, no private
                        addresses, redirects re-checked, logs/egress.log
     core/local.py      what this Mac will hand over without a password
     core/backup.py     online snapshot of blokk.db, and verifying one
@@ -359,7 +380,7 @@ phrase added to one and not the other fails the suite.
 * **Markup carries values, never rules.** A `style=` attribute cannot be
   overridden, is not reached by a media query and does not exist as far as
   the Reduce Transparency and dark blocks are concerned. A bar width or a
-  per-workspace colour is data: pass it as a custom property (`--w`, `--c`)
+  a category's colour is data: pass it as a custom property (`--w`, `--c`)
   and put the rule that uses it in the stylesheet. B21 enforces this.
 * The front end is one `<script>` per page, so one stray paren is a blank
   screen that every pattern-matching probe still passes. B19 parses all
@@ -421,7 +442,7 @@ All four suites green. Verified behaviours:
 * approving 20 clean graduates a category; pinned categories never do
 * rejecting takes the autonomy back, not just the counter — it has to be
   earned again from zero. An edit does not: a correction is not a veto
-* a dead model server degrades per workspace rather than 500ing the sweep
+* a dead model server degrades the sweep rather than 500ing it
 * a silent model server is detected in 0.4s (output drained on a thread)
 * a model server that dies leaves its reason in logs/<tier>.log, and
   `./blokk doctor` prints it along with which of the four faults it is
@@ -435,7 +456,7 @@ All four suites green. Verified behaviours:
 * a backup taken mid-write is a consistent snapshot, never overwrites,
   and restores — including over a file with another database's journal
   beside it, which a plain cp silently gets wrong
-* the egress gate turns away a lookalike host, a host on another workspace's
+* the egress gate turns away a lookalike host, a host nobody put on the
   list, plain http, and loopback even when somebody allowlists it — and each
   is refused by the rule that should refuse it, not by a 404 on the way out
 * the weather connector returns days as numbers and a code-table word, with
@@ -462,8 +483,8 @@ All four suites green. Verified behaviours:
   rather than running unconfined, which is the branch the whole file rests on
 * a reply can actually be sent, and only ever the one that was approved, to
   only the address on the row it was drafted against. Unwired, unapproved,
-  another workspace's, no recorded recipient, a moved address, a Bcc smuggled
-  into a recipient or a subject: each refused, each by its own rule
+  no recorded recipient, a moved address, a Bcc smuggled into a recipient or
+  a subject: each refused, each by its own rule
 * an approved hold goes into Calendar.app itself where macOS allows it, and
   writes the .ics either way — the file first, so a Calendar that refuses
   never leaves somebody with no record. A guest called

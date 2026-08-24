@@ -132,79 +132,68 @@ def drawn_from(gathered: list, tools: dict, keep: int = 4) -> list[dict]:
     return out
 
 
-def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool]:
+def build_tools(store) -> dict[str, ReadTool]:
     """Every tool here is a SELECT. There is deliberately no INSERT in this file.
 
-    Scope is applied in SQL, not in the prompt — an agent that is told not to
-    look at another workspace will eventually look at another workspace.
+    Scope used to mean "this workspace and not the others", applied in SQL
+    rather than in the prompt — because an agent told not to look at another
+    workspace will eventually look at another workspace. There is one space
+    now, so that line is gone, and the substance of invariant 5 with it in a
+    different shape: what a turn can read is the tools in this dict, and
+    what those tools can read is fixed here in SQL. Nothing a model says
+    adds a table, a column or a row to that. The scope is still data.
     """
-    def scope(sql: str, args: list) -> tuple[str, list]:
-        if workspace_scope:
-            sql += " AND workspace_id=?"
-            args = args + [workspace_scope]
-        return sql, args
-
     def open_approvals(**_):
-        sql, args = scope(
-            "SELECT id,category,title,body,workspace_id,created_at "
-            "FROM approval WHERE decision IS NULL", [])
-        return [dict(r) for r in store.q(sql + " ORDER BY created_at LIMIT ?",
-                                         *(args + [MAX_ROWS]))]
+        return [dict(r) for r in store.q(
+            "SELECT id,category,title,body,created_at FROM approval "
+            "WHERE decision IS NULL ORDER BY created_at LIMIT ?", MAX_ROWS)]
 
     def recent_runs(**_):
-        sql, args = scope("SELECT id,workspace_id,workflow,status,result,started_at "
-                          "FROM run WHERE 1=1", [])
-        return [dict(r) for r in store.q(sql + " ORDER BY started_at DESC LIMIT ?",
-                                         *(args + [MAX_ROWS]))]
+        return [dict(r) for r in store.q(
+            "SELECT id,workflow,status,result,started_at FROM run "
+            "ORDER BY started_at DESC LIMIT ?", MAX_ROWS)]
 
     def search_journal(term: str = "", **_):
         # One word: this is a LIKE against a step name, not a phrase search.
         term = (term or "").split(" ")[0]
-        sql, args = scope(
+        return [dict(r) for r in store.q(
             "SELECT j.run_id,j.step,j.name,j.side_effect,j.at FROM journal j "
-            "JOIN run r ON r.id=j.run_id WHERE j.name LIKE ?", [f"%{term}%"])
-        sql = sql.replace("workspace_id=?", "r.workspace_id=?")
-        return [dict(r) for r in store.q(sql + " ORDER BY j.at DESC LIMIT ?",
-                                         *(args + [MAX_ROWS]))]
+            "JOIN run r ON r.id=j.run_id WHERE j.name LIKE ? "
+            "ORDER BY j.at DESC LIMIT ?", f"%{term}%", MAX_ROWS)]
 
     def what_was_handled(**_):
-        sql, args = scope("SELECT category,title,decision,decided_at,workspace_id "
-                          "FROM approval WHERE decision IS NOT NULL", [])
-        return [dict(r) for r in store.q(sql + " ORDER BY decided_at DESC LIMIT ?",
-                                         *(args + [MAX_ROWS]))]
+        return [dict(r) for r in store.q(
+            "SELECT category,title,decision,decided_at FROM approval "
+            "WHERE decision IS NOT NULL ORDER BY decided_at DESC LIMIT ?",
+            MAX_ROWS)]
 
     def trust_state(**_):
-        sql, args = scope("SELECT category,clean,edited,rejected,threshold,auto,"
-                          "pinned_manual,workspace_id FROM trust WHERE 1=1", [])
-        return [dict(r) for r in store.q(sql, *args)]
+        return [dict(r) for r in store.q(
+            "SELECT category,clean,edited,rejected,threshold,auto,"
+            "pinned_manual FROM trust")]
 
     def learned_facts(**_):
-        sql, args = scope("SELECT text,confidence FROM fact "
-                          "WHERE retired_at IS NULL", [])
-        return [dict(r) for r in store.q(sql + " ORDER BY confidence DESC LIMIT ?",
-                                         *(args + [MAX_ROWS]))]
+        return [dict(r) for r in store.q(
+            "SELECT text,confidence FROM fact WHERE retired_at IS NULL "
+            "ORDER BY confidence DESC LIMIT ?", MAX_ROWS)]
 
     def sources_state(**_):
-        """What is wired, and where each workspace may reach.
+        """What is wired, and what Blokk may reach.
 
-        Here because an agent that can propose "let cottages reach x" should
-        be able to find out first whether cottages already can. A proposal
-        made blind is a proposal a person has to check by hand, which is the
-        work the queue was supposed to save.
+        Here because an agent that can propose "let Blokk reach x" should be
+        able to find out first whether it already can. A proposal made blind
+        is a proposal a person has to check by hand, which is the work the
+        queue was supposed to save.
         """
-        sql, args = scope(
-            "SELECT c.workspace_id, c.kind, c.keychain_ref AS ref, "
-            "w.egress_allow FROM credential c JOIN workspace w "
-            "ON w.id=c.workspace_id WHERE 1=1", [])
-        sql = sql.replace("workspace_id=?", "c.workspace_id=?")
+        from core import egress
+        allow = egress.allowlist(store)
         out = []
-        for r in store.q(sql + " ORDER BY c.workspace_id, c.kind", *args):
-            row = dict(r)
-            try:
-                row["egress_allow"] = json.loads(row["egress_allow"] or "[]")
-            except ValueError:
-                row["egress_allow"] = []
-            out.append(row)
+        for r in store.q("SELECT * FROM credential ORDER BY id"):
+            keys = r.keys()
+            out.append({"name": (r["name"] if "name" in keys else "")
+                        or r["kind"],
+                        "kind": r["kind"], "ref": r["keychain_ref"],
+                        "egress_allow": allow})
         return out
 
     def schedule_state(**_):
@@ -225,25 +214,48 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
     # cannot use is a step it wastes and a sentence it has to apologise for,
     # and with the grammar built from this dict, not offering it is the same
     # as it not existing.
-    def _peek(name: str, n: int = 6):
+    def _sources_for(role: str) -> list[str]:
+        """Every wired source that does this job, by name.
+
+        One space can hold two mailboxes, so "read the mail" is not a
+        question about one source any more. Reading only the first would be
+        the quiet kind of wrong: an answer that looks complete and is half
+        the inbox.
+        """
+        from core.connectors import wire
+        return [n for n, _ in wire(store).by_role(role)]
+
+    def _peek(role: str, n: int = 6):
         from core import sources as _src
-        out = _src.peek(store, workspace_scope, name, n)
-        if out.get("error"):
-            # A source that cannot be read says so, with the fix. The model
-            # is told this is a fact about the source, not a refusal.
-            return [{"unreadable": out["error"], "fix": out.get("fix", "")}]
-        rows = []
-        for r in out.get("rows", []):
-            rows.append({"from": r.get("from"), "subject": r.get("subject"),
-                         "body": (r.get("body") or "")[:400],
-                         "when": r.get("date") or r.get("at") or "",
-                         "provenance": r.get("provenance", "untrusted"),
-                         "_flagged": bool(r.get("instruction_like"))})
-        return [{"window": out.get("window", "")}] + rows if rows else \
-               [{"window": out.get("window", ""), "nothing": "no rows in that window"}]
+        names = _sources_for(role)
+        if not names:
+            return [{"unreadable": f"nothing is wired for {role}",
+                     "fix": f"Add a {role} source first."}]
+        window, rows, bad = "", [], []
+        for name in names:
+            out = _src.peek(store, name, n)
+            if out.get("error"):
+                # A source that cannot be read says so, with the fix. The
+                # model is told this is a fact about the source, not a
+                # refusal — and one unreadable mailbox does not hide the
+                # other one's mail.
+                bad.append({"unreadable": f"{name}: {out['error']}",
+                            "fix": out.get("fix", "")})
+                continue
+            window = window or out.get("window", "")
+            for r in out.get("rows", []):
+                rows.append({"source": name,
+                             "from": r.get("from"), "subject": r.get("subject"),
+                             "body": (r.get("body") or "")[:400],
+                             "when": r.get("date") or r.get("at") or "",
+                             "provenance": r.get("provenance", "untrusted"),
+                             "_flagged": bool(r.get("instruction_like"))})
+        if not rows:
+            return bad + [{"window": window,
+                           "nothing": "no rows in that window"}]
+        return [{"window": window}] + bad + rows[:MAX_ROWS]
 
-
-    def _find(name: str, term: str, days: int = 0):
+    def _find(role: str, term: str, days: int = 0):
         """A search that goes back further than the panel does.
 
         With no term this lists the recent window, which is what "what is in
@@ -254,33 +266,60 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         """
         from core import sources as _src
         if not term:
-            return _peek(name, 60)[:MAX_ROWS + 1]
-        out = _src.find(store, workspace_scope, name, term,
-                        days=days or _src.FIND_DAYS, limit=MAX_ROWS)
-        if out.get("error"):
-            return [{"unreadable": out["error"], "fix": out.get("fix", "")}]
+            return _peek(role, 60)[:MAX_ROWS + 1]
+        names = _sources_for(role)
+        if not names:
+            return [{"unreadable": f"nothing is wired for {role}",
+                     "fix": f"Add a {role} source first."}]
+        searched, matches, rows, notes, bad = 0, 0, [], set(), []
+        window = ""
+        ignored: list = []
+        capped = False
+        for name in names:
+            out = _src.find(store, name, term,
+                            days=days or _src.FIND_DAYS, limit=MAX_ROWS)
+            if out.get("error"):
+                bad.append({"unreadable": f"{name}: {out['error']}",
+                            "fix": out.get("fix", "")})
+                continue
+            searched += out["searched"]
+            matches += out["found"]
+            window = window or out["window"]
+            ignored = ignored or out.get("ignored") or []
+            capped = capped or bool(out.get("capped"))
+            for r in out["rows"]:
+                rows.append({k: v for k, v in r.items()
+                             if k != "instruction_like"}
+                            | {"source": name,
+                               "_flagged": r["instruction_like"]})
         # What was searched goes in front of the rows, found or not. A model
         # handed a bare empty list says there is no such email; handed the
         # count and the window, it says where it looked — and that is the
         # sentence that gets somebody to say "try last spring".
-        head = {"searched": f"{out['searched']} row(s) in {out['window']}",
-                "matches": out["found"]}
-        if out.get("ignored"):
+        head = {"searched": f"{searched} row(s) in {window}",
+                "matches": matches}
+        if len(names) > 1:
+            head["across"] = ", ".join(names)
+        if ignored:
             # Said out loud, because a model told "2 matches" for a query it
             # thinks was four words will describe the two as if they answered
             # all four.
-            head["ignored"] = ("too common to search on: "
-                               + ", ".join(out["ignored"]))
-        if out.get("capped"):
+            head["ignored"] = "too common to search on: " + ", ".join(ignored)
+        if capped:
             head["note"] = ("stopped at the scan limit \u2014 there may be "
                             "older ones it did not reach")
-        rows = [{k: v for k, v in r.items() if k != "instruction_like"}
-                | {"_flagged": r["instruction_like"]} for r in out["rows"]]
         if not rows:
             head["nothing"] = (f"nothing mentioning {term!r} in what it "
                                f"searched \u2014 say a wider window or "
                                f"another word to try again")
-        return [head] + rows
+        # Strongest first, across every source, so two mailboxes do not mean
+        # the second one's best match sits under the first one's worst.
+        # find() grades each row strong/partial/weak against the best it
+        # found; sorting on a numeric key that is not there would leave the
+        # order exactly as it was and read as if it had done something.
+        rank = {"strong": 0, "partial": 1, "weak": 2}
+        rows.sort(key=lambda r: rank.get(r.get("match"), 3))
+        return [head] + bad + rows[:MAX_ROWS]
 
     def read_mail(term: str = "", days: int = 0, **_):
         return _find("mail", term, days)
@@ -300,10 +339,23 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
     def free_nights(**_):
         """Which nights nobody has booked. The question a cottage gets asked."""
         from core.connectors import wire
-        c = wire(store).get(workspace_scope, "calendar")
-        if c is None:
-            return [{"unreadable": "no calendar is wired to this workspace",
+        cals = wire(store).by_role("calendar")
+        if not cals:
+            return [{"unreadable": "no calendar is wired",
                      "fix": "Add one from Sources."}]
+        # Every diary, tagged with which. Two calendars in one space means a
+        # night is only free if both of them say so, and an answer that read
+        # one of them would be confidently half right.
+        out: list = []
+        try:
+            for name, c in cals:
+                out += [dict(g) | {"source": name} for g in _nights(c)]
+            return out[:MAX_ROWS] or [
+                {"unreadable": "no calendar here can answer this one"}]
+        except Exception as e:                                   # noqa: BLE001
+            return [{"unreadable": f"{type(e).__name__}: {e}"[:200]}]
+
+    def _nights(c):
         try:
             # gaps() first: it answers "which nights are unbooked", which is
             # the cottage's question and the one people actually ask.
@@ -317,7 +369,7 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
                 return [dict(w) for w in c.open_windows(days=14)][:MAX_ROWS]
         except Exception as e:                                   # noqa: BLE001
             return [{"unreadable": f"{type(e).__name__}: {e}"[:200]}]
-        return [{"unreadable": "that calendar cannot answer this one"}]
+        return []
 
     def this_mac(**_):
         """What is on this Mac that Blokk could read but is not reading.
@@ -331,8 +383,7 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         if not sur.get("mac"):
             return [{"note": sur.get("note", "not a Mac")}]
         wired = {r["kind"] for r in store.q(
-            "SELECT kind FROM credential WHERE workspace_id=?",
-            workspace_scope)} if workspace_scope else set()
+            "SELECT kind FROM credential")}
         return [{"what": s["what"], "kind": s["kind"],
                  "kind_local": s.get("kind_local"),
                  "state": s["state"], "detail": s["detail"],
@@ -346,16 +397,14 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         ReadTool("search_journal",  "find steps by name, e.g. 'send' or 'rates'", search_journal),
         ReadTool("trust_state",     "how close each category is to acting alone", trust_state),
         ReadTool("learned_facts",   "what it has learned from your corrections", learned_facts),
-        ReadTool("sources_state",   "what is wired up, and what each workspace may reach", sources_state),
+        ReadTool("sources_state",   "what is wired up, and what Blokk may reach", sources_state),
         ReadTool("schedule_state",  "when the night shift runs and how the last one went", schedule_state),
         ReadTool("this_mac",        "what is on this Mac that could be wired up but is not",
                  this_mac, source="yours"),
     ]
 
     # One tool per wired source, and none for a source that is not there.
-    wired = {r["kind"] for r in store.q(
-        "SELECT kind FROM credential WHERE workspace_id=?", workspace_scope)} \
-        if workspace_scope else set()
+    wired = {r["kind"] for r in store.q("SELECT kind FROM credential")}
     OVER = (
         # kind, tool, what it is, the reader, where the rows come from
         ("imap",     "read_mail",     "the mail. No term lists the recent ones; a term searches two years of it, or set days", read_mail, "outside"),
@@ -478,7 +527,7 @@ from it; do not guess one, and do not ask them what today is.
 
 
 def _unwired_block(tools: dict) -> str:
-    """The sources this workspace has not got, and how to get each one.
+    """The sources that are not wired, and how to get each one.
 
     Built from the same NEEDS table the deterministic planner uses, so the
     two surfaces cannot drift into telling somebody different things about
@@ -490,14 +539,14 @@ def _unwired_block(tools: dict) -> str:
     lines = "\n".join(f"  {n} — no {what} is connected. {how}"
                        for n, (what, how) in missing)
     return ("NOT WIRED YET\n"
-            "These are things Blokk can read and this workspace has not "
-            "connected. They are not missing capabilities — they are one "
+            "These are things Blokk can read and nobody has connected "
+            "yet. They are not missing capabilities — they are one "
             "approval away, and the line after each says how.\n"
             f"{lines}\n\n")
 
 
-def _system(tools: dict, store=None, ws: str = "") -> str:
-    """The prompt, with whatever this workspace has taught it.
+def _system(tools: dict, store=None) -> str:
+    """The prompt, with whatever it has been taught.
 
     The learned rules go in the prompt rather than being left in a table for
     the `learned_facts` tool to fetch. A rule the model has to decide to look
@@ -524,10 +573,10 @@ def _system(tools: dict, store=None, ws: str = "") -> str:
             f"({now.tzname() or 'local time'})\n"
             f"  Dates, so you never have to count:\n{days}")
     block = ""
-    if store is not None and ws:
+    if store is not None:
         from core.harness import learned_block
         try:
-            block = learned_block(store, ws)
+            block = learned_block(store)
         except Exception:                                        # noqa: BLE001
             block = ""                       # memory is not load-bearing here
     return SYSTEM.format(
@@ -536,7 +585,7 @@ def _system(tools: dict, store=None, ws: str = "") -> str:
         tools="\n".join(f"  {n} — {t.desc}" for n, t in sorted(tools.items())),
         # What is NOT wired, and the one line that wires it. Without this the
         # prompt lists what exists and says nothing about what could, so a
-        # model asked about the weather on a workspace with no weather source
+        # model asked about the weather with no weather source wired
         # answers from its own head — "I don't have access to weather
         # information" — which is true of the model and false of Blokk, and
         # hides the fact that it is one approval away. The no-weights planner
@@ -550,7 +599,7 @@ def _system(tools: dict, store=None, ws: str = "") -> str:
 
 
 # ────────────────────────────────────────────────────────────── the metering
-def _meter(store, ws: str, n: int = 1) -> tuple[bool, int]:
+def _meter(store, n: int = 1) -> tuple[bool, int]:
     """Chat draws on the same daily budget as the sweep.
 
     Called per model call and per tool call, not once per question. A loop
@@ -558,13 +607,12 @@ def _meter(store, ws: str, n: int = 1) -> tuple[bool, int]:
     it can walk under.
     """
     day = datetime.now(timezone.utc).date().isoformat()
-    store.x("INSERT OR IGNORE INTO budget(workspace_id,day) VALUES(?,?)", ws, day)
+    store.x("INSERT OR IGNORE INTO budget(day) VALUES(?)", day)
     row = store.one("SELECT tool_calls, max_tool_calls FROM budget "
-                    "WHERE workspace_id=? AND day=?", ws, day)
+                    "WHERE day=?", day)
     if row["tool_calls"] + n > row["max_tool_calls"]:
         return False, 0
-    store.x("UPDATE budget SET tool_calls=tool_calls+? "
-            "WHERE workspace_id=? AND day=?", n, ws, day)
+    store.x("UPDATE budget SET tool_calls=tool_calls+? WHERE day=?", n, day)
     return True, row["max_tool_calls"] - row["tool_calls"] - n
 
 
@@ -578,13 +626,13 @@ def history(store, thread: str, limit: int = 60) -> list[dict]:
     return [dict(r) for r in reversed(rows)]
 
 
-def remember(store, thread: str, ws: str, role: str, content: str,
+def remember(store, thread: str, role: str, content: str,
              tool_name: str | None = None, approval_id: str | None = None,
              flagged: bool = False, kind: str = "text") -> str:
     mid = f"m_{secrets.token_hex(6)}"
-    store.x("INSERT INTO message(id,thread_id,workspace_id,role,content,"
-            "tool_name,approval_id,flagged,kind) VALUES(?,?,?,?,?,?,?,?,?)",
-            mid, thread, ws, role, content, tool_name, approval_id,
+    store.x("INSERT INTO message(id,thread_id,role,content,"
+            "tool_name,approval_id,flagged,kind) VALUES(?,?,?,?,?,?,?,?)",
+            mid, thread, role, content, tool_name, approval_id,
             1 if flagged else 0, kind)
     return mid
 
@@ -608,118 +656,48 @@ def _for_model(rows: list[dict]) -> list[dict]:
 
 
 # ────────────────────────────────────────────────────────────────── the loop
-def scope_for(store, workspace: str | None) -> str:
-    """Which workspace this turn is about, and it has to be one that exists.
-
-    This defaulted to the string "cottages", which is a workspace in the
-    sample world and nowhere else. Drop the sample world — which the whole of
-    CONNECTING.md is about doing — and every chat turn wrote a budget row
-    against a workspace id with nothing behind it. `budget.workspace_id`
-    references `workspace(id)` and foreign keys are on, so the insert raised
-    from three frames inside the metering, the generator died mid-stream, and
-    the panel showed a turn that ended part way through.
-
-    A default that names a specific row is a default that stops being true.
-    """
-    if workspace and store.one("SELECT 1 FROM workspace WHERE id=?", workspace):
-        return workspace
-    # With one workspace this is that one. With four it was whichever sorted
-    # first, which is a coin toss dressed up as a decision — "biz2", because
-    # b comes before c. The one with something waiting on you is the one you
-    # opened the chat about; failing that, the one that ran most recently.
-    from core import sources as _src
-    rows = store.q(
-        "SELECT w.id, COUNT(DISTINCT a.id) AS waiting, "
-        "       COUNT(DISTINCT c.id) AS wired, MAX(r.started_at) AS last_run "
-        "FROM workspace w "
-        "LEFT JOIN approval a ON a.workspace_id=w.id AND a.decision IS NULL "
-        "LEFT JOIN credential c ON c.workspace_id=w.id "
-        "LEFT JOIN run r ON r.workspace_id=w.id "
-        "WHERE w.active=1 GROUP BY w.id")
-    if not rows:
-        return ""
-    # Real before sample. Somebody who has just wired their own mail should
-    # not have the chat open on an invented business — and the sample world's
-    # names sort early, so alphabetical put "biz2" in front of the workspace
-    # they made thirty seconds ago.
-    def rank(r):
-        return (
-            r["id"] in _src.SAMPLE,                 # real before sample
-            -r["waiting"],                          # most waiting on you
-            -r["wired"],                            # most actually connected
-            _newest_first(r["last_run"]),           # most recently swept
-            r["id"],                                # and then a stable tie
-        )
-    return sorted(rows, key=rank)[0]["id"]
-
-
-def _newest_first(ts: str | None) -> str:
-    """A timestamp that sorts newest-first inside an ascending key.
-
-    A workspace that has never run sorts last rather than first: never having
-    swept is not a claim to be the one you meant.
-    """
-    if not ts:
-        # Above anything the flip below can produce, which is the point:
-        # U+FFFF is *below* it, so the first version of this sentinel put
-        # never-swept workspaces first — the exact opposite of the rule.
-        return "\U0010FFFF"
-    return "".join(chr(0x10FFFE - ord(c)) for c in ts)
+DEFAULT_THREAD = "t_main"
 
 
 THREAD_ID = re.compile(r"^t_[A-Za-z0-9_-]{1,64}$")
 
 
-def _thread_id(thread: str | None, ws: str) -> str:
+def _thread_id(thread: str | None) -> str:
     """The thread to write into, and it has to be one this can name.
 
     The id arrives from the browser, which is how "new conversation" makes a
     new one. It is a value in a parameterised query so it cannot do anything
     clever, but an unbounded string from a client still becomes a primary key
     and a filename-shaped thing in a log, and there is no reason to accept
-    one. Anything unrecognised falls back to this workspace's own thread.
+    one. Anything unrecognised falls back to the standing thread.
     """
     t = (thread or "").strip()
-    return t if THREAD_ID.match(t) else f"t_{ws}"
+    return t if THREAD_ID.match(t) else DEFAULT_THREAD
 
 
-def ask(store, question: str, model, workspace: str | None = None,
+def ask(store, question: str, model,
         thread: str | None = None) -> Iterator[dict]:
     """Yields AG-UI shaped events. Reads, converses, proposes. Never writes."""
-    ws = scope_for(store, workspace)
-    if not ws:
-        # Nothing to be scoped to, and nothing to meter against. Said plainly
-        # here rather than left to fail on the first write.
-        yield from _only_say(
-            "There are no workspaces yet, so there is nothing for me to look "
-            "at. Add one from Sources, or run: "
-            "python3 connect.py workspace add <id> \"<name>\"", "nothing yet")
-        return
-    thread = _thread_id(thread, ws)
-    okay, left = _meter(store, ws)
+    thread = _thread_id(thread)
+    okay, left = _meter(store)
     if not okay:
         yield from _only_say(
             "That is today's chat allowance used up. It resets at midnight, or "
             "raise max_tool_calls in the budget table. Nothing is broken — this "
-            "is the ceiling doing its job.", ws)
+            "is the ceiling doing its job.")
         return
 
-    yield {"type": "RUN_STARTED", "scope": ws, "workspace": ws,
-           "thread": thread, "budget_left": left}
+    yield {"type": "RUN_STARTED", "thread": thread, "budget_left": left}
 
-    # The resolved one, not the argument. build_tools scopes its SQL and
-    # decides which sources exist by it, so handing it the unresolved value
-    # would offer a mail tool for a workspace nobody is looking at.
-    tools = build_tools(store, ws)
+    tools = build_tools(store)
     past = history(store, thread)
-    remember(store, thread, ws, "user", question)
+    remember(store, thread, "user", question)
 
-    messages = [{"role": "system", "content": _system(tools, store, ws)}]
+    messages = [{"role": "system", "content": _system(tools, store)}]
     messages += _for_model(past)
     messages.append({"role": "user", "content": question})
 
     schema = step_schema(tools)
-    known = [r["id"] for r in store.q("SELECT id FROM workspace")]
     answered = False
     gathered: list[tuple[str, list]] = []
     flagged = False
@@ -736,7 +714,7 @@ def ask(store, question: str, model, workspace: str | None = None,
                          "have read, with do=reply."})})
         move, why, live = None, "", False
         for item in _steps(model, messages, schema, question, gathered,
-                           tools, known, ws):
+                           tools):
             if item[0] == "text":
                 # The answer, arriving. Opened here rather than below because
                 # by the time the step parses it is already on the screen.
@@ -749,7 +727,7 @@ def ask(store, question: str, model, workspace: str | None = None,
         if live:
             yield {"type": "TEXT_MESSAGE_END"}
             said = move.get("already_said") or ""
-            remember(store, thread, ws, "assistant", said, flagged=flagged)
+            remember(store, thread, "assistant", said, flagged=flagged)
             answered = True
             if why:
                 yield {"type": "DEGRADED", "detail": why}
@@ -780,7 +758,7 @@ def ask(store, question: str, model, workspace: str | None = None,
                     else "I could not find a way to look that up."}
 
         if move["do"] == "read" and move.get("read") in tools:
-            okay, left = _meter(store, ws)
+            okay, left = _meter(store)
             if not okay:
                 move = {"do": "reply", "say": "I have used up today's allowance "
                         "part way through looking that up. It resets at midnight."}
@@ -835,7 +813,7 @@ def ask(store, question: str, model, workspace: str | None = None,
                 # first version had it re-find the row with an ORDER BY —
                 # which is a guess that happens to be right, until two people
                 # type into the same thread at once.
-                mid = remember(store, thread, ws, "assistant", said)
+                mid = remember(store, thread, "assistant", said)
                 yield {"type": "PROPOSAL", "text": text, "action": proposal,
                        "pinned": proposal["pinned"], "message_id": mid,
                        "thread": thread,
@@ -860,14 +838,14 @@ def ask(store, question: str, model, workspace: str | None = None,
             # Two rows, because they are two things. Glued together they
             # came back after a reload as one paragraph of prose with no
             # Copy on it — the draft had stopped being a draft.
-            remember(store, thread, ws, "assistant", said, flagged=flagged)
-            remember(store, thread, ws, "assistant", text, kind="draft")
+            remember(store, thread, "assistant", said, flagged=flagged)
+            remember(store, thread, "assistant", text, kind="draft")
             answered = True
             break
 
         answer = move.get("say") or "I did not find anything to say about that."
         yield from _say(answer)
-        remember(store, thread, ws, "assistant", answer, flagged=flagged)
+        remember(store, thread, "assistant", answer, flagged=flagged)
         answered = True
         break
 
@@ -882,7 +860,7 @@ def ask(store, question: str, model, workspace: str | None = None,
                   "for a specific thing — the queue, last night's runs, what "
                   "is wired up.")
         yield from _say(answer)
-        remember(store, thread, ws, "assistant", answer, flagged=flagged)
+        remember(store, thread, "assistant", answer, flagged=flagged)
 
     if gathered:
         yield {"type": "SOURCES",
@@ -954,8 +932,7 @@ def _looks_like_a_draft(buf: str) -> bool:
     return bool(re.search(r'"do"\s*:\s*"draft"', buf))
 
 
-def _steps(model, messages, schema, question, gathered, tools, known,
-           ws=""):
+def _steps(model, messages, schema, question, gathered, tools):
     """One step, as it happens.
 
     Yields ("text", delta) while a reply is being written, then exactly one
@@ -964,11 +941,11 @@ def _steps(model, messages, schema, question, gathered, tools, known,
     not branch on which.
     """
     if model is None or not getattr(model, "plans", False):
-        yield ("move", _plan(question, gathered, tools, known, ws), "")
+        yield ("move", _plan(question, gathered, tools), "")
         return
     if not hasattr(model, "stream"):
         move, why = _decide(model, messages, schema, question, gathered,
-                            tools, known, ws)
+                            tools)
         yield ("move", move, why)
         return
     buf, shown, streamed = "", 0, False
@@ -994,7 +971,7 @@ def _steps(model, messages, schema, question, gathered, tools, known,
             yield ("move", {"do": "reply", "say": ""},
                    f"The answer stopped part way through: {_why(e)}")
             return
-        yield ("move", _plan(question, gathered, tools, known, ws), _why(e))
+        yield ("move", _plan(question, gathered, tools), _why(e))
         return
     move = _parse(buf)
     if move is None:
@@ -1007,7 +984,7 @@ def _steps(model, messages, schema, question, gathered, tools, known,
                    "That answer stopped part way through — the model's reply "
                    "ended before it was finished.")
             return
-        yield ("move", _plan(question, gathered, tools, known, ws),
+        yield ("move", _plan(question, gathered, tools),
                "The model did not answer in the shape this asks for, so this "
                "reply was assembled from the rows rather than written.")
         return
@@ -1019,7 +996,7 @@ def _steps(model, messages, schema, question, gathered, tools, known,
 
 
 def _decide(model, messages, schema, question, gathered, tools,
-            known, ws="") -> tuple[dict, str]:
+) -> tuple[dict, str]:
     """One step from the model, or one step from arithmetic.
 
     Returns the move and, if the model could not produce one, a sentence
@@ -1032,7 +1009,7 @@ def _decide(model, messages, schema, question, gathered, tools,
         # No weights on this Mac, or the stub. Not a fault and not reported as
         # one: this is the configuration working, and the planner plays the
         # same three moves through the same gates.
-        return _plan(question, gathered, tools, known, ws), ""
+        return _plan(question, gathered, tools), ""
     try:
         out = model.chat(messages, schema=schema)
     except TypeError:
@@ -1040,13 +1017,13 @@ def _decide(model, messages, schema, question, gathered, tools,
         try:
             out = model.chat(messages)
         except Exception as e:                                  # noqa: BLE001
-            return _plan(question, gathered, tools, known, ws), _why(e)
+            return _plan(question, gathered, tools), _why(e)
     except Exception as e:                                      # noqa: BLE001
-        return _plan(question, gathered, tools, known, ws), _why(e)
+        return _plan(question, gathered, tools), _why(e)
 
     move = _parse(out.get("text") if isinstance(out, dict) else out)
     if move is None:
-        return (_plan(question, gathered, tools, known, ws),
+        return (_plan(question, gathered, tools),
                 "The model did not answer in the shape this asks for, so this "
                 "reply was assembled from the rows rather than written.")
     return move, ""
@@ -1139,15 +1116,15 @@ def _stream(text: str, size: int = 3):
 # pretending: every number in a reply from here was counted, not generated.
 SMALL_TALK = (
     (r"^\s*(hi|hey|hello|yo|hiya|morning|good (morning|afternoon|evening))\b",
-     "Hello. I look after {ws} — I can tell you what is waiting on you, how "
-     "last night's sweep went, or what I have handled on my own. Ask me to "
-     "change something and I will put it in front of you first."),
+     "Hello. I can tell you what is waiting on you, how last night's sweep "
+     "went, or what I have handled on my own. Ask me to change something "
+     "and I will put it in front of you first."),
     (r"\b(thanks|thank you|cheers|ta)\b", "Any time."),
     (r"\b(bye|goodnight|good night|see you|later)\b",
      "Goodnight. The sweep runs on its own; anything it is unsure about will "
      "be waiting here."),
     (r"\b(who are you|what are you)\b",
-     "I am Blokk. I run on this Mac, I read {ws}'s mail and calendar, and I "
+     "I am Blokk. I run on this Mac, I read your mail and calendar, and I "
      "do the parts of the morning that are the same every day. I never send "
      "anything or change anything without you tapping approve first."),
     (r"\b(what can you do|help|how do you work|what do you do)\b",
@@ -1276,13 +1253,11 @@ INTENT = (
                      r"\b(reschedule|move the (sweep|night ?shift))\b"),
     ("egress_allow", r"\b(let|allow|permit)\b.*\breach\w*\b|\ballow\b.*\bhost\b"),
     ("egress_deny", r"\b(stop|block|deny|revoke|close)\b.*\b(reach\w*|host|access)\b"),
-    ("add_workspace", r"\b(add|create|new)\b.*\bworkspace\b"),
     ("remove_source", r"\b(remove|delete|drop|unhook)\b.*\bsource\b"),
     ("remember",    r"^\s*(?:please\s+)?(?:remember|note|keep in mind|"
                     r"bear in mind|don'?t forget)\b"),
     ("forget",      r"^\s*(?:please\s+)?(?:forget|stop (?:saying|doing|"
                     r"applying)|unlearn)\b"),
-    ("remove_workspace", r"\b(delete|remove|drop|get rid of)\b.*\bworkspace\b"),
     ("hold_dates",  r"\b(hold|book|pencil|block|reserve|put)\b.*"
                     r"\b(in|on|into)?\s*(the\s+)?(diary|calendar|dates?|"
                     r"nights?|booking)\b|"
@@ -1356,22 +1331,16 @@ def looks_like_an_instruction(q: str) -> bool:
         bool(ACTIONY.search(q)) or any(re.search(p, q, re.I) for _, p in INTENT))
 
 
-def _plan(question: str, gathered: list, tools: dict,
-          known: list[str], ws: str = "") -> dict:
+def _plan(question: str, gathered: list, tools: dict) -> dict:
     q = question.strip()
     ql = q.lower()
-    # What the greetings call the place, which is not the workspace id — and
-    # was assigned to `ws`, quietly overwriting the workspace this turn is
-    # scoped to. Everything downstream then tried to propose against a
-    # workspace called "these businesses".
-    them = "these businesses"
 
     if not gathered:
         for pattern, reply in SMALL_TALK:
             if re.search(pattern, ql, re.I):
-                return {"do": "reply", "say": reply.format(ws=them)}
+                return {"do": "reply", "say": reply}
 
-        guess = _guess(q, known, ws)
+        guess = _guess(q)
         if guess and "missing" in guess:
             # Understood the verb, could not find the noun. Saying so beats
             # both of the alternatives: proposing with a guessed argument
@@ -1384,7 +1353,7 @@ def _plan(question: str, gathered: list, tools: dict,
                     f"I can do that: {sketch}"
                     + ("" if sketch.endswith("\u2026") else ".")
                     + f" I need the {guess['missing']} first — "
-                    + _hint(guess["missing"], known, guess["action"])}
+                    + _hint(guess["missing"], guess["action"])}
         if guess:
             return {"do": "propose", "say": "I can put this in front of you.",
                     **guess}
@@ -1422,9 +1391,9 @@ def _plan(question: str, gathered: list, tools: dict,
     if missing and not gathered:
         what, how = NEEDS[missing[0]]
         return {"do": "reply", "say":
-                f"No {what} is wired to this workspace yet, so I have nothing "
-                f"to read. {how} Ask me what is on this Mac and I will tell "
-                f"you what is here already."}
+                f"No {what} is wired yet, so I have nothing to read. {how} "
+                f"Ask me what is on this Mac and I will tell you what is "
+                f"here already."}
     if not gathered:
         return {"do": "reply", "say":
                 "I am not sure what you are after. I can tell you what is "
@@ -1434,7 +1403,7 @@ def _plan(question: str, gathered: list, tools: dict,
     return {"do": "reply", "say": _summarise(gathered)}
 
 
-def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
+def _guess(q: str) -> dict | None:
     """A sentence to an action and its arguments.
 
     Three answers, not two. A proposal when every argument is in the
@@ -1450,11 +1419,11 @@ def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
         act = actions.ACTIONS[name]
         args: dict = {}
         misses: list[str] = []
-        # Everything findable first, then report what is missing. Reporting on
-        # the first failure meant "add a weather source for Bath" came back as
-        # "add a … source to …" — the kind was right there in the sentence and
-        # the reply had thrown it away because the workspace was checked
-        # first. What it can see, it says.
+        # Everything findable first, then report what is missing. Reporting
+        # on the first failure meant "add a weather source for Bath" came
+        # back as "add a … source …" — the kind was right there in the
+        # sentence and the reply had thrown it away because something else
+        # was checked first. What it can see, it says.
         if "at" in act.args:
             m = TIME.search(q)
             if m:
@@ -1468,17 +1437,6 @@ def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
                 args["host"] = m.group(1).lower()
             else:
                 misses.append("host")
-        if "workspace" in act.args:
-            w = _workspace_in(q, known, new_ok=(name == "add_workspace"))
-            if not w and name in ("remember", "forget"):
-                # Whichever one they are looking at. Asking "which workspace?"
-                # after somebody types "remember the gate code" is asking them
-                # to repeat what the header already says.
-                w = scope
-            if w:
-                args["workspace"] = w
-            else:
-                misses.append("workspace")
         if "kind" in act.args:
             k = _kind_in(q)
             if k:
@@ -1493,8 +1451,8 @@ def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
                           r"stop (?:saying|doing|applying))\b"
                           r"(?:\s+(?:that|to|about))?[:,]?\s*", "", q,
                           flags=re.I).strip().rstrip(".")
-            # A workspace named in the framing is scope, not content — but
-            # only strip it from the front, where "for cottages, ..." sits.
+            # A name in the framing — "for the cottage, ..." — is who it is
+            # about, not part of the rule. Stripped only from the front.
             note = re.sub(r"^(?:for|in)\s+\S+[,:]\s*", "", note).strip()
             if len(note) < 4:
                 misses.append("thing to remember")
@@ -1509,11 +1467,6 @@ def _guess(q: str, known: list[str], scope: str = "") -> dict | None:
         if "title" in act.args:
             m = FOR_WHO.search(q)
             who = (m.group(1).strip() if m else "")
-            # "for cottages" is the workspace, not the guest. Naming the
-            # business as the booking is how a hold ends up called Cottages.
-            if who and who.lower().lstrip("the ").strip() in [
-                    k.lower() for k in known]:
-                who = ""
             if who:
                 args["title"] = who
             else:
@@ -1603,17 +1556,10 @@ def _ref_word(kind: str) -> str:
     return "keychain entry name"
 
 
-def _hint(missing: str, known: list[str], action: str = "") -> str:
-    if missing == "workspace" and action == "add_workspace":
-        # The id is the thing being made, so listing the ones that exist
-        # would be answering a different question.
-        return "say what to call it, in lowercase letters, digits, - and _."
+def _hint(missing: str, action: str = "") -> str:
     return {
         "time": "say it like 04:00, or 6am.",
         "host": "name it, like api.example.com.",
-        "workspace": (", ".join(known[:-1]) + " or " + known[-1] + "?"
-                      if len(known) > 1 else (known[0] + "?" if known
-                                              else "there are none yet.")),
         "kind": "mail, calendar, messages, weather or a page?",
         "place": "a town, or a latitude and longitude.",
         "page address": "the https address of the page.",
@@ -1628,28 +1574,6 @@ def _hint(missing: str, known: list[str], action: str = "") -> str:
 def _ampm(hour: str, half: str) -> str:
     h = int(hour) % 12 + (12 if half.lower() == "pm" else 0)
     return f"{h:02d}:00"
-
-
-NEW_WS = re.compile(r"\b(?:called|named|id)\s+[\'\"]?([a-z][a-z0-9_-]{1,30})", re.I)
-
-
-def _workspace_in(q: str, known: list[str], new_ok: bool = False) -> str:
-    """Which workspace this sentence is about.
-
-    `known` comes from the workspace table rather than a list in this file:
-    the four sample ones were hardcoded here, so a proposal about a real
-    workspace someone had actually made never found its name and quietly
-    became a lookup instead. new_ok is for add_workspace, where the whole
-    point is that the id is not one of the known ones yet.
-    """
-    for w in sorted(known, key=len, reverse=True):
-        if re.search(rf"\b{re.escape(w)}\b", q, re.I):
-            return w
-    if new_ok:
-        m = NEW_WS.search(q)
-        if m:
-            return m.group(1).lower()
-    return ""
 
 
 # Function words, not content words. Nothing clever: a name or a noun is what
@@ -1804,11 +1728,8 @@ def _summarise(gathered: list) -> str:
             if not rows:
                 parts.append("nothing is wired up yet.")
             else:
-                by = {}
-                for r in rows:
-                    by.setdefault(r["workspace_id"], []).append(r["kind"])
-                parts.append("wired up: " + "; ".join(
-                    f"{w} — {', '.join(k)}" for w, k in by.items()) + ".")
+                parts.append("wired up: " + ", ".join(
+                    f"{r['name']} ({r['kind']})" for r in rows) + ".")
         elif tool in ("read_mail", "read_calendar", "read_messages",
                       "read_page"):
             # Subjects and senders, never the body. With no weights there is

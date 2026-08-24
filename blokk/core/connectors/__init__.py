@@ -26,7 +26,8 @@ Order of adoption matters more than which one you start with:
     2. read the logs. Look at what it actually pulled and how much
     3. only then let a category start proposing
 
-Registered connectors are resolved per workspace, so Cottages cannot reach
+A connector is reachable only if it is in the registry, which is built
+from the credential table — so a workflow cannot reach
 Business two's mailbox even if something asks it to — the credential simply
 is not in scope.
 """
@@ -207,25 +208,60 @@ def free_windows(busy, days: int, day_start: int, day_end: int,
 
 @dataclass
 class Registry:
-    """Which connectors a workspace may use. Scope is data, not prompt."""
+    """Every source wired on this Mac, by the name you gave it.
 
-    _by_ws: dict[str, dict[str, Any]] = field(default_factory=dict)
+    It used to be keyed by workspace and then by role, which made the role
+    the name: one `mail`, one `calendar`, per business. In one space that
+    would mean one mailbox full stop, and wiring a second would silently
+    replace the first — so the key is the source's own name and the role is
+    a property of it. Two mailboxes are two sources; `by_role("mail")`
+    returns both and the sweep reads both.
 
-    def add(self, workspace_id: str, name: str, conn: Any) -> None:
-        self._by_ws.setdefault(workspace_id, {})[name] = conn
+    Scope is still data, not prompt: what an agent may read is what this
+    holds, and it is built from the credential table by wire().
+    """
 
-    def get(self, workspace_id: str, name: str) -> Any | None:
-        return self._by_ws.get(workspace_id, {}).get(name)
+    _by_name: dict[str, Any] = field(default_factory=dict)
+    _role: dict[str, str] = field(default_factory=dict)
 
-    def for_workspace(self, workspace_id: str) -> dict[str, Any]:
-        return dict(self._by_ws.get(workspace_id, {}))
+    def add(self, name: str, role: str, conn: Any) -> None:
+        self._by_name[name] = conn
+        self._role[name] = role
+
+    def get(self, name: str) -> Any | None:
+        return self._by_name.get(name)
+
+    def role_of(self, name: str) -> str:
+        return self._role.get(name, "")
+
+    def by_role(self, role: str) -> list[tuple[str, Any]]:
+        """Every source that does this job, in the order they were wired."""
+        return [(n, c) for n, c in self._by_name.items()
+                if self._role.get(n) == role]
+
+    def first(self, role: str) -> Any | None:
+        """The one that answers for a role where only one can. Weather is a
+        place, holds is a folder: several would be a question, not a
+        feature. Mail and calendar use by_role instead."""
+        got = self.by_role(role)
+        return got[0][1] if got else None
+
+    def all(self) -> dict[str, Any]:
+        return dict(self._by_name)
 
     def describe(self) -> list[dict]:
         return [
-            {"workspace": ws, "name": n, "kind": c.kind,
+            {"name": n, "role": self._role.get(n, ""), "kind": c.kind,
              "writes": getattr(c, "writes", False)}
-            for ws, m in self._by_ws.items() for n, c in m.items()
+            for n, c in self._by_name.items()
         ]
+
+    def clear(self) -> None:
+        """wire() is called on every request that needs sources, and the
+        registry is module state. Without this a source you removed stayed
+        wired until the process restarted."""
+        self._by_name.clear()
+        self._role.clear()
 
 
 REGISTRY = Registry()
@@ -241,34 +277,45 @@ def _root(ref: str):
     return None if ref.lower() in ("", "local", "default") else ref
 
 
+# What each kind of credential does, so a source's role does not have to be
+# guessed from its name. Two mailboxes both do "mail"; what tells them apart
+# is what you called them.
+ROLE = {"imap": "mail", "maildir": "mail", "messages": "messages",
+        "caldav": "calendar", "ical": "calendar", "smtp": "send",
+        "ics_out": "holds", "web": "web", "weather": "weather"}
+
+
 def wire(store) -> Registry:
     """Build the registry from the credential table.
 
-    Anything without a credential row falls back to the fake world, so a
+    Anything without a credential row falls back to the sample world, so a
     half-configured install still runs end to end instead of erroring at
     04:00 with nobody watching.
     """
     from core.connectors.fake import WORLD as FAKE
 
-    for row in store.q("SELECT * FROM credential"):
-        ws, kind, ref = row["workspace_id"], row["kind"], row["keychain_ref"]
+    REGISTRY.clear()
+    for row in store.q("SELECT * FROM credential ORDER BY id"):
+        kind, ref = row["kind"], row["keychain_ref"]
+        keys = row.keys()
+        name = (row["name"] if "name" in keys else "") or kind
         # Which calendars, or which mailboxes. Absent on a row written before
         # the column existed, which means all of them — the same thing every
         # wiring meant then.
         try:
-            only = json.loads(row["only"] or "[]") if "only" in row.keys() else []
+            only = json.loads(row["only"] or "[]") if "only" in keys else []
         except (ValueError, TypeError):
             only = []
+        role = ROLE.get(kind, kind)
         try:
             if kind == "imap":
                 from core.connectors.imap_mail import IcloudMail
-                REGISTRY.add(ws, "mail", IcloudMail(ref))
+                REGISTRY.add(name, role, IcloudMail(ref))
             elif kind == "caldav":
-                # The store and the workspace, so its requests can go
-                # through core/egress.py like everything else that leaves.
+                # The store, so its requests can go through core/egress.py
+                # like everything else that leaves.
                 from core.connectors.caldav_cal import IcloudCalendar
-                REGISTRY.add(ws, "calendar",
-                             IcloudCalendar(ref, store=store, workspace_id=ws))
+                REGISTRY.add(name, role, IcloudCalendar(ref, store=store))
             elif kind == "maildir":
                 # ref is "local" for the Mac's own archive, or a folder. Both
                 # connectors have taken a root since they were written and
@@ -277,58 +324,48 @@ def wire(store) -> Registry:
                 # not be wired at all — the source added fine and then read
                 # somewhere else.
                 from core.connectors.emlx_mail import LocalMail
-                REGISTRY.add(ws, "mail",
-                             LocalMail(root=_root(ref), only=only))
+                REGISTRY.add(name, role, LocalMail(root=_root(ref), only=only))
             elif kind == "ical":
                 from core.connectors.ical import LocalCalendar
-                REGISTRY.add(ws, "calendar",
+                REGISTRY.add(name, role,
                              LocalCalendar(root=_root(ref), only=only))
             elif kind == "smtp":
                 # The only connector that reaches another person. Handed the
-                # store and the workspace because its daily cap is counted
-                # from that workspace's own approvals — a rate limit that is
-                # global is a rate limit one busy business spends for four.
+                # store because its daily cap is counted from what has
+                # actually been sent.
                 from core.connectors.smtp_mail import Smtp
-                REGISTRY.add(ws, "send",
-                             Smtp(ref, store=store, workspace_id=ws))
+                REGISTRY.add(name, role, Smtp(ref, store=store))
             elif kind == "ics_out":
                 # The one writer. Registered like any other connector, and
                 # reached only from an approved action — nothing in a sweep
                 # or a chat turn calls it directly.
                 from core.connectors.ics_out import IcsDrop
-                REGISTRY.add(ws, "holds", IcsDrop(ref))
+                REGISTRY.add(name, role, IcsDrop(ref))
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
-                REGISTRY.add(ws, "messages", AppleMessages())
+                REGISTRY.add(name, role, AppleMessages())
             elif kind == "web":
-                # Handed the store and the workspace for the same reason as
-                # weather: those two are what core/egress.py needs to answer
-                # "may this workspace talk to that host".
+                # Handed the store for the same reason as weather: it is
+                # what core/egress.py needs to answer "is that host on the
+                # list".
                 from core.connectors.web import Web
-                REGISTRY.add(ws, "web", Web(ref, store=store, workspace_id=ws))
+                REGISTRY.add(name, role, Web(ref, store=store))
             elif kind == "weather":
-                # The only connector that reaches off the machine, so it is
-                # the only one handed the store and the workspace: both are
-                # what core/egress.py needs to answer "may this workspace
-                # talk to that host".
                 from core.connectors.weather import Weather
-                REGISTRY.add(ws, "weather",
-                             Weather(ref, store=store, workspace_id=ws))
+                REGISTRY.add(name, role, Weather(ref, store=store))
         except Exception as e:                                   # noqa: BLE001
             # A broken connector must not take the sweep with it. Log and
-            # fall through to the fake, so the other four still run.
-            print(f"[blokk] {ws}/{kind} unavailable: {e}")
+            # fall through, so everything else still runs.
+            print(f"[blokk] source {name} ({kind}) unavailable: {e}")
 
-    # The sample world fills gaps, but only for the sample workspaces, and
-    # only while they still exist. Registering it unconditionally meant that
-    # deleting "cottages" and later creating a real workspace with that name
-    # handed it invented guests for anything not yet wired — fake data
-    # appearing inside real data, which is the one place it must never be.
-    live = {w["id"] for w in store.q("SELECT id FROM workspace WHERE active=1")}
-    for ws, world in FAKE.items():
-        if ws not in live:
+    # The sample world fills what is not wired, so a fresh install runs end
+    # to end and you can see what the thing does before handing it your
+    # mail. It never covers a role you have actually wired: invented guests
+    # appearing inside real ones is the one place fake data must not be.
+    for name, obj in FAKE.items():
+        if obj is None:
             continue
-        for name, obj in world.items():
-            if obj is not None and REGISTRY.get(ws, name) is None:
-                REGISTRY.add(ws, name, obj)
+        role = ROLE.get(name, name)
+        if not REGISTRY.by_role(role):
+            REGISTRY.add(name, role, obj)
     return REGISTRY
