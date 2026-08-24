@@ -121,17 +121,58 @@ def _is_mail(p: Path) -> bool:
     return p.parent.name in MAILDIR_BOX
 
 
+def catalogue(root: Path) -> list[dict]:
+    """Every mailbox under here, by name, with how much is in it.
+
+    So somebody can tick "Cottage enquiries" instead of pointing a business
+    at their entire mail archive — which is what wiring a maildir has always
+    meant, and is a lot of somebody's private life to hand a queue.
+
+    Capped: a long-lived archive has tens of thousands of files and this runs
+    while a person waits for a list to appear.
+    """
+    counts: dict[str, int] = {}
+    newest: dict[str, float] = {}
+    seen = 0
+    try:
+        for p in Path(root).rglob("*"):
+            if not _is_mail(p):
+                continue
+            box = _mailbox(p)
+            counts[box] = counts.get(box, 0) + 1
+            try:
+                newest[box] = max(newest.get(box, 0), p.stat().st_mtime)
+            except OSError:
+                pass
+            seen += 1
+            if seen >= SCAN_CAP:
+                break
+    except OSError:
+        pass
+    from datetime import datetime as _dt
+    return [{"name": box, "messages": n,
+             "detail": f"{n} message{'' if n == 1 else 's'}"
+                       + (f", newest {_dt.fromtimestamp(newest[box]):%-d %b %Y}"
+                          if box in newest else "")}
+            for box, n in sorted(counts.items(), key=lambda kv: -kv[1])]
+
+
 class LocalMail:
     """Reads a mail archive on disk: Apple Mail's, or any maildir.
+
+    `only` narrows it to mailboxes by name. Empty means all of them, which is
+    what every existing wiring means and so stays the default.
 
     Cannot send — there is no method that could."""
 
     writes = False
 
-    def __init__(self, keychain_ref: str = "", root: Path | None = None):
+    def __init__(self, keychain_ref: str = "", root: Path | None = None,
+                 only: list[str] | None = None):
         # Accepted and ignored: the registry hands every connector a
         # credential, and this is one of the two that does not need one.
         self.root = Path(root) if root else ROOT
+        self.only = [str(o) for o in (only or []) if str(o).strip()]
 
     def _files(self) -> list[Path]:
         """Every .emlx, newest first.
@@ -150,6 +191,11 @@ class LocalMail:
         try:
             for p in self.root.rglob("*"):
                 if not _is_mail(p):
+                    continue
+                # Narrowed here, in the one walk every read shares, so
+                # check(), search_since() and peek() cannot disagree about
+                # which mailboxes are in scope.
+                if self.only and _mailbox(p) not in self.only:
                     continue
                 try:
                     found.append((p.stat().st_mtime, p))

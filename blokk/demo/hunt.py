@@ -1,5 +1,5 @@
 """Adversarial pass. Tries to break it rather than confirm it works."""
-import json, os, pathlib, subprocess, sys, tempfile, threading, time, urllib.request, urllib.error, sqlite3, socket
+import json, os, pathlib, subprocess, sys, tempfile, threading, time, urllib.request, urllib.error, urllib.parse, sqlite3, socket
 p=subprocess.Popen([sys.executable,'-m','api.server','8099'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(1.5)
 B='http://localhost:8099'
@@ -3509,6 +3509,113 @@ try:
                        "cannot do")
     probe("A81 it refuses to draft, which is most of what it is for",
           it_can_write_things)
+
+    def choose_what_it_reads():
+        # Wiring a calendar took everything under ~/Library/Calendars — the
+        # dentist along with the bookings — and wiring a mailbox took the
+        # whole archive. Both readers have always discovered the names and
+        # nothing ever offered them as a choice.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        import core.connectors as _C
+        from core.connectors.ical import LocalCalendar, catalogue as calcat
+        from core.connectors.emlx_mail import LocalMail, catalogue as mailcat
+
+        tmp = pathlib.Path(_tf.mkdtemp())
+        cal, md = tmp / "cal", tmp / "md"
+        for name, n in (("Bookings", 2), ("Dentist", 1)):
+            (cal / f"{name}.calendar" / "Events").mkdir(parents=True)
+            (cal / f"{name}.calendar" / "Info.plist").write_text(
+                f"<key>Title</key>\n<string>{name}</string>")
+            for i in range(n):
+                (cal / f"{name}.calendar" / "Events" / f"{i}.ics").write_text(
+                    "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:%s%d\nSUMMARY:%s %d\n"
+                    "DTSTART;VALUE=DATE:20260901\nDTEND;VALUE=DATE:20260902\n"
+                    "END:VEVENT\nEND:VCALENDAR\n" % (name, i, name, i))
+        for box, n in (("Enquiries", 3), ("Personal", 2)):
+            d = md / f"{box}.mbox" / "Messages"; d.mkdir(parents=True)
+            for i in range(n):
+                (d / f"{i}.emlx").write_text(
+                    f"12\nFrom: a@b.c\nSubject: {box} {i}\n\nbody\n")
+
+        # Discovery: names, and enough to tell them apart.
+        cals = calcat(cal)
+        if {c["name"] for c in cals} != {"Bookings", "Dentist"}:
+            return (True, f"the calendars were not discovered: {cals}")
+        if not all(c.get("detail") for c in cals):
+            return (True, "the list has names and nothing to choose between "
+                          "them by")
+        boxes = mailcat(md)
+        if {b["name"] for b in boxes} != {"Enquiries", "Personal"}:
+            return (True, f"the mailboxes were not discovered: {boxes}")
+
+        # And it is wire-free: a picker calls this while somebody is still
+        # deciding, so it must not create anything. Asserted through the
+        # endpoint the picker really calls, because that is the frame a
+        # store is in scope in — sources.inside() is handed no store at
+        # all, so proving *it* writes nothing proves nothing about the
+        # path a person takes to it.
+        def creds():
+            c = _sq.connect("file:blokk.db?mode=ro", uri=True)
+            try:
+                return sorted(c.execute(
+                    "SELECT workspace_id,kind,keychain_ref FROM credential"))
+            finally:
+                c.close()
+        before = creds()
+        seen = g("/api/v1/sources/inside?kind=ical&ref="
+                 + urllib.parse.quote(str(cal)))
+        if {c["name"] for c in seen.get("found", [])} != {"Bookings",
+                                                          "Dentist"}:
+            return (True, f"the picker's own endpoint found nothing: {seen}")
+        if creds() != before:
+            return (True, "opening the picker wired a source")
+
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        st.x("DELETE FROM credential WHERE workspace_id='cottages'")
+
+        # Narrowing holds through every read, not just check().
+        one = LocalCalendar(root=cal, only=["Bookings"])
+        if one.check()["calendars"] != ["Bookings"]:
+            return (True, "check() ignores the choice")
+        if any("Dentist" in e["summary"] for e in one.events(days=365)):
+            return (True, "events() reads a calendar nobody chose")
+        if any(d in str(one.gaps(days=365)) for d in ("Dentist",)):
+            return (True, "gaps() reads a calendar nobody chose")
+        mail = LocalMail(root=md, only=["Enquiries"])
+        if mail.check()["mailboxes"] != ["Enquiries"]:
+            return (True, "a narrowed mailbox still reports the others")
+        if any("Personal" in r["subject"] for r in
+               mail.search_since(days=365, limit=50)):
+            return (True, "a narrowed mailbox still reads the others")
+
+        # Stored, and honoured by the thing that builds the readers.
+        r = sources.add(st, "cottages", "ical", str(cal), only=["Bookings"])
+        if r.get("error"):
+            return (True, f"could not wire a narrowed source: {r['error']}")
+        if "Bookings" not in (r.get("note") or ""):
+            return (True, "it does not say what it will actually read")
+        _C.REGISTRY._by_ws.clear()
+        built = _C.wire(st).get("cottages", "calendar")
+        if built.check()["calendars"] != ["Bookings"]:
+            return (True, "the choice is stored and the reader ignores it")
+        # An empty choice means all of them — what every wiring meant before
+        # this column existed, and what every old row still means.
+        sources.add(st, "cottages", "ical", str(cal))
+        _C.REGISTRY._by_ws.clear()
+        allof = _C.wire(st).get("cottages", "calendar")
+        if len(allof.check()["calendars"]) != 2:
+            return (True, "ticking nothing stopped reading everything")
+        return (False, "names and counts are discoverable without wiring "
+                       "anything, a choice is stored, and every read honours "
+                       "it")
+    probe("A82 wiring a calendar takes the dentist with the bookings",
+          choose_what_it_reads)
 
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():

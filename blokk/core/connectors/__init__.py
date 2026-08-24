@@ -32,6 +32,8 @@ is not in scope.
 """
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
@@ -178,6 +180,13 @@ def wire(store) -> Registry:
 
     for row in store.q("SELECT * FROM credential"):
         ws, kind, ref = row["workspace_id"], row["kind"], row["keychain_ref"]
+        # Which calendars, or which mailboxes. Absent on a row written before
+        # the column existed, which means all of them — the same thing every
+        # wiring meant then.
+        try:
+            only = json.loads(row["only"] or "[]") if "only" in row.keys() else []
+        except (ValueError, TypeError):
+            only = []
         try:
             if kind == "imap":
                 from core.connectors.imap_mail import IcloudMail
@@ -193,10 +202,12 @@ def wire(store) -> Registry:
                 # not be wired at all — the source added fine and then read
                 # somewhere else.
                 from core.connectors.emlx_mail import LocalMail
-                REGISTRY.add(ws, "mail", LocalMail(root=_root(ref)))
+                REGISTRY.add(ws, "mail",
+                             LocalMail(root=_root(ref), only=only))
             elif kind == "ical":
                 from core.connectors.ical import LocalCalendar
-                REGISTRY.add(ws, "calendar", LocalCalendar(root=_root(ref)))
+                REGISTRY.add(ws, "calendar",
+                             LocalCalendar(root=_root(ref), only=only))
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(ws, "messages", AppleMessages())

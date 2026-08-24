@@ -228,10 +228,18 @@ def _calendars(root: Path) -> list[tuple[str, list[Path]]]:
     return out
 
 
-def _read(root: Path) -> tuple[list[dict], list[str]]:
-    """Every event on disk, and the calendar names they came from."""
+def _read(root: Path, only: list[str] | None = None) -> tuple[list[dict], list[str]]:
+    """Every event on disk, and the calendar names they came from.
+
+    `only` narrows it by name. Filtered here, at the one place every
+    read passes through, rather than in each of check(), events(),
+    busy() and gaps() — four copies of a rule is four chances for one
+    of them to answer about a calendar nobody chose.
+    """
     events, names = [], []
     for title, files in _calendars(root):
+        if only and title not in only:
+            continue
         names.append(title)
         for f in files:
             try:
@@ -307,20 +315,48 @@ def _read(root: Path) -> tuple[list[dict], list[str]]:
     return events, names
 
 
+def catalogue(root: Path) -> list[dict]:
+    """Every calendar under here, by name, with how much is in it.
+
+    So somebody can be shown a list and tick one, rather than wiring
+    ~/Library/Calendars whole and getting their dentist appointments in a
+    business's queue. The names have always been discoverable — check()
+    returns them — and nothing ever offered them as a choice.
+    """
+    out = []
+    for title, files in _calendars(Path(root)):
+        events = 0
+        for f in files:
+            try:
+                events += len(re.findall(r"BEGIN:VEVENT",
+                                         f.read_text(errors="replace")))
+            except OSError:
+                continue
+        out.append({"name": title, "events": events,
+                    "detail": f"{events} event{'' if events == 1 else 's'}"})
+    return out
+
+
 class LocalCalendar:
-    """Reads ~/Library/Calendars. Never writes; there is no method that could."""
+    """Reads a calendar folder. Never writes; there is no method that could.
+
+    `only` narrows it to calendars by name. Empty means all of them, which is
+    what every existing wiring means and so stays the default.
+    """
 
     writes = False
 
-    def __init__(self, keychain_ref: str = "", root: Path | None = None):
+    def __init__(self, keychain_ref: str = "", root: Path | None = None,
+                 only: list[str] | None = None):
         # keychain_ref is accepted and ignored: the registry hands one to every
         # connector, and this is the one that does not need a credential.
         self.root = Path(root) if root else ROOT
+        self.only = [str(o) for o in (only or []) if str(o).strip()]
 
     def check(self) -> dict:
         if not self.root.exists():
             raise FileNotFoundError(f"no calendars at {self.root}")
-        events, names = _read(self.root)
+        events, names = _read(self.root, self.only)
         window = self.events(days=90)
         # Zero calendars is not ok. It said ok for a while, next to an empty
         # list, on a Mac with a full diary — which is the failure this
@@ -343,7 +379,7 @@ class LocalCalendar:
     def events(self, days: int = 90) -> list[dict]:
         lo = date.today()
         hi = lo + timedelta(days=days)
-        events, _ = _read(self.root)
+        events, _ = _read(self.root, self.only)
         out = []
         for ev in events:
             for s, e in _expand(ev, lo, hi):
@@ -363,7 +399,7 @@ class LocalCalendar:
         lo = date.today()
         hi = lo + timedelta(days=days)
         out = []
-        for ev in _read(self.root)[0]:
+        for ev in _read(self.root, self.only)[0]:
             for head, _tail in _expand(ev, lo, hi):
                 if ev.get("allday", True):
                     start = datetime.combine(head, time(0, 0))
@@ -395,7 +431,7 @@ class LocalCalendar:
         lo = date.today()
         hi = lo + timedelta(days=days)
         busy: set[date] = set()
-        events, _ = _read(self.root)
+        events, _ = _read(self.root, self.only)
         for ev in events:
             for s, e in _expand(ev, lo, hi):
                 d = max(s, lo)

@@ -673,6 +673,18 @@ def h_sources(_q):
                       for k, v in sources.KINDS.items()]}
 
 
+def h_inside(q):
+    """What is in a source, for a picker, before anything is wired.
+
+    A GET because it changes nothing and a person may open and close the
+    list three times while deciding.
+    """
+    from core import sources
+    kind = (q.get("kind") or [""])[0]
+    ref = (q.get("ref") or ["local"])[0]
+    return sources.inside(kind, ref)
+
+
 def h_workspace_add(body):
     from core import sources
     r = sources.workspace_add(store, text(body, "id", limit=64),
@@ -731,9 +743,13 @@ def h_workspace_clean(body):
 
 def h_sources_add(body):
     from core import sources
+    only = body.get("only")
+    if not isinstance(only, list):
+        only = []
     out = sources.add(store, (body.get("workspace") or "").strip(),
                       (body.get("kind") or "").strip(),
-                      (body.get("ref") or "").strip())
+                      (body.get("ref") or "").strip(),
+                      only=[str(o)[:200] for o in only[:64]])
     if out.get("error"):
         return out, 400
     bump()
@@ -1064,6 +1080,7 @@ def h_setup_stop(_body):
 ROUTES_GET = [
     (r"^/api/v1/phone$", h_phone),
     (r"^/api/v1/sources$", h_sources),
+    (r"^/api/v1/sources/inside$", h_inside),
     (r"^/api/v1/setup/state$", h_setup_state),
     (r"^/api/v1/setup/status$", h_setup_status),
     (r"^/api/v1/health$", h_health),

@@ -324,6 +324,31 @@
   .srcrow .st.ready{background:rgba(48,209,88,.16);color:var(--green)}
   .srcrow .st.blocked{background:rgba(255,214,10,.16);color:var(--amber)}
   .srcrow.off{opacity:.55}
+  /* What is inside one of them. Shown on request, because a person with
+     eleven calendars should not have eleven rows before they have decided
+     whether they want a calendar at all. */
+  /* Above the row's own checkbox, which is an invisible thing stretched
+     across the whole label to make the row tappable — and so lies on top of
+     any control inside it and eats the click. The row being the target is
+     right; it just cannot be the target for its own buttons. */
+  .srcrow .pick{position:relative;z-index:1;
+    flex:0 0 auto;min-height:var(--tap);padding:0 var(--sp-3);
+    border:0;border-radius:var(--r-pill);background:var(--fill-2);
+    color:var(--lab2);font-family:var(--ui);font-size:12.5px;cursor:pointer}
+  .srcrow .pick:hover{background:var(--fill-3);color:var(--lab)}
+  .inside{border-top:1px solid var(--hair);padding:var(--sp-2) 0 var(--sp-2) var(--sp-6)}
+  .inside .one{display:flex;align-items:center;gap:var(--sp-3);
+    min-height:var(--tap);cursor:pointer;position:relative}
+  .inside .one input{position:absolute;inset:0;width:100%;height:100%;
+    margin:0;opacity:0;cursor:pointer}
+  .inside .one .tick{flex:0 0 auto;width:18px;height:18px;border-radius:5px;
+    border:1.5px solid var(--lab3);display:grid;place-items:center;
+    color:transparent;font-size:11px;line-height:1;font-weight:700}
+  .inside .one:has(input:checked) .tick{background:var(--blue-fill);
+    border-color:transparent;color:#fff}
+  .inside .one span.n{flex:1;min-width:0;font-size:14px}
+  .inside .one small{color:var(--lab3);font-size:12px;flex:0 0 auto}
+  .inside .all{font-size:12.5px;color:var(--lab3);padding:var(--sp-2) 0}
 </style></head>
 <body><div class="page">
 
@@ -732,14 +757,26 @@ async function loadLocal(){
     box.innerHTML='';
     for(const s of LOCAL){
       const ready = s.state==='ready';
+      const kind = s.kind_local || s.kind;
+      const wrap = el('<div class="srcwrap"></div>');
       const row = el(`<label class="srcrow${ready?'':' off'}">
-        <input type="checkbox" ${ready?'checked':'disabled'} data-kind="${esc(s.kind_local||s.kind)}">
+        <input type="checkbox" ${ready?'checked':'disabled'} data-kind="${esc(kind)}">
         <span class="tick" aria-hidden="true">&#10003;</span>
         <span class="who"><b>${esc(s.what)}</b><small>${esc(s.detail||s.reads)}</small></span>
+        ${ready && CHOOSABLE.includes(kind)
+          ? '<button type="button" class="pick">Choose\u2026</button>' : ''}
         <span class="st ${esc(s.state==='ready'?'ready':s.state==='blocked'?'blocked':'')}">${esc(s.state)}</span>
       </label>`);
       row.querySelector('input').addEventListener('change', refreshWire);
-      box.append(row);
+      const pick = row.querySelector('.pick');
+      if(pick) pick.onclick = e => {
+        // A button inside a label would otherwise toggle the checkbox it
+        // sits in — the click belongs to the disclosure, not the row.
+        e.preventDefault(); e.stopPropagation();
+        showInside(wrap, kind, pick);
+      };
+      wrap.append(row);
+      box.append(wrap);
     }
     if(LOCAL.some(s=>s.state==='blocked'))
       $('#p5note').textContent = 'Anything marked blocked needs Full Disk '
@@ -753,8 +790,52 @@ async function loadLocal(){
   }
 }
 
+// Only these are folders of things. Weather is a place and a page is a page.
+const CHOOSABLE = ['ical', 'maildir'];
+
+async function showInside(wrap, kind, btn){
+  const open = wrap.querySelector('.inside');
+  if(open){ open.remove(); btn.textContent = 'Choose\u2026'; refreshWire(); return; }
+  btn.textContent = 'Loading\u2026'; btn.disabled = true;
+  let d;
+  try{ d = await get('/api/v1/sources/inside?kind=' + encodeURIComponent(kind)); }
+  catch(e){
+    btn.disabled = false; btn.textContent = 'Choose\u2026';
+    wrap.append(el(`<div class="inside"><p class="all">Could not look inside:
+      ${esc(e.message)}. It will read all of them.</p></div>`));
+    return;
+  }
+  btn.disabled = false; btn.textContent = 'Hide';
+  const box = el('<div class="inside"></div>');
+  if(!d.found || !d.found.length){
+    box.append(el(`<p class="all">${esc(d.note || 'Nothing to choose from.')}</p>`));
+  } else {
+    for(const f of d.found){
+      const one = el(`<label class="one">
+        <input type="checkbox" data-pick="${esc(kind)}" value="${esc(f.name)}">
+        <span class="tick" aria-hidden="true">&#10003;</span>
+        <span class="n">${esc(f.name)}</span>
+        <small>${esc(f.detail || '')}</small></label>`);
+      one.querySelector('input').addEventListener('change', refreshWire);
+      box.append(one);
+    }
+    box.append(el(`<p class="all">Tick none and it reads all
+      ${esc(d.found.length)} of them.</p>`));
+  }
+  wrap.append(box);
+}
+
+function chosen(kind){
+  return [...document.querySelectorAll(
+    `.inside input[data-pick="${kind}"]:checked`)].map(i => i.value);
+}
+
 function ticked(){
-  return [...document.querySelectorAll('#localsrc input:checked')]
+  // The row checkboxes only. This matched every checkbox under #localsrc,
+  // which after the picker landed includes the calendars inside a row — so
+  // ticking "Bookings" tried to wire a source of kind `undefined` and the
+  // whole step failed on it.
+  return [...document.querySelectorAll('.srcrow input[data-kind]:checked')]
            .map(i=>i.dataset.kind);
 }
 function refreshWire(){
@@ -778,7 +859,8 @@ $('#wire').onclick = async ()=>{
     if(w.error && !/already exists/.test(w.error)) throw new Error(w.error);
     const failed = [];
     for(const kind of ticked()){
-      const r = await post('/api/v1/sources/add', {workspace:id, kind, ref:'local'});
+      const r = await post('/api/v1/sources/add',
+        {workspace:id, kind, ref:'local', only: chosen(kind)});
       if(r.error) failed.push(`${kind}: ${r.error}`);
     }
     if(failed.length){

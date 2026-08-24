@@ -1542,7 +1542,9 @@ async function paintSources(extra){
   const wired = SRC.sources.length ? SRC.sources.map(s => `
     <div class="srow">
       <div><b>${esc(s.workspace_id)}</b> · ${esc(s.reads)}
-        <small>${esc(s.keychain_ref)} · ${esc(s.scopes.join(','))}</small></div>
+        <small>${esc(s.keychain_ref)} · ${esc(s.scopes.join(','))}${
+          (s.only && s.only.length)
+            ? ' · only ' + esc(s.only.join(', ')) : ''}</small></div>
       <span>
         <button class="mini" data-peek="${esc(s.workspace_id)}|${esc(s.reads)}">Peek</button>
         <button class="mini quiet" data-rm="${esc(s.workspace_id)}|${esc(s.kind)}">Remove</button>
@@ -1648,6 +1650,7 @@ async function paintSources(extra){
       <select id="s-kind">${kopts}</select>
       <input id="s-ref" placeholder="keychain service name (or: local)" />
       <p class="sub hint" id="s-hint"></p>
+      <div id="s-inside"></div>
       <button class="mini go" id="s-add">Add</button>
       <p class="sub">Read-only. No password is stored here — you put that in the
         keychain yourself, and Blokk reads it at call time.</p>
@@ -1717,12 +1720,47 @@ async function paintSources(extra){
     $('#s-ref').placeholder = h ? h[0] : 'keychain service name';
     $('#s-hint').textContent = h ? h[1] : '';
   };
-  $('#s-kind').onchange = refHint;
-  refHint();
+  // What is inside the thing being added, listed as soon as it could be —
+  // so a calendar is a list you tick rather than a folder you point at and
+  // hope. Same endpoint the wizard uses; the answer changes with the ref, so
+  // it reloads when either the kind or the path does.
+  const CHOOSABLE = ['ical', 'maildir'];
+  let insideFor = '';
+  async function refInside(){
+    const kind = $('#s-kind').value;
+    const ref = $('#s-ref').value.trim() || 'local';
+    const box = $('#s-inside');
+    if(!CHOOSABLE.includes(kind)){ box.innerHTML = ''; insideFor = ''; return; }
+    const key = kind + '\u0000' + ref;
+    if(key === insideFor) return;
+    insideFor = key;
+    box.innerHTML = '<p class="sub hint">Looking\u2026</p>';
+    let d;
+    try{ d = await get('/api/v1/sources/inside?kind=' + encodeURIComponent(kind)
+                       + '&ref=' + encodeURIComponent(ref)); }
+    catch(e){ box.innerHTML = ''; return; }
+    if(insideFor !== key) return;            // the field moved on while we asked
+    if(d.error || !d.found || !d.found.length){
+      box.innerHTML = `<p class="sub hint">${esc(d.error || d.note || '')}</p>`;
+      return;
+    }
+    box.innerHTML = `<div class="inside">${d.found.map(f => `
+      <label class="one"><input type="checkbox" value="${esc(f.name)}">
+        <span class="tick" aria-hidden="true">&#10003;</span>
+        <span class="n">${esc(f.name)}</span>
+        <small>${esc(f.detail || '')}</small></label>`).join('')}
+      <p class="all">Tick none and it reads all ${d.found.length}.</p></div>`;
+  }
+  $('#s-kind').onchange = () => { refHint(); refInside(); };
+  $('#s-ref').addEventListener('change', refInside);
+  refHint(); refInside();
 
   $('#s-add').onclick = async () => {
     const r = await post('/api/v1/sources/add', {
-      workspace: $('#s-ws').value, kind: $('#s-kind').value, ref: $('#s-ref').value });
+      workspace: $('#s-ws').value, kind: $('#s-kind').value,
+      ref: $('#s-ref').value,
+      only: [...document.querySelectorAll('#s-inside input:checked')]
+              .map(i => i.value) });
     paintSources(r.error
       ? `<p class="no">${esc(r.error)}</p>`
       : `<p class="ok2">Added.</p>` + (r.keychain_hint

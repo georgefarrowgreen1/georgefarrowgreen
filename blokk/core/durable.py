@@ -96,6 +96,7 @@ class Store:
         ("approval", "action", "TEXT"),        # what to run if this is approved
         ("approval", "result", "TEXT"),        # what happened when it was
         ("message", "kind", "TEXT"),           # text | draft
+        ("credential", "only", "TEXT"),        # which calendars / mailboxes
     )
 
     def _migrate(self) -> None:

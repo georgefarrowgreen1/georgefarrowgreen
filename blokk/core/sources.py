@@ -93,14 +93,22 @@ def workspaces(store) -> list[dict]:
 def listing(store) -> list[dict]:
     out = []
     for r in store.q("SELECT * FROM credential ORDER BY workspace_id"):
+        try:
+            only = json.loads(r["only"] or "[]") if "only" in r.keys() else []
+        except (ValueError, TypeError):
+            only = []
         out.append({"workspace_id": r["workspace_id"], "kind": r["kind"],
                     "keychain_ref": r["keychain_ref"],
                     "scopes": json.loads(r["scopes"]),
+                    # Which calendars or mailboxes, so the list can say what
+                    # it is actually reading rather than implying all of it.
+                    "only": only,
                     "reads": KINDS.get(r["kind"], r["kind"])})
     return out
 
 
-def add(store, ws: str, kind: str, ref: str) -> dict:
+def add(store, ws: str, kind: str, ref: str,
+        only: list | None = None) -> dict:
     if kind not in KINDS:
         return {"error": f"kind must be one of {', '.join(KINDS)}"}
     if not ref:
@@ -136,12 +144,18 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
     if not store.one("SELECT 1 FROM workspace WHERE id=?", ws):
         known = ", ".join(w["id"] for w in workspaces(store))
         return {"error": f"no workspace '{ws}'. Known: {known}"}
+    chosen = [str(o).strip() for o in (only or []) if str(o).strip()]
     store.x("""INSERT OR REPLACE INTO credential
-               (id,workspace_id,kind,keychain_ref,scopes)
-               VALUES(?,?,?,?,?)""",
-            f"c_{ws}_{kind}", ws, kind, ref, json.dumps(["read"]))
+               (id,workspace_id,kind,keychain_ref,scopes,only)
+               VALUES(?,?,?,?,?,?)""",
+            f"c_{ws}_{kind}", ws, kind, ref, json.dumps(["read"]),
+            json.dumps(chosen))
     out = {"ok": True, "workspace_id": ws, "kind": kind, "keychain_ref": ref,
-           "scopes": ["read"]}
+           "scopes": ["read"], "only": chosen}
+    if chosen:
+        out["note"] = ("Reading only " + ", ".join(chosen[:4])
+                       + (f" and {len(chosen) - 4} more" if len(chosen) > 4
+                          else "") + ". Nothing else in there is looked at.")
     if kind in NEEDS_KEYCHAIN:
         # Shown, never run: this is the step that keeps the password out of
         # the browser, the database and this process.
@@ -171,6 +185,44 @@ def add(store, ws: str, kind: str, ref: str) -> dict:
         out["note"] = (f"{ws} may now reach {', '.join(HOSTS)} — and nothing "
                        f"else new. What leaves is a latitude and a longitude.")
     return out
+
+
+def inside(kind: str, ref: str) -> dict:
+    """What is in a source, before anything is wired to it.
+
+    The names have always been discoverable — both local readers return them
+    from check() — and nothing ever offered them as a choice, so wiring a
+    calendar took the dentist along with the bookings and wiring a mailbox
+    took somebody's whole private life.
+
+    Read-only and wire-free on purpose: this is what a picker calls while a
+    person is still deciding, so it must not create a credential, and it must
+    answer fast enough to be a list appearing rather than a page hanging.
+    """
+    from pathlib import Path as _P
+    if kind not in KINDS:
+        return {"error": f"kind must be one of {', '.join(KINDS)}"}
+    if kind not in READS_A_FOLDER:
+        return {"kind": kind, "choosable": False, "found": [],
+                "note": "This one is not a folder of things to pick from."}
+    root = _P(ref).expanduser() if ref and ref.lower() not in (
+        "local", "default") else None
+    try:
+        if kind == "ical":
+            from core.connectors.ical import ROOT as CAL_ROOT, catalogue
+            found = catalogue(root or CAL_ROOT)
+            noun = "calendar"
+        else:
+            from core.connectors.emlx_mail import ROOT as MAIL_ROOT, catalogue
+            found = catalogue(root or MAIL_ROOT)
+            noun = "mailbox"
+    except Exception as e:                                       # noqa: BLE001
+        return {"error": f"{type(e).__name__}: {e}"[:200], "kind": kind,
+                "choosable": True, "found": []}
+    return {"kind": kind, "choosable": True, "noun": noun, "found": found,
+            "note": (f"Tick the ones this workspace should read. All of them "
+                     f"if you tick none." if found else
+                     f"No {noun}s found there.")}
 
 
 def remove(store, ws: str, kind: str) -> dict:

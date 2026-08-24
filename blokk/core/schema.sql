@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS credential (
   kind          TEXT NOT NULL,                   -- imap | caldav | http | sqlite
   keychain_ref  TEXT NOT NULL,                   -- name in the keychain, never the secret
   scopes        TEXT NOT NULL DEFAULT '[]'
-);
+,
+  -- Which calendars, or which mailboxes. A JSON list of names,
+  -- empty for all of them. See core/sources.py:inside().
+  only          TEXT NOT NULL DEFAULT '[]');
 
 -- ---------------------------------------------------------------- durability
 -- A run is one workflow execution.
