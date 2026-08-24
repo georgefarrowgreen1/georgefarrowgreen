@@ -374,6 +374,10 @@ All four suites green. Verified behaviours:
   holding, says what it searched when it finds nothing ("300 rows in the last
   730 days") rather than just "nothing", narrows on request, and still flags
   an instruction it finds down there
+* "the Shaws" no longer matches every row containing "the", "art" no longer
+  matches "Start of season", a query of nothing but common words is refused
+  rather than answered with everything, and a name in the subject outranks
+  the same name buried in a long body
 * the mail window is the message's own Date header, not the file's mtime. A
   Time Machine restore or a migration sets every mtime to now; on mtime that
   made "since last night" match the whole archive, so the sweep re-triaged
@@ -415,10 +419,12 @@ All four suites green. Verified behaviours:
 * writing *into* Calendar.app needs EventKit, a signed bundle and a consent
   dialog — a different kind of program from this one. The .ics drop is the
   halfway house, and it is labelled as one everywhere it appears.
-* Ask searches the content now, two years back by default, and says what it
-  searched when it finds nothing. What it does not do is rank: matching is a
-  count of query words in the row, so "the Shaws" and "the Shaws' dog" score
-  the same. Good enough to find the thread; not a search engine.
+* Ask's search ranks on whole words with the stopwords dropped, weights the
+  subject and the sender above the body, and labels each hit strong, partial
+  or weak. What it is not is an index: every search reads the rows and scores
+  them, bounded by `FIND_SCAN`, so it stays honest on one Mac's archive and
+  would not stay honest on ten. If that day comes the answer is SQLite's own
+  FTS5, not a bigger loop.
 * CalDAV does not go through `core/egress.py` — it wants PROPFIND and REPORT,
   which `fetch()` does not do. Worth routing when the gate learns methods; the
   host is fixed and configured, so it is a tidiness gap, not an open door.

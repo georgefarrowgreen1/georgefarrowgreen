@@ -265,6 +265,12 @@ def build_tools(store, workspace_scope: str | None = None) -> dict[str, ReadTool
         # sentence that gets somebody to say "try last spring".
         head = {"searched": f"{out['searched']} row(s) in {out['window']}",
                 "matches": out["found"]}
+        if out.get("ignored"):
+            # Said out loud, because a model told "2 matches" for a query it
+            # thinks was four words will describe the two as if they answered
+            # all four.
+            head["ignored"] = ("too common to search on: "
+                               + ", ".join(out["ignored"]))
         if out.get("capped"):
             head["note"] = ("stopped at the scan limit \u2014 there may be "
                             "older ones it did not reach")

@@ -4199,6 +4199,118 @@ try:
     probe("A86 a chat proposal does not say what it read first",
           ask_says_what_it_read)
 
+    def search_ranks_honestly():
+        # Matching was sum(1 for w in words if w in hay). Two consequences,
+        # both of which put the wrong email in front of a model as if it
+        # were the answer: "the Shaws" matched every row containing "the",
+        # and the substring test made "art" a hit on "Start of season".
+        import sys as _s3, sqlite3 as _sq, tempfile as _tf, os as _os
+        import time as _t, email.utils as _eu
+        _s3.path.insert(0, ".")
+        from core.durable import Store
+        from core import sources
+        import core.connectors as _C
+
+        tmp = pathlib.Path(_tf.mkdtemp())
+        md = tmp / "Enq.mbox" / "Messages"; md.mkdir(parents=True)
+        now = _t.time()
+        fixture = [
+            ("Shaw, Peter", "Booking for the Shaws",
+             "We are the Shaws, staying in September with the dog."),
+            ("Ann", "The garden", "the gate is stuck, can you look at it"),
+            ("Bob", "Re: the invoice", "the amount on the invoice is wrong"),
+            ("Cal", "Start of season", "when do you start taking bookings"),
+            ("Dee", "Autumn", "a note that mentions shaw once in passing"),
+            # Same word, once each, in different fields, and the mention is
+            # the NEWER of the two — so recency and the field weight point
+            # opposite ways and only the weight can put the subject line
+            # first. Written the other way round they agreed, and the
+            # assertion passed on flat weights.
+            ("Eve", "Weekly note",
+             "a long update about the garden and the roof and the gutters "
+             "and in the middle of it the word boathouse appears once"),
+            ("Fay", "Boathouse booking", "nothing else in here at all"),
+        ]
+        for i, (frm, subj, body) in enumerate(fixture):
+            when = now - i * 86400
+            raw = (f"From: {frm}\nSubject: {subj}\n"
+                   f"Date: {_eu.formatdate(when)}\n\n{body}\n")
+            f = md / f"{i}.emlx"
+            f.write_text(f"{len(raw.encode())}\n{raw}")
+            _os.utime(f, (when, when))
+
+        db = tmp / "d.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db)); src.backup(dst); dst.close(); src.close()
+        st = Store(db)
+        st.x("DELETE FROM credential WHERE workspace_id='cottages'")
+        sources.add(st, "cottages", "maildir", str(tmp))
+        _C.REGISTRY._by_ws.clear()
+
+        def find(q):
+            return sources.find(st, "cottages", "mail", q)
+
+        # 1. A stopword is not a query word. Three of these five rows say
+        #    "the"; none of them is about the Shaws.
+        out = find("the Shaws")
+        subjects = [r["subject"] for r in out["rows"]]
+        if any("garden" in x or "invoice" in x for x in subjects):
+            return (True, f"'the' matched rows about nothing: {subjects}")
+        if not out.get("ignored") or "the" not in out["ignored"]:
+            return (True, "it dropped a word from the query and did not say")
+
+        # 2. The right one is first, and the passing mention is not sold as
+        #    an equal. A list of rows with no strength on them reads as a
+        #    list of answers.
+        if not subjects or "Booking for the Shaws" != subjects[0]:
+            return (True, f"the best match is not first: {subjects}")
+        if out["rows"][0]["match"] != "strong":
+            return (True, f"the best match is called "
+                          f"{out['rows'][0]['match']!r}")
+        weak = [r for r in out["rows"] if r["subject"] == "Autumn"]
+        if weak and weak[0]["match"] == "strong":
+            return (True, "a passing mention is reported as a strong match")
+
+        # 3. Words, not substrings.
+        if find("art")["found"]:
+            return (True, "'art' still matches 'Start of season'")
+        # A prefix is still the same query — nobody types the plural.
+        if not any("Shaws" in r["subject"] for r in find("shaw")["rows"]):
+            return (True, "'shaw' no longer finds 'the Shaws'")
+
+        # 4. Where a word appears decides how much it counts. A name in the
+        #    subject is what the message is about; the same name buried in a
+        #    long update is a mention. Flat weights put them level and then
+        #    the tiebreak — recency — picks, which is not an answer to the
+        #    question that was asked.
+        boat = [r["subject"] for r in find("boathouse")["rows"]]
+        if len(boat) < 2:
+            return (True, f"expected both boathouse rows, got {boat}")
+        if boat[0] != "Boathouse booking":
+            return (True, f"a mention in a long body outranked the subject "
+                          f"line: {boat}")
+
+        # 5. A query of nothing but common words is refused, not answered
+        #    with everything that contains "the".
+        allstop = find("the and for")
+        if not allstop.get("error"):
+            return (True, f"a query of only stopwords returned "
+                          f"{allstop.get('found')} results")
+
+        # 6. It still says what it searched when it finds nothing — the
+        #    honesty A84 pinned must survive a stricter matcher, or this
+        #    change turns "nothing here" into "nothing, and no idea".
+        none = find("helicopter")
+        if not none.get("ok") or "searched" not in none:
+            return (True, f"an empty search stopped saying what it read: "
+                          f"{none}")
+        return (False, "stopwords are dropped and said so, the best match is "
+                       "first and labelled, a passing mention is not sold as "
+                       "an answer, 'art' no longer matches 'Start', and a "
+                       "query of only common words is refused")
+    probe("A87 searching for 'the Shaws' matches every row containing 'the'",
+          search_ranks_honestly)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

@@ -287,6 +287,71 @@ def remove(store, ws: str, kind: str) -> dict:
     return {"ok": True, "detail": note}
 
 
+# Words that are in every message and carry no query. Not a linguistics
+# list — the point is only that "the Shaws" must not match every row that
+# contains "the", which is what "count the query words present" did: on that
+# rule the garden gate and the wrong invoice both scored as hits and one of
+# them was handed to the model as the answer.
+STOP = frozenset((
+    "the", "and", "for", "you", "your", "our", "are", "was", "were", "with",
+    "that", "this", "have", "has", "had", "not", "but", "can", "will",
+    "would", "from", "about", "any", "all", "please", "thanks", "hi",
+    "hello", "dear", "regards", "there", "their", "them", "they", "she",
+    "him", "her", "his", "its", "just", "get", "got", "one", "out", "who",
+    "what", "when", "where", "how", "did", "does", "been", "into", "over",
+))
+WORD = re.compile(r"[a-z0-9']+")
+# A field's words are worth more than a body's: a name in the subject line
+# is what the message is about, the same name in a signature is not.
+FIELD_WEIGHT = (("subject", 3), ("summary", 3), ("from", 3),
+                ("mailbox", 1), ("calendar", 1),
+                ("body", 1), ("at", 1), ("date", 1), ("start", 1))
+PREFIX_MIN = 4          # "Shaw" may match "Shaws"; "art" may not match "start"
+
+
+def _score(row: dict, wanted: list[str], phrase: str) -> float:
+    """How well one row answers the query. 0 means it does not.
+
+    Three things the old rule got wrong, each of which put the wrong email
+    in front of a model as if it were the answer:
+
+      * it counted stopwords, so "the Shaws" matched every row with "the";
+      * it matched substrings, so "art" matched "Start of season";
+      * it weighted every field the same, so a name in a signature counted
+        as much as a name in the subject line.
+
+    A prefix still counts, from four characters — "Shaw" and "Shaws" are the
+    same query and no rule about exact words should say otherwise — but only
+    forwards, so "art" does not reach inside "start".
+    """
+    total = 0.0
+    hit = set()
+    for field, weight in FIELD_WEIGHT:
+        text = str(row.get(field) or "").lower()
+        if not text:
+            continue
+        words = set(WORD.findall(text))
+        for w in wanted:
+            if w in words:
+                total += weight
+                hit.add(w)
+            elif len(w) >= PREFIX_MIN and any(
+                    x.startswith(w) or w.startswith(x) and len(x) >= PREFIX_MIN
+                    for x in words):
+                total += weight * 0.6
+                hit.add(w)
+        # The whole query, contiguous, in one field. "the Shaws" as typed
+        # beats the two words scattered through a long thread, and it is
+        # the one case where a stopword earns its place.
+        if phrase and len(phrase) >= 5 and phrase in text:
+            total += weight * 2
+    if not hit:
+        return 0.0
+    # Every word found is worth more than one word found three times: two
+    # matches out of two is an answer, six of one is a coincidence.
+    return total * (len(hit) / len(wanted))
+
+
 # How far back a search goes when nobody says. peek's window is sixty days
 # because it answers "can Blokk see my mail"; a search answers "what did the
 # Shaws say", and the Shaws wrote in March. A search that quietly stops at
@@ -314,9 +379,16 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
     from core.connectors import wire, read_since
     from core.harness import quarantine_read
 
-    words = [w for w in re.findall(r"[\w']{2,}", (term or "").lower())]
-    if not words:
-        return {"error": "a search needs a word to look for",
+    raw = (term or "").lower()
+    words = WORD.findall(raw)
+    wanted = [w for w in words if w not in STOP and len(w) >= 2]
+    if not wanted:
+        # All stopwords is not a search. Refusing beats returning everything
+        # that contains "the" and letting a model read that as the answer.
+        return {"error": ("a search needs a word to look for"
+                          if not words else
+                          f"{term!r} is only common words \u2014 nothing to "
+                          f"look for in it"),
                 "fix": "Say what to look for — a name, a place, a booking."}
     c = wire(store).get(ws, name)
     if c is None:
@@ -344,19 +416,18 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
 
     rows = list(rows)
     hits = []
-    for r in rows:
-        hay = " ".join(str(r.get(k) or "") for k in
-                       ("from", "subject", "body", "summary", "at", "date",
-                        "start", "mailbox", "calendar")).lower()
-        score = sum(1 for w in words if w in hay)
-        if score:
-            hits.append((score, r))
-    # Best match first, and a row that mentions two of the words beats one
-    # that mentions the same word twice.
-    hits.sort(key=lambda x: -x[0])
+    for i, r in enumerate(rows):
+        sc = _score(r, wanted, raw.strip())
+        if sc:
+            # The reader gives newest first, so the index is a recency
+            # tiebreak that costs nothing to compute and keeps two equally
+            # good matches in the order somebody expects.
+            hits.append((sc, -i, r))
+    hits.sort(key=lambda x: (-x[0], -x[1]))
 
     out = []
-    for _, r in hits[:limit]:
+    best = hits[0][0] if hits else 0
+    for sc, _, r in hits[:limit]:
         body = r.get("body") or r.get("summary") or ""
         q = quarantine_read(body)
         out.append({"from": r.get("from") or r.get("start", ""),
@@ -365,6 +436,13 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
                     "where": r.get("mailbox") or r.get("calendar") or "",
                     "provenance": r.get("provenance", "untrusted"),
                     "instruction_like": bool(q["instruction_like"]),
+                    # How well this one answered, relative to the best. A
+                    # list of rows with no strength on them reads as a list
+                    # of answers, and the fourth-best match for "the Shaws"
+                    # is not an answer — it is the thing a model quotes
+                    # confidently when the real one was never in the window.
+                    "match": ("strong" if sc >= best * 0.75 else
+                              "partial" if sc >= best * 0.4 else "weak"),
                     "body": body[:600].strip()})
     # Searched is not the same as found, and the difference is the whole
     # answer when a search comes back empty. "Nothing" on its own invites
@@ -372,6 +450,7 @@ def find(store, ws: str, name: str, term: str, days: int = FIND_DAYS,
     # invites "look further back", which is the true next step.
     return {"ok": True, "term": term, "window": window,
             "searched": len(rows), "found": len(hits), "rows": out,
+            "ignored": sorted(set(words) - set(wanted)) or None,
             "capped": len(rows) >= FIND_SCAN}
 
 
