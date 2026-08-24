@@ -560,6 +560,14 @@ All four suites green. Verified behaviours:
   in a row further up, and a browser that arrives without the key gets a
   page rather than {"error": "token required"} — a page that carries no
   token
+* "turn iCloud Private Relay off" is not in the doctor any more. Apple
+  routes local-network connections around the relay, so it cannot be why a
+  numeric link fails, and telling somebody to turn it off costs them a
+  privacy feature and sends them away from the two things that do cause
+  this — a phone on another network, and a router keeping its clients
+  apart. Private Relay's one real part in this was the utun interface it
+  puts on the Mac, which the old lan_ip() picked and printed. The `.local`
+  link is the one a lookup can cost you, and it is labelled as such
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

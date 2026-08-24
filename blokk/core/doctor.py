@@ -569,6 +569,13 @@ def main() -> int:
             token = tf.read_text().strip()
         ip = good[0]["ip"]
         url = f"http://{ip}:{port}/?t={token}"
+        # Bonjour lowercases the name and drops the domain; a Mac called
+        # "George's MacBook Pro" is georges-macbook-pro.local, which
+        # gethostname() already returns in that form.
+        try:
+            host = socket.gethostname().split(".")[0].lower()
+        except Exception:                                        # noqa: BLE001
+            host = ""
         print(f"  {_c('Open this on the phone, exactly as it is:', BOLD)}")
         print(f"      {_c(url, GREEN)}")
         print(f"  {_c(f'The :{port} matters. Typing {ip} on its own goes to port', DIM)}")
@@ -599,8 +606,29 @@ def main() -> int:
                   f"allowed through.")
             print(f"  {_c('System Settings > Network > Firewall > Options.', DIM)}")
         print()
-        print(f"  {_c('If it still fails: check the phone is on wifi and not', DIM)}")
-        print(f"  {_c('a guest network, and that iCloud Private Relay is off.', DIM)}")
+        # This used to end with "check iCloud Private Relay is off", which
+        # is folklore and costs somebody a privacy feature to no purpose.
+        # Apple routes local-network connections around Private Relay —
+        # WWDC21's own words are that connections over the local network
+        # are unaffected by it — and there is no name in the numeric link
+        # for it to resolve either. Its one real involvement in any of this
+        # was that it puts a utun interface on the Mac, which is what the
+        # old lan_ip() picked and printed, and phone_addresses now ranks
+        # last. What is left is the network between the two devices.
+        print(f"  {_c('If that link still fails it is the network between them,', DIM)}")
+        print(f"  {_c('not a setting on the phone:', DIM)}")
+        print(f"  {_c('  • the phone is on a different network — a guest SSID, the', DIM)}")
+        print(f"  {_c('    other half of a split 2.4/5GHz pair, or wifi off and 5G on', DIM)}")
+        print(f"  {_c('  • the router keeps its clients apart (AP or client isolation),', DIM)}")
+        print(f"  {_c('    which guest networks do by default', DIM)}")
+        print()
+        print(f"  {_c('iCloud Private Relay can stay on. It does not carry local', DIM)}")
+        print(f"  {_c('network traffic and there is no name in that link to look up.', DIM)}")
+        if host:
+            print(f"  {_c('The one link it can cost you is the name: ', DIM)}"
+                  f"{_c('http://' + host + f'.local:{port}/', DIM)}")
+            print(f"  {_c('needs a lookup, and the numbers never do. If the name fails', DIM)}")
+            print(f"  {_c('and the numbers work, that is the difference — use the numbers.', DIM)}")
 
     # Asked whatever the network said. The two faults are independent, and
     # answering only the first sends you back to run this twice.

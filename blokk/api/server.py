@@ -1451,7 +1451,15 @@ def serve(port=8080):
         except ValueError:
             print(f"     {D}(the link is too long to draw as a QR code){O}\n")
         print(f"     {G}{phone}{O}")
-        print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}{O}")
+        # The one link here that needs a name resolved, which makes it the
+        # only one iCloud Private Relay can cost you. The numeric one it
+        # leaves alone — Apple does not carry local network traffic through
+        # the relay — so "turn Private Relay off" is the wrong advice and
+        # ./blokk doctor no longer gives it. This one earns its place for a
+        # different reason: a new DHCP lease changes the numbers and does
+        # not change the name.
+        print(f"     {D}or http://{host}.local:{port}/?t={TOKEN}"
+              f"   (survives a new IP, needs the name to resolve){O}")
         # The two parts people drop are the :port and the ?t=, and dropping
         # either turns this into an error message that names neither. Typed
         # without the port it goes to :80, nothing is listening, and Safari

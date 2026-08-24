@@ -6575,6 +6575,95 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 108. blaming a privacy feature for the network's fault ──────────
+    def blames_private_relay():
+        # "check that iCloud Private Relay is off" was the last line of the
+        # doctor, and it is folklore. Apple routes local-network connections
+        # around the relay — WWDC21 says connections over the local network
+        # are unaffected by it — so turning it off cannot fix a numeric link
+        # and costs somebody a privacy feature to find that out. It is the
+        # worst kind of advice in a diagnostic: it is free to give, it feels
+        # like progress, and it sends you away from the two things that
+        # actually do this.
+        #
+        # Private Relay's one real part in this was that it puts a utun
+        # interface on the Mac. lan_ip() took the first address it found and
+        # printed the tunnel's; phone_addresses ranks utun last, which A107
+        # holds. This probe holds the other half: what the doctor says when
+        # the link it printed still does not work.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import doctor as D
+        keep = (D.interfaces, D.reachable, D.firewall, D.listening,
+                D.models, D.sources_and_chat)
+        D.interfaces = lambda: [("en0", "192.168.1.69")]
+        D.reachable = lambda ip, port: True
+        D.firewall = lambda: ("on", "python is listed and allowed")
+        D.listening = lambda port: True
+        D.models = lambda: []
+        D.sources_and_chat = lambda: []
+        import io as _io, contextlib as _cl
+        buf = _io.StringIO()
+        try:
+            with _cl.redirect_stdout(buf):
+                try:
+                    D.main()
+                except SystemExit:
+                    pass
+        finally:
+            (D.interfaces, D.reachable, D.firewall, D.listening,
+             D.models, D.sources_and_chat) = keep
+        out = buf.getvalue()
+
+        low = out.lower()
+        if "private relay" not in low:
+            return (True, "the doctor says nothing about Private Relay at "
+                          "all — it is the first thing people are told to "
+                          "turn off, so it has to be answered")
+        # Told to turn it off, in any of the shapes that sentence takes.
+        after = low.split("private relay")[1][:120]
+        before = low.split("private relay")[0][-120:]
+        for bad in ("is off", "it off", "turn off", "disable", "switch off"):
+            if bad in after or bad in before:
+                return (True, f"the doctor still tells you to turn Private "
+                              f"Relay off ({bad!r}), which cannot fix a "
+                              f"numeric link and costs a privacy feature")
+        if "can stay on" not in low:
+            return (True, "it mentions Private Relay without saying it is "
+                          "not the problem, which reads as suspicion")
+
+        # And having ruled that out, it has to name what does do this.
+        for want, missing in (
+                ("guest ssid", "a guest network"),
+                ("isolation", "client isolation on the router"),
+                # "5g" alone is matched by the "2.4/5GHz" on the line
+                # above, so the check could not fail. A probe that cannot
+                # go red is worse than no probe.
+                ("wifi off", "the phone being off wifi entirely")):
+            if want not in low:
+                return (True, f"Private Relay is ruled out and {missing} is "
+                              f"never named — that leaves nothing to try")
+
+        # The one place the relay does bite is the name, and the doctor has
+        # to separate the two links rather than lumping them together.
+        if ".local" not in low:
+            return (True, "the numeric link and the .local one are treated "
+                          "as the same thing — only one of them needs a "
+                          "lookup, and that is the whole distinction")
+
+        # The banner prints the .local link too, and unlabelled it reads as
+        # an equal alternative to the numbers.
+        src = open('api/server.py').read()
+        banner = src[src.index("def serve("):]
+        if ".local:{port}" in banner and "needs the name to resolve" not in banner:
+            return (True, "the banner offers the .local link with nothing to "
+                          "say it is the one that can fail to resolve")
+        return (False, "Private Relay is answered rather than blamed, the "
+                       "two things that do cause this are named, and the "
+                       "one link a lookup can cost you is marked as such")
+    probe("A108 the doctor blames a privacy feature for the network's fault",
+          blames_private_relay)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
