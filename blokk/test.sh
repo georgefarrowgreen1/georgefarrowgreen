@@ -54,6 +54,14 @@ run "engine journeys"       node demo/journey.js
 run "unit"                  node demo/test.js
 run "python parses"         python3 -m compileall -q core api flows
 
+# The suites leave a mess behind on purpose: they sweep, decide, reject and
+# correct, and every one of those writes rows. Without this the guard above
+# fired on the second run and every run after it, about 36 corrections and a
+# graduated category that the suites had made themselves — and an alarm that
+# always goes off is one nobody reads. Anything a person adds after this
+# point is not in the stamp, so it still counts, which is the point.
+python3 demo/realdb.py --stamp >/dev/null 2>&1 || true
+
 printf '\n'
 if [ "$FAIL" = "0" ]; then printf '\033[32m  all suites green\033[0m\n\n'; else
   printf '\033[31m  FAILURES above\033[0m\n\n'; fi

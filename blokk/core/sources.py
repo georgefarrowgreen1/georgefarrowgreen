@@ -622,8 +622,8 @@ def _fix_for(name: str, state: dict) -> str:
                 "far end. connect.py egress log shows every request and how "
                 "it went.")
     if name in ("mail", "calendar", "messages", "holds"):
-        return ("connect.py local, or the ⚯ panel's On this Mac section, "
-                "says whether this is a permission or an empty folder.")
+        return ("connect.py local, or Menu › Sources › On this Mac, says "
+                "whether this is a permission or an empty folder.")
     return "connect.py test shows what each wired source can and cannot do."
 
 
@@ -655,7 +655,7 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
                 # knows why; pass that on rather than rendering an empty list.
                 #
                 # The fix has to match the failure. This said "connect.py
-                # local, or the ⚯ panel's On this Mac section, says whether
+                # local, or Menu › Sources › On this Mac, says whether
                 # this is a permission or an empty folder" for *every* kind
                 # of source — so a rate-limited weather API came back
                 # telling somebody to go and check Full Disk Access. A

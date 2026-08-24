@@ -5809,6 +5809,125 @@ try:
     probe("A98 a one-line reply is answered by asking what it means",
           a_reply_read_on_its_own)
 
+    # ── 23. numbers on the screen that nobody measured ──────────────────
+    def invented_numbers():
+        # Two of these on one screen. The fourth chip read "Rates · cached
+        # pages" on every dashboard, a constant lifted out of the demo world
+        # and shown as live status — it warned about a fallback that may
+        # never have happened here, and would have stayed silent about one
+        # that did. The health card's "Read overnight" was h.handled plus
+        # attention.used: side effects journalled plus decisions waiting,
+        # added together and labelled "messages", which came to 8 while the
+        # chips two inches above said 4.
+        #
+        # A number with no measurement behind it is the same failure as a
+        # silent one, from the other end: it is confident and it is wrong.
+        page = open('web/index.html').read()
+        # The chips array itself, not the file — the comment above it quotes
+        # the constant it replaced, and a probe that reads the whole file
+        # fires on the explanation of the fix.
+        head = page.index("$('#chips').innerHTML = [")
+        chips = page[head:page.index('].map(', head)]
+        # A chip whose text is a bare string literal with no interpolation
+        # in it is a constant claiming to be status.
+        for lit in re.findall(r"\{t:'([^']*)'", chips) + \
+                   re.findall(r'\{t:"([^"]*)"', chips):
+            if lit and '${' not in lit and not lit.startswith('Nothing'):
+                return (True, f"the chips carry a hard-coded claim: {lit!r}")
+        if 'h.handled + (a.used' in page:
+            return (True, "Read overnight is still side effects plus decisions")
+        # And the real thing is there: the sweep records what degraded, and
+        # what it records is what the run actually got back.
+        runs = g('/api/v1/runs')
+        seen = [d for r in runs
+                for d in json.loads(r.get('result') or '{}').get('degraded', [])]
+        if not seen:
+            return (True, "no run recorded a degraded source — the sample "
+                          "world's rates connector returns fresh=False, so "
+                          "either it stopped or the sweep stopped recording it")
+        if not all(d.get('source') and d.get('note') for d in seen):
+            return (True, f"a degraded entry says nothing useful: {seen}")
+        # The chip and the health row have to agree, because they are the
+        # same fact. They are computed in two places; this is the check that
+        # they are computed from one number.
+        if 'readCount = filed + flagged' not in page:
+            return (True, "the chip and the health row no longer share a count")
+        if 'readCount === null' not in page:
+            return (True, "with no runs fetched the health row invents a "
+                          "number instead of saying nothing")
+        note = seen[0]['note']
+        return (False, f"the caveat on the screen is the one the connector "
+                       f"gave: \u201c{note[:44]}\u201d")
+    probe("A99 the dashboard states numbers nobody measured", invented_numbers)
+
+    # ── 24. the guard that always fires ─────────────────────────────────
+    def guard_cries_wolf():
+        # test.sh backs blokk.db up before deleting it, because the database
+        # is the whole of what Blokk knows about a business. The check for
+        # "is there anything in here worth keeping" counted facts, skills
+        # and episodes — every one of which seed.py writes. So on every run
+        # after the first it fired, copied the sample world into backups/,
+        # and printed six lines about losing a fortnight of approvals.
+        #
+        # An alarm that always goes off is one nobody reads, and this one
+        # guards the only file the docs call irreplaceable.
+        #
+        # This cannot ask the live database: the suite above it sweeps and
+        # decides things, so by now there are episodes and a graduated
+        # category that really are new. It seeds one of its own instead —
+        # seed.py takes a path — and asks about that, which is exactly the
+        # state a person is in the second time they run ./test.sh.
+        import subprocess, sqlite3 as sq3, importlib
+        sys.path.insert(0, '.')
+        realdb = importlib.import_module('demo.realdb')
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "pristine.db"
+        made = subprocess.run([sys.executable, 'seed.py', str(tmp)],
+                              capture_output=True, text=True)
+        if made.returncode or not tmp.exists():
+            return (True, f"could not seed a database to ask about: "
+                          f"{(made.stderr or '').strip()[:80]}")
+        was, realdb.DB = realdb.DB, tmp
+        db = sq3.connect(str(tmp))
+        try:
+            quiet = realdb.real()
+            if quiet:
+                return (True, f"a freshly seeded database reports {quiet!r}")
+            # And it still speaks up for something that is actually yours.
+            db.execute("INSERT INTO fact(id,workspace_id,text,confidence,"
+                       "source_episodes) VALUES('a100','cottages','x',0.5,'[]')")
+            db.commit()
+            loud = realdb.real()
+            if 'learned fact' not in loud:
+                return (True, "a fact that is not the seed's went unnoticed: "
+                              f"{loud!r}")
+            # A category that earned autonomy is a fortnight of approvals
+            # somebody sat through, and seed.py never creates one.
+            db.execute("UPDATE trust SET auto=1 WHERE category='rate_change'")
+            db.commit()
+            earned = realdb.real()
+            if 'earned autonomy' not in earned:
+                return (True, f"a graduated category went unnoticed: {earned!r}")
+            # test.sh stamps on the way out, once the suites have finished
+            # making their mess, so their rows stop counting as yours.
+            realdb.stamp()
+            after = realdb.real()
+            if after:
+                return (True, f"stamped, and it still reports {after!r}")
+            # And the next thing a person adds still does.
+            db.execute("INSERT INTO fact(id,workspace_id,text,confidence,"
+                       "source_episodes) VALUES('a100b','cottages','y',0.5,'[]')")
+            db.commit()
+            mine = realdb.real()
+            if 'learned fact' not in mine:
+                return (True, "a fact added after the stamp went unnoticed: "
+                              f"{mine!r}")
+        finally:
+            realdb.DB = was
+            db.close()
+        return (False, "quiet on the sample world and on what the suites leave, loud on a fact or a graduated category of yours")
+    probe("A100 the database guard fires on every run, so nobody reads it",
+          guard_cries_wolf)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

@@ -1,4 +1,5 @@
 """Written to test.sh's guard. Kept out of the shell so bash 3.2 stays simple."""
+import json
 import sys
 from pathlib import Path
 
@@ -24,25 +25,82 @@ def real() -> str:
         st = Store(DB)
     except Exception:                                            # noqa: BLE001
         return ""
+    # seed.py writes facts, skills and episodes of its own and stamps which
+    # ones they are. Without that this counted them as yours, so the guard
+    # fired on every run after the first — backing up a copy of the sample
+    # world and warning about losing a fortnight of approvals that had never
+    # existed. No stamp means the database predates it or is not seeded, and
+    # then everything in it counts, which is the safe way round.
+    seeded = {}
+    try:
+        row = st.one("SELECT value FROM setting WHERE key='sample_world'")
+        if row:
+            seeded = json.loads(row["value"])
+    except Exception:                                            # noqa: BLE001
+        seeded = {}
     had = []
     for table, what in (("credential", "wired source"),
                         ("fact", "learned fact"),
                         ("episode", "correction"),
                         ("skill", "skill")):
+        mine = [str(i) for i in seeded.get(table, [])]
+        holes = ",".join("?" * len(mine))
         try:
-            n = st.one(f"SELECT COUNT(*) c FROM {table}")["c"]
+            n = st.one(
+                f"SELECT COUNT(*) c FROM {table}"
+                + (f" WHERE id NOT IN ({holes})" if mine else ""),
+                *mine)["c"]
         except Exception:                                        # noqa: BLE001
             n = 0
         if n:
             had.append(f"{n} {what}{'' if n == 1 else 's'}")
-    # A graduated category is a fortnight of approvals somebody sat through.
+    # A graduated category is a fortnight of approvals somebody sat through
+    # — unless the suites did it, which is what the stamp records.
     try:
-        auto = st.one("SELECT COUNT(*) c FROM trust WHERE auto=1")["c"]
+        was = set(seeded.get("auto", []))
+        auto = sum(1 for r in st.q("SELECT workspace_id,category FROM trust "
+                                   "WHERE auto=1")
+                   if f'{r["workspace_id"]}|{r["category"]}' not in was)
     except Exception:                                            # noqa: BLE001
         auto = 0
     if auto:
         had.append(f"{auto} category(s) that had earned autonomy")
     return ", ".join(had)
+
+
+TABLES = ("credential", "fact", "episode", "skill")
+
+
+def stamp() -> str:
+    """Mark everything now in the database as not-yours. Says how many.
+
+    seed.py does this for the sample world, and then the suites run: they
+    sweep, decide, reject and correct, and every one of those leaves rows
+    behind. So the guard still fired on every run after the first, this time
+    about 36 corrections nobody would miss. test.sh calls this on the way
+    out, once the suites have finished making their mess, and the next run
+    is quiet unless a person put something there.
+
+    Anything a person adds afterwards is not in the stamp, so it still
+    counts — which is the whole point of the guard.
+    """
+    if not DB.exists():
+        return ""
+    try:
+        st = Store(DB)
+        seeded = {t: [r["id"] for r in st.q(f"SELECT id FROM {t}")]
+                  for t in TABLES}
+        # trust has no id, and the suites graduate a category on purpose —
+        # so without this the "a fortnight of approvals" line fired every
+        # run too. The pair is the key.
+        seeded["auto"] = [f'{r["workspace_id"]}|{r["category"]}' for r in
+                          st.q("SELECT workspace_id,category FROM trust "
+                               "WHERE auto=1")]
+        st.x("INSERT OR REPLACE INTO setting(key,value) "
+             "VALUES('sample_world',?)", json.dumps(seeded))
+    except Exception:                                            # noqa: BLE001
+        return ""
+    return str(sum(len(v) for v in seeded.values()))
 
 
 def keep_a_copy() -> str:
@@ -67,5 +125,7 @@ if __name__ == "__main__":
     # this ended.
     if "--save" in sys.argv:
         print(keep_a_copy())
+    elif "--stamp" in sys.argv:
+        print(stamp())
     else:
         print(real())

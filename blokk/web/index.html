@@ -283,15 +283,12 @@
   .avatar .on.off{background:var(--red)}
   header .who{flex:1;min-width:0}
   header .who h1{font-size:21px;font-weight:600;margin:0;letter-spacing:-.02em}
-  /* One line, always. Four 44px targets and a 46px avatar leave this about
-     90px on a small phone, and a title that wraps to three lines makes the
-     bar taller than the content it is floating over. */
+  /* One line, always. A title that wraps to three lines makes the bar taller
+     than the content it is floating over. With one target rather than four
+     this has about 250px on a small phone instead of 90. */
   header .who p{margin:2px 0 0;font-size:13.5px;color:var(--lab2);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   header .who h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  /* Glyphs before this were ⚯ ▫ ⚙ ↻, which nobody has ever been able to read
-     — the user had to be told in prose what each one opened. Drawn icons on a
-     phone, and the word as well as soon as the window is wide enough for it. */
   /* There is one control in the bar now, so the iOS 26 rule about grouping
      several of them into a single piece of glass has nothing left to group:
      the button is the glass. The four it replaced — sources, the model,
@@ -1489,11 +1486,17 @@ function paint(h, ap, handled, runs){
   const res = r => { try { return JSON.parse(r.result||'{}')||{}; } catch { return {}; } };
   const flagged = runs.reduce((n,r)=>n + (res(r).flagged||0), 0);
   const filed   = runs.reduce((n,r)=>n + (res(r).filed||0), 0);
+  // A source that came back with a caveat says what the caveat was. The
+  // fourth chip used to read "Rates · cached pages" unconditionally — a
+  // constant lifted out of the demo, shown as live status, warning about a
+  // fallback that may never have happened on this Mac.
+  const degraded = runs.flatMap(r => res(r).degraded || []);
+  readCount = filed + flagged;
   $('#chips').innerHTML = [
-    {t:`Read ${filed+flagged} messages`, ok:true},
+    {t:`Read ${readCount} messages`, ok:true},
     {t:`Filed ${filed}`, ok:true},
     {t:flagged?`Quarantined ${flagged}`:'Nothing quarantined', ok:!flagged},
-    {t:'Rates · cached pages', ok:false}
+    ...degraded.map(d=>({t:`${d.source.charAt(0).toUpperCase()}${d.source.slice(1)} · ${d.note}`, ok:false}))
   ].map(c=>`<span class="chip ${c.ok?'':'warn'}"><span class="t">${c.ok?'✓':'!'}</span>${esc(c.t)}</span>`).join('');
 
   const wrap = $('#actions'); wrap.innerHTML='';
@@ -1683,6 +1686,18 @@ function paintTrouble(h){
   if(b) b.onclick = () => $('#menudlg').showModal();
 }
 
+// How many messages the last sweep actually read, summed from what the runs
+// recorded. This row used to say `h.handled + attention.used` — side effects
+// journalled plus decisions waiting, added together and labelled "messages",
+// which on the sample world came to 8 while the chips two inches above said
+// 4. Neither number was wrong about what it counted; the label was wrong
+// about what it was.
+//
+// Remembered rather than recomputed because tick()'s fast path repaints
+// health without fetching the runs, and null until a paint has happened, so
+// the row says nothing rather than a number nobody measured.
+let readCount = null;
+
 function paintHealth(h){
   // The bubble is the only chrome left at the bottom of the screen, so it
   // is where "something is running" has to show once you have scrolled
@@ -1705,7 +1720,8 @@ function paintHealth(h){
     <div class="hrow plain"><span class="k">Side effects</span>
       <span class="v">${h.handled} journalled</span></div>
     <div class="hrow plain"><span class="k">Read overnight</span>
-      <span class="v">${h.handled + (a.used || 0)} message(s)</span></div>`;
+      <span class="v">${readCount === null ? '\u2014'
+        : readCount + ' message' + (readCount === 1 ? '' : 's')}</span></div>`;
   // The night shift moved to a real <button> in the menu, so it needs no
   // role, no tabindex and no key handler of its own — which is three fewer
   // things to get wrong than the div with role=button it replaced.
@@ -2103,7 +2119,7 @@ async function paintUpdate(){
       <code>${esc(r.branch)}</code>.</p>
     <ul>${r.commits.map(c => `<li>${esc(c)}</li>`).join('')}</ul>
     ${r.schema ? `<p class="warn">This one changes the database schema. Take a
-      backup first — the ⚯ panel has one, or <code>connect.py backup</code>.</p>` : ''}
+      backup first — Menu › Sources has one, or <code>connect.py backup</code>.</p>` : ''}
     ${dirty ? `<p class="warn">You have ${dirty} edited file${dirty===1?'':'s'}
       here, so this will refuse rather than overwrite them.</p>` : ''}
     ${away}

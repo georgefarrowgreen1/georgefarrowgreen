@@ -4,7 +4,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from core.durable import Store
 
-DB = Path(__file__).parent / "blokk.db"
+# A path argument seeds somewhere else. Default unchanged, so ./test.sh and
+# every instruction in the docs still mean blokk.db — but a probe that wants
+# to ask "what does a database look like the moment this file has run" can
+# have one of its own instead of trying to undo a live one.
+DB = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "blokk.db"
 s = Store(DB)
 
 WS = [
@@ -56,6 +60,18 @@ for fid, wid, t, c, src in FACTS:
 from core import regression                                      # noqa: E402
 
 frozen = regression.seed(s)
+
+# Which rows are the sample world's, so that something else can tell them
+# from yours. test.sh backs blokk.db up before deleting it, and the check
+# for "is there anything in here worth keeping" counted facts, skills and
+# episodes — every one of which this file writes. So the guard fired on
+# every run after the first, backed up a copy of the seed, and printed a
+# paragraph about a fortnight of approvals being at risk. An alarm that
+# always goes off is one nobody reads, which is the opposite of the point.
+sys.path.insert(0, str(Path(__file__).parent / "demo"))
+import realdb                                                    # noqa: E402
+realdb.DB = DB
+realdb.stamp()
 
 print(f"seeded {DB}  ({len(WS)} workspaces, {len(TRUST)} trust rows, "
       f"{len(SKILLS)} skills, {frozen} frozen examples)")

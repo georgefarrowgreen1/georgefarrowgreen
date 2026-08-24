@@ -151,7 +151,7 @@ def model_report() -> dict:
     tiers = srv.tiers_from_conf()
     if not tiers:
         out["todo"] = [f"blokk.conf says MODE={mode} but declares no tier. "
-                       f"Re-run setup: ./blokk, then the ⚙ button."]
+                       f"Re-run setup: ./blokk, then Menu › Model."]
         return out
 
     for t in tiers:

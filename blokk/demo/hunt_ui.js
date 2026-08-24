@@ -542,6 +542,44 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
 }
 
+// B36 — the prose names a control that is there
+// Six places told you to press "the ⚯ button" or "the ⚙ button", long after
+// the glyphs had been replaced by drawn icons and then by nothing at all.
+// A confidently wrong instruction is worse than none: it sends somebody
+// hunting the screen for a thing that is not on it, and doctor.py's whole
+// job is telling you what to do next. Everything points at the menu now, so
+// this checks that what it points at is a row in the menu.
+{
+  const menu = h.slice(h.indexOf('<dialog id="menudlg">'),
+                       h.indexOf('</dialog>', h.indexOf('<dialog id="menudlg">')));
+  const rows = [...menu.matchAll(/<span class="k">([^<]+)<\/span>/g)].map(m => m[1].trim());
+  const files = ['web/index.html', 'web/setup.html', 'core/doctor.py',
+                 'core/sources.py', 'CONNECTING.md', 'README.md', 'MAC-SETUP.md'];
+  const wrong = [], glyphs = [];
+  for (const f of files) {
+    let src; try { src = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    // The retired glyphs, anywhere outside this file.
+    for (const g of ['\u26AF', '\u2699', '\u21BB']) {
+      if (src.includes(g)) glyphs.push(`${f} still says ${g}`);
+    }
+    // The name runs straight on into the sentence around it and wraps
+    // across lines, so this asks whether a row's label is what comes next
+    // rather than trying to find where the name stops.
+    const flat = src.replace(/\s+/g, ' ');
+    for (const m of flat.matchAll(/Menu \u203A /g)) {
+      const after = flat.slice(m.index + m[0].length, m.index + m[0].length + 60);
+      if (!rows.some(r => after.startsWith(r))) {
+        wrong.push(`${f}: "${after.slice(0, 30).trim()}…"`);
+      }
+    }
+  }
+  const bad = glyphs.concat(wrong);
+  probe('B36 an instruction points at a control that is not there',
+    bad.length > 0,
+    bad.length ? bad.join(', ')
+      : `every Menu \u203A … in ${files.length} files names one of the ${rows.length} rows`);
+}
+
 // B34 — the dashboard is decisions, and the settings are in the menu
 // What used to be here: a four-icon toolbar at the top of every screen, a
 // 320-point status rail down the side of every Mac window, and a health

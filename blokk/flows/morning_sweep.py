@@ -50,7 +50,8 @@ def register(engine, store):
         # ctx.progress, not a local dict: a run that suspends on an approval
         # must still report what it read, or the dashboard chips come up empty.
         out = ctx.progress
-        out.update({"filed": 0, "queued": 0, "flagged": 0})
+        out.update({"filed": 0, "queued": 0, "flagged": 0,
+                    "degraded": []})
 
         # ---- 1. read the inbox through quarantine ---------------------------
         # The reader has no tools and returns fields, never prose. An
@@ -158,6 +159,17 @@ def register(engine, store):
         gaps = ctx.activity("calendar.gaps", read_cal) if world.get("calendar") else []
         rates = ctx.activity("rates.compare", lambda: world["rates"].compare()) \
             if world.get("rates") else None
+
+        # What came back with a caveat on it. A connector that degrades says
+        # so — fresh=False and a note explaining what it fell back to — and
+        # that was going nowhere: the dashboard carried a hard-coded chip
+        # reading "Rates · cached pages" whatever had actually happened, so
+        # it said the same warning on a screen where nothing was cached and
+        # would have said it on a screen where something else was.
+        out["degraded"] = [
+            {"source": name, "note": str(got.get("note") or "not fresh")}
+            for name, got in (("rates", rates),)
+            if isinstance(got, dict) and got.get("fresh") is False]
 
         # ---- 4. propose, never send ----------------------------------------
         for i, m in enumerate(scanned):

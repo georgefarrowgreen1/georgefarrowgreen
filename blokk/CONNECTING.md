@@ -17,9 +17,9 @@ wherever the Apple app keeps it; a path means that path — an exported
 mailbox, a maildir from any other client, a folder of `.ics` files. Both
 readers take plain formats now, not only Apple's own layouts.
 
-**All of this is in the app too.** The ⚯ button on the dashboard does
-workspaces, sources, the peek, the Full Disk Access check and the credential
-test; ⇧ pulls an update and restarts. The commands here are the same code
+**All of this is in the app too.** Menu › Sources does workspaces, sources,
+the peek, the Full Disk Access check and the credential test; Menu › Check
+for updates pulls an update and restarts. The commands here are the same code
 underneath (`core/sources.py`), so use whichever is in front of you — the
 terminal is not the privileged one. What has no button, on purpose, is
 putting a password anywhere near a browser: that stays in a terminal, and
