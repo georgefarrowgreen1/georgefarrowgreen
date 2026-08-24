@@ -600,6 +600,33 @@ def test(store) -> dict:
     return {"results": results, "working": len(rows) - bad, "total": len(rows)}
 
 
+def _fix_for(name: str, state: dict) -> str:
+    """What to actually do about this failure, for this kind of source.
+
+    Written as a lookup on what went wrong rather than one sentence for
+    everything, because the two failures look identical from here and have
+    nothing in common: a local reader that cannot see a folder is a
+    permission, and a web API that will not answer is a quota, a network or
+    a host being down.
+    """
+    detail = str(state.get("detail") or "")
+    low = detail.lower()
+    if "429" in detail or "too many requests" in low or "rate" in low:
+        return ("That is the far end refusing on volume, not anything wrong "
+                "here. It usually clears on its own — the message above says "
+                "when.")
+    if any(k in low for k in ("refused", "not on this workspace",
+                              "allowlist", "http", "resolve", "timed out",
+                              "certificate")):
+        return ("This one leaves the machine, so it is the network or the "
+                "far end. connect.py egress log shows every request and how "
+                "it went.")
+    if name in ("mail", "calendar", "messages", "holds"):
+        return ("connect.py local, or the ⚯ panel's On this Mac section, "
+                "says whether this is a permission or an empty folder.")
+    return "connect.py test shows what each wired source can and cannot do."
+
+
 def peek(store, ws: str, name: str, n: int = 5) -> dict:
     """What it would actually read. Nothing is written, nothing marked read.
 
@@ -626,11 +653,18 @@ def peek(store, ws: str, name: str, n: int = 5) -> dict:
             if isinstance(state, dict) and state.get("ok") is False:
                 # The connector itself says it found nothing to read. It
                 # knows why; pass that on rather than rendering an empty list.
+                #
+                # The fix has to match the failure. This said "connect.py
+                # local, or the ⚯ panel's On this Mac section, says whether
+                # this is a permission or an empty folder" for *every* kind
+                # of source — so a rate-limited weather API came back
+                # telling somebody to go and check Full Disk Access. A
+                # confidently wrong instruction is worse than none: it costs
+                # whoever follows it the ten minutes before they work out it
+                # was never going to help.
                 return {"error": state.get("detail", "nothing readable"),
                         "readable": False, "state": state,
-                        "fix": "connect.py local, or the ⚯ panel's On this "
-                               "Mac section, says whether this is a "
-                               "permission or an empty folder."}
+                        "fix": _fix_for(name, state)}
         except FileNotFoundError as e:
             return {"error": str(e), "readable": False,
                     "fix": "Either that app keeps nothing on this Mac, or "

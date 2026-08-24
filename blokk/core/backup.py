@@ -12,6 +12,7 @@ copies a consistent snapshot of a live database, which is exactly this job.
 from __future__ import annotations
 
 import re
+import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,27 @@ def make(db: str | Path, into: str | Path | None = None,
 
     Keeps the most recent `keep` and removes the rest, because a backup that
     fills the disk stops being a backup and starts being an outage.
+
+    Restoring one is `cp` **plus** removing the write-ahead log beside the
+    file it is replacing:
+
+        rm -f blokk.db blokk.db-wal blokk.db-shm && cp <backup> blokk.db
+
+    Without the rm, SQLite finds a journal belonging to a *different*
+    database and applies it. What happens then depends on the journal:
+
+      * a damaged or partial one gives "database disk image is malformed",
+        about a backup that is perfectly sound — and anybody who reads that
+        reasonably concludes the backup is ruined and deletes it, which is
+        the one outcome a backup exists to prevent;
+      * a valid one is worse. It applies cleanly and you are silently
+        reading the other database. Restoring over a freshly re-seeded file
+        gives you the seed, no error, and every reason to believe you have
+        your data back.
+
+    `restore()` below does it properly. Nothing may be running against the
+    file while it happens — a live connection holds its own -shm and will
+    keep reading the old pages.
     """
     db = Path(db)
     if not db.exists():
@@ -161,3 +183,28 @@ def verify(path: str | Path) -> dict:
     except sqlite3.Error as e:
         return {"ok": False, "detail": str(e)}
     return {"ok": state == "ok", "integrity": state, "workspaces": n}
+
+
+def restore(backup_file: str | Path, db: str | Path) -> dict:
+    """Put a backup back, sidecars and all.
+
+    Exists because `cp` alone does not: the -wal and -shm beside the file
+    being replaced belong to the database being thrown away, and SQLite
+    applies them to whatever it finds. See the note in make().
+    """
+    backup_file, db = Path(backup_file), Path(db)
+    if not backup_file.exists():
+        return {"error": f"no backup at {backup_file}"}
+    try:
+        with sqlite3.connect(f"file:{backup_file}?mode=ro", uri=True) as c:
+            verdict = c.execute("PRAGMA integrity_check").fetchone()[0]
+    except sqlite3.DatabaseError as e:
+        return {"error": f"{backup_file.name} will not open: {e}"}
+    if verdict != "ok":
+        # Refuse rather than overwrite a working database with a broken one.
+        return {"error": f"{backup_file.name} is damaged ({verdict}). "
+                         f"Nothing was replaced."}
+    for sidecar in ("-wal", "-shm"):
+        Path(str(db) + sidecar).unlink(missing_ok=True)
+    shutil.copy2(backup_file, db)
+    return {"ok": True, "restored": str(db), "from": str(backup_file)}

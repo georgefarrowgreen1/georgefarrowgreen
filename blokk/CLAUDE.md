@@ -293,6 +293,15 @@ worse than an error.
 
 Or `./test.sh`. All four must print `0 issues found` / `pass`.
 
+`./test.sh` deletes `blokk.db` and re-seeds — the hunts mutate deliberately
+and a half-swept database makes probes report defects that are not there. It
+copies it to `backups/` first if it holds anything a person would miss, and
+prints how to put it back. **Restoring is not `cp`**: the `-wal` beside the
+file being replaced belongs to *that* database and SQLite applies it, so at
+best you get "disk image is malformed" about a sound backup and at worst it
+applies cleanly and you are silently reading the seed. `backup.restore()`
+does it properly. A97 covers all of it.
+
 Two things the suites cannot see, so check them by hand when you touch the
 banner or the CLI: the QR block only runs when stdout is a **terminal**, and
 every harness here redirects — A40 opens a pty for exactly that reason.
@@ -410,7 +419,9 @@ All four suites green. Verified behaviours:
 * calendars nested in a .caldav container are found (iCloud puts every one
   of them there); a reader that finds nothing says ok: False, not ok: True
   next to an empty list
-* a backup taken mid-write is a consistent snapshot, and never overwrites
+* a backup taken mid-write is a consistent snapshot, never overwrites,
+  and restores — including over a file with another database's journal
+  beside it, which a plain cp silently gets wrong
 * the egress gate turns away a lookalike host, a host on another workspace's
   list, plain http, and loopback even when somebody allowlists it — and each
   is refused by the rule that should refuse it, not by a 404 on the way out

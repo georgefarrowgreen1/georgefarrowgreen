@@ -5529,6 +5529,177 @@ try:
     probe("A95 asked about the weather it says it has no access, not that it is unwired",
           unwired_is_not_no_such_capability)
 
+    def a_wrong_fix_is_worse_than_none():
+        # A rate-limited weather API came back telling somebody to go and
+        # check Full Disk Access, because peek() attached the same sentence
+        # to every kind of failure. The ten minutes spent following an
+        # instruction that was never going to help is worse than no
+        # instruction at all.
+        import sys as _sC
+        _sC.path.insert(0, ".")
+        from core.sources import _fix_for
+
+        cases = (
+            ("weather", {"ok": False, "detail":
+                         "api.open-meteo.com answered 429 Too Many Requests"},
+             ("volume", "clears"), ("full disk", "folder", "permission")),
+            ("weather", {"ok": False, "detail":
+                         "refused: example.com is not on this workspace's list"},
+             ("egress", "network"), ("full disk", "folder")),
+            ("mail", {"ok": False, "detail": "no .emlx files under that folder"},
+             ("permission", "folder"), ("egress", "far end")),
+        )
+        for name, state, want_any, never in cases:
+            fix = _fix_for(name, state).lower()
+            if not any(w in fix for w in want_any):
+                return (True, f"{name}/{state['detail'][:30]!r} -> {fix[:70]!r}"
+                              f" — none of {want_any}")
+            for bad in never:
+                if bad in fix:
+                    return (True, f"a {name} failure is answered with "
+                                  f"{bad!r}: {fix[:70]!r}")
+
+        # And it reaches the chat, not just the helper.
+        from core.durable import Store
+        from core import sources as _srcC
+        out = _srcC.peek(Store("blokk.db"), "cottages", "nope-not-a-source")
+        if not out.get("fix"):
+            return (True, "a source that cannot be read offers no next step")
+        return (False, "the fix matches the failure — a quota is not a "
+                       "permission, and neither is answered with the other's "
+                       "instructions")
+    probe("A96 every unreadable source is answered with the same wrong fix",
+          a_wrong_fix_is_worse_than_none)
+
+    def the_tests_eat_your_setup():
+        # ./test.sh opens with `rm -f blokk.db`, which is right — the hunts
+        # mutate deliberately and a half-swept database makes probes report
+        # defects that are not there. What was wrong is that it did it to
+        # whatever was there without a word. blokk.db is the file CLAUDE.md
+        # calls "the thing to back up": the credentials, the trust ledger,
+        # the learned facts and the corrections behind them. Running the
+        # suites before a commit is a thing anybody does.
+        import sys as _sD, sqlite3 as _sqD, tempfile as _tfD, shutil as _shD
+        import subprocess as _spD
+        _sD.path.insert(0, ".")
+        from core import backup
+        from core.durable import Store
+
+        # 1. test.sh notices a database worth keeping and copies it first.
+        sh = open("test.sh").read()
+        # The *command*, at the start of a line — not the first place those
+        # characters appear, which is inside the recovery message telling
+        # somebody to run it. index() found the message and everything
+        # measured against it was measured against the wrong point.
+        lines = sh.splitlines(keepends=True)
+        at = next((i for i, ln in enumerate(lines)
+                   if ln.startswith("rm -f blokk.db")), None)
+        if at is None:
+            return (False, "test.sh no longer deletes the database at all")
+        before = "".join(lines[:at])
+        if "realdb.py" not in before:
+            return (True, "test.sh deletes blokk.db without first asking "
+                          "whether it holds anything")
+        if "backup" not in before and "--save" not in before:
+            return (True, "it notices there is something there and does not "
+                          "copy it before deleting")
+
+        # 2. And that check calls things real: a wired source, a learned
+        #    fact, a correction, an earned autonomy.
+        sys_path = _sD.path
+        import importlib.util as _il
+        spec = _il.spec_from_file_location("realdb", "demo/realdb.py")
+        realdb = _il.module_from_spec(spec)
+        spec.loader.exec_module(realdb)
+        tmp = pathlib.Path(_tfD.mkdtemp())
+        db = tmp / "blokk.db"
+        a_ = _sqD.connect("file:blokk.db?mode=ro", uri=True)
+        b_ = _sqD.connect(str(db)); a_.backup(b_); b_.close(); a_.close()
+        realdb.DB = db
+        st = Store(db)
+        for t in ("credential", "fact", "episode", "skill"):
+            st.x(f"DELETE FROM {t}")
+        st.x("UPDATE trust SET auto=0")
+        if realdb.real():
+            return (True, f"an empty database is reported as worth keeping: "
+                          f"{realdb.real()}")
+        st.x("INSERT OR REPLACE INTO fact(id,workspace_id,text,confidence) "
+             "VALUES('f_probe','cottages','something learned',0.9)")
+        if "fact" not in realdb.real():
+            return (True, "a database with a learned fact in it is reported "
+                          "as empty, so it would be deleted silently")
+
+        # 3. The backup it takes actually restores — including over a
+        #    freshly re-seeded file, which is the exact situation. A plain
+        #    cp does not: the -wal beside it belongs to the database being
+        #    replaced and SQLite applies it. A valid one applies cleanly and
+        #    you are silently reading the seed you just wrote, with no error
+        #    and every reason to think your data is back.
+        made = backup.make(db, into=tmp / "b")
+        if made.get("error"):
+            return (True, f"the backup could not be taken: {made['error']}")
+        db.unlink()
+        live = _sqD.connect(str(db))
+        live.execute("PRAGMA journal_mode=WAL")
+        live.execute("CREATE TABLE seeded(x)")
+        for i in range(300):
+            live.execute("INSERT INTO seeded VALUES(?)", (i,))
+        live.commit()
+        # Keep a copy of the journal as it is *now*, mid-life. Closing the
+        # connection checkpoints it away, and a probe that then asks
+        # restore() to remove a -wal that is no longer there is asking it to
+        # do nothing — which passes whether it removes them or not.
+        kept = {}
+        for sidecar in ("-wal", "-shm"):
+            side = pathlib.Path(str(db) + sidecar)
+            if side.exists():
+                kept[sidecar] = side.read_bytes()
+        if "-wal" not in kept:
+            return (True, "the fixture produced no write-ahead log, so this "
+                          "is not testing the hazard it says it is")
+        _shD.copy(made["path"], db)          # the naive instruction
+        naive = _spD.run(
+            [_sD.executable, "-c",
+             f"import sqlite3;print(sqlite3.connect({str(db)!r})"
+             f".execute('SELECT COUNT(*) FROM fact').fetchone()[0])"],
+            capture_output=True, text=True)
+        live.close()
+        for sidecar, blob in kept.items():
+            pathlib.Path(str(db) + sidecar).write_bytes(blob)
+        if naive.returncode == 0 and naive.stdout.strip().isdigit():
+            return (True, "a plain cp over a live -wal restored cleanly, so "
+                          "this probe is no longer testing the hazard")
+        out = backup.restore(made["path"], db)
+        if not out.get("ok"):
+            return (True, f"restore() would not put it back: {out}")
+        good = _spD.run(
+            [_sD.executable, "-c",
+             f"import sqlite3;print(sqlite3.connect({str(db)!r})"
+             f".execute(\"SELECT text FROM fact WHERE id='f_probe'\")"
+             f".fetchone()[0])"],
+            capture_output=True, text=True)
+        if "something learned" not in good.stdout:
+            return (True, f"restore() ran and the data is not there: "
+                          f"{(good.stdout or good.stderr).strip()[:70]}")
+
+        # 4. And the instruction test.sh prints is the one that works, not
+        #    the one that silently gives you the seed back.
+        # The whole guard, not a fixed window before the rm — a slice of N
+        # characters is a guess about how long the block is, and it was
+        # wrong by enough to miss the line it was looking for.
+        if "Put it back" not in before:
+            return (True, "it copies the database and never says where to")
+        recovery = before.split("Put it back", 1)[1]
+        if "rm -f blokk.db" not in recovery:
+            return (True, "the recovery line it prints is a bare cp, which "
+                          "restores the wrong database without saying so")
+        return (False, "a database with anything in it is copied before the "
+                       "suites wipe it, the copy restores, and the line it "
+                       "prints is the one that works rather than the one "
+                       "that silently hands back the seed")
+    probe("A97 running the tests deletes whatever you had wired",
+          the_tests_eat_your_setup)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job
