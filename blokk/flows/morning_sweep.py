@@ -129,7 +129,8 @@ def register(engine, store):
                 _queue(ctx, store, "access_question",
                        f"{m['from']} asked about access to the beach.",
                        "No draft — this reads like a mobility question.",
-                       {"sources": ["mail"]}, revalidate=None)
+                       {"sources": ["mail"], "drawn_from": _drawn_from(m)},
+                       revalidate=None)
                 out["queued"] += 1
                 continue
 
@@ -149,7 +150,9 @@ def register(engine, store):
                 )
                 _queue(ctx, store, "availability_reply", draft["text"],
                        f"{m['from']} · asked once · {len(gaps)} gap(s) open",
-                       {"sources": ["mail", "calendar"], "checked_at": _hour(ctx)},
+                       {"sources": ["mail", "calendar"],
+                        "drawn_from": _drawn_from(m),
+                        "checked_at": _hour(ctx)},
                        # time-of-check vs time-of-use: re-run before the send
                        revalidate="calendar_gap")
                 out["queued"] += 1
@@ -174,6 +177,13 @@ def register(engine, store):
                        f"{_hours(win['hours'])} free on {win['day']}, and it "
                        f"should be {day['label']}",
                        {"sources": ["weather", "calendar"],
+                        "drawn_from": _drawn_from_facts(
+                            ("weather", "the forecast", day.get("date", ""),
+                             f"{day['label']} \u2014 {day['rain_chance']}% "
+                             f"rain, wind {day['wind_kph']} km/h"),
+                            ("calendar", "your diary", win["date"],
+                             f"{win['from']}\u2013{win['to']} free on "
+                             f"{win['day']}, {_hours(win['hours'])}")),
                         "date": win["date"], "hours": win["hours"],
                         "rain_chance": day["rain_chance"],
                         "wind_kph": day["wind_kph"],
@@ -187,6 +197,14 @@ def register(engine, store):
                    f"Drop the {rates['month']} midweek rate by £{rates['delta_gbp']}.",
                    f"{rates['undercut_by']} comparable places undercut you.",
                    {"sources": [rates["source"]], "freshness": rates["note"],
+                    # The freshness note is already on the card's why line;
+                    # repeating it here as a date read as one and was not.
+                    "drawn_from": _drawn_from_facts(
+                        ("rates", "comparable places", "",
+                         f"{rates['undercut_by']} undercut your "
+                         f"{rates['month']} midweek rate by "
+                         f"\u00a3{rates['delta_gbp']} or more \u2014 "
+                         f"{rates['source']}")),
                     "checked_at": _hour(ctx)})
             out["queued"] += 1
 
@@ -379,6 +397,49 @@ def _draft_prompt(store, ws, gaps, rates) -> str:
     if block:
         known.append(block)
     return DRAFTING.format(facts="\n\n".join(known))
+
+
+def _drawn_from(m: dict, kind: str = "mail") -> list[dict]:
+    """The row a proposal was built from, in a shape a card can render.
+
+    A draft that says "your email about the dog" and cannot point at the
+    email is unfalsifiable: the only way to tell it from an invented one is
+    to go and open Mail, which is the work the queue exists to save. So the
+    message travels with the proposal — who, what, when, where, and enough
+    of the words to check the draft against.
+
+    The quote is a stranger's text and stays one. It is short because this is
+    a card and not a mail client, and because a body pasted whole into the
+    queue is a second copy of somebody's mail in a store with different
+    retention. Whatever renders it must escape it.
+    """
+    body = " ".join(str(m.get("body") or "").split())
+    return [{
+        "kind": kind,
+        "from": str(m.get("from") or "")[:200],
+        "subject": str(m.get("subject") or "")[:200],
+        "when": str(m.get("at") or m.get("date") or "")[:64],
+        "where": str(m.get("mailbox") or m.get("calendar") or "")[:64],
+        "quote": body[:280] + ("\u2026" if len(body) > 280 else ""),
+        # Carried, not recomputed. The scan already decided; deciding again
+        # here with a different rule is how two screens disagree about
+        # whether the same message is safe.
+        "flagged": bool(m.get("instruction_like")),
+    }]
+
+
+def _drawn_from_facts(*items) -> list[dict]:
+    """The same block for a proposal built from numbers rather than a message.
+
+    The outing card and the rate card already carried their numbers in
+    evidence and nothing rendered them, so "3 comparable places undercut
+    you" was a sentence with no way to see the three. Same shape as the mail
+    citation so one renderer covers both, and provenance is honest: a
+    forecast came from outside this machine, a calendar gap did not.
+    """
+    return [{"kind": k, "from": "", "subject": label, "when": when,
+             "where": "", "quote": detail, "flagged": False}
+            for k, label, when, detail in items]
 
 
 def _queue(ctx, store, category, body, why, evidence, revalidate=None):

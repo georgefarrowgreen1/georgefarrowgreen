@@ -71,6 +71,16 @@ the thing this whole design exists to stop.
 Probes A49–A54 and A83 in `demo/hunt.py` hold this shape, and each is
 mutation-tested: break the invariant and exactly one of them goes red.
 
+**A proposal says what it was built from.** `evidence.drawn_from` carries the
+actual rows — who wrote, when, and enough of their words to check the draft
+against — and the card renders them. It used to carry `{"sources": ["mail"]}`,
+which names the *kind* of thing it read and never the thing. Anything new that
+proposes fills it in: a claim a person cannot check without leaving Blokk is a
+claim they will either take on faith or go and verify by hand, and both of
+those are the work the queue was supposed to save. Every field in there is a
+stranger's text — A85 checks each one reaches the page through `esc()`, by
+matching brackets rather than by looking at what sits in front of it.
+
 **Memory is only real if it reaches a prompt.** Corrections become episodes,
 episodes consolidate into facts, and `core/harness.py:learned_block` is what
 puts those facts in front of a model. For a long time nothing did — the chat
@@ -342,6 +352,11 @@ All four suites green. Verified behaviours:
   a booking that leaves on the 6th and one that arrives on the 6th do not
   clash; the same hold approved twice is one file; and what it writes reads
   back through Blokk's own parser with the comma in the guest's name intact
+* every proposal carries the rows it was built from — the enquiry behind a
+  drafted reply, the forecast and the gap behind an outing, the comparison
+  behind a rate — and the card shows them under the proposal. A draft that
+  says "your email about the dog" and cannot point at the email is
+  unfalsifiable; the only way to check it was to go and open Mail
 * a search reaches two years back rather than the sixty rows the panel is
   holding, says what it searched when it finds nothing ("300 rows in the last
   730 days") rather than just "nothing", narrows on request, and still flags
