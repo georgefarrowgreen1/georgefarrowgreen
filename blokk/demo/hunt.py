@@ -4590,6 +4590,151 @@ try:
     probe("A90 the span table has been in the schema with nothing writing to it",
           spans_are_written_and_carry_nothing)
 
+    def served_model_has_never_spoken_http():
+        # Every method on ServedModel carried `# pragma: no cover` and meant
+        # it. The error handling in there is careful and specific — an
+        # IncompleteRead is not an OSError, a grammar can leave content null,
+        # a proxy answers 200 with HTML — and all of it was reasoned about
+        # and never once run. So: a real server, on a real socket, doing the
+        # things servers actually do.
+        import sys as _s7
+        _s7.path.insert(0, ".")
+        from demo.fakeserver import Fake, SEEN
+        from core.models import ServedModel, ModelUnreachable, Truncated
+
+        with Fake("ok") as f:
+            m = ServedModel(endpoint=f.endpoint, model="qwen3-8b")
+
+            # 1. The ordinary path, over HTTP, with usage read off it.
+            got = m.chat([{"role": "user", "content": "hi"}])
+            if "August" not in got["text"]:
+                return (True, f"a normal completion did not come back: {got}")
+            if (got["tokens_in"], got["tokens_out"]) != (42, 9):
+                return (True, f"the usage was not read: {got}")
+
+            # 2. Guided decoding really goes out. It is the whole reason a
+            #    small model is reliable at structured output, and a schema
+            #    assembled and dropped would fail as bad JSON much later.
+            SEEN.clear()
+            m.chat([{"role": "user", "content": "hi"}],
+                   schema={"name": "s", "schema": {"type": "object"}})
+            if not SEEN or "response_format" not in SEEN[-1]:
+                return (True, "the schema never reached the server")
+            if SEEN[-1].get("model") != "qwen3-8b":
+                return (True, f"the model name did not go out: {SEEN[-1]}")
+
+            # 3. Streaming, in fragments, and the fallback for the many
+            #    servers that answer a stream request all at once.
+            f.behaving("stream")
+            if "August" not in "".join(m.stream([{"role": "user",
+                                                  "content": "hi"}])):
+                return (True, "a real SSE stream did not arrive")
+            f.behaving("plain")
+            if "August" not in "".join(m.stream([{"role": "user",
+                                                  "content": "hi"}])):
+                return (True, "a server that does not do SSE breaks the chat")
+
+            # 4. A stream that stops part way must not read as a short
+            #    answer. This is the one that was wrong: it yielded the three
+            #    words that arrived and returned normally, so a severed
+            #    answer and a finished one were the same thing to every
+            #    caller. Invariant 6 names exactly this.
+            #    Three separate ways an answer can be short, because one
+            #    fixture caught them all at once and then either guard alone
+            #    was enough — which is two rules for one property and the
+            #    shape where one gets "fixed" and the other compensates.
+            for how, what in (
+                    ("cut", "cut off mid-object"),
+                    ("halt", "ended with no [DONE] and no finish_reason"),
+                    ("garbled", "carried one mangled chunk")):
+                f.behaving(how)
+                try:
+                    "".join(m.stream([{"role": "user", "content": "hi"}]))
+                    return (True, f"a stream that {what} came back as a "
+                                  f"finished answer")
+                except Truncated:
+                    pass
+
+            # 5. Every way a server answers 200 with something that is not a
+            #    completion, each named rather than arriving as a KeyError
+            #    from three frames down.
+            for how, want in (("html", "not a chat completion"),
+                              ("nochoices", "no choices"),
+                              ("nomessage", "no message"),
+                              ("truncate", "closed the connection")):
+                f.behaving(how)
+                try:
+                    m.chat([{"role": "user", "content": "hi"}])
+                    return (True, f"{how}: a broken answer was accepted")
+                except ModelUnreachable as e:
+                    if want not in str(e):
+                        return (True, f"{how} was reported as {str(e)[:80]!r}")
+                except Exception as e:                           # noqa: BLE001
+                    return (True, f"{how} raised {type(e).__name__} rather "
+                                  f"than being named: {e}")
+
+            # 6. A grammar that leaves nothing to say returns "", not None.
+            #    approval.body is NOT NULL, and a None reaching it fails at
+            #    the insert with the model three frames gone.
+            f.behaving("nulls")
+            null = m.chat([{"role": "user", "content": "hi"}])
+            if null["text"] != "":
+                return (True, f"a null content came back as {null['text']!r}")
+
+            # 7. A server that is running and failing is not a server that is
+            #    missing. HTTPError subclasses URLError, so a 500 was
+            #    reported as "no model server — start it with ./run.sh" about
+            #    a process that was running, answering, and out of memory.
+            f.behaving("boom")
+            try:
+                m.chat([{"role": "user", "content": "hi"}])
+                return (True, "a 500 was accepted as an answer")
+            except ModelUnreachable as e:
+                if "no model server" in str(e):
+                    return (True, f"a 500 tells you to start a server that is "
+                                  f"already running: {str(e)[:90]}")
+                if "500" not in str(e):
+                    return (True, f"a 500 does not say so: {str(e)[:90]}")
+
+            # 8. And the frozen examples run through the real HTTP path,
+            #    which is the half of "unexercised" that is about prose
+            #    rather than plumbing.
+            import sqlite3 as _sq, tempfile as _tf
+            from core.durable import Store
+            from core import regression
+            db = pathlib.Path(_tf.mkdtemp()) / "r.db"
+            srcdb = _sq.connect("file:blokk.db?mode=ro", uri=True)
+            dstdb = _sq.connect(str(db)); srcdb.backup(dstdb)
+            dstdb.close(); srcdb.close()
+            st = Store(db)
+            regression.seed(st)
+            f.behaving("ok", reply="The last week of August is free. That is "
+                                   "the shoulder rate and the \u00a325 dog "
+                                   "charge applies.")
+
+            class OneModel:
+                def pick(self, _text):
+                    return m
+                large = small = m
+            out = regression.run(st, OneModel())
+            if out.get("unreachable"):
+                return (True, f"{out['unreachable']} example(s) could not "
+                              f"reach the server they were pointed at")
+            if not out.get("results"):
+                return (True, "the frozen examples did not run at all")
+            if out.get("passed", 0) < 1:
+                return (True, f"every frozen example failed against a server "
+                              f"that answered: {out.get('passed')}/"
+                              f"{len(out['results'])}")
+        return (False, "the layer between Blokk and llama-server is exercised "
+                       "over HTTP: streaming and its fallback, a severed "
+                       "stream refused rather than returned, four kinds of "
+                       "200-with-rubbish each named, a null content, a 500 "
+                       "that does not send you to start a running server, "
+                       "and the frozen examples run end to end")
+    probe("A91 nothing has ever spoken HTTP to the model layer",
+          served_model_has_never_spoken_http)
+
     # ── 22. locked out, and told nothing ────────────────────────────────
     def locked_out():
         # Two blokks against one file is the classic own-goal: a launchd job

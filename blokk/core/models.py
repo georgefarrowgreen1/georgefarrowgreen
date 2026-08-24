@@ -19,6 +19,19 @@ class ModelUnreachable(RuntimeError):
     """The configured server is not answering. Actionable, not mysterious."""
 
 
+class Truncated(ModelUnreachable):
+    """The answer stopped part way and nobody said so.
+
+    A subclass, so every caller that already degrades on ModelUnreachable
+    degrades on this too rather than needing to learn a new name. Separate,
+    because it is a different fact: the server was reachable, it answered,
+    and what arrived is not all of it. A caller that renders the fragment as
+    a finished answer is the silent-truncation failure invariant 6 names —
+    "a truncated stream, a dropped connection or a greyed-out card that did
+    not actually send are all worse than an error".
+    """
+
+
 class Model:
     """Interface. Everything returns usage so the journal can account for it."""
 
@@ -124,6 +137,32 @@ class StubModel(Model):
 
 
 # ------------------------------------------------------------------ served
+def _http_fault(endpoint: str, e) -> str:
+    """A server that answered badly, said as what it is.
+
+    HTTPError is a subclass of URLError, so a 500 used to be reported as "no
+    model server — start it with ./run.sh" about a server that was running,
+    answering, and almost certainly out of memory. The number is the useful
+    part and it was being thrown away.
+    """
+    try:
+        detail = e.read(400).decode("utf-8", "replace").strip()
+    except Exception:                                            # noqa: BLE001
+        detail = ""
+    hint = {
+        400: "the request was refused — usually an unsupported "
+             "response_format, so the server has no grammar support",
+        404: "there is a server there but no model loaded at that path",
+        413: "the prompt was too long for its context window",
+        500: "it is running and it failed — out of memory is the usual "
+             "cause; check its log",
+        503: "it is starting up, or loading weights. Try again shortly",
+    }.get(e.code, "it is running and it did not answer this")
+    return (f"the model server at {endpoint} answered {e.code} "
+            f"{e.reason}: {hint}."
+            + (f" It said: {detail[:200]}" if detail else ""))
+
+
 class ServedModel(Model):
     """Any server that speaks the OpenAI chat API.
 
@@ -167,6 +206,14 @@ class ServedModel(Model):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 raw = r.read()
+        except urllib.error.HTTPError as e:
+            # A server that answers at all is not a missing server. This used
+            # to fall through to the URLError branch below — HTTPError is a
+            # subclass of it — so a 500 said "no model server, start it with
+            # ./run.sh" about a server that was running, answering, and out
+            # of memory. Sending somebody to start what is already started is
+            # worse than saying nothing.
+            raise ModelUnreachable(_http_fault(self.endpoint, e)) from e
         except urllib.error.URLError as e:
             # Say which endpoint and what to do. "Connection refused" at 04:00
             # in a log file is not an actionable error message.
@@ -253,21 +300,46 @@ class ServedModel(Model):
                     yield (d.get("choices", [{}])[0].get("message", {})
                            .get("content") or "")
                     return
+                # Whether the far end ever said it had finished. A stream
+                # that stops without [DONE] and without a finish_reason is a
+                # connection that died, and yielding the three words that
+                # arrived and returning normally makes a severed answer
+                # indistinguishable from a short one. That is the silent
+                # truncation invariant 6 is about, and it was doing it.
+                ended = False
                 for raw in r:
                     line = raw.decode("utf-8", "replace").strip()
                     if not line.startswith("data:"):
                         continue
                     body = line[5:].strip()
                     if body == "[DONE]":
+                        ended = True
                         return
                     try:
                         d = json.loads(body)
                     except ValueError:
-                        continue
-                    delta = (d.get("choices") or [{}])[0].get("delta") or {}
+                        # Half an object. Not skippable: the only way a
+                        # `data:` line fails to parse is that the write was
+                        # cut mid-object, and continuing past it reads the
+                        # rest of a message that is not coming.
+                        raise Truncated(
+                            f"the model server at {self.endpoint} stopped "
+                            f"part way through a chunk. What arrived is not "
+                            f"the whole answer.") from None
+                    choice = (d.get("choices") or [{}])[0]
+                    if choice.get("finish_reason"):
+                        ended = True
+                    delta = choice.get("delta") or {}
                     piece = delta.get("content")
                     if piece:
                         yield piece
+                if not ended:
+                    raise Truncated(
+                        f"the model server at {self.endpoint} closed the "
+                        f"stream without finishing. What arrived is not the "
+                        f"whole answer.")
+        except urllib.error.HTTPError as e:
+            raise ModelUnreachable(_http_fault(self.endpoint, e)) from e
         except urllib.error.URLError as e:
             raise ModelUnreachable(
                 f"no model server at {self.endpoint} ({e.reason}). "

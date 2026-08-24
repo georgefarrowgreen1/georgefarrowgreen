@@ -219,7 +219,11 @@ worse than an error.
                        setup.html and demo/index.html share one palette, one
                        type scale and one material; when you change one,
                        change the others or they drift into three products
-    demo/              browser port of the engine + the test suites
+    demo/              browser port of the engine + the test suites.
+                       fakeserver.py is a real OpenAI-compatible server that
+                       also misbehaves the ways real ones do — deliberately
+                       not a mock, because a mock agrees with whatever you
+                       believed when you wrote it
     brand/             the mark, generated parametrically. chatmark.py emits
                        the ask bubble's glyph from the same geometry — the
                        block's top face, RATIO 0.568, which is 92/162 off
@@ -381,6 +385,11 @@ All four suites green. Verified behaviours:
   holding, says what it searched when it finds nothing ("300 rows in the last
   730 days") rather than just "nothing", narrows on request, and still flags
   an instruction it finds down there
+* the model layer is exercised over a real socket: streaming and the
+  all-at-once fallback, three separate ways a stream can be short (mid-object,
+  no [DONE], one mangled chunk) each refused rather than returned, four kinds
+  of 200-with-rubbish each named, a null content that becomes "" rather than
+  None, and a 500 that does not tell you to start a server that is running
 * every journalled step writes a span and every run writes a rollup, carrying
   the shape and the cost and none of the content. The error column is the
   exception's *type*: str(e) reads like a diagnostic and is often a guest's
@@ -427,9 +436,11 @@ All four suites green. Verified behaviours:
 * `core/sandbox.py` — needed before code mode. gVisor or a microVM; the egress
   allowlist half of it now exists (`core/egress.py`), but kernel isolation
   does not, and isolation with open outbound is worth nothing.
-* a real `answer()` on `ServedModel` is wired but unexercised against weights.
-  The regression runner exists (`./regress.py`) and is honest that stub prose
-  makes its numbers meaningless — they start counting when weights are on.
+* the *quality* of what a model writes is still unmeasured — `./regress.py`
+  is honest that stub prose makes its numbers meaningless, and they start
+  counting when real weights are on. The plumbing underneath is no longer
+  unexercised: `demo/fakeserver.py` is a real OpenAI-compatible server and
+  A91 drives every path over HTTP.
 * sending is a separate connector, deliberately not written: it needs a
   `recipient` on `approval` and it belongs behind the trust gate like
   everything else that writes. `ics_out` is the only connector with
