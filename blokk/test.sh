@@ -60,6 +60,11 @@ run "python parses"         python3 -m compileall -q core api flows
 # than "ok": a check that could not run must never look like one that
 # passed.
 run "measured in a browser" node demo/measure.js
+# The suites answer "does the code work". This answers "does the suite
+# work" — it breaks something and requires the probe that claims to cover
+# it to go red. Nine probes that could not fail were written here in one
+# week, each caught by remembering to try; this is the same check, kept.
+run "can each probe fail"   python3 demo/gate.py
 
 # The suites leave a mess behind on purpose: they sweep, decide, reject and
 # correct, and every one of those writes rows. Without this the guard above

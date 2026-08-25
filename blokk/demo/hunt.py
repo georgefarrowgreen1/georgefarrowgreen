@@ -10,7 +10,16 @@ def po(u,b=None,timeout=10):
     r=urllib.request.Request(B+u,json.dumps(b).encode(),{'Content-Type':'application/json'})
     return json.loads(urllib.request.urlopen(r,timeout=timeout).read())
 BUGS=[]
+# An optional filter, so one probe can be run on its own. The mutation gate
+# needs that: it applies a break, runs the single probe that should catch
+# it, and restores — and running all 119 for each of those would turn a
+# gate into something nobody waits for.
+ONLY = [a for a in sys.argv[1:] if not a.startswith('-')]
+RAN = []
 def probe(name, fn):
+    RAN.append(name)
+    if ONLY and not any(name.startswith(o) or o in name for o in ONLY):
+        return
     try:
         found, detail = fn()
     except Exception as e:
@@ -7880,7 +7889,21 @@ try:
         # Checked over a real socket. A ClientHello is five bytes of record
         # header and this is the one probe where sending the real thing
         # costs nothing.
-        import socket as _sk
+        import socket as _sk, json as _j, pathlib as _pl
+        rec = _pl.Path("logs/https-on-http.json")
+
+        def counted():
+            try:
+                return int(_j.loads(rec.read_text()).get("n", 0))
+            except (OSError, ValueError, TypeError):
+                return 0
+
+        # Read before, not after. Checking that the file *exists* passed on
+        # a record an earlier run had left behind, so removing the counting
+        # entirely left this probe green — found by demo/gate.py on its
+        # first run, which is what that gate is for. What has to be true is
+        # that this connection moved the number.
+        before = counted()
         hello = (bytes.fromhex("1603010020")
                  + bytes.fromhex("0100001c0303") + b"\x00" * 26)
         try:
@@ -7915,18 +7938,16 @@ try:
                           "come")
 
         # And it has to be counted, or the Mac knows and says nothing —
-        # which is the whole of invariant 6.
-        import json as _j, pathlib as _pl
-        rec = _pl.Path("logs/https-on-http.json")
-        if not rec.exists():
-            return (True, "the attempt is turned away and never recorded, so "
-                          "nothing can tell somebody it happened")
-        try:
-            n = int(_j.loads(rec.read_text()).get("n", 0))
-        except Exception as e:                                   # noqa: BLE001
-            return (True, f"the record is unreadable: {type(e).__name__}")
-        if n < 1:
-            return (True, "the record exists and counts nothing")
+        # which is the whole of invariant 6. The write is throttled to once
+        # a second, so this waits rather than reading the instant after.
+        for _ in range(30):
+            if counted() > before:
+                break
+            time.sleep(0.2)
+        else:
+            return (True, f"a ClientHello was turned away and never counted "
+                          f"(still {before}), so nothing can tell somebody "
+                          f"it happened")
 
         # The doctor has to be able to read it, and to say what it means.
         src = open('core/doctor.py').read()
@@ -8082,6 +8103,9 @@ try:
 
 finally:
     p.terminate()
+if ONLY and not any(any(n.startswith(o) or o in n for o in ONLY) for n in RAN):
+    print(f"\n  no probe matches {ONLY!r} — nothing ran")
+    sys.exit(2)
 print(f"\n  {len(BUGS)} issues found")
 # Exit non-zero so test.sh actually gates on this. Printing the count
 # and returning 0 meant a real defect scrolled past under "all green".

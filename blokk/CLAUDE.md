@@ -377,15 +377,47 @@ worse than an error.
                        blokk-mark.svg. Do not hand-edit the polygons in
                        the markup; regenerate. B27d checks
 
-## Tests — run all five before committing
+## Tests — run all six before committing
 
     python3 demo/hunt.py       adversarial pass over the server
     node demo/hunt_ui.js       adversarial pass over the front end
     node demo/contract.js      API satisfies what paint() reads
     node demo/journey.js       four end-to-end journeys
     node demo/measure.js       the same pages, measured in a real browser
+    python3 demo/gate.py       every probe is made to fail on purpose
 
 Or `./test.sh`. All of them must print `0 issues found` / `pass`.
+
+The sixth asks the question the other five cannot: *does the suite work?* A
+probe whose check can only pass is a green line indistinguishable from a
+green line that means something, and nine of those got written here in one
+week — a check for `"never reached"` against a sentence saying "ever
+reached", a `"127."` matched by the docstring explaining the guard it
+tested, a default read from a database the suite had already written to.
+Every one was caught by hand, by remembering to try, and remembering is not
+a mechanism.
+
+`demo/mutations.py` holds one break per probe: a file, an exact string, and
+what it becomes. `demo/gate.py` applies each, runs that one probe — hence
+the filter argument on `hunt.py`, which turns 40s into 2s — and fails if the
+probe stays green. It fails just as loudly when **the edit matched nothing**,
+because a `find` string that is not there applies cleanly to nothing and
+leaves the probe green, which reads exactly like a probe doing its job.
+Twice in one afternoon a mutation named a CSS class this markup does not
+have, and the pass that followed meant nothing.
+
+Coverage is printed, never assumed: 13 of 120 probes have an entry and the
+gate says so on every run. A gate quietly covering a tenth of the suite is
+the failure it exists to prevent. Adding a probe is half the job; adding the
+mutation that proves it can fail is the other half.
+
+It has already earned its place. A109 checked that `logs/https-on-http.json`
+*existed* — which passed on a file left behind by an earlier run — and
+fixing it to read the count, send the hello and watch for an increase
+surfaced a real bug underneath: `_peers` and `_https` started at 0 in
+memory, so the file reset to 1 after every restart and the arrivals count
+could never exceed one run's worth. `_resume()` in `api/server.py` reads the
+file back under the lock on first use.
 
 `measure.js` is the fifth and the only one that needs a browser. Everything
 this file claimed was "measured in a real browser, not asserted" — 44pt on

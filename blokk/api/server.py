@@ -1152,6 +1152,32 @@ _https = {"n": 0, "last": 0.0, "written": 0.0}
 _https_lock = threading.Lock()
 
 
+def _resume(mem: dict, read) -> None:
+    """Carry a count across a restart. Called under the caller's lock.
+
+    Both of these records answer a question about the *machine*, not about
+    this process: "has anything ever reached this Mac", "has a browser
+    spoken HTTPS to this port". The counters lived only in memory and
+    started at zero, so every restart rewrote the file from 1 — the banner
+    would say one connection had reached this Mac after fifty had, and a
+    probe watching for the number to move saw 1 before and 1 after.
+
+    Once per process, and only upward: a file that says less than memory
+    does is a file this process has already overtaken.
+    """
+    if mem.get("resumed"):
+        return
+    mem["resumed"] = True
+    was = read()
+    if was.get("n", 0) > mem["n"]:
+        mem["n"] = was["n"]
+        mem["last"] = max(mem.get("last", 0.0), was.get("last", 0.0))
+        if "who" in mem:
+            for ip in was.get("who", []):
+                if ip not in mem["who"]:
+                    mem["who"] = (mem["who"] + [ip])[-4:]
+
+
 def note_https_attempt() -> dict:
     """Count one, and persist at most once a second.
 
@@ -1161,6 +1187,7 @@ def note_https_attempt() -> dict:
     """
     import time as _t
     with _https_lock:
+        _resume(_https, https_attempts)
         _https["n"] += 1
         _https["last"] = _t.time()
         stale = _https["last"] - _https["written"] > 1.0
@@ -1204,6 +1231,7 @@ def note_peer(ip: str) -> None:
     if not ip or ip.startswith("127.") or ip == "::1":
         return
     with _peers_lock:
+        _resume(_peers, peers)
         _peers["n"] += 1
         _peers["last"] = _t.time()
         fresh = ip not in _peers["who"]
