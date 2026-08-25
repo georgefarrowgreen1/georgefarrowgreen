@@ -671,6 +671,17 @@ def main() -> int:
         print(f"  {_c('and reports that with the same sentence. Scan the QR and', DIM)}")
         print(f"  {_c('none of this comes up.', DIM)}")
 
+        # Has anything ever actually got here. This is the half of the
+        # question no check on this side can measure — a probe from this Mac
+        # to itself proves nothing about a phone — so it is read from what
+        # the running server recorded. "The phone cannot reach this Mac" and
+        # "nobody has opened it on a phone yet" look identical from here,
+        # and the difference is the whole diagnosis.
+        from core import preflight
+        for line in preflight.render(preflight.arrivals(port),
+                                     colour=sys.stdout.isatty()):
+            print(line)
+
         # And whether it has actually happened, which is the difference
         # between a warning and a diagnosis. The server writes the count
         # because this runs as its own process and cannot ask it.

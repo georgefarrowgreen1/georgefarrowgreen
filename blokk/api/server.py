@@ -1176,6 +1176,71 @@ def note_https_attempt() -> dict:
     return snap
 
 
+PEERS = ROOT / "logs" / "peers.json"
+_peers = {"n": 0, "last": 0.0, "written": 0.0, "who": []}
+_peers_lock = threading.Lock()
+
+
+def note_peer(ip: str) -> None:
+    """One line of memory: has anything from another device ever got here.
+
+    This is the question four rounds of "it will not connect over the LAN"
+    could not answer, and the reason each round was inference. Nothing on
+    this Mac could tell "the phone cannot reach us" from "nobody has tried
+    yet" — they look identical from here, and the difference is the whole
+    diagnosis.
+
+    Loopback is not another device: the browser on this Mac, every probe in
+    the suite and the doctor's own health check all come from 127.0.0.1, and
+    counting those would make the record say yes on a machine no phone has
+    ever touched.
+
+    Addresses rather than nothing, because "which device" is the next
+    question somebody asks and a bare count cannot answer it. Four at most,
+    and they are on this person's own wifi — this is not a log of who
+    visited, it is a list of what to expect.
+    """
+    import time as _t
+    if not ip or ip.startswith("127.") or ip == "::1":
+        return
+    with _peers_lock:
+        _peers["n"] += 1
+        _peers["last"] = _t.time()
+        fresh = ip not in _peers["who"]
+        if fresh:
+            _peers["who"] = (_peers["who"] + [ip])[-4:]
+        # Throttled on time, *except* when the write carries something the
+        # file does not already say. The first arrival ever, and the first
+        # from a new device, are the two facts this record exists for — and
+        # a plain five-second throttle lost exactly those: a phone that
+        # connects twice in a second wrote once, and a server stopped before
+        # the window elapsed wrote nothing at all. A diagnostic that answers
+        # "has anything ever reached this Mac" must not be able to lose the
+        # arrival that changes the answer.
+        stale = _peers["last"] - _peers["written"] > 5.0
+        write = stale or fresh or _peers["n"] == 1
+        snap = {"n": _peers["n"], "last": _peers["last"],
+                "who": list(_peers["who"])}
+        if write:
+            _peers["written"] = _peers["last"]
+    if write:
+        try:
+            PEERS.parent.mkdir(parents=True, exist_ok=True)
+            PEERS.write_text(json.dumps(snap))
+        except OSError:
+            pass                 # a record that cannot be written is not a fault
+
+
+def peers() -> dict:
+    """What the file says. Survives a restart, which is the point."""
+    try:
+        d = json.loads(PEERS.read_text())
+        return {"n": int(d.get("n", 0)), "last": float(d.get("last", 0.0)),
+                "who": [str(x) for x in (d.get("who") or [])][:4]}
+    except (OSError, ValueError, TypeError):
+        return {"n": 0, "last": 0.0, "who": []}
+
+
 def https_attempts() -> dict:
     """What the file says, for whoever is asking — server or doctor."""
     try:
@@ -1215,6 +1280,14 @@ class Handler(BaseHTTPRequestHandler):
         # the first thing on a connection anyway.
         if not self._tls_checked:
             self._tls_checked = True
+            # Counted before the TLS turn-away, not after. A phone that got
+            # here and spoke HTTPS *did* get here, and that is exactly the
+            # case where the two halves of the question have different
+            # answers: the network is fine and the address was typed wrong.
+            try:
+                note_peer(self.client_address[0])
+            except Exception:                                    # noqa: BLE001
+                pass             # bookkeeping must never cost a request
             if self._spoke_tls():
                 return
         return super().handle_one_request()
@@ -1614,11 +1687,52 @@ def serve(port=8080):
             fw_state, fw_note = _doc.firewall()
         except Exception:                                        # noqa: BLE001
             fw_state, fw_note = "", ""
-        if fw_state == "on" and "NOT listed" in fw_note:
+        # Every firewall verdict that stops a connection, not only the one
+        # this happened to know about. "NOT listed" was the only case here,
+        # so a Mac where somebody had clicked Deny — the verdict that
+        # actually blocks, and the one macOS never asks about again — got a
+        # banner that said nothing at all.
+        if fw_state == "on" and "BLOCK ALL" in fw_note.upper():
+            print(f"     {R}The firewall is blocking all incoming "
+                  f"connections.{O} Nothing")
+            print(f"     {R}can reach this Mac while that is on.{O}")
+            print(f"     {D}System Settings > Network > Firewall > Options, "
+                  f"turn off{O}")
+            print(f"     {D}'Block all incoming connections'.{O}\n")
+        elif fw_state == "on" and "BLOCKED" in fw_note:
+            print(f"     {R}macOS is blocking python from accepting "
+                  f"connections.{O}")
+            print(f"     {D}That is the Deny you clicked once; it never asks "
+                  f"again. System{O}")
+            print(f"     {D}Settings > Network > Firewall > Options, and "
+                  f"allow python.{O}\n")
+        elif fw_state == "on" and "NOT listed" in fw_note:
             print(f"     {R}The firewall will drop that connection.{O} python "
                   f"is not allowed through.")
             print(f"     {D}System Settings > Network > Firewall > Options, "
                   f"and add python3.{O}\n")
+
+    # What has already happened, which is the half nothing here could ever
+    # answer. "The phone cannot reach this Mac" and "nobody has opened it on
+    # a phone yet" look identical from this side, and the difference is the
+    # whole diagnosis — so the server says which of the two it is, from what
+    # it has actually seen, without anybody running a command for it.
+    try:
+        from core import preflight as _pre
+        for line in _pre.render(_pre.arrivals(port), colour=tty):
+            print(line)
+        seen = peers()
+        if seen.get("n"):
+            import time as _t
+            mins = max(0, int((_t.time() - seen["last"]) / 60))
+            when = ("just now" if mins < 1 else f"{mins} min ago" if mins < 90
+                    else f"{mins // 60}h ago")
+            who = ", ".join(seen["who"][:2]) or "another device"
+            print(f"     {D}·{O} {seen['n']} connection(s) have reached this "
+                  f"Mac from {who} — last {when}.")
+        print()
+    except Exception:                                            # noqa: BLE001
+        pass                    # a diagnostic must never be why start-up fails
 
     ms = model_status(probe=True)
     if ms["live"] and ms.get("reachable"):

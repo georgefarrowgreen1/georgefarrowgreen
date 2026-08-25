@@ -284,6 +284,13 @@ worse than an error.
                        logs/update.log with the commit to go back to
     core/doctor.py     why the phone cannot reach this Mac, and why the
                        agent cannot reach a model
+    core/preflight.py  the checks the run does on itself. Fast and local
+                       only — nothing here touches the network or waits on
+                       a subprocess, because it sits in front of somebody
+                       waiting for their app. Silent when clean; worst
+                       first; every finding carries its fix. Returns
+                       findings and prints nothing, so the banner and the
+                       doctor use one list and cannot disagree
     core/listen.py     `./blokk listen` — bind a port, print the link, and
                        report every connection that arrives and what it
                        said. Splits "the phone cannot reach the Mac" into
@@ -691,6 +698,19 @@ All four suites green. Verified behaviours:
   in the app; nothing arrives and it names the three things it can be, in
   the order worth checking. It is a separate listener on a separate port on
   purpose: the answer must not depend on the database opening
+* the run checks itself, so a diagnosis is not behind a command nobody
+  knows to type. Starting Blokk names anything that would stop a phone
+  reaching it — every firewall verdict that blocks, not just the one the
+  banner happened to know about — and says whether anything has *ever*
+  reached this Mac from another device. That last one is the half no check
+  on this side can measure: "the phone cannot get through" and "nobody has
+  opened it on a phone yet" are identical from here, and the difference is
+  the whole diagnosis. The server records every non-loopback arrival, so
+  the answer survives a restart. Loopback is excluded — the browser on this
+  Mac, the suites and the doctor's own health check would otherwise make
+  the record say yes on a machine no phone has touched. Silence is the
+  normal output: a wall of green on every start is how a terminal stops
+  being read
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

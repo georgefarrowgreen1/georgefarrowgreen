@@ -6575,6 +6575,141 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 116. the diagnosis is behind a command nobody knows to type ─────
+    def the_run_checks_itself():
+        # Every diagnostic here has been a separate thing to run, and the
+        # person who most needs one is the person who does not know it
+        # exists. Four rounds of "still not getting a connection over my
+        # LAN" went past with the answer behind a command nobody had been
+        # told to type.
+        #
+        # So the run checks. What it must not become is noise — a wall of
+        # green on every start is how a terminal stops being read — and it
+        # must not become slow, because nothing here may sit in front of
+        # somebody waiting for their app.
+        import sys as _s, shutil, subprocess as _sp
+        _s.path.insert(0, ".")
+        from core import preflight as P
+
+        # 1. Silence when nothing is wrong. A finding list that always has
+        #    something in it is a list nobody reads.
+        if P.render([]) != []:
+            return (True, "a clean machine still prints something at start-up")
+
+        # 2. Nothing in here is allowed to be slow or to touch the network.
+        src = open("core/preflight.py").read()
+        for banned, why in (("urlopen", "opens a connection"),
+                            ("fetch(", "fetches"),
+                            ("_git(", "shells out to git"),
+                            ("subprocess", "shells out")):
+            if banned in src:
+                return (True, f"preflight {why} — that is start-up latency in "
+                              f"front of somebody waiting for their app")
+        t0 = time.time()
+        P.checks(8099)
+        took = time.time() - t0
+        if took > 1.5:
+            return (True, f"the start-up checks took {took:.1f}s")
+
+        # 3. Findings are ordered worst-first and every one carries a fix.
+        made = [P._finding(P.NOTE, "c"), P._finding(P.STOP, "a"),
+                P._finding(P.WARN, "b")]
+        order = [f["what"] for f in sorted(
+            made, key=lambda f: {P.STOP: 0, P.WARN: 1, P.NOTE: 2}[f["level"]])]
+        if order != ["a", "b", "c"]:
+            return (True, "findings are not ordered worst first")
+
+        # 4. The half nothing could answer: has anything ever arrived.
+        #    Both states have to be distinguishable, and neither may be
+        #    silent — "cannot get through" and "nobody has tried" look
+        #    identical from this side and that is the whole diagnosis.
+        keep = P.ROOT
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        (tmp / "logs").mkdir()
+        P.ROOT = tmp
+        try:
+            cold = P.arrivals(8099)
+            if not any("ever reached this Mac" in f["what"] for f in cold):
+                return (True, "a Mac nothing has ever reached does not say so")
+            if not any(f["fix"] for f in cold):
+                return (True, "it says nothing has arrived and offers no way "
+                              "to find out why")
+            (tmp / "logs" / "peers.json").write_text(json.dumps(
+                {"n": 3, "last": time.time(), "who": ["192.168.1.42"]}))
+            warm = P.arrivals(8099)
+            if any("ever reached this Mac" in f["what"] for f in warm):
+                return (True, "something has reached this Mac and it still "
+                              "says nothing ever has")
+            # And an HTTPS attempt is surfaced wherever it is read, because
+            # that is the one the person can fix themselves.
+            (tmp / "logs" / "https-on-http.json").write_text(json.dumps(
+                {"n": 2, "last": time.time()}))
+            got = P.arrivals(8099)
+            if not any("HTTPS" in f["what"] for f in got):
+                return (True, "a browser that spoke HTTPS is recorded and "
+                              "never mentioned")
+            if not any("http://" in f["fix"] for f in got if "HTTPS" in f["what"]):
+                return (True, "the HTTPS finding does not carry its fix")
+        finally:
+            P.ROOT = keep
+
+        # 5. Loopback is not another device. Counting the browser on this
+        #    Mac, the suite and the doctor's own health check would make the
+        #    record say yes on a machine no phone has ever touched.
+        # Called, not read. The first version of this searched note_peer's
+        # source for "127." — which is in its docstring, so deleting the
+        # guard left the check passing on the comment that explains it.
+        import importlib
+        SRV = importlib.import_module("api.server")
+        where = pathlib.Path(tempfile.mkdtemp()) / "peers.json"
+        keep_path, keep_mem = SRV.PEERS, dict(SRV._peers)
+        SRV.PEERS = where
+        SRV._peers.update({"n": 0, "last": 0.0, "written": 0.0, "who": []})
+        try:
+            for loop in ("127.0.0.1", "::1", ""):
+                SRV.note_peer(loop)
+            if where.exists() or SRV._peers["n"]:
+                return (True, f"{SRV._peers['n']} loopback connection(s) were "
+                              f"counted as another device — the record says a "
+                              f"phone has reached this Mac when only this Mac "
+                              f"has")
+            # The first real arrival must reach disk at once. A plain time
+            # throttle lost exactly the write that changes the answer.
+            SRV.note_peer("192.168.1.42")
+            if not where.exists():
+                return (True, "the first arrival from another device is only "
+                              "written on a timer, so a server stopped inside "
+                              "the window records that nothing ever arrived")
+            got = json.loads(where.read_text())
+            if got.get("n") != 1 or "192.168.1.42" not in (got.get("who") or []):
+                return (True, f"the first arrival was recorded as {got}")
+            # A second device is new information and must not wait either.
+            SRV.note_peer("192.168.1.99")
+            got = json.loads(where.read_text())
+            if "192.168.1.99" not in (got.get("who") or []):
+                return (True, "a new device is not recorded until the write "
+                              "timer allows it")
+        finally:
+            SRV.PEERS = keep_path
+            SRV._peers.update(keep_mem)
+
+        # 6. And the banner says every firewall verdict that stops a
+        #    connection, not only the one it happened to know about.
+        srv = open("api/server.py").read()
+        banner = srv[srv.index("def serve("):]
+        for want in ("BLOCK ALL", "BLOCKED", "NOT listed"):
+            if want not in banner:
+                return (True, f"the start-up banner does not mention the "
+                              f"{want!r} firewall verdict, which stops a "
+                              f"connection as surely as the others")
+        return (False, "the run checks itself: silent when clean, worst "
+                       "first, every finding with a fix, nothing slow or "
+                       "networked in it — and it says whether anything has "
+                       "ever actually reached this Mac, which is the half "
+                       "no check on this side can measure")
+    probe("A116 the diagnosis is behind a command nobody knows to type",
+          the_run_checks_itself)
+
     # ── 115. the firewall says allowed when it says blocked ─────────────
     def firewall_reads_the_verdict():
         # Four rounds of "still not getting connection over my LAN", each
