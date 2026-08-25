@@ -209,6 +209,20 @@ config must. A connector that reaches outward returns **fields, never prose**
 — hand a small model a paragraph from a stranger and it paraphrases it; hand
 it numbers and it can say something true.
 
+That has to survive the whole way, and `core/sources.py:peek` is where it
+did not: its normalisation had a fixed shape of text keys, so a forecast's
+rain chance existed only inside the sentence in `subject`. The first fix was
+a tuple of five field names, which is the same bug with a plaster on it — a
+connector adding a sixth measurement had to be edited into two files, and
+until it was, its numbers silently became prose again. The rule now, in one
+place: **a number cannot carry an instruction, so it crosses on its own; a
+string is where an instruction lives, so it crosses only where the connector
+declares it in `CARRY`.** A connector is the only thing that knows its own
+strings came from a table in this repo rather than off the wire — `label` is
+a word out of `CODES`, not text the far end chose. What that cannot check is
+whether a connector is *wrong* about that; the default is empty, so
+forgetting costs you a field rather than admitting a sentence.
+
 `core/connectors/web.py` is the hard case: with a fetch tool the attacker
 chooses *which* page you read, so the content and the destination are both
 theirs. It is bounded by three things — the host is on the allowlist,

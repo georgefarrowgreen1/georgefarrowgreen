@@ -611,10 +611,55 @@ def _fix_for(name: str, state: dict) -> str:
     return "connect.py test shows what each wired source can and cannot do."
 
 
-# Row fields that are measurements rather than text. Carried through peek's
-# normalisation as themselves: a number that arrives as part of a sentence
-# is a number nothing downstream can compare, add up or threshold on.
-_NUMERIC = ("label", "high_c", "low_c", "rain_chance", "wind_kph")
+# The keys peek's normalisation derives for itself. Everything below is
+# about what happens to the ones it does not.
+_DERIVED = frozenset((
+    "from", "subject", "at", "where", "provenance", "instruction_like",
+    "body", "start", "date", "mailbox", "calendar", "place", "summary",
+))
+
+# A measurement crosses on its own. This used to be a tuple of five field
+# names — label, high_c, low_c, rain_chance, wind_kph — which fixed the
+# forecast and fixed nothing else: a connector adding a sixth had to
+# remember to append to a tuple in a different file, and if it did not, its
+# numbers silently became prose again. That is the bug with a plaster on it,
+# not the bug fixed.
+#
+# The rule instead of the list: **a number cannot carry an instruction.**
+# That is the same reasoning invariant 3 already rests on — hand a small
+# model a paragraph from a stranger and it paraphrases it, hand it numbers
+# and it can say something true — so a number needs no permission to cross
+# and free text needs quarantine.
+#
+# bool is deliberately in and str is deliberately out. `True` says nothing
+# a stranger wrote; a string is where an instruction lives, and one that
+# crossed here would reach a prompt without passing quarantine_read.
+_MEASURED = (int, float, bool)
+
+
+def _carried(conn) -> frozenset:
+    """String fields a connector says are safe to carry, and why it may.
+
+    A `label` like "light rain" is this project's own word out of a fixed
+    table in weather.py, not text the far end chose — so it can cross where
+    arbitrary prose cannot. The connector declares it, because the connector
+    is the only thing that knows where its own strings come from. Anything
+    not declared is treated as prose and left in `body`, where quarantine
+    has already seen it.
+
+    What this cannot check is whether a connector is *right* about its own
+    strings. Declaring a field that actually came off the wire would carry a
+    stranger's sentence past quarantine, and no probe here can tell the two
+    apart — the difference lives in the connector's source, not in the
+    value. So CARRY is deliberately opt-in, deliberately per-field, and
+    deliberately short: an empty default means the failure mode of
+    forgetting is a number that does not cross, not a sentence that does.
+    """
+    got = getattr(conn, "CARRY", ())
+    try:
+        return frozenset(str(x) for x in got)
+    except TypeError:
+        return frozenset()
 
 
 def peek(store, name: str, n: int = 5) -> dict:
@@ -726,17 +771,28 @@ def peek(store, name: str, n: int = 5) -> dict:
         # weather is worse than no weather at all, and this is the whole of
         # why the connector returns fields rather than prose in the first
         # place: flattening them here threw that away one layer later.
-        rows = [{"from": d["date"], "subject": d["summary"],
+        # The connector's row, then the three keys this branch derives. It
+        # used to re-list every field by name, which is the same whitelist
+        # the normaliser below had and one layer earlier: a connector adding
+        # a measurement had to be edited into *two* files, and until it was,
+        # its numbers never reached the normaliser to be judged at all. The
+        # rule about what may cross belongs in one place, and this is not
+        # that place — so nothing is decided here, everything is passed on.
+        rows = [{**d,
+                 "from": d["date"], "subject": d["summary"],
                  # One key, read by the normaliser below alongside mailbox
                  # and calendar. It carried two — `place` and a `calendar`
                  # alias — and either alone was enough, so removing one
                  # changed nothing and a probe could not tell.
-                 "provenance": d["provenance"], "place": where,
-                 "label": d["label"], "high_c": d["high_c"],
-                 "low_c": d["low_c"], "rain_chance": d["rain_chance"],
-                 "wind_kph": d["wind_kph"],
-                 "body": f"high {d['high_c']}°C, low {d['low_c']}°C, "
-                         f"rain {d['rain_chance']}%, wind {d['wind_kph']} km/h"}
+                 "place": where,
+                 # .get, not [], now that the row is passed through rather
+                 # than rebuilt: this branch is reached by anything with a
+                 # forecast() and it no longer controls what that returns.
+                 # A connector without a wind figure would have raised
+                 # KeyError here and taken the whole peek with it.
+                 "body": f"high {d.get('high_c')}°C, low {d.get('low_c')}°C, "
+                         f"rain {d.get('rain_chance')}%, "
+                         f"wind {d.get('wind_kph')} km/h"}
                 for d in c.forecast(days=span)]
     elif getattr(c, "gaps", None):
         # The sample calendar answers "which nights are free" and nothing
@@ -759,6 +815,7 @@ def peek(store, name: str, n: int = 5) -> dict:
                 "fix": "This connector answers specific questions rather "
                        "than listing. Nothing is wrong with it."}
     rows = list(rows)[:n]
+    carry = _carried(c)
     out = []
     for r in rows:
         body = r.get("body") or r.get("summary") or ""
@@ -776,7 +833,7 @@ def peek(store, name: str, n: int = 5) -> dict:
                     "provenance": r.get("provenance", "?"),
                     "instruction_like": bool(q["instruction_like"]),
                     "body": body[:400].strip(),
-                    # Whatever numbers the row came with, kept as numbers.
+                    # Whatever the row measured, kept as a measurement.
                     # This shape was a fixed set of strings, so a forecast's
                     # rain chance survived only inside the sentence in
                     # `subject` — and anything that wanted to answer "will it
@@ -784,7 +841,10 @@ def peek(store, name: str, n: int = 5) -> dict:
                     # "looks dry" over a day at 85%. Fields the row does not
                     # have stay absent rather than arriving as None, so
                     # "no figure came back" and "0%" stay different answers.
-                    **{k: r[k] for k in _NUMERIC if r.get(k) is not None}})
+                    **{k: v for k, v in r.items()
+                       if k not in _DERIVED and v is not None
+                       and (isinstance(v, _MEASURED) and not isinstance(v, str)
+                            or k in carry)}})
     # Readable and empty is a real answer, and a different one from
     # unreadable — but "nothing here" on its own is still a shrug. Say what
     # was looked at and what is on disk outside the window, because that is

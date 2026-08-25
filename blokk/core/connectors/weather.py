@@ -54,6 +54,11 @@ class Weather:
 
     kind = "weather"
     writes = False
+    # Strings this connector's rows may carry past peek's normalisation.
+    # `label` is a word out of CODES above — this project's own vocabulary,
+    # chosen by a lookup on a WMO number — and not text the far end wrote.
+    # Nothing else here is declared, because nothing else here is ours.
+    CARRY = ("label",)
 
     def __init__(self, ref: str = "", store=None):
         # `ref` is where you are: "54.97,-1.61", or a place name to look up
