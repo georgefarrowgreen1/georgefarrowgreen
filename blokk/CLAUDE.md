@@ -612,6 +612,16 @@ All four suites green. Verified behaviours:
   — 616 requests, every field holding the wrong kind of thing, no 5xx. And
   ten taps on the same approval at once produce exactly one decider: the
   claim is a single conditional UPDATE, so trust cannot move twice on a race
+* the queue's last card always ends clear of the chat bubble. The composer
+  is fixed to the bottom-right corner, so it floats over whatever is under
+  it — measured at 360, 390, 430 and 600, the centre of every control is
+  free and the bubble takes at most the button's bottom-right corner, which
+  is what a floating control does. The case nobody can scroll out of is the
+  last card, and `main`'s 84px bottom inset is the only thing stopping its
+  Approve from sitting under 56 points of glass for ever. B37 pins that to
+  the bubble's own height, so the round number cannot drift; B37b pins the
+  wide layout's different guarantee — a centred column ending before the
+  bubble begins — at the breakpoint where it is tightest
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

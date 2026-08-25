@@ -303,6 +303,110 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
 }
 
+// B37 — the floating bubble and the last card in the queue
+// The composer is fixed to the bottom-right corner, so it floats over
+// whatever card is under it. Measured in a browser at 360, 390, 430 and
+// 600: the centre of every control is always free — a thumb lands on the
+// button — but the bubble takes the button's bottom-right corner, at worst
+// 25% of it at 360. That is what a floating control does, and it is not
+// what this checks.
+//
+// What this checks is the case nobody can scroll out of. The last card in
+// the queue has nothing below it, so if the column does not end clear of
+// the bubble, its Approve sits under 56 points of glass for ever. `main`'s
+// 84px bottom padding is what stops that, and nothing said so — it reads
+// like a round number somebody liked. Cut it to the 24px the wide layout
+// uses and the last decision in the queue becomes untappable on every
+// phone, with all four suites green.
+//
+// The wide layout may use 24 because it earns it differently: the column
+// is centred and the bubble is out beyond its right edge. That is a
+// separate guarantee, checked separately, at the width where it is
+// tightest.
+{
+  const css = h.split('<style>')[1].split('</' + 'style>')[0];
+  const tok = (name) => {
+    const m = css.match(new RegExp('--' + name + '\\s*:\\s*(\\d+(?:\\.\\d+)?)px'));
+    return m ? parseFloat(m[1]) : null;
+  };
+  const bodyOf = (sel, from) => {
+    // First `sel{...}` at or after `from`. Selectors repeat across media
+    // queries, and taking whichever the regex reached first got the wide
+    // layout's override — which is how the first draft of this read 24px
+    // for the phone rule and reported the wrong number for the right bug.
+    const i = css.indexOf(sel + '{', from || 0);
+    return i < 0 ? '' : css.slice(i + sel.length + 1, css.indexOf('}', i));
+  };
+  const lastPx = (t) => {
+    const m = (t || '').match(/(\d+(?:\.\d+)?)px\s*$/);
+    return m ? parseFloat(m[1]) : null;
+  };
+  // The base rule, before any @media — that is the one phones get.
+  // Against the first *width* query, not the first @media of any kind: the
+  // palette's prefers-color-scheme blocks sit hundreds of lines above the
+  // layout rules, so comparing against those declared the base rule to be
+  // an override and turned this whole check off while it still printed a
+  // reason. A probe that goes blind has to fail, and this one did — but for
+  // its own bug rather than the product's.
+  const firstWidthMedia = (() => {
+    const m = css.match(/@media\s*\(min-width:/);
+    return m ? m.index : css.length;
+  })();
+  const mainBase = bodyOf('main', 0);
+  const baseIsBase = css.indexOf('main{') < firstWidthMedia;
+  const padBottom = (() => {
+    const pb = (mainBase.match(/(?:^|;)\s*padding-bottom\s*:\s*([^;]+)/) || [])[1];
+    if (pb) return lastPx(pb);
+    const p4 = (mainBase.match(/(?:^|;)\s*padding\s*:\s*([^;]+)/) || [])[1];
+    return p4 ? lastPx(p4) : null;
+  })();
+
+  const bubble = bodyOf('.bubble', 0);
+  const bubbleH = lastPx((bubble.match(/(?:^|;)\s*height\s*:\s*([^;]+)/) || [])[1]);
+  const bubbleW = lastPx((bubble.match(/(?:^|;)\s*width\s*:\s*([^;]+)/) || [])[1]);
+  // .composer sits var(--sp-4) above the safe area, which is 0 on anything
+  // without a home indicator — the worst case, and the one to size for.
+  const lift = tok('sp-4');
+
+  const blind = [bubbleH, bubbleW, lift, padBottom].some(v => v === null) || !baseIsBase;
+  const need = blind ? null : bubbleH + lift;
+  probe('B37 the last card in the queue sits under the bubble for ever',
+    blind || padBottom < need,
+    blind
+      ? 'could not read .bubble, --sp-4 or the base main{} — the check went blind'
+      : `main ends ${padBottom}px clear and the bubble needs ${need}px `
+        + `(${bubbleH} tall, ${lift} up)`);
+
+  // And it stays a corner, not a bar. The comment above .composer says why a
+  // full-width bar was rejected: it covers the card underneath it for the
+  // whole page rather than 56 points of one corner. A bubble that grew wide
+  // would take the centre of every button with it, and the centre is the
+  // part that is always free today.
+  probe('B37a the composer has grown from a corner into a bar',
+    bubbleW === null || bubbleW > 96,
+    bubbleW === null ? 'no width on .bubble'
+      : `${bubbleW}px wide — it covers a corner, never a whole row`);
+
+  // The wide layout's own guarantee. Taken at the breakpoint that defines
+  // .col-main, because that is the narrowest window the rule applies to and
+  // therefore the tightest the clearance ever gets.
+  {
+    const at = css.indexOf('.col-main{');
+    const before = css.slice(0, at);
+    const m = [...before.matchAll(/@media\s*\(min-width:\s*(\d+)px\)/g)].pop();
+    const bp = m ? parseFloat(m[1]) : null;
+    const measure = tok('measure'), gutter = tok('gutter');
+    const ok = [measure, gutter, bp, bubbleW].every(v => v !== null);
+    const colRight = ok ? (bp + measure + 2 * gutter) / 2 : 0;
+    const bubbleLeft = ok ? bp - gutter - bubbleW : 0;
+    probe('B37b the wide column runs under the bubble at the breakpoint',
+      !ok || colRight > bubbleLeft,
+      !ok ? 'could not read --measure, --gutter or .col-main\'s breakpoint'
+        : `at ${bp}px the column ends at ${Math.round(colRight)} and the `
+          + `bubble starts at ${Math.round(bubbleLeft)}`);
+  }
+}
+
 // B20 — 44 points, everywhere, measured off the stylesheet
 // Every control in the app was under it: the toolbar at 40, the sheet
 // buttons at 38, the health row at 31, the send button at 38, the
