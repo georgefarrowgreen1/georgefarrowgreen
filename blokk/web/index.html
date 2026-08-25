@@ -549,7 +549,7 @@
        box-shadow:inset 0 .6px 0 var(--fill-1)}
   .run .w{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px}
   .run .st{font-family:var(--mono);font-size:18px;letter-spacing:-.02em;
-    color:var(--c,var(--lab))}
+    font-weight:650;color:var(--c,var(--lab))}
   .run .lb{font-family:var(--mono);font-size:10.5px;color:var(--lab3);margin-top:4px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
@@ -584,6 +584,7 @@
   dialog .mrow:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
   dialog .mrow .k{flex:1;min-width:0}
   dialog .mrow .v{color:var(--lab3);font-size:13px;text-align:right;
+    font-variant-numeric:tabular-nums;
     max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* A chevron on every row that opens something, and none on the ones that
      just do it. The difference is what tells you which is which before you
@@ -599,22 +600,17 @@
   dialog .health{margin:0 0 var(--sp-5)}
   /* The one thing that came back out: something actually wrong. */
   .trouble{display:flex;gap:var(--sp-3);align-items:flex-start;
-    margin:0 0 var(--sp-4);padding:var(--sp-3) var(--sp-4);
-    border-radius:var(--r-card);font-size:13.5px;line-height:1.45;
-    color:var(--amber);
-    background:color-mix(in srgb,var(--amber) 12%,transparent)}
-  /* Same material as the instruction warning — it is the same kind of
-     statement, made about a different thing — and it sits on the queue's
-     cards too, which are .action and not .prop. */
-  .prop .pf b,.action .pf b{font-variant-numeric:tabular-nums}
-  .action .pf{margin:var(--sp-2) 0 0;padding:var(--sp-2) var(--sp-3);
-    border-radius:var(--r-card);font-size:12.5px;line-height:1.45;
-    color:var(--amber);
-    background:color-mix(in srgb,var(--amber) 12%,transparent)}
-  .trouble b{color:var(--amber)}
-  .trouble button{min-height:var(--tap);padding:0 var(--sp-3);border:0;
-    border-radius:var(--r-pill);background:var(--fill-3);color:var(--lab);
-    font:inherit;font-size:13px;cursor:pointer;flex:0 0 auto}
+    flex-wrap:wrap;border:0;border-radius:var(--r-lg);
+    padding:var(--sp-4);margin-bottom:var(--sp-4);
+    font-size:13.5px;line-height:1.5;color:var(--tw2);
+    background:linear-gradient(150deg,
+               color-mix(in srgb,var(--tile-rust) 92%,#000),
+               color-mix(in srgb,var(--tile-rust) 68%,#000));
+    box-shadow:0 16px 40px -24px var(--tile-rust)}
+    .trouble b{color:var(--tw)}
+  .trouble button{min-height:var(--tap);padding:0 var(--sp-4);border:0;
+    border-radius:var(--r-pill);background:#fff;color:var(--tile-rust);
+    font:inherit;font-size:13px;font-weight:700;cursor:pointer}
   .ctl{display:flex;gap:8px;margin-top:12px}
   .ctl button{flex:1;border:0;border-radius:var(--r-pill);padding:12px;
     min-height:var(--tap);font-family:var(--ui);
@@ -623,7 +619,7 @@
               background .15s ease;box-shadow:inset 0 .6px 0 var(--fill-3)}
   .ctl button:hover{background:var(--fill-3)}
   .ctl button:active:not(:disabled){transform:scale(.97)}
-  .ctl button.go{background:var(--blue-fill);color:#fff;
+  .ctl button.go{background:var(--lab);color:var(--bg);
     box-shadow:inset 0 .6px 0 rgba(255,255,255,.3),0 4px 14px rgba(10,132,255,.32)}
   .ctl button.go:hover{background:var(--blue-hard)}
   .ctl button:disabled{opacity:.4}
@@ -687,17 +683,22 @@
   .step .n{color:var(--lab3);font-variant-numeric:tabular-nums}
   .step.live{border-color:rgba(10,132,255,.4)}
   .step.flag{border-color:rgba(255,214,10,.4);color:var(--amber)}
-  .prop{background:var(--card);border:1px solid var(--hair);
-        border-radius:var(--r-lg);padding:12px;margin:4px 0 16px;
-        box-shadow:0 1px 1px var(--shadow),0 8px 24px -20px var(--shadow)}
-  .prop .pl{display:inline-flex;align-items:center;padding:4px 12px;
-    border-radius:var(--r-pill);font-size:var(--t-small);font-weight:600;
-    color:var(--blue);margin-bottom:8px;
-    background:color-mix(in srgb,var(--blue) 14%,transparent)}
-  .prop.pinned .pl{color:var(--amber);
-    background:color-mix(in srgb,var(--amber) 14%,transparent)}
-  .prop .pb{font-size:14.5px;line-height:1.42}
-  .prop .pn{font-size:12.5px;color:var(--lab2);margin-top:var(--sp-2);line-height:1.4}
+  /* The same object as a tray tile — a proposal in a category — so it is
+     the same thing to look at: a slab of its kind's colour, in the middle
+     of the conversation that produced it. The thread stays quiet around
+     it, which is what makes the one thing that needs a decision read as
+     the one thing that needs a decision. */
+  .prop{border:0;border-radius:var(--r-lg);padding:12px;margin:4px 0 16px;
+        background:linear-gradient(150deg,
+                   color-mix(in srgb,var(--k,var(--tile-blue)) 92%,#000),
+                   color-mix(in srgb,var(--k,var(--tile-blue)) 68%,#000));
+        color:var(--tw);
+        box-shadow:0 16px 40px -24px var(--k,var(--tile-blue))}
+  .prop .pl{font-size:var(--t-small);font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--tw2);margin-bottom:8px}
+  .prop .pb{font-size:15px;line-height:1.45;font-weight:600;
+    letter-spacing:-.01em}
+  .prop .pn{font-size:12.5px;color:var(--tw2);margin-top:var(--sp-2);line-height:1.4}
   /* A proposal made in a turn that had something instruction-shaped in
      view. Amber, stated on the card, and never a reason to hide the card:
      the queue is the defence, and a person who cannot see what was read
@@ -711,19 +712,19 @@
      carrying a second copy of the block. */
   .prop .drew{margin:var(--sp-2) 0 0;font-size:13px}
   .prop .drew summary{min-height:var(--tap);display:flex;align-items:center;
-    color:var(--lab3);cursor:pointer;list-style:none;user-select:none}
+    color:var(--tw2);cursor:pointer;list-style:none;user-select:none}
   .prop .drew summary::-webkit-details-marker{display:none}
   .prop .drew summary::before{content:'\203A';display:inline-block;
     margin-right:var(--sp-2);transition:transform .15s ease}
   .prop .drew[open] summary::before{transform:rotate(90deg)}
   .prop .drew summary:focus-visible{outline:2px solid var(--blue);
     outline-offset:2px;border-radius:var(--r-pill)}
-  .prop .src{border-left:2px solid var(--hair);padding:0 0 0 var(--sp-3);
+  .prop .src{border-left:2px solid rgba(255,255,255,.25);padding:0 0 0 var(--sp-3);
     margin:0 0 var(--sp-3)}
   .prop .src:last-child{margin-bottom:0}
   .prop .src.hot{border-left-color:var(--amber)}
-  .prop .src .sh{color:var(--lab2);font-size:12.5px}
-  .prop .src .sw{color:var(--lab3);margin-left:var(--sp-2)}
+  .prop .src .sh{color:var(--tw2);font-size:12.5px}
+  .prop .src .sw{color:var(--tw2);margin-left:var(--sp-2)}
   .prop .src .ss{font-weight:600;margin-top:2px}
   .prop .src blockquote{margin:var(--sp-1) 0 0;color:var(--lab2);
     font-size:12.5px;line-height:1.45}
@@ -736,12 +737,16 @@
      above the edit form they were supposed to make way for. */
   .prop .pa[hidden]{display:none}
   .prop .pa button{flex:1;min-height:var(--tap);border-radius:var(--r-pill);
-                   border:1px solid var(--hair);background:var(--card2);
-                   color:var(--lab);font-family:var(--ui);font-size:14px;
-                   font-weight:500;cursor:pointer}
-  .prop .pa button.yes{background:var(--blue-fill);border-color:transparent;color:#fff}
-  .prop .pa button.no{color:var(--lab2);background:transparent}
-  .prop .pa button.no:hover{background:rgba(255,69,58,.14);color:var(--red)}
+    border:0;background:rgba(0,0,0,.22);color:var(--tw);
+    font:inherit;font-size:14px;font-weight:600;cursor:pointer;
+    transition:background .15s ease,transform .12s ease}
+  .prop .pa button:hover:not(:disabled){background:rgba(0,0,0,.34)}
+  .prop .pa button:active:not(:disabled){transform:scale(.97)}
+  .prop .pa button.yes{background:#fff;color:var(--k,var(--tile-blue));
+    font-weight:700}
+  .prop .pa button.yes:hover:not(:disabled){filter:brightness(.94)}
+  .prop .pa button.no{color:var(--tw2);background:rgba(0,0,0,.22)}
+  .prop .pa button.no:hover{background:rgba(0,0,0,.34);color:var(--tw)}
   .prop .pa button:disabled{opacity:.45;cursor:default}
   .prop .pa button.tweak{flex:0 0 auto;padding:0 var(--sp-4)}
   /* The arguments, editable. One field per row so a long ref does not
@@ -749,7 +754,7 @@
   .prop .pedit{display:flex;flex-direction:column;gap:var(--sp-2);
                margin-top:var(--sp-3)}
   .prop .pfield{display:flex;align-items:center;gap:var(--sp-3)}
-  .prop .pfield span{flex:0 0 78px;font-size:12.5px;color:var(--lab2)}
+  .prop .pfield span{flex:0 0 78px;font-size:12.5px;color:var(--tw2)}
   .prop .pfield input{flex:1;min-width:0;min-height:var(--tap);
     padding:0 var(--sp-3);border-radius:var(--r-md);
     border:1px solid var(--hair);background:var(--field);color:var(--lab);
@@ -758,23 +763,31 @@
   /* A draft is a thing you copy, so it takes the shape of a thing you copy:
      the text exactly as it will be pasted, on its own ground, with one
      control. Not a speech bubble — this is not the assistant talking. */
-  .draft{background:var(--card2);border:1px solid var(--hair);
-         border-radius:var(--r-card);padding:var(--sp-4);
-         margin:0 0 var(--sp-4)}
+  /* A draft is words to send, which makes it a reply — so it is the
+     reply tile, in the conversation, with the text on a dark well the way
+     every tile carries its reading matter. */
+  .draft{border:0;border-radius:var(--r-card);padding:var(--sp-4);
+         margin:0 0 var(--sp-4);color:var(--tw);
+         background:linear-gradient(150deg,
+                    color-mix(in srgb,var(--tile-blue) 92%,#000),
+                    color-mix(in srgb,var(--tile-blue) 68%,#000));
+         box-shadow:0 16px 40px -24px var(--tile-blue)}
   .draft .dl{display:flex;align-items:center;gap:var(--sp-3);
              margin-bottom:var(--sp-3)}
-  .draft .dl b{flex:1;min-width:0;font-family:var(--mono);font-size:9px;
-               letter-spacing:.1em;text-transform:uppercase;color:var(--lab3);
-               font-weight:400}
+  .draft .dl b{flex:1;min-width:0;font-size:var(--t-small);font-weight:700;
+               letter-spacing:.14em;text-transform:uppercase;
+               color:var(--tw2)}
   .draft .dt{font-size:15.5px;line-height:1.5;white-space:pre-wrap;
-             font-family:var(--ui);color:var(--lab)}
-  .draft .dn{font-size:12.5px;color:var(--lab3);line-height:1.4;
+             font-family:var(--ui);color:var(--tw);
+             background:rgba(0,0,0,.30);padding:var(--sp-3);
+             border-radius:calc(var(--r-card) - var(--sp-3))}
+  .draft .dn{font-size:12.5px;color:var(--tw2);line-height:1.4;
              margin-top:var(--sp-3);padding-top:var(--sp-3);
-             border-top:1px solid var(--hair)}
+             border-top:1px solid rgba(255,255,255,.22)}
   .draft .copy{flex:0 0 auto;min-height:var(--tap);padding:0 var(--sp-4);
-               border:1px solid var(--hair);border-radius:var(--r-pill);
-               background:var(--card);color:var(--lab);font-family:var(--ui);
-               font-size:13.5px;font-weight:500;cursor:pointer}
+               border:0;border-radius:var(--r-pill);
+               background:#fff;color:var(--tile-blue);font-size:13px;
+               font-weight:700;font-family:var(--ui);cursor:pointer}
   .draft .copy:hover{background:var(--fill-3)}
   .draft .copy.done{color:var(--green);border-color:transparent;
                     background:rgba(48,209,88,.16)}
@@ -785,8 +798,18 @@
   .prop .pr b{color:var(--lab);font-weight:600}
   .prop .pr.bad b{color:var(--red)}
   .prop.pinned .pl::after{content:" · always asks";color:var(--lab3)}
-  .prop.settled{background:var(--card2);border-color:var(--hair)}
+  /* A decided proposal is done, not gone: it drops to the quiet ground
+     with a hairline of its kind's colour down the left, the same way a
+     handled item keeps its dot. Full colour would keep pulling the eye to
+     a thing there is nothing left to do about. */
+  .prop.settled{background:var(--card2);color:var(--lab);
+    box-shadow:none;border-left:3px solid var(--k,var(--hair))}
   .prop.settled .pl{color:var(--lab3)}
+  .prop.settled .pb{color:var(--lab);font-weight:600}
+  .prop.settled .pn,.prop.settled .pr{color:var(--lab2)}
+  .prop.settled .src .sh,.prop.settled .src .sw,
+  .prop.settled .drew summary{color:var(--lab3)}
+  .prop.settled .src{border-left-color:var(--hair)}
   .degraded{font-size:12.5px;line-height:1.4;color:var(--amber);
             margin:0 0 var(--sp-3);display:flex;gap:var(--sp-2)}
   .degraded::before{content:"\26A0";flex:0 0 auto}
@@ -810,7 +833,7 @@
                    min-height:var(--tap);padding:12px 0;outline:none}
   .askbar .go,.askbar .stop{width:var(--tap);height:var(--tap);border-radius:50%;
               border:0;font-size:16px;cursor:pointer;flex:0 0 auto}
-  .askbar .go{background:var(--blue-fill);color:#fff}
+  .askbar .go{background:var(--lab);color:var(--bg)}
   .askbar .go:disabled{background:var(--card2);color:var(--lab3)}
   .askbar .stop{background:rgba(255,69,58,.2);color:var(--red);font-size:13px}
   .readonly{font-size:11.5px;color:var(--lab3);text-align:center;margin-top:8px;line-height:1.4}
@@ -875,8 +898,14 @@
   .warn-note summary{cursor:pointer;color:var(--lab2);font-size:12.5px}
   .warn-note pre{margin:8px 0 0;padding:8px;background:var(--sunk);border-radius:9px;
             overflow-x:auto;font-size:11.5px;line-height:1.4;color:var(--lab2);white-space:pre}
-  .off-note{background:var(--err-bg);border:1px solid rgba(255,69,58,.3);border-radius:14px;padding:12px;
-            font-size:13.5px;line-height:1.45;color:var(--lab2);margin-bottom:16px}
+  .off-note{border:0;border-radius:var(--r-lg);padding:var(--sp-4);
+            font-size:13.5px;line-height:1.45;color:var(--tw2);
+            margin-bottom:16px;
+            background:linear-gradient(150deg,
+                       color-mix(in srgb,var(--tile-red) 92%,#000),
+                       color-mix(in srgb,var(--tile-red) 68%,#000));
+            box-shadow:0 16px 40px -24px var(--tile-red)}
+  .off-note b{color:var(--tw)}
   /* edit sheet — the correction is the highest-signal thing you produce,
      so it needs somewhere real to be written */
   .editor{margin-top:12px}
@@ -948,7 +977,7 @@
     #updlg{max-width:540px}
   }
   @media (prefers-reduced-motion:reduce){dialog[open]{animation:none}}
-  dialog h2{margin:0 0 8px;font-size:18px;letter-spacing:-.01em}
+  dialog h2{margin:0 0 8px;font-size:20px;font-weight:750;letter-spacing:-.02em}
   dialog p{margin:0 0 8px;font-size:13px;color:var(--lab2);line-height:1.45}
   dialog .sub{font-size:var(--t-small);color:var(--lab3);margin:8px 0 0;
     line-height:1.45}
@@ -966,8 +995,9 @@
   dialog .mini:hover{background:var(--fill-3)}
   dialog .mini:active{transform:scale(.97)}
   dialog .mini{transition:transform .12s ease,background .15s ease}
-  dialog .mini.go{width:100%;background:var(--blue-fill);border-color:transparent;
-    color:#fff;font-weight:600;margin-top:2px}
+  dialog .mini.go{width:100%;background:var(--lab);border-color:transparent;
+    color:var(--bg);font-weight:650;margin-top:2px}
+  dialog .mini.go:hover{background:var(--lab);filter:brightness(.92)}
   dialog .mini.danger{color:var(--red)}
   dialog .mini.armed,dialog .mini.quiet.armed{background:var(--red);
     border-color:transparent;color:#fff}
@@ -1795,6 +1825,7 @@ function paint(h, ap, handled, runs){
   $('#qn').textContent = handled.length;
   $('#qlist').innerHTML = handled.length
     ? handled.map(q=>`<div class="qi">
+        <span class="dot" style="--c:${kindOf(q).c}"></span>
         <span class="t">${esc(q.title||q.category)}<small>${esc((q.body||'').slice(0,72))}</small></span>
         <span class="m ${q.decision === 'expired' ? 'gone' : ''}">${
           esc(q.decision)}</span></div>`).join('')
@@ -2678,8 +2709,14 @@ function propCard(p){
   }
   const res = p.result ? (typeof p.result==='string' ? JSON.parse(p.result) : p.result) : null;
   const settled = !!p.decision;
-  const c = el(`<div class="prop${p.pinned||(a&&a.pinned)?' pinned':''}${settled?' settled':''}"
-      data-id="${esc(p.id||'')}">
+  // The same hue rule as the board: the category picks the tile, rust for
+  // anything that always asks. A proposal in the chat and the same
+  // proposal in the queue are one object, and now they are one colour.
+  const pin = p.pinned || (a && a.pinned);
+  const hue = pin ? 'var(--tile-rust)'
+    : (KINDS[p.category || (a && a.category)] || {}).c || 'var(--tile-blue)';
+  const c = el(`<div class="prop${pin?' pinned':''}${settled?' settled':''}"
+      data-id="${esc(p.id||'')}" style="--k:${hue}">
     <div class="pl">Proposal${settled?' &middot; '+esc(PAST[p.decision]||p.decision)
                                      :' &middot; waiting on you'}</div>
     <div class="pb">${esc(p.body||'')}</div>

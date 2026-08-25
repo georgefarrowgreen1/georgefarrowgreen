@@ -154,9 +154,12 @@
   .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:20px}
   .sect{font-size:13px;color:var(--lab3);margin:24px 0 12px;font-weight:500}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--r-pill);background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
-  .chip .t{color:var(--lab3);font-size:12px}
-  .chip.warn{border-color:rgba(255,214,10,.28)}.chip.warn .t{color:var(--amber)}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:12px 16px;
+    border-radius:var(--r-lg);background:var(--card);
+    border:1px solid var(--hair);font-size:13.5px;font-weight:550;
+    color:var(--lab2)}
+  .chip .t{width:8px;height:8px;border-radius:var(--r-pill);flex:0 0 auto;background:var(--green);overflow:hidden;color:transparent}
+  .chip.warn{color:var(--lab)} .chip.warn .t{background:var(--amber)}.chip.warn .t{color:var(--amber)}
   .chip.bad{border-color:rgba(255,69,58,.3)}.chip.bad .t{color:var(--red)}
   /* The same card language as the dashboard — neutral elevated ground,
      the kind worn as a tinted chip, the primary filled. The demo had kept
@@ -193,8 +196,7 @@
   .pair button:disabled{opacity:.4}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
-  .quiet{background:var(--card2);border:1px solid var(--hair);
-    border-radius:var(--r-card);overflow:hidden}
+  .quiet{background:var(--fill-1);border:1px solid var(--hair);border-radius:var(--r-card);overflow:hidden}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;
     min-height:var(--tap);cursor:pointer}
   .quiet .head .n{font-size:24px;font-weight:700;color:var(--lab);font-variant-numeric:tabular-nums}
