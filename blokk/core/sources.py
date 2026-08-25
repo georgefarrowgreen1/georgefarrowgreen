@@ -430,7 +430,7 @@ def find(store, name: str, term: str, days: int = FIND_DAYS,
                           if not words else
                           f"{term!r} is only common words \u2014 nothing to "
                           f"look for in it"),
-                "fix": "Say what to look for — a name, a place, a booking."}
+                "fix": "Say what to look for — a name, a place, a date."}
     c = wire(store).get(name)
     if c is None:
         wired = ", ".join(sorted(wire(store).all())) or "nothing"

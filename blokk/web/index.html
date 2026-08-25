@@ -2347,8 +2347,9 @@ function announce(msg){ const r=$('#sr'); if(r) r.textContent=msg; }
 // Three reads and one ask, in that order. The last one is there because
 // nothing else on this screen says the chat can propose a change — and a
 // capability nobody discovers is a capability that does not exist.
-const SUGG = ['What needs me?', 'Draft a reply to the last enquiry',
-              'What has it learned?', 'Take a backup'];
+const SUGG = ['What needs me?', 'What have I got on this week?',
+              'Remind me about this on Thursday',
+              'What has it learned?'];
 let asking = null;   // AbortController while a turn is in flight
 
 // Where the bubble is, right now. The circle opens from the button rather

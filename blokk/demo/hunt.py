@@ -2360,7 +2360,7 @@ try:
             if r.get("error"):
                 return (True, f"could not wire {kind}: {r['error']}")
         tools = build_tools(st)
-        for want in ("read_mail", "read_calendar", "free_nights"):
+        for want in ("read_mail", "read_calendar", "free_time"):
             if want not in tools:
                 return (True, f"{want} is not offered with the source wired")
         # …and not offered where the source is not wired. The contrast used
@@ -8341,7 +8341,7 @@ try:
         ev = {"drawn_from": [{"kind": "mail", "subject": "September?",
                               "body": "Two of us, plus the dog."}],
               "rates": {"shoulder": 120, "dog": 25},
-              "free_nights": [{"from": "2026-08-26", "nights": 3}]}
+              "free_time": [{"from": "2026-08-26", "nights": 3}]}
         good = ("The last week of August is free at the shoulder rate of "
                 "£120, plus the £25 dog charge.")
         if G.unsupported(good, ev):
@@ -8472,6 +8472,151 @@ try:
                        "and held-sometimes named as its own thing")
     probe("A124 a frozen example is measured once and called a fact",
           regression_measures_a_rate)
+
+    # ── 125. a cottage wearing a person's clothes ──────────────────────
+    def rebased_on_a_person():
+        # The holiday let was never a decision anybody made — it was the
+        # sample world hardening into the product, one correct
+        # implementation of the wrong thing at a time. This is the check
+        # that it does not grow back, and it is deliberately about
+        # *behaviour* rather than about words: a grep for "cottage" would
+        # pass on a program that still refuses to put the dentist in
+        # because Mum is staying that week.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from datetime import date as _dd, timedelta as _ttd
+        from core.durable import Store
+        from core import actions as A, intray
+
+        st = Store('blokk.db')
+
+        # 1. The kinds are rows, and both the prompt and the grammar are
+        #    built from them. A category added to the table has to be a
+        #    category the model is told about.
+        names = [c["name"] for c in intray.categories(st)]
+        for want in ("reply", "diary", "admin", "noise", "sensitive"):
+            if want not in names:
+                return (True, f"the in-tray has no {want!r} kind: {names}")
+        st.x("INSERT OR REPLACE INTO intray(name,what,does,rank) "
+             "VALUES('probe125','a made-up kind','card',99)")
+        try:
+            if "probe125" not in intray.prompt(st):
+                return (True, "a category in the table is not in the prompt")
+            enum = (intray.schema(st)["schema"]["properties"]["sorted"]
+                    ["items"]["properties"]["kind"]["enum"])
+            if "probe125" not in enum:
+                return (True, "a category in the table is not in the grammar")
+        finally:
+            st.x("DELETE FROM intray WHERE name='probe125'")
+
+        # 2. Something has to happen to every kind. `other` had no branch,
+        #    so most of the post was counted and discarded.
+        for c in intray.categories(st):
+            # The *declared* value, not the one does() hands back. does()
+            # coerces anything it does not recognise to a card, which is the
+            # right runtime behaviour and makes this check unfailable if you
+            # read it through the coercion — which the first version did.
+            if c["does"] not in intray.DOES:
+                return (True, f"{c['name']} does {c['does']!r}, which the "
+                              f"sweep has no branch for")
+        # And the coercion itself, asked directly. An unrecognised kind has
+        # to become something a person sees, never something filed away.
+        if intray.does(st, "no such kind") not in (intray.CARD, intray.DRAFT):
+            return (True, "a kind nobody recognises is filed rather than "
+                          "shown")
+        if not any(intray.does(st, n) == intray.FILE for n in names):
+            return (True, "nothing is filed — everything either needs a "
+                          "decision or is thrown away, which is the shape "
+                          "that made a morning feel empty")
+
+        # 3. A bed is exclusive and a Tuesday is not. This is the one that
+        #    matters most: it is behaviour, and it is the sharpest single
+        #    difference between the two products.
+        day = _dd.today() + _ttd(days=30)
+        one = {"title": "Dentist", "start": f"{day}T15:00", "end": f"{day}T16:00"}
+        clash = {"title": "Optician", "start": f"{day}T15:30",
+                 "end": f"{day}T16:30"}
+        beside = {"title": "Haircut", "start": f"{day}T09:00",
+                  "end": f"{day}T09:45"}
+        allday = {"title": "Mum staying", "start": str(day),
+                  "end": str(day + _ttd(days=2))}
+        for args, why in ((one, "a timed entry"), (clash, "an overlap"),
+                          (beside, "a second thing on the same day"),
+                          (allday, "a whole-day entry")):
+            try:
+                A.validate("put_in_diary", args)
+            except A.Rejected as e:
+                return (True, f"{why} is refused before anybody sees it: {e}")
+
+        # And the rule itself, which validate() never touches — it checks
+        # the shape of an argument, and whether two things collide is a
+        # question for the executor. Asking validate() about it was a check
+        # that could not fail, and the gate said so.
+        from datetime import datetime as _dtt
+        at = lambda h, m=0: _dtt.combine(day, _dtt.min.time()).replace(
+            hour=h, minute=m)
+        if not A._touching(at(15), at(16), at(15, 30), at(16, 30)):
+            return (True, "two things at the same time are not a clash")
+        if A._touching(at(15), at(16), at(16), at(17)):
+            return (True, "a thing that ends at four and one that starts at "
+                          "four are treated as a clash")
+        mid_a = (_dtt.combine(day, _dtt.min.time()),
+                 _dtt.combine(day + _ttd(days=2), _dtt.min.time()))
+        mid_b = (_dtt.combine(day, _dtt.min.time()),
+                 _dtt.combine(day + _ttd(days=1), _dtt.min.time()))
+        if A._touching(*mid_a, *mid_b):
+            return (True, "two whole-day entries on one day are a clash — a "
+                          "bed is exclusive and a Tuesday is not")
+
+        # 4. And a time survives the whole way. Bookings are counted in
+        #    nights, so anything carrying a clock used to be refused as
+        #    "not a date" and every entry was written as an all-day event.
+        _, clean = A.validate("put_in_diary", one)
+        if "15:00" not in clean["start"]:
+            return (True, f"the time was thrown away by validate: {clean}")
+        from core.connectors.ics_out import build
+        text, _uid = build("Dentist", clean["start"], clean["end"])
+        if "DTSTART;VALUE=DATE" in text:
+            return (True, "an appointment is written as an all-day event")
+        if "T150000" not in text:
+            return (True, f"the time is not in the file: "
+                          f"{[l for l in text.splitlines() if 'DTSTART' in l]}")
+        whole, _ = build("Mum staying", allday["start"], allday["end"])
+        if "DTSTART;VALUE=DATE" not in whole:
+            return (True, "a whole-day entry gained a time it never had")
+
+        # 5. The two names that were one action and one tool.
+        if "hold_dates" in A.ACTIONS or "put_in_diary" not in A.ACTIONS:
+            return (True, f"the catalogue is {sorted(A.ACTIONS)}")
+        if "remind_me" not in A.ACTIONS:
+            return (True, "there is no way to ask to be reminded of "
+                          "anything, which is the most-used thing a "
+                          "secretary does")
+        if A.ACTIONS["remind_me"].pinned:
+            return (True, "a reminder is pinned — it reaches nobody and "
+                          "removes nothing, so it is the one thing on the "
+                          "list that should be able to graduate")
+
+        # 6. The diary answers hours before whole days. Asking for whole
+        #    free days first is how "have I got an hour on Thursday" got
+        #    answered with "no, you are out on Thursday".
+        src = pathlib.Path("core/ask.py").read_text()
+        body = src[src.index("    def _free(c):"):]
+        body = body[:body.index("except Exception")]
+        # The `hasattr` lines, not the words. The comment above them
+        # explains the order and mentions both, so searching the block for
+        # "open_windows" found the explanation and passed whichever way
+        # round the code was — a check that could not fail, sitting directly
+        # under a comment saying what it was checking.
+        if body.index('hasattr(c, "open_windows")') > \
+                body.index('hasattr(c, "gaps")'):
+            return (True, "whole free days are still asked for before hours")
+        return (False, "the kinds are rows the prompt and grammar are built "
+                       "from, everything sorted has somewhere to go, a "
+                       "shared day is not a clash, a time survives to the "
+                       "file, and the diary is asked about hours first")
+    probe("A125 the holiday let grows back",
+          rebased_on_a_person)
 
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it

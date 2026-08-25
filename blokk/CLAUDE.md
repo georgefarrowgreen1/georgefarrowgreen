@@ -5,19 +5,55 @@ anything.
 
 ## What Blokk is
 
-A local agent runtime on one Mac. It sweeps mail, calendar and other sources
-overnight, queues anything needing a decision, and learns from the
-corrections. Your content never leaves the machine; the few requests that do
-go out are named on one allowlist and logged — see invariant 3.
+**A secretary, for one person, on their own Mac.** Not an assistant for a
+business — the job it does is the job a good secretary does: read the post
+overnight, tell you the few things that need you, draft the replies you
+would otherwise write yourself, keep the diary, file what needs filing, and
+bring things back when you asked to be reminded. Your content never leaves
+the machine; the few requests that do go out are named on one allowlist and
+logged — see invariant 3.
 
-It used to be "for several small businesses", with a workspace table and a
-`workspace_id` on almost everything. That is gone. Four queues to check, four
-sweeps to wait for, four sets of sources to wire and a picker in the chat
-that had to be right before an answer could be — for a product that runs on
-one person's Mac. What the businesses actually needed keeping out of was each
-other's mail, and that is `credential.only`, per mailbox, which was doing the
-job underneath the tenancy model all along. `core/unify.py` collapses a
+That is the frame to check a change against, and most of the wrong turns in
+this repo's history were a drift away from it. It is not a mail client, not
+a CRM, not a chatbot with your data attached. If a feature would not be
+recognisable as something a secretary does, it probably belongs somewhere
+else.
+
+It has been two other things and both are worth knowing, because the marks
+are still on the code.
+
+It was **"for several small businesses"**, with a workspace table and a
+`workspace_id` on almost everything. Four queues to check, four sweeps to
+wait for, four sets of sources to wire and a picker in the chat that had to
+be right before an answer could be — for a product that runs on one
+person's Mac. What the businesses actually needed keeping out of was each
+other's mail, and that is `credential.only`, per mailbox, which was doing
+the job underneath the tenancy model all along. `core/unify.py` collapses a
 database that still has workspaces in it; `./blokk unify` runs it.
+
+Then it was **a holiday let**, which was never a decision anybody made — it
+was the sample world hardening into the product. The triage kinds were
+`access` / `availability` / `other` in a prompt constant, the drafting
+prompt was handed free nights and a rate card, `hold_dates` refused over
+any day the calendar already had something on, and the frozen suite
+measured whether a draft mentioned the dog charge. Every one of those is a
+correct implementation of the wrong product.
+
+What the rebase changed, and what to watch for if you find more of it:
+
+  * the in-tray kinds are rows (`core/intray.py`), and both the triage
+    prompt and its grammar are built from them
+  * a *bed* is exclusive and a *Tuesday* is not — `put_in_diary` refuses a
+    time overlap and writes a shared day, which is the sharpest single
+    difference between the two products
+  * entries carry times. Bookings are counted in nights, so `validate()`
+    read anything with a clock on it as "not a date" and `ics_out` wrote
+    every entry as an all-day event
+  * `free_time` asks the diary for hours before whole days. Asking for whole
+    free days first is how "have I got an hour on Thursday" got answered
+    with "no, you are out on Thursday"
+  * `remind_me` exists at all. It is the most-used thing a secretary does
+    and there was no way to say it
 
 Stdlib only — no `pip install` for Blokk itself. That constraint is
 deliberate: this has to still boot in two years on a machine nobody has
@@ -67,15 +103,24 @@ opening a route out, deleting something, putting a file somewhere — it is
 `pinned=True` and never graduates, because the cost of being wrong does not
 scale with how often you have been right.
 
-`hold_dates` is the one action that writes outside `blokk.db`, and the shape of
-it is the template for anything similar. It drops a `.ics` file in a folder;
-it does not touch Calendar, and nothing it prints says it did. It refuses over
-a night the calendar already has and **names the nights**. Its filename and UID
-come from the booking rather than the clock, so a replay overwrites one file
-instead of leaving four — a writer keyed on `now()` turns every crash into a
-mess somebody cleans up by hand. And it is pinned, because a file appearing in
-somebody's folder off the back of a sentence in a guest's email is the shape of
-the thing this whole design exists to stop.
+`put_in_diary` is the one action that writes outside `blokk.db`, and the shape of
+it is the template for anything similar. It drops a `.ics` file in a folder
+and adds it to Calendar where macOS allows it, and nothing it prints claims
+either until it has happened. It refuses an actual **time overlap** and
+**names what it ran into**; it writes a shared day without argument and says
+what else is on. Its filename and UID come from the entry rather than the
+clock, so a replay overwrites one file instead of leaving four — a writer
+keyed on `now()` turns every crash into a mess somebody cleans up by hand.
+And it is pinned, because a file appearing in somebody's folder off the back
+of a sentence in a stranger's email is the shape of the thing this whole
+design exists to stop.
+
+The overlap rule is where the holiday let showed through hardest and it is
+worth stating as a rule, because the same mistake is available anywhere else
+in here: **a bed is exclusive and a Tuesday is not.** Refusing to put the
+dentist in because Mum is staying that week is a correct implementation of
+the wrong product. Two things with times on them that run over each other
+are a conflict; two whole-day entries on one day are a Tuesday.
 
 Probes A49–A54 and A83 in `demo/hunt.py` hold this shape, and each is
 mutation-tested: break the invariant and exactly one of them goes red.
@@ -344,7 +389,19 @@ worse than an error.
                        underneath is a real answer, and a loop here burns
                        the day's budget on a model having a bad afternoon
     core/grounding.py  every figure in a draft against every figure in the
-                       evidence it cites. Flags, never blocks
+                       evidence it cites. Flags, never blocks. money() is
+                       separate from figures(): the filing card totalled
+                       every number it could find and reported "£46
+                       mentioned" off a subject line reading "46 days
+                       overdue"
+    core/intray.py     the kinds the post gets sorted into, and what each
+                       one does with a message — draft, card, file, count.
+                       Rows, not a prompt constant: the triage kind, the
+                       approval's category and the trust ledger's key are
+                       one name, where they used to be three vocabularies
+                       kept in step by remembering. The prompt and the
+                       grammar are both built from the table, so a category
+                       that exists is one the model has been told about
     core/models.py     Router + ServedModel (any OpenAI-compatible server).
                        SAMPLING says what a call is for; nothing sent a
                        temperature at all until recently
@@ -469,7 +526,7 @@ leaves the probe green, which reads exactly like a probe doing its job.
 Twice in one afternoon a mutation named a CSS class this markup does not
 have, and the pass that followed meant nothing.
 
-Coverage is printed, never assumed: 28 of 125 probes have an entry and the
+Coverage is printed, never assumed: 29 of 126 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.
@@ -483,6 +540,15 @@ already decided, `reject` added to the list of decisions that run,
 `validate()` skipped so a queued row is trusted, `egress_allow` unpinned so
 opening a route out could graduate, the page-title injection flag dropped,
 and `_NoRedirect` handing control back to urllib.
+
+It has gone on earning its place. A125 — the probe that the holiday let
+cannot grow back — went in with three checks that could not fail, and all
+three were caught here rather than by me: it read `does()` through the
+coercion that makes an unrecognised kind safe, so nothing it looked at could
+be wrong; it asked `validate()` whether two entries clash, which is a
+question `validate()` has no opinion about; and it searched a block of code
+for the word "open_windows" while the comment directly above that code
+explained the ordering using the same word.
 
 It has already earned its place. A109 checked that `logs/https-on-http.json`
 *existed* — which passed on a file left behind by an earlier run — and
@@ -687,10 +753,17 @@ All four suites green. Verified behaviours:
   every value goes in as an escaped AppleScript literal, a newline is escaped
   (a literal cannot span lines) and a control character is refused outright.
   The preview says which of the two this machine will actually do
-* a hold refuses over a night the diary already has and names the nights;
-  a booking that leaves on the 6th and one that arrives on the 6th do not
-  clash; the same hold approved twice is one file; and what it writes reads
-  back through Blokk's own parser with the comma in the guest's name intact
+* a diary entry refuses over something already at that time and names what
+  it ran into; a shared day is written and what else is on it is named; a
+  thing that ends at three and one that starts at three do not clash; the
+  same entry approved twice is one file; and what it writes reads back
+  through Blokk's own parser with the comma in the title intact
+* an entry with a time on it is written with that time. Bookings are
+  counted in nights, so everything here was a whole-day event and an
+  appointment landed in Calendar as one — visibly the wrong thing, on the
+  one surface a person actually looks at
+* a reminder can be asked for, survives the day the Mac was shut, appears
+  once, and says how late it is when it is late
 * a one-line reply is drafted with the exchange above it — both sides,
   oldest first, quarantined line by line, in triage and the draft and on
   the card

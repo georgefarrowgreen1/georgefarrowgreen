@@ -276,4 +276,56 @@ MUTATIONS = [
          file="core/regression.py",
          find='        store.x("UPDATE regression SET last_pass=?, passes=?, runs=?, "',
          replace='        store.x("UPDATE regression SET last_pass=?, passes=NULL, runs=NULL, "'),
+
+    # ── the rebase: a secretary, not a holiday let ──────────────────────
+    dict(probe="A125", why="the kinds go back to a constant beside the table",
+         file="core/intray.py",
+         find="    lines = [f\"  {c['name']:<12}{c['what']}\" for c in "
+              "categories(store)]",
+         replace='    lines = [f"  reply   somebody is waiting"]'),
+    dict(probe="A125", why="the grammar stops coming from the table",
+         file="core/intray.py",
+         find='                                     "enum": [c["name"] for c in\n'
+              "                                              categories(store)]},",
+         replace='                                     "enum": ["reply"]},'),
+    dict(probe="A125", why="an unrecognised kind is filed rather than shown",
+         file="core/intray.py",
+         find="            return c[\"does\"] if c[\"does\"] in DOES else CARD\n"
+              "    return CARD",
+         replace="            return c[\"does\"]\n    return FILE"),
+    dict(probe="A125", why="a shared day is a clash again",
+         file="core/actions.py",
+         find="    if _midnight(a1, a2) or _midnight(b1, b2):\n"
+              "        return False",
+         replace="    pass"),
+    dict(probe="A125", why="an appointment is written as an all-day event",
+         file="core/connectors/ics_out.py",
+         find="        *( [f\"DTSTART:{w_s:%Y%m%dT%H%M%S}\", "
+              "f\"DTEND:{w_e:%Y%m%dT%H%M%S}\"]\n"
+              "           if timed else",
+         replace="        *( [f\"DTSTART;VALUE=DATE:{s:%Y%m%d}\", "
+                 "f\"DTEND;VALUE=DATE:{e:%Y%m%d}\"]\n"
+                 "           if timed else"),
+    dict(probe="A125", why="a time is thrown away before it gets there",
+         file="core/actions.py",
+         find='                v = _dt.fromisoformat(v.replace(" ", "T")).isoformat(\n'
+              '                    timespec="minutes")',
+         replace='                raise ValueError("no times here")'),
+    dict(probe="A125", why="asking to be reminded stops being possible",
+         file="core/actions.py",
+         find='    Action("remind_me", "Remind you about {note} on {when}.",',
+         replace='    Action("remind_you", "Remind you about {note} on {when}.",'),
+    dict(probe="A125", why="the diary answers whole days before hours",
+         file="core/ask.py",
+         find="            if hasattr(c, \"open_windows\"):\n"
+              "                return [dict(w) for w in c.open_windows(days=14)]"
+              "[:MAX_ROWS]\n"
+              "            if hasattr(c, \"gaps\"):\n"
+              "                return [dict(g) for g in c.gaps(days=90)][:MAX_ROWS]",
+         replace="            if hasattr(c, \"gaps\"):\n"
+                 "                return [dict(g) for g in c.gaps(days=90)]"
+                 "[:MAX_ROWS]\n"
+                 "            if hasattr(c, \"open_windows\"):\n"
+                 "                return [dict(w) for w in "
+                 "c.open_windows(days=14)][:MAX_ROWS]"),
 ]
