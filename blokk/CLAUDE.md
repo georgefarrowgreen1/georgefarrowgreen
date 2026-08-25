@@ -369,6 +369,13 @@ was the one most easily missed — one line in each file, in two languages,
 never read side by side. B33 compares them as sets of alternatives now, so a
 phrase added to one and not the other fails the suite.
 
+The phrase list was the only half being checked. B33b does the numbers: the
+clean approvals a category needs to graduate, and what a rejection resets
+clean and auto to. A demo that graduates at fifteen while the product needs
+twenty is a demo of a different product, and every suite stays green while
+it says so. Anything else that has to be one number in two files goes in
+that list.
+
 ## Conventions
 
 * Comments explain *why*, and especially why-not. If a line looks wrong and

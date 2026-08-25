@@ -1094,6 +1094,40 @@ probe('B18 a run that could not resume is not mentioned at all',
     (!a || !b) ? 'could not read one of the two regexes'
       : a === b ? 'both files catch the same set of phrases'
       : `they differ: python has ${a.length} chars, js ${b.length}`);
+
+  // B33b — and the numbers, not only the phrase list
+  // "If you change a threshold or a rule in Python, change it there too and
+  // re-run journey.js, or the two drift and the demo starts lying." Only
+  // the phrase list was ever machine-checked. The numbers are the half that
+  // drifts silently: a demo that graduates a category at fifteen while the
+  // product needs twenty is a demo of a different product, and every suite
+  // stays green while it says so.
+  //
+  // Each of these is one number that exists in both files and has to be one
+  // number. Where the two express it differently — a schema default against
+  // a literal in an object — the pair says where to look.
+  const schema = fs.readFileSync('core/schema.sql', 'utf8');
+  const harness = fs.readFileSync('core/harness.py', 'utf8');
+  const num = (src, re) => { const m = src.match(re); return m ? m[1] : null; };
+  const PAIRS = [
+    ['clean approvals to graduate',
+     num(schema, /threshold\s+INTEGER NOT NULL DEFAULT (\d+)/),
+     num(js, /threshold\s*:\s*(\d+)/)],
+    ['what a rejection resets clean to',
+     num(harness, /UPDATE trust SET clean=(\d+), auto=0/),
+     num(js, /t\.clean\s*=\s*(\d+)\s*;\s*t\.auto\s*=\s*0/)],
+    ['what a rejection resets auto to',
+     num(harness, /UPDATE trust SET clean=0, auto=(\d+)/),
+     num(js, /t\.clean\s*=\s*0\s*;\s*t\.auto\s*=\s*(\d+)/)],
+  ];
+  const off = PAIRS.filter(([, x, y]) => x === null || y === null || x !== y);
+  probe('B33b the demo and the engine disagree on a number',
+    off.length > 0,
+    off.length
+      ? off.map(([what, x, y]) =>
+          `${what}: python ${x === null ? 'unreadable' : x}, `
+          + `js ${y === null ? 'unreadable' : y}`).join('; ')
+      : `${PAIRS.length} shared number(s), the same on both sides`);
 }
 
 console.log(`\n  ${BUGS.length} issues found`);
