@@ -6575,6 +6575,107 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 114. wire the weather and ask it, end to end ────────────────────
+    def weather_from_nothing():
+        # The reported fault was "still unable to ask it what the weather is
+        # like and for it to tell me", and every piece of that chain is
+        # covered on its own: proposing (A62, A86), adding a source (A65),
+        # reading and rendering one (A110). The chain itself was not, and a
+        # chain of covered links is exactly the shape that breaks at a join.
+        #
+        # So: a database with nothing wired, asked in English, through the
+        # proposal and the approval, to a sentence with the town and the
+        # numbers in it.
+        import sys as _s, shutil
+        _s.path.insert(0, ".")
+        from core.durable import Store as _St
+        from core.models import router as _r
+        from core import ask as A, actions as ACT, egress as EG
+        import core.connectors.weather as WX
+
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "chain.db"
+        shutil.copy("blokk.db", tmp)
+        st = _St(tmp)
+        st.x("DELETE FROM credential")          # nothing wired at all
+
+        # 1. Asked with nothing wired, it says what is missing and how to
+        #    fix it — never "I don't have access to weather information".
+        said = "".join(e["delta"] for e in
+                       A.ask(st, "what's the weather like?", _r.small,
+                             thread="t_chain")
+                       if e.get("type") == "TEXT_MESSAGE_CONTENT")
+        if "wired" not in said.lower() and "add a weather" not in said.lower():
+            return (True, f"unwired, it answered {said[:80]!r} rather than "
+                          f"saying what to connect")
+
+        # 2. Asked to wire it, it proposes — with the whole place name.
+        prop = None
+        for ev in A.ask(st, "add a weather source for Newcastle upon Tyne",
+                        _r.small, thread="t_chain"):
+            if ev.get("type") == "PROPOSAL":
+                prop = ev
+        if not prop:
+            return (True, "asked to add a weather source, it proposed nothing")
+        act = (prop.get("proposal") or prop).get("action")
+        if isinstance(act, str):
+            act = json.loads(act)
+        if not act or act.get("name") != "add_source":
+            return (True, f"the proposal is not an add_source: {act}")
+        ref = (act.get("args") or {}).get("ref", "")
+        if ref != "Newcastle upon Tyne":
+            return (True, f"the town was truncated on the way into the "
+                          f"proposal: {ref!r} — a forecast for the wrong "
+                          f"Newcastle reads exactly like one for the right "
+                          f"one")
+
+        # 3. Approving it wires the source and opens exactly the two hosts
+        #    the connector needs.
+        got = ACT.run(st, act)
+        if not got.get("ok"):
+            return (True, f"approving the proposal did not wire it: {got}")
+        opened = set(got.get("egress") or [])
+        if not {"api.open-meteo.com", "geocoding-api.open-meteo.com"} <= opened:
+            return (True, f"wiring the forecast did not open the hosts it "
+                          f"needs: {sorted(opened)}")
+
+        # 4. And then it answers the question. Stubbed at the socket, so
+        #    this tests the chain rather than the weather in Newcastle.
+        keep = (EG.fetch_json, WX.egress.fetch_json)
+        WEEK = {"daily": {
+            "time": ["2026-08-25", "2026-08-26"], "weather_code": [3, 61],
+            "temperature_2m_max": [18.4, 16.1],
+            "temperature_2m_min": [11.2, 10.8],
+            "precipitation_probability_max": [10, 85],
+            "wind_speed_10m_max": [14.0, 33.5]}}
+        GEO = {"results": [{"name": "Newcastle upon Tyne", "admin1": "England",
+                            "country": "United Kingdom",
+                            "latitude": 54.97, "longitude": -1.61}]}
+        EG.fetch_json = WX.egress.fetch_json = (
+            lambda _st, u, **k: GEO if "geocoding" in u else WEEK)
+        try:
+            out = "".join(e["delta"] for e in
+                          A.ask(st, "do I need a coat tomorrow?", _r.small,
+                                thread="t_chain")
+                          if e.get("type") == "TEXT_MESSAGE_CONTENT")
+        finally:
+            EG.fetch_json, WX.egress.fetch_json = keep
+
+        lead = out.split("\n")[0]
+        if "Newcastle upon Tyne" not in lead:
+            return (True, f"the answer does not say which place it is for: "
+                          f"{lead[:80]!r}")
+        if "16" not in lead and "11" not in lead:
+            return (True, f"the answer carries no temperature: {lead[:80]!r}")
+        if "tomorrow" not in lead.lower():
+            return (True, f"asked about tomorrow, the answer never says so: "
+                          f"{lead[:80]!r}")
+        return (False, "nothing wired says what to connect; asking wires it "
+                       "through a proposal with the whole town name; "
+                       "approving opens exactly the two hosts; and the next "
+                       "question comes back as a sentence about tomorrow in "
+                       "Newcastle upon Tyne")
+    probe("A114 wire the weather and ask it, end to end", weather_from_nothing)
+
     # ── 113. asked in English, routed to the wrong table ────────────────
     def routes_the_words_people_use():
         # The router's weather vocabulary was weather/forecast/rain/dry/
