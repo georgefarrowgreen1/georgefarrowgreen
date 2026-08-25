@@ -222,6 +222,18 @@ CREATE TABLE IF NOT EXISTS regression (
   last_run_at   TEXT
 );
 
+-- What lands in your in-tray, and what happens to each kind. Rows rather
+-- than three words in a prompt constant: the sorting kinds, the approval's
+-- category and the trust ledger's key are one name, and the triage prompt
+-- and its grammar are both built from this table, so a category that exists
+-- is a category the model has been told about. core/intray.py seeds it.
+CREATE TABLE IF NOT EXISTS intray (
+  name   TEXT PRIMARY KEY,                      -- also approval.category
+  what   TEXT NOT NULL,                         -- in the words the model reads
+  does   TEXT NOT NULL,                         -- draft | card | file | count
+  rank   INTEGER NOT NULL DEFAULT 50
+);
+
 -- Machine-local settings the GUI can change. A table rather than blokk.conf
 -- because the conf is rewritten wholesale by the setup wizard, and losing
 -- your sweep time to a model change is the kind of surprise nobody connects

@@ -28,7 +28,8 @@ from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import (ask as run_ask, history as ask_history,
                       _thread_id as ask_thread_id)
-from core import actions, autoupdate, grounding, nightly, servers as srv
+from core import (actions, autoupdate, grounding, intray, nightly,
+                  servers as srv)
 from core.backends import BACKENDS, pick
 
 import os
@@ -1792,6 +1793,15 @@ def serve(port=8080):
     print(f"     update        ./blokk update")
     print(f"     stop          Ctrl-C\n")
     SERVING_PORT["n"] = port
+    # The five kinds the post gets sorted into, put in once so they can be
+    # edited. `intray.categories()` falls back to the shipped defaults when
+    # the table is empty, so nothing depends on this having run — what it
+    # buys is that they are *rows*, and a row is a thing somebody can change.
+    try:
+        intray.install(store)
+    except Exception:                                            # noqa: BLE001
+        pass          # a read-only database still runs on the defaults
+
     httpd = Server(("0.0.0.0", port), Handler)
 
     # Update while running. `./blokk update` pulls, then signals here; the

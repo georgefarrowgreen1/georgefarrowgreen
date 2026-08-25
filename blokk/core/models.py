@@ -107,7 +107,7 @@ class StubModel(Model):
              job=DECIDING) -> dict:
         last = messages[-1]["content"] if messages else ""
         goal = messages[0]["content"] if messages else ""
-        text = self._respond(goal, str(last))
+        text = self._respond(goal, str(last), schema)
         return {
             "text": text,
             "tool_call": None,
@@ -116,7 +116,7 @@ class StubModel(Model):
             "model": self.name,
         }
 
-    def _respond(self, goal: str, last: str) -> str:
+    def _respond(self, goal: str, last: str, schema=None) -> str:
         """Keyed on the prompts the product actually sends.
 
         It matched the word "triage" and the word "draft", which were the
@@ -127,20 +127,48 @@ class StubModel(Model):
         """
         g = goal.lower()
         if "sort each message" in g or "triage" in g:
-            # The shape the sweep asks for. An empty sort is a valid answer
-            # and the keyword floor still routes everything, so the stub
-            # exercises the merge rather than short-circuiting it.
+            # The kinds come out of the grammar it was handed, cycled so
+            # every branch of the sweep gets exercised on a Mac with no
+            # weights — a draft, a card, something filed and something
+            # counted, from one stub run.
+            #
+            # It used to answer the literal string "other", which stopped
+            # being one of the kinds the day they became rows. Nothing
+            # failed: the sort was rejected as unrecognised, every message
+            # fell to the careful fallback, and the stub run quietly stopped
+            # exercising three of the four branches it exists to exercise.
+            # A stub keyed on a constant somewhere else is a stub that goes
+            # stale silently, so this reads the enum it is being asked for.
             n = last.count('"i":')
-            return json.dumps({"sorted": [{"i": i, "kind": "other"}
-                                          for i in range(min(n, 12))]})
+            return json.dumps({"sorted": [
+                {"i": i, "kind": self._kinds(schema)[i % len(
+                    self._kinds(schema))]}
+                for i in range(min(n, 12))]})
         if "these are corrections" in g:
             # Deriving a rule needs a judgement the stub does not have.
             # derive_facts() on the stub does it arithmetically instead.
             return json.dumps({"rules": []})
         if "drafting a reply" in g or "draft" in g:
-            return ("The last week of August is free. That's the shoulder rate, "
-                    "and the £25 dog charge applies. Shall I hold it for you?")
+            return ("Thursday works — I've got nothing after two. Shall we "
+                    "say half past?")
         return "Nothing found."
+
+    @staticmethod
+    def _kinds(schema) -> list:
+        """The kinds this call's grammar allows, or a last resort.
+
+        Reaching into the schema rather than importing the table: the stub
+        must not need a database open to answer, and the grammar it is handed
+        is the same list by construction.
+        """
+        try:
+            got = (schema["schema"]["properties"]["sorted"]["items"]
+                   ["properties"]["kind"]["enum"])
+            if got:
+                return list(got)
+        except (KeyError, TypeError):
+            pass
+        return ["reply"]
 
     def summarise(self, messages) -> str:
         return f"[{len(messages)} earlier turns compacted]"

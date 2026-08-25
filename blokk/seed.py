@@ -65,6 +65,9 @@ frozen = regression.seed(s)
 # every run after the first, backed up a copy of the seed, and printed a
 # paragraph about a fortnight of approvals being at risk. An alarm that
 # always goes off is one nobody reads, which is the opposite of the point.
+from core import intray                                           # noqa: E402
+intray.install(s)
+
 sys.path.insert(0, str(Path(__file__).parent / "demo"))
 import realdb                                                    # noqa: E402
 realdb.DB = DB

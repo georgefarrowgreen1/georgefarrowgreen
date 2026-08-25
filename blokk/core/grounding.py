@@ -65,6 +65,39 @@ def figures(text) -> list[tuple[str, float]]:
     return out
 
 
+# A figure that is actually an amount. Either it wears a currency symbol,
+# or it is written the way money is written and nothing else is: two decimal
+# places, or thousands separated.
+_MONEY = re.compile(
+    r"[£$€]\s?\d(?:[\d,]*\d)?(?:\.\d{2})?"
+    r"|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b"
+    r"|\b\d+\.\d{2}\b")
+
+
+def money(text) -> list[float]:
+    """Every amount in some text. Not every number.
+
+    `figures()` finds numbers, which is right for checking a draft against
+    its evidence and wrong for adding anything up. The filing card totalled
+    what `figures()` returned and reported "£46 mentioned" off a subject
+    line reading "46 days overdue" — a day count presented as money, on the
+    one card most likely to be read at a glance and least likely to be
+    checked.
+
+    A total that is sometimes wrong is worse than no total: it is a number
+    somebody will repeat. So this asks for evidence that an amount is an
+    amount — a currency symbol in front of it, or the shape money is
+    written in and an order number is not.
+    """
+    out = []
+    for raw in _MONEY.findall(str(text) if text is not None else ""):
+        try:
+            out.append(float(re.sub(r"[^0-9.]", "", raw)))
+        except ValueError:
+            continue
+    return out
+
+
 def _values(thing, into: set) -> set:
     """Every figure anywhere inside a nested structure.
 
