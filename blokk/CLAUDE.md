@@ -284,6 +284,11 @@ worse than an error.
                        logs/update.log with the commit to go back to
     core/doctor.py     why the phone cannot reach this Mac, and why the
                        agent cannot reach a model
+    core/listen.py     `./blokk listen` — bind a port, print the link, and
+                       report every connection that arrives and what it
+                       said. Splits "the phone cannot reach the Mac" into
+                       its two halves by observing which one it is, rather
+                       than inferring it from the far side of a screenshot
     core/qr.py         QR for the phone URL, no dependency
     core/sandbox.py    where a script Blokk did not write is run: no network,
                        no home directory, a fresh environment, rlimits and a
@@ -670,6 +675,22 @@ All four suites green. Verified behaviours:
   question about the weather was answered with a list of things to approve.
   A confident answer to a question nobody asked is worse than "I do not
   know". A113 holds eighteen of these
+* the firewall check reads the verdict, not the presence of a word.
+  `socketfilterfw --listapps` lists an app whether it is allowed or blocked,
+  with the verdict on the next line, so asking whether "python" appears
+  anywhere told a Mac where somebody had clicked Deny that python was
+  allowed — on the one screen they would go to for it. macOS asks that
+  question once and never again. "Block all incoming" is checked too: it
+  overrides the per-app list entirely, so every entry can say Allow and
+  nothing gets in
+* and "did anything arrive at all" is now observed rather than inferred.
+  `./blokk listen` binds a port, prints the link and a QR, and reports every
+  connection with where it came from and what it was — plain HTTP, a TLS
+  hello (the address typed without http://), or a socket that opened and
+  said nothing. Something arrives and the network is fine and the fault is
+  in the app; nothing arrives and it names the three things it can be, in
+  the order worth checking. It is a separate listener on a separate port on
+  purpose: the answer must not depend on the database opening
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted

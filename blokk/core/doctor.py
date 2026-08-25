@@ -197,25 +197,79 @@ def phone_addresses(port: int) -> list[dict]:
 
 
 def firewall() -> tuple[str, str]:
-    """macOS blocks incoming connections per-binary, silently."""
+    """macOS blocks incoming connections per-binary, silently.
+
+    Two things this used to get wrong, and both of them mattered on exactly
+    the machine somebody is diagnosing.
+
+    It asked whether the word "python" appeared anywhere in --listapps and
+    called that "listed as allowed". socketfilterfw lists an app whether its
+    verdict is Allow *or* Block, on the line after the path. So a Mac where
+    somebody had clicked Deny on the "do you want python3 to accept incoming
+    connections?" dialog — which macOS asks once and never asks again — was
+    told python was allowed. That is the single most common way this fails
+    and the doctor was pointing away from it.
+
+    And it never asked about --getblockall. "Block all incoming connections"
+    is a separate switch that overrides the per-app list entirely: every
+    entry can say Allow and nothing gets in.
+    """
     fw = "/usr/libexec/ApplicationFirewall/socketfilterfw"
     if not Path(fw).exists():
         return "not macOS", ""
-    try:
-        state = subprocess.run([fw, "--getglobalstate"], capture_output=True,
-                               text=True, timeout=10).stdout.strip()
-    except Exception as e:
-        return "could not ask", str(e)[:40]
+
+    def ask(*args, timeout=15):
+        try:
+            return subprocess.run([fw, *args], capture_output=True, text=True,
+                                  timeout=timeout).stdout
+        except Exception:                                        # noqa: BLE001
+            return ""
+
+    state = ask("--getglobalstate", timeout=10).strip()
+    if not state:
+        return "could not ask", "socketfilterfw did not answer"
     if "disabled" in state.lower():
         return "off", "nothing blocked"
-    try:
-        apps = subprocess.run([fw, "--listapps"], capture_output=True,
-                              text=True, timeout=15).stdout
-    except Exception:
-        apps = ""
-    allowed = "python" in apps.lower()
-    return ("on", "python is listed as allowed" if allowed else
-            "python is NOT listed — this is very likely your problem")
+
+    # The override, before the list it overrides.
+    if "enabled" in ask("--getblockall").lower():
+        return "on", ("BLOCK ALL incoming is on — this blocks the phone "
+                      "whatever the app list says. System Settings > Network "
+                      "> Firewall > Options, turn off 'Block all incoming "
+                      "connections'")
+
+    verdict = _fw_verdict(ask("--listapps"))
+    if verdict == "block":
+        return "on", ("python is listed and BLOCKED — that is the Deny you "
+                      "clicked once and macOS never asks again. This is very "
+                      "likely your problem")
+    if verdict == "allow":
+        return "on", "python is listed as allowed"
+    return "on", ("python is NOT listed — macOS will ask once and drop "
+                  "everything until it does. This is very likely your problem")
+
+
+def _fw_verdict(listing: str) -> str:
+    """"allow", "block" or "" for a python entry in --listapps.
+
+    The format puts the path and its verdict on separate lines:
+
+        1 : /usr/bin/python3
+             ( Allow incoming connections )
+
+    so the verdict belongs to whichever path came last. Read as one blob and
+    searched for the word "python", Allow and Block are the same answer.
+    """
+    seen = ""
+    for line in (listing or "").splitlines():
+        low = line.lower()
+        if "python" in low and ("/" in line or ":" in line):
+            seen = "pending"
+        elif seen == "pending" and "incoming connections" in low:
+            return "block" if "block" in low else "allow"
+        elif seen == "pending" and line.strip() and ":" in line:
+            seen = ""            # another app's entry before any verdict
+    return "found" if seen else ""
 
 
 def model_report() -> dict:

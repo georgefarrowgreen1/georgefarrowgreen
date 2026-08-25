@@ -6575,6 +6575,142 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 115. the firewall says allowed when it says blocked ─────────────
+    def firewall_reads_the_verdict():
+        # Four rounds of "still not getting connection over my LAN", each
+        # diagnosed from the far side of a screenshot. This is why one of
+        # them could not have been solved: the check asked whether the word
+        # "python" appeared anywhere in socketfilterfw --listapps and called
+        # that "listed as allowed".
+        #
+        # socketfilterfw lists an app whether its verdict is Allow *or*
+        # Block, with the verdict on the following line. So a Mac where
+        # somebody had clicked Deny on "do you want python3 to accept
+        # incoming connections?" — which macOS asks once and never asks
+        # again — was told python was allowed, on the one screen they would
+        # go to. The doctor was pointing away from the answer.
+        #
+        # And --getblockall was never asked. "Block all incoming" overrides
+        # the per-app list entirely: every entry can say Allow and nothing
+        # gets in.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import doctor as D
+
+        ALLOWED = ("ALF: total number of apps = 2\n\n"
+                   "1 : /usr/bin/python3 \n\t ( Allow incoming connections )\n\n"
+                   "2 : /Applications/Foo.app \n\t ( Allow incoming connections )\n")
+        BLOCKED = ("ALF: total number of apps = 2\n\n"
+                   "1 : /usr/bin/python3 \n\t ( Block incoming connections )\n\n"
+                   "2 : /Applications/Foo.app \n\t ( Allow incoming connections )\n")
+        ABSENT = ("ALF: total number of apps = 1\n\n"
+                  "1 : /Applications/Foo.app \n\t ( Allow incoming connections )\n")
+
+        got = {name: D._fw_verdict(txt) for name, txt in
+               (("allowed", ALLOWED), ("blocked", BLOCKED), ("absent", ABSENT))}
+        if got["allowed"] != "allow":
+            return (True, f"an allowed python reads as {got['allowed']!r}")
+        if got["blocked"] != "block":
+            return (True, f"a BLOCKED python reads as {got['blocked']!r} — "
+                          f"the Deny somebody clicked once is reported as "
+                          f"permission, on the screen they came to for it")
+        if got["absent"] not in ("", None):
+            return (True, f"python absent from the list reads as "
+                          f"{got['absent']!r}")
+
+        # And the whole function, over a fake socketfilterfw, so the parse
+        # and the sentence are checked together rather than separately.
+        import subprocess as _sp
+        real_run, real_exists = _sp.run, pathlib.Path.exists
+
+        def fake(state="Firewall is enabled. (State = 1)", blockall="DISABLED",
+                 listing=ALLOWED):
+            def run(cmd, *a, **k):
+                arg = cmd[1] if len(cmd) > 1 else ""
+                out = {"--getglobalstate": state,
+                       "--getblockall": f"Block all {blockall}!",
+                       "--listapps": listing}.get(arg, "")
+                return _sp.CompletedProcess(cmd, 0, out, "")
+            return run
+
+        def verdict(**kw):
+            _sp.run = fake(**kw)
+            pathlib.Path.exists = lambda self: (
+                True if "socketfilterfw" in str(self) else real_exists(self))
+            try:
+                return D.firewall()
+            finally:
+                _sp.run, pathlib.Path.exists = real_run, real_exists
+
+        state, note = verdict(listing=BLOCKED)
+        if state != "on" or "BLOCK" not in note.upper():
+            return (True, f"a blocked python is reported as {note[:60]!r}")
+        state, note = verdict(blockall="ENABLED")
+        if "BLOCK ALL" not in note.upper():
+            return (True, f"'block all incoming' is on and the doctor says "
+                          f"{note[:60]!r} — it overrides the app list, so "
+                          f"every entry saying Allow changes nothing")
+        state, note = verdict(state="Firewall is disabled. (State = 0)")
+        if state != "off":
+            return (True, "a firewall that is off is not reported as off")
+        state, note = verdict(listing=ALLOWED)
+        if state != "on" or "allowed" not in note:
+            return (True, f"an allowed python is reported as {note[:60]!r}")
+
+        # ── and the listener that ends the guessing ────────────────────
+        # Half the question is "did anything arrive at all", and nothing
+        # could answer it: every round of this was inference from a
+        # screenshot. core/listen.py binds, waits, and reports what turns
+        # up — so the answer is observed rather than argued.
+        from core import listen as LI
+        for payload, want in (
+                (b"GET / HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP"),
+                (bytes.fromhex("1603010020"), "HTTPS"),
+                (b"", "said nothing")):
+            kind, meaning = LI._describe(payload)
+            if want not in kind:
+                return (True, f"a {want} connection is described as "
+                              f"{kind[:40]!r}")
+            if not meaning.strip():
+                return (True, f"a {want} connection is named and not "
+                              f"explained")
+        # A TLS hello has to say what to do about it, since that is the one
+        # of the three the person can fix themselves.
+        _, why = LI._describe(bytes.fromhex("1603010020"))
+        if "http://" not in why:
+            return (True, "a TLS connection is reported without the one "
+                          "thing that fixes it")
+        # Nothing arriving is a verdict, not a shrug, and it must not claim
+        # the network is fine.
+        import io as _io, contextlib as _cl
+        buf = _io.StringIO()
+        with _cl.redirect_stdout(buf):
+            code = LI._verdict([], "on", "python is NOT listed", 8080)
+        said = buf.getvalue()
+        if code == 0:
+            return (True, "nothing arrived and it exited 0")
+        if "Nothing arrived" not in said:
+            return (True, "nothing arrived and it does not say so")
+        for want in ("firewall", "different network", "isolation"):
+            if want not in said.lower():
+                return (True, f"nothing arrived and {want!r} is not among "
+                              f"the things to check")
+        buf = _io.StringIO()
+        with _cl.redirect_stdout(buf):
+            code = LI._verdict([{"from": "192.168.1.5", "kind": "HTTP — GET /",
+                                 "meaning": "x"}], "on", "", 8080)
+        said = buf.getvalue()
+        if code != 0 or "network between the phone and this Mac is fine" not in said:
+            return (True, "a connection arrived and it did not say the "
+                          "network is fine — which is the half of the "
+                          "question it exists to settle")
+        return (False, "a blocked python reads as blocked and a 'block all' "
+                       "overrides the list; and ./blokk listen says whether "
+                       "anything arrives at all, what it was, and which of "
+                       "the three things to look at when nothing does")
+    probe("A115 the firewall says allowed when it says blocked",
+          firewall_reads_the_verdict)
+
     # ── 114. wire the weather and ask it, end to end ────────────────────
     def weather_from_nothing():
         # The reported fault was "still unable to ask it what the weather is
