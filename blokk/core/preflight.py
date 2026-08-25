@@ -46,6 +46,84 @@ def _finding(level, what, fix=""):
     return {"level": level, "what": what, "fix": fix}
 
 
+def firewall_finding(note: str) -> dict | None:
+    """One firewall verdict turned into one finding, in one place.
+
+    Four surfaces used to translate this themselves — the doctor's phone
+    section, the start-up banner, `listen`'s verdict and this file — and
+    they had already drifted apart: the banner knew only "python is NOT
+    listed", so a Mac where somebody had clicked Deny, which is the verdict
+    that actually blocks, started up saying nothing at all. Three copies
+    agreeing and one not is worse than one copy, because the disagreement
+    is invisible until the machine is in the state only the missing branch
+    covers.
+    """
+    up = (note or "").upper()
+    if "BLOCK ALL" in up:
+        return _finding(
+            STOP, "The firewall is set to block all incoming connections, so "
+                  "nothing can reach this Mac.",
+            "System Settings > Network > Firewall > Options, turn off 'Block "
+            "all incoming connections'.")
+    if "BLOCKED" in up:
+        return _finding(
+            STOP, "macOS is blocking python from accepting connections — the "
+                  "Deny you clicked once, which it never asks about again.",
+            "System Settings > Network > Firewall > Options, and allow "
+            "python.")
+    if "NOT LISTED" in up:
+        return _finding(
+            WARN, "python is not in the firewall's list yet, so macOS will "
+                  "ask once and drop everything until it does.",
+            "Open the link on your phone and answer Allow when macOS asks. "
+            "If it never asks: System Settings > Network > Firewall > "
+            "Options, and add python.")
+    return None
+
+
+def why_not_reaching(note: str = "", shown: bool = False) -> list[dict]:
+    """Everything that stops a phone reaching this Mac, worst first.
+
+    One list, rendered by four surfaces. It used to be four lists: the
+    doctor's closing advice, `listen`'s "nothing arrived" verdict, the
+    start-up banner and `phone_reach` below each carried their own wording
+    of the same three causes, in the same order, maintained separately.
+
+    The firewall goes first only when this Mac's own firewall is actually
+    the problem — an ordered list whose first item is usually not the
+    answer teaches people to skip the first item.
+
+    `shown` is for a caller that has already printed the firewall verdict
+    somewhere the eye reaches first — the doctor prints it directly under
+    the link, because a blocked firewall is not a "if that still fails", it
+    is a "that will not work". Without it, consolidating four copies into
+    one produced the same two lines twice, four lines apart, which reads as
+    a bug in exactly the output somebody has come to for answers.
+    """
+    out = []
+    fw = None if shown else firewall_finding(note)
+    if fw:
+        out.append(fw)
+    out.append(_finding(
+        WARN, "The phone may be on a different network — a guest SSID, the "
+              "other half of a split 2.4/5GHz pair, or wifi off and 5G on.",
+        "Check the wifi name on the phone matches the Mac's."))
+    out.append(_finding(
+        WARN, "The router may be keeping its clients apart (AP or client "
+              "isolation), which guest networks do by default.",
+        "Try the main network rather than the guest one."))
+    # Only when nothing has flagged the firewall at all. Saying "worth
+    # ruling out" underneath a line that has just said it is blocking is
+    # the kind of sentence that makes somebody stop reading the list.
+    if not fw and not shown and not firewall_finding(note):
+        out.append(_finding(
+            NOTE, "This Mac's firewall reports nothing wrong, but it is worth "
+                  "ruling out.",
+            "Turning the firewall off for one minute settles whether it is "
+            "that."))
+    return out
+
+
 def phone_reach(port: int) -> list[dict]:
     """Whether a phone could reach this Mac, asked of the Mac only.
 
@@ -71,25 +149,11 @@ def phone_reach(port: int) -> list[dict]:
         state, note = doctor.firewall()
     except Exception:                                            # noqa: BLE001
         state, note = "", ""
-    # Only the two verdicts that stop a connection. "on" with python allowed
-    # is the normal state of a Mac and not worth a line.
-    if "BLOCK ALL" in note.upper():
-        out.append(_finding(
-            STOP, "The firewall is set to block all incoming connections, so "
-                  "nothing can reach this Mac.",
-            "System Settings > Network > Firewall > Options, turn off 'Block "
-            "all incoming connections'."))
-    elif "BLOCKED" in note:
-        out.append(_finding(
-            STOP, "macOS is blocking python from accepting connections — the "
-                  "Deny you clicked once, which it never asks about again.",
-            "System Settings > Network > Firewall > Options, and allow "
-            "python."))
-    elif "NOT listed" in note:
-        out.append(_finding(
-            WARN, "python is not in the firewall's list yet, so macOS will "
-                  "ask once and drop everything until it does.",
-            "Open the link on your phone; answer Allow when macOS asks."))
+    # Only a verdict that stops a connection. "on" with python allowed is
+    # the normal state of a Mac and not worth a line at start-up.
+    fw = firewall_finding(note)
+    if fw:
+        out.append(fw)
     return out
 
 

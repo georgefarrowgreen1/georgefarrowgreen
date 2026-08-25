@@ -6575,6 +6575,105 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 118. four surfaces, four copies of the same three causes ────────
+    def one_list_of_causes():
+        # The doctor's closing advice, ./blokk listen's "nothing arrived"
+        # verdict, the start-up banner and preflight each carried their own
+        # wording of the same three causes, in the same order, maintained by
+        # hand. They had already drifted: the banner and the doctor both
+        # tested "python is NOT listed" and nothing else, so a Mac where
+        # somebody had clicked Deny — the verdict that actually blocks —
+        # printed the link in green with nothing to say it would be dropped.
+        #
+        # Three copies agreeing and one not is worse than one copy, because
+        # the disagreement is invisible until the machine is in the state
+        # only the missing branch covers.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import preflight as P
+
+        # Every verdict that blocks gets a finding, and each names its own
+        # cause rather than the nearest one.
+        VERDICTS = (
+            ("BLOCK ALL", "Block all incoming", "block all"),
+            ("BLOCKED", "python is listed and BLOCKED", "python"),
+            ("NOT listed", "python is NOT listed", "python"),
+        )
+        for name, note, expect in VERDICTS:
+            got = P.firewall_finding(note)
+            if not got:
+                return (True, f"the {name!r} firewall verdict produces no "
+                              f"finding, so a surface rendering it says "
+                              f"nothing at all")
+            if expect not in got["what"].lower():
+                return (True, f"the {name!r} verdict is described as "
+                              f"{got['what'][:50]!r}")
+            if not got["fix"]:
+                return (True, f"the {name!r} verdict has no fix")
+        if P.firewall_finding("python is listed as allowed") is not None:
+            return (True, "an allowed python produces a finding, so a normal "
+                          "Mac is told something is wrong at every start-up")
+
+        # The causes list is one list, and the firewall leads it only when
+        # the firewall is the problem.
+        blocked = P.why_not_reaching("python is listed and BLOCKED")
+        if not blocked or "python" not in blocked[0]["what"].lower():
+            return (True, "a blocked firewall does not lead the list of "
+                          "causes, so the answer is below two things that "
+                          "are not it")
+        clean = P.why_not_reaching("python is listed as allowed")
+        if any("BLOCKED" in f["what"].upper() for f in clean):
+            return (True, "a Mac with an allowed python is told its firewall "
+                          "is blocking")
+        for want in ("different network", "isolation"):
+            if not any(want in f["what"].lower() for f in clean):
+                return (True, f"{want!r} is not among the causes")
+        if not all(f["fix"] for f in clean):
+            return (True, "a cause is listed with nothing to do about it")
+
+        # A caller that has already shown the verdict does not get it twice.
+        # Consolidating four copies into one produced exactly that — the
+        # same two lines four lines apart, in the output somebody came to
+        # for answers.
+        # Compared, not searched: the finding says "blocking", so looking
+        # for "BLOCKED" in it found nothing whether it was there or not.
+        # The list with the verdict shown must be exactly the list without
+        # it, minus that one finding.
+        again = P.why_not_reaching("python is listed and BLOCKED", shown=True)
+        if len(again) != len(blocked) - 1:
+            return (True, f"a surface that has already printed the firewall "
+                          f"verdict is handed {len(again)} finding(s) against "
+                          f"{len(blocked)} — it is being told it twice")
+        if [f["what"] for f in again] != [f["what"] for f in blocked[1:]]:
+            return (True, "suppressing the firewall finding changed the rest "
+                          "of the list")
+        if any("worth ruling out" in f["what"] for f in again):
+            return (True, "a surface that has shown a BLOCKING firewall is "
+                          "then told the firewall is worth ruling out")
+
+        # And nobody keeps their own copy of the wording any more.
+        # Rendered, not searched for in the source: the sentence is wrapped
+        # across two lines there, so a literal search tests line breaks.
+        said = " ".join(P.render(clean, colour=False)).replace("  ", " ")
+        for w in ("guest SSID", "client isolation"):
+            if w not in said:
+                return (True, f"{w!r} is in nothing the one list renders")
+        # And no surface keeps its own wording. Matched on a fragment short
+        # enough to survive wrapping.
+        for f in ("core/doctor.py", "core/listen.py", "api/server.py"):
+            src = open(f).read()
+            for w in ("guest SSID", "isolation)"):
+                if w in src:
+                    return (True, f"{f} still carries its own copy of "
+                                  f"{w!r} — four copies of one sentence is "
+                                  f"how three came to be right and one wrong")
+        return (False, "one list of causes and one translation of the "
+                       "firewall verdict, rendered by the doctor, the "
+                       "listener and the banner — every verdict that blocks "
+                       "produces a finding, and nobody is told it twice")
+    probe("A118 four surfaces, four copies of the same three causes",
+          one_list_of_causes)
+
     # ── 116. the diagnosis is behind a command nobody knows to type ─────
     def the_run_checks_itself():
         # Every diagnostic here has been a separate thing to run, and the
@@ -6697,11 +6796,20 @@ try:
         #    connection, not only the one it happened to know about.
         srv = open("api/server.py").read()
         banner = srv[srv.index("def serve("):]
-        for want in ("BLOCK ALL", "BLOCKED", "NOT listed"):
-            if want not in banner:
-                return (True, f"the start-up banner does not mention the "
-                              f"{want!r} firewall verdict, which stops a "
-                              f"connection as surely as the others")
+        # It used to spell each verdict itself and knew only one of the
+        # three. It delegates now, so the check is that it delegates —
+        # spelling them again here would be the duplication coming back.
+        if "firewall_finding" not in banner:
+            return (True, "the start-up banner translates the firewall "
+                          "verdict itself instead of using the one "
+                          "translation, which is how it came to know one of "
+                          "the three")
+        from core import preflight as _P
+        for note in ("Block all incoming", "python is listed and BLOCKED",
+                     "python is NOT listed"):
+            if not _P.firewall_finding(note):
+                return (True, f"the shared translation the banner uses has "
+                              f"nothing to say about {note!r}")
         return (False, "the run checks itself: silent when clean, worst "
                        "first, every finding with a fix, nothing slow or "
                        "networked in it — and it says whether anything has "

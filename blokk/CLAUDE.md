@@ -298,7 +298,15 @@ worse than an error.
                        logs/update.log with the commit to go back to
     core/doctor.py     why the phone cannot reach this Mac, and why the
                        agent cannot reach a model
-    core/preflight.py  the checks the run does on itself. Fast and local
+    core/preflight.py  the checks the run does on itself, and the one list
+                       of why a phone cannot reach this Mac — rendered by
+                       the doctor, the listener and the start-up banner.
+                       Four surfaces each kept their own copy of the same
+                       three causes and had already drifted: two of them
+                       tested "python is NOT listed" and nothing else, so a
+                       Mac where somebody had clicked Deny printed the link
+                       in green with nothing to say it would be dropped.
+                       Fast and local
                        only — nothing here touches the network or waits on
                        a subprocess, because it sits in front of somebody
                        waiting for their app. Silent when clean; worst

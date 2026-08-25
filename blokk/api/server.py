@@ -1687,30 +1687,19 @@ def serve(port=8080):
             fw_state, fw_note = _doc.firewall()
         except Exception:                                        # noqa: BLE001
             fw_state, fw_note = "", ""
-        # Every firewall verdict that stops a connection, not only the one
-        # this happened to know about. "NOT listed" was the only case here,
-        # so a Mac where somebody had clicked Deny — the verdict that
-        # actually blocks, and the one macOS never asks about again — got a
-        # banner that said nothing at all.
-        if fw_state == "on" and "BLOCK ALL" in fw_note.upper():
-            print(f"     {R}The firewall is blocking all incoming "
-                  f"connections.{O} Nothing")
-            print(f"     {R}can reach this Mac while that is on.{O}")
-            print(f"     {D}System Settings > Network > Firewall > Options, "
-                  f"turn off{O}")
-            print(f"     {D}'Block all incoming connections'.{O}\n")
-        elif fw_state == "on" and "BLOCKED" in fw_note:
-            print(f"     {R}macOS is blocking python from accepting "
-                  f"connections.{O}")
-            print(f"     {D}That is the Deny you clicked once; it never asks "
-                  f"again. System{O}")
-            print(f"     {D}Settings > Network > Firewall > Options, and "
-                  f"allow python.{O}\n")
-        elif fw_state == "on" and "NOT listed" in fw_note:
-            print(f"     {R}The firewall will drop that connection.{O} python "
-                  f"is not allowed through.")
-            print(f"     {D}System Settings > Network > Firewall > Options, "
-                  f"and add python3.{O}\n")
+        # One translation of the verdict, shared with the doctor and with
+        # ./blokk listen. This block used to do its own, and knew only one
+        # of the three verdicts — so a Mac where somebody had clicked Deny,
+        # the verdict that actually blocks, started up saying nothing.
+        try:
+            from core import preflight as _pre
+            fw = _pre.firewall_finding(fw_note) if fw_state == "on" else None
+            for line in _pre.render([fw] if fw else [], colour=tty):
+                print(line)
+            if fw:
+                print()
+        except Exception:                                        # noqa: BLE001
+            pass                # a diagnostic must never be why start-up fails
 
     # What has already happened, which is the half nothing here could ever
     # answer. "The phone cannot reach this Mac" and "nobody has opened it on

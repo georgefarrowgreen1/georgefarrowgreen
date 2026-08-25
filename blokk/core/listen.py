@@ -197,20 +197,15 @@ def _verdict(seen: list, state: str, note: str, port: int) -> int:
         print()
         print(f"  {DIM}Whatever is wrong is between the phone and this Mac, "
               f"and it is{OFF}")
-        print(f"  {DIM}one of these three. In the order worth checking:{OFF}")
+        print(f"  {DIM}one of these, in the order worth checking:{OFF}")
         print()
-        if state == "on" and ("BLOCK" in note or "NOT listed" in note):
-            print(f"    1. {AMBER}The firewall on this Mac.{OFF} {note}")
-        else:
-            print(f"    1. The firewall on this Mac — System Settings > "
-                  f"Network >")
-            print(f"       Firewall. Turning it off for one minute settles "
-                  f"whether it is this.")
-        print(f"    2. The phone is on a different network — a guest SSID, "
-              f"the other")
-        print(f"       half of a split 2.4/5GHz pair, or wifi off and 5G on.")
-        print(f"    3. The router is keeping its clients apart (AP or client")
-        print(f"       isolation), which guest networks do by default.")
+        # The same list the doctor and the start-up banner use. It was a
+        # fourth copy of the same three causes in the same order, kept by
+        # hand — and the copies had already drifted.
+        from core import preflight
+        for line in preflight.render(preflight.why_not_reaching(note),
+                                     colour=bool(BOLD)):
+            print(line)
         print()
         return 1
 

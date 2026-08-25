@@ -712,11 +712,17 @@ def main() -> int:
             print(f"  {_c('If that one does nothing, this Mac is also on:', DIM)}")
             spare = f"http://{good[1]['ip']}:{port}/?t={token}"
             print(f"      {_c(spare, DIM)}")
-        if "NOT listed" in note:
+        # The shared translation, which knows all three verdicts. This
+        # block tested "NOT listed" only — the same gap the banner had, in
+        # a second place, which is what four copies of one sentence buys
+        # you. A Mac where somebody had clicked Deny got the link printed
+        # in green with nothing to say the firewall would drop it.
+        from core import preflight as _pre
+        _fw = _pre.firewall_finding(note)
+        if _fw:
             print()
-            print(f"  {_c('And the firewall will drop it anyway:', RED)} python is not "
-                  f"allowed through.")
-            print(f"  {_c('System Settings > Network > Firewall > Options.', DIM)}")
+            for line in _pre.render([_fw], colour=sys.stdout.isatty()):
+                print(line)
         print()
         # This used to end with "check iCloud Private Relay is off", which
         # is folklore and costs somebody a privacy feature to no purpose.
@@ -729,10 +735,17 @@ def main() -> int:
         # last. What is left is the network between the two devices.
         print(f"  {_c('If that link still fails it is the network between them,', DIM)}")
         print(f"  {_c('not a setting on the phone:', DIM)}")
-        print(f"  {_c('  • the phone is on a different network — a guest SSID, the', DIM)}")
-        print(f"  {_c('    other half of a split 2.4/5GHz pair, or wifi off and 5G on', DIM)}")
-        print(f"  {_c('  • the router keeps its clients apart (AP or client isolation),', DIM)}")
-        print(f"  {_c('    which guest networks do by default', DIM)}")
+        # One list, shared with ./blokk listen and the start-up banner.
+        # This was a copy of the same three causes in the same order, and
+        # keeping four copies in step by hand is how the banner came to
+        # know one firewall verdict of the three.
+        from core import preflight
+        # shown=True: the verdict is already printed above, under the link,
+        # because a blocked firewall is not a "if that still fails".
+        for line in preflight.render(
+                preflight.why_not_reaching(note, shown=bool(_fw)),
+                colour=sys.stdout.isatty()):
+            print(line)
         print()
         print(f"  {_c('iCloud Private Relay can stay on. It does not carry local', DIM)}")
         print(f"  {_c('network traffic and there is no name in that link to look up.', DIM)}")
