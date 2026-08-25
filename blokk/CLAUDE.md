@@ -336,14 +336,38 @@ worse than an error.
                        blokk-mark.svg. Do not hand-edit the polygons in
                        the markup; regenerate. B27d checks
 
-## Tests — run all four before committing
+## Tests — run all five before committing
 
     python3 demo/hunt.py       adversarial pass over the server
     node demo/hunt_ui.js       adversarial pass over the front end
     node demo/contract.js      API satisfies what paint() reads
     node demo/journey.js       four end-to-end journeys
+    node demo/measure.js       the same pages, measured in a real browser
 
-Or `./test.sh`. All four must print `0 issues found` / `pass`.
+Or `./test.sh`. All of them must print `0 issues found` / `pass`.
+
+`measure.js` is the fifth and the only one that needs a browser. Everything
+this file claimed was "measured in a real browser, not asserted" — 44pt on
+every surface, nothing past the right edge, zero text under 4.5:1 on
+composited pixels in both themes — was measured once, by hand, and nothing
+re-ran it. Those claims were true of a moment rather than of the code.
+
+Playwright is a dev dependency and the stdlib-only rule is about the
+*runtime*, which none of this is part of. So it is guarded: with no
+Playwright, `measure.js` prints `skipped`, says how to install it, and
+exits 0 — never `ok`, because a check that could not run must not look
+like one that passed.
+
+    npm i -D playwright && npx playwright install chromium
+
+Two things it catches that reading the source cannot. A dialog is an empty
+box until the row that fills it is clicked, so the sheets have to be opened
+the way a person opens them — the first version called `showModal()` and
+measured three sheets holding nothing but a Close button, reporting "1
+control, all at least 44x44" while a control pinned to 30px inside them
+passed clean. And contrast has to be composited: the token values can all
+be right while a layer between them makes the result 2.25:1, which is
+exactly what `--lab3` did.
 
 `./test.sh` deletes `blokk.db` and re-seeds — the hunts mutate deliberately
 and a half-swept database makes probes report defects that are not there. It
@@ -564,9 +588,11 @@ All four suites green. Verified behaviours:
 * a web page arrives as text and a title with the quarantine flag on both,
   script and style gone, and the display:none block kept — that is where an
   instruction meant for a model and not for you goes
-* every control on every surface — dashboard, five sheets, ask panel and
-  wizard — measures at least 44×44 at 375, 768 and 1440, and nothing renders
-  past the right edge. Measured in a real browser, not asserted
+* every control on every surface — dashboard, six sheets, ask panel and
+  wizard — measures at least 44×44 at 360, 390, 768 and 1440, and nothing
+  renders past the right edge. Measured in a real browser by
+  `demo/measure.js` on every run, rather than measured once and asserted
+  ever after
 * the wizard's model table is a table on a Mac and a list of blocks on a
   phone, where six numeric columns rendered as "1.1G12.7G13.8G"
 * the toolbar is one glass capsule holding four items, the sheet corners are
