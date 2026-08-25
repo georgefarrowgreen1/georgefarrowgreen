@@ -8096,6 +8096,291 @@ try:
     probe("A22 locked out by another writer, with no idea what happened",
           locked_out)
 
+    # ── 120. every call ran at whatever the server felt like ───────────
+    def sampling_is_chosen():
+        # Guided decoding makes the JSON well-formed and says nothing about
+        # which of several valid branches gets taken. Nothing here sent a
+        # temperature at all, so routing, triage and the choice between
+        # answering and proposing an action all ran at the server's default
+        # — 0.8 on llama.cpp. The same question could route to a different
+        # table twice in a row, and no suite could see it, because the stub
+        # is deterministic.
+        import inspect
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import models as M
+
+        if M.SAMPLING[M.DECIDING]["temperature"] != 0:
+            return (True, f"deciding does not run greedy: "
+                          f"{M.SAMPLING[M.DECIDING]}")
+        if not M.SAMPLING[M.WRITING]["temperature"]:
+            return (True, "drafting runs greedy, which reads the same way "
+                          "every time")
+        # A typo in a job name must decide, never invent. Falling back to
+        # WRITING would have a mistyped call site quietly start sampling.
+        if M._sampling("nonsense") != M.SAMPLING[M.DECIDING]:
+            return (True, "an unknown job does not fall back to deciding")
+
+        # On the request, not merely in a table. A constant nothing sends is
+        # the shape of this whole defect.
+        for name in ("chat", "stream"):
+            fn = getattr(M.ServedModel, name)
+            if "_sampling(job)" not in inspect.getsource(fn):
+                return (True, f"ServedModel.{name} does not send the "
+                              f"sampling for its job")
+            if "job" not in str(inspect.signature(fn)):
+                return (True, f"ServedModel.{name} cannot be told what the "
+                              f"call is for")
+
+        # And the one call that writes prose somebody sends has to be the
+        # one that runs warm. Read off the source: there is no way to reach
+        # the sweep's drafting call from here without a mailbox.
+        sweep = pathlib.Path("flows/morning_sweep.py").read_text()
+        draft = sweep[sweep.index("model.draft"):]
+        draft = draft[:draft.index("_queue(")]
+        if "job=WRITING" not in draft:
+            return (True, "the drafting call does not ask for the warm "
+                          "sampling, so every reply is worded identically")
+        triage = sweep[sweep.index("model.triage"):sweep.index("model.draft")]
+        if "WRITING" in triage:
+            return (True, "triage runs warm — the same enquiry can be "
+                          "sorted two ways on two mornings")
+        return (False, "decisions greedy, drafting warm, both sent on the "
+                       "request rather than left to the server's default")
+    probe("A120 every call runs at whatever the server defaults to",
+          sampling_is_chosen)
+
+    # ── 121. an observation cut in half ────────────────────────────────
+    def observation_is_whole():
+        # json.dumps({...})[:12000] is a slice of the *serialised* object, so
+        # a long observation reached the model as JSON cut mid-string with no
+        # closing brace. Nothing raised; the model read what it could. The
+        # row cap above it hid how often that happened — it only ever fired
+        # on the turns carrying the most rows.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core.ask import _observation
+
+        fat = [{"subject": "s" * 400, "body": "b" * 400,
+                "note": "n" * 400, "detail": "d" * 400} for _ in range(12)]
+        text = _observation("mail", fat, True)
+        try:
+            got = json.loads(text)
+        except ValueError as e:
+            return (True, f"the envelope is not parseable JSON: {e}")
+        obs = got.get("observation") or {}
+        kept = len(obs.get("rows") or [])
+        if kept >= len(fat):
+            return (True, "nothing was dropped from an envelope that cannot "
+                          "fit — so it was cut instead")
+        if obs.get("rows_not_shown") != len(fat) - kept:
+            return (True, f"kept {kept} of {len(fat)} and says "
+                          f"{obs.get('rows_not_shown')!r} were not shown")
+        # The flag has to survive being trimmed. Dropping rows to fit and
+        # losing the one field saying an instruction was among them would be
+        # a worse bug than the one this fixes.
+        if obs.get("instruction_like") is not True:
+            return (True, "the quarantine flag did not survive the trim")
+        small = json.loads(_observation("mail", [{"a": "b"}], False))
+        if "rows_not_shown" in small["observation"]:
+            return (True, "an envelope that fits still claims rows were "
+                          "dropped")
+        return (False, "whole rows dropped, the count said in the envelope, "
+                       "the flag kept, and the JSON always parses")
+    probe("A121 a long observation reaches the model cut in half",
+          observation_is_whole)
+
+    # ── 122. one stumble threw the turn away ───────────────────────────
+    def one_retry_then_the_planner():
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import ask as A
+
+        class Model:
+            plans = True
+
+            def __init__(self, answers):
+                self.answers, self.calls, self.saw = answers, 0, []
+
+            def chat(self, messages, schema=None, job=None):
+                self.saw.append(messages)
+                self.calls += 1
+                return {"text": self.answers[min(self.calls - 1,
+                                                 len(self.answers) - 1)]}
+
+        # A fence round the object is the commonest way a small model misses
+        # a grammar, and the one most likely to come right when told.
+        m = Model(["Sure! Here you go.", '{"do":"reply","say":"forty"}'])
+        move, why = A._decide(m, [{"role": "user", "content": "hi"}], None,
+                              "q", [], {})
+        if m.calls != 2:
+            return (True, f"a shape failure was retried {m.calls - 1} time(s)")
+        if move.get("say") != "forty":
+            return (True, f"the retry's answer was not used: {move}")
+        if why:
+            return (True, f"a recovered turn still reported a fault: {why!r}")
+        # What it is told on the retry has to name the problem. A second
+        # identical request gets a second identical answer.
+        second = json.dumps(m.saw[1])
+        if "retry" not in second or "Sure!" not in second:
+            return (True, "the retry does not show the model what it "
+                          "produced or say what was wrong with it")
+
+        never = Model(["no json at all"])
+        move, why = A._decide(never, [{"role": "user", "content": "hi"}], None,
+                              "q", [], {})
+        if never.calls != 2:
+            return (True, f"a model that never answers in shape was called "
+                          f"{never.calls} times — a loop here burns the day's "
+                          f"budget")
+        if not why:
+            return (True, "fell back to the planner and said nothing about it")
+        return (False, "one retry that names the fault, then the planner — "
+                       "and never a third call")
+    probe("A122 one malformed step throws the whole turn away",
+          one_retry_then_the_planner)
+
+    # ── 123. the figure nobody supplied ────────────────────────────────
+    def figures_come_from_the_rows():
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import grounding as G
+
+        ev = {"drawn_from": [{"kind": "mail", "subject": "September?",
+                              "body": "Two of us, plus the dog."}],
+              "rates": {"shoulder": 120, "dog": 25},
+              "free_nights": [{"from": "2026-08-26", "nights": 3}]}
+        good = ("The last week of August is free at the shoulder rate of "
+                "£120, plus the £25 dog charge.")
+        if G.unsupported(good, ev):
+            return (True, f"a draft quoting the rate card was flagged: "
+                          f"{G.unsupported(good, ev)}")
+        bad = "That week is £140, plus a £50 cleaning fee."
+        odd = G.unsupported(bad, ev)
+        if "140" not in odd or "50" not in odd:
+            return (True, f"two invented figures came back as {odd}")
+        # Formatting is not invention — and a figure the parser cannot
+        # read must not pass by being invisible. Those two look identical
+        # from the outside: both come back as "nothing flagged". The gate
+        # found this by breaking the comma-stripping, which made
+        # float("1,200.00") raise, the figure get skipped, and the check
+        # go quiet about every formatted price in the system.
+        if [v for _, v in G.figures("£1,200.00")] != [1200.0]:
+            return (True, f"a formatted figure does not parse: "
+                          f"{G.figures('£1,200.00')}")
+        if G.unsupported("That is £1,200.00 for the fortnight.",
+                         {"rates": {"week": 1200}}):
+            return (True, "1,200.00 does not match 1200, so this flags "
+                          "formatting rather than figures")
+        if "1,450.00" not in G.unsupported("That is £1,450.00 for it.",
+                                           {"rates": {"week": 1200}}):
+            return (True, "an invented figure written with a comma in it is "
+                          "not flagged — unreadable is passing as supported")
+        # Nor is English.
+        if G.unsupported("There are 2 of you and we can do 3pm on the 26th.",
+                         ev):
+            return (True, "small counts and a day of the month are flagged, "
+                          "which buries the one that matters")
+        if G.attach(good, ev).get("figures_unsupported") is not None:
+            return (True, "a clean draft carries an empty flag, so every row "
+                          "in the queue says it checked")
+        if G.attach(bad, ev).get("figures_unsupported") != odd:
+            return (True, "attach() does not put what it found on the "
+                          "evidence")
+
+        # And it has to be on the funnel, not on the drafting call — a
+        # figure invented into any queued row is the same defect.
+        sweep = pathlib.Path("flows/morning_sweep.py").read_text()
+        funnel = sweep[sweep.index("def _queue("):]
+        if "grounding.attach" not in funnel[:1600]:
+            return (True, "the sweep's one write path does not check its "
+                          "figures")
+        if "grounding.attach" not in pathlib.Path("api/server.py").read_text():
+            return (True, "a chat proposal's figures are never checked")
+        # The rate card has to be *in* the evidence, or the check has
+        # nothing to check a quote against and flags every price.
+        if '"rates": rates' not in sweep:
+            return (True, "the rates the draft was told to quote are not in "
+                          "the evidence, so every price reads as invented")
+        # Shown, or it is not a check. Both cards, because one is drawn from
+        # the event and the other from the row.
+        page = pathlib.Path("web/index.html").read_text()
+        if "function oddFigures" not in page:
+            return (True, "nothing renders the unsupported figures")
+        for where in ("${oddFigures(a.evidence", "const odd = oddFigures("):
+            if where not in page:
+                return (True, f"one of the two cards does not show it: "
+                              f"{where!r} is missing")
+        return (False, "the rate card passes, an invented total is named, "
+                       "formatting and small counts are not, and both cards "
+                       "show it")
+    probe("A123 a draft can quote a figure nobody supplied",
+          figures_come_from_the_rows)
+
+    # ── 124. a frozen example measured once ────────────────────────────
+    def regression_measures_a_rate():
+        import inspect
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import regression as R
+        from core.durable import Store
+
+        src = inspect.getsource(R.run)
+        if "times" not in str(inspect.signature(R.run)):
+            return (True, "run() cannot be asked for more than one go")
+        if "for _ in range(times)" not in src:
+            return (True, "an example is still run exactly once, so a pass "
+                          "is one draw and not a measurement")
+        if "job=job" not in src:
+            return (True, "the suite does not sample the way the call it "
+                          "measures samples")
+
+        # Strict: green means every run passed. An example that fails one
+        # time in three produces a bad answer one time in three.
+        st = Store(pathlib.Path(tempfile.mkdtemp()) / "t.db")
+        R.add(st, "always", "x", "shorter:4000")
+        R.add(st, "sometimes", "x", "contains:steady")
+
+        class Flip:
+            name = "flip"
+
+            def __init__(self):
+                self.n = 0
+
+            def chat(self, messages, schema=None, job=None):
+                self.n += 1
+                return {"text": "steady" if self.n % 2 else "wobble"}
+
+        class Rtr:
+            def __init__(self):
+                self.small = self.large = Flip()
+
+            def pick(self, *_):
+                return self.small
+
+        out = R.run(st, Rtr(), times=3)
+        by = {r["name"]: r for r in out["results"]}
+        if by["always"]["passes"] != 3 or by["always"]["runs"] != 3:
+            return (True, f"a stable example reported {by['always']}")
+        got = by["sometimes"]
+        if got["state"] != "fail":
+            return (True, "an example that failed some runs reported green")
+        if not (0 < got["passes"] < got["runs"]):
+            return (True, f"a wobbling example did not record a rate: {got}")
+        if got["name"] not in out.get("sometimes", []):
+            return (True, "held-sometimes is not reported as its own state, "
+                          "so it reads exactly like never-held")
+        row = st.one("SELECT passes,runs,last_pass FROM regression "
+                     "WHERE name='sometimes'")
+        if row["runs"] != 3 or row["passes"] != got["passes"]:
+            return (True, f"the rate was not written to the row: {dict(row)}")
+        if row["last_pass"]:
+            return (True, "an example that failed a run is recorded green")
+        return (False, "every example run three times, the rate on the row, "
+                       "and held-sometimes named as its own thing")
+    probe("A124 a frozen example is measured once and called a fact",
+          regression_measures_a_rate)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

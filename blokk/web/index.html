@@ -521,6 +521,14 @@
     border-radius:var(--r-card);font-size:13.5px;line-height:1.45;
     color:var(--amber);
     background:color-mix(in srgb,var(--amber) 12%,transparent)}
+  /* Same material as the instruction warning — it is the same kind of
+     statement, made about a different thing — and it sits on the queue's
+     cards too, which are .action and not .prop. */
+  .prop .pf b,.action .pf b{font-variant-numeric:tabular-nums}
+  .action .pf{margin:var(--sp-2) 0 0;padding:var(--sp-2) var(--sp-3);
+    border-radius:var(--r-card);font-size:12.5px;line-height:1.45;
+    color:var(--amber);
+    background:color-mix(in srgb,var(--amber) 12%,transparent)}
   .trouble b{color:var(--amber)}
   .trouble button{min-height:var(--tap);padding:0 var(--sp-3);border:0;
     border-radius:var(--r-pill);background:var(--fill-3);color:var(--lab);
@@ -1326,6 +1334,24 @@ function drawnFrom(a){
   </details>`;
 }
 
+// The figures in a draft that are not in what it read. Amber and stated,
+// never hidden and never a reason to withhold the card — the same posture
+// as the instruction warning above it, for the same reason: the person
+// tapping Approve is the check, and a check needs to be shown the thing.
+//
+// The wording matters more than usual here. "Not in what it read" is what
+// was measured; "wrong" is not, and a card that cries wrong about a
+// correct total is one nobody reads by Thursday.
+function oddFigures(list){
+  const f = (list || []).filter(Boolean);
+  if(!f.length) return '';
+  return `<div class="pw pf">${f.length === 1 ? 'This figure is'
+      : 'These figures are'} not in anything this read:
+    <b>${f.map(esc).join(', ')}</b>. That may be arithmetic — a total, a
+    number of nights — or it may be invented. Worth checking before you
+    approve.</div>`;
+}
+
 
 const TIMEOUT = 8000;
 function withTimeout(ms=TIMEOUT){
@@ -1515,6 +1541,7 @@ function paint(h, ap, handled, runs){
         <span class="txt">${esc(a.body)}</span></div>
       <div class="why">${esc(a.title)}${a.evidence.freshness?' · <em>'+esc(a.evidence.freshness)+'</em>':''}
         ${a.stale?'<br><em>Facts changed since drafting — will be re-checked at send.</em>':''}</div>
+      ${oddFigures(a.evidence && a.evidence.figures_unsupported)}
       ${drawnFrom(a)}
       <div class="pair">
         <button data-d="${a.pinned?'reject':'edit'}">${a.pinned?'Later':'Edit'}</button>
@@ -2518,6 +2545,12 @@ function propCard(p){
   if(p.read_flagged) c.append(el(`<div class="pw">One of the things read this
     turn reads like an instruction rather than a message. It could not make
     this happen — only you can — but look at what it says below.</div>`));
+  // From the event while the turn is live, from the row after a reload.
+  // Both, because a warning that depends on how fast somebody scrolled is
+  // not a warning.
+  const odd = oddFigures(p.figures_unsupported
+    || (p.evidence && p.evidence.figures_unsupported));
+  if(odd) c.append(el(odd));
   // The same block the sweep's cards use, from the same evidence shape.
   const drew = drawnFrom({evidence: {drawn_from:
     p.drawn_from || (p.evidence && p.evidence.drawn_from) || []}});

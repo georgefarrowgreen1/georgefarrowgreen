@@ -216,7 +216,9 @@ CREATE TABLE IF NOT EXISTS regression (
   name          TEXT NOT NULL,
   input         TEXT NOT NULL,
   expect        TEXT NOT NULL,                   -- assertion, not exact string
-  last_pass     INTEGER,
+  last_pass     INTEGER,                          -- 1 only if every run passed
+  passes        INTEGER,                          -- of the last batch
+  runs          INTEGER,
   last_run_at   TEXT
 );
 

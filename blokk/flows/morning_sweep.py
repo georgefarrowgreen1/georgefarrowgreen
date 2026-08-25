@@ -16,8 +16,9 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from core.connectors import conversation_before, read_since, wire
+from core import grounding
 from core.harness import quarantine_read
-from core.models import router
+from core.models import WRITING, router
 
 
 def register(engine, store):
@@ -217,12 +218,25 @@ def register(engine, store):
                                 "body": mm["body"][:4000],
                                 "provenance": "untrusted",
                             }})},
-                    ]),
+                    ],
+                        # The one call in the system that exists to write
+                        # something a person will send. Everything else —
+                        # triage above, routing, deriving a rule — decides,
+                        # and decisions run greedy so the same enquiry does
+                        # not get triaged two ways on two mornings.
+                        job=WRITING),
                 )
                 _queue(ctx, store, "availability_reply", draft["text"],
                        f"{m['from']} · asked once · {len(gaps)} gap(s) open",
                        {"sources": ["mail", "calendar"],
                         "drawn_from": _before_rows(m) + _drawn_from(m),
+                        # The figures the prompt handed it. These were in the
+                        # prompt and not in the evidence, which made the card
+                        # unable to answer the one question worth asking of a
+                        # quote — where did that number come from? — and left
+                        # the grounding check below with nothing to check the
+                        # rate against.
+                        "rates": rates, "free_nights": list(gaps)[:8],
                         "checked_at": _hour(ctx)},
                        # time-of-check vs time-of-use: re-run before the send
                        revalidate="calendar_gap",
@@ -580,7 +594,11 @@ def _queue(ctx, store, category, body, why, evidence, revalidate=None,
                 revalidate,recipient)
                VALUES(?,?,?,?,?,?,?,?)""",
             aid, ctx.run_id, category, why, body,
-            json.dumps(evidence), revalidate,
+            # Every figure in the body checked against every figure in the
+            # evidence, here, because this is the funnel. Putting it at the
+            # drafting call would cover drafts and miss everything else
+            # that ever gets queued with a number in it.
+            json.dumps(grounding.attach(body, evidence)), revalidate,
             recipient or None) or {"approval_id": aid},
         side_effect=True,
     )

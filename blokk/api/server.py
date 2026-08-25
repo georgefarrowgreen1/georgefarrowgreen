@@ -28,7 +28,7 @@ from core.harness import Policy, consolidate, forget
 from core.models import router, status as model_status
 from core.ask import (ask as run_ask, history as ask_history,
                       _thread_id as ask_thread_id)
-from core import actions, autoupdate, nightly, servers as srv
+from core import actions, autoupdate, grounding, nightly, servers as srv
 from core.backends import BACKENDS, pick
 
 import os
@@ -600,6 +600,17 @@ def _ask_stream(q, thread=None):
             # gets to un-make it.
             aid = f"a_ask_{secrets.token_hex(6)}"
             act = ev.get("action")
+            # Computed here rather than in ask.py, and it has to be: the
+            # figures are checked against the evidence, and the evidence is
+            # assembled at this line. It goes onto the event as well as into
+            # the row, because the card a person sees the moment it is
+            # proposed is drawn from the event and the one they see after a
+            # reload is drawn from the row — a warning on only one of those
+            # is a warning that depends on how fast somebody scrolled.
+            evidence = grounding.attach(ev["text"], {
+                "sources": ["you"], "via": "ask",
+                "drawn_from": ev.get("drawn_from") or [],
+                "read_flagged": bool(ev.get("read_flagged"))})
             store.x("""INSERT INTO approval
                        (id,run_id,category,title,body,evidence,action)
                        VALUES(?,?,?,?,?,?,?)""",
@@ -620,9 +631,7 @@ def _ask_stream(q, thread=None):
                     # context window when this was proposed. Nothing is
                     # allowed to act on it either way, but somebody
                     # approving this should be told.
-                    json.dumps({"sources": ["you"], "via": "ask",
-                                "drawn_from": ev.get("drawn_from") or [],
-                                "read_flagged": bool(ev.get("read_flagged"))}),
+                    json.dumps(evidence),
                     json.dumps(act) if act else None)
             # The transcript row for this turn was written inside ask(),
             # before the queue had an id for it, and the event carries that
@@ -633,7 +642,9 @@ def _ask_stream(q, thread=None):
                 store.x("UPDATE message SET approval_id=? WHERE id=?",
                         aid, ev["message_id"])
             bump()
-            ev = {**ev, "approval_id": aid}
+            ev = {**ev, "approval_id": aid,
+                  "figures_unsupported":
+                      evidence.get("figures_unsupported") or []}
         yield ev
 
 

@@ -52,7 +52,8 @@ def main() -> int:
             return 0
         for r in rows:
             was = {1: "pass", 0: "FAIL", None: "-"}[r["last_pass"]]
-            print(f"  {was:<5} {r['name']}")
+            rate = f"{r['passes']}/{r['runs']}" if r["runs"] else ""
+            print(f"  {was:<5} {rate:<5} {r['name']}")
         return 0
 
     if cmd == "add":
@@ -64,19 +65,39 @@ def main() -> int:
         return 1 if r.get("error") else 0
 
     only = args[1] if len(args) > 1 else ""
-    out = regression.run(store, router, only)
+    # Each example n times, because once is a draw and not a measurement.
+    # `regress.py <name> 5` when a prompt is being worked on and the
+    # question is how often it holds rather than whether it held.
+    times = next((int(a) for a in args[1:] if a.isdigit()), regression.TIMES)
+    if only.isdigit():
+        only = ""
+    out = regression.run(store, router, only, times=times)
     if not out["total"]:
         print("Nothing frozen. python3 regress.py seed")
         return 0
     for r in out["results"]:
         mark = {"pass": " ok  ", "fail": "FAIL ", "unreachable": " ??  "}[r["state"]]
         flag = "  <-- changed since last run" if r.get("changed") else ""
-        print(f"  {mark} {r['name']}{flag}")
+        # The rate, always, and not only when it is short of full. "3/3"
+        # is what makes "2/3" read as a number somebody chose rather than a
+        # decoration that appears when something is wrong.
+        rate = (f"{r['passes']}/{r['runs']}"
+                if r.get("runs") else "   ")
+        print(f"  {mark} {rate:<5} {r['name']}{flag}")
         for b in r.get("broke", []):
             print(f"          {b}")
         if r["state"] == "unreachable":
             print(f"          {r['detail']}")
-    print(f"\n  {out['passed']} of {out['ran']} held, on {out['model']}")
+    print(f"\n  {out['passed']} of {out['ran']} held every time, "
+          f"{out['times']}x each, on {out['model']}")
+    # An example that passes some of the time is the interesting state and
+    # it has nowhere else to be said: `passed` counts only the ones that
+    # held every run, so a 2-of-3 is inside the failures and reads exactly
+    # like a 0-of-3 without this.
+    if out.get("sometimes"):
+        print(f"  {len(out['sometimes'])} passed some runs and not others — "
+              f"that is the model wobbling,\n  not a prompt that is wrong: "
+              f"{', '.join(out['sometimes'])}")
     if "stub" in out["model"]:
         print("  These are stubs — the prose is placeholder and the same for "
               "every\n  prompt, so failures here are the harness working, not "

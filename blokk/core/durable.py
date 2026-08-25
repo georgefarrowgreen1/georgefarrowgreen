@@ -149,6 +149,13 @@ class Store:
         # a model can move. This is written when the draft is queued, from
         # the message that was read, and the sender refuses anything else.
         ("approval", "recipient", "TEXT"),
+        # How many of the last batch of runs passed, out of how many ran.
+        # A frozen example used to be run once and recorded pass or fail,
+        # which is one draw from a distribution rather than a measurement —
+        # a prompt that is right four times in five recorded green most
+        # mornings, and the fifth read as a flake somebody re-ran.
+        ("regression", "passes", "INTEGER"),
+        ("regression", "runs", "INTEGER"),
         # When it was sent, and to whom. Not derived from `result` — that
         # column belongs to the decision and is rewritten by it. Without a
         # mark of its own, every guard in _send_reply passes a second time

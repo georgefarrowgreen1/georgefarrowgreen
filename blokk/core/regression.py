@@ -29,6 +29,8 @@ import json
 import re
 from datetime import datetime, timezone
 
+from core import models
+
 
 def _check(rule: str, text: str) -> tuple[bool, str]:
     rule = rule.strip()
@@ -216,13 +218,34 @@ def system_for(spec: dict, store=None) -> str:
     return got
 
 
-def run(store, router, only: str = "") -> dict:
-    """Run every frozen example and record what held.
+TIMES = 3
+
+
+def run(store, router, only: str = "", times: int = TIMES) -> dict:
+    """Run every frozen example `times` over and record the rate.
 
     A model that is not answering is not a regression — it is an outage, and
     calling it a failed expectation would have you hunting a prompt when the
     server is down. It is reported separately and does not touch last_pass.
+
+    Once was not a measurement. Every example ran a single time and recorded
+    pass or fail, which is one draw from a distribution: a prompt that is
+    right four times in five recorded green most mornings and the fifth read
+    as a flake to re-run. The number that answers "did that prompt change
+    help" is 5/5 against 3/5, and pass/fail cannot hold it.
+
+    It is worth the repetition in both directions, which is the part that is
+    easy to miss. A drafting example varies, so the rate is the measurement.
+    A deciding example runs greedy and should come back identical every
+    time — so a rate under 1 there is not a weak prompt, it is a server
+    ignoring the temperature it was sent, and that is worth knowing about
+    on the morning it starts rather than the week somebody notices.
+
+    last_pass stays a boolean and stays strict: green means every run
+    passed. An example that fails one time in three is an example that
+    produces a bad answer one time in three.
     """
+    times = max(1, min(int(times or 1), 10))
     rows = listing(store)
     if only:
         rows = [r for r in rows if only in r["name"]]
@@ -243,32 +266,60 @@ def run(store, router, only: str = "") -> dict:
                             "was": r["last_pass"]})
             continue
         model = router.pick(r["name"] + " " + system)
-        try:
-            answer = model.chat([
-                {"role": "system", "content": system},
-                {"role": "user", "content": spec.get("user", "")},
-            ])
-            text = answer.get("text", "")
-        except Exception as e:                                    # noqa: BLE001
+        # The example says what kind of call it is, so the suite samples the
+        # way the thing it measures samples. Measuring a draft at the
+        # decider's temperature measures a call the product never makes.
+        job = spec.get("job") or models.DECIDING
+        got, broke, text, down = 0, [], "", ""
+        for _ in range(times):
+            try:
+                answer = model.chat([
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": spec.get("user", "")},
+                ], job=job)
+                out = answer.get("text", "")
+            except Exception as e:                                # noqa: BLE001
+                down = str(e)[:140]
+                break
+            ok_one, why = assess(r["expect"], out)
+            got += bool(ok_one)
+            if not ok_one and not broke:
+                # The first failing run's reasons and its answer. Five
+                # copies of the same complaint is not five times the
+                # information, and the one that failed is the one to read.
+                broke, text = why, out
+            elif not text:
+                text = out
+        if down:
+            # An outage part way through a batch is still an outage. A rate
+            # built from the runs that happened before the server fell over
+            # would read as a regression in the prompt.
             unreachable += 1
             results.append({"name": r["name"],
-                            "state": "unreachable", "detail": str(e)[:140],
+                            "state": "unreachable", "detail": down,
                             "was": r["last_pass"]})
             continue
-        ok, broke = assess(r["expect"], text)
+        ok = got == times
         passed += ok
-        store.x("UPDATE regression SET last_pass=?, last_run_at=? WHERE id=?",
-                1 if ok else 0, at, r["id"])
+        store.x("UPDATE regression SET last_pass=?, passes=?, runs=?, "
+                "last_run_at=? WHERE id=?",
+                1 if ok else 0, got, times, at, r["id"])
         results.append({
             "name": r["name"],
             "state": "pass" if ok else "fail", "broke": broke,
+            "passes": got, "runs": times,
             # A pass that used to fail is worth as much as the reverse; both
             # mean the model you are running is not the one you measured.
             "changed": r["last_pass"] is not None and bool(r["last_pass"]) != ok,
             "answer": text[:240],
         })
     ran = len(rows) - unreachable
-    return {"results": results, "passed": passed, "ran": ran,
+    return {"results": results, "passed": passed, "ran": ran, "times": times,
+            # Held sometimes. Neither green nor a prompt to go and fix — it
+            # is the shape that says the answer is not stable, which is a
+            # different problem with a different cause.
+            "sometimes": [x["name"] for x in results
+                          if x.get("runs") and 0 < x["passes"] < x["runs"]],
             "total": len(rows), "unreachable": unreachable, "at": at,
             "regressed": [x["name"] for x in results
                           if x.get("changed") and x["state"] == "fail"],

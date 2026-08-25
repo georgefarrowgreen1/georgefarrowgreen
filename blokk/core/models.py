@@ -32,6 +32,42 @@ class Truncated(ModelUnreachable):
     """
 
 
+# ------------------------------------------------------------------ sampling
+# What a call is *for*, not what number it runs at. The number is a detail
+# that belongs in one table; the job is what a call site knows.
+DECIDING, WRITING = "deciding", "writing"
+
+SAMPLING = {
+    # Routing, triage, deriving a rule, choosing between answering and
+    # proposing an action somebody has to approve. Greedy: given the same
+    # rows the same question gets the same answer, and a borderline call
+    # lands the same way twice.
+    DECIDING: {"temperature": 0.0, "top_p": 1.0},
+    # Prose a person will read and send. Greedy drafting is repetitive in a
+    # way people notice across a week of replies.
+    WRITING: {"temperature": 0.7, "top_p": 0.95},
+}
+
+# Nothing here sent any of this until now, so every call ran at whatever the
+# server defaulted to — 0.8 with top-p 0.95 on llama.cpp. The grammar made
+# the JSON well-formed and nothing made the *choice inside it* stable, which
+# is the half that matters: at 0.8 the same question can route to a different
+# table on consecutive asks, or propose where it previously answered. None of
+# the suites could see it, because the stub is deterministic.
+#
+# `seed` is deliberately not sent. It is in the OpenAI schema and llama.cpp
+# honours it, but this layer talks to six servers on purpose and an unknown
+# key is a 400 on some of them — and at temperature 0 the sampler is greedy,
+# so a seed changes nothing anyway. temperature and top_p are universal.
+#
+# The agent loop runs at DECIDING even though its move carries a sentence
+# for a person. It is a control decision that happens to speak: whether to
+# read, propose or reply is the part that must not wobble. The cost is real
+# and worth stating — ask the same thing twice and the reply is worded the
+# same way. Only the sweep's drafting call, which exists to write something
+# somebody will send, runs warm.
+
+
 class Model:
     """Interface. Everything returns usage so the journal can account for it."""
 
@@ -45,7 +81,7 @@ class Model:
     plans = False
 
     def chat(self, messages: list[dict], tools: list | None = None,
-             schema: dict | None = None) -> dict:
+             schema: dict | None = None, job: str = DECIDING) -> dict:
         raise NotImplementedError
 
     def summarise(self, messages: list[dict]) -> str:
@@ -67,7 +103,8 @@ class StubModel(Model):
     def __init__(self, name="stub-8b", speed=1.0):
         self.name, self.speed = name, speed
 
-    def chat(self, messages, tools=None, schema=None) -> dict:
+    def chat(self, messages, tools=None, schema=None,
+             job=DECIDING) -> dict:
         last = messages[-1]["content"] if messages else ""
         goal = messages[0]["content"] if messages else ""
         text = self._respond(goal, str(last))
@@ -136,6 +173,16 @@ class StubModel(Model):
         return [t for t in added if t not in {"that", "this", "with", "your", "have"}][:2]
 
 
+def _sampling(job: str) -> dict:
+    """The numbers for a job. An unknown job decides rather than invents.
+
+    Falling back to WRITING would mean a call site with a typo in it quietly
+    started sampling its decisions, which is the exact failure this table
+    exists to remove.
+    """
+    return dict(SAMPLING.get(job) or SAMPLING[DECIDING])
+
+
 # ------------------------------------------------------------------ served
 def _http_fault(endpoint: str, e) -> str:
     """A server that answered badly, said as what it is.
@@ -184,11 +231,13 @@ class ServedModel(Model):
 
     plans = True
 
-    def chat(self, messages, tools=None, schema=None) -> dict:  # pragma: no cover
+    def chat(self, messages, tools=None, schema=None,
+             job=DECIDING) -> dict:            # pragma: no cover
         import http.client
         import urllib.error
         import urllib.request
-        payload = {"model": self.name, "messages": messages, "max_tokens": 1024}
+        payload = {"model": self.name, "messages": messages,
+                   "max_tokens": 1024, **_sampling(job)}
         if tools:
             payload["tools"] = [t.name for t in tools]
         # Per call first, then the one this model was built with. Guided
@@ -266,7 +315,8 @@ class ServedModel(Model):
             "model": self.name,
         }
 
-    def stream(self, messages, schema=None):        # pragma: no cover
+    def stream(self, messages, schema=None, job=DECIDING):
+        # pragma: no cover
         """The same completion, arriving as it is written.
 
         chat() is one POST that returns when the model has finished, so with
@@ -284,7 +334,7 @@ class ServedModel(Model):
         import urllib.error
         import urllib.request
         payload = {"model": self.name, "messages": messages,
-                   "max_tokens": 1024, "stream": True}
+                   "max_tokens": 1024, "stream": True, **_sampling(job)}
         if schema or self.schema:
             payload["response_format"] = {"type": "json_schema",
                                           "json_schema": schema or self.schema}

@@ -808,10 +808,8 @@ def ask(store, question: str, model,
                 # comes back is presented as a labelled object the model is
                 # reading, never as a sentence it might mistake for its own
                 # instructions.
-                messages.append({"role": "user", "content": json.dumps(
-                    {"observation": {"tool": name, "rows": safe[:MAX_ROWS],
-                                     "provenance": "untrusted",
-                                     "instruction_like": hot}})[:12000]})
+                messages.append({"role": "user",
+                                 "content": _observation(name, safe, hot)})
                 continue
 
         if move["do"] == "propose":
@@ -1035,23 +1033,49 @@ def _decide(model, messages, schema, question, gathered, tools,
         # one: this is the configuration working, and the planner plays the
         # same three moves through the same gates.
         return _plan(question, gathered, tools), ""
-    try:
-        out = model.chat(messages, schema=schema)
-    except TypeError:
-        # A model object from before this file learned to ask for a grammar.
+
+    # Twice, at most. The first version parsed once and dropped to the
+    # planner on the first stumble, which threw a whole turn away over a
+    # model that wrapped its object in a fence — the commonest way a small
+    # model misses a grammar, and the one most likely to come right when it
+    # is told. Showing it what it produced and naming the shape recovers
+    # most of them.
+    #
+    # One retry and no more. A loop here is a loop that burns the day's
+    # budget on a model having a bad afternoon, and the planner underneath
+    # is a real answer rather than an error page — falling back to it is a
+    # worse outcome, not a failure.
+    said = ""
+    for attempt in (0, 1):
+        turn = messages if not attempt else messages + [
+            {"role": "assistant", "content": said[:2000]},
+            {"role": "user", "content": json.dumps({"retry": {
+                "problem": "that was not a JSON object in the shape asked "
+                           "for",
+                "want": "one object, no prose around it, no code fence",
+                "keys": ["do", "say"]}})},
+        ]
         try:
-            out = model.chat(messages)
+            out = model.chat(turn, schema=schema)
+        except TypeError:
+            # A model object from before this file learned to ask for a
+            # grammar.
+            try:
+                out = model.chat(turn)
+            except Exception as e:                              # noqa: BLE001
+                return _plan(question, gathered, tools), _why(e)
         except Exception as e:                                  # noqa: BLE001
             return _plan(question, gathered, tools), _why(e)
-    except Exception as e:                                      # noqa: BLE001
-        return _plan(question, gathered, tools), _why(e)
 
-    move = _parse(out.get("text") if isinstance(out, dict) else out)
-    if move is None:
-        return (_plan(question, gathered, tools),
-                "The model did not answer in the shape this asks for, so this "
-                "reply was assembled from the rows rather than written.")
-    return move, ""
+        text = out.get("text") if isinstance(out, dict) else out
+        move = _parse(text)
+        if move is not None:
+            return move, ""
+        said = text if isinstance(text, str) else ""
+
+    return (_plan(question, gathered, tools),
+            "The model did not answer in the shape this asks for, so this "
+            "reply was assembled from the rows rather than written.")
 
 
 def _why(e: Exception) -> str:
@@ -1099,6 +1123,44 @@ def _quarantine(rows) -> tuple[list[dict], bool]:
                     hot = True
         safe.append(row)
     return safe, hot
+
+
+OBS_CHARS = 12000
+
+
+def _observation(tool: str, rows: list, hot: bool, cap: int = OBS_CHARS) -> str:
+    """The envelope a tool's rows arrive in, trimmed by rows and never bytes.
+
+    This used to be `json.dumps({...})[:12000]`, which is a slice of the
+    *serialised* object: a long observation reached the model as JSON cut
+    mid-string, unclosed, missing its closing braces. The row cap above it
+    hid how often that happened — twelve short rows never come near the
+    limit, so the bug only ever fired on the turns carrying the most, which
+    are the turns where the answer matters most.
+
+    Malformed input is worse than less input, and it is worse in the way
+    that is hardest to see: nothing raises, the model reads what it can,
+    and the answer is quietly built on a fragment. So drop whole rows until
+    it fits, and put the count of what was dropped *in* the envelope. A
+    model reading eight of fourteen rows should be told it is reading eight
+    of fourteen; a person asking "is that all of them?" deserves an answer
+    that is not a guess.
+    """
+    kept, dropped = list(rows[:MAX_ROWS]), 0
+    while True:
+        env = {"tool": tool, "rows": kept, "provenance": "untrusted",
+               "instruction_like": hot}
+        # Measured, not prose — the same rule the peek boundary uses. A
+        # count is a number the model may act on; a sentence about the
+        # count is text from this side that it might mistake for an
+        # instruction.
+        if dropped:
+            env["rows_not_shown"] = dropped
+        text = json.dumps({"observation": env})
+        if len(text) <= cap or not kept:
+            return text
+        kept.pop()
+        dropped += 1
 
 
 def _say(text: str) -> Iterator[dict]:

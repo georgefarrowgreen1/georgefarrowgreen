@@ -223,6 +223,16 @@ a word out of `CODES`, not text the far end chose. What that cannot check is
 whether a connector is *wrong* about that; the default is empty, so
 forgetting costs you a field rather than admitting a sentence.
 
+What reaches the model has to be *whole*, too. The envelope was built as
+`json.dumps({...})[:12000]` — a slice of the serialised object, so a long
+observation arrived as JSON cut mid-string with no closing brace. Nothing
+raised; the model read what it could and the answer was quietly built on a
+fragment. The row cap above it hid how often that happened, because twelve
+short rows never come near the limit: it only ever fired on the turns
+carrying the most. `_observation()` drops whole rows until it fits and puts
+`rows_not_shown` in the envelope, because a model reading eight of fourteen
+should be told so. A121 parses the result and fails if it does not.
+
 `core/connectors/web.py` is the hard case: with a fetch tool the attacker
 chooses *which* page you read, so the content and the destination are both
 theirs. It is bounded by three things — the host is on the allowlist,
@@ -257,6 +267,44 @@ be somewhere it cannot reach. What bounds a read now is `credential.only` —
 which mailboxes, which calendars — and what bounds a write is the approval
 queue.
 
+**A call says what it is for, and that sets the sampling.**
+`core/models.SAMPLING` has two entries and every call names one. `DECIDING`
+— routing, triage, deriving a rule, choosing between answering and proposing
+an action somebody has to approve — runs greedy, so the same rows and the
+same question give the same answer twice. `WRITING` is prose a person will
+read and send, and it is warm, because greedy drafting is repetitive in a
+way people notice across a week of replies. Exactly one call site asks for
+it: the sweep's drafting call.
+
+None of this was sent at all until recently. Every request carried model,
+messages and max_tokens, so routing and triage and the propose-or-answer
+choice all ran at whatever the server defaulted to — 0.8 with top-p 0.95 on
+llama.cpp. Guided decoding made the JSON well-formed and nothing made the
+*choice inside it* stable, which is the half that matters: at 0.8 the same
+question can route to a different table on consecutive asks. No suite could
+see it, because the stub is deterministic. `seed` is deliberately not sent —
+this layer talks to six servers on purpose, an unknown key is a 400 on some
+of them, and at temperature 0 the sampler is greedy anyway. A120 covers it,
+including that an unknown job falls back to deciding rather than inventing.
+
+**Every figure in a queued row is checked against the evidence under it.**
+`core/grounding.py` pulls the numbers out of the body, pulls the numbers out
+of the evidence, and names what is in the first and not the second. It flags
+and never blocks: a total is arithmetic, two nights at £120 is £240, and 240
+is in neither. Values not strings, so £1,200.00 and 1200 are one figure; and
+numbers under 32 are ignored, because "2 of us" and "3pm" are how English
+writes and flagging them buries the £140. It runs on the funnel — `_queue`
+and the chat's one INSERT — not on the drafting call, because a figure
+invented into any queued row is the same defect. Both cards show it, the
+live one off the event and the reloaded one off the row.
+
+This is what the rate card is doing in `evidence`. It used to be in the
+prompt and nowhere else, so the card could not answer the only question
+worth asking of a quote — where did that number come from? — and the check
+had nothing to compare a price against. What it catches is invention, not
+misuse: £120 quoted for the wrong week passes clean, and the sentence on the
+card says as much.
+
 **6. Fail loudly, degrade locally.**
 One broken connector must not take the night's sweep. One malformed row must
 not take an endpoint. But nothing may fail *silently* — a truncated stream, a
@@ -270,7 +318,11 @@ worse than an error.
     setup.sh / run.sh  terminal equivalents; share core/plan.py + core/servers.py
     bench.py           sizes the machine; --serve measures; --compare settles
     connect.py         data sources, egress, backups — CLI over core/sources.py
-    regress.py         run the frozen examples against whatever is attached
+    regress.py         run the frozen examples against whatever is attached,
+                       three times each. Once was a draw and not a
+                       measurement: a prompt right four times in five
+                       recorded green most mornings and the fifth read as a
+                       flake to re-run. Green means every run passed
     seed.py            sample world, safe to re-run
 
     core/schema.sql    the data model. One SQLite file; the thing to back up
@@ -284,7 +336,18 @@ worse than an error.
                        reached one of the three. A119 counts the callers
                        with ast, so a second path fails the suite rather
                        than answering the same question differently
-    core/models.py     Router + ServedModel (any OpenAI-compatible server)
+                       A step that comes back in the wrong shape is
+                       retried once, shown what it produced — a fence round
+                       the object is the commonest way a small model misses
+                       a grammar and the one most likely to come right when
+                       told. Once, never twice: the deterministic planner
+                       underneath is a real answer, and a loop here burns
+                       the day's budget on a model having a bad afternoon
+    core/grounding.py  every figure in a draft against every figure in the
+                       evidence it cites. Flags, never blocks
+    core/models.py     Router + ServedModel (any OpenAI-compatible server).
+                       SAMPLING says what a call is for; nothing sent a
+                       temperature at all until recently
     core/backends.py   llama.cpp vs MLX rule, with the evidence in comments
     core/nightly.py    the night shift: when to sweep, and what window to read
     core/plan.py       shape -> per-tier plan
@@ -406,7 +469,7 @@ leaves the probe green, which reads exactly like a probe doing its job.
 Twice in one afternoon a mutation named a CSS class this markup does not
 have, and the pass that followed meant nothing.
 
-Coverage is printed, never assumed: 23 of 120 probes have an entry and the
+Coverage is printed, never assumed: 28 of 125 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.
@@ -796,7 +859,11 @@ All four suites green. Verified behaviours:
   something a stranger wrote, this is the line to revisit first.
 * the *quality* of what a model writes is still unmeasured — `./regress.py`
   is honest that stub prose makes its numbers meaningless, and they start
-  counting when real weights are on. The plumbing underneath is no longer
+  counting when real weights are on. It measures a rate now rather than a
+  coin flip, which is what makes "did that prompt change help" answerable
+  at all — but 3/3 against a stub is 3/3 of nothing. The same caveat covers
+  the sampling split and the shape retry: both are written and probed, and
+  neither can be *demonstrated* without weights on a real Mac. The plumbing underneath is no longer
   unexercised: `demo/fakeserver.py` is a real OpenAI-compatible server and
   A91 drives every path over HTTP.
 * sending exists and is off until you wire it. What is deliberately *not*
