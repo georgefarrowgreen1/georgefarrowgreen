@@ -34,19 +34,19 @@
   :root{
     color-scheme:dark;
     --mark-lit:#F5F5F7;--mark-shade:#A2A8B4;
-    --bg:#000;
-    --card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
+    --bg:#09090B;
+    --card:#161618;--card2:#111113;--action:#0E1A2B;--hold:#1E1A08;
     --inset:#141416;         /* a surface recessed inside a sheet */
     --sunk:#0B0B0E;          /* code, logs, anything recessed into a card */
     --field:#09090b;         /* an input's well */
     --raised:#2A2A2D;        /* a hovered solid control */
-    --hair:rgba(235,235,245,.09);
+    --hair:rgba(244,244,245,.09);
     /* .30 for the tertiary label is what iOS uses and it measures 2.25:1
        on this ground — section headers, run-card counts and the foot are
        all set in it, and they are text people read. .50 measures 4.61.
        The hierarchy is still there; it is carried by size and weight,
        which is the sturdier way to carry it. */
-    --lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.50);
+    --lab:#F4F4F5;--lab2:rgba(244,244,245,.64);--lab3:rgba(244,244,245,.52);
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
     --blue-soft:#4DA3FF;     /* blue as *text*, on a blue-tinted card */
     --blue-hard:#1E90FF;     /* the filled button, hovered */
@@ -70,9 +70,14 @@
        written into .ask directly, so in light mode the header, the bubbles
        and the composer came up light over a near-black thread — the exact
        shape of bug that a colour with only one definition always is. */
-    --veil:rgba(10,10,12,.86);
+    --veil:rgba(9,9,11,.88);
     --on-accent:#000;        /* ink on a saturated fill (the glyph chips) */
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    /* The brief's voice. ui-serif is New York on Apple hardware, which is
+       where this runs; Georgia is the fallback that still reads as a
+       document. Nothing is fetched — a machine that promises your content
+       never leaves it does not call out to a font CDN to say so. */
+    --serif:ui-serif,"New York",Georgia,"Iowan Old Style",serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
 
     /* One scale, because eleven ad-hoc font sizes is not a design, it is a
@@ -99,7 +104,7 @@
        **Capsules.** A control sized to its content is a pill, not a
        rounded rectangle. A pill is concentric with anything, at any
        padding, which is half the reason iOS 26 uses so many of them. */
-    --r-card:22px;       /* a grouped container */
+    --r-card:26px;       /* a tile */
     --r-lg:18px; --r-md:13px; --r-sm:10px;
     --r-pill:999px;
     --r-sheet:30px;      /* a sheet's top corners, near the display's own */
@@ -108,6 +113,29 @@
        numbers — a 1080 page, a 660 queue and a 760 chat — which read as
        three edges down a Mac screen. */
     --measure:660px;
+    /* The board is wider than a reading column and it is the one other
+       width: tiles wrap inside it, the chat stays at --measure. Defined
+       here, outside the wide-layout block, so B23a's literal-width sweep
+       of that block stays meaningful. */
+    --board:984px;
+
+    /* ── the tile hues ─────────────────────────────────────────────────
+       One set for both themes, deliberately: the tiles are the brand and
+       the room flips around them. Every hue is deep enough that pure
+       white clears 4.5:1 on it — that is what makes one set possible, and
+       it is measured by measure.js on composited pixels, not asserted.
+       The kind chip in the chat and the amber *text* accents still use
+       the per-theme accent tokens; these are grounds, not inks. */
+    --tile-red:#B42318;
+    --tile-blue:#1D4ED8;
+    --tile-violet:#6D28D9;
+    --tile-rust:#92400E;
+    --tile-green:#047857;
+    --tile-teal:#0E7490;
+    --tile-slate:#3F3F46;
+    /* on-tile ink, at two strengths */
+    --tw:#FFFFFF;
+    --tw2:rgba(255,255,255,.92);
     --gutter:20px;
     /* 44 points. Not a guideline — it is the size of a fingertip, and every
        control in this file is measured against it by hunt_ui.js. A control
@@ -140,11 +168,11 @@
     :root:not([data-theme="dark"]){
       color-scheme:light;
     --mark-lit:#16171A;--mark-shade:#6C7280;
-      --bg:#F2F2F7;
-      --card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
+      --bg:#F4F4F6;
+      --card:#FFFFFF;--card2:#FAFAFB;--action:#EAF2FE;--hold:#FFF6DF;
       --inset:#EDEDF2;--sunk:#F2F2F5;--field:#FFFFFF;--raised:#E8E8ED;
-      --hair:rgba(60,60,67,.16);
-      --lab:#16171A;--lab2:rgba(60,60,67,.85);--lab3:rgba(60,60,67,.74);
+      --hair:rgba(50,50,58,.14);
+      --lab:#18181B;--lab2:rgba(50,50,58,.85);--lab3:rgba(50,50,58,.72);
       --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
       --purple:#7B3AA0;--cyan:#0B6E92;
       --blue-soft:#0A5FBF;--blue-hard:#0958B8;--blue-fill:#0A6DD8;
@@ -161,18 +189,18 @@
       --glass-spec:rgba(255,255,255,.85);
       --glass-under:rgba(16,23,38,.05);
       --glass-edge:rgba(16,23,38,.16);
-      --veil:rgba(242,242,247,.90);
+      --veil:rgba(244,244,246,.92);
       --on-accent:#fff;
     }
   }
   :root[data-theme="light"]{
     color-scheme:light;
     --mark-lit:#16171A;--mark-shade:#6C7280;
-    --bg:#F2F2F7;
-    --card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
+    --bg:#F4F4F6;
+    --card:#FFFFFF;--card2:#FAFAFB;--action:#EAF2FE;--hold:#FFF6DF;
     --inset:#EDEDF2;--sunk:#F2F2F5;--field:#FFFFFF;--raised:#E8E8ED;
-    --hair:rgba(60,60,67,.16);
-    --lab:#16171A;--lab2:rgba(60,60,67,.85);--lab3:rgba(60,60,67,.74);
+    --hair:rgba(50,50,58,.14);
+    --lab:#18181B;--lab2:rgba(50,50,58,.85);--lab3:rgba(50,50,58,.72);
     --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
     --purple:#7B3AA0;--cyan:#0B6E92;
     --blue-soft:#0A5FBF;--blue-hard:#0958B8;--blue-fill:#0A6DD8;
@@ -189,7 +217,7 @@
     --glass-spec:rgba(255,255,255,.85);
     --glass-under:rgba(16,23,38,.05);
     --glass-edge:rgba(16,23,38,.16);
-    --veil:rgba(242,242,247,.90);
+    --veil:rgba(244,244,246,.92);
     --on-accent:#fff;
   }
 
@@ -363,42 +391,88 @@
   dialog .slid input[type=range]::-moz-range-thumb{width:26px;height:26px;
     border:0;border-radius:50%;background:#fff}
   dialog .slid input[type=range]:disabled{opacity:.4}
-  .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
-  .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:24px}
-  .sect{font-size:13px;color:var(--lab3);margin:28px 0 12px;font-weight:500}
+  /* ── the board ─────────────────────────────────────────────────────
+     The page is a board of tiles. The hero tile carries the day and the
+     count — the count *is* the interface, so it is set at poster size —
+     and every item in the tray is a tile in its kind's own hue, deep
+     enough to carry white ink. Colour is structure here, not decoration:
+     you can read the morning from across the room by the colours on the
+     board. Neutral tiles (the hero, the digest, what-didn't-need-you)
+     keep the room's tone so the coloured ones stay loud. */
+  .hero{background:var(--card);border:1px solid var(--hair);
+    border-radius:var(--r-card);padding:var(--sp-5);
+    box-shadow:0 1px 1px var(--shadow),0 24px 64px -48px var(--shadow)}
+  .today{font-size:var(--t-small);font-weight:650;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--lab3)}
+  .lede{font-size:clamp(44px,13vw,76px);line-height:1.02;
+    letter-spacing:-.04em;font-weight:800;margin:var(--sp-2) 0 var(--sp-2);
+    font-variant-numeric:tabular-nums;text-wrap:balance}
+  .lede b{display:block;font-size:var(--t-card);font-weight:600;
+    letter-spacing:-.01em;color:var(--lab2);margin-top:var(--sp-1)}
+  .sub{font-size:var(--t-body);line-height:1.45;color:var(--lab2);
+    margin:0 0 var(--sp-4)}
+  .sect{font-size:var(--t-small);color:var(--lab3);margin:var(--sp-5) 0 var(--sp-3);
+    font-weight:650;letter-spacing:.14em;text-transform:uppercase}
 
-  .chips{display:flex;flex-wrap:wrap;gap:8px}
-  .chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--r-pill);
-        background:var(--card2);border:1px solid var(--hair);font-size:13.5px;color:var(--lab2)}
-  .chip .t{color:var(--lab3);font-size:12px}
-  .chip.warn{border-color:rgba(255,214,10,.28)} .chip.warn .t{color:var(--amber)}
+  /* The digest: small neutral tiles, one number each. */
+  .chips{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+  .chip{display:inline-flex;align-items:center;gap:var(--sp-2);
+    padding:12px 16px;border-radius:var(--r-lg);
+    background:var(--card);border:1px solid var(--hair);
+    font-size:var(--t-meta);font-weight:550;color:var(--lab2)}
+  .chip .t{width:8px;height:8px;border-radius:var(--r-pill);flex:0 0 auto;
+    background:var(--green)}
+  .chip.warn{color:var(--lab)}
+  .chip.warn .t{background:var(--amber)}
+  /* ── the tile ──────────────────────────────────────────────────────
+     A queue item is a slab of its kind's colour. The hue arrives from
+     the markup as --k — a value, off the same table the sweep sorts by —
+     and everything is derived from it: the ground is a gradient running
+     the hue into its own shadow, the glow underneath is the hue at a
+     distance, and the primary verb is white with the hue as its ink. One
+     custom property per tile; a new category needs one entry in KINDS
+     and no new CSS.
 
-  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);
-          border-radius:var(--r-card);padding:var(--sp-4);
-          margin-bottom:var(--sp-3);
-          box-shadow:inset 0 .6px 0 var(--fill-3),0 2px 10px rgba(0,0,0,.3);
+     Long text does not sit on saturated colour: the sentence to decide
+     is on the slab, and everything explanatory — the why line, the
+     evidence, a figure warning — is recessed into a dark well inside the
+     tile, where white ink gets a quiet ground back. */
+  .action{position:relative;border:0;
+          background:linear-gradient(150deg,
+                     color-mix(in srgb,var(--k,var(--card)) 92%,#000),
+                     color-mix(in srgb,var(--k,var(--card)) 68%,#000));
+          border-radius:var(--r-card);
+          padding:var(--sp-4) var(--sp-4) var(--sp-3);
+          box-shadow:0 24px 56px -32px var(--k,var(--shadow)),
+                     inset 0 1px 0 rgba(255,255,255,.14);
+          color:var(--tw);
           transition:opacity .3s}
-  .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
-  .action.stale{background:var(--err-bg);border-color:rgba(255,69,58,.3)}
-  .action.gone{opacity:.3}
-  .action .top{display:flex;gap:12px;align-items:flex-start}
-  /* 28, so the "why" line below can hang off it: 28 + sp-3 = 40. */
-  .glyph{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:13px;
-    background:var(--c,var(--card2));
-         flex:0 0 auto;margin-top:1px;color:var(--on-accent);font-weight:700}
-  .action .txt{flex:1;font-size:var(--t-card);line-height:1.4;letter-spacing:-.014em}
-  .action .why{font-size:13.5px;color:var(--lab2);line-height:1.42;
-    margin:var(--sp-2) 0 0 calc(28px + var(--sp-3))}
-  .action .why em{font-style:normal;color:var(--amber)}
+  .action.stale{outline:2px solid var(--red);outline-offset:2px}
+  .action.gone{opacity:.35}
+  #actions{display:flex;flex-direction:column;gap:var(--sp-4)}
+  .action .eyebrow{display:flex;align-items:baseline;gap:var(--sp-2);
+    margin-bottom:var(--sp-3);min-width:0}
+  .kchip{font-size:var(--t-small);font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--tw2)}
+  .action .when{margin-left:auto;font-size:var(--t-small);color:var(--tw2);
+    white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
+  .action .txt{font-size:clamp(18px,4.8vw,21px);line-height:1.35;
+    letter-spacing:-.02em;font-weight:650}
+  .action .well{background:rgba(0,0,0,.30);
+    border-radius:calc(var(--r-card) - var(--sp-3));
+    padding:var(--sp-3);margin-top:var(--sp-3)}
+  .action .why{font-size:var(--t-meta);color:var(--tw2);line-height:1.45}
+  .action .why em{font-style:normal;color:var(--amber)}  .action .why em{font-style:normal;color:var(--amber)}  .action .why em{font-style:normal;color:var(--amber)}
   /* ── what a proposal was drawn from ────────────────────────────────
      Closed by default: the card's job is the one sentence you decide on,
      and the evidence is what you open when that sentence is not enough.
      Indented to the card's text column so it reads as part of the same
      item rather than a second card underneath it. */
-  .action .drew{margin:var(--sp-2) 0 0 calc(28px + var(--sp-3));
-    font-size:13px}
+  .action .drew{margin:var(--sp-2) 0 0;font-size:var(--t-small)}
+  .action .src{border-left-color:rgba(255,255,255,.25)}
+  .action .pf b{font-variant-numeric:tabular-nums}
   .action .drew summary{min-height:var(--tap);display:flex;
-    align-items:center;color:var(--lab3);cursor:pointer;
+    align-items:center;color:var(--tw2);cursor:pointer;
     list-style:none;user-select:none}
   .action .drew summary::-webkit-details-marker{display:none}
   .action .drew summary::before{content:'\203A';display:inline-block;
@@ -413,37 +487,45 @@
      should be able to see what was said. Amber on the rule so it is
      obvious which one it was. */
   .action .src.hot{border-left-color:var(--amber)}
-  .action .src .sh{color:var(--lab2);font-size:12.5px}
-  .action .src .sw{color:var(--lab3);margin-left:var(--sp-2)}
+  .action .src .sh{color:var(--tw2);font-size:12.5px}
+  .action .src .sw{color:var(--tw2);margin-left:var(--sp-2)}
   .action .src .ss{font-weight:600;margin-top:2px}
-  .action .src blockquote{margin:var(--sp-1) 0 0;color:var(--lab2);
+  .action .src blockquote{margin:var(--sp-1) 0 0;color:var(--tw2);
     font-size:12.5px;line-height:1.45}
   .action .src .sf{color:var(--amber);font-size:12px;margin-top:var(--sp-1)}
-  .pair{display:flex;gap:8px;margin-top:16px}
-  /* A capsule, not a rounded rectangle with a radius worked out by hand.
-     `calc(20px - 16px + 8px)` was an attempt at concentricity with a fudge
-     on the end; a pill is concentric with its card at any padding. */
-  /* min-height, not "whatever the padding adds up to". Snapping the
-     padding to the grid took these from 48 to 42 without a rule changing,
-     which is the argument for the target being declared rather than
-     emergent. */
-  .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:12px;
+  .pair{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
+  /* On a saturated slab the verbs are blocks of their own: the quiet one
+     is glass-dark on the hue, the primary is solid white and borrows the
+     tile's colour for its ink — which is what makes it read as *this
+     tile's* button and not a global blue. */
+  .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:12px 16px;
     min-height:var(--tap);font-family:var(--ui);
-               font-size:16px;font-weight:500;background:var(--fill-1);
-               color:var(--lab2);cursor:pointer;transition:transform .12s ease,
-               background .15s ease;box-shadow:inset 0 .6px 0 var(--fill-2)}
+               font-size:15px;font-weight:600;background:rgba(0,0,0,.22);
+               color:var(--tw);cursor:pointer;
+               transition:background .15s ease,transform .12s ease}
+  .pair button:hover:not(:disabled){background:rgba(0,0,0,.34)}
   .pair button:active:not(:disabled){transform:scale(.97)}
-  .pair button.yes{background:rgba(10,132,255,.20);color:var(--blue-soft);font-weight:600}
-  .pair button:disabled{opacity:.4}
+  .pair button.yes{background:#fff;color:var(--k,var(--blue-fill));
+    font-weight:700}
+  .pair button.yes:hover:not(:disabled){filter:brightness(.94)}
+    .pair button:disabled{opacity:.4}
+  .action .settled{font-size:13.5px;color:var(--tw2);margin-top:12px;
+           padding-top:12px;border-top:1px solid rgba(255,255,255,.22);
+           line-height:1.45}
+  .action .settled b{color:var(--tw)}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:12px;padding-top:12px;
-           border-top:1px solid var(--fill-1);line-height:1.45}
+           border-top:1px solid var(--hair);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
 
-  .quiet{background:var(--card2);border:1px solid var(--hair);border-radius:var(--r-card);
-         overflow:hidden;box-shadow:inset 0 .6px 0 var(--fill-2)}
+  /* What did not need you, as marginalia. On a phone it closes the
+     brief; on the desk it sits on the rail. A faint recessed ground
+     rather than an elevated card — this is the tray beside the letter,
+     not another letter. */
+  .quiet{background:var(--fill-1);border:1px solid var(--hair);
+         border-radius:var(--r-card);overflow:hidden}
   .quiet .head:active{background:var(--fill-1)}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer}
-  .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
+  .quiet .head .n{font-size:24px;font-weight:700;color:var(--lab);font-variant-numeric:tabular-nums}
   .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
   .quiet .head .l small{display:block;color:var(--lab2);font-size:13px;margin-top:2px}
   .quiet .head .c{color:var(--lab3);font-size:13px;transition:transform .25s}
@@ -605,10 +687,15 @@
   .step .n{color:var(--lab3);font-variant-numeric:tabular-nums}
   .step.live{border-color:rgba(10,132,255,.4)}
   .step.flag{border-color:rgba(255,214,10,.4);color:var(--amber)}
-  .prop{background:var(--action);border:1px solid rgba(10,132,255,.24);border-radius:16px;
-        padding:12px;margin:4px 0 16px}
-  .prop .pl{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
-            color:var(--blue);margin-bottom:8px}
+  .prop{background:var(--card);border:1px solid var(--hair);
+        border-radius:var(--r-lg);padding:12px;margin:4px 0 16px;
+        box-shadow:0 1px 1px var(--shadow),0 8px 24px -20px var(--shadow)}
+  .prop .pl{display:inline-flex;align-items:center;padding:4px 12px;
+    border-radius:var(--r-pill);font-size:var(--t-small);font-weight:600;
+    color:var(--blue);margin-bottom:8px;
+    background:color-mix(in srgb,var(--blue) 14%,transparent)}
+  .prop.pinned .pl{color:var(--amber);
+    background:color-mix(in srgb,var(--amber) 14%,transparent)}
   .prop .pb{font-size:14.5px;line-height:1.42}
   .prop .pn{font-size:12.5px;color:var(--lab2);margin-top:var(--sp-2);line-height:1.4}
   /* A proposal made in a turn that had something instruction-shaped in
@@ -1043,14 +1130,19 @@
        padding here instead was right only once the window was wider than the
        wrap — below that the wrap fills the window and everything in it sat
        flush against both edges of the screen. */
-    .wrap{max-width:calc(var(--measure) + var(--gutter) * 2)}
-    /* A decision is a sentence to read. Past about 70 characters the eye
-       loses the line, so the column stops growing long before the window
-       does. It used to be the left of two, with a 320px status rail beside
-       it; the rail is in the menu now, and a grid still reserving its track
-       would leave the reading column pinned to the left of a wide window
-       with a hole beside it. One column, centred. */
-    .col-main{max-width:var(--measure);margin:0 auto;padding-bottom:48px}
+    .wrap{max-width:calc(var(--board) + var(--gutter) * 2)}
+    /* The board spreads: two tile columns. A tile that carries a
+       decision — a draft to read, something sensitive — takes the whole
+       row; the rest sit two abreast. The chat keeps the reading measure;
+       tiles are glanced at, not read line by line, so the board is the
+       one surface allowed past it. */
+    .col-main{max-width:var(--board);margin:0 auto;padding-bottom:48px}
+    .action .pair{justify-content:flex-end}
+    .action .pair button{flex:0 1 232px}
+    #actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .action.big{grid-column:1/-1}
+    .chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+    .chip{justify-content:center}
     main{padding-bottom:24px}
 
     /* On a wide screen these are a list, not a carousel: nothing to swipe
@@ -1221,9 +1313,12 @@
          that are fine. It is not right for the one that is not fine, so
          anything wrong comes back out here where it will be read. -->
     <div id="trouble"></div>
-    <div class="lede" id="lede" role="status" aria-live="polite">…</div>
-    <div class="sub" id="lsub"></div>
-    <div class="chips" id="chips"></div>
+    <div class="hero">
+      <div class="today" id="today"></div>
+      <div class="lede" id="lede" role="status" aria-live="polite">…</div>
+      <div class="sub" id="lsub"></div>
+      <div class="chips" id="chips"></div>
+    </div>
 
     <div class="sect" id="s-need">Needs a decision</div>
     <div id="actions"></div>
@@ -1305,6 +1400,43 @@ const esc = s => String(s??'').replace(/[&<>"']/g,
 // The sweep cites a kind of source; the chat cites the tool it called, and
 // the tool names are code names. Both land here so one renderer covers both
 // and neither prints an identifier at somebody.
+// The tray card's identity: each category, in its own hue, worn as a chip.
+// The names are what a person is being told, not the table's key — "reply"
+// the category is "Reply to send" the sentence. A category with no entry
+// still gets a card: its key with the underscores taken out, in neutral,
+// which is the honest rendering of "the sweep learned a new kind before
+// this file did".
+// `alt`/`ok` are [decision, label] — the decision wire (approve / edit /
+// reject) is unchanged, the words on it are per kind. "Approve" over a
+// surgery letter with no draft in it was the old rendering: technically
+// what the button does, and an answer to a question nobody at that card is
+// asking. `alt:null` drops the second button — "Later" under "Filed
+// without asking you" is a choice about nothing.
+// `c` is the tile's hue — the deep set from :root, constant across both
+// themes, each one chosen so white ink clears 4.5:1 on it. `big` says the
+// tile takes the whole row on a wide board: the ones carrying words to
+// read, not just a fact to acknowledge.
+const KINDS = {
+  sensitive:      {n:'Sensitive',      c:'var(--tile-red)',    big:true,
+                   alt:null,               ok:['approve','I\u2019ve seen it']},
+  reply:          {n:'Reply to send',  c:'var(--tile-blue)',   big:true,
+                   alt:['edit','Edit'],    ok:['approve','Approve']},
+  diary:          {n:'For the diary',  c:'var(--tile-violet)',
+                   alt:['reject','Not this'], ok:['approve','Confirm']},
+  reminder:       {n:'You asked',      c:'var(--tile-rust)',
+                   alt:null,               ok:['approve','Done']},
+  filed:          {n:'Filed for you',  c:'var(--tile-green)',
+                   alt:null,               ok:['approve','OK']},
+  outdoor_window: {n:'A good window',  c:'var(--tile-teal)',
+                   alt:['reject','Skip'],  ok:['approve','Noted']},
+  asked_for:      {n:'From the chat',  c:'var(--tile-blue)',   big:true,
+                   alt:['edit','Edit'],    ok:['approve','Approve']},
+};
+const kindOf = a => KINDS[a.category] ||
+  {n:(a.category || 'for you').replace(/_/g,' '),
+   c:'var(--tile-slate)', big:true,
+   alt:['edit','Edit'], ok:['approve','Approve']};
+
 const KINDNOUN = {mail:'From', calendar:'Diary', weather:'Forecast',
                   messages:'Message', web:'Page', rates:'Rates',
                   read_mail:'From', read_calendar:'Diary',
@@ -1508,9 +1640,21 @@ function paintModel(r){
 
 function paint(h, ap, handled, runs){
   const open = ap.length;
+  // The device's own idea of today, which is the one the person holding
+  // it has. The server's clock decides what the sweep reads; this line is
+  // presentation.
+  $('#today').textContent = new Date().toLocaleDateString(undefined,
+    {weekday:'long', day:'numeric', month:'long'});
   $('#whosub').textContent = `${runs.length} run${runs.length===1?'':'s'} · ${h.suspended} parked`;
-  $('#lede').textContent = open===0 ? 'Nothing needs you.'
-    : open===1 ? 'One thing needs you.' : `${open} things need you.`;
+  // The count at poster size, with its sentence underneath it. The
+  // number is measured — it is ap.length and nothing else — and it is
+  // the whole interface at a glance, which is why it gets the tile's
+  // full type scale. Zero is the word, not the digit: a big 0 reads as
+  // an error, and an empty tray is the target state.
+  $('#lede').innerHTML = open===0
+    ? 'All clear.<b>Nothing needs you.</b>'
+    : `${open}<b>${open===1 ? 'thing needs you this morning'
+                            : 'things need you this morning'}</b>`;
   $('#lsub').textContent = open===0
     ? 'That is the target state, not an empty screen. Put the phone down.'
     : "Everything else is done, filed, or waiting on someone who isn't you.";
@@ -1531,21 +1675,27 @@ function paint(h, ap, handled, runs){
     {t:`Filed ${filed}`, ok:true},
     {t:flagged?`Quarantined ${flagged}`:'Nothing quarantined', ok:!flagged},
     ...degraded.map(d=>({t:`${d.source.charAt(0).toUpperCase()}${d.source.slice(1)} · ${d.note}`, ok:false}))
-  ].map(c=>`<span class="chip ${c.ok?'':'warn'}"><span class="t">${c.ok?'✓':'!'}</span>${esc(c.t)}</span>`).join('');
+  ].map(c=>`<span class="chip ${c.ok?'':'warn'}"><span class="t"></span>${esc(c.t)}</span>`).join('');
 
   const wrap = $('#actions'); wrap.innerHTML='';
   ap.forEach(a=>{
-    const glyph = a.pinned ? {g:'✱',c:'var(--amber)'} : {g:'✉',c:'var(--green)'};
-    const card = el(`<div class="action ${a.pinned?'hold':''} ${a.stale?'stale':''}">
-      <div class="top"><span class="glyph" style="--c:${glyph.c}">${glyph.g}</span>
-        <span class="txt">${esc(a.body)}</span></div>
+    const k = kindOf(a);
+    const card = el(`<div class="action ${a.pinned?'hold':''} ${a.stale?'stale':''}${k.big?' big':''}"
+      style="--k:${k.c}">
+      <div class="eyebrow"><span class="kchip">${esc(k.n)}</span>
+        ${a.pinned?'<span class="when">always asks</span>':''}</div>
+      <div class="txt">${esc(a.body)}</div>
+      <div class="well">
       <div class="why">${esc(a.title)}${a.evidence.freshness?' · <em>'+esc(a.evidence.freshness)+'</em>':''}
         ${a.stale?'<br><em>Facts changed since drafting — will be re-checked at send.</em>':''}</div>
       ${oddFigures(a.evidence && a.evidence.figures_unsupported)}
       ${drawnFrom(a)}
+      </div>
       <div class="pair">
-        <button data-d="${a.pinned?'reject':'edit'}">${a.pinned?'Later':'Edit'}</button>
-        <button data-d="approve" class="yes">${a.pinned?'Open thread':'Approve'}</button>
+        ${a.pinned ? '<button data-d="reject">Later</button>'
+          : k.alt ? `<button data-d="${k.alt[0]}">${k.alt[1]}</button>` : ''}
+        <button data-d="approve" class="yes">${
+          a.pinned ? 'Open thread' : (k.ok ? k.ok[1] : 'Approve')}</button>
       </div></div>`);
     const enable = on => card.querySelectorAll('.pair button').forEach(x=>x.disabled=!on);
     const send = async (decision, edited_body)=>{

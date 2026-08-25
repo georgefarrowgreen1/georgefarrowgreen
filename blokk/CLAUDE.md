@@ -480,12 +480,26 @@ worse than an error.
                        state rather than reaching GitHub.
                        Parity with connect.py is
                        deliberate: both call core/sources.py, neither
-                       reimplements it. The look is iOS 26 Liquid Glass —
-                       chrome is glass, content is not, and Reduce
-                       Transparency wins over the in-app slider. index.html,
-                       setup.html and demo/index.html share one palette, one
-                       type scale and one material; when you change one,
-                       change the others or they drift into three products
+                       reimplements it. The look is **the board**: a
+                       near-black (or light) room, and every tray item a
+                       slab of its kind's colour — the intray table's
+                       categories, worn as saturated tiles with white ink.
+                       The hero tile carries the day's count at poster
+                       size. The tile hues (--tile-*) are one set in both
+                       themes, each deep enough that white clears 4.5:1
+                       on its lightest gradient stop — the tiles are the
+                       brand, the room flips around them. Long text never
+                       sits on saturated colour: the why line, the
+                       evidence and the figure warnings recess into a
+                       dark well inside the tile. The primary verb is
+                       solid white and takes the tile's hue as its ink,
+                       which is what binds it to its tile. Chrome — bars,
+                       sheets, the chat — stays Liquid Glass, and Reduce
+                       Transparency wins over the in-app slider.
+                       index.html, setup.html and demo/index.html share
+                       one palette, one type scale and one material; when
+                       you change one, change the others or they drift
+                       into three products
     demo/              browser port of the engine + the test suites.
                        fakeserver.py is a real OpenAI-compatible server that
                        also misbehaves the ways real ones do — deliberately
@@ -816,7 +830,14 @@ All four suites green. Verified behaviours:
   phone, where six numeric columns rendered as "1.1G12.7G13.8G"
 * the toolbar is one glass capsule holding four items, the sheet corners are
   the display's, and every control sized to its content is a capsule —
-  which is what iOS 26 looks like
+  the chrome is still iOS 26; the content is the board
+* every tray tile clears 4.5:1 for its white ink on the *lightest stop* of
+  its gradient, in both themes, measured on composited pixels. The checker
+  had to be taught gradients twice to say so honestly: it read only
+  background-color and fell through the tile to the page (passing dark by
+  accident and failing light about pixels that were fine), and then only
+  rgb() stops while Chromium serialises colour-mixed stops as color(srgb …).
+  A checker that cannot see the ground is worse than none — it certifies
 * light and dark both measure zero text below 4.5:1 across the dashboard,
   the wizard and the demo, checked on rendered pixels with the ground
   composited — not on the token values

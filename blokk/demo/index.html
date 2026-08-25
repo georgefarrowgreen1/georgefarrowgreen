@@ -5,8 +5,8 @@
 <style>
   :root{
     color-scheme:dark;
-    --void:#08080A;--bg:#000;--card:#1C1C1E;--card2:#141416;--action:#0E1A2B;--hold:#1E1A08;
-    --hair:rgba(235,235,245,.09);--lab:#fff;--lab2:rgba(235,235,245,.60);--lab3:rgba(235,235,245,.50);
+    --void:#08080A;--bg:#09090B;--card:#161618;--card2:#111113;--action:#0E1A2B;--hold:#1E1A08;
+    --hair:rgba(244,244,245,.09);--lab:#F4F4F5;--lab2:rgba(244,244,245,.64);--lab3:rgba(244,244,245,.52);
     --blue:#0A84FF;--green:#30D158;--amber:#FFD60A;--red:#FF453A;--purple:#BF5AF2;--cyan:#64D2FF;
     --blue-fill:#0A6DD8;--sunk:#0B0B0E;--raised:#2C2C2E;
     --fill-1:rgba(255,255,255,.055);--fill-2:rgba(255,255,255,.09);
@@ -18,6 +18,10 @@
     --glass-spec:rgba(255,255,255,.34);--glass-under:rgba(255,255,255,.07);
     --glass-edge:rgba(0,0,0,.62);
     --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    --tile-red:#B42318;--tile-blue:#1D4ED8;--tile-violet:#6D28D9;
+    --tile-rust:#92400E;--tile-green:#047857;--tile-teal:#0E7490;
+    --tile-slate:#3F3F46;--tw:#FFFFFF;--tw2:rgba(255,255,255,.92);
+    --serif:ui-serif,"New York",Georgia,"Iowan Old Style",serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --tap:44px;
     /* The dashboard's corners: concentric when nested, capsules when sized
@@ -64,8 +68,8 @@
   @media (prefers-color-scheme:light){
     :root:not([data-theme="dark"]){
       color-scheme:light;
-    --void:#E9E9EE;--bg:#F2F2F7;--card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
-      --hair:rgba(60,60,67,.16);--lab:#16171A;--lab2:rgba(60,60,67,.85);
+    --void:#E9E9EE;--bg:#F4F4F6;--card:#FFFFFF;--card2:#FAFAFB;--action:#EAF2FE;--hold:#FFF6DF;
+      --hair:rgba(50,50,58,.14);--lab:#16171A;--lab2:rgba(60,60,67,.85);
       --lab3:rgba(60,60,67,.74);
       --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
       --purple:#7B3AA0;--cyan:#0B6E92;--blue-fill:#0A6DD8;--sunk:#F2F2F5;
@@ -84,8 +88,8 @@
   }
   :root[data-theme="light"]{
     color-scheme:light;
-    --void:#E9E9EE;--bg:#F2F2F7;--card:#FFFFFF;--card2:#FFFFFF;--action:#EAF2FE;--hold:#FFF6DF;
-    --hair:rgba(60,60,67,.16);--lab:#16171A;--lab2:rgba(60,60,67,.85);
+    --void:#E9E9EE;--bg:#F4F4F6;--card:#FFFFFF;--card2:#FAFAFB;--action:#EAF2FE;--hold:#FFF6DF;
+    --hair:rgba(50,50,58,.14);--lab:#16171A;--lab2:rgba(60,60,67,.85);
     --lab3:rgba(60,60,67,.74);
     --blue:#0A6DD8;--green:#1D7F35;--amber:#8A6100;--red:#C4291C;
     --purple:#7B3AA0;--cyan:#0B6E92;--blue-fill:#0A6DD8;--sunk:#F2F2F5;
@@ -146,7 +150,7 @@
     background:var(--fill-2);
     box-shadow:0 0 0 .5px rgba(0,0,0,.5),inset 0 .6px 0 rgba(255,255,255,.22)}
   main{flex:1;padding:0 20px 20px}
-  .lede{font-size:27px;line-height:1.24;letter-spacing:-.028em;font-weight:600;margin:4px 0 8px}
+  .lede{font-size:clamp(32px,8vw,48px);line-height:1.05;letter-spacing:-.035em;font-weight:800;margin:4px 0 8px}
   .sub{font-size:15px;line-height:1.42;color:var(--lab2);margin-bottom:20px}
   .sect{font-size:13px;color:var(--lab3);margin:24px 0 12px;font-weight:500}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -154,23 +158,38 @@
   .chip .t{color:var(--lab3);font-size:12px}
   .chip.warn{border-color:rgba(255,214,10,.28)}.chip.warn .t{color:var(--amber)}
   .chip.bad{border-color:rgba(255,69,58,.3)}.chip.bad .t{color:var(--red)}
-  .action{background:var(--action);border:1px solid rgba(10,132,255,.22);
-    border-radius:var(--r-card);padding:16px;margin-bottom:12px;transition:opacity .3s}
-  .action.hold{background:var(--hold);border-color:rgba(255,214,10,.26)}
-  .action.stale{background:#1E0E0E;border-color:rgba(255,69,58,.3)}
-  .action.gone{opacity:.3}
-  .action .top{display:flex;gap:12px;align-items:flex-start}
-  .glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
-    font-size:13px;flex:0 0 auto;margin-top:1px;color:#000;font-weight:700;
-    background:var(--c,var(--card2))}
-  .action .txt{flex:1;font-size:16.5px;line-height:1.38;letter-spacing:-.012em}
-  .action .why{font-size:13.5px;color:var(--lab2);margin:8px 0 0 40px;line-height:1.42}
+  /* The same card language as the dashboard — neutral elevated ground,
+     the kind worn as a tinted chip, the primary filled. The demo had kept
+     the older blue-tinted panels, and three pages with two card designs
+     is two products wearing one name. */
+  /* The dashboard's tile language, ported whole — see web/index.html
+     for the reasoning. A queue item is a slab of its kind's colour with
+     white ink; the explanation sits in a dark well inside it; the
+     primary verb is white and borrows the tile's hue. */
+  .action{position:relative;border:0;
+    background:linear-gradient(150deg,
+               color-mix(in srgb,var(--k,var(--card)) 92%,#000),
+               color-mix(in srgb,var(--k,var(--card)) 68%,#000));
+    border-radius:var(--r-card);padding:16px 16px 12px;margin-bottom:16px;
+    box-shadow:0 24px 56px -32px var(--k,rgba(0,0,0,.4));
+    color:var(--tw);transition:opacity .3s}
+  .action.stale{outline:2px solid var(--red);outline-offset:2px}
+  .action.gone{opacity:.35}
+  .action .eyebrow{display:flex;align-items:baseline;gap:8px;margin-bottom:12px}
+  .kchip{font-size:12.5px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--tw2)}
+  .action .txt{font-size:18px;line-height:1.4;font-weight:650;
+    letter-spacing:-.02em}
+  .action .why{font-size:13.5px;color:var(--tw2);margin:8px 0 0;
+    line-height:1.42;background:rgba(0,0,0,.30);padding:12px;
+    border-radius:calc(var(--r-card) - 12px)}
   .action .why em{font-style:normal;color:var(--amber)}
-  .pair{display:flex;gap:8px;margin-top:16px}
-  .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:var(--sp-3);
-    min-height:var(--tap);font-family:var(--ui);font-size:16px;font-weight:500;
-    background:var(--fill-1);color:var(--lab2);cursor:pointer}
-  .pair button.yes{background:rgba(10,132,255,.20);color:#4DA3FF;font-weight:600}
+  .pair{display:flex;gap:8px;margin-top:12px}
+  .pair button{flex:1;border:0;border-radius:var(--r-pill);padding:12px 16px;
+    min-height:var(--tap);font-family:var(--ui);font-size:15px;font-weight:600;
+    background:rgba(0,0,0,.22);color:var(--tw);cursor:pointer}
+  .pair button:hover:not(:disabled){background:rgba(0,0,0,.34)}
+  .pair button.yes{background:#fff;color:var(--k,var(--blue-fill));font-weight:700}
   .pair button:disabled{opacity:.4}
   .settled{font-size:13.5px;color:var(--lab2);margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.07);line-height:1.45}
   .settled b{color:var(--lab);font-weight:600}
@@ -178,7 +197,7 @@
     border-radius:var(--r-card);overflow:hidden}
   .quiet .head{display:flex;align-items:center;gap:12px;padding:16px;
     min-height:var(--tap);cursor:pointer}
-  .quiet .head .n{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--green)}
+  .quiet .head .n{font-size:24px;font-weight:700;color:var(--lab);font-variant-numeric:tabular-nums}
   .quiet .head .l{flex:1;font-size:15px;line-height:1.35}
   .quiet .head .l small{display:block;color:var(--lab2);font-size:13px;margin-top:2px}
   .quiet .head .c{color:var(--lab3);font-size:13px;transition:transform .25s}
@@ -705,10 +724,13 @@ function paint(){
     const t = policy.row(a.category);
     const pinned = t && t.pinned_manual;
     const stale = isStale(a);
-    const g = pinned?{g:'\u2731',c:'var(--amber)'}:{g:'\u2709',c:'var(--green)'};
-    const card = el(`<div class="action ${pinned?'hold':''} ${stale?'stale':''}">
-      <div class="top"><span class="glyph" style="--c:${g.c}">${g.g}</span>
-        <span class="txt">${esc(a.body)}</span></div>
+    const k = pinned ? {n:'Always asks', c:'var(--tile-rust)'}
+                     : {n:(a.category||'for you').replace(/_/g,' '),
+                        c:'var(--tile-blue)'};
+    const card = el(`<div class="action ${pinned?'hold':''} ${stale?'stale':''}"
+      style="--k:${k.c}">
+      <div class="eyebrow"><span class="kchip">${esc(k.n)}</span></div>
+      <div class="txt">${esc(a.body)}</div>
       <div class="why">${esc(a.title)}
         ${a.evidence&&a.evidence.freshness?' &middot; <em>'+esc(a.evidence.freshness)+'</em>':''}
         ${stale?'<br><em>Drafted at 0'+a.created_hour+':00. Will be re-checked at send.</em>':''}</div>

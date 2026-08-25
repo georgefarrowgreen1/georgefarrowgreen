@@ -267,7 +267,7 @@ def register(engine, store):
                         job=WRITING),
                 )
                 _queue(ctx, store, kind, draft["text"],
-                       f"{m['from']} · {m['subject'][:60]}",
+                       f"{_name(m['from'])} · {m['subject'][:60]}",
                        {"sources": ["mail", "calendar"],
                         "drawn_from": _before_rows(m) + _drawn_from(m),
                         # What the prompt handed it. These were in the prompt
@@ -293,7 +293,7 @@ def register(engine, store):
             # rather than answering, or because the thing is too
             # consequential for anything but a person to touch it.
             _queue(ctx, store, kind,
-                   f"{m['from']} — {m['subject'][:70]}",
+                   f"{_name(m['from'])} — {m['subject'][:70]}",
                    _why_no_draft(kind),
                    {"sources": ["mail"],
                     "drawn_from": _before_rows(m) + _drawn_from(m)},
@@ -313,6 +313,13 @@ def register(engine, store):
                     "drawn_from": _drawn_from_facts(*[
                         ("mail", f["from"], "", f["subject"][:120])
                         for f in filed[:8]]),
+                    # The amounts the total was summed from. Without these
+                    # the grounding check flagged the card's own arithmetic:
+                    # "£184.50 is not in anything this read" — about a figure
+                    # this very loop measured out of the receipts. A card
+                    # warning about the sweep's own sums teaches people the
+                    # warning is noise, which spends the alarm on nothing.
+                    "amounts": sorted({v for f in filed for v in f["amounts"]}),
                     "filed": len(filed), "counted": counted,
                     "checked_at": _hour(ctx)})
             out["queued"] += 1
@@ -753,6 +760,25 @@ def _drawn_from_facts(*items) -> list[dict]:
 
 
 ADDRESS_IN = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+
+def _name(sender: str) -> str:
+    """The person, out of a From header, for the front of a card.
+
+    "Fairfield Surgery <no-reply@example.com>" is a header; a card is a
+    sentence, and the address in angle brackets is the part a person's eye
+    has to climb over. Display only — `_reply_to` still reads the real
+    header, and the evidence citations keep the full address, because
+    where a reply *goes* and what was actually *read* are exactly the two
+    places a prettier string would be a lie.
+    """
+    s = str(sender or "").strip()
+    if "<" in s:
+        head = s.split("<", 1)[0].strip().strip('"')
+        if head:
+            return head
+        s = s.split("<", 1)[1].rstrip(">").strip()
+    return s or "somebody"
 
 
 def _reply_to(m: dict) -> str:

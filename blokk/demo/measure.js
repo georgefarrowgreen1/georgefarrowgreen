@@ -345,13 +345,42 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         // that is what the eye gets.
         const over = (fg, bg) => fg.length < 4 || fg[3] === 1 ? fg.slice(0, 3)
           : [0, 1, 2].map(i => fg[i] * fg[3] + bg[i] * (1 - fg[3]));
-        const groundOf = (el) => {
+        // Every ground the text could be sitting on. A gradient lives in
+        // background-image, not background-color, so the old walk fell
+        // straight through a gradient-filled tile to the page behind it —
+        // which passed white-on-white in dark by accident and failed
+        // white-on-deep-blue in light about pixels that were fine. Both
+        // wrong, in opposite directions. A gradient contributes every one
+        // of its colour stops, and the caller takes the worst.
+        const groundsOf = (el) => {
           for (let n = el; n; n = n.parentElement) {
-            const c = parse(getComputedStyle(n).backgroundColor);
+            const cs = getComputedStyle(n);
+            const c = parse(cs.backgroundColor);
             if (c.length === 3 || (c.length === 4 && c[3] > 0.85))
-              return c.slice(0, 3);
+              return [c.slice(0, 3)];
+            const img = cs.backgroundImage || '';
+            if (img.includes('gradient')) {
+              // Chromium hands back resolved stops in two spellings:
+              // rgb(29, 78, 216) with 0-255 channels, and — for anything
+              // that went through color-mix — color(srgb .64 .12 .08)
+              // with 0-1 channels. Reading only the first spelling made
+              // every mixed gradient invisible, which is how this check
+              // spent a run reporting white-on-white about a deep red tile.
+              const stops = [
+                ...[...img.matchAll(/rgba?\(([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)(?:[,/ ]+([\d.]+))?\)/g)]
+                  .map(m => m.slice(1, 5).filter(x => x !== undefined).map(Number)),
+                ...[...img.matchAll(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)/g)]
+                  .map(m => {
+                    const c2 = m.slice(1, 5).filter(x => x !== undefined).map(Number);
+                    return [c2[0] * 255, c2[1] * 255, c2[2] * 255,
+                            ...(c2.length === 4 ? [c2[3]] : [])];
+                  }),
+              ].filter(c2 => c2.length === 3 || c2[3] > 0.85)
+               .map(c2 => c2.slice(0, 3));
+              if (stops.length) return stops;
+            }
           }
-          return [0, 0, 0];
+          return [[0, 0, 0]];
         };
         const out = [];
         for (const el of document.querySelectorAll('*')) {
@@ -363,10 +392,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
           if (r.width === 0 || r.height === 0) continue;
           const cs = getComputedStyle(el);
           if (cs.visibility === 'hidden' || cs.opacity === '0') continue;
-          const ground = groundOf(el);
-          const fg = over(parse(cs.color), ground);
-          const a = lum(fg), b = lum(ground);
-          const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          // The worst of the grounds. Text on a gradient has to clear
+          // the bar on every stop, not on the average.
+          const ratio = Math.min(...groundsOf(el).map(g => {
+            const fg = over(parse(cs.color), g);
+            const a = lum(fg), b = lum(g);
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          }));
           // 4.5:1 for body text; large text is allowed 3:1 by WCAG and this
           // does not distinguish, so it is checked at the stricter number
           // and a genuine large-text exception would have to be argued for.
