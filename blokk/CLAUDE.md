@@ -406,10 +406,20 @@ leaves the probe green, which reads exactly like a probe doing its job.
 Twice in one afternoon a mutation named a CSS class this markup does not
 have, and the pass that followed meant nothing.
 
-Coverage is printed, never assumed: 13 of 120 probes have an entry and the
+Coverage is printed, never assumed: 23 of 120 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.
+
+The probes guarding the six invariants went first, because a green line that
+cannot fail is most expensive exactly there: the write path (A49–A54),
+untrusted content staying data (A44, A48, A52) and the one gate out (A43,
+A43b). Each is broken the way the invariant would actually be lost — the
+chat surface given an `UPDATE approval`, a proposal written into the queue
+already decided, `reject` added to the list of decisions that run,
+`validate()` skipped so a queued row is trusted, `egress_allow` unpinned so
+opening a route out could graduate, the page-title injection flag dropped,
+and `_NoRedirect` handing control back to urllib.
 
 It has already earned its place. A109 checked that `logs/https-on-http.json`
 *existed* — which passed on a file left behind by an earlier run — and

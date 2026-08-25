@@ -138,4 +138,71 @@ MUTATIONS = [
          file="core/ask.py",
          find='    return {"do": "reply", "say": _answer(\n        question,',
          replace='    return {"do": "reply", "say": _answer(\n        "",'),
+
+    # ── invariant 2: one write path ─────────────────────────────────────
+    dict(probe="A49", why="the chat surface writes to a table that decides",
+         file="core/ask.py",
+         find='    store.x("INSERT OR IGNORE INTO budget(day) VALUES(?)", day)',
+         replace='    store.x("INSERT OR IGNORE INTO budget(day) VALUES(?)", day)\n'
+                 '    store.x("UPDATE approval SET decision=\'approve\' '
+                 'WHERE id=?", "none")'),
+    dict(probe="A50", why="a proposal lands in the queue already decided",
+         file="api/server.py",
+         find='            store.x("""INSERT INTO approval\n'
+              '                       (id,run_id,category,title,body,evidence,action)\n'
+              '                       VALUES(?,?,?,?,?,?,?)""",',
+         replace='            store.x("""INSERT INTO approval\n'
+                 '                       (id,run_id,category,title,body,evidence,'
+                 'action,decision)\n'
+                 '                       VALUES(?,?,?,?,?,?,?,\'approve\')""",'),
+    dict(probe="A51", why="rejecting runs the action too",
+         file="api/server.py",
+         find='    if decision in ("approve", "edit") and a["action"]:',
+         replace='    if decision in ("approve", "edit", "reject") and a["action"]:'),
+    dict(probe="A53", why="the queued row is trusted instead of re-validated",
+         file="core/actions.py",
+         find='    act, clean = validate(payload.get("name"), payload.get("args") or {})',
+         replace='    act = ACTIONS.get(payload.get("name"))\n'
+                 '    clean = payload.get("args") or {}'),
+    dict(probe="A54", why="opening a route out can graduate to acting alone",
+         file="core/actions.py",
+         find='           args=("host",), pinned=True, run=_egress_allow),',
+         replace='           args=("host",), pinned=False, run=_egress_allow),'),
+
+    # ── invariant 3: untrusted content is data ──────────────────────────
+    dict(probe="A52", why="a row that reads like an instruction is not flagged",
+         file="core/ask.py",
+         find='                if q["instruction_like"]:',
+         replace="                if False:"),
+    dict(probe="A48", why="an injection in the page title comes back clean",
+         file="core/connectors/web.py",
+         find='                "instruction_like": bool(body["instruction_like"]\n'
+              '                                         or head["instruction_like"])}',
+         replace='                "instruction_like": bool(body["instruction_like"])}'),
+    dict(probe="A48", why="text hidden by CSS is dropped before the flag runs",
+         file="core/connectors/web.py",
+         find='SKIP = {"script", "style", "noscript", "template", "svg", "canvas"}',
+         replace='SKIP = {"script", "style", "noscript", "template", "svg",\n'
+                 '        "canvas", "div"}'),
+    dict(probe="A44", why="a forecast row arrives without provenance on it",
+         file="core/connectors/weather.py",
+         find='                "provenance": "external",',
+         replace='                "provenance": "",'),
+
+    # ── invariant 3: and the one gate out ───────────────────────────────
+    dict(probe="A43", why="urllib follows a redirect off the allowlist",
+         file="core/egress.py",
+         find="    def redirect_request(self, req, fp, code, msg, headers, newurl):\n"
+              "        return None",
+         replace="    def redirect_request(self, req, fp, code, msg, headers, newurl):\n"
+                 "        return super().redirect_request(\n"
+                 "            req, fp, code, msg, headers, newurl)"),
+    dict(probe="A43", why="plain http is allowed out again",
+         file="core/egress.py",
+         find='    if u.scheme != "https":', replace="    if False:"),
+    dict(probe="A43b", why="removing a source leaves its hosts reachable",
+         file="core/sources.py",
+         find="            gone = [h for h in HOSTS\n"
+              '                    if not egress.disallow(store, h).get("error")]',
+         replace="            gone = []"),
 ]
