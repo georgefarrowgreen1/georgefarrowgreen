@@ -303,6 +303,73 @@ probe('B18 a run that could not resume is not mentioned at all',
   }
 }
 
+// B38 — the automatic-update switch says the same three words everywhere
+// A setting with two names is a setting somebody sets in one place and
+// reads in the other. The switch, ./blokk autoupdate and the API all take
+// off / notify / apply, and the panel is built from the same three — so a
+// fourth position added to the UI, or one renamed, is caught here rather
+// than by somebody wondering why "Install" does nothing.
+//
+// The other half is that reading it must never fetch. The whole reason
+// updating was manual was that a machine quietly reaching GitHub is one you
+// cannot pin to a moment; a panel that ran a check on every open would put
+// that back, one menu tap at a time.
+{
+  const py = fs.readFileSync('core/autoupdate.py', 'utf8');
+  // MODES is built from the three constants, not from literals, so the
+  // names have to be resolved before they can be compared with the markup.
+  // Reading the tuple raw gave OFF/NOTIFY/APPLY against off/notify/apply —
+  // a mismatch every time, reported with only the UI's half printed, which
+  // read as "both offer off / notify / apply" next to the word BUG.
+  const consts = {};
+  for (const m of py.matchAll(/^([A-Z]+(?:,\s*[A-Z]+)*)\s*=\s*(.+)$/gm)) {
+    const names = m[1].split(',').map(x => x.trim());
+    const vals = [...m[2].matchAll(/"([^"]*)"/g)].map(x => x[1]);
+    if (names.length === vals.length)
+      names.forEach((n, i) => { consts[n] = vals[i]; });
+  }
+  const modes = (py.match(/^MODES\s*=\s*\(([^)]*)\)/m) || [, ''])[1]
+    .split(',').map(x => x.trim()).filter(Boolean)
+    .map(x => consts[x] !== undefined ? consts[x]
+              : x.replace(/^["']|["']$/g, ''));
+  const inUi = [...h.matchAll(/data-auto="([a-z]+)"/g)].map(m => m[1]);
+  const same = modes.length === inUi.length &&
+               modes.every(m => inUi.includes(m));
+  probe('B38 the update switch and core/autoupdate.py disagree',
+    !same || modes.length === 0,
+    modes.length === 0 ? 'could not read MODES out of core/autoupdate.py'
+      : same ? `both offer ${inUi.join(' / ')}`
+      // Both sides, always. A mismatch reported with one of them printed
+      // says nothing about which is wrong.
+      : `core has ${modes.join(' / ') || '(none)'}, the panel has `
+        + `${inUi.join(' / ') || '(none)'}`);
+
+  // The GET reads state; the POST moves it. If opening the panel posted a
+  // check, every look would be a fetch.
+  const fn = (js.match(/async function paintAuto\([\s\S]*?\n\}/) || [''])[0];
+  // The detail has to follow the verdict. Written as a two-way ternary on
+  // whether paintAuto exists, it printed "it does not fetch" underneath the
+  // word BUG — the same defect this file had just caught in B38 above.
+  const fetches = /update\/check/.test(fn);
+  probe('B38a opening the update panel asks GitHub',
+    !fn || fetches,
+    !fn ? 'paintAuto is gone'
+      : fetches ? 'it runs a check on open, so every look is a git fetch'
+      : 'it reads the switch, it does not fetch');
+
+  // And what the panel renders has to be what the endpoint sends.
+  const srv = fs.readFileSync('api/server.py', 'utf8');
+  const state = (srv.match(/def state\(self\)[\s\S]*?\n    def /) || [''])[0];
+  const shape = (py.match(/def state\(self\)[\s\S]*?\n\n/) || [''])[0];
+  const reads = [...fn.matchAll(/r\.([a-z_]+)/g)].map(m => m[1]);
+  const missing = [...new Set(reads)].filter(k =>
+    k !== 'error' && !shape.includes(`"${k}"`));
+  probe('B38b the panel reads a field the switch never sends',
+    missing.length > 0,
+    missing.length ? missing.join(', ') + ' is read and never sent'
+      : `${[...new Set(reads)].length} field(s) read, all of them sent`);
+}
+
 // B37 — the floating bubble and the last card in the queue
 // The composer is fixed to the bottom-right corner, so it floats over
 // whatever card is under it. Measured in a browser at 360, 390, 430 and
