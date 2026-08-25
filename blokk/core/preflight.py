@@ -170,10 +170,15 @@ def arrivals(port: int) -> list[dict]:
     https = _read(ROOT / "logs" / "https-on-http.json")
     if https.get("n"):
         out.append(_finding(
-            WARN, f"Something spoke HTTPS to this port {https['n']} time(s) — "
-                  f"that is a browser given the address without http:// in "
-                  f"front of it.",
-            "Type the http://, or scan the QR code, which carries it."))
+            WARN, f"A phone reached this Mac and spoke HTTPS {https['n']} "
+                  f"time(s). That is the whole problem, and it is good news: "
+                  f"the network is fine. Safari upgraded an address typed "
+                  f"without http:// to HTTPS, this port speaks plain HTTP, "
+                  f"and Safari calls that “the network connection was "
+                  f"lost.” It will not retry on its own.",
+            "Scan the QR code (it carries the http://), or type the http:// "
+            "in front of the address. The bare address cannot be made to "
+            "work from here."))
     if not seen.get("n"):
         # Not a fault on its own: a Mac nobody has opened on a phone yet
         # looks exactly like one whose phone cannot get through. Say which

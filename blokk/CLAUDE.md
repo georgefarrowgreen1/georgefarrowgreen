@@ -862,11 +862,22 @@ All four suites green. Verified behaviours:
 * a browser that speaks HTTPS to the plain-HTTP port is answered with a
   fatal TLS alert, not with plaintext. Safari upgrades an address typed
   without a scheme, so what arrives is a ClientHello; this used to reply
-  "HTTP/1.1 400" to a client waiting for a TLS record, which the browser
-  reads as a broken TLS server and reports as "the network connection was
-  lost" — the same sentence as a wrong port, naming neither TLS nor the
-  missing http://. A hello with no 0x0a in it hung instead. The attempt is
-  counted in logs/, and `./blokk doctor` says how many and how long ago
+  "HTTP/1.1 400" to a client waiting for a TLS record, and a hello with no
+  0x0a in it hung the socket instead. The alert stops both — but it does
+  **not** make Safari fall back to http://, and an earlier note here
+  claiming it did was wrong. By the time the alert is sent the TCP
+  connection is already accepted, so iOS sees "connected, then TLS failed"
+  and reports "the network connection was lost" (-1005) with no retry.
+  This is the load-bearing distinction for the whole phone-reach diagnosis:
+  **"the network connection was lost" means the phone reached the Mac** —
+  a firewall block, a wifi mismatch or router client-isolation gives
+  "cannot connect to the server", because the connection never opens. So
+  -1005 rules out the network and points at exactly one thing, the missing
+  scheme. Nothing server-side fixes a scheme-less HTTPS upgrade once the
+  port is open; the only fixes pin the scheme (scan the QR, which carries
+  the http://, or type it), which is why the doctor and listen steer there.
+  The attempt is counted in logs/, and `./blokk doctor` says how many and
+  how long ago
 * asked about the weather, it answers the question rather than printing the
   table. The day named is the day answered about — "tomorrow", not
   2026-08-25 — a weekday resolves against the days that actually came back,

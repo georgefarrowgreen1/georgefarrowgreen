@@ -1306,10 +1306,21 @@ class Handler(BaseHTTPRequestHandler):
     # blocked until the phone gave up, and the same message came back after
     # a wait.
     #
-    # A TLS alert is the one answer a TLS client can actually read. It says
+    # A TLS alert is the least-wrong answer a TLS client can read: it says
     # this port does not speak TLS, rather than impersonating a broken one,
-    # and it is what a browser needs to see before it will fall back to
-    # http:// on its own.
+    # and it unblocks the readline hang above. What it does NOT do — the
+    # comment here used to claim it did, and a real iPhone disproved it — is
+    # make Safari fall back to http:// on its own. By the time this runs the
+    # TCP connection is already accepted, so from iOS's side the connection
+    # was established and then failed at TLS, which it reports as
+    # "the network connection was lost" (NSURLErrorNetworkConnectionLost,
+    # -1005) and does not retry. Fallback only happens when the HTTPS attempt
+    # is *refused at connect* — and this port is open, because it is the
+    # HTTP port. Nothing sent here changes that. The only fixes for a
+    # scheme-less address are to pin the scheme: scan the QR (it carries the
+    # http://) or type the http://. This is why the doctor and listen steer
+    # to those two and not to "try again". The alert stays because a clean
+    # TLS response beats a hung socket, not because it rescues the request.
     TLS_ALERT = bytes.fromhex("15030100020246")   # fatal, protocol_version
     _tls_checked = False
 
