@@ -1321,6 +1321,18 @@ class Handler(BaseHTTPRequestHandler):
     # http://) or type the http://. This is why the doctor and listen steer
     # to those two and not to "try again". The alert stays because a clean
     # TLS response beats a hung socket, not because it rescues the request.
+    #
+    # And -1005 is not only this path — the same iPhone that disproved the
+    # fallback claim then disproved "one cause". A bare address on port 80,
+    # nothing listening, should read "cannot connect"; it read "connection
+    # was lost", which means iOS produced the error without a packet
+    # leaving the phone. That is Safari's Local Network permission — asked
+    # once, and a Don't Allow kept for ever — killing local connections at
+    # the OS. So -1005 narrows to two causes, both on the phone: the
+    # missing scheme, or that permission. The https-on-http counter is what
+    # splits them from this side: it moved, attempts reached this Mac and
+    # it is the scheme; it never moved, nothing arrived and it is the
+    # permission (or the wrong network). why_not_reaching names both.
     TLS_ALERT = bytes.fromhex("15030100020246")   # fatal, protocol_version
     _tls_checked = False
 

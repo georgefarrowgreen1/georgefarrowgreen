@@ -868,16 +868,23 @@ All four suites green. Verified behaviours:
   claiming it did was wrong. By the time the alert is sent the TCP
   connection is already accepted, so iOS sees "connected, then TLS failed"
   and reports "the network connection was lost" (-1005) with no retry.
-  This is the load-bearing distinction for the whole phone-reach diagnosis:
-  **"the network connection was lost" means the phone reached the Mac** —
-  a firewall block, a wifi mismatch or router client-isolation gives
-  "cannot connect to the server", because the connection never opens. So
-  -1005 rules out the network and points at exactly one thing, the missing
-  scheme. Nothing server-side fixes a scheme-less HTTPS upgrade once the
-  port is open; the only fixes pin the scheme (scan the QR, which carries
-  the http://, or type it), which is why the doctor and listen steer there.
-  The attempt is counted in logs/, and `./blokk doctor` says how many and
-  how long ago
+  The distinction that carries the diagnosis, corrected once by a real
+  iPhone: "the network connection was lost" (-1005) has exactly **two**
+  causes and both are on the phone. Either the phone reached the Mac and
+  Safari's silent HTTPS upgrade of a scheme-less address failed against the
+  plain-HTTP port — or the phone never sent a packet at all, because iOS's
+  own Local Network permission for Safari ("asked once, and a Don't Allow
+  kept for ever" — the iOS twin of the macOS firewall Deny) killed the
+  connection locally. The second was proven by a bare address on port 80:
+  nothing listening should read "cannot connect", and it read "connection
+  was lost", which no Mac can produce on a closed port. A first version of
+  this note said -1005 "points at exactly one thing"; the same phone that
+  disproved the fallback claim disproved that too. The https-on-http
+  counter splits the two from the Mac's side — it moved, attempts arrived
+  and it is the scheme; it never moved, it is the permission or the wrong
+  network — and `why_not_reaching` names both, so the doctor, the listener
+  and the banner all say them. Nothing server-side fixes either: the fixes
+  are the QR (it carries the http://) and the phone's own Settings
 * asked about the weather, it answers the question rather than printing the
   table. The day named is the day answered about — "tomorrow", not
   2026-08-25 — a weekday resolves against the days that actually came back,

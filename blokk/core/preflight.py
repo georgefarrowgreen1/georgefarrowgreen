@@ -108,6 +108,21 @@ def why_not_reaching(note: str = "", shown: bool = False) -> list[dict]:
         WARN, "The phone may be on a different network — a guest SSID, the "
               "other half of a split 2.4/5GHz pair, or wifi off and 5G on.",
         "Check the wifi name on the phone matches the Mac's."))
+    # The iOS twin of the macOS firewall's Deny-you-clicked-once, and the
+    # one cause nothing on this side can ever see: with it denied, the
+    # phone kills the connection before it leaves, and Safari says "the
+    # network connection was lost" — the same sentence as the missing
+    # scheme, produced without a packet reaching this Mac. Four rounds of
+    # Mac-side diagnosis missed it because every list like this one only
+    # named causes on this side of the air.
+    out.append(_finding(
+        WARN, "The phone itself may be refusing. iOS asks once — “Safari "
+              "would like to find and connect to devices on your local "
+              "network” — and a Don’t Allow is kept for ever, "
+              "silently. Refused this way, Safari says “the network "
+              "connection was lost”, whatever this Mac does.",
+        "On the iPhone: Settings > Privacy & Security > Local Network > "
+        "Safari, on. Then reload."))
     out.append(_finding(
         WARN, "The router may be keeping its clients apart (AP or client "
               "isolation), which guest networks do by default.",
