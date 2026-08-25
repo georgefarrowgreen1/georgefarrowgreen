@@ -6575,6 +6575,82 @@ try:
     probe("A107 the phone reaches the Mac and cannot read what it is told",
           locked_out_of_the_lan)
 
+    # ── 113. asked in English, routed to the wrong table ────────────────
+    def routes_the_words_people_use():
+        # The router's weather vocabulary was weather/forecast/rain/dry/
+        # sunny/temperature — the words of somebody who knows there is a
+        # weather connector. Everything a person actually types went
+        # somewhere else:
+        #
+        #   "do I need a coat?"              -> the approval queue
+        #   "should I take an umbrella?"     -> nothing
+        #   "how windy is it going to be?"   -> nothing
+        #   "is it warm this weekend?"       -> nothing
+        #
+        # The coat one is the worst of the four. It is not that the router
+        # failed to find the forecast — it is that the bare word "need"
+        # matched the approval queue, so a question about the weather was
+        # answered with a list of things to approve. A confident answer to a
+        # question nobody asked.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import ask as A
+
+        want = [
+            # weather, in the words people use
+            ("do I need a coat?", "forecast"),
+            ("should I take an umbrella tomorrow?", "forecast"),
+            ("how windy is it going to be?", "forecast"),
+            ("is it warm this weekend?", "forecast"),
+            ("will it be cold on Thursday?", "forecast"),
+            ("is it going to snow?", "forecast"),
+            ("what's it like outside?", "forecast"),
+            # the queue, asked as the queue
+            ("anything waiting on me?", "open_approvals"),
+            ("what needs doing?", "open_approvals"),
+            ("anything to approve?", "open_approvals"),
+            # the runs, asked as a person asks
+            ("did anything go wrong?", "recent_runs"),
+            ("has anything broken?", "recent_runs"),
+            # the diary, in a cottage's words
+            ("when are the Shaws coming?", "read_calendar"),
+            ("who is arriving this week?", "read_calendar"),
+            ("is anyone staying tonight?", "read_calendar"),
+            # and the ones that already worked stay working
+            ("what's in my inbox?", "read_mail"),
+            ("is it going to rain tomorrow?", "forecast"),
+            ("what did you do last night?", "recent_runs"),
+        ]
+        missed = []
+        for q, tool in want:
+            if tool not in A._route(q.lower()):
+                missed.append(f"{q!r} -> {A._route(q.lower()) or 'nothing'}")
+        if missed:
+            return (True, f"{len(missed)} question(s) route to the wrong "
+                          f"table, e.g. {missed[0]}")
+
+        # And the one that was actively wrong: a weather question must not
+        # come back as the approval queue.
+        for q in ("do I need a coat?", "will I need an umbrella?"):
+            if "open_approvals" in A._route(q.lower()):
+                return (True, f"{q!r} still reaches the approval queue — "
+                              f"the bare word 'need' matches every sentence "
+                              f"holding it")
+
+        # The queue's own words must still reach it, or this traded one
+        # miss for another.
+        for q in ("what needs doing?", "anything that needs me?",
+                  "what is waiting?"):
+            if "open_approvals" not in A._route(q.lower()):
+                return (True, f"tightening 'need' lost the queue: {q!r} -> "
+                              f"{A._route(q.lower()) or 'nothing'}")
+        return (False, f"{len(want)} questions in the words people use each "
+                       f"reach the table that can answer them, and a "
+                       f"question about a coat is no longer answered with "
+                       f"the approval queue")
+    probe("A113 asked in English, routed to the wrong table",
+          routes_the_words_people_use)
+
     # ── 112. the gate names a host and forgets the port ─────────────────
     def port_is_part_of_the_destination():
         # The gate checked scheme, host, allowlist and resolution — and

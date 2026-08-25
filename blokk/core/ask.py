@@ -768,7 +768,12 @@ def ask(store, question: str, model,
                  "tools": sorted(tools)})})
             if steps < MAX_STEPS:
                 continue
-            move = {"do": "reply", "say": _summarise(gathered) if gathered
+            # With the question, like the planner's own call. A summary that
+            # does not know what was asked gives the whole table back, which
+            # is the thing _forecast_answer exists to stop — and this is the
+            # path a model on a small machine falls down most often.
+            move = {"do": "reply", "say": _summarise(gathered, question)
+                    if gathered
                     else "I could not find a way to look that up."}
 
         if move["do"] == "read" and move.get("read") in tools:
@@ -869,7 +874,7 @@ def ask(store, question: str, model,
         # an empty space where the answer goes. Silence is the one thing a
         # turn is not allowed to be — and there is no need for it here,
         # because everything those steps read is sitting in `gathered`.
-        answer = (_summarise(gathered) if gathered else
+        answer = (_summarise(gathered, question) if gathered else
                   "I could not work out how to answer that one. Try asking "
                   "for a specific thing — the queue, last night's runs, what "
                   "is wired up.")
@@ -1741,22 +1746,47 @@ def _route(ql: str) -> list[str]:
     if any(w in ql for w in ("free", "available", "vacan", "empty night",
                              "spare night", "open night")):
         picks.append("free_nights")
+    # Arriving, staying, coming: what a cottage's diary is actually asked.
+    # "When are the Shaws coming?" carries no noun this router knew — no
+    # "calendar", no "booking" — and fell through to nothing, which reads as
+    # "never" rather than "never looked". It is the same shape as the search
+    # that only ever went forwards.
     if any(w in ql for w in ("calendar", "diary", "booked", "event", "meeting",
-                             "appointment")):
+                             "appointment", "coming", "arriv", "stay",
+                             "check in", "check-in", "checkout",
+                             "check out", "visit", "due in", "here on")):
         picks.append("read_calendar")
     if any(w in ql for w in ("message", "text", "imessage", "whatsapp")):
         picks.append("read_messages")
+    # The words people actually use. This was weather/forecast/rain/dry/
+    # sunny/temperature, which is the vocabulary of somebody who knows there
+    # is a weather connector. "Should I take an umbrella tomorrow?", "how
+    # windy is it going to be?" and "is it warm this weekend?" all routed
+    # nowhere, and "do I need a coat?" routed to the approval queue — the
+    # bare word "need" below matched it, and nothing here did.
     if any(w in ql for w in ("weather", "forecast", "rain", "dry", "sunny",
-                             "temperature")):
+                             "temperature", "umbrella", "coat", "wind",
+                             "snow", "warm", "cold", "hot", "chilly",
+                             "freez", "cloud", "storm", "degrees", "sun ",
+                             "outside", "wet")):
         picks.append("forecast")
     if any(w in ql for w in ("page", "website", "web page", "prices page")):
         picks.append("read_page")
-    if any(w in ql for w in ("wait", "queue", "approve", "decide", "need",
-                             "pending", "outstanding")):
+    # "need" as a bare word was matching every sentence with the word in it,
+    # and most of those are not about the queue: "do I need a coat?" came
+    # back with the approval queue. What the queue is actually asked is what
+    # needs *doing*, or what needs *me*.
+    if any(w in ql for w in ("wait", "queue", "approve", "decide", "decision",
+                             "pending", "outstanding", "need doing",
+                             "needs doing", "need to do", "needs me",
+                             "need me", "needs you", "anything need",
+                             "to approve", "sign off")):
         picks.append("open_approvals")
     if any(w in ql for w in ("handle", "alone", "without me", "auto", "did it")):
         picks.append("what_was_handled")
-    if any(w in ql for w in ("run", "sweep", "overnight", "last night", "fail", "crash")):
+    if any(w in ql for w in ("run", "sweep", "overnight", "last night", "fail",
+                             "crash", "go wrong", "went wrong", "gone wrong",
+                             "broke", "broken", "error")):
         picks.append("recent_runs")
     if any(w in ql for w in ("trust", "graduat", "act alone", "autonom", "close")):
         picks.append("trust_state")

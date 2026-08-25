@@ -622,6 +622,15 @@ All four suites green. Verified behaviours:
   the bubble's own height, so the round number cannot drift; B37b pins the
   wide layout's different guarantee — a centred column ending before the
   bubble begins — at the breakpoint where it is tightest
+* the router knows the words people use, not the words the connectors are
+  called. "Do I need a coat?", "should I take an umbrella tomorrow?", "how
+  windy is it going to be?" and "is it warm this weekend?" all reach the
+  forecast; "when are the Shaws coming?" reaches the diary; "did anything go
+  wrong?" reaches the runs. The coat one was the worst of them and not
+  because it missed: the bare word "need" matched the approval queue, so a
+  question about the weather was answered with a list of things to approve.
+  A confident answer to a question nobody asked is worse than "I do not
+  know". A113 holds eighteen of these
 * every container insets its content by the same amount on all four sides:
   the cards 16, the run cards 12, the toolbar 3, and the cards sit 12 apart.
   Measured in a browser, not asserted
