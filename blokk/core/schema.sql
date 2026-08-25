@@ -222,6 +222,18 @@ CREATE TABLE IF NOT EXISTS regression (
   last_run_at   TEXT
 );
 
+-- "Bring this back to me on Thursday." A secretary's most-used move, and
+-- the one thing Blokk had no way to be told: everything it knew was either
+-- happening now or already recorded. Not a calendar entry — a reminder is
+-- not an appointment, and a private note about somebody does not belong on
+-- a shared screen. The morning sweep raises the due ones as cards.
+CREATE TABLE IF NOT EXISTS reminder (
+  id      TEXT PRIMARY KEY,      -- from the day and the words, so a replay
+  at      TEXT NOT NULL,         --   leaves one rather than two
+  note    TEXT NOT NULL,
+  raised  TEXT                   -- when the card went up; NULL = still due
+);
+
 -- What lands in your in-tray, and what happens to each kind. Rows rather
 -- than three words in a prompt constant: the sorting kinds, the approval's
 -- category and the trust ledger's key are one name, and the triage prompt

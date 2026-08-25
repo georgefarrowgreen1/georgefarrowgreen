@@ -203,7 +203,7 @@ def register(engine, store):
         # says so — fresh=False and a note explaining what it fell back to —
         # and that used to go nowhere: the dashboard carried a hard-coded
         # chip naming one source whatever had actually happened.
-        out["degraded"] = _caveats(registry)
+        out["degraded"] = _caveats(ctx, registry)
 
         # ---- 4. propose, never send ----------------------------------------
         # Four things can happen to a message and the table says which: write
@@ -320,6 +320,41 @@ def register(engine, store):
         out["counted"] = counted
 
 
+        # ---- 4a2. what you asked to be reminded about -----------------------
+        # The other half of `remind_me`. Without this the action writes a row
+        # and the row is never read, which is the most embarrassing possible
+        # version of a reminder: it says "you will see this on Thursday" and
+        # then Thursday happens.
+        #
+        # Due *or overdue*, and `raised` is set when the card goes up so it
+        # appears once. A reminder for a day the Mac was switched off is
+        # still a reminder — the whole point is that it survives the day
+        # somebody would otherwise have forgotten it.
+        #
+        # `today` and `stamp` are taken at workflow level and passed in.
+        # ctx.now() is itself a journalled step, so calling it inside an
+        # activity body happens on the first run and not on the replay —
+        # and every step after it then comes back holding the step before's
+        # result. Invariant 1, and I wrote it wrong here first.
+        today = ctx.now().date().isoformat()
+        stamp = ctx.now().isoformat()
+        due = ctx.activity("reminders.due", lambda: [dict(r) for r in store.q(
+            "SELECT id,at,note FROM reminder "
+            "WHERE raised IS NULL AND at <= ? ORDER BY at LIMIT 20", today)])
+        for r in due:
+            _queue(ctx, store, "reminder", r["note"],
+                   _reminder_why(r["at"], today),
+                   {"sources": ["you"], "asked_on": r["at"],
+                    "drawn_from": _drawn_from_facts(
+                        ("you", "you asked for this", r["at"], r["note"])),
+                    "checked_at": _hour(ctx)})
+            ctx.activity(f"reminders.raised:{r['id']}",
+                         lambda rid=r["id"]: store.x(
+                             "UPDATE reminder SET raised=? WHERE id=?",
+                             stamp, rid) or {"id": rid},
+                         side_effect=True)
+            out["queued"] += 1
+
         # ---- 4b. a dry day with an hour in it -------------------------------
         # The one suggestion that needs two sources to be worth anything.
         # Either half alone is noise: a forecast you can get from a window,
@@ -368,21 +403,32 @@ def register(engine, store):
         return out
 
 
-def _caveats(registry) -> list:
-    """Sources that came back working-but-not-quite, asked once each.
+def _caveats(ctx, registry) -> list:
+    """Every wired source asked, once a night, whether it is still working.
 
-    Built by walking the roles rather than naming one source, so a connector
-    that learns to degrade gracefully is reported without this function
-    being edited — the old version named exactly one and would have gone on
-    naming it after that source was removed.
+    `check()` is the contract every connector already implements and this
+    is the first thing that calls it on a schedule. It is worth one call
+    per source per night: a mailbox that stopped being readable three weeks
+    ago looks exactly like a quiet mailbox from in here, and "your mail
+    stopped arriving and nothing said so" is the worst failure this system
+    has available to it.
+
+    The first version of this read a `.last` attribute off the connectors,
+    which is an API none of them have — I invented it. It returned an empty
+    list for ever and reported every source healthy, which is the same
+    defect it exists to catch, wearing the check's own clothes.
     """
     out = []
-    for role in ("calendar", "mail", "weather"):
-        src = registry.first(role)
-        got = getattr(src, "last", None) if src else None
-        if isinstance(got, dict) and got.get("fresh") is False:
-            out.append({"source": role,
-                        "note": str(got.get("note") or "not fresh")})
+    for role in ("mail", "calendar", "messages", "weather", "holds"):
+        for name, src in registry.by_role(role):
+            if not hasattr(src, "check"):
+                continue
+            got = ctx.activity(f"check:{name}", lambda src=src: (
+                dict(src.check() or {})))
+            if got.get("ok") is False or got.get("fresh") is False:
+                out.append({"source": name, "role": role,
+                            "note": str(got.get("detail") or got.get("note")
+                                        or "not answering")})
     return out
 
 
@@ -395,6 +441,27 @@ def _floored(m: dict) -> bool:
     """
     hay = f"{m.get('subject') or ''} {m.get('body') or ''}".lower()
     return any(w in hay for w in SENSITIVE_WORDS)
+
+
+def _reminder_why(asked_for: str, today: str) -> str:
+    """Whether this is today's reminder or one that waited.
+
+    A reminder surfacing four days late must say so. "You asked to be
+    reminded today" about a Tuesday, read on a Saturday, is the tool
+    quietly covering for a Mac that was shut — and the person needs to know
+    it is late, because being late is often the whole problem.
+    """
+    from datetime import date as _d
+    try:
+        was, now = _d.fromisoformat(asked_for), _d.fromisoformat(today)
+    except ValueError:
+        return "You asked to be reminded about this."
+    late = (now - was).days
+    if late <= 0:
+        return "You asked to be reminded about this today."
+    return (f"You asked to be reminded about this on "
+            f"{was.strftime('%A %-d %B')} \u2014 {late} day"
+            f"{'' if late == 1 else 's'} ago. This Mac has not swept since.")
 
 
 def _why_no_draft(kind: str) -> str:

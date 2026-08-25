@@ -250,10 +250,9 @@ MUTATIONS = [
          file="core/grounding.py",
          find='            out.append((raw, float(raw.replace(",", ""))))',
          replace="            out.append((raw, float(raw)))"),
-    dict(probe="A123", why="the rate card leaves the evidence again",
+    dict(probe="A123", why="the diary leaves the evidence again",
          file="flows/morning_sweep.py",
-         find='                        "rates": rates, "free_nights": '
-              "list(gaps)[:8],",
+         find='                        "diary": list(diary)[:12],\n',
          replace=""),
     dict(probe="A123", why="the funnel stops checking what it queues",
          file="flows/morning_sweep.py",

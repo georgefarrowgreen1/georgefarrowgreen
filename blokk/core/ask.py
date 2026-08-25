@@ -540,10 +540,14 @@ access to weather information" is the wrong answer when a weather source is
 one approval away.
 Nothing here sends mail or messages anyone, so never say a thing has gone.
 Draft it and say they will need to send it themselves.
-Holding dates writes a file they open, not an entry in Calendar. Propose
-hold_dates when they want nights kept; never say it is in the diary.
-Check the calendar before proposing a hold if you have not already \u2014 it
-refuses over a night that is taken, and finding that out first is better.
+Putting something in the diary writes a file they open, and adds it to
+Calendar where macOS allows it. Propose put_in_diary for a thing with a
+date; never say it is in the diary until it is.
+Check the diary first if you have not already \u2014 it refuses over
+something already at that time, and finding that out first is better.
+When they ask to be brought back to something later, that is remind_me,
+not the diary. A reminder is a note to them and belongs to nobody else; an
+appointment goes in a calendar other people may be looking at.
 Dates come from RIGHT NOW above. "Next Tuesday" is a date you can work out
 from it; do not guess one, and do not ask them what today is.
 """
@@ -1453,10 +1457,18 @@ INTENT = (
                     r"bear in mind|don'?t forget)\b"),
     ("forget",      r"^\s*(?:please\s+)?(?:forget|stop (?:saying|doing|"
                     r"applying)|unlearn)\b"),
-    ("hold_dates",  r"\b(hold|book|pencil|block|reserve|put)\b.*"
-                    r"\b(in|on|into)?\s*(the\s+)?(diary|calendar|dates?|"
-                    r"nights?|booking)\b|"
-                    r"^\s*(?:please\s+)?(?:hold|pencil|block|reserve)\b"),
+    # Before put_in_diary, deliberately. "Remind me to book the car in on
+    # Thursday" contains both, and it is a reminder — the diary pattern
+    # would take it on the word "book" and quietly put an appointment in
+    # somebody's calendar instead of leaving them a note.
+    ("remind_me",   r"^\s*(?:please\s+)?remind\s+me\b|"
+                    r"\b(remind|nudge|chase|prod)\s+me\b|"
+                    r"\b(bring|come)\s+(this|that|it)\s+back\b|"
+                    r"\bdon'?t let me forget\b"),
+    ("put_in_diary", r"\b(hold|book|pencil|block|reserve|put|add)\b.*"
+                     r"\b(in|on|into)?\s*(the\s+)?(diary|calendar|dates?|"
+                     r"appointment|booking)\b|"
+                     r"^\s*(?:please\s+)?(?:hold|pencil|block|reserve)\b"),
     ("add_source",  r"\b(add|wire|connect|hook up|read)\b.*"
                     r"\b(source|mail|inbox|email|imap|maildir|calendar|diary|"
                     r"caldav|ical|ics|messages|imessage|weather|forecast|page|"

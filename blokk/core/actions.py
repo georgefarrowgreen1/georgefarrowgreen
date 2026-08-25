@@ -15,7 +15,7 @@ Three rules hold the whole thing up.
 
 **Nothing here reaches another person.** Almost every action operates on
 Blokk itself: its sources, its allowlist, its schedule, its
-backups. The one exception is `hold_dates`, which writes a .ics file into a
+backups. The one exception is `put_in_diary`, which writes a .ics file into a
 folder on this Mac — outside the database, but not off the machine and not to
 anybody. Nothing is addressed, nothing is sent, and no guest learns anything.
 
@@ -197,6 +197,56 @@ def _egress_deny(store, host, **_):
     return {"ok": True, "detail": out["detail"]}
 
 
+def _remind(store, when, note, **_):
+    """Put something in front of the person on a day of their choosing.
+
+    The single most-used thing a secretary does, and Blokk could not do it
+    at all: it could read a diary, draft a reply and file a receipt, and it
+    had no way to be told "bring this back on Thursday". Everything it knew
+    was either happening now or already recorded.
+
+    Deliberately not a calendar write. A reminder is not an appointment —
+    it does not take an hour, it is nobody else's business, and putting one
+    in a shared calendar is how a private note about somebody ends up on a
+    screen in front of them. It is a row here, and `put_in_diary` is a
+    separate decision for the things that really are appointments.
+
+    The morning sweep raises it as a card on the day and marks it raised,
+    so it appears once. A date that has already gone is taken at its word
+    and surfaces at the next sweep, saying how late it is.
+
+    The first version quietly rolled a past date forward to the same weekday
+    — "Tuesday" said on a Wednesday meaning the Tuesday coming. It read as
+    helpful and it was two bad things at once. A reminder that moves itself
+    is a reminder somebody approved for one day and got on another, and the
+    model resolves the weekday anyway, so a past date means the model was
+    wrong about today — which is exactly the thing to show a person rather
+    than smooth over. It also made the sweep's own "this is four days late"
+    branch unreachable: nothing could ever be overdue if overdue dates were
+    moved. A rule that hides the state another rule exists to report is
+    worse than either rule alone.
+    """
+    from datetime import date as _d
+    import hashlib as _h
+    day = _as_day(_at(when))
+    if not isinstance(day, _d):
+        raise Rejected(f"{when!r} is not a date I can read. Try 2026-09-03.")
+    text = str(note).strip()
+    if not text:
+        raise Rejected("a reminder with nothing in it is a card you will "
+                       "not understand on Thursday")
+    rid = "rm_" + _h.sha256(
+        f"{day.isoformat()}|{text}".encode()).hexdigest()[:12]
+    # Keyed on the day and the words, so approving the same proposal twice
+    # is one reminder. The same rule the .ics filename uses, for the same
+    # reason: a replay must not leave two.
+    store.x("INSERT OR REPLACE INTO reminder(id,at,note) VALUES(?,?,?)",
+            rid, day.isoformat(), text[:400])
+    return {"ok": True, "id": rid, "at": day.isoformat(),
+            "detail": f"You will see this on {day.strftime('%A %-d %B')}: "
+                      f"\u201c{text[:120]}\u201d."}
+
+
 def _remember(store, note, **_):
     """A standing instruction, taught rather than inferred.
 
@@ -296,20 +346,17 @@ def _say_remove(a: dict) -> str:
     return f"Stop reading the source called {a.get('name', '')}."
 
 
-def _clashes(store, start, end) -> list[str]:
-    """Which nights in [start, end) something is already booked on.
+def _diary_around(store, start, end) -> list[tuple]:
+    """Everything already in the diary that touches [start, end).
 
-    The whole value of a hold is that it is not a double-booking, so this
-    asks the calendar Blokk already reads rather than trusting the model's
-    "those nights are free" — which was written before the person spent two
-    days deciding, and may have been written from a gap list that is now
-    stale. Both halves are half-open: a booking that leaves on the 6th and
-    one that arrives on the 6th do not clash over that bed.
+    Returns the occurrences themselves rather than a list of dates, because
+    the two callers need different things out of them: one asks whether the
+    *times* overlap, the other wants to say what else is on that day.
 
-    A calendar that cannot be opened returns no clashes and says so through
-    the caller. Refusing to hold anything because a reader is down would
-    make a broken source into a broken business; the hold is a file in a
-    folder, and a person is looking at it either way.
+    A calendar that cannot be opened returns nothing and the caller says so.
+    Refusing to write anything because a reader is down would make a broken
+    source into a broken diary; what is being written is a file in a folder,
+    and a person is looking at it either way.
     """
     from datetime import date as _d, datetime as _dt, timedelta as _td
     import core.connectors as _C
@@ -319,58 +366,150 @@ def _clashes(store, start, end) -> list[str]:
             if hasattr(c, "busy")]
     if not cals:
         return []
-    days = max(1, (end - _d.today()).days + 1)
-    hit = []
-    for b_start, b_end in [b for c in cals for b in c.busy(days=min(days, 800))]:
-        bs = b_start.date() if isinstance(b_start, _dt) else b_start
-        be = b_end.date() if isinstance(b_end, _dt) else b_end
-        # The overlap of two half-open ranges, said once. It was written as a
-        # guard plus a loop bound, which is the same rule in two places — and
-        # two places is where one of them gets "fixed" and the other quietly
-        # compensates, so neither is ever seen to be wrong. Empty when they
-        # only touch at an endpoint, which is a bed swapped over rather than
-        # a bed sold twice.
-        night, last = max(bs, start), min(be, end)
-        while night < last:
-            hit.append(night.isoformat())
-            night += _td(days=1)
-    return sorted(set(hit))
+    days = max(1, (_as_day(end) - _d.today()).days + 1)
+    lo, last = _as_day(start), _last_day(start, end)
+    out = []
+    for b_start, b_end in [b for c in cals
+                           for b in c.busy(days=min(days, 800))]:
+        # Days that touch, inclusively. "Around" is a question about
+        # proximity — what else is on that day — and the exclusive
+        # half-open test belongs to the narrower question `_touching` asks.
+        # Written as `<` first, which meant a single day could never
+        # intersect anything: max(4th, 4th) < min(4th, 4th) is false, so a
+        # two o'clock appointment was invisible to a half-two one.
+        if _as_day(b_start) <= last and lo <= _last_day(b_start, b_end):
+            out.append((b_start, b_end))
+    return out
 
 
-def _hold_dates(store, title, start, end, note=None, where=None, **_):
-    """Write a hold into the folder Calendar can swallow.
+def _last_day(lo, hi):
+    """The last day something actually occupies.
 
-    This is the first action that puts a file outside blokk.db, so it is
-    the first one that can leave a mess. Three things keep it honest:
-
-      * it refuses to write over a night the calendar says is taken, and
-        names the nights rather than saying "clash";
-      * the filename and the UID come from the booking, so approving the
-        same proposal twice replaces one file instead of leaving two;
-      * it says a file is waiting, never that anything was added to a
-        calendar — because nothing was.
+    A whole-day range is half-open — the 3rd to the 4th is the 3rd — and a
+    timed one is not. Getting this wrong in either direction reports a
+    neighbour as a clash or misses one.
     """
-    from datetime import date as _d
+    from datetime import datetime as _dt, timedelta as _td
+    a, b = _as_day(lo), _as_day(hi)
+    if b <= a:
+        return a
+    if isinstance(lo, _dt) and isinstance(hi, _dt) and not _midnight(lo, hi):
+        return b
+    return b - _td(days=1)
+
+
+def _as_day(v):
+    from datetime import date as _d, datetime as _dt
+    return v.date() if isinstance(v, _dt) else v
+
+
+def _touching(a1, a2, b1, b2) -> bool:
+    """Do two things actually overlap in time?
+
+    Only meaningful when both carry a time of day. Two whole-day entries on
+    one day do not conflict — that is a Tuesday — and treating them as a
+    conflict is the single biggest difference between a diary and a bed.
+    """
+    from datetime import datetime as _dt
+    if not all(isinstance(v, _dt) for v in (a1, a2, b1, b2)):
+        return False
+    if _midnight(a1, a2) or _midnight(b1, b2):
+        return False
+    return max(a1, b1) < min(a2, b2)
+
+
+def _midnight(lo, hi) -> bool:
+    """A whole day dressed as a datetime — midnight to midnight."""
+    return (lo.hour, lo.minute, hi.hour, hi.minute) == (0, 0, 0, 0)
+
+
+def _at(v):
+    """A date or a datetime out of whatever the proposal wrote.
+
+    `_as_date` throws the time away, which is right for a filename and
+    wrong for deciding whether two things collide.
+    """
+    from datetime import date as _d, datetime as _dt
+    if isinstance(v, (_d, _dt)):
+        return v
+    try:
+        return _dt.fromisoformat(str(v).strip())
+    except ValueError:
+        from core.connectors.ics_out import _as_date
+        return _as_date(v)
+
+
+def _span(lo, hi) -> str:
+    """When something is, in the words somebody would use out loud.
+
+    "3 Sep, 15:00\u201316:00" and "3\u20135 Sep" rather than a night count.
+    A person's diary is not measured in nights.
+    """
+    from datetime import datetime as _dt
+    d1, d2 = _as_day(lo), _as_day(hi)
+    timed = (isinstance(lo, _dt) and isinstance(hi, _dt)
+             and not _midnight(lo, hi))
+    if timed and d1 == d2:
+        return (f"{d1.strftime('%-d %b')}, {lo.strftime('%H:%M')}"
+                f"\u2013{hi.strftime('%H:%M')}")
+    # Half-open at the end: a whole day entered as 3rd to 4th is the 3rd.
+    last = d2 - _day() if d2 > d1 else d2
+    if d1 == last:
+        return d1.strftime("%-d %b")
+    return f"{d1.strftime('%-d')}\u2013{last.strftime('%-d %b')}"
+
+
+def _put_in_diary(store, title, start, end, note=None, where=None, **_):
+    """Put something in the diary, as a file Calendar can swallow.
+
+    This was `hold_dates` and it held a *booking*, which is why it refused
+    over any day the calendar already had something on. A bed is exclusive
+    and a Tuesday is not: refusing to put the dentist in because you are
+    having lunch with somebody that day is wrong about how a person's diary
+    works, and it is the single sharpest place the holiday let showed
+    through.
+
+    So what refuses now is an actual overlap — two things at the same time,
+    both with times on them. Two whole-day entries on one day are written
+    without comment, and anything else on the day is named in the reply,
+    because "you already have three things that afternoon" is worth knowing
+    and is not a reason to refuse.
+
+    The rest is unchanged and was already right: the filename and the UID
+    come from the entry, so approving the same proposal twice replaces one
+    file rather than leaving two, and it never says something was added to a
+    calendar unless it was.
+    """
     from core.connectors.ics_out import IcsDrop, _as_date
     import core.connectors as _C
+    # Two readings of the same pair, and both are needed: the file and the
+    # filename are keyed on the day, and whether this collides with anything
+    # is a question about the time.
     s, e = _as_date(start), _as_date(end)
-    taken = _clashes(store, s, e)
-    if taken:
-        nights = ", ".join(_d.fromisoformat(t).strftime("%-d %b")
-                           for t in taken[:6])
-        more = f" and {len(taken) - 6} more" if len(taken) > 6 else ""
-        raise Rejected(f"your calendar already has something on "
-                       f"{nights}{more}. Nothing was written. Move the dates, "
-                       f"or take the other booking out first.")
+    near = _diary_around(store, _at(start), _at(end))
+    clash = [b for b in near if _touching(b[0], b[1], _at(start), _at(end))]
+    if clash:
+        when = ", ".join(_span(b[0], b[1]) for b in clash[:4])
+        more = f" and {len(clash) - 4} more" if len(clash) > 4 else ""
+        raise Rejected(f"that runs over something already in your diary "
+                       f"({when}{more}). Nothing was written. Move it, or "
+                       f"take the other one out first.")
     drop = _C.wire(store).first("holds")
     if drop is None:
         # Unwired is the common case on day one, and the default folder is
         # a perfectly good answer — this is a file in the person's own home
         # directory, not a credential.
         drop = IcsDrop("local")
-    out = drop.hold(title, s, e, note or "", where or "")
-    nights = (e - s).days
-    plural = "" if nights == 1 else "s"
+    out = drop.hold(title, _at(start), _at(end), note or "", where or "")
+    span = _span(_at(start), _at(end))
+    alongside = ""
+    if near:
+        # Named, never a refusal. A person putting something in a full day
+        # usually knows it is full; a person who does not is better told
+        # than blocked.
+        alongside = (" You already have "
+                     + ", ".join(_span(b[0], b[1]) for b in near[:3])
+                     + " around then.")
 
     # The file is written first and always, whatever happens next. It is the
     # thing this machine can definitely do, and a Calendar that refuses must
@@ -407,17 +546,17 @@ def _hold_dates(store, title, start, end, note=None, where=None, **_):
         return {"ok": True, "uid": out["uid"], "file": out["file"],
                 "folder": out["folder"], "replaced": out["replaced"],
                 "calendar": into,
-                "detail": (f"In your diary: {nights} night{plural} under "
-                           f"\u201c{title}\u201d in {into}. The .ics is in "
+                "detail": (f"In your diary: \u201c{title}\u201d, {span}, in "
+                           f"{into}.{alongside} The .ics is in "
                            f"{out['folder']} as well, in case you want it "
                            f"somewhere else.")}
     return {"ok": True, "uid": out["uid"], "file": out["file"],
             "folder": out["folder"], "replaced": out["replaced"],
             "calendar": None, "calendar_note": why,
             "detail": (f"{'Replaced' if out['replaced'] else 'Written'}: "
-                       f"{out['file']} \u2014 {nights} night{plural} in "
-                       f"{out['folder']}. Double-click it to put it in "
-                       f"Calendar."
+                       f"{out['file']} \u2014 \u201c{title}\u201d, {span}, in "
+                       f"{out['folder']}.{alongside} Double-click it to "
+                       f"put it in Calendar."
                        + (f" ({why})" if why else ""))}
 
 
@@ -439,29 +578,43 @@ def _hold_calendar(store) -> str:
         return ""
 
 
-def _say_hold(a: dict) -> str:
-    """"Hold 3-6 Sep for the Shaws" — the sentence somebody approves.
+def _say_remind(a: dict) -> str:
+    """The sentence somebody's thumb is over, in a day they recognise.
 
-    Dates as a person writes them. A preview reading "hold_dates
-    start=2026-09-03" is accurate and is not a decision anybody can make
-    with their thumb over a button.
+    "Remind you about the MOT on 2026-09-03" is accurate and makes a person
+    count on their fingers. The weekday is the part they check it against.
     """
     from datetime import date as _d
     try:
-        s = _d.fromisoformat(str(a.get("start", "")))
-        e = _d.fromisoformat(str(a.get("end", "")))
+        d = _d.fromisoformat(str(a.get("when", "")).strip()[:10])
+        when = d.strftime("%A %-d %B")
     except ValueError:
+        when = str(a.get("when") or "\u2026")
+    what = a.get("note") or "\u2026"
+    return f"Remind you about \u201c{what}\u201d on {when}."
+
+
+def _say_diary(a: dict) -> str:
+    """"Dentist, 3 Sep, 15:00–16:00" — the sentence somebody approves.
+
+    Dates as a person writes them. A preview reading "put_in_diary
+    start=2026-09-03" is accurate and is not a decision anybody can make
+    with their thumb over a button.
+
+    It used to end "3 nights, out on the morning of the 4th", which is a
+    booking talking. Nobody checks out of the dentist.
+    """
+    try:
+        span = _span(_at(a.get("start", "")), _at(a.get("end", "")))
+    except Exception:                                            # noqa: BLE001
         gap = "\u2026"
-        return (f"Hold {a.get('start') or gap} to {a.get('end') or gap} "
-                f"for {a.get('title') or 'a booking'}.")
-    n = (e - s).days
-    span = (f"{s:%-d}\u2013{e:%-d %b}" if s.month == e.month
-            else f"{s:%-d %b}\u2013{e:%-d %b}")
+        return (f"Put {a.get('title') or 'it'} in the diary, "
+                f"{a.get('start') or gap} to {a.get('end') or gap}.")
     # What it will actually try, on this machine. Saying "writes a file; it
     # does not touch Calendar" was true everywhere until Calendar.app became
     # reachable, and is now a promise this would break on a Mac — in the
-    # direction where somebody approves a hold believing nothing will change
-    # and their diary changes.
+    # direction where somebody approves believing nothing will change and
+    # their diary changes.
     from core.connectors import calendar_app
     can, _ = calendar_app.available()
     lands = ("Adds it to Calendar, if macOS lets Blokk \u2014 it asks you "
@@ -469,10 +622,8 @@ def _say_hold(a: dict) -> str:
              if can else
              "Writes a .ics file for you to open; this machine has no "
              "Calendar to add it to.")
-    return (f"Hold {span} for \u201c{a.get('title', 'a booking')}\u201d "
-            f"in your diary \u2014 {n} night"
-            f"{'' if n == 1 else 's'}, out on the morning of "
-            f"the {_ord(e.day)}. {lands}")
+    return (f"\u201c{a.get('title') or 'Something'}\u201d in your diary, "
+            f"{span}. {lands}")
 
 
 def _send_reply(store, approval, **_):
@@ -600,12 +751,29 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
     # what that would buy here is a file appearing in somebody's folder off
     # the back of a sentence in a guest's email, which is the shape of the
     # thing this whole design exists to stop.
-    Action("hold_dates",
-           "Hold {start} to {end} for {title}.",
+    Action("put_in_diary",
+           "Put {title} in the diary, {start} to {end}.",
            args=("title", "start", "end"),
            optional=("note", "where"),
-           pinned=True, category="calendar_hold",
-           run=_hold_dates, phrase=_say_hold),
+           pinned=True, category="diary_write",
+           run=_put_in_diary, phrase=_say_diary),
+    # Not pinned, and the only write-shaped action that is not. Everything
+    # else here either reaches outside blokk.db or removes something; a
+    # reminder does neither. It is a row saying "put this in front of me on
+    # Thursday", it is visible in the queue the moment it is made, and the
+    # worst it can do when it is wrong is show somebody a card they did not
+    # need. That is the one thing on this list where being right ninety
+    # times genuinely should buy the ninety-first, which is what invariant 4
+    # is for.
+    # `when`, not `at`: validate() reads a field called `at` as a time of
+    # day, because that is what set_schedule means by it. Two actions
+    # sharing an argument name share its rules, and a reminder for the
+    # 3rd of September was refused as "not a time of day" — by a check
+    # written for a different action, naming a field this one does not
+    # have.
+    Action("remind_me", "Remind you about {note} on {when}.",
+           args=("when", "note"), category="reminder",
+           run=_remind, phrase=_say_remind),
     Action("remember", "Remember: {note}",
            args=("note",), run=_remember, category="blokk_memory"),
     # Pinned. Forgetting is the one memory operation that destroys something,
@@ -685,18 +853,29 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
                                f"something like 04:00, or 6pm.")
         if key in ("start", "end"):
             # Normalised to ISO here so the preview, the clash check and
-            # the file all agree about which day is meant. A model that
-            # writes 03/09/2026 is not making a mistake; leaving it as
-            # text until the executor is.
+            # the file all agree about when is meant. A model that writes
+            # 03/09/2026 is not making a mistake; leaving it as text until
+            # the executor is.
+            #
+            # A time of day survives. This only ever held bookings, which
+            # are counted in nights, so anything carrying a clock was
+            # refused as "not a date" — and a diary is mostly things with
+            # times on them. The whole-day form still normalises the same
+            # way, so nothing that worked before changes.
+            from datetime import datetime as _dt
             from core.connectors.ics_out import _as_date
             try:
-                v = _as_date(v).isoformat()
-            except ValueError as ex:
-                raise Rejected(str(ex)) from None
+                v = _dt.fromisoformat(v.replace(" ", "T")).isoformat(
+                    timespec="minutes")
+            except ValueError:
+                try:
+                    v = _as_date(v).isoformat()
+                except ValueError as ex:
+                    raise Rejected(str(ex)) from None
         if key == "approval" and not re.match(r"^a_[A-Za-z0-9_]{1,64}$", v):
             raise Rejected(f"{v!r} is not the id of a queued item")
         if key == "title" and len(v) < 2:
-            raise Rejected("a hold needs something to call it")
+            raise Rejected("it needs something to call it")
         if key == "note" and len(v) < 4:
             raise Rejected("that is too short to be worth remembering")
         if key == "host":
@@ -708,20 +887,30 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
     # above. Same reason everything else is checked here: a proposal that is
     # wrong should say so under the Approve button, not after it.
     if "start" in clean and "end" in clean:
-        from datetime import date as _date
-        s_, e_ = (_date.fromisoformat(clean["start"]),
-                  _date.fromisoformat(clean["end"]))
-        if e_ <= s_:
+        from datetime import date as _date, datetime as _dt
+        w_s, w_e = _at(clean["start"]), _at(clean["end"])
+        s_, e_ = _as_day(w_s), _as_day(w_e)
+        # Two rules, because there are two kinds of entry and one rule
+        # cannot cover both. A thing with a time on it has to end after it
+        # starts. A whole-day thing runs to the morning after the last day,
+        # so its end is exclusive and "the 3rd to the 3rd" is no days at
+        # all — which is the mistake somebody actually makes.
+        if isinstance(w_s, _dt) and isinstance(w_e, _dt):
+            if w_e <= w_s:
+                raise Rejected(
+                    f"{w_e:%H:%M} is not after {w_s:%H:%M} \u2014 an entry "
+                    f"with a time on it has to end after it starts.")
+        elif e_ <= s_:
             raise Rejected(
-                f"{e_:%-d %b} is not after {s_:%-d %b} \u2014 a hold needs at "
-                f"least one night, and the leaving date is the morning after "
-                f"the last one. For a single night on the "
-                f"{_ord(s_.day)}, that is {s_ + _day():%Y-%m-%d}.")
+                f"{e_:%-d %b} is not after {s_:%-d %b} \u2014 a whole-day "
+                f"entry runs to the morning after the last day. For the "
+                f"{_ord(s_.day)} alone, that is {s_ + _day():%Y-%m-%d}. "
+                f"For an hour of it, put a time on both ends.")
         if s_ < _date.today() - _day():
             raise Rejected(f"{s_:%-d %b %Y} is in the past")
-        # A hold this long is a misread sentence far more often than it is a
-        # booking. "The 5th to the 5th of March" is a real thing somebody
-        # types and it can be read as 28 nights; better to say the number out
+        # An entry this long is a misread sentence far more often than it
+        # is a real one. "The 5th to the 5th of March" is a thing somebody
+        # types and it can be read as 28 days; better to say the number out
         # loud than to write a month-long block into a diary.
         if (e_ - s_).days > MAX_NIGHTS:
             raise Rejected(

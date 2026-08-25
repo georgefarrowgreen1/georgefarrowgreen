@@ -195,13 +195,18 @@ def live_prompt(name: str, store=None) -> str:
     if name == "draft":
         from flows.morning_sweep import _draft_prompt
         return _draft_prompt(store,
-                             # A fixed gap, so the expectation can be about
+                             # A fixed diary, so the expectation is about
                              # what the model does with one rather than about
                              # whatever the calendar happens to hold today.
-                             [{"from": "2026-08-24", "nights": 3}], None)
+                             [{"when": "2026-08-24 14:00", "what": "Dentist"},
+                              {"when": "2026-08-26", "what": "Mum staying"}])
     if name == "triage":
-        from flows.morning_sweep import TRIAGE
-        return TRIAGE
+        # From the table, like the sweep. It used to import a constant that
+        # no longer exists — and the failure was loud, which is the only
+        # reason this was not a suite quietly measuring a prompt nothing
+        # sends any more.
+        from core import intray
+        return intray.prompt(store)
     if name == "derive":
         from core.models import DERIVE
         return DERIVE

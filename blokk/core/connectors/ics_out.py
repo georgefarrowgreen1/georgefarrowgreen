@@ -81,6 +81,34 @@ def _fold(line: str) -> str:
     return "\r\n ".join(out)
 
 
+def _as_when(v):
+    """A datetime if there is a time in it, a date if there is not.
+
+    The distinction this file did not have. It only ever wrote bookings,
+    which are counted in nights and start at whatever time the key box
+    opens, so everything here was a whole-day event. A person's diary is
+    mostly things with times on them, and "Dentist" written as an all-day
+    entry is visibly the wrong thing in Calendar.
+    """
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, date):
+        return v
+    s = str(v or "").strip().replace(" ", "T")
+    if "T" in s:
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            pass
+    return _as_date(v)
+
+
+def _timed(s, e) -> bool:
+    """Both ends carry a clock, and it is not midnight to midnight."""
+    return (isinstance(s, datetime) and isinstance(e, datetime)
+            and (s.hour, s.minute, e.hour, e.minute) != (0, 0, 0, 0))
+
+
 def _as_date(v) -> date:
     """A date from what a model or a person actually writes."""
     if isinstance(v, datetime):
@@ -88,6 +116,11 @@ def _as_date(v) -> date:
     if isinstance(v, date):
         return v
     s = str(v or "").strip()
+    if "T" in s or " " in s:
+        try:
+            return datetime.fromisoformat(s.replace(" ", "T")).date()
+        except ValueError:
+            pass
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%Y%m%d"):
         try:
             return datetime.strptime(s, fmt).date()
@@ -144,22 +177,28 @@ def build(title: str, start, end, note: str = "",
     """
     title = str(title or "").strip()
     if not title:
-        raise ValueError("a hold needs something to call it")
+        raise ValueError("it needs something to call it")
     if len(title) > MAX_TITLE:
         raise ValueError(f"that title is {len(title)} characters and the "
                          f"limit is {MAX_TITLE}")
     note = str(note or "")[:MAX_NOTE]
+    w_s, w_e = _as_when(start), _as_when(end)
+    timed = _timed(w_s, w_e)
     s, e = _as_date(start), _as_date(end)
-    if e <= s:
-        raise ValueError(f"{e:%-d %b} is not after {s:%-d %b} — a hold needs "
-                         f"at least one night, and the leaving date is the "
-                         f"morning after the last one.")
+    if timed:
+        if w_e <= w_s:
+            raise ValueError(f"{w_e:%H:%M} is not after {w_s:%H:%M} — an "
+                             f"entry with a time on it needs to end after "
+                             f"it starts.")
+    elif e <= s:
+        raise ValueError(f"{e:%-d %b} is not after {s:%-d %b} — a whole-day "
+                         f"entry runs to the morning after the last day.")
     if s < date.today() - timedelta(days=1):
         raise ValueError(f"{s:%-d %b %Y} is in the past")
     if s > date.today() + MAX_AHEAD:
         raise ValueError(f"{s:%-d %b %Y} is over two years out — check the "
                          f"year.")
-    uid = uid_for(title, s, e)
+    uid = uid_for(title, w_s if timed else s, w_e if timed else e)
     when = (stamp or datetime.utcnow()).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
@@ -170,10 +209,12 @@ def build(title: str, start, end, note: str = "",
         "BEGIN:VEVENT",
         f"UID:{uid}",
         f"DTSTAMP:{when}",
-        # VALUE=DATE, and DTEND is the morning they leave. See the module
-        # docstring: exclusive, on purpose, and pinned by a probe.
-        f"DTSTART;VALUE=DATE:{s:%Y%m%d}",
-        f"DTEND;VALUE=DATE:{e:%Y%m%d}",
+        # Timed, or whole-day with DTEND the morning after the last day.
+        # The whole-day end is exclusive, on purpose, and pinned by a probe;
+        # a timed end is just the end.
+        *( [f"DTSTART:{w_s:%Y%m%dT%H%M%S}", f"DTEND:{w_e:%Y%m%dT%H%M%S}"]
+           if timed else
+           [f"DTSTART;VALUE=DATE:{s:%Y%m%d}", f"DTEND;VALUE=DATE:{e:%Y%m%d}"] ),
         f"SUMMARY:{_esc(title)}",
         # Held, not confirmed. The status is part of the honesty: nobody
         # has replied to anyone yet.
