@@ -6818,6 +6818,105 @@ try:
     probe("A116 the diagnosis is behind a command nobody knows to type",
           the_run_checks_itself)
 
+    # ── 119. three ways to turn rows into a sentence ────────────────────
+    def one_way_to_answer():
+        # Three call sites each wrote `_summarise(gathered) if gathered else
+        # "..."` — identical in shape, maintained separately. When the
+        # forecast learned to answer the day it was asked about, the
+        # question reached one of the three. The same weather question then
+        # got a targeted answer down the planner's path and the whole
+        # five-day table down the other two, and nothing failed: it was
+        # simply wrong on two paths out of three, invisibly, because there
+        # was no single thing to change.
+        #
+        # Counted with ast rather than grep, because the shape that matters
+        # is "a call to _summarise" and that survives being reformatted,
+        # renamed in a comment, or wrapped across lines.
+        import ast as _ast
+        tree = _ast.parse(open("core/ask.py").read())
+
+        def calls_to(name, inside=None):
+            out = []
+            for node in _ast.walk(tree):
+                if not isinstance(node, _ast.FunctionDef):
+                    continue
+                if inside is not None and node.name != inside:
+                    continue
+                if node.name == name:
+                    continue        # its own recursion is not a caller
+                for sub in _ast.walk(node):
+                    if (isinstance(sub, _ast.Call)
+                            and isinstance(sub.func, _ast.Name)
+                            and sub.func.id == name):
+                        out.append(node.name)
+            return out
+
+        callers = calls_to("_summarise")
+        if len(callers) != 1:
+            return (True, f"_summarise is called from {len(callers)} places "
+                          f"({', '.join(sorted(set(callers))) or 'none'}) — "
+                          f"anything added to answering reaches some of them "
+                          f"and not the others, which is how a weather "
+                          f"question came to be answered two different ways")
+        if callers[0] != "_answer":
+            return (True, f"_summarise is called from {callers[0]!r} rather "
+                          f"than from the one answering path")
+
+        # And the fallback is decided there too. A caller that keeps its own
+        # `if gathered` is the old shape with a new name in the middle.
+        for site in calls_to("_answer"):
+            fn = next(n for n in _ast.walk(tree)
+                      if isinstance(n, _ast.FunctionDef) and n.name == site)
+            for sub in _ast.walk(fn):
+                if not (isinstance(sub, _ast.IfExp)
+                        or isinstance(sub, _ast.If)):
+                    continue
+                test = _ast.dump(sub.test)
+                if "'gathered'" in test and "_answer" in _ast.dump(sub):
+                    return (True, f"{site} still decides the empty case "
+                                  f"around its own call to _answer")
+
+        # Every caller passes the question. That was the whole defect.
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.FunctionDef):
+                continue
+            for sub in _ast.walk(node):
+                if not (isinstance(sub, _ast.Call)
+                        and isinstance(sub.func, _ast.Name)
+                        and sub.func.id == "_answer"):
+                    continue
+                if node.name == "_answer":
+                    continue
+                if len(sub.args) < 3:
+                    return (True, f"{node.name} calls _answer with "
+                                  f"{len(sub.args)} argument(s) — a caller "
+                                  f"that does not pass the question gets the "
+                                  f"whole table back")
+                first = sub.args[0]
+                if not (isinstance(first, _ast.Name)
+                        and first.id == "question"):
+                    return (True, f"{node.name} passes "
+                                  f"{_ast.dump(first)[:40]} as the question")
+
+        # And it behaves: rows in, a sentence about them; nothing in, the
+        # caller's own words rather than a shrug.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import ask as A
+        said = A._answer("what is waiting?", [], "NOTHING MATCHED")
+        if said != "NOTHING MATCHED":
+            return (True, f"with no rows it said {said[:50]!r} rather than "
+                          f"what the caller asked it to")
+        rows = [("open_approvals", [{"category": "availability_reply"}])]
+        said = A._answer("what is waiting?", rows, "NOTHING MATCHED")
+        if "NOTHING MATCHED" in said or "waiting" not in said:
+            return (True, f"with rows it said {said[:60]!r}")
+        return (False, "_summarise has one caller, the empty case is decided "
+                       "in one place, every caller passes the question, and "
+                       "the three different things they say when there is "
+                       "nothing are still three different things")
+    probe("A119 three ways to turn rows into a sentence", one_way_to_answer)
+
     # ── 117. the boundary judges by rule, not by a list of names ────────
     def measurements_cross_by_rule():
         # The forecast bug was fixed with a tuple of five field names, and

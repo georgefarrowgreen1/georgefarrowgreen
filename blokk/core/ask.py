@@ -777,13 +777,9 @@ def ask(store, question: str, model,
                  "tools": sorted(tools)})})
             if steps < MAX_STEPS:
                 continue
-            # With the question, like the planner's own call. A summary that
-            # does not know what was asked gives the whole table back, which
-            # is the thing _forecast_answer exists to stop — and this is the
-            # path a model on a small machine falls down most often.
-            move = {"do": "reply", "say": _summarise(gathered, question)
-                    if gathered
-                    else "I could not find a way to look that up."}
+            move = {"do": "reply", "say": _answer(
+                question, gathered,
+                "I could not find a way to look that up.")}
 
         if move["do"] == "read" and move.get("read") in tools:
             okay, left = _meter(store)
@@ -883,10 +879,11 @@ def ask(store, question: str, model,
         # an empty space where the answer goes. Silence is the one thing a
         # turn is not allowed to be — and there is no need for it here,
         # because everything those steps read is sitting in `gathered`.
-        answer = (_summarise(gathered, question) if gathered else
-                  "I could not work out how to answer that one. Try asking "
-                  "for a specific thing — the queue, last night's runs, what "
-                  "is wired up.")
+        answer = _answer(
+            question, gathered,
+            "I could not work out how to answer that one. Try asking "
+            "for a specific thing — the queue, last night's runs, what "
+            "is wired up.")
         yield from _say(answer)
         remember(store, thread, "assistant", answer, flagged=flagged)
 
@@ -1530,13 +1527,12 @@ def _plan(question: str, gathered: list, tools: dict) -> dict:
                 f"No {what} is wired yet, so I have nothing to read. {how} "
                 f"Ask me what is on this Mac and I will tell you what is "
                 f"here already."}
-    if not gathered:
-        return {"do": "reply", "say":
-                "I am not sure what you are after. I can tell you what is "
-                "waiting on you, how the runs went, what I handled on my own, "
-                "or what is wired up — or you can ask me to change something "
-                "and I will propose it."}
-    return {"do": "reply", "say": _summarise(gathered, question)}
+    return {"do": "reply", "say": _answer(
+        question, gathered,
+        "I am not sure what you are after. I can tell you what is "
+        "waiting on you, how the runs went, what I handled on my own, "
+        "or what is wired up — or you can ask me to change something "
+        "and I will propose it.")}
 
 
 def _guess(q: str) -> dict | None:
@@ -2041,6 +2037,29 @@ def _readable_fault(detail: str) -> str:
     return ((first or "The forecast could not be read") +
             ". ./blokk doctor checks the source and says which of the "
             "faults it is.")
+
+
+def _answer(question: str, gathered: list, when_empty: str) -> str:
+    """Rows to a sentence — and the one place that decides there are none.
+
+    Three call sites used to make this decision themselves, each written as
+    `_summarise(gathered) if gathered else "..."`. They were identical in
+    shape and drifted in content: when the forecast learned to answer the
+    day it was asked about, the question reached one of the three, so the
+    same weather question got a targeted answer down the planner's path and
+    the whole five-day table down the other two. Nothing failed. It was
+    just wrong on two paths out of three, invisibly, because there was no
+    single thing to change.
+
+    `when_empty` stays per-caller on purpose. The three are not one
+    sentence badly duplicated — they are three different facts: no tool
+    matched, the loop ran out of steps, the question was not understood.
+    Merging them would lose information to gain a line. What is shared is
+    the mechanism, and the mechanism is what drifted.
+    """
+    if not gathered:
+        return when_empty
+    return _summarise(gathered, question)
 
 
 def _summarise(gathered: list, question: str = "") -> str:

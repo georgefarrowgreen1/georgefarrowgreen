@@ -276,7 +276,14 @@ worse than an error.
     core/schema.sql    the data model. One SQLite file; the thing to back up
     core/durable.py    journal, replay, idempotency, signal suspend/resume
     core/harness.py    agent loop, context budget, policy gate, consolidation
-    core/ask.py        read-only chat agent, AG-UI events
+    core/ask.py        read-only chat agent, AG-UI events. One function
+                       turns gathered rows into a sentence, and one decides
+                       there are none — three call sites used to do both
+                       themselves, and drifted: when the forecast learned to
+                       answer the day it was asked about, the question
+                       reached one of the three. A119 counts the callers
+                       with ast, so a second path fails the suite rather
+                       than answering the same question differently
     core/models.py     Router + ServedModel (any OpenAI-compatible server)
     core/backends.py   llama.cpp vs MLX rule, with the evidence in comments
     core/nightly.py    the night shift: when to sweep, and what window to read
