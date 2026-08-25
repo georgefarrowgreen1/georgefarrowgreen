@@ -53,6 +53,13 @@ run "API contract"          node demo/contract.js
 run "engine journeys"       node demo/journey.js
 run "unit"                  node demo/test.js
 run "python parses"         python3 -m compileall -q core api flows
+# Last, and allowed to be absent. This is the only step that needs a
+# browser, and Blokk's stdlib-only rule is about the runtime rather than
+# the test harness — so Playwright is a dev dependency and measure.js
+# exits 0 saying so when it is not installed. It prints "skipped" rather
+# than "ok": a check that could not run must never look like one that
+# passed.
+run "measured in a browser" node demo/measure.js
 
 # The suites leave a mess behind on purpose: they sweep, decide, reject and
 # correct, and every one of those writes rows. Without this the guard above
