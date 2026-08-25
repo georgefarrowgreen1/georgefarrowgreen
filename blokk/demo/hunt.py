@@ -7151,6 +7151,100 @@ try:
             return (True, f"a day with no rain figure was answered as though "
                           f"it were zero: {out[:70]!r}")
 
+        # ---- spans: the weekend, this week, next week ------------------
+        # "This weekend" and "next week" named no single day, so they fell
+        # through to the same list that "what's the weather like?" gets —
+        # the answer to a narrower question identical to the answer to a
+        # broader one.
+        #
+        # Built from today rather than from a fixed date, because that is
+        # what the product does: both the day words and the span have to
+        # come off the same clock. Fourteen days, so next week is reachable
+        # whatever day of the week the suite runs on.
+        import datetime as _dt
+        today = _dt.date.today()
+        wide = [dict(days[0],
+                     **{"from": (today + _dt.timedelta(days=n)).isoformat(),
+                        "rain_chance": 90 if n in (5, 6) else 5,
+                        "label": "thunderstorms" if n in (5, 6) else "clear",
+                        "subject": "thunderstorms" if n in (5, 6) else "clear"})
+                for n in range(14)]
+
+        def span_of(q):
+            return A._asked_about(q.lower(), wide)
+
+        # A span question picks days, and not all of them.
+        for q, name in (("what's it doing this weekend?", "this weekend"),
+                        ("what about next week?", "next week"),
+                        ("is it dry this week?", "this week")):
+            got = span_of(q)
+            if not got:
+                return (True, f"{q!r} names a span and resolved to no days at "
+                              f"all")
+            if len(got) >= len(wide):
+                return (True, f"{q!r} resolved to every day there is, which "
+                              f"is the same answer as naming no day")
+        # The weekend is Saturday and Sunday, and nothing else.
+        wk = span_of("what's it doing this weekend?")
+        names = {_dt.date.fromisoformat(wide[i]["from"]).strftime("%A")
+                 for i in wk}
+        if names - {"Saturday", "Sunday"}:
+            return (True, f"'this weekend' picked {sorted(names)}")
+        # Next week starts on a Monday and does not overlap this one.
+        nx = span_of("what about next week?")
+        if not nx:
+            return (True, "'next week' resolved to nothing over 14 days")
+        firstnx = _dt.date.fromisoformat(wide[min(nx)]["from"])
+        if firstnx.strftime("%A") != "Monday":
+            return (True, f"'next week' starts on a "
+                          f"{firstnx.strftime('%A')}, not a Monday")
+        if (firstnx - today).days > 7:
+            return (True, "'next week' is more than a week away")
+        if set(nx) & set(span_of("is it dry this week?")):
+            return (True, "this week and next week share a day")
+
+        # And the answer is about those days and no others. Checking only
+        # the verdict was not enough: with the span branch removed the
+        # question falls through to the answer for "will it rain?" with no
+        # day in it, which scans every day, finds the same wet Sunday and
+        # produces a verdict that reads correctly while answering a wider
+        # question than the one asked.
+        say = A._forecast_answer(wide, "what's it doing this weekend?")
+        listed = [ln for ln in say.split("\n")[1:] if ln.strip()]
+        if len(listed) != len(wk):
+            return (True, f"asked about the weekend, it listed {len(listed)} "
+                          f"day(s) rather than the {len(wk)} in it")
+        for ln in listed:
+            if not ln.startswith(("Saturday", "Sunday")):
+                return (True, f"the weekend answer lists a day outside it: "
+                              f"{ln[:50]!r}")
+        # A wet Saturday or Sunday is never reported as a dry weekend.
+        say = A._forecast_answer(wide, "will it rain this weekend?")
+        if re.search(r"\b(dry|no rain)\b", say.split("\n")[0], re.I):
+            return (True, f"a weekend holding a 90% day was called dry: "
+                          f"{say.split(chr(10))[0][:70]!r}")
+
+        # The day words and the span have to come off the same clock. The
+        # first version counted offsets from the first row while _when
+        # named days from today, so on a forecast that does not begin today
+        # "is it going to rain tomorrow?" answered "85% chance of rain
+        # Thursday" — the right row by one rule, labelled by the other.
+        late = [dict(d, **{"from": (_dt.date.fromisoformat(d["from"])
+                                    + _dt.timedelta(days=1)).isoformat()})
+                for d in wide]
+        got = A._forecast_answer(late, "is it going to rain tomorrow?")
+        head = got.split("\n")[0]
+        if "tomorrow" not in head.lower():
+            return (True, f"on a forecast that does not begin today, "
+                          f"'tomorrow' is answered about some other day: "
+                          f"{head[:70]!r}")
+
+        # And a day the forecast does not carry is not answerable at all,
+        # rather than answerable about the wrong one.
+        if A._asked_about("what about tomorrow?", [wide[0]]):
+            return (True, "asked about tomorrow with only today in hand, it "
+                          "pointed at a day it does not have")
+
         # And the far end's own error text does not reach the screen.
         rate = ('weather: api.open-meteo.com answered 429 Too Many Requests: '
                 '{"error":true,"reason":"Daily API request limit exceeded."}')

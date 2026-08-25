@@ -347,8 +347,17 @@ def build_tools(store) -> dict[str, ReadTool]:
     def read_page(**_):
         return _peek("web", 1)
 
+    # Fourteen, not seven. "Over-fetching" is the wrong worry here: the
+    # request is one HTTP call either way and what leaves the machine is a
+    # latitude and a longitude whatever the span. Seven was the number that
+    # could not answer "what about next week?" — the days exist at the far
+    # end and were simply never asked for.
+    #
+    # _peek still caps at MAX_ROWS, so asked on a Monday about next week the
+    # last day or two of it can fall off the end. The answer lists what it
+    # has rather than claiming the week.
     def forecast(**_):
-        return _peek("weather", 7)
+        return _peek("weather", 14)
 
     def free_nights(**_):
         """Which nights nobody has booked. The question a cottage gets asked."""
@@ -1154,29 +1163,66 @@ _ASKED = (
 
 
 def _asked_about(ql: str, days: list | None = None):
-    """The index of the day a question names, or None if it names none.
+    """Which of the days in hand a question names, as a list of indexes.
 
-    Resolved against the rows rather than against the calendar, so an
-    answer can only ever point at a day that actually came back. "Thursday"
-    with three days of forecast is not answerable, and saying so beats
-    answering about the wrong Thursday.
+    A list, not an index, because half of what people ask about is a span.
+    "This weekend" and "next week" were the two most common questions this
+    could not hear at all: they named no single day, so they fell through to
+    the same list of everything that "what's the weather like?" gets — the
+    answer to a narrower question identical to the answer to a broader one.
+
+    Everything here is resolved to a *date* first and then matched against
+    the rows, and the dates come from the same clock `_when` uses. That
+    matters more than it looks. The first version counted offsets from the
+    first row instead — "tomorrow" meant `days[1]` — while `_when` named
+    days relative to today. On a forecast that does not begin today the two
+    disagreed, and "is it going to rain tomorrow?" came back "85% chance of
+    rain Thursday": the right row by one rule, labelled by the other.
+
+    A day the forecast does not carry is not answerable, and returning
+    nothing for it beats answering about the wrong one.
+
+    Empty means the question names no day. `None` is not used — an empty
+    list and "not asked" are the same thing here, and two ways of saying it
+    is one more than the caller can act on.
     """
-    for word, gap in _ASKED:
-        if word in ql:
-            return gap if days is None or gap < len(days) else None
-    if not days:
-        return None
-    # A weekday name: match it against the days in hand. Nothing is
-    # computed from today's date here — the rows carry their own.
-    from datetime import date
+    from datetime import date, timedelta
+    days = days or []
+    dated = {}
     for i, r in enumerate(days):
         try:
-            d = date.fromisoformat(str(r.get("from", ""))[:10])
+            dated.setdefault(date.fromisoformat(str(r.get("from", ""))[:10]), i)
         except ValueError:
             continue
+    if not dated:
+        return []
+    today = date.today()
+    pick = lambda ds: [dated[d] for d in ds if d in dated]
+
+    for word, gap in _ASKED:
+        if word in ql:
+            return pick([today + timedelta(days=gap)])
+
+    # A span, before a single day: "this weekend" contains no weekday name,
+    # and "next weekend" contains "weekend".
+    if "weekend" in ql:
+        sat = today + timedelta(days=(5 - today.weekday()) % 7)
+        if "next weekend" in ql:
+            sat += timedelta(days=7)
+        return pick([sat, sat + timedelta(days=1)])
+    if "next week" in ql:
+        mon = today + timedelta(days=(7 - today.weekday()) % 7 or 7)
+        return pick([mon + timedelta(days=n) for n in range(7)])
+    if "this week" in ql or "rest of the week" in ql:
+        return pick([today + timedelta(days=n)
+                     for n in range(7 - today.weekday())])
+
+    # A weekday name, matched against the days in hand rather than computed
+    # — the rows are the only place a Thursday this forecast actually has.
+    for d in sorted(dated):
         if d.strftime("%A").lower() in ql:
-            return i
-    return None
+            return [dated[d]]
+    return []
 
 
 def _short_place(name: str) -> str:
@@ -1864,7 +1910,7 @@ def _forecast_answer(rows: list, question: str = "") -> str:
     where = _short_place(next((r["place"] for r in days if r.get("place")), ""))
     at = f" in {where}" if where else ""
     ql = (question or "").lower()
-    idx = _asked_about(ql, days)
+    span = _asked_about(ql, days)
     about_rain = any(w in ql for w in ("rain", "wet", "dry", "umbrella",
                                        "shower", "snow"))
 
@@ -1894,24 +1940,56 @@ def _forecast_answer(rows: list, question: str = "") -> str:
     def listing(rs):
         return "\n".join(f"{when(r)}: {detail(r)}" for r in rs)
 
-    # ---- a question that names a day gets that day, and only that day ----
-    if idx is not None:
-        r = days[idx]
+    def verdict_for(chance):
+        return ("yes, very likely" if chance >= 70 else
+                "probably" if chance >= 45 else
+                "possibly" if chance >= 20 else "unlikely")
+
+    # ---- one day named: that day, and only that day ----------------------
+    if len(span) == 1:
+        r = days[span[0]]
         if about_rain:
             chance = r.get("rain_chance")
             if chance is None:
                 return (f"{_up1(when(r))}{at}: {detail(r)}. No rain figure "
                         f"came back for that day, so I cannot say either "
                         f"way.")
-            verdict = ("yes, very likely" if chance >= 70 else
-                       "probably" if chance >= 45 else
-                       "possibly" if chance >= 20 else "unlikely")
             # The chance is stated once, in the verdict — repeating it in
             # the detail read as two different measurements of the same
             # thing.
-            return (f"{_up1(verdict)} \u2014 {chance}% chance of rain "
-                    f"{when(r)}{at}. {_up1(detail(r, with_rain=False))}.")
+            return (f"{_up1(verdict_for(chance))} \u2014 {chance}% chance of "
+                    f"rain {when(r)}{at}. "
+                    f"{_up1(detail(r, with_rain=False))}.")
         return f"{_up1(when(r))}{at}: {detail(r)}."
+
+    # ---- a span named: the weekend, this week, next week ------------------
+    # Answered about those days and no others. Before this, "what's it doing
+    # this weekend?" named no single day, fell through, and got the same
+    # five-day list as a question that named nothing at all — so the answer
+    # to a narrower question was identical to the answer to a broader one.
+    if len(span) > 1:
+        chosen = [days[i] for i in span]
+        # The phrase has to fit both frames it appears in — "Rain <named>"
+        # and "<Named> looks dry". "the weekend" reads correctly in the
+        # second and not the first: "Rain the weekend in Newcastle" is not
+        # English.
+        named = ("next weekend" if "next weekend" in ql
+                 else "this weekend" if "weekend" in ql
+                 else "next week" if "next week" in ql else "this week")
+        if about_rain:
+            known = [r for r in chosen if r.get("rain_chance") is not None]
+            wet = [r for r in known if r["rain_chance"] >= 45]
+            if not known:
+                return (f"No rain figures came back for {named}{at}.\n"
+                        + listing(chosen))
+            if not wet:
+                top = max(r["rain_chance"] for r in known)
+                return (f"{_up1(named)} looks dry{at} \u2014 nothing above "
+                        f"{top}%.\n" + listing(chosen))
+            names = ", ".join(f"{when(r)} ({r['rain_chance']}%)"
+                              for r in wet[:4])
+            return f"Rain {named}{at}: {names}.\n" + listing(chosen)
+        return f"{_up1(named)}{at}\n" + listing(chosen)
 
     # ---- about rain, no day named: name the wet days, not every day ----
     if about_rain:
