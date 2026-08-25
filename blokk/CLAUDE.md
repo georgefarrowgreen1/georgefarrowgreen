@@ -311,7 +311,13 @@ worse than an error.
     flows/             workflow definitions
     api/server.py      control plane. Stdlib http.server. Holds credentials
     web/               dashboard, setup wizard, sources, phone, update and
-                       appearance panels, PWA. Parity with connect.py is
+                       appearance panels, PWA. The update panel carries
+                       the automatic-update switch — the same three
+                       words the CLI and the API take, built from the
+                       same list, so a fourth position cannot appear in
+                       one and not the others, and opening it reads
+                       state rather than reaching GitHub.
+                       Parity with connect.py is
                        deliberate: both call core/sources.py, neither
                        reimplements it. The look is iOS 26 Liquid Glass —
                        chrome is glass, content is not, and Reduce
