@@ -371,9 +371,11 @@ def firewall() -> tuple[str, str]:
 
     verdict = _fw_verdict(ask("--listapps"))
     if verdict == "block":
-        return "on", ("python is listed and BLOCKED — that is the Deny you "
-                      "clicked once and macOS never asks again. This is very "
-                      "likely your problem")
+        return "on", ("a python is listed and BLOCKED — that is the Deny "
+                      "you clicked once and macOS never asks again. A Mac "
+                      "often has several pythons listed; the blocked one "
+                      "is the one to allow. This is very likely your "
+                      "problem")
     if verdict == "allow":
         return "on", "python is listed as allowed"
     return "on", ("python is NOT listed — macOS will ask once and drop "
@@ -381,7 +383,7 @@ def firewall() -> tuple[str, str]:
 
 
 def _fw_verdict(listing: str) -> str:
-    """"allow", "block" or "" for a python entry in --listapps.
+    """"allow", "block" or "" for the python entries in --listapps.
 
     The format puts the path and its verdict on separate lines:
 
@@ -390,17 +392,33 @@ def _fw_verdict(listing: str) -> str:
 
     so the verdict belongs to whichever path came last. Read as one blob and
     searched for the word "python", Allow and Block are the same answer.
+
+    Entries, plural, and the worst one wins. A Mac accumulates pythons —
+    the /usr/bin shim, a framework Python inside the developer tools — and
+    they get separate firewall entries. The first version returned the
+    first verdict it met, so an old allowed shim above the blocked Python
+    that actually runs Blokk read as "listed as allowed": a doctor saying
+    "nothing wrong" on the exact machine where the firewall was the whole
+    problem, found the night it happened. One blocked python means blocked,
+    however many others are allowed, because the blocked one may be the one
+    listening.
     """
-    seen = ""
+    verdicts = []
+    pending = False
     for line in (listing or "").splitlines():
         low = line.lower()
         if "python" in low and ("/" in line or ":" in line):
-            seen = "pending"
-        elif seen == "pending" and "incoming connections" in low:
-            return "block" if "block" in low else "allow"
-        elif seen == "pending" and line.strip() and ":" in line:
-            seen = ""            # another app's entry before any verdict
-    return "found" if seen else ""
+            pending = True
+        elif pending and "incoming connections" in low:
+            verdicts.append("block" if "block" in low else "allow")
+            pending = False
+        elif pending and line.strip() and ":" in line:
+            pending = False      # another app's entry before any verdict
+    if "block" in verdicts:
+        return "block"
+    if "allow" in verdicts:
+        return "allow"
+    return "found" if pending else ""
 
 
 def model_report() -> dict:

@@ -7198,9 +7198,25 @@ try:
                    "2 : /Applications/Foo.app \n\t ( Allow incoming connections )\n")
         ABSENT = ("ALF: total number of apps = 1\n\n"
                   "1 : /Applications/Foo.app \n\t ( Allow incoming connections )\n")
+        # A Mac accumulates pythons, each with its own entry. An allowed
+        # shim ABOVE the blocked framework Python that actually runs Blokk
+        # is the arrangement a real Mac produced the night the doctor said
+        # "nothing wrong" about the firewall that was the whole problem —
+        # the first verdict won and it was the wrong python's.
+        MIXED = ("ALF: total number of apps = 3\n\n"
+                 "1 : /usr/bin/python3 \n\t ( Allow incoming connections )\n\n"
+                 "2 : /Library/Developer/CommandLineTools/Library/Frameworks/"
+                 "Python3.framework/Versions/3.9/Resources/Python.app \n\t "
+                 "( Block incoming connections )\n\n"
+                 "3 : /Applications/Foo.app \n\t ( Allow incoming connections )\n")
 
         got = {name: D._fw_verdict(txt) for name, txt in
-               (("allowed", ALLOWED), ("blocked", BLOCKED), ("absent", ABSENT))}
+               (("allowed", ALLOWED), ("blocked", BLOCKED), ("absent", ABSENT),
+                ("mixed", MIXED))}
+        if got["mixed"] != "block":
+            return (True, f"two pythons, one blocked, reads as "
+                          f"{got['mixed']!r} — the allowed shim answers for "
+                          f"the blocked Python that is actually listening")
         if got["allowed"] != "allow":
             return (True, f"an allowed python reads as {got['allowed']!r}")
         if got["blocked"] != "block":
