@@ -228,7 +228,14 @@ def _remind(store, when, note, **_):
     """
     from datetime import date as _d
     import hashlib as _h
-    day = _as_day(_at(when))
+    try:
+        day = _as_day(_at(when))
+    except ValueError:
+        # validate() already refuses this shape with the same sentence;
+        # this is the backstop for a caller that skipped it, and a backstop
+        # that answers with a traceback teaches people to fear the queue.
+        raise Rejected(f"{when!r} is not a day this can read. It wants a "
+                       f"real date, like 2026-09-03.") from None
     if not isinstance(day, _d):
         raise Rejected(f"{when!r} is not a date I can read. Try 2026-09-03.")
     text = str(note).strip()
@@ -872,6 +879,24 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
                     v = _as_date(v).isoformat()
                 except ValueError as ex:
                     raise Rejected(str(ex)) from None
+        if key == "when":
+            # Normalised here so the sentence under the Approve button is a
+            # real day, not whatever word the model wrote. "Thursday" is not
+            # a mistake a person should meet as a ValueError three steps
+            # later — and it is refused rather than resolved, because a
+            # reminder that quietly picks its own Thursday is one you
+            # approved for a different day.
+            from datetime import datetime as _dtv
+            from core.connectors.ics_out import _as_date as _adv
+            try:
+                v = _dtv.fromisoformat(v.replace(" ", "T")).date().isoformat()
+            except ValueError:
+                try:
+                    v = _adv(v).isoformat()
+                except ValueError:
+                    raise Rejected(
+                        f"{v!r} is not a day this can read. It wants a real "
+                        f"date, like 2026-09-03.") from None
         if key == "approval" and not re.match(r"^a_[A-Za-z0-9_]{1,64}$", v):
             raise Rejected(f"{v!r} is not the id of a queued item")
         if key == "title" and len(v) < 2:
@@ -895,7 +920,17 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
         # starts. A whole-day thing runs to the morning after the last day,
         # so its end is exclusive and "the 3rd to the 3rd" is no days at
         # all — which is the mistake somebody actually makes.
-        if isinstance(w_s, _dt) and isinstance(w_e, _dt):
+        # A bare ISO date parses as midnight, so "2026-10-05" arrives here
+        # as a datetime — and a midnight-to-midnight pair is a whole-day
+        # entry wearing a clock, not a timed one. Splitting on the type
+        # alone sent "the 5th to the 5th" into the timed rule, which
+        # rejected it as "00:00 is not after 00:00" — true, and the wrong
+        # lesson: the whole-day message is the one that says what to type
+        # instead.
+        timed = (isinstance(w_s, _dt) and isinstance(w_e, _dt)
+                 and (w_s.hour, w_s.minute, w_e.hour, w_e.minute)
+                     != (0, 0, 0, 0))
+        if timed:
             if w_e <= w_s:
                 raise Rejected(
                     f"{w_e:%H:%M} is not after {w_s:%H:%M} \u2014 an entry "

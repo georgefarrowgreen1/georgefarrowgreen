@@ -45,9 +45,15 @@ MUTATIONS = [
          file="core/doctor.py",
          find="iCloud Private Relay can stay on. It does not carry local",
          replace="Check that iCloud Private Relay is off, and that"),
-    dict(probe="A108", why="the router's client isolation stops being named",
+    # Re-aimed twice. It broke "(AP or client " and was registered against
+    # A108 — but the probes assert the word "isolation", which that edit
+    # left standing, and A108 was unrunnable under the filter besides, so
+    # the entry was green for the wrong reason on both counts. The gate's
+    # baseline check surfaced it the day it learned to look.
+    dict(probe="A118", why="the router's client isolation stops being named",
          file="core/preflight.py",
-         find="(AP or client ", replace="(a router thing "),
+         find='"isolation), which guest networks do by default.",',
+         replace='"separation), which guest networks do by default.",'),
     dict(probe="A109", why="a TLS ClientHello is answered in plaintext again",
          file="api/server.py",
          find="        if not self._tls_checked:", replace="        if False:"),
@@ -357,4 +363,36 @@ MUTATIONS = [
          file="api/server.py",
          find='    anywhere = f"http://{mesh[\'ip\']}:{port}/?t={TOKEN}" if mesh else ""',
          replace='    anywhere = ""'),
+
+    # ── the planner holds the whole catalogue ───────────────────────────
+    dict(probe="A127", why="remind_me loses its extractor again",
+         file="core/ask.py",
+         find='        if "when" in act.args:',
+         replace='        if False:'),
+    # `or 7` was the first version of this break, and it only changes the
+    # answer when today IS the named weekday — a mutation that is a no-op
+    # six days out of seven, caught by the gate on one of the six. The
+    # break has to break every day the gate runs.
+    dict(probe="A127", why="'Thursday' resolves to next week's",
+         file="core/ask.py",
+         find="        ahead = (want - today.weekday()) % 7",
+         replace="        ahead = (want - today.weekday()) % 7 + 7"),
+    dict(probe="A127", why="the day is said twice on the card",
+         file="core/ask.py",
+         find='            if "when" in act.args and args.get("when") and day_words:',
+         replace="            if False:"),
+    dict(probe="A127", why="a weekday word survives into the preview",
+         file="core/actions.py",
+         find='        if key == "when":',
+         replace='        if False:'),
+    dict(probe="A127", why="the same-day pair gets the timed lesson again",
+         file="core/actions.py",
+         find="        timed = (isinstance(w_s, _dt) and isinstance(w_e, _dt)\n"
+              "                 and (w_s.hour, w_s.minute, w_e.hour, w_e.minute)\n"
+              "                     != (0, 0, 0, 0))",
+         replace="        timed = isinstance(w_s, _dt) and isinstance(w_e, _dt)"),
+    dict(probe="A127", why="remove_source goes back to weights-only",
+         file="core/ask.py",
+         find='        if "name" in act.args:',
+         replace='        if False:'),
 ]

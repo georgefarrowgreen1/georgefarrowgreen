@@ -2085,6 +2085,15 @@ try:
     def pinned_never_graduates():
         # The trust ledger can earn a category the right to act alone. These
         # must not be earnable, however many times in a row you have said yes.
+        #
+        # The path prelude, because this probe imports core directly: it ran
+        # for weeks only when an *earlier* probe had already put the repo on
+        # sys.path, which made it green in the suite and unrunnable alone —
+        # and its five gate entries were proven against that unrunnable
+        # version, which is to say not proven. The gate's baseline check is
+        # what finally said so.
+        import sys as _s
+        _s.path.insert(0, ".")
         import core.actions as A
         loose = [a.name for a in A.ACTIONS.values()
                  if not a.pinned and a.name in
@@ -6587,7 +6596,7 @@ try:
         try:
             with _cl.redirect_stdout(buf):
                 try:
-                    D.main()
+                    D.main([])
                 except SystemExit:
                     pass
         finally:
@@ -8119,7 +8128,10 @@ try:
         try:
             with _cl.redirect_stdout(buf):
                 try:
-                    D.main()
+                    # An empty argv, explicitly: under the probe filter the
+                    # process's argv[1] is a probe name, and a main() that
+                    # read the global took the doctor down as int("A108").
+                    D.main([])
                 except SystemExit:
                     pass
         finally:
@@ -8735,6 +8747,104 @@ try:
                        "installs or publishes a tunnel")
     probe("A126 the mesh address is hidden by its own interface",
           tunnel_is_recognised)
+
+    # ── 127. an action only the model can hold ─────────────────────────
+    def planner_holds_the_whole_catalogue():
+        # remind_me went into the catalogue and the router in one commit,
+        # and never into _guess — so on the no-weights path, which is the
+        # path almost everyone is on, "remind me…" matched its intent,
+        # proposed with no `when`, was refused by validate, and the turn
+        # fell through to answering a question nobody asked. No suite saw
+        # it: the router probes check routing, the action probes call
+        # run() directly, and the join between them was nobody's.
+        #
+        # The class check first: every required argument of every action
+        # has an extractor branch in _guess, so the next new action cannot
+        # ship on one path. Read off the source, because the defect is a
+        # branch that does not exist.
+        import inspect
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import actions as ACT, ask as A
+        from core.durable import Store
+        from datetime import date as _dd, timedelta as _td
+
+        src = inspect.getsource(A._guess)
+        covered = set(re.findall(r'if "(\w+)" in act\.args', src))
+        # `end` is filled inside the `start` branch — a span is one
+        # extraction, not two — so the branch scan cannot see it. Covered
+        # only if the assignment is really there.
+        if 'args["start"], args["end"]' in src:
+            covered.add("end")
+        needed = {a for act in ACT.ACTIONS.values() for a in act.args}
+        orphans = sorted(needed - covered - {"approval"})
+        # `approval` is send_reply's id and is deliberately not guessable
+        # from a sentence: the queue supplies it.
+        if orphans:
+            return (True, f"the planner cannot fill {orphans} — those "
+                          f"actions exist only for a Mac with weights")
+
+        # And the joined behaviour, end to end through ask().
+        st = Store("blokk.db")
+        from core.models import router as _r
+
+        def prop_of(q):
+            evs = list(A.ask(st, q, _r.small, thread="t_a127"))
+            return next((e for e in evs if e.get("type") == "PROPOSAL"), None)
+
+        p = prop_of("remind me to ring the surgery on Thursday")
+        if not p:
+            return (True, "'remind me to ring the surgery on Thursday' "
+                          "proposes nothing on the planner path")
+        act = p.get("action") or {}
+        args = act.get("args") or {}
+        want = _dd.today() + _td(days=(3 - _dd.today().weekday()) % 7)
+        if args.get("when") != want.isoformat():
+            return (True, f"'Thursday' resolved to {args.get('when')!r}, "
+                          f"expected {want.isoformat()} — the next one, "
+                          f"today included")
+        if "thursday" in (args.get("note") or "").lower():
+            return (True, "the day is in the note as well as in `when`, so "
+                          "the card reads it twice")
+        if "surgery" not in (args.get("note") or ""):
+            return (True, f"the note lost the thing to ring: "
+                          f"{args.get('note')!r}")
+
+        # A weekday word straight into validate is refused with a sentence
+        # naming the shape, at propose time — where the preview is built —
+        # not as a ValueError three steps later at run time.
+        try:
+            ACT.validate("remind_me", {"when": "Thursday", "note": "test it"})
+            return (True, "validate accepts a weekday word, so the preview "
+                          "under the Approve button is not a date")
+        except ACT.Rejected as e:
+            if "2026-09-03" not in str(e) and "real date" not in str(e):
+                return (True, f"refused without showing the shape it wants: "
+                              f"{e}")
+        except ValueError:
+            return (True, "a weekday word is a ValueError rather than a "
+                          "rejection — a traceback where a sentence belongs")
+
+        # And the whole-day rejection teaches the whole-day fix. A bare ISO
+        # date parses as midnight, so "the 5th to the 5th" written as ISO
+        # arrived as a midnight-to-midnight pair and was refused by the
+        # *timed* rule — "00:00 is not after 00:00", true and useless.
+        day = (_dd.today() + _td(days=40)).isoformat()
+        try:
+            ACT.validate("put_in_diary",
+                         {"title": "Dentist", "start": day, "end": day})
+            return (True, "a zero-length whole day was accepted")
+        except ACT.Rejected as e:
+            if "morning after" not in str(e):
+                return (True, f"a same-day ISO pair is refused by the wrong "
+                              f"rule: {str(e)[:70]}")
+        return (False, "every required argument has an extractor, 'remind "
+                       "me on Thursday' proposes the coming Thursday with a "
+                       "clean note, a weekday word is refused with the shape "
+                       "it wants, and a same-day pair gets the whole-day "
+                       "lesson")
+    probe("A127 an action only a Mac with weights can use",
+          planner_holds_the_whole_catalogue)
 
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it

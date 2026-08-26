@@ -86,6 +86,14 @@ def main(argv) -> int:
         original[f] = path.read_text()
 
     bad, t0 = [], time.time()
+    # Green before the break, checked once per probe and cached. This was
+    # in the docstring as the third failure mode and never in the code —
+    # and the gap was not hypothetical: A108 could not run under the
+    # filter at all (the doctor parsed the probe's own argv), so it was
+    # red before every mutation and both of its entries were vacuously
+    # green for days. A mutation proven against a probe that already
+    # fails proves the probe fails, which was never in doubt.
+    baseline: dict[str, bool] = {}
     try:
         for m in wanted:
             probe, f = m["probe"], m["file"]
@@ -105,6 +113,17 @@ def main(argv) -> int:
                 print(f"  {AMBER}note{OFF}  {label}")
                 print(f"        {DIM}matches {src.count(m['find'])} places in "
                       f"{f}; only the first is changed{OFF}")
+
+            if probe not in baseline:
+                was_red, _ = run_probe(probe)
+                baseline[probe] = not was_red
+            if not baseline[probe]:
+                print(f"  {RED}FAIL{OFF}  {label}")
+                print(f"        {DIM}{probe} is red before the break — the "
+                      f"mutation proves nothing against a probe that already "
+                      f"fails{OFF}")
+                bad.append(label)
+                continue
 
             (ROOT / f).write_text(src.replace(m["find"], m["replace"], 1))
             try:

@@ -466,9 +466,14 @@ def _reminder_why(asked_for: str, today: str) -> str:
     late = (now - was).days
     if late <= 0:
         return "You asked to be reminded about this today."
+    # No claim about why it is late. "This Mac has not swept since" was
+    # here, and it is unknowable from a row that carries no created-at: a
+    # reminder asked for today about a date already past surfaces at the
+    # next sweep looking identical to one that waited a week on a shut
+    # lid. Saying how late it is, is measured; saying whose fault is not.
     return (f"You asked to be reminded about this on "
             f"{was.strftime('%A %-d %B')} \u2014 {late} day"
-            f"{'' if late == 1 else 's'} ago. This Mac has not swept since.")
+            f"{'' if late == 1 else 's'} ago.")
 
 
 def _why_no_draft(kind: str) -> str:

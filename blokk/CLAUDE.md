@@ -559,7 +559,18 @@ leaves the probe green, which reads exactly like a probe doing its job.
 Twice in one afternoon a mutation named a CSS class this markup does not
 have, and the pass that followed meant nothing.
 
-Coverage is printed, never assumed: 30 of 127 probes have an entry and the
+The third failure mode — **the probe was red before the break** — was in
+this paragraph for days before it was in the code, and the gap was not
+hypothetical: A108 could not run under the single-probe filter at all (the
+doctor parsed the probe's own argv and choked on "A108"), so it was red
+before every mutation and both of its entries were vacuously green. The
+gate runs each probe unbroken once, cached, before its mutations; the day
+it learned to look it also exposed a stale entry whose words no probe
+asserts any more, and — the recurring lesson wearing a new coat — a
+mutation that was itself a no-op six days out of seven, because its break
+only changed the answer when today was the weekday being resolved.
+
+Coverage is printed, never assumed: 31 of 128 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.

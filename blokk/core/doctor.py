@@ -620,8 +620,15 @@ def _ago(ts: float) -> str:
     return "just now"
 
 
-def main() -> int:
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
+def main(argv=None) -> int:
+    # An explicit argv, defaulting to the process's. Three probes call this
+    # in-process under the suite's single-probe filter, where sys.argv[1]
+    # is a probe name — int("A107") took the doctor down before its first
+    # line of output, which made every probe built on it unrunnable alone
+    # and its gate entries vacuous. A main() that reads global argv is a
+    # main() only a process can call.
+    args = sys.argv[1:] if argv is None else list(argv)
+    port = int(args[0]) if args else 8080
     print(f"\n  {_c('Can your phone reach this Mac?', BOLD)}\n")
 
     up = listening(port)

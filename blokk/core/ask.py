@@ -1399,6 +1399,51 @@ def _ymd(day: int, mon: int, after=None):
     return None
 
 
+def _day_in(q: str):
+    """The one day a sentence names, as (iso, the words that named it).
+
+    For remind_me, which takes a single day where the diary takes a span.
+    The matched words come back too, so the caller can keep them out of the
+    note — "ring the surgery on Thursday" is a note about ringing, and the
+    Thursday belongs in `when`, not said twice.
+
+    A bare weekday means the next one, today included: "remind me on
+    Thursday" said on a Thursday means today, and resolving it to next week
+    is the kind of cleverness a person only discovers when the reminder
+    does not come. "next Thursday" is the one after.
+    """
+    from datetime import date, timedelta
+    ql = q.lower()
+    today = date.today()
+    m = re.search(r"\b(tomorrow|today)\b", ql)
+    if m:
+        d = today + timedelta(days=1 if m.group(1) == "tomorrow" else 0)
+        return d.isoformat(), m.group(0)
+    m = re.search(r"\b(next\s+)?(monday|tuesday|wednesday|thursday|friday|"
+                  r"saturday|sunday)\b", ql)
+    if m:
+        want = ["monday", "tuesday", "wednesday", "thursday", "friday",
+                "saturday", "sunday"].index(m.group(2))
+        ahead = (want - today.weekday()) % 7
+        if m.group(1):
+            ahead += 7
+        return (today + timedelta(days=ahead)).isoformat(), m.group(0)
+    # A single written date, before the span parser — _dates_in wants a
+    # range, so "on 03/09/2026" alone resolved to nothing and the planner
+    # asked for a day that was right there in the sentence.
+    m = re.search(r"\b(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})\b", q)
+    if m:
+        from core.connectors.ics_out import _as_date
+        try:
+            return _as_date(m.group(1)).isoformat(), m.group(0)
+        except ValueError:
+            pass
+    span = _dates_in(q)
+    if span:
+        return span[0], span[0]
+    return None
+
+
 def _dates_in(q: str):
     """(start, end) as ISO strings, or None. Both halves half-open.
 
@@ -1662,14 +1707,36 @@ def _guess(q: str) -> dict | None:
                 args["kind"] = k
             else:
                 misses.append("kind")
+        if "when" in act.args:
+            # remind_me. Added to the catalogue and the router in the same
+            # commit, and never here — so on the no-weights path, which is
+            # the path most people are on, "remind me…" matched its intent,
+            # proposed with no `when`, was refused by validate, and the
+            # turn fell through to answering a question nobody asked. The
+            # planner and the model are two paths to one catalogue; an
+            # argument only one of them can fill is an action only one of
+            # them has. A95's lesson, relearned on the first new action
+            # since it was learned.
+            got = _day_in(q)
+            if got:
+                args["when"], day_words = got
+            else:
+                day_words = ""
+                misses.append("day")
         if "note" in act.args:
             # Everything after the verb, cleaned of the framing. What they
             # said is the rule; this only strips the "remember that".
-            note = re.sub(r"^\s*(?:please\s+)?(?:remember|note|keep in mind|"
-                          r"bear in mind|don'?t forget|forget|unlearn|"
-                          r"stop (?:saying|doing|applying))\b"
+            note = re.sub(r"^\s*(?:please\s+)?(?:remind\s+me|remember|note|"
+                          r"keep in mind|bear in mind|"
+                          r"don'?t (?:let me )?(?:forget|miss)|forget|"
+                          r"unlearn|stop (?:saying|doing|applying))\b"
                           r"(?:\s+(?:that|to|about))?[:,]?\s*", "", q,
                           flags=re.I).strip().rstrip(".")
+            # The day went into `when`; saying it again in the note makes
+            # the card read "ring the surgery on Thursday on Thursday".
+            if "when" in act.args and args.get("when") and day_words:
+                note = re.sub(r"\s*(?:\bon\b\s+)?" + re.escape(day_words)
+                              + r"\b[,.]?", "", note, flags=re.I).strip()
             # A name in the framing — "for the cottage, ..." — is who it is
             # about, not part of the rule. Stripped only from the front.
             note = re.sub(r"^(?:for|in)\s+\S+[,:]\s*", "", note).strip()
@@ -1683,6 +1750,20 @@ def _guess(q: str) -> dict | None:
                 args["start"], args["end"] = span
             else:
                 misses.append("dates")
+        if "name" in act.args:
+            # remove_source. The second orphan the catalogue check found in
+            # one sitting: routed by INTENT, unfillable here, so "remove
+            # the weather source" proposed nothing and the turn fell
+            # through to a status answer — on the exact surface that had
+            # just offered removal as something it can do.
+            m = re.search(r"source\s+(?:called|named)\s+['\"]?"
+                          r"([A-Za-z0-9_-]+)", q, re.I) or \
+                re.search(r"\b(?:the|my)\s+([A-Za-z0-9_-]+)\s+source\b",
+                          q, re.I)
+            if m:
+                args["name"] = m.group(1).lower()
+            else:
+                misses.append("name of the source")
         if "title" in act.args:
             m = FOR_WHO.search(q)
             who = (m.group(1).strip() if m else "")
