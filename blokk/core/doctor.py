@@ -245,10 +245,26 @@ def mesh_status() -> dict:
         peers.append({"name": str(p.get("HostName") or "?"),
                       "os": str(p.get("OS") or ""),
                       "online": bool(p.get("Online"))})
-    return {"installed": True,
-            "state": str(d.get("BackendState") or "unknown"),
-            "self": str(((d.get("Self") or {}).get("HostName")) or ""),
-            "peers": peers}
+    out = {"installed": True,
+           "state": str(d.get("BackendState") or "unknown"),
+           "self": str(((d.get("Self") or {}).get("HostName")) or ""),
+           "peers": peers}
+    # Shields up — Tailscale's own "block incoming connections". The one
+    # state where everything *looks* connected from both ends: the phone
+    # lists this Mac, the Mac holds its mesh address, status says Running —
+    # and every TCP attempt over the tailnet dies at this Mac's door. Read
+    # from prefs, best-effort: the field is not in `status`, and a build
+    # whose CLI will not answer `debug prefs` simply leaves the key out
+    # rather than inventing an answer.
+    try:
+        pr = subprocess.run([ts, "debug", "prefs"], capture_output=True,
+                            text=True, timeout=6)
+        prefs = _json.loads(pr.stdout or "{}")
+        if isinstance(prefs, dict) and "ShieldsUp" in prefs:
+            out["shields_up"] = bool(prefs["ShieldsUp"])
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return out
 
 
 def mesh_findings(ms: dict) -> list[dict]:
@@ -280,6 +296,16 @@ def mesh_findings(ms: dict) -> list[dict]:
                                f"address goes nowhere.",
                          "Open the Tailscale menu bar app and switch it "
                          "on.")]
+    if ms.get("shields_up"):
+        return [_finding(WARN, "Tailscale on this Mac is set to block "
+                               "incoming connections (shields up). The "
+                               "phone can see this Mac and still nothing "
+                               "gets in — every attempt over the mesh "
+                               "dies at this door, looking exactly like "
+                               "a lost connection.",
+                         "Tailscale menu bar icon > untick “Block "
+                         "incoming connections”. Nothing else needs "
+                         "changing.")]
     phones = [p for p in ms.get("peers", [])
               if p["os"].lower() in ("ios", "android")]
     if not phones:

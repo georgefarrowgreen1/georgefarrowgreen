@@ -552,6 +552,10 @@ MUTATIONS = [
          file="core/doctor.py",
          find='    if not any(p["online"] for p in phones):',
          replace='    if False:'),
+    dict(probe="A134", why="shields up reads as a healthy mesh",
+         file="core/doctor.py",
+         find='    if ms.get("shields_up"):',
+         replace='    if False:'),
     dict(probe="A134", why="the phone endpoint drops the diagnosis",
          file="api/server.py",
          find='    out = {"url": url, "anywhere_url": anywhere,\n'

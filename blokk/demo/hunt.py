@@ -9507,6 +9507,18 @@ try:
                                        "online": True}]}):
             return (True, "a healthy mesh still gets a warning — the line "
                           "everyone learns to scroll past")
+        # Shields up is the cruellest one: both ends look connected, the
+        # phone lists the Mac, and every TCP attempt dies at this door. It
+        # has to outrank the peer checks — a visible phone is no comfort
+        # when nothing is allowed in.
+        shields = said({"installed": True, "state": "Running",
+                        "self": "mac", "shields_up": True,
+                        "peers": [{"name": "p", "os": "iOS",
+                                   "online": True}]})
+        if "incoming" not in shields.lower() \
+                or "Block incoming connections" not in shields:
+            return (True, f"shields up — Tailscale's own block-incoming "
+                          f"switch — goes undiagnosed: {shields!r}")
 
         # And the sentences reach the surfaces: the phone panel's endpoint
         # carries them, the page renders them, the doctor prints them.
