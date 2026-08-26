@@ -59,6 +59,35 @@ def granting_app() -> str:
     return "the app you run Blokk from (Terminal, iTerm, or similar)"
 
 
+# The Full Disk Access pane, addressed directly. This exact string is
+# load-bearing: `open` on a System Settings URL with the wrong fragment
+# lands somebody on the General pane with no idea why, which is worse than
+# the four-step instructions it replaces.
+FDA_PANE = ("x-apple.systempreferences:"
+            "com.apple.preference.security?Privacy_AllFiles")
+
+
+def open_settings() -> dict:
+    """Open System Settings on the Full Disk Access pane, for the wizard's
+    Grant button. The one step this cannot do is the tick itself — macOS
+    reserves that for a person, which is the entire point of the pane — so
+    the reply names the app to turn on and the caller watches for the
+    grant to land rather than asking anybody to report back.
+    """
+    if os.uname().sysname != "Darwin":
+        return {"error": "not macOS — Full Disk Access is a macOS setting"}
+    try:
+        subprocess.run(["open", FDA_PANE], timeout=10, check=True,
+                       capture_output=True)
+    except Exception as e:                                       # noqa: BLE001
+        return {"error": f"could not open System Settings: "
+                         f"{type(e).__name__}"}
+    return {"ok": True, "grant_to": granting_app(),
+            "note": f"System Settings is open at Full Disk Access. Turn on "
+                    f"{granting_app()}, then come back — Blokk is watching "
+                    f"for it."}
+
+
 def _readable(p: Path) -> tuple[bool, str]:
     """Readable, and if not, whether that is absence or refusal."""
     try:

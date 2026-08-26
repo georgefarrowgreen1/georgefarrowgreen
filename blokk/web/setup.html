@@ -442,7 +442,7 @@
     <div class="row">
       <button class="go ghost" id="skip5">Skip for now</button>
       <div class="spacer"></div>
-      <button class="go" id="wire">Wire these up</button>
+      <button class="go" id="wire">Connect</button>
     </div>
   </div>
 
@@ -777,15 +777,34 @@ async function loadLocal(){
         <span class="who"><b>${esc(s.what)}</b><small>${esc(s.detail||s.reads)}</small></span>
         ${ready && CHOOSABLE.includes(kind)
           ? '<button type="button" class="pick">Choose\u2026</button>' : ''}
-        <span class="st ${esc(s.state==='ready'?'ready':s.state==='blocked'?'blocked':'')}">${esc(s.state)}</span>
+        ${(s.state==='blocked' || s.state==='empty')
+          ? '<button type="button" class="pick grant">Grant access\u2026</button>'
+          : `<span class="st ${esc(s.state==='ready'?'ready':'')}">${esc(s.state)}</span>`}
       </label>`);
       row.querySelector('input').addEventListener('change', refreshWire);
-      const pick = row.querySelector('.pick');
+      const pick = row.querySelector('.pick:not(.grant)');
       if(pick) pick.onclick = e => {
         // A button inside a label would otherwise toggle the checkbox it
         // sits in — the click belongs to the disclosure, not the row.
         e.preventDefault(); e.stopPropagation();
         showInside(wrap, kind, pick);
+      };
+      // Blocked (or ambiguously empty) is fixable in one tick of System
+      // Settings, so the row carries a button that opens the exact pane -
+      // not four lines saying where the pane is - and Blokk then watches
+      // for the grant to land instead of asking anybody to report back.
+      const grant = row.querySelector('.grant');
+      if(grant) grant.onclick = async e => {
+        e.preventDefault(); e.stopPropagation();
+        try{
+          const r = await post('/api/v1/local/grant', {});
+          $('#p5note').textContent = r.note || 'System Settings is open.';
+          watchGrant();
+        }catch(err){
+          $('#p5note').textContent = 'Could not open System Settings - '
+            + err.message + '. It is under Privacy & Security > Full Disk '
+            + 'Access.';
+        }
       };
       wrap.append(row);
       box.append(wrap);
@@ -807,16 +826,45 @@ async function loadLocal(){
       box.append(w);
     }
     holdsRow(box);
-    if(LOCAL.some(s=>s.state==='blocked'))
-      $('#p5note').textContent = 'Anything marked blocked needs Full Disk '
-        + 'Access, granted to the app that starts Blokk, and a restart. You '
-        + 'can do that later and add it from the app.';
+    if(LOCAL.some(s=>s.state==='blocked'||s.state==='empty'))
+      $('#p5note').textContent = 'Anything with a Grant access button is '
+        + 'one tick away: the button opens the exact System Settings pane, '
+        + 'and Blokk watches for the tick to land.';
     refreshWire();
   }catch(e){
     box.innerHTML = `<p class="hint">Could not read this Mac: ${esc(e.message)}.
       You can wire sources from the app instead.</p>`;
     LOCAL = []; holdsRow(box); refreshWire();
   }
+}
+
+// After the Grant button: watch for the tick to land rather than asking
+// anybody to report back. Full Disk Access applies the moment it is
+// ticked on most Macs; on the ones where the launching app has to be
+// relaunched, say that once, after honestly waiting.
+let GRANTWATCH = null;
+function watchGrant(){
+  if(GRANTWATCH) clearInterval(GRANTWATCH);
+  const stuck = LOCAL.filter(s=>s.state!=='ready').length;
+  let polls = 0;
+  GRANTWATCH = setInterval(async ()=>{
+    polls++;
+    let d; try{ d = await get('/api/v1/sources'); }catch(e){ return; }
+    const sur = (d.local && d.local.sources) || [];
+    const now = sur.filter(x=>x.state!=='ready').length;
+    if(now < stuck){
+      clearInterval(GRANTWATCH); GRANTWATCH = null;
+      $('#p5note').textContent =
+        'That worked. Tick what Blokk should read.';
+      loadLocal();
+    } else if(polls > 40){
+      clearInterval(GRANTWATCH); GRANTWATCH = null;
+      $('#p5note').textContent = 'Still not readable. This Mac only picks '
+        + 'the permission up on a fresh launch: quit '
+        + (((d.local||{}).grant_to) || 'the app running Blokk')
+        + ' completely, start Blokk again, and this step will be waiting.';
+    }
+  }, 3000);
 }
 
 // Only these are folders of things. Weather is a place and a page is a page.
@@ -872,14 +920,14 @@ function refreshWire(){
   const n = ticked().length;
   const cw = document.querySelector('#calwrite')?.checked;
   b.disabled = !n && !cw;
-  b.textContent = n ? `Wire ${n} source${n===1?'':'s'} up`
+  b.textContent = n ? `Connect ${n===1?'it':'these'}`
     : cw ? 'Allow Calendar writes' : 'Nothing ticked';
 }
 
 $('#skip5').onclick = ()=>{ location.href='/'; };
 
 $('#wire').onclick = async ()=>{
-  const b = $('#wire'); b.disabled = true; b.textContent='Wiring…';
+  const b = $('#wire'); b.disabled = true; b.textContent='Connecting…';
   try{
     const failed = [];
     for(const kind of ticked()){

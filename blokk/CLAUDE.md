@@ -464,7 +464,11 @@ worse than an error.
     core/egress.py     the only way out: one allowlist (the ledger's net
                        half), no private addresses, redirects re-checked,
                        logs/egress.log
-    core/local.py      what this Mac will hand over without a password
+    core/local.py      what this Mac will hand over without a password,
+                       and the guided Full Disk Access grant: FDA_PANE is
+                       the exact System Settings deep link, opened on a
+                       button, with the wizard watching for the tick to
+                       land (A131)
     core/backup.py     online snapshot of blokk.db, and verifying one
     core/regression.py twenty frozen examples and the assertions on them
     core/autoupdate.py updating on its own without going quiet about it:
@@ -600,7 +604,7 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 34 of 131 probes have an entry and the
+Coverage is printed, never assumed: 35 of 132 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.

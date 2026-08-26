@@ -787,6 +787,14 @@ def h_sources_test(_body):
     return sources.test(store)
 
 
+def h_local_grant(_body):
+    """Open the Full Disk Access pane for the person to tick. The tick
+    itself is macOS's to give; this removes the four steps of finding it."""
+    from core import local
+    r = local.open_settings()
+    return (r, 400) if r.get("error") else r
+
+
 def h_permissions(_q):
     """The whole ledger, for the panel: every app door and every host."""
     from core import permission
@@ -1184,6 +1192,7 @@ ROUTES_POST = [
     (r"^/api/v1/egress/allow$", h_egress_allow),
     (r"^/api/v1/egress/deny$", h_egress_deny),
     (r"^/api/v1/permissions/set$", h_permission_set),
+    (r"^/api/v1/local/grant$", h_local_grant),
     (r"^/api/v1/update/check$", h_update_check),
     (r"^/api/v1/update/auto$", lambda b: h_auto_update(b)),
     (r"^/api/v1/restart$", h_restart),

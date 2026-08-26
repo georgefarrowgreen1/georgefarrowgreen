@@ -9088,6 +9088,65 @@ try:
     probe("A130 the panel and the gate keep separate books",
           one_ledger_both_surfaces)
 
+    def setup_is_four_steps_of_reading():
+        # The whole difficulty of connecting Mail, Calendar and Messages is
+        # one macOS checkbox that macOS never prompts for. The wizard used
+        # to answer that with four lines of instructions; now the blocked
+        # row carries a button that opens the exact System Settings pane,
+        # and Blokk watches for the tick to land rather than asking anybody
+        # to report back. Each half is checked, because each half has its
+        # own way of quietly rotting.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import local as L
+        # The deep link, exactly. `open` with the wrong fragment lands
+        # somebody on the General pane with no idea why — worse than the
+        # instructions it replaced.
+        want = ("x-apple.systempreferences:"
+                "com.apple.preference.security?Privacy_AllFiles")
+        if getattr(L, "FDA_PANE", "") != want:
+            return (True, f"the settings link is not the Full Disk Access "
+                          f"pane: {getattr(L, 'FDA_PANE', 'missing')!r}")
+        # Guarded: on this box it must refuse as not-macOS, never reach for
+        # `open`.
+        r = L.open_settings()
+        if r.get("ok"):
+            return (True, "open_settings claims to have opened System "
+                          "Settings on a Linux box")
+        if "macOS" not in str(r.get("error", "")):
+            return (True, f"refused for the wrong reason: {r}")
+        # The endpoint answers 400-with-a-sentence here, meaning it exists
+        # and is routed; a 404 is a wizard button wired to nothing.
+        try:
+            po('/api/v1/local/grant', {})
+            return (True, "the grant endpoint said ok on Linux")
+        except Exception as e:                                   # noqa: BLE001
+            if getattr(e, "code", None) != 400:
+                return (True, f"the grant endpoint is not routed: "
+                              f"{type(e).__name__} {getattr(e, 'code', '')}")
+        page = open("web/setup.html").read()
+        # The button itself, not the sentence about it — the note under the
+        # list also says "Grant access", and a probe satisfied by the
+        # sentence keeps a wizard whose button is gone.
+        if "local/grant" not in page \
+                or "Grant access\\u2026</button>" not in page:
+            return (True, "the wizard's blocked row has no Grant access "
+                          "button — back to four lines of instructions")
+        if "watchGrant();" not in page:
+            return (True, "the wizard opens the pane and then asks the "
+                          "person to report back — nothing watches for the "
+                          "grant to land")
+        board = open("web/index.html").read()
+        if "local/grant" not in board or 'id="fda-open"' not in board:
+            return (True, "the sources sheet still prints steps with no "
+                          "button to open the pane")
+        return (False, "the exact pane opens on a button, the wizard "
+                       "watches for the tick to land, the endpoint is "
+                       "routed and macOS-guarded, and the sheet offers the "
+                       "same door")
+    probe("A131 connecting your own Mac takes four steps of reading",
+          setup_is_four_steps_of_reading)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

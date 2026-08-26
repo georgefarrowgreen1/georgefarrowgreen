@@ -449,6 +449,31 @@ MUTATIONS = [
          find='    from core import permission\n'
               '    return permission.net_hosts(store)',
          replace='    from core import permission\n    return []'),
+    dict(probe="A131", why="the settings link opens the wrong pane",
+         file="core/local.py",
+         find="Privacy_AllFiles",
+         replace="Privacy_Accessibility"),
+    dict(probe="A131", why="the not-macOS guard is gone, so a dev box "
+                           "shells out to `open`",
+         file="core/local.py",
+         find='    if os.uname().sysname != "Darwin":\n'
+              '        return {"error": "not macOS — Full Disk Access is a '
+              'macOS setting"}',
+         replace='    if False:\n'
+                 '        return {"error": "not macOS — Full Disk Access is '
+                 'a macOS setting"}'),
+    dict(probe="A131", why="the wizard opens the pane and stops watching",
+         file="web/setup.html",
+         find="          watchGrant();",
+         replace="          ;"),
+    dict(probe="A131", why="the blocked row goes back to instructions",
+         file="web/setup.html",
+         find="Grant access\\u2026</button>",
+         replace="See the steps below\\u2026</button>"),
+    dict(probe="A131", why="the sources sheet loses its door to the pane",
+         file="web/index.html",
+         find='id="fda-open"',
+         replace='id="fda-shut"'),
     dict(probe="A54", why="opening an app can graduate to acting alone",
          file="core/actions.py",
          find='args=("app",), optional=("verb",), pinned=True,\n'

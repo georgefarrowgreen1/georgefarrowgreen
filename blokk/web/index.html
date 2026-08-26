@@ -2144,7 +2144,10 @@ async function paintSources(extra){
     </div>`).join('')}</div>
     ${L.blocked ? `<div class="fda">
       <b>${L.blocked} of these is on this Mac but not readable.</b>
-      <ol>${L.how.map(h => `<li>${esc(h)}</li>`).join('')}</ol>
+      That is Full Disk Access — one tick, and the button opens the exact
+      pane. Turn on ${esc(L.grant_to || 'the app running Blokk')} there.
+      <div><button class="mini go" id="fda-open">Open Full Disk Access
+        settings</button></div>
     </div>` : ''}`;
 
   // The other half of "where Blokk reads from". Reading is above; this is
@@ -2203,6 +2206,16 @@ async function paintSources(extra){
     const r = await post('/api/v1/egress/deny', {host: b.dataset.deny});
     paintSources(`<p class="sub">${esc(r.detail || r.error)}</p>`);
   });
+  const fdab = body.querySelector('#fda-open');
+  if(fdab) fdab.onclick = async () => {
+    try{
+      const r = await post('/api/v1/local/grant', {});
+      paintSources(`<p class="sub">${esc(r.note || 'System Settings is '
+        + 'open.')} Reopen this sheet once it is ticked.</p>`);
+    }catch(e){
+      paintSources(`<p class="sub">${esc(e.message)}</p>`);
+    }
+  };
   // The ref field means three different things depending on the kind, so it
   // says which one as you pick.
   const REF_HINT = {
