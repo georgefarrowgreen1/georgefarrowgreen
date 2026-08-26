@@ -7344,8 +7344,18 @@ try:
         # 4. And then it answers the question. Stubbed at the socket, so
         #    this tests the chain rather than the weather in Newcastle.
         keep = (EG.fetch_json, WX.egress.fetch_json)
+        # Dated off the clock, never written down: this held
+        # ["2026-08-25", "2026-08-26"] and was green until midnight did what
+        # midnight does — "tomorrow" stopped being in the forecast, the
+        # answer came back header-only, and the probe reported a product
+        # regression about a fixture that had expired. The repo already
+        # knew this rule ("dates relative to today, or this probe expires
+        # quietly"); this fixture was written before the rule reached it.
+        import datetime as _d2
+        _t0 = _d2.date.today()
         WEEK = {"daily": {
-            "time": ["2026-08-25", "2026-08-26"], "weather_code": [3, 61],
+            "time": [_t0.isoformat(), (_t0 + _d2.timedelta(days=1)).isoformat()],
+            "weather_code": [3, 61],
             "temperature_2m_max": [18.4, 16.1],
             "temperature_2m_min": [11.2, 10.8],
             "precipitation_probability_max": [10, 85],
@@ -7866,11 +7876,21 @@ try:
         # whatever day of the week the suite runs on.
         import datetime as _dt
         today = _dt.date.today()
+        # The storm is placed on the *weekend*, computed from today's
+        # weekday — not at offsets 5 and 6, which are the weekend only when
+        # today is a Monday. Written that way, this probe was green on a
+        # Monday and Tuesday and false-red from Wednesday on: the fixture's
+        # weekend genuinely was dry, the product said so correctly, and the
+        # probe called that a bug. A fixture with a day-of-week in it gets
+        # the day-of-week from the clock, the same rule as dates.
+        _sat = (5 - today.weekday()) % 7
         wide = [dict(days[0],
                      **{"from": (today + _dt.timedelta(days=n)).isoformat(),
-                        "rain_chance": 90 if n in (5, 6) else 5,
-                        "label": "thunderstorms" if n in (5, 6) else "clear",
-                        "subject": "thunderstorms" if n in (5, 6) else "clear"})
+                        "rain_chance": 90 if n in (_sat, _sat + 1) else 5,
+                        "label": "thunderstorms" if n in (_sat, _sat + 1)
+                                 else "clear",
+                        "subject": "thunderstorms" if n in (_sat, _sat + 1)
+                                   else "clear"})
                 for n in range(14)]
 
         def span_of(q):
@@ -8617,6 +8637,104 @@ try:
                        "file, and the diary is asked about hours first")
     probe("A125 the holiday let grows back",
           rebased_on_a_person)
+
+    # ── 126. the mesh address is hidden by its own interface ───────────
+    def tunnel_is_recognised():
+        # On macOS a Tailscale address lives on a utun interface, and the
+        # classifier used to check the interface prefix before the address
+        # range — so the one address that works from anywhere, and that
+        # iOS's Local Network permission cannot touch, was filed under "a
+        # VPN tunnel the phone is not on" and hidden. The cgnat branch
+        # below it was unreachable on a Mac: dead code shaped like support.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import doctor as D, preflight as P
+
+        kind, usable, why = D._kind("utun4", "100.101.102.5")
+        if not usable or kind != "tailnet":
+            return (True, f"Tailscale on a Mac reads as {kind!r}, "
+                          f"usable={usable} — the mesh address is hidden by "
+                          f"its own interface")
+        if "anywhere" not in why.lower():
+            return (True, "the mesh address does not say what it is for")
+        if "local network" not in why.lower():
+            return (True, "the one fact that matters — the phone-side "
+                          "permission does not apply — is not said")
+        # A work VPN on a utun is still not the phone's network. The mesh
+        # exception is the 100.64/10 range, not tunnels in general.
+        _, vpn_usable, _ = D._kind("utun2", "172.16.9.1")
+        if vpn_usable:
+            return (True, "any VPN tunnel now reads as reachable, which is "
+                          "the old phone-URL bug in reverse")
+        # And the carrier's own CGNAT on a real interface must not read as
+        # something the phone can be sent to... it is the same range, so it
+        # does — the honest wording covers it: "when the phone runs
+        # Tailscale". Ranked after the LAN, because at home the LAN needs
+        # no second app.
+        rows = [("en0", "192.168.1.69"), ("utun4", "100.101.102.5")]
+        real = D.interfaces
+        D.interfaces = lambda: rows
+        try:
+            ranked = D.phone_addresses(0)
+        finally:
+            D.interfaces = real
+        kinds = [r["kind"] for r in ranked if r["usable"]]
+        if kinds != ["lan", "tailnet"]:
+            return (True, f"ranked as {kinds} — the LAN should lead and the "
+                          f"mesh follow")
+
+        # The way out is on the one causes list, once, as a note — and the
+        # phone panel offers the second link with its own QR.
+        causes = P.why_not_reaching("")
+        mesh = [f for f in causes if "mesh" in f["what"].lower()]
+        if len(mesh) != 1:
+            return (True, f"{len(mesh)} mesh notes on the causes list")
+        if mesh[0]["level"] != P.NOTE:
+            return (True, "the mesh is ranked as a fault rather than a way "
+                          "out — it is not something wrong")
+        if "tailscale" not in (mesh[0]["what"] + mesh[0]["fix"]).lower():
+            return (True, "the note never names the thing to install")
+        srv = pathlib.Path("api/server.py").read_text()
+        # The construction, not the key: a field named anywhere_url that is
+        # assigned "" satisfies a name check and offers nothing — the gate
+        # caught exactly that edit passing.
+        if "anywhere = f\"http://{mesh['ip']}:{port}/?t={TOKEN}\"" not in srv:
+            return (True, "the phone panel never builds the mesh link")
+        if "qr_anywhere" not in srv:
+            return (True, "the mesh link is offered without its QR")
+        page = pathlib.Path("web/index.html").read_text()
+        if "anywhere_url" not in page:
+            return (True, "the panel sends the mesh link and the page never "
+                          "shows it")
+        # Recognised, never published: nothing in Blokk starts, installs or
+        # configures a tunnel, and no public-tunnel hostname appears
+        # anywhere in the runtime. The mesh is an address this Mac already
+        # has; a public URL would put the queue on the internet behind a
+        # query-string token, which is the product this refuses to be.
+        for f in ("api/server.py", "core/doctor.py", "core/preflight.py",
+                  "core/sources.py", "core/egress.py"):
+            low = pathlib.Path(f).read_text().lower()
+            for bad in ("ngrok", "trycloudflare", "cloudflared",
+                        "localtunnel", "serveo"):
+                if bad in low:
+                    return (True, f"{f} mentions {bad} — a public tunnel "
+                                  f"has no place in the runtime")
+            # Per line, because the file may say the word in a comment
+            # and run subprocesses for other reasons — the defect is one
+            # line doing both: executing the tunnel instead of reading the
+            # address it already put on an interface.
+            for ln in low.splitlines():
+                if "tailscale" in ln and ("subprocess" in ln or "popen" in ln
+                                          or "run([" in ln):
+                    return (True, f"{f} runs tailscale rather than "
+                                  f"recognising its address — recognised, "
+                                  f"not managed")
+        return (False, "the mesh address is recognised by range, ranked "
+                       "after the LAN, offered with its own QR, on the "
+                       "causes list once as a way out — and nothing starts, "
+                       "installs or publishes a tunnel")
+    probe("A126 the mesh address is hidden by its own interface",
+          tunnel_is_recognised)
 
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it

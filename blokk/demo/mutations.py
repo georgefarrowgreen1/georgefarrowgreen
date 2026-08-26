@@ -328,4 +328,33 @@ MUTATIONS = [
                  "            if hasattr(c, \"open_windows\"):\n"
                  "                return [dict(w) for w in "
                  "c.open_windows(days=14)][:MAX_ROWS]"),
+
+    # ── the mesh: recognised, ranked, offered — and never managed ───────
+    dict(probe="A126", why="the interface hides the mesh address again",
+         file="core/doctor.py",
+         find="    if a == 100 and 64 <= b <= 127:\n"
+              '        return ("tailnet", True,',
+         replace="    if False:\n"
+                 '        return ("tailnet", True,'),
+    dict(probe="A126", why="any VPN tunnel reads as reachable",
+         file="core/doctor.py",
+         find='        why = f"{name} is not the network your phone is on"\n'
+              '        if n.startswith(("bridge", "vmenet", "vnic", "vboxnet")):\n'
+              '            why += " — unless you are sharing this Mac\'s connection to it"\n'
+              '        return (n or "?", False, why)',
+         replace='        return (n or "?", True, "a tunnel, probably fine")'),
+    dict(probe="A126", why="the mesh outranks the LAN",
+         file="core/doctor.py",
+         find='    order = {"lan": 0, "tailnet": 1, "public": 2}',
+         replace='    order = {"tailnet": 0, "lan": 1, "public": 2}'),
+    dict(probe="A126", why="the way out falls off the causes list",
+         file="core/preflight.py",
+         find='    out.append(_finding(\n'
+              '        NOTE, "A private mesh sidesteps all of the above. Tailscale on the "',
+         replace='    _unused = (_finding(\n'
+                 '        NOTE, "A private mesh sidesteps all of the above. Tailscale on the "'),
+    dict(probe="A126", why="the panel stops offering the second link",
+         file="api/server.py",
+         find='    anywhere = f"http://{mesh[\'ip\']}:{port}/?t={TOKEN}" if mesh else ""',
+         replace='    anywhere = ""'),
 ]

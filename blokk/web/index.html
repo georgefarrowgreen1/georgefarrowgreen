@@ -2453,12 +2453,23 @@ $('#phone').onclick = async () => {
       ? `<p class="sub">${d.tried} addresses could work. If this one does
          not, the others are below — this Mac cannot tell which network your
          phone is on.</p>` : '';
+    // The mesh link is a different capability, not a spare copy: it works
+    // away from home too, and it does not need iOS's Local Network
+    // permission, because it is not the local network. Shown with its own
+    // QR when Tailscale is on this Mac; absent otherwise, because a panel
+    // advertising an address that does not exist is the phone URL bug all
+    // over again.
+    const mesh = d.anywhere_url
+      ? `<p><b>And from anywhere</b>, through your Tailscale —
+         at home this works too, and it skips the Local Network permission:</p>
+         <div class="qr">${d.qr_anywhere || ''}</div>
+         <p class="link"><code>${esc(d.anywhere_url)}</code></p>` : '';
     body.innerHTML = d.url
       ? `<p>Point the camera at this, on the same wifi as this Mac.</p>
          <div class="qr">${d.qr || ''}</div>
          <p class="link"><code>${esc(d.url)}</code></p>
          <p class="sub">Then Share &rsaquo; Add to Home Screen and it is remembered.</p>
-         ${alt}${rows}${fw}`
+         ${mesh}${alt}${rows}${fw}`
       : `<p class="no">No address here is one a phone could reach.</p>
          <p class="sub">Everything below is a VPN tunnel, a virtual network
            or an interface with nothing behind it. Join a wifi network, or

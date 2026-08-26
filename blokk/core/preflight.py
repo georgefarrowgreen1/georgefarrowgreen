@@ -136,6 +136,19 @@ def why_not_reaching(note: str = "", shown: bool = False) -> list[dict]:
                   "ruling out.",
             "Turning the firewall off for one minute settles whether it is "
             "that."))
+    # The way around the whole list, said last because it is a different
+    # answer, not the next thing to check: a private mesh gives this Mac an
+    # address that works from anywhere — the router never carries it, and
+    # the phone's Local Network permission does not apply, because it is
+    # not the local network. Recognised, not required: when Tailscale is
+    # on this Mac, the doctor and the phone panel print the extra address
+    # on their own.
+    out.append(_finding(
+        NOTE, "A private mesh sidesteps all of the above. Tailscale on the "
+              "Mac and the phone, same account, gives this Mac an address "
+              "that works from anywhere — home wifi included.",
+        "Install Tailscale on both, then ./blokk doctor prints the extra "
+        "address."))
     return out
 
 

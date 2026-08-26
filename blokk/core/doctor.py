@@ -151,6 +151,21 @@ def _kind(name: str, ip: str) -> tuple[str, bool, str]:
             ("192.0.2.", "198.51.100.", "203.0.113.")):
         return ("reserved", False,
                 "this range is reserved for documentation and never routes")
+    # This one range is judged by address *before* the interface,
+    # deliberately. On macOS a Tailscale address lives on a utun, and
+    # checking the interface first filed a working mesh address under "a
+    # VPN tunnel the phone is not on" — the phone CAN be on this one, which
+    # is the entire point of a mesh. It is also the address that gets
+    # around every cause on the phone-reach list at once: it works from
+    # anywhere (home wifi included), the router never sees it, and it is
+    # not the local network, so iOS's Local Network permission does not
+    # apply to it.
+    if a == 100 and 64 <= b <= 127:
+        return ("tailnet", True,
+                "a private mesh — Tailscale numbers this range. Works from "
+                "anywhere, home wifi included, when the phone runs Tailscale "
+                "on the same account; iOS's Local Network permission does "
+                "not apply to it")
     if n.startswith(NOT_A_LAN):
         why = f"{name} is not the network your phone is on"
         if n.startswith(("bridge", "vmenet", "vnic", "vboxnet")):
@@ -160,10 +175,6 @@ def _kind(name: str, ip: str) -> tuple[str, bool, str]:
     private = (a == 10 or (a == 172 and 16 <= b <= 31) or (a, b) == (192, 168))
     if private:
         return ("lan", True, "a home or office network — this is the one to try")
-    if a == 100 and 64 <= b <= 127:
-        return ("cgnat", True,
-                "a carrier or mesh network (Tailscale uses this range) — it "
-                "works if the phone is on the same one")
     return ("public", True,
             "a public address; it will work only if your router lets the "
             "phone reach it")
@@ -190,7 +201,10 @@ def phone_addresses(port: int) -> list[dict]:
                     "listening": reachable(ip, port)})
     # Usable first, then a LAN address before a public one, then the lower
     # interface number — en0 is the built-in wifi on every Mac.
-    order = {"lan": 0, "cgnat": 1, "public": 2}
+    # The LAN first: on home wifi it is the shorter path, and it needs no
+    # second app on the phone. The mesh next, ahead of a public address —
+    # it is a link a phone can actually be sent to, wherever it is.
+    order = {"lan": 0, "tailnet": 1, "public": 2}
     out.sort(key=lambda r: (not r["usable"], not r["listening"],
                             order.get(r["kind"], 9), r["interface"]))
     return out
@@ -670,6 +684,23 @@ def main() -> int:
         print(f"  {_c('the address and tries HTTPS, which this does not speak —', DIM)}")
         print(f"  {_c('and reports that with the same sentence. Scan the QR and', DIM)}")
         print(f"  {_c('none of this comes up.', DIM)}")
+
+        # A mesh address is a different capability, not a spare copy of the
+        # same one, so it gets its own line rather than a place in the
+        # ranked list nobody reads past the first row of. It works from
+        # anywhere, and it is the way around every cause on the list at
+        # once — the router never carries it and iOS's Local Network
+        # permission does not apply to it, because it is not the local
+        # network.
+        mesh = next((r for r in good if r["kind"] == "tailnet"
+                     and r["ip"] != ip), None)
+        if mesh:
+            print()
+            print(f"  {_c('And from anywhere, through your Tailscale:', BOLD)}")
+            murl = f"http://{mesh['ip']}:{port}/?t={token}"
+            print(f"      {_c(murl, GREEN)}")
+            print(f"  {_c('Same Blokk, over the mesh — it also works at home, and', DIM)}")
+            print(f"  {_c('it does not need the Local Network permission at all.', DIM)}")
 
         # Has anything ever actually got here. This is the half of the
         # question no check on this side can measure — a probe from this Mac

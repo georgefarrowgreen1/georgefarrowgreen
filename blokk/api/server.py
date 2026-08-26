@@ -816,8 +816,17 @@ def h_phone(_q):
     found = doctor.phone_addresses(port)
     usable = [r for r in found if r["usable"] and r["listening"]]
     url = f"http://{usable[0]['ip']}:{port}/?t={TOKEN}" if usable else ""
+    # The mesh address is a second capability, not a second copy: it works
+    # from anywhere, and iOS's Local Network permission does not apply to
+    # it because it is not the local network. Offered beside the LAN link,
+    # never instead of it — on home wifi the LAN path needs no second app.
+    mesh = next((r for r in usable
+                 if r["kind"] == "tailnet" and (not url or r["ip"] not in url)),
+                None)
+    anywhere = f"http://{mesh['ip']}:{port}/?t={TOKEN}" if mesh else ""
     state, note = doctor.firewall()
-    out = {"url": url, "addresses": found, "tried": len(usable),
+    out = {"url": url, "anywhere_url": anywhere,
+           "addresses": found, "tried": len(usable),
            "firewall": {"state": state, "note": note},
            # Somebody typing the address without http:// shows up here and
            # nowhere else — the phone reports it as a lost connection and
@@ -828,6 +837,11 @@ def h_phone(_q):
             out["qr"] = qr.svg(url)
         except Exception:
             pass                       # a missing picture is not a failure
+    if anywhere:
+        try:
+            out["qr_anywhere"] = qr.svg(anywhere)
+        except Exception:
+            pass
     return out
 
 

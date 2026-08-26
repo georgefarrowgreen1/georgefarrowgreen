@@ -350,6 +350,25 @@ had nothing to compare a price against. What it catches is invention, not
 misuse: £120 quoted for the wrong week passes clean, and the sentence on the
 card says as much.
 
+**Remote access is recognised, never published.** A private mesh
+(Tailscale) gives this Mac an address in 100.64/10 that works from
+anywhere; Blokk *recognises* that address — the doctor and the phone panel
+print it beside the LAN link, ranked second — and does nothing else: it
+never starts, installs or configures a tunnel, and no public-tunnel
+service (ngrok, Cloudflare Tunnel and kin) gets a place in the runtime. The
+line is the product's own: a mesh is your devices reaching your Mac over an
+encrypted network that contains only them, with the token still required
+off loopback; a public URL is your mail and your approval queue on the
+internet behind a query string, served by a stdlib HTTP server that was
+never hardened for it. The mesh address also happens to be the way around
+every cause on the phone-reach list at once — the router never carries it,
+and iOS's Local Network permission does not apply because it is not the
+local network — which is why the causes list names it as the way out. The
+classifier judges that one range by address before interface: on macOS
+Tailscale lives on a utun, and interface-first filed the working mesh
+address under "a VPN tunnel the phone is not on". A126 holds all of it,
+mutation-tested five ways.
+
 **6. Fail loudly, degrade locally.**
 One broken connector must not take the night's sweep. One malformed row must
 not take an endpoint. But nothing may fail *silently* — a truncated stream, a
@@ -540,7 +559,7 @@ leaves the probe green, which reads exactly like a probe doing its job.
 Twice in one afternoon a mutation named a CSS class this markup does not
 have, and the pass that followed meant nothing.
 
-Coverage is printed, never assumed: 29 of 126 probes have an entry and the
+Coverage is printed, never assumed: 30 of 127 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.
