@@ -498,9 +498,39 @@ MUTATIONS = [
          find='    return "mail" if "@" in (to or "") else "text"',
          replace='    return "mail"'),
     dict(probe="A132", why="approving a draft stops offering the send",
-         file="api/server.py",
-         find='and a["category"] != "send_mail"):',
-         replace='and False):'),
+         file="core/actions.py",
+         find='            or row["category"] == "send_mail"):',
+         replace='            or True):'),
+    dict(probe="A133", why="a % in a search lists the address book",
+         file="core/connectors/contacts.py",
+         find='        like = "%" + (want.replace("\\\\", "\\\\\\\\")'
+              '.replace("%", r"\\%")\n'
+              '                      .replace("_", r"\\_")) + "%"',
+         replace='        like = "%" + want + "%"'),
+    dict(probe="A133", why="one person synced twice reads as two",
+         file="core/connectors/contacts.py",
+         find='                           tuple(sorted(_tail(x) '
+              'for x in phones)))',
+         replace='                           tuple(sorted(_digits(x) '
+                 'for x in phones)))'),
+    dict(probe="A133", why="holds() goes dialect-blind on numbers",
+         file="core/connectors/contacts.py",
+         find='                        if _same_number(r["ZFULLNUMBER"], '
+              'want):',
+         replace='                        if _digits(r["ZFULLNUMBER"]) '
+                 '== _digits(want):'),
+    dict(probe="A133", why="free text becomes a recipient again",
+         file="core/actions.py",
+         find='        if not book.holds(want):',
+         replace='        if False and not book.holds(want):'),
+    dict(probe="A133", why="two Sams and it picks one",
+         file="core/actions.py",
+         find='        if len(found) > 1:',
+         replace='        if False and len(found) > 1:'),
+    dict(probe="A127", why="write_to loses its name extractor",
+         file="core/ask.py",
+         find='        if "to" in act.args:',
+         replace='        if "recipient" in act.args:'),
     dict(probe="A54", why="opening an app can graduate to acting alone",
          file="core/actions.py",
          find='args=("app",), optional=("verb",), pinned=True,\n'

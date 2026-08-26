@@ -168,12 +168,18 @@ the second decision the doctrine requires is a card in the queue rather
 than an action nothing could ever invoke. A132 holds all of it,
 mutation-tested six ways.
 
-`approval.recipient` is taken from the From header of the message being
-answered and from nowhere else — never from a body, because a "please reply
+`approval.recipient` has exactly two provenances, and free text is neither:
+the From header of the message being answered, or a detail out of *your*
+Contacts matched against a name *you* used (`write_to`, resolved through
+`core/connectors/contacts.py` — two matches is a question back, never a
+pick, and even a raw address typed straight in is refused unless the
+address book holds it, because "john.smith@gmial.com" is the near-miss a
+person approves without seeing). Never from a body, because a "please reply
 to" line inside somebody's mail is text a stranger wrote. A draft with no
 recorded recipient cannot be sent at all, which is what makes that a rule
 rather than a preference; `smtp_mail.Smtp.send` re-checks the address it is
-handed against the one on the row and refuses if they differ.
+handed against the one on the row and refuses if they differ. A133 holds
+the compose half, mutation-tested five ways.
 
 A draft is sent once. `approval.sent_at` is set the moment it goes and every
 guard refuses a second attempt — nothing marked it before, so the same draft
@@ -527,6 +533,8 @@ worse than an error.
                        `promoted` by running clean and is retired by failing,
                        the trust ledger's shape for the trust ledger's reason
     core/connectors/   iCloud IMAP + CalDAV, local Mail + Calendar, Messages,
+                       Contacts (the address book, search-only — how
+                       "email John" knows who John is),
                        ics_out (a .ics file per approved hold, keyed on the
                        booking so a replay overwrites) and calendar_app
                        (the same hold, put in Calendar.app through
@@ -623,7 +631,7 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 36 of 133 probes have an entry and the
+Coverage is printed, never assumed: 37 of 134 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.

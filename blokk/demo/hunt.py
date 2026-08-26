@@ -9311,6 +9311,150 @@ try:
     probe("A132 a text can leave without its own decision",
           texts_reach_a_stranger)
 
+    def a_name_becomes_a_recipient():
+        # "email John" is the whole feature, and every part of it is a way
+        # to send somebody's words to the wrong person: a listing instead
+        # of a search, a synced duplicate read as two people, two Johns
+        # silently resolved to one, a stranger's address accepted as free
+        # text. Each is held here against a staged address book with the
+        # real layout — On My Mac plus an iCloud source.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf, json as _j
+        from pathlib import Path as _P
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import actions, permission as P, sources as S
+        import core.connectors.contacts as CT
+
+        root = _P(_tf.mkdtemp())
+
+        def book_at(path, people):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            con = _sq.connect(path)
+            con.executescript(
+                "CREATE TABLE ZABCDRECORD (Z_PK INTEGER PRIMARY KEY,"
+                " ZFIRSTNAME, ZLASTNAME, ZNICKNAME, ZORGANIZATION);"
+                "CREATE TABLE ZABCDEMAILADDRESS (Z_PK INTEGER PRIMARY KEY,"
+                " ZOWNER, ZADDRESS);"
+                "CREATE TABLE ZABCDPHONENUMBER (Z_PK INTEGER PRIMARY KEY,"
+                " ZOWNER, ZFULLNUMBER);")
+            for pk, (f, l, em, ph) in enumerate(people, 1):
+                con.execute("INSERT INTO ZABCDRECORD VALUES(?,?,?,NULL,NULL)",
+                            (pk, f, l))
+                for e in em:
+                    con.execute("INSERT INTO ZABCDEMAILADDRESS"
+                                "(ZOWNER,ZADDRESS) VALUES(?,?)", (pk, e))
+                for x in ph:
+                    con.execute("INSERT INTO ZABCDPHONENUMBER"
+                                "(ZOWNER,ZFULLNUMBER) VALUES(?,?)", (pk, x))
+            con.commit(); con.close()
+
+        # The same person in both accounts, number written in two dialects;
+        # a second John; somebody with no way to reach them at all.
+        book_at(root / "AddressBook-v22.abcddb", [
+            ("Sam", "Hedley", ["sam@example.com"], ["07700 900123"])])
+        book_at(root / "Sources" / "ICLOUD-1" / "AddressBook-v22.abcddb", [
+            ("Sam", "Hedley", ["sam@example.com"], ["+44 7700 900123"]),
+            ("Sam", "Wright", ["sam.w@example.com"], []),
+            ("No", "Details", [], [])])
+
+        c = CT.Contacts(root=root)
+        if c.find("%") or c.find("_a"):
+            return (True, "a wildcard lists the address book — the LIKE "
+                          "pattern is not escaped")
+        sams = c.find("sam hedley")
+        if len(sams) != 1:
+            return (True, f"the same person synced twice reads as "
+                          f"{len(sams)} people — the phone dialects "
+                          f"(+44 / 0) are not the same number here")
+        if [m["name"] for m in c.find("details")]:
+            return (True, "a contact with no email and no phone counts as "
+                          "somebody to write to")
+        # The third dialect: neither book spells it 0044…, so only a
+        # comparison that knows two spellings are one phone can say yes.
+        if not c.holds("0044 7700 900123") or not c.holds("SAM@example.com"):
+            return (True, "holds() misses a detail written in another "
+                          "dialect or case")
+        if c.holds("evil@attacker.example"):
+            return (True, "holds() claims an address nobody has")
+
+        # The compose rule, end to end on a wired store. ROOT is patched
+        # rather than the env read at import time; put back whatever
+        # happens.
+        tmp = _P(_tf.mkdtemp())
+        db2 = tmp / "p.db"
+        srcdb = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db2)); srcdb.backup(dst); dst.close()
+        srcdb.close()
+        st = Store(db2)
+        st.x("DELETE FROM credential"); st.x("DELETE FROM permission")
+        real_root = CT.ROOT
+        CT.ROOT = root
+        try:
+            r = S.add(st, "contacts", "local")
+            if P.state(st, P.APP, "Contacts", P.READ) != P.ALLOW:
+                return (True, "wiring Contacts did not grant its read")
+            try:
+                actions.run(st, actions.propose(
+                    "write_to", {"to": "Sam", "text": "see you at eight"}))
+                return (True, "two Sams and it picked one")
+            except actions.Rejected as e:
+                if "Hedley" not in str(e) or "Wright" not in str(e):
+                    return (True, f"refused without naming the choices: {e}")
+            try:
+                actions.run(st, actions.propose(
+                    "write_to", {"to": "stranger@evil.example",
+                                 "text": "see you at eight"}))
+                return (True, "a raw address not in Contacts was accepted "
+                              "— free text became a recipient")
+            except actions.Rejected as e:
+                if "not in your Contacts" not in str(e):
+                    return (True, f"refused for the wrong reason: {e}")
+            out = actions.run(st, actions.propose(
+                "write_to", {"to": "Sam Hedley",
+                             "text": "see you at eight"}))
+            if out.get("to") != "sam@example.com" or not out.get("offer"):
+                return (True, f"a clean match did not resolve and offer: "
+                              f"{out}")
+            offer = st.one("SELECT * FROM approval WHERE id=?", out["offer"])
+            act = _j.loads(offer["action"] or "{}")
+            if act.get("name") != "send_reply" \
+                    or offer["recipient"] != "sam@example.com":
+                return (True, "the send offer does not carry the resolved "
+                              "address for the person to see")
+            draft = st.one("SELECT * FROM approval WHERE recipient=? "
+                           "AND category='compose'", "sam@example.com")
+            if not draft or draft["decision"] != "approve":
+                return (True, "the composed draft is not the approved row "
+                              "the send card points at")
+            out2 = actions.run(st, actions.propose(
+                "write_to", {"to": "Sam Hedley", "text": "on my way",
+                             "by": "text"}))
+            if out2.get("channel") != "text" or "@" in out2.get("to", ""):
+                return (True, f"asked for a text and got {out2.get('to')!r} "
+                              f"({out2.get('channel')!r})")
+            # And the door: a blocked Contacts stops resolution cold.
+            P.set_state(st, P.APP, "Contacts", P.READ, P.BLOCK)
+            try:
+                actions.run(st, actions.propose(
+                    "write_to", {"to": "Sam Hedley", "text": "hi"}))
+                return (True, "Contacts is blocked and a name still "
+                              "resolved")
+            except actions.Rejected:
+                pass
+        finally:
+            CT.ROOT = real_root
+
+        if not actions.ACTIONS["write_to"].pinned:
+            return (True, "a fresh way to start words toward a person is "
+                          "not pinned")
+        return (False, "search never lists, two dialects of one number are "
+                       "one person, two Sams are a question, a stranger's "
+                       "address is refused by name, and a clean match "
+                       "queues the approved draft with its pinned send "
+                       "card behind the Contacts door")
+    probe("A133 a name is resolved to whoever the model prefers",
+          a_name_becomes_a_recipient)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

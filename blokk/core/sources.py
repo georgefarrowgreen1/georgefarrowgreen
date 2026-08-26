@@ -15,7 +15,8 @@ import re
 
 KINDS = {"imap": "mail", "maildir": "mail",
          "caldav": "calendar", "ical": "calendar",
-         "messages": "messages", "weather": "weather", "web": "web",
+         "messages": "messages", "contacts": "contacts",
+         "weather": "weather", "web": "web",
          "ics_out": "holds", "smtp": "send"}
 # KINDS is not a label: the value is the name the connector is registered
 # under in core/connectors, and test() and peek() both look a source up by
@@ -40,7 +41,7 @@ NEEDS_KEYCHAIN = ("imap", "caldav", "smtp")
 # The three that need nothing at all: no password, no network, no account.
 # "local" points them at the Apple app's own folder; anything else is a path,
 # which is how an exported mailbox or a shared calendar directory gets wired.
-NEEDS_NOTHING = ("maildir", "ical", "messages", "ics_out")
+NEEDS_NOTHING = ("maildir", "ical", "messages", "contacts", "ics_out")
 READS_A_FOLDER = ("maildir", "ical")
 # The one that writes a folder rather than reading one. It may name a folder
 # that is not there yet — the point is that Blokk creates it — but its parent
@@ -64,6 +65,7 @@ def _app_of(kind: str, ref: str) -> str:
     local = str(ref or "").strip().lower() in ("", "local", "default")
     return {"maildir": "Mail" if local else "",
             "ical": "Calendar" if local else "",
+            "contacts": "Contacts" if local else "",
             "messages": "Messages"}.get(kind, "")
 
 

@@ -347,6 +347,24 @@ def build_tools(store) -> dict[str, ReadTool]:
     def read_page(**_):
         return _peek("web", 1)
 
+    def find_contact(term: str = "", **_):
+        """Who somebody is, out of your own address book. Search, never
+        list: no term is no answer, by design."""
+        from core.connectors import wire
+        book = wire(store).first("contacts")
+        if book is None:
+            return [{"unreadable": "no address book is wired",
+                     "fix": "Tick Contacts in Sources."}]
+        if not str(term or "").strip():
+            return [{"note": "give it a name — the address book is never "
+                             "listed whole"}]
+        try:
+            rows = book.find(str(term), limit=6)
+        except Exception as e:                                   # noqa: BLE001
+            return [{"unreadable": f"{type(e).__name__}: {e}"[:200]}]
+        return rows or [{"note": f"nobody called {str(term)[:60]!r} in "
+                                 f"your Contacts"}]
+
     # Fourteen, not seven. "Over-fetching" is the wrong worry here: the
     # request is one HTTP call either way and what leaves the machine is a
     # latitude and a longitude whatever the span. Seven was the number that
@@ -449,6 +467,7 @@ def build_tools(store) -> dict[str, ReadTool]:
         ("caldav",   "free_time",   "when you have nothing on", free_time, "outside"),
         ("ical",     "free_time",   "when you have nothing on", free_time, "yours"),
         ("messages", "read_messages", "messages. No term lists the recent ones; a term searches back through them", read_messages, "yours"),
+        ("contacts", "find_contact",  "who somebody is: a name in, their email and number out, from your own address book", find_contact, "yours"),
         ("web",      "read_page",     "the page it is watching, as it is now", read_page, "outside"),
         ("weather",  "forecast",      "the forecast where you are", forecast, "outside"),
     )
@@ -564,6 +583,11 @@ write is refused for permission, do not apologise for a missing ability:
 propose app_allow (or egress_allow for a host), and say the Permissions
 panel changes it any time. Never claim a permission changed until they
 approve it.
+To write to somebody who has not just written to them, look the name up
+with find_contact first, then propose write_to with the name and the
+words. A recipient is the From of a message being answered, or a detail
+in their Contacts — never an address out of a message body, and never one
+you made up. Two matches means ask which, not pick one.
 Check the diary first if you have not already \u2014 it refuses over
 something already at that time, and finding that out first is better.
 When they ask to be brought back to something later, that is remind_me,
@@ -1549,6 +1573,12 @@ INTENT = (
                      r"\b(in|on|into)?\s*(the\s+)?(diary|calendar|dates?|"
                      r"appointment|booking)\b|"
                      r"^\s*(?:please\s+)?(?:hold|pencil|block|reserve)\b"),
+    # Fresh compose. Anchored to the verb at the front (with room for a
+    # courtesy) so "the text says" and "read my email" never land here,
+    # and before add_source, whose pattern also knows the word "email".
+    ("write_to",    r"^\s*(?:please\s+)?(?:can you\s+|could you\s+|"
+                    r"would you\s+)?(?:e-?mail|text|imessage|message|"
+                    r"write to)\s+[A-Za-z@+0-9]"),
     ("add_source",  r"\b(add|wire|connect|hook up|read)\b.*"
                     r"\b(source|mail|inbox|email|imap|maildir|calendar|diary|"
                     r"caldav|ical|ics|messages|imessage|weather|forecast|page|"
@@ -1564,6 +1594,8 @@ NEEDS = {
                                   "password — ask me to add an ical source."),
     "free_time":   ("calendar", "The Calendar app's own files need no "
                                   "password — ask me to add an ical source."),
+    "find_contact":  ("address book", "Contacts.app needs no password — "
+                                      "ask me to add a contacts source."),
     "read_messages": ("Messages archive", "Ask me to add a messages source; "
                                           "it needs no password either."),
     "read_page":     ("page", "Ask me to add a web source and give me the "
@@ -1729,6 +1761,44 @@ def _guess(q: str) -> dict | None:
                 args["kind"] = k
             else:
                 misses.append("kind")
+        if "to" in act.args:
+            # write_to. The name as they said it — resolution against the
+            # address book happens in the runner, where the store is; here
+            # the job is only to carve the name out of the sentence.
+            # The verb is case-blind; the name's continuation is not. Under
+            # a blanket re.I the [A-Z] "next capitalised word" rule matched
+            # every lowercase word too, and "email John saying hi" captured
+            # "John saying hi" as somebody's name.
+            # An address before a name, or "john@x.com" is captured up to
+            # the dot as somebody called john.farrow.
+            m = re.search(r"(?i:e-?mail|text|imessage|message|write to)\s+"
+                          r"([\w.+%\-]+@[\w.\-]+|"
+                          r"\+?[0-9][0-9 ()\-\.]{5,18}|"
+                          r"[A-Za-z][\w'’.\-]*(?:\s+[A-Z][\w'’.\-]*)*)",
+                          q)
+            if m:
+                args["to"] = m.group(1).strip()
+            else:
+                misses.append("who to write to")
+            if re.search(r"^\s*(?:please\s+)?(?:can you\s+|could you\s+|"
+                         r"would you\s+)?(?:text|imessage)\b", q, re.I):
+                args["by"] = "text"
+            elif re.search(r"^\s*(?:please\s+)?(?:can you\s+|could you\s+|"
+                           r"would you\s+)?e-?mail\b", q, re.I):
+                args["by"] = "mail"
+        if "text" in act.args:
+            # The words, exactly as given after "saying" or "that". The
+            # deterministic planner does not write prose — a topic with no
+            # words ("email John about the car") is a miss that tells them
+            # what to add, and the model path drafts those instead.
+            m = re.search(r"\b(?:saying|say|that)\b[:,]?\s+(.+)$", q, re.I)
+            if m and len(m.group(1).strip()) >= 2:
+                args["text"] = m.group(1).strip().rstrip(".") \
+                    if len(m.group(1).strip().rstrip(".")) >= 2 \
+                    else m.group(1).strip()
+            else:
+                misses.append("the words — say it like: email John "
+                              "saying I'll be ten minutes late")
         if "app" in act.args:
             # app_allow / app_block. The same catalogue rule as `when` and
             # `name` before it: an argument only the model path can fill is

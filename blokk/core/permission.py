@@ -74,6 +74,11 @@ APPS = (
          where="~/Library/Calendars read from disk; writes go through "
                "Calendar.app itself, which shows its own macOS dialog the "
                "first time."),
+    dict(app="Contacts", verbs=(READ,),
+         what="your address book — how “email John” knows who John is",
+         where="~/Library/Application Support/AddressBook, read from disk, "
+               "only when a name is looked up. Never listed, never "
+               "written."),
     dict(app="Messages", verbs=(READ, WRITE),
          what="your iMessage and SMS history — and, separately, sending a "
               "text you approved",
@@ -133,7 +138,8 @@ def _adopt(store) -> None:
     # "default") is the word connect.py has always used for the Apple app's
     # own store; a real path is somebody's exported folder, which is a
     # folder, not an app, and needs no app permission.
-    kind_app = {"maildir": "Mail", "ical": "Calendar", "messages": "Messages"}
+    kind_app = {"maildir": "Mail", "ical": "Calendar",
+                "messages": "Messages", "contacts": "Contacts"}
     for r in store.q("SELECT kind, keychain_ref FROM credential"):
         app_name = kind_app.get(r["kind"])
         local = str(r["keychain_ref"] or "").strip().lower() \

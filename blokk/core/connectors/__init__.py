@@ -281,6 +281,7 @@ def _root(ref: str):
 # guessed from its name. Two mailboxes both do "mail"; what tells them apart
 # is what you called them.
 ROLE = {"imap": "mail", "maildir": "mail", "messages": "messages",
+        "contacts": "contacts",
         "caldav": "calendar", "ical": "calendar", "smtp": "send",
         "ics_out": "holds", "web": "web", "weather": "weather"}
 
@@ -308,7 +309,7 @@ def wire(store) -> Registry:
         # mailbox, a shared calendar folder) is a folder, not an app, and
         # passes; Messages has no folder form, so it is always its app.
         gate = {"maildir": "Mail", "ical": "Calendar",
-                "messages": "Messages"}.get(kind)
+                "messages": "Messages", "contacts": "Contacts"}.get(kind)
         if gate and (kind == "messages" or _root(ref) is None):
             try:
                 permission.require(store, permission.APP, gate,
@@ -363,6 +364,9 @@ def wire(store) -> Registry:
             elif kind == "messages":
                 from core.connectors.messages import AppleMessages
                 REGISTRY.add(name, role, AppleMessages())
+            elif kind == "contacts":
+                from core.connectors.contacts import Contacts
+                REGISTRY.add(name, role, Contacts(root=_root(ref)))
             elif kind == "web":
                 # Handed the store for the same reason as weather: it is
                 # what core/egress.py needs to answer "is that host on the

@@ -30,6 +30,11 @@ SOURCES = [
      "path": HOME / "Library/Mail",
      "kind_local": "maildir",
      "reads": "messages Mail.app has already downloaded, without IMAP"},
+    {"id": "contacts", "what": "Contacts", "kind": "contacts",
+     "path": HOME / "Library/Application Support/AddressBook",
+     "kind_local": "contacts",
+     "reads": "who somebody is when you say a name — “email John” looks "
+              "John up here, and nowhere else"},
 ]
 
 
@@ -135,6 +140,10 @@ def _contents(src: dict, root: Path) -> tuple[int, str]:
         if src["id"] == "messages":
             size = root.stat().st_size if root.exists() else 0
             return (1 if size else 0), f"{size / 1024 / 1024:.0f} MB on disk"
+        if src["id"] == "contacts":
+            from core.connectors.contacts import databases
+            n = len(databases(root))
+            return n, f"{n} account(s)"
     except Exception:                                            # noqa: BLE001
         return -1, ""                    # counting is a nicety, never a fault
     return -1, ""

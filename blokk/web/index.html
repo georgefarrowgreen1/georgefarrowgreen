@@ -1510,6 +1510,7 @@ const KINDNOUN = {mail:'From', calendar:'Diary', weather:'Forecast',
                   messages:'Message', web:'Page', rates:'Rates',
                   read_mail:'From', read_calendar:'Diary',
                   read_messages:'Message', read_page:'Page',
+                  contacts:'Contacts', find_contact:'Contacts',
                   forecast:'Forecast', free_nights:'Free nights',
                   open_approvals:'In the queue', what_was_handled:'Handled',
                   recent_runs:'Recent runs', trust_state:'Trust',
@@ -2232,6 +2233,7 @@ async function paintSources(extra){
               'Adding this opens the allowlist to open-meteo.com, and '
               + 'nothing else new. What leaves is a latitude and a longitude.'],
     ical: ['local', ''], maildir: ['local', ''], messages: ['local', ''],
+    contacts: ['local', ''],
     ics_out: ['local — or a folder, like ~/Desktop/Holds',
               'The one source Blokk writes to. It puts a .ics file in that '
               + 'folder for each set of dates you approve; you double-click '

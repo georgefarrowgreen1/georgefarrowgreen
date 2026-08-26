@@ -250,6 +250,110 @@ def _say_app_block(a: dict) -> str:
             f"is refused by name, until you change it in Permissions.")
 
 
+def _write_to(store, to, text, by=None, **_):
+    """Compose to somebody by name, resolved through your Contacts only.
+
+    The recipient rule, restated for the fresh-compose case: an address
+    may be the From of a message being answered, or a detail out of your
+    own address book matched against a name you used. It is never free
+    text — not the model's, and not even a raw address typed straight in
+    unless your Contacts holds it, because "john.smith@gmial.com" is
+    exactly the kind of near-miss a person approves without seeing.
+
+    Running this queues the draft *already decided* — the card that ran it
+    showed these words and this name, and approving it was the decision —
+    and then offers the send as its own pinned card, so the resolved
+    address is in front of the person before anything can leave.
+    """
+    import core.connectors as _C
+    book = _C.wire(store).first("contacts")
+    if book is None or not hasattr(book, "find"):
+        raise Rejected(
+            "no address book is wired, and a recipient has to come from "
+            "somewhere you control. Tick Contacts in setup (or the sources "
+            "sheet) and “write to John” starts working.")
+    want = " ".join(str(to or "").split())
+    detail, shown = "", want
+    if "@" in want or re.fullmatch(r"[+0-9][0-9 ()\-\.]{5,18}", want):
+        # A raw detail is allowed exactly when it is already yours.
+        if not book.holds(want):
+            raise Rejected(
+                f"{want!r} is not in your Contacts, so Blokk will not "
+                f"write to it. Add them to Contacts first, or reply to a "
+                f"message they sent — those are the two ways an address "
+                f"gets in front of a send.")
+        detail = want.lower() if "@" in want else want
+    else:
+        found = book.find(want)
+        if not found:
+            raise Rejected(
+                f"nobody called {want!r} in your Contacts. Nothing was "
+                f"queued — check the name, or add them to Contacts.")
+        if len(found) > 1:
+            names = "; ".join(
+                f"{m['name']}"
+                + (f" ({m['emails'][0]})" if m["emails"]
+                   else f" ({m['phones'][0]})" if m["phones"] else "")
+                for m in found[:4])
+            raise Rejected(
+                f"{want!r} matches more than one person: {names}. Say "
+                f"which — nothing here guesses who you meant.")
+        m = found[0]
+        shown = m["name"]
+        wish = (by or "").strip().lower()
+        if wish == "text":
+            detail = (m["phones"] or [""])[0] or (m["emails"] or [""])[0]
+        elif wish == "mail":
+            detail = (m["emails"] or [""])[0]
+        else:
+            detail = (m["emails"] or [""])[0] or (m["phones"] or [""])[0]
+        if not detail:
+            has = ("an email address" if m["emails"] else
+                   "a phone number" if m["phones"] else "no details")
+            raise Rejected(
+                f"{m['name']}'s card has {has}, and this needs "
+                f"{'a phone number' if wish == 'text' else 'an email'}. "
+                f"Nothing was queued.")
+    channel = "mail" if "@" in detail else "text"
+    from core.durable import now as _now
+    rid = f"w_{_sha(detail + text)[:12]}"
+    store.x("INSERT OR REPLACE INTO run(id,workflow,status,input,ended_at) "
+            "VALUES(?,'compose','done',?,?)",
+            f"r_{rid}", json.dumps({"to": shown}), _now().isoformat())
+    from core import grounding
+    aid = f"a_{rid}"
+    store.x("""INSERT OR REPLACE INTO approval
+               (id,run_id,category,title,body,evidence,recipient,
+                decision,decided_at)
+               VALUES(?,?,?,?,?,?,?,'approve',?)""",
+            aid, f"r_{rid}", "compose",
+            f"To {shown}", text,
+            json.dumps(grounding.attach(text, {
+                "channel": channel, "resolved_from": "contacts",
+                "contact": shown, "drawn_from": []})),
+            detail, _now().isoformat())
+    offer = offer_send(store, store.one(
+        "SELECT * FROM approval WHERE id=?", aid))
+    return {"ok": True, "to": detail, "contact": shown,
+            "channel": channel, "offer": offer,
+            "detail": (f"Drafted to {shown} ({detail}), from your "
+                       f"Contacts. Nothing has left — the Send card in "
+                       f"the queue is the decision that would.")}
+
+
+def _sha(text: str) -> str:
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
+
+
+def _say_write(a: dict) -> str:
+    how = {"mail": " by email", "text": " as a text"}.get(
+        str(a.get("by") or ""), "")
+    return (f"Write to {a.get('to') or '…'}{how}, looked up in your "
+            f"Contacts: “{str(a.get('text') or '')[:180]}” — a Send card "
+            f"then asks, with the address on it, before anything leaves.")
+
+
 def _remind(store, when, note, **_):
     """Put something in front of the person on a day of their choosing.
 
@@ -828,6 +932,55 @@ def _channel_of(row, to: str) -> str:
     return "mail" if "@" in (to or "") else "text"
 
 
+def offer_send(store, row) -> str | None:
+    """Queue the offer to send a decided draft — the second decision, as
+    its own pinned card. One implementation for its two callers: h_decide
+    (a person approved a sweep's draft) and write_to (a person approved a
+    composed one).
+
+    Never for a row that carries an action (a proposal is not a draft),
+    never for a send card itself, never without a recipient, never twice —
+    the offer is keyed on the draft's own id. And on its own run row,
+    deliberately: hung off the draft's run it would hold that run's
+    approval count above zero and park the sweep's resume on a card that
+    is not the sweep's.
+    """
+    keys = row.keys()
+    if (row["action"] or not (row["recipient"] or "").strip()
+            or (row["sent_at"] if "sent_at" in keys else None)
+            or row["category"] == "send_mail"):
+        return None
+    try:
+        sp = propose("send_reply", {"approval": row["id"]})
+    except Rejected:
+        return None       # a draft that cannot be offered is still decided
+    chan = "mail"
+    try:
+        chan = (json.loads(row["evidence"] or "{}").get("channel")) \
+            or ("mail" if "@" in row["recipient"] else "text")
+    except (ValueError, TypeError):
+        pass
+    how = "by mail" if chan == "mail" else "as a text, through Messages"
+    from core.durable import now as _now
+    rid = f"r_send_{row['id']}"
+    store.x("""INSERT OR REPLACE INTO run
+               (id,workflow,status,input,ended_at)
+               VALUES(?,'send','done',?,?)""",
+            rid, json.dumps({"sends": row["id"]}), _now().isoformat())
+    oid = f"a_send_{row['id']}"
+    store.x("""INSERT OR REPLACE INTO approval
+               (id,run_id,category,title,body,evidence,action,recipient)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            oid, rid, sp["category"],
+            f"Send it to {row['recipient']}?",
+            f"What you just approved goes to {row['recipient']} "
+            f"{how}. Nothing has left yet.",
+            json.dumps({"sends": row["id"], "channel": chan,
+                        "drawn_from": []}),
+            json.dumps(sp), row["recipient"])
+    return oid
+
+
 def _subject_for(row) -> str:
     """A reply's subject, from the message it answers."""
     try:
@@ -917,6 +1070,14 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
     # a block proposed by a model and run without a person would be a way
     # for a sentence in somebody's email to switch your mail off. The
     # ledger is a person's book; the model only ever proposes entries.
+    # Pinned, although the pinned Send card behind it would gate the world
+    # anyway: this is a new way for words to start moving toward a person,
+    # and a new door starts closed. The recipient is resolved through your
+    # Contacts and nowhere else — see _write_to for the whole rule.
+    Action("write_to", "Write to {to}: {text}",
+           args=("to", "text"), optional=("by",),
+           pinned=True, category="compose",
+           run=_write_to, phrase=_say_write),
     Action("app_allow", "Let Blokk {verb} {app}.",
            args=("app",), optional=("verb",), pinned=True,
            run=_app_allow, phrase=_say_app_allow),
@@ -955,7 +1116,9 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
         if not isinstance(v, (str, int)):
             raise Rejected(f"{key!r} has to be text")
         v = str(v).strip()
-        cap = 400 if key == "note" else 200
+        # "text" is a whole message somebody will read; "note" a reminder's
+        # words; everything else is an identifier-sized field.
+        cap = 2000 if key == "text" else 400 if key == "note" else 200
         if len(v) > cap:
             raise Rejected(f"{key!r} is too long — {len(v)} characters, and "
                            f"the limit is {cap}")
@@ -984,6 +1147,16 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
                 raise Rejected(f"{v!r} is not a thing done to an app. It is "
                                f"read or write.")
             v = v.lower()
+        if key == "by":
+            if v and v.lower() not in ("mail", "text"):
+                raise Rejected(f"{v!r} is not a way to reach somebody. It "
+                               f"is mail or text — or leave it out and the "
+                               f"contact's details decide.")
+            v = v.lower()
+        if key == "to" and act.name == "write_to" and len(v) < 2:
+            raise Rejected("it needs somebody to write to")
+        if key == "text" and len(v.strip()) < 2:
+            raise Rejected("there is nothing to say yet — give it the words")
         # Shapes, checked here rather than left to the executor. The executor
         # does refuse them — loudly, with a sentence — but by then the
         # proposal has been read, approved and run, and the person is being
