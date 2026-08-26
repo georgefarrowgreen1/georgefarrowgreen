@@ -293,12 +293,31 @@ def wire(store) -> Registry:
     04:00 with nobody watching.
     """
     from core.connectors.fake import WORLD as FAKE
+    from core import permission
 
     REGISTRY.clear()
+    withheld: set[str] = set()
     for row in store.q("SELECT * FROM credential ORDER BY id"):
         kind, ref = row["kind"], row["keychain_ref"]
         keys = row.keys()
         name = (row["name"] if "name" in keys else "") or kind
+        # The app gate. A source that reads an Apple app's own store gets in
+        # only while the ledger says allow — and an allow withdrawn on the
+        # panel takes effect here, on the next request, because this runs
+        # per request and caches nothing. A path of your own (an exported
+        # mailbox, a shared calendar folder) is a folder, not an app, and
+        # passes; Messages has no folder form, so it is always its app.
+        gate = {"maildir": "Mail", "ical": "Calendar",
+                "messages": "Messages"}.get(kind)
+        if gate and (kind == "messages" or _root(ref) is None):
+            try:
+                permission.require(store, permission.APP, gate,
+                                   permission.READ,
+                                   why=f"the source '{name}' reads it")
+            except permission.Denied as e:
+                withheld.add(ROLE.get(kind, kind))
+                _say_once(f"[blokk] source {name} ({kind}) withheld: {e}")
+                continue
         # Which calendars, or which mailboxes. Absent on a row written before
         # the column existed, which means all of them — the same thing every
         # wiring meant then.
@@ -362,10 +381,26 @@ def wire(store) -> Registry:
     # to end and you can see what the thing does before handing it your
     # mail. It never covers a role you have actually wired: invented guests
     # appearing inside real ones is the one place fake data must not be.
+    # Withheld is wired: a mailbox you refused to share must not be quietly
+    # replaced by an invented one — a morning brief drafted from sample
+    # mail, presented to somebody who thinks it is theirs, is the worst
+    # answer this function could produce.
     for name, obj in FAKE.items():
         if obj is None:
             continue
         role = ROLE.get(name, name)
-        if not REGISTRY.by_role(role):
+        if role not in withheld and not REGISTRY.by_role(role):
             REGISTRY.add(name, role, obj)
     return REGISTRY
+
+
+_SAID: set[str] = set()
+
+
+def _say_once(line: str) -> None:
+    """wire() runs on every request, and a withheld source is withheld on
+    every one of them until somebody decides. Once per process is a fact in
+    the terminal; every request is a terminal nobody reads."""
+    if line not in _SAID:
+        _SAID.add(line)
+        print(line)

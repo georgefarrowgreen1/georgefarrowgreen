@@ -395,4 +395,64 @@ MUTATIONS = [
          file="core/ask.py",
          find='        if "name" in act.args:',
          replace='        if False:'),
+
+    # ── the permission ledger ───────────────────────────────────────────
+    dict(probe="A127", why="app_allow loses its extractor — an argument "
+                           "only the model path can fill",
+         file="core/ask.py",
+         find='        if "app" in act.args:',
+         replace='        if "application" in act.args:'),
+    dict(probe="A128", why="the wire gate stops asking the ledger",
+         file="core/connectors/__init__.py",
+         find='        if gate and (kind == "messages" or _root(ref) '
+              'is None):',
+         replace='        if gate and False and (kind == "messages" or '
+                 '_root(ref) is None):'),
+    dict(probe="A128", why="the sample world stands in for a refused app",
+         file="core/connectors/__init__.py",
+         find='        if role not in withheld and not '
+              'REGISTRY.by_role(role):',
+         replace='        if not REGISTRY.by_role(role):'),
+    dict(probe="A128", why="'ask' grows a meaning of 'probably fine'",
+         file="core/permission.py",
+         find='    got = state(store, realm, subject, verb)\n'
+              '    if got == ALLOW:\n        return',
+         replace='    got = state(store, realm, subject, verb)\n'
+                 '    if got in (ALLOW, ASK):\n        return'),
+    dict(probe="A128", why="adoption leaves the old egress key live for an "
+                           "older Blokk to read stale",
+         file="core/permission.py",
+         find="        store.x(\"UPDATE setting SET "
+              "key='egress_allow_before_permission' \"\n"
+              "                \"WHERE key='egress_allow'\")",
+         replace="        pass"),
+    dict(probe="A129", why="the diary's gate checks the wrong door",
+         file="core/actions.py",
+         find='permission.require(store, permission.APP, "Calendar",\n'
+              '                           permission.WRITE,',
+         replace='permission.require(store, permission.APP, "Calendar",\n'
+                 '                           permission.READ,'),
+    dict(probe="A129", why="a refused attempt leaves no record",
+         file="core/permission.py",
+         find='"VALUES(?,?,?,?,?,1,datetime(\'now\'))",',
+         replace='"VALUES(?,?,?,?,?,0,datetime(\'now\'))",'),
+    dict(probe="A130", why="the panel coerces every decision to allow",
+         file="api/server.py",
+         find='text(body, "state", limit=8), by="panel")',
+         replace='text(body, "state", limit=8) and "allow", by="panel")'),
+    dict(probe="A130", why="the panel lists only doors already knocked on",
+         file="core/permission.py",
+         find='    for a in APPS:\n        for verb in a["verbs"]:',
+         replace='    for a in APPS[:0]:\n        for verb in a["verbs"]:'),
+    dict(probe="A130", why="the egress gate stops reading the ledger",
+         file="core/egress.py",
+         find='    from core import permission\n'
+              '    return permission.net_hosts(store)',
+         replace='    from core import permission\n    return []'),
+    dict(probe="A54", why="opening an app can graduate to acting alone",
+         file="core/actions.py",
+         find='args=("app",), optional=("verb",), pinned=True,\n'
+              '           run=_app_allow',
+         replace='args=("app",), optional=("verb",), pinned=False,\n'
+                 '           run=_app_allow'),
 ]

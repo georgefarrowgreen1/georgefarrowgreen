@@ -197,6 +197,59 @@ def _egress_deny(store, host, **_):
     return {"ok": True, "detail": out["detail"]}
 
 
+def _app_allow(store, app, verb=None, **_):
+    from core import permission
+    out = permission.set_state(store, permission.APP, app,
+                               (verb or permission.READ).strip().lower(),
+                               permission.ALLOW, by="approval")
+    if out.get("error"):
+        raise Rejected(out["error"])
+    return {"ok": True, "detail": out["detail"]}
+
+
+def _app_block(store, app, verb=None, **_):
+    """Blocking with no verb blocks every verb the app has. Over-blocking
+    is the safe direction, and "block Calendar" from a person means the
+    app, not one of its doors."""
+    from core import permission
+    row = permission.known(app)
+    if not row:
+        raise Rejected(permission.set_state(
+            store, permission.APP, app, "read", permission.BLOCK)["error"])
+    verbs = [verb.strip().lower()] if verb else list(row["verbs"])
+    said = []
+    for v in verbs:
+        out = permission.set_state(store, permission.APP, app, v,
+                                   permission.BLOCK, by="approval")
+        if out.get("error"):
+            raise Rejected(out["error"])
+        said.append(out["detail"])
+    return {"ok": True, "detail": said[-1]}
+
+
+def _say_app_allow(a: dict) -> str:
+    from core import permission
+    row = permission.known(a.get("app", "")) or {}
+    app = row.get("app") or a.get("app") or "…"
+    doing = {"read": "read", "write": "write into"}.get(
+        str(a.get("verb") or "read"), str(a.get("verb")))
+    tail = f" That is {row['where']}" if row.get("where") else ""
+    return f"Let Blokk {doing} {app}.{tail}"
+
+
+def _say_app_block(a: dict) -> str:
+    from core import permission
+    row = permission.known(a.get("app", "")) or {}
+    app = row.get("app") or a.get("app") or "…"
+    if a.get("verb"):
+        doing = {"read": "read", "write": "write into"}.get(
+            str(a["verb"]), str(a["verb"]))
+        return (f"Stop Blokk being able to {doing} {app}. Kept until you "
+                f"change it in Permissions.")
+    return (f"Stop Blokk touching {app} at all. Every attempt after this "
+            f"is refused by name, until you change it in Permissions.")
+
+
 def _remind(store, when, note, **_):
     """Put something in front of the person on a day of their choosing.
 
@@ -523,9 +576,20 @@ def _put_in_diary(store, title, start, end, note=None, where=None, **_):
     # not leave the person with nothing — the failure mode being avoided is
     # "it said it could not, and now there is no record of it anywhere".
     from core.connectors import calendar_app
+    from core import permission
     into = None
     why = ""
     try:
+        # Writing into Calendar.app is a separate permission from reading
+        # the calendar files, and it is never granted by wiring a reader —
+        # putting things in somebody's calendar is exactly the kind of act
+        # the ledger exists for. Denied is not a failure here: the .ics
+        # above is already written, which is the fallback this action has
+        # always had, and the refusal is recorded where the permissions
+        # panel will show it knocking.
+        permission.require(store, permission.APP, "Calendar",
+                           permission.WRITE,
+                           why=f"the diary wanted to add “{title}”")
         # Already there? The uid is written into the event's description
         # precisely so a second approval of the same booking is findable.
         # Without this the .ics was replaced — it is keyed on the booking —
@@ -544,6 +608,8 @@ def _put_in_diary(store, title, start, end, note=None, where=None, **_):
                                  note=note or "", where=where or "",
                                  uid=out["uid"])
         into = added.get("calendar")
+    except permission.Denied as e_cal:
+        why = str(e_cal)
     except calendar_app.CalendarError as e_cal:
         why = str(e_cal)
     except Exception as e_cal:                                   # noqa: BLE001
@@ -624,8 +690,9 @@ def _say_diary(a: dict) -> str:
     # their diary changes.
     from core.connectors import calendar_app
     can, _ = calendar_app.available()
-    lands = ("Adds it to Calendar, if macOS lets Blokk \u2014 it asks you "
-             "once. A .ics file is written either way."
+    lands = ("Adds it to Calendar \u2014 if you have allowed that in "
+             "Permissions, and macOS lets Blokk, which it asks you once. "
+             "A .ics file is written either way."
              if can else
              "Writes a .ics file for you to open; this machine has no "
              "Calendar to add it to.")
@@ -798,6 +865,16 @@ ACTIONS: dict[str, Action] = {a.name: a for a in (
            args=("host",), pinned=True, run=_egress_allow),
     Action("egress_deny", "Stop Blokk reaching {host}.",
            args=("host",), pinned=True, run=_egress_deny),
+    # Pinned, both directions, and the pin on app_block is not a mistake:
+    # a block proposed by a model and run without a person would be a way
+    # for a sentence in somebody's email to switch your mail off. The
+    # ledger is a person's book; the model only ever proposes entries.
+    Action("app_allow", "Let Blokk {verb} {app}.",
+           args=("app",), optional=("verb",), pinned=True,
+           run=_app_allow, phrase=_say_app_allow),
+    Action("app_block", "Stop Blokk touching {app}.",
+           args=("app",), optional=("verb",), pinned=True,
+           run=_app_block, phrase=_say_app_block),
     Action("remove_source", "Remove the source called {name}.",
            args=("name",), pinned=True, run=_remove_source,
            phrase=_say_remove),
@@ -843,6 +920,22 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
             if v not in sources.KINDS:
                 raise Rejected(f"{v!r} is not a kind. One of: "
                                + ", ".join(sources.KINDS))
+        # The app has to be one Blokk knows how to touch, and it is written
+        # back in the app's own name — the preview under the Approve button
+        # says "Let Blokk read Mail", not whatever spelling arrived.
+        if key == "app":
+            from core import permission
+            row = permission.known(v)
+            if not row:
+                raise Rejected(f"{v!r} is not an app Blokk knows how to "
+                               f"touch. One of: "
+                               + ", ".join(a["app"] for a in permission.APPS))
+            v = row["app"]
+        if key == "verb":
+            if v and v.lower() not in ("read", "write"):
+                raise Rejected(f"{v!r} is not a thing done to an app. It is "
+                               f"read or write.")
+            v = v.lower()
         # Shapes, checked here rather than left to the executor. The executor
         # does refuse them — loudly, with a sentence — but by then the
         # proposal has been read, approved and run, and the person is being
@@ -911,6 +1004,13 @@ def validate(name: str, args: dict) -> tuple[Action, dict]:
     # Checks that need two fields at once, so they cannot live in the loop
     # above. Same reason everything else is checked here: a proposal that is
     # wrong should say so under the Approve button, not after it.
+    if "app" in clean and clean.get("verb"):
+        from core import permission
+        row = permission.known(clean["app"])
+        if row and clean["verb"] not in row["verbs"]:
+            raise Rejected(f"Blokk cannot {clean['verb']} {row['app']} at "
+                           f"all — there is no such door to open or "
+                           f"close.")
     if "start" in clean and "end" in clean:
         from datetime import date as _date, datetime as _dt
         w_s, w_e = _at(clean["start"]), _at(clean["end"])

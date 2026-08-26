@@ -12,6 +12,9 @@ Wire real data in, one source at a time.
     python3 connect.py peek mail 6                   see what it would actually read
     python3 connect.py keychain blokk-mail           store a password, hidden
     python3 connect.py remove mail
+    python3 connect.py apps                          what Blokk may touch on this Mac
+    python3 connect.py apps allow calendar write     one door, one decision
+    python3 connect.py egress                        what it may reach off it
     python3 connect.py ask "what needs me?"           every event, in the open
 
 A source has a name. The first mailbox is called `mail` and the first diary
@@ -286,6 +289,35 @@ def main() -> int:
                       else "(nothing — nothing can leave this Mac)"))
         print("\n  connect.py egress allow <host>")
         print("  connect.py egress log [n]        what has actually left")
+        return 0
+
+    if cmd == "apps":
+        # The app half of the same ledger `egress` is the host half of:
+        # which Mac apps Blokk may touch, decided by you, changeable in
+        # both directions at any time. `ask` puts a door back to undecided,
+        # which refuses like block but shows up as a question rather than
+        # an answer.
+        from core import permission
+        sub = args[1] if len(args) > 1 else "list"
+        if sub in ("allow", "block", "ask"):
+            if len(args) < 3:
+                print(f"usage: connect.py apps {sub} <app> [read|write]")
+                return 1
+            verb = args[3] if len(args) > 3 else "read"
+            r = permission.set_state(store, permission.APP, args[2], verb,
+                                     sub, by="cli")
+            print("  " + (r.get("error") or r["detail"]))
+            return 1 if r.get("error") else 0
+        led = permission.listing(store)
+        print(f"  {'app':<11}{'does':<8}state")
+        for a in led["apps"]:
+            wanted = (f"   wanted — {a['why'] or 'asked'}, "
+                      f"{a['asks']} time(s)"
+                      if a["state"] == "ask" and a["asks"] else "")
+            print(f"  {a['app']:<11}{a['verb']:<8}{a['state']}{wanted}")
+        print("\n  connect.py apps allow <app> [read|write]")
+        print("  connect.py apps block <app> [read|write]")
+        print("  connect.py apps ask <app> [read|write]   back to undecided")
         return 0
 
     if cmd == "local":

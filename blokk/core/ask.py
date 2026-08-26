@@ -554,8 +554,13 @@ one approval away.
 Nothing here sends mail or messages anyone, so never say a thing has gone.
 Draft it and say they will need to send it themselves.
 Putting something in the diary writes a file they open, and adds it to
-Calendar where macOS allows it. Propose put_in_diary for a thing with a
-date; never say it is in the diary until it is.
+Calendar where its permission and macOS allow it. Propose put_in_diary for
+a thing with a date; never say it is in the diary until it is.
+Every app and host sits behind a permission they decide. When a read or a
+write is refused for permission, do not apologise for a missing ability:
+propose app_allow (or egress_allow for a host), and say the Permissions
+panel changes it any time. Never claim a permission changed until they
+approve it.
 Check the diary first if you have not already \u2014 it refuses over
 something already at that time, and finding that out first is better.
 When they ask to be brought back to something later, that is remind_me,
@@ -1510,6 +1515,20 @@ INTENT = (
                      r"\b(reschedule|move the (sweep|night ?shift))\b"),
     ("egress_allow", r"\b(let|allow|permit)\b.*\breach\w*\b|\ballow\b.*\bhost\b"),
     ("egress_deny", r"\b(stop|block|deny|revoke|close)\b.*\b(reach\w*|host|access)\b"),
+    # The app permission pair. Anchored on the app's own word with only a
+    # short gap after the verb, because "block" is also how people book a
+    # diary — "block out the 3rd in my calendar" must fall through to
+    # put_in_diary, and does, on the distance between the words. The app
+    # words are the three apps, never "diary": diary sentences are diary
+    # sentences.
+    ("app_allow", r"\b(allow|unblock|grant|permit)\b.{0,12}"
+                  r"\b(mail|calendar|messages)\b|"
+                  r"\blet\b.{0,10}\b(read|write|see|touch|use)\b.{0,10}"
+                  r"\b(mail|calendar|messages)\b"),
+    ("app_block", r"\b(block|revoke|forbid)\b.{0,12}"
+                  r"\b(mail|calendar|messages)\b|"
+                  r"\bstop\b.{0,12}\b(reading|writing|touching|using)\b"
+                  r".{0,10}\b(mail|calendar|messages)\b"),
     ("remove_source", r"\b(remove|delete|drop|unhook)\b.*\bsource\b"),
     ("remember",    r"^\s*(?:please\s+)?(?:remember|note|keep in mind|"
                     r"bear in mind|don'?t forget)\b"),
@@ -1707,6 +1726,23 @@ def _guess(q: str) -> dict | None:
                 args["kind"] = k
             else:
                 misses.append("kind")
+        if "app" in act.args:
+            # app_allow / app_block. The same catalogue rule as `when` and
+            # `name` before it: an argument only the model path can fill is
+            # an action the no-weights path does not have.
+            m = re.search(r"\b(mail|calendar|messages|imessage|texts?)\b",
+                          q, re.I)
+            if m:
+                word = m.group(1).lower()
+                args["app"] = {"imessage": "Messages", "text": "Messages",
+                               "texts": "Messages"}.get(word,
+                                                        word.capitalize())
+            else:
+                misses.append("which app")
+            # Writing is Calendar's second door and the only verb worth
+            # spelling; everything else defaults to read in the runner.
+            if re.search(r"\bwrit\w*\b", q, re.I):
+                args["verb"] = "write"
         if "when" in act.args:
             # remind_me. Added to the catalogue and the router in the same
             # commit, and never here — so on the no-weights path, which is

@@ -201,7 +201,20 @@ def h_health(_q):
         # On health rather than its own endpoint: it changes once a day, and
         # the row that shows it is repainted on every tick anyway.
         "schedule": NIGHTLY.state(),
+        # Doors something has knocked on and nobody has answered. On health
+        # because an unanswered knock is exactly the class of thing the
+        # trouble line exists for: a fact that is invisible until it is a
+        # sentence on the screen somebody is already reading.
+        "permission_wants": _permission_wants(),
     }
+
+
+def _permission_wants() -> int:
+    from core import permission
+    try:
+        return len(permission.wants(store))
+    except Exception:                                            # noqa: BLE001
+        return 0
 
 
 def h_trust(_q):
@@ -774,6 +787,31 @@ def h_sources_test(_body):
     return sources.test(store)
 
 
+def h_permissions(_q):
+    """The whole ledger, for the panel: every app door and every host."""
+    from core import permission
+    return permission.listing(store)
+
+
+def h_permission_set(body):
+    """One decision, from a person's own finger on a named toggle.
+
+    Direct rather than queued for the same reason the egress endpoints
+    are: the approval queue exists so a person reviews what a *model*
+    wants; a person clicking "block Mail" is the review. The model's own
+    route stays the pinned app_allow / app_block actions.
+    """
+    from core import permission
+    r = permission.set_state(store,
+                             text(body, "realm", "app", limit=8),
+                             text(body, "subject", limit=253),
+                             text(body, "verb", "read", limit=8),
+                             text(body, "state", limit=8), by="panel")
+    if not r.get("error"):
+        bump()
+    return (r, 400) if r.get("error") else r
+
+
 def h_egress_allow(body):
     from core import egress
     r = egress.allow(store, text(body, "host", limit=253))
@@ -1122,6 +1160,7 @@ ROUTES_GET = [
     (r"^/api/v1/phone$", h_phone),
     (r"^/api/v1/sources$", h_sources),
     (r"^/api/v1/sources/inside$", h_inside),
+    (r"^/api/v1/permissions$", h_permissions),
     (r"^/api/v1/setup/state$", h_setup_state),
     (r"^/api/v1/setup/status$", h_setup_status),
     (r"^/api/v1/health$", h_health),
@@ -1144,6 +1183,7 @@ ROUTES_POST = [
     (r"^/api/v1/sources/peek$", h_sources_peek),
     (r"^/api/v1/egress/allow$", h_egress_allow),
     (r"^/api/v1/egress/deny$", h_egress_deny),
+    (r"^/api/v1/permissions/set$", h_permission_set),
     (r"^/api/v1/update/check$", h_update_check),
     (r"^/api/v1/update/auto$", lambda b: h_auto_update(b)),
     (r"^/api/v1/restart$", h_restart),

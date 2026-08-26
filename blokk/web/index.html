@@ -1130,6 +1130,26 @@
   #srcdlg .yes,#phonedlg .yes{color:var(--green)}
   #srcdlg .no,#phonedlg .no{color:var(--red)}
   #srcdlg .ok2{color:var(--green)}
+  #permdlg{max-width:460px}
+  #permdlg .prow2{padding:12px 0;border-bottom:1px solid var(--hair)}
+  #permdlg .prow2:last-child{border-bottom:0}
+  #permdlg .ptop{display:flex;align-items:center;gap:8px;
+    justify-content:space-between}
+  #permdlg .pname{font-weight:650}
+  #permdlg .pverb{font-size:11px;font-family:var(--mono);color:var(--lab3);
+    margin-left:4px}
+  #permdlg .pwhat{font-size:12px;color:var(--lab2);margin-top:3px}
+  #permdlg .pwant{font-size:12px;color:var(--red);margin-top:3px}
+  #permdlg .seg3{display:flex;gap:2px;padding:2px;border-radius:10px;
+    background:var(--field);flex:0 0 auto}
+  #permdlg .seg3 button{border:0;background:transparent;color:var(--lab2);
+    font:inherit;font-size:12px;padding:0 8px;min-height:var(--tap);
+    border-radius:8px;cursor:pointer}
+  #permdlg .seg3 button[aria-checked="true"]{background:var(--card);
+    color:var(--lab);font-weight:600}
+  #permdlg .hrow2{display:flex;align-items:center;gap:8px;
+    justify-content:space-between;padding:8px 0;font-size:13px}
+  #permdlg code{font-family:var(--mono);font-size:12px;word-break:break-all}
   #phonedlg .qr{width:min(62vw,220px);margin:12px auto;display:block}
   #phonedlg .qr svg{width:100%;height:auto;border-radius:8px;display:block}
   #phonedlg .link code{font-size:11px;word-break:break-all;color:var(--lab2);
@@ -1255,6 +1275,8 @@
     <div class="group menu">
       <button class="mrow" id="sources"><span class="k">Sources</span>
         <span class="v" id="srcv"></span></button>
+      <button class="mrow" id="perms"><span class="k">Permissions</span>
+        <span class="v" id="permv"></span></button>
       <a class="mrow" id="setup" href="/setup.html"><span class="k">Model</span>
         <span class="v" id="modelv"></span></a>
     </div>
@@ -1332,6 +1354,18 @@
   <dialog id="phonedlg">
     <h2>Open Blokk on your phone</h2>
     <div id="phonebody">checking…</div>
+    <form method="dialog"><button class="wide">Close</button></form>
+  </dialog>
+
+  <!-- The ledger, whole: every app on this Mac that Blokk knows how to
+       touch, every host it may reach, each changeable in both directions
+       at any time. These post directly rather than queueing an approval,
+       because a person's own finger on a toggle that names the app IS the
+       approval; the model's route is the pinned app_allow / app_block
+       actions, which queue like everything else it proposes. -->
+  <dialog id="permdlg">
+    <h2>What Blokk may touch</h2>
+    <div id="permbody">loading…</div>
     <form method="dialog"><button class="wide">Close</button></form>
   </dialog>
 
@@ -1855,6 +1889,7 @@ function paintMenu(h, runs){
   const wired = (SRC && SRC.sources) ? SRC.sources.length : null;
   set('srcv', wired === null ? '' : wired === 0 ? 'nothing wired — sample world'
       : `${wired} wired`);
+  set('permv', h.permission_wants ? `${h.permission_wants} waiting` : '');
   set('modelv', h.model_note ? 'not set up' : '');
 }
 
@@ -1889,6 +1924,14 @@ function trouble(h){
   if(a && a.used > a.limit)
     return {say: `${a.used} things are waiting on you, and the day's limit `
                  + `is ${a.limit}.`, menu: false};
+  // An unanswered knock on the ledger. Something wanted an app or a host,
+  // was refused because nobody has decided, and nothing else on this
+  // screen would ever say so.
+  if(h.permission_wants)
+    return {say: h.permission_wants === 1
+        ? 'Something is waiting on your permission.'
+        : `${h.permission_wants} things are waiting on your permission.`,
+      perms: true};
   return null;
 }
 
@@ -1897,9 +1940,14 @@ function paintTrouble(h){
   const box = $('#trouble');
   if(!t){ box.innerHTML = ''; return; }
   box.innerHTML = `<div class="trouble"><span class="k">${esc(t.say)}</span>${
-    t.menu ? '<button id="troublego">Open the menu</button>' : ''}</div>`;
+    t.menu ? '<button id="troublego">Open the menu</button>'
+    : t.perms ? '<button id="troublego">Open Permissions</button>' : ''}</div>`;
   const b = $('#troublego');
-  if(b) b.onclick = () => $('#menudlg').showModal();
+  if(b) b.onclick = () => {
+    if(t.perms){ $('#permbody').textContent = 'loading…';
+      $('#permdlg').showModal(); paintPerms(); }
+    else $('#menudlg').showModal();
+  };
 }
 
 // How many messages the last sweep actually read, summed from what the runs
@@ -1996,6 +2044,68 @@ function toggleQuiet(){
 $('#qhead').onclick = toggleQuiet;
 $('#qhead').onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleQuiet(); } };
 let SRC = null;
+
+// The permissions panel: the whole ledger, rendered, with a three-way
+// control per door. Every change posts and repaints from the server's
+// answer — the toggle never shows a state the table does not have.
+async function paintPerms(msg){
+  const body = $('#permbody');
+  let P;
+  try { P = await get('/api/v1/permissions'); }
+  catch(e){ body.textContent = 'could not read the ledger'; return; }
+  const seg = (realm, subject, verb, state) =>
+    `<span class="seg3" role="radiogroup"
+       aria-label="${esc(subject)} ${esc(verb)}">` +
+    ['allow', 'ask', 'block'].map(s =>
+      `<button type="button" role="radio" aria-checked="${s === state}"
+         data-realm="${esc(realm)}" data-subject="${esc(subject)}"
+         data-verb="${esc(verb)}" data-state="${s}">${
+         {allow: 'Allow', ask: 'Ask', block: 'Block'}[s]}</button>`).join('')
+    + '</span>';
+  const doing = v => v === 'write' ? 'write into it'
+    : v === 'reach' ? 'reach it' : 'read it';
+  const apps = (P.apps || []).map(a => `<div class="prow2">
+      <div class="ptop"><div><span class="pname">${esc(a.app)}</span>
+        <span class="pverb">${esc(a.verb)}</span></div>
+        ${seg('app', a.app, a.verb, a.state)}</div>
+      <div class="pwhat">${esc(a.what)} — ${esc(a.where)}</div>
+      ${a.state === 'ask' && a.asks ? `<div class="pwant">Something wanted
+        to ${doing(a.verb)}${a.why ? ' — ' + esc(a.why) : ''} · asked
+        ${a.asks} time(s), and was refused. Your call.</div>` : ''}
+    </div>`).join('');
+  const net = P.net || [];
+  const netrows = net.length ? net.map(n => `<div class="prow2">
+      <div class="ptop"><code>${esc(n.host)}</code>
+        ${seg('net', n.host, 'reach', n.state)}</div>
+      ${n.state === 'ask' && n.asks ? `<div class="pwant">Something tried
+        to reach it${n.why ? ' — ' + esc(n.why) : ''} · ${n.asks}
+        time(s), refused each time.</div>` : ''}
+    </div>`).join('')
+    : `<p class="sub">No host is decided either way — nothing reaches off
+       this Mac. Wiring a weather or web source proposes the hosts it
+       needs, one at a time.</p>`;
+  body.innerHTML = `
+    <p class="sub">Blokk touches nothing on an “ask”. Allow opens the one
+      door named on the row; block keeps it shut and says so to whatever
+      tries. Change any of it whenever you like — it takes effect on the
+      next attempt.</p>
+    <div class="sect2">Apps on this Mac</div>
+    <div class="group">${apps}</div>
+    <div class="sect2">Hosts on the internet</div>
+    <div class="group">${netrows}</div>
+    <div id="permout">${msg || ''}</div>`;
+  body.querySelectorAll('.seg3 button').forEach(b => b.onclick = async () => {
+    const r = await post('/api/v1/permissions/set',
+                         {realm: b.dataset.realm, subject: b.dataset.subject,
+                          verb: b.dataset.verb, state: b.dataset.state});
+    paintPerms(`<p class="sub">${esc(r.detail || r.error || '')}</p>`);
+  });
+}
+$('#perms').onclick = () => {
+  $('#permbody').textContent = 'loading…';
+  $('#permdlg').showModal();
+  paintPerms();
+};
 
 async function paintSources(extra){
   const body = $('#srcbody');

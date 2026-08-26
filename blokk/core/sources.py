@@ -53,6 +53,20 @@ WRITES_A_FOLDER = ("ics_out",)
 WRITES = WRITES_A_FOLDER + ("smtp",)
 
 
+def _app_of(kind: str, ref: str) -> str:
+    """Which Mac app a source touches, or '' for a folder of your own.
+
+    "local" (or nothing) is the word connect.py has always used for the
+    Apple app's own store. A real path is somebody's exported mailbox or a
+    shared calendar folder — a folder, not an app, and no app permission
+    attaches to it. Messages has no folder form; it is always its app.
+    """
+    local = str(ref or "").strip().lower() in ("", "local", "default")
+    return {"maildir": "Mail" if local else "",
+            "ical": "Calendar" if local else "",
+            "messages": "Messages"}.get(kind, "")
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (text or "").lower())[:12]
 
@@ -152,6 +166,19 @@ def add(store, kind: str, ref: str, only: list | None = None,
     if name and store.one("SELECT 1 FROM credential WHERE name=?", name):
         return {"error": f"there is already a source called '{name}'"}
     name = name or name_for(store, kind, ref)
+    # A source that reads a Mac app is refused while that app is blocked —
+    # before the row is written, so there is no half-state where the source
+    # exists and silently reads nothing. Wiring is not a way around a block;
+    # the block is a person's decision and only they take it back.
+    app = _app_of(kind, ref)
+    if app:
+        from core import permission
+        if permission.state(store, permission.APP, app,
+                            permission.READ) == permission.BLOCK:
+            return {"error": f"{app} is blocked in Permissions — you "
+                             f"decided Blokk may not read it. Nothing was "
+                             f"wired. Allow {app} there first if you have "
+                             f"changed your mind."}
     chosen = [str(o).strip() for o in (only or []) if str(o).strip()]
     # A writer is recorded as one. scopes has said "read" on every row since
     # the first commit, which was true of every connector there was; putting
@@ -169,6 +196,20 @@ def add(store, kind: str, ref: str, only: list | None = None,
         out["note"] = ("Reading only " + ", ".join(chosen[:4])
                        + (f" and {len(chosen) - 4} more" if len(chosen) > 4
                           else "") + ". Nothing else in there is looked at.")
+    if app:
+        # The wiring is the consent: a person who typed "wire my mail" has
+        # named the app and what happens to it, which is what an allow row
+        # records. Marked `wired` so removing the last source of the app
+        # can take the grant with it — a panel decision is marked `panel`
+        # and outlives any wiring. Read only, ever: writing into Calendar
+        # is a separate row that no reader's wiring grants.
+        from core import permission
+        permission.set_state(store, permission.APP, app, permission.READ,
+                             permission.ALLOW, by="wired")
+        grant = (f"Blokk may now read {app} — granted by this wiring, "
+                 f"changeable any time in Permissions.")
+        out["note"] = (out["note"] + " " + grant) if out.get("note") else grant
+        out["permissions"] = [f"{app}: read"]
     if kind in NEEDS_KEYCHAIN:
         # Shown, never run: this is the step that keeps the password out of
         # the browser, the database and this process.
@@ -293,6 +334,25 @@ def remove(store, name: str) -> dict:
                     if not egress.disallow(store, h).get("error")]
             if gone:
                 note = f"Nothing here can reach {', '.join(gone)} now. " + note
+    app = _app_of(kind, was["keychain_ref"])
+    if app:
+        # The same anti-ratchet rule for the app grant the wiring made —
+        # but only a grant the wiring made. `wired` rows close when the
+        # last source of the app goes; a row a person set on the panel is
+        # their decision about the app, not about this source, and stays.
+        from core import permission
+        others = [r for r in store.q("SELECT kind, keychain_ref "
+                                     "FROM credential")
+                  if _app_of(r["kind"], r["keychain_ref"]) == app]
+        row = store.one("SELECT decided_by FROM permission WHERE realm=? "
+                        "AND subject=? AND verb=?",
+                        permission.APP, app, permission.READ)
+        if not others and row and row["decided_by"] == "wired":
+            permission.set_state(store, permission.APP, app,
+                                 permission.READ, permission.ASK,
+                                 by="unwired")
+            note = (f"Nothing reads {app} now, so its permission is "
+                    f"undecided again. " + note)
     return {"ok": True, "name": name, "kind": kind, "detail": note}
 
 

@@ -229,10 +229,37 @@ was touched" for a while after that stopped being true. And a tool is only
 offered for a source that is wired: the grammar is built from that dict, so
 not offering it is the same as it not existing.
 
+**Nothing is touched without a permission row.** `core/permission.py` is
+one ledger for every door: the apps on this Mac (realm `app` — Mail read,
+Calendar read and write, Messages read) and the hosts on the internet
+(realm `net`). Three states, and only `allow` opens anything: `block` is a
+person's no, kept and quoted back by name; `ask` — the default, and the
+state of every door nobody has decided — refuses exactly as hard, and
+records the attempt *on the row* (a knock: count, time, who wanted in), so
+the permissions panel and the morning brief can put the question in front
+of the person instead of a log nobody reads. The gates that consult it:
+`wire()` refuses to register a source that reads an undecided or blocked
+app — and the sample world never stands in for what was refused, because
+invented mail wearing a refused mailbox's role is the worst substitution
+available here; `put_in_diary` treats Calendar *write* as its own door
+that no reader's wiring opens, and falls back to the `.ics` file with the
+permission named; `egress.fetch` reads the net half. Grants are made by a
+person and nowhere else — the panel and `connect.py apps` write the table
+directly because a finger on a named toggle is the approval; wiring a
+source grants exactly the read it names (and closes it again when the
+last source of that app goes, the same anti-ratchet rule the weather
+hosts follow); the model's only route is the pinned `app_allow` /
+`app_block` actions through the queue. Changeable at any time, both
+directions, effective on the next attempt — the gates read per call and
+cache nothing. A128–A130 hold this, mutation-tested ten ways.
+
 The other direction is `core/egress.py`, the only place anything leaves. Not
 "nothing leaves the machine" any more, but the narrower claim: *nothing leaves
 except requests you allowed, to hosts you named, and the log says exactly what
-left.* Every fetch checks the one allowlist with dot-anchored
+left.* The allowlist's rows live in the permission ledger (realm `net`) —
+it used to be a JSON list under a `setting` key, and `permission._adopt`
+carries an old database's list across, renaming the old key so nothing
+stale can be read. Every fetch checks the one allowlist with dot-anchored
 suffix matching (`icloud.com` must not match `evil-icloud.com`), refuses any
 host resolving to a non-public address, re-checks every redirect hop, caps
 size and time, and appends to `logs/egress.log` whether it succeeded or not.
@@ -432,8 +459,11 @@ worse than an error.
     core/gguf.py       bounded GGUF header reader; KV cache arithmetic
     core/weights.py    the models/ folder: symlink a .gguf in, take it out
     core/sources.py    add/remove/peek a data source; shared by CLI and GUI
-    core/egress.py     the only way out: one allowlist, no private
-                       addresses, redirects re-checked, logs/egress.log
+    core/permission.py one ledger for every door: apps on this Mac and
+                       hosts off it, allow/block/ask, knocks recorded
+    core/egress.py     the only way out: one allowlist (the ledger's net
+                       half), no private addresses, redirects re-checked,
+                       logs/egress.log
     core/local.py      what this Mac will hand over without a password
     core/backup.py     online snapshot of blokk.db, and verifying one
     core/regression.py twenty frozen examples and the assertions on them
@@ -570,7 +600,7 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 31 of 128 probes have an entry and the
+Coverage is printed, never assumed: 34 of 131 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.

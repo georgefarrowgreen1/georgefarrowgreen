@@ -434,7 +434,9 @@
     <h2>Your own data</h2>
     <p class="lead">Blokk starts on a sample world so you can see it working.
       Point it at something real and the sample goes quiet. Everything here
-      needs no password and no account.</p>
+      needs no password and no account — and every tick is a permission,
+      granted by name, that you can change at any time under Permissions
+      in the app.</p>
     <div class="box" id="localsrc">Looking at this Mac…</div>
     <p class="hint" id="p5note"></p>
     <div class="row">
@@ -788,6 +790,22 @@ async function loadLocal(){
       wrap.append(row);
       box.append(wrap);
     }
+    // Calendar write is the one door wiring a reader does not open —
+    // putting events into somebody's calendar is a separate decision, so
+    // it is a separate, unticked row. Left alone it stays "ask": the
+    // first hold after setup knocks, and the .ics file is written anyway.
+    if(LOCAL.some(s => (s.kind_local || s.kind) === 'ical')){
+      const w = el(`<label class="srcrow">
+        <input type="checkbox" id="calwrite">
+        <span class="tick" aria-hidden="true">&#10003;</span>
+        <span class="who"><b>Let Blokk put things in Calendar</b>
+          <small>Approved diary entries go into Calendar.app itself —
+          macOS asks its own permission once, too. Unticked, each entry is
+          a .ics file you double-click instead.</small></span>
+      </label>`);
+      w.querySelector('input').addEventListener('change', refreshWire);
+      box.append(w);
+    }
     holdsRow(box);
     if(LOCAL.some(s=>s.state==='blocked'))
       $('#p5note').textContent = 'Anything marked blocked needs Full Disk '
@@ -852,9 +870,10 @@ function ticked(){
 function refreshWire(){
   const b = $('#wire');
   const n = ticked().length;
-  b.disabled = !n;
-  b.textContent = !n ? 'Nothing ticked'
-    : `Wire ${n} source${n===1?'':'s'} up`;
+  const cw = document.querySelector('#calwrite')?.checked;
+  b.disabled = !n && !cw;
+  b.textContent = n ? `Wire ${n} source${n===1?'':'s'} up`
+    : cw ? 'Allow Calendar writes' : 'Nothing ticked';
 }
 
 $('#skip5').onclick = ()=>{ location.href='/'; };
@@ -870,6 +889,11 @@ $('#wire').onclick = async ()=>{
       // already there, and the rest still need wiring.
       if(r.error && !/already a source/.test(r.error))
         failed.push(`${kind}: ${r.error}`);
+    }
+    if(document.querySelector('#calwrite')?.checked){
+      const r = await post('/api/v1/permissions/set',
+        {realm:'app', subject:'Calendar', verb:'write', state:'allow'});
+      if(r.error) failed.push(`Calendar write: ${r.error}`);
     }
     if(failed.length){
       $('#p5note').innerHTML = `<b class="bad">Some did not attach.</b><br>

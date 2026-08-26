@@ -203,7 +203,7 @@ def register(engine, store):
         # says so — fresh=False and a note explaining what it fell back to —
         # and that used to go nowhere: the dashboard carried a hard-coded
         # chip naming one source whatever had actually happened.
-        out["degraded"] = _caveats(ctx, registry)
+        out["degraded"] = _caveats(ctx, registry, store)
 
         # ---- 4. propose, never send ----------------------------------------
         # Four things can happen to a message and the table says which: write
@@ -410,7 +410,7 @@ def register(engine, store):
         return out
 
 
-def _caveats(ctx, registry) -> list:
+def _caveats(ctx, registry, store) -> list:
     """Every wired source asked, once a night, whether it is still working.
 
     `check()` is the contract every connector already implements and this
@@ -436,6 +436,19 @@ def _caveats(ctx, registry) -> list:
                 out.append({"source": name, "role": role,
                             "note": str(got.get("detail") or got.get("note")
                                         or "not answering")})
+    # An app waiting on permission is the sweep's own caveat, not a broken
+    # source: something wanted in, nobody has decided, and nothing from it
+    # was read. Said on the brief because the person who can decide is the
+    # person reading it. Undecided only — a block is a decision working,
+    # and repeating a decision back every morning is nagging.
+    from core import permission
+    for w in ctx.activity("permission.wants",
+                          lambda: permission.wants(store)):
+        if w["realm"] == permission.APP:
+            out.append({"source": w["subject"], "role": "permission",
+                        "note": (f"waiting on your permission to "
+                                 f"{w['verb']} it — nothing there was "
+                                 f"touched. Decide in Permissions.")})
     return out
 
 

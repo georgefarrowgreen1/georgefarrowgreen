@@ -175,28 +175,19 @@ def check(allowlist, url: str) -> str:
 
 
 # ------------------------------------------------------------------- fetching
-KEY = "egress_allow"
-
-
 def allowlist(store) -> list[str]:
     """Every host anything on this Mac may reach. One list.
 
-    A missing row is an empty list, which refuses everything — the safe way
-    round for the only door out. It is never created implicitly: a host gets
-    on here because somebody put it there.
+    The rows live in the permission ledger now — realm `net`, verb `reach` —
+    because a second book of what Blokk may touch is how the two disagree.
+    This used to be a JSON list under a `setting` key; core/permission.py
+    adopts that key into rows on first read, so an existing Mac keeps its
+    list. No rows is an empty list, which refuses everything — the safe way
+    round for the only door out. A host gets on here because somebody put
+    it there.
     """
-    row = store.one("SELECT value FROM setting WHERE key=?", KEY)
-    if not row:
-        return []
-    try:
-        return list(json.loads(row["value"] or "[]"))
-    except (ValueError, TypeError):
-        return []
-
-
-def _save(store, hosts: list[str]) -> None:
-    store.x("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
-            KEY, json.dumps(sorted(set(hosts))))
+    from core import permission
+    return permission.net_hosts(store)
 
 
 def _log(url: str, note: str) -> None:
@@ -248,6 +239,19 @@ def fetch(store, url: str, *, data: bytes | None = None,
             check(allow, url)
         except Refused as e:
             _log(url, f"refused: {e}")
+            # A host turned away for not being on the list is a knock on the
+            # ledger, so the permissions panel can say something has been
+            # trying — a redirect chain wandering off-list looks exactly
+            # like an attack, and an attack is exactly what should be on a
+            # screen rather than in a log nobody reads. Only the list rule:
+            # a private address or a bad port is a different refusal, and
+            # recording those as "wants permission" would invite granting it.
+            host = (urlparse(url).hostname or "").lower()
+            if host and not host_allowed(allow, host):
+                from core import permission
+                permission.knock(store, permission.NET, host,
+                                 permission.REACH,
+                                 "a fetch was refused this host")
             raise
         seen.append(url)
         req = urllib.request.Request(url, data=data, method=verb)
@@ -320,19 +324,27 @@ def fetch_json(store, url: str, **kw) -> dict:
 
 # ------------------------------------------------------- managing the list
 def allow(store, host: str) -> dict:
+    from core import permission
     host = (host or "").strip().lower().lstrip("*.").rstrip("./")
     if not host or "/" in host or " " in host:
         return {"error": f"{host!r} is not a hostname"}
     have = allowlist(store)
     if host in have:
         return {"ok": True, "allow": have, "detail": f"{host} was already on it"}
-    have.append(host)
-    _save(store, have)
-    return {"ok": True, "allow": sorted(set(have)),
+    out = permission.set_state(store, permission.NET, host,
+                               permission.REACH, permission.ALLOW)
+    if out.get("error"):
+        return out
+    return {"ok": True, "allow": allowlist(store),
             "detail": f"anything wired here may now reach {host}"}
 
 
 def disallow(store, host: str) -> dict:
+    """Off the list is off the ledger. A host is not an app: the space of
+    hostnames is open-ended, so an ex-allowed host goes back to being
+    undecided rather than leaving a block row for every address the
+    internet has. Blocking one by name is permission.set_state's job."""
+    from core import permission
     host = (host or "").strip().lower()
     have = allowlist(store)
     if not host:
@@ -342,9 +354,9 @@ def disallow(store, host: str) -> dict:
                          + (", ".join(have) if have else "nothing on it")}
     if host not in have:
         return {"error": f"{host} is not on the list"}
-    have.remove(host)
-    _save(store, have)
-    return {"ok": True, "allow": have,
+    store.x("DELETE FROM permission WHERE realm=? AND subject=? AND verb=?",
+            permission.NET, host, permission.REACH)
+    return {"ok": True, "allow": allowlist(store),
             "detail": f"nothing here can reach {host} any more"}
 
 

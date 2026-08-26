@@ -2042,9 +2042,13 @@ try:
             if props:
                 return (True, "an injected row produced a proposal: "
                               + str(props[0].get('action'))[:80])
-            allow = json.loads(db().execute(
-                "SELECT value FROM setting WHERE key='egress_allow'"
-                ).fetchone()['value'] or '[]')
+            # The allowlist lives in the permission ledger now — realm net,
+            # state allow. Reading the table directly, not the API: the
+            # claim is about what is durably recorded, not what a handler
+            # renders.
+            allow = [r[0] for r in db().execute(
+                "SELECT subject FROM permission WHERE realm='net' "
+                "AND verb='reach' AND state='allow'").fetchall()]
             if 'attacker.example.com' in allow:
                 return (True, "the injected host reached the allowlist")
             src = [e for e in evs if e['type'] == 'SOURCES']
@@ -2098,7 +2102,7 @@ try:
         loose = [a.name for a in A.ACTIONS.values()
                  if not a.pinned and a.name in
                  ("egress_allow", "egress_deny", "remove_source",
-                  "remove_workspace")]
+                  "remove_workspace", "app_allow", "app_block")]
         return (bool(loose), "opening a route out and deleting things both "
                              "always ask" if not loose
                              else f"can graduate: {', '.join(loose)}")
@@ -4934,6 +4938,12 @@ try:
         st2 = Store(db)
         st2.x("DELETE FROM credential")
         _src.add(st2, "ics_out", str(holds))
+        # The door under test is Calendar.app's own refusal, so the
+        # ledger's door is opened first — undecided refuses before
+        # Calendar is ever asked, and that path is A129's subject.
+        from core import permission as _perm
+        _perm.set_state(st2, _perm.APP, "Calendar", _perm.WRITE,
+                        _perm.ALLOW)
         _CC.REGISTRY.clear()
         CA.available = lambda: (True, "")
         # find() is consulted before add() so a re-approved hold is not
@@ -5925,7 +5935,14 @@ try:
             def activity(self, _name, fn, **_):
                 return fn()
 
-        got = _caveats(Ctx(), Reg())
+        # A store of its own: _caveats also reports doors waiting on
+        # permission, and the live database's knocks are not this probe's
+        # subject. A fresh file has none, so the only caveat left is the
+        # staged one.
+        import tempfile as _tf
+        from core.durable import Store as _St
+        _stp = _St(_tf.mktemp(suffix=".db"))
+        got = _caveats(Ctx(), Reg(), _stp)
         if len(got) != 1 or got[0]["source"] != "inbox":
             return (True, f"a source answering ok:False was not recorded: "
                           f"{got}")
@@ -5943,7 +5960,7 @@ try:
             def by_role(self, role):
                 return [("x", NoCheck())] if role == "mail" else []
 
-        if _caveats(Ctx(), Silent()):
+        if _caveats(Ctx(), Silent(), _stp):
             return (True, "a source with no check() was reported as broken")
         if not any("check(" in ln for ln in
                    open("flows/morning_sweep.py").read().splitlines()):
@@ -7495,10 +7512,15 @@ try:
         tmp = pathlib.Path(tempfile.mkdtemp()) / "gate.db"
         shutil.copy("blokk.db", tmp)
         st = _St(tmp)
-        # One host, nothing else. Set directly so this does not depend on
-        # whatever the suite has already allowed.
-        st.x("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
-             EG.KEY, json.dumps(["example.com"]))
+        # One host, nothing else. Set directly in the ledger — realm net is
+        # where the allowlist lives now — so this does not depend on
+        # whatever the suite has already allowed. The adoption marker is
+        # pinned so no leftover legacy key can add rows underneath.
+        st.x("INSERT OR REPLACE INTO setting(key,value) "
+             "VALUES('permission_adopted','1')")
+        st.x("DELETE FROM permission WHERE realm='net'")
+        st.x("INSERT OR REPLACE INTO permission(realm,subject,verb,state) "
+             "VALUES('net','example.com','reach','allow')")
         allow = EG.allowlist(st)
 
         def refused(url):
@@ -7527,8 +7549,8 @@ try:
                 return (True, f"{url} was refused over its port: {why[:70]!r}")
 
         # A named port works, and does not spread.
-        st.x("INSERT OR REPLACE INTO setting(key,value) VALUES(?,?)",
-             EG.KEY, json.dumps(["example.com", "example.com:8443"]))
+        st.x("INSERT OR REPLACE INTO permission(realm,subject,verb,state) "
+             "VALUES('net','example.com:8443','reach','allow')")
         allow = EG.allowlist(st)
         if refused("https://example.com:8443/x") is not None:
             return (True, "a port named on the allowlist is still refused, "
@@ -8845,6 +8867,226 @@ try:
                        "lesson")
     probe("A127 an action only a Mac with weights can use",
           planner_holds_the_whole_catalogue)
+
+    def app_read_without_a_decision():
+        # The permission ledger's first claim: a wired source that reads a
+        # Mac app is refused while the app's row is not 'allow' — undecided
+        # refuses exactly as hard as blocked — and the sample world never
+        # stands in for what was refused. Fake mail wearing a real
+        # mailbox's role is the worst substitution this codebase could
+        # make, because a morning brief drafted from it looks like yours.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        from pathlib import Path as _P
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import permission as P, sources as S
+        import core.connectors as C
+        tmp = _P(_tf.mkdtemp())
+        db2 = tmp / "p.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db2)); src.backup(dst); dst.close(); src.close()
+        st = Store(db2)
+        st.x("DELETE FROM credential"); st.x("DELETE FROM permission")
+        st.x("DELETE FROM setting WHERE key IN ('permission_adopted',"
+             "'egress_allow','egress_allow_before_permission')")
+
+        # 0. Adoption is gentle in both directions: an old egress list
+        #    becomes net rows, and a source somebody wired before the table
+        #    existed arrives as allow rather than going dark on update.
+        st.x("INSERT INTO setting(key,value) VALUES('egress_allow',"
+             "'[\"api.open-meteo.com\"]')")
+        st.x("INSERT INTO credential(id,name,kind,keychain_ref,scopes) "
+             "VALUES('c_m','m','maildir','local','[\"read\"]')")
+        from core import egress as EG
+        if EG.allowlist(st) != ["api.open-meteo.com"]:
+            return (True, "the old egress list did not survive adoption")
+        if st.one("SELECT 1 FROM setting WHERE key='egress_allow'"):
+            return (True, "the old egress key is still live after adoption "
+                          "— an older Blokk would read a stale list")
+        if P.state(st, P.APP, "Mail", P.READ) != P.ALLOW:
+            return (True, "a source wired before the ledger existed went "
+                          "dark on update")
+        if P.state(st, P.APP, "Calendar", P.WRITE) == P.ALLOW:
+            return (True, "adoption granted Calendar WRITE off the back of "
+                          "a reader nobody consented to writes with")
+        st.x("DELETE FROM credential"); st.x("DELETE FROM permission")
+
+        # 1. Wiring grants the app it names, and only read.
+        r = S.add(st, "messages", "local")
+        if r.get("error"):
+            return (True, f"could not wire messages: {r['error']}")
+        if P.state(st, P.APP, "Messages", P.READ) != P.ALLOW:
+            return (True, "wiring a source did not grant the app it reads")
+        if "Permissions" not in str(r.get("note", "")):
+            return (True, "the wiring does not say where the grant lives")
+
+        # 2. Blocked is blocked: not wired, and not faked over.
+        P.set_state(st, P.APP, "Messages", P.READ, P.BLOCK)
+        C.wire(st)
+        if C.REGISTRY.by_role("messages"):
+            return (True, "a blocked app was wired anyway (or the sample "
+                          "world stood in for it)")
+
+        # 2b. The substitution hazard by name. The sample world covers the
+        #     mail role — messages it does not — so a blocked Mail is
+        #     exactly where invented mail would stand in for the mailbox
+        #     that was refused, and must not.
+        r_mail = S.add(st, "maildir", "local")
+        if r_mail.get("error"):
+            return (True, f"could not wire mail: {r_mail['error']}")
+        P.set_state(st, P.APP, "Mail", P.READ, P.BLOCK)
+        C.wire(st)
+        if C.REGISTRY.by_role("mail"):
+            return (True, "Mail is blocked and the mail role is still "
+                          "populated — the sample world is standing in for "
+                          "a mailbox that was refused")
+        S.remove(st, r_mail["name"])
+        P.set_state(st, P.APP, "Mail", P.READ, P.ASK)
+
+        # 3. Undecided refuses too, and the refusal is recorded where the
+        #    panel reads it — a knock, not a log line.
+        P.set_state(st, P.APP, "Messages", P.READ, P.ASK)
+        C.wire(st)
+        if C.REGISTRY.by_role("messages"):
+            return (True, "an undecided app was read — 'ask' has a state "
+                          "that means 'probably fine'")
+        want = [w for w in P.wants(st) if w["subject"] == "Messages"]
+        if not (want and want[0]["asks"] >= 1):
+            return (True, "the refused attempt left no record — the panel "
+                          "has nothing to show and the sweep nothing to say")
+
+        # 4. Allow opens it, on the next request, no restart.
+        P.set_state(st, P.APP, "Messages", P.READ, P.ALLOW)
+        C.wire(st)
+        if not C.REGISTRY.by_role("messages"):
+            return (True, "allowing the app did not open the door")
+
+        # 5. And a block refuses the wiring itself, before the row exists.
+        P.set_state(st, P.APP, "Messages", P.READ, P.BLOCK)
+        S.remove(st, r["name"])
+        r2 = S.add(st, "messages", "local")
+        if not r2.get("error") or "block" not in str(r2["error"]).lower():
+            return (True, f"wiring a blocked app succeeded: {r2}")
+        C.REGISTRY.clear()
+        return (False, "adoption keeps old grants and never invents a "
+                       "write; wiring grants by name; block and ask both "
+                       "refuse; the refusal is recorded; allow opens it "
+                       "on the next request")
+    probe("A128 an app is read without anyone deciding",
+          app_read_without_a_decision)
+
+    def diary_writes_past_a_closed_door():
+        # Calendar write is the one door no reader's wiring opens. Denied
+        # is not failure — the .ics file is this action's oldest fallback —
+        # but it must be the *permission* saying no, recorded as a knock,
+        # and an allow must change what happens next.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf
+        from pathlib import Path as _P
+        from datetime import date as _d, timedelta as _td
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import actions, permission as P, sources as S
+        tmp = _P(_tf.mkdtemp())
+        db2 = tmp / "p.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db2)); src.backup(dst); dst.close(); src.close()
+        st = Store(db2)
+        st.x("DELETE FROM credential"); st.x("DELETE FROM permission")
+        out = tmp / "holds"
+        S.add(st, "ics_out", str(out))
+        base = _d.today() + _td(days=50)
+        hold = {"title": "Sam visiting", "start": base.isoformat(),
+                "end": (base + _td(days=2)).isoformat()}
+        got = actions.run(st, actions.propose("put_in_diary", hold))
+        if not got.get("ok") or not got.get("file"):
+            return (True, f"denied Calendar and lost the hold entirely: "
+                          f"{got} — the fallback file is the whole point")
+        note = str(got.get("calendar_note") or "")
+        if "write into Calendar" not in note or "Permissions" not in note:
+            return (True, f"the refusal does not name the door or where to "
+                          f"open it: {note!r}")
+        want = [w for w in P.wants(st)
+                if w["subject"] == "Calendar" and w["verb"] == P.WRITE]
+        if not want:
+            return (True, "the diary knocked and nothing was recorded — "
+                          "the panel cannot ask a question it never hears")
+        # Allowed, the permission stops being the reason. On a Mac the
+        # write then happens; on this box Calendar.app is absent, which is
+        # a different sentence — the door being open has to be visible in
+        # which refusal comes back.
+        P.set_state(st, P.APP, "Calendar", P.WRITE, P.ALLOW)
+        got2 = actions.run(st, actions.propose("put_in_diary", {
+            **hold, "title": "Dentist",
+            "start": (base + _td(days=7)).isoformat(),
+            "end": (base + _td(days=8)).isoformat()}))
+        note2 = str(got2.get("calendar_note") or "")
+        if "write into Calendar" in note2:
+            return (True, "allowed, and the gate still says no")
+        return (False, "denied writes fall back to the file with the "
+                       "permission named, the knock is recorded, and an "
+                       "allow changes the answer")
+    probe("A129 the diary writes into Calendar past a closed door",
+          diary_writes_past_a_closed_door)
+
+    def one_ledger_both_surfaces():
+        # The panel writes the same table every gate reads, and the egress
+        # list is the net half of it — one book. Runs against the live
+        # server on the live db, so everything it changes is put back.
+        led = g('/api/v1/permissions')
+        apps = {(a["app"], a["verb"]): a for a in led.get("apps", [])}
+        for door in (("Mail", "read"), ("Calendar", "read"),
+                     ("Calendar", "write"), ("Messages", "read")):
+            if door not in apps:
+                return (True, f"the panel does not list {door} — a door "
+                              f"nobody can see is a door nobody decided")
+        before = apps[("Mail", "read")]["state"]
+        try:
+            r = po('/api/v1/permissions/set',
+                   {"realm": "app", "subject": "mail", "verb": "read",
+                    "state": "block"})
+            if r.get("error"):
+                return (True, f"the panel cannot block by name: {r}")
+            now = [a for a in g('/api/v1/permissions')["apps"]
+                   if a["app"] == "Mail" and a["verb"] == "read"][0]
+            if now["state"] != "block":
+                return (True, f"blocked on the panel, {now['state']} in "
+                              f"the table")
+        finally:
+            po('/api/v1/permissions/set',
+               {"realm": "app", "subject": "Mail", "verb": "read",
+                "state": before})
+        host = "probe-a130.example"
+        try:
+            po('/api/v1/permissions/set',
+               {"realm": "net", "subject": host, "verb": "reach",
+                "state": "allow"})
+            if host not in g('/api/v1/sources')["egress"]:
+                return (True, "a host allowed on the permissions panel is "
+                              "not on the egress list — two books again")
+            r = po('/api/v1/egress/deny', {"host": host})
+            if r.get("error"):
+                return (True, f"egress deny does not reach the ledger: {r}")
+            still = [n for n in g('/api/v1/permissions').get("net", [])
+                     if n["host"] == host and n["state"] == "allow"]
+            if still:
+                return (True, "denied on the egress surface, still allow "
+                              "in the ledger")
+        finally:
+            # Best effort: the happy path has already denied it, and a
+            # second deny is a 400 that would eat the probe's own verdict.
+            try:
+                po('/api/v1/egress/deny', {"host": host})
+            except Exception:                                    # noqa: BLE001
+                pass
+        if not isinstance(g('/api/v1/health').get("permission_wants"), int):
+            return (True, "health does not carry the unanswered-knock "
+                          "count, so the board can never say something is "
+                          "waiting")
+        return (False, "every door is listed, the panel's block lands in "
+                       "the table, the egress list is the net half of the "
+                       "same ledger, and health counts the knocks")
+    probe("A130 the panel and the gate keep separate books",
+          one_ledger_both_surfaces)
 
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it

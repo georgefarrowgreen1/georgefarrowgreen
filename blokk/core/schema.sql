@@ -255,3 +255,24 @@ CREATE TABLE IF NOT EXISTS setting (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- What Blokk may touch, decided by a person. One ledger for every door:
+-- the apps on this Mac (realm 'app') and the hosts on the internet (realm
+-- 'net'). Nothing reads Mail, writes Calendar or opens a socket without an
+-- allow row here; a refused attempt is recorded on the row it wanted, so
+-- "something asked" is a fact on a screen rather than a line in a log.
+-- The egress allowlist used to be a JSON list in `setting`; it lives here
+-- now, as rows, because two permission systems is how they disagree.
+-- core/permission.py owns this table.
+CREATE TABLE IF NOT EXISTS permission (
+  realm       TEXT NOT NULL,                    -- app | net
+  subject     TEXT NOT NULL,                    -- 'Mail' | a hostname
+  verb        TEXT NOT NULL,                    -- read | write | reach
+  state       TEXT NOT NULL DEFAULT 'ask',     -- allow | block | ask
+  why         TEXT NOT NULL DEFAULT '',        -- what last wanted it, verbatim
+  asks        INTEGER NOT NULL DEFAULT 0,      -- refused attempts, ever
+  last_asked  TEXT,
+  decided_by  TEXT NOT NULL DEFAULT '',        -- setup | panel | approval | wired
+  changed_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (realm, subject, verb)
+);
