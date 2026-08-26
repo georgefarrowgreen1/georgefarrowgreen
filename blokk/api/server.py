@@ -424,6 +424,54 @@ def h_decide(approval_id, body):
                 f"e_{approval_id}", decision,
                 a["category"], a["body"], body.get("edited_body"))
 
+    # Approving a draft with a recipient queues the offer to send it — the
+    # second decision, as its own card, which is the only way sending was
+    # ever going to be reachable from a queue whose drafts carry no action.
+    # Sending stays a separate decision on purpose (see _send_reply), and
+    # the card is pinned by its category, so it always asks and rejecting
+    # it costs one tap. Never for a row that already carries an action (a
+    # chat proposal is not a draft), never for the send card itself, and
+    # never twice — the send offer is keyed on the draft's own id.
+    keys = a.keys()
+    if (decision in ("approve", "edit") and not a["action"]
+            and (a["recipient"] or "").strip()
+            and not (a["sent_at"] if "sent_at" in keys else None)
+            and a["category"] != "send_mail"):
+        try:
+            sp = actions.propose("send_reply", {"approval": approval_id})
+            chan = "mail"
+            try:
+                chan = (json.loads(a["evidence"] or "{}")
+                        .get("channel")) or ("mail" if "@" in a["recipient"]
+                                             else "text")
+            except (ValueError, TypeError):
+                pass
+            how = ("by mail" if chan == "mail"
+                   else "as a text, through Messages")
+            # Its own run row, deliberately: hung off the draft's run it
+            # would hold `still` above zero and park the sweep's resume on
+            # a card that is not the sweep's — the same class of hang the
+            # expiry sweep exists to clean up, built in on purpose.
+            rid = f"r_send_{approval_id}"
+            store.x("""INSERT OR REPLACE INTO run
+                       (id,workflow,status,input,ended_at)
+                       VALUES(?,'send','done',?,?)""",
+                    rid, json.dumps({"sends": approval_id}),
+                    now().isoformat())
+            store.x("""INSERT OR REPLACE INTO approval
+                       (id,run_id,category,title,body,evidence,action,
+                        recipient)
+                       VALUES(?,?,?,?,?,?,?,?)""",
+                    f"a_send_{approval_id}", rid, sp["category"],
+                    f"Send it to {a['recipient']}?",
+                    f"The reply you just approved goes to "
+                    f"{a['recipient']} {how}. Nothing has left yet.",
+                    json.dumps({"sends": approval_id, "channel": chan,
+                                "drawn_from": []}),
+                    json.dumps(sp), a["recipient"])
+        except actions.Rejected:
+            pass          # a draft that cannot be offered is still approved
+
     still = store.one(
         "SELECT COUNT(*) c FROM approval WHERE run_id=? AND decision IS NULL",
         a["run_id"])["c"]

@@ -759,12 +759,42 @@ def _send_reply(store, approval, **_):
             text = (json.loads(row["edited_body"]) or {}).get("preview") or text
         except ValueError:
             text = row["edited_body"]
+    # Which door the words leave by is a property of who they are addressed
+    # to and where their message arrived — never a choice the model or this
+    # action makes. The sweep records the channel on the row when the draft
+    # is queued; a row from before that column infers it from the shape of
+    # the recipient, which is right for every phone number and right for
+    # almost every address.
+    channel = _channel_of(row, to)
+    from core.durable import now as _now
+    if channel == "text":
+        from core import permission
+        from core.connectors import messages_out
+        try:
+            # Sending a text is Messages' write door, never granted by
+            # wiring the reader. Denied is a Rejected with the panel named,
+            # and the knock is recorded where the panel shows it.
+            permission.require(store, permission.APP, "Messages",
+                               permission.WRITE,
+                               why="sending a reply you approved")
+        except permission.Denied as e:
+            raise Rejected(str(e)) from None
+        try:
+            out = messages_out.send(store, to, text, expected=to)
+        except messages_out.TextRefused as e:
+            raise Rejected(str(e)) from None
+        store.x("UPDATE approval SET sent_at=? WHERE id=?",
+                _now().isoformat(), approval)
+        return {"ok": True, "sent": True, "to": out["to"],
+                "detail": f"Handed to Messages for {out['to']} "
+                          f"({out['via']}). {out['left_today']} left in "
+                          f"today's cap. {out['note']}."}
     sender = _C.wire(store).first("send")
     if sender is None:
         raise Rejected(
-            "there is no way to send. Sending is off until you wire it: "
-            "connect.py add smtp you@example.com:465, and a keychain entry "
-            "to go with it.")
+            "there is no way to send mail. Sending is off until you wire "
+            "it: python3 connect.py sending walks you through it, password "
+            "straight into the keychain.")
     from core.connectors.smtp_mail import SendRefused
     try:
         out = sender.send(to, _subject_for(row), text, expected=to)
@@ -773,12 +803,29 @@ def _send_reply(store, approval, **_):
     # Marked before anything is returned, and marked even though the send
     # already happened — the window between the two is the one where a
     # crash would let it go twice.
-    from core.durable import now as _now
     store.x("UPDATE approval SET sent_at=? WHERE id=?",
             _now().isoformat(), approval)
     return {"ok": True, "sent": True, "to": out["to"],
             "detail": f"Sent to {out['to']} via {out['via']}. "
                       f"{out['left_today']} left in today's cap."}
+
+
+def _channel_of(row, to: str) -> str:
+    """"text" or "mail", read off the row, inferred only as a fallback.
+
+    The evidence's `channel` is written by the sweep from which reader the
+    message actually came through, which settles the one ambiguous case —
+    an iMessage from an email-shaped handle. Absent (a row queued before
+    the channel was recorded), the recipient's shape decides: a phone
+    number cannot be mailed and an address is almost never a text.
+    """
+    try:
+        ev = json.loads(row["evidence"] or "{}")
+        if ev.get("channel") in ("text", "mail"):
+            return ev["channel"]
+    except (ValueError, TypeError):
+        pass
+    return "mail" if "@" in (to or "") else "text"
 
 
 def _subject_for(row) -> str:
@@ -796,8 +843,9 @@ def _subject_for(row) -> str:
 
 def _say_send(a: dict) -> str:
     return (f"Send the approved draft {a.get('approval', '')} \u2014 this one "
-            f"leaves this Mac and reaches the person it is addressed to. "
-            f"Nothing else in Blokk does that.")
+            f"leaves this Mac and reaches the person it is addressed to, by "
+            f"the way their message arrived: mail as mail, a text through "
+            f"Messages. Nothing else in Blokk reaches anybody.")
 
 
 ACTIONS: dict[str, Action] = {a.name: a for a in (

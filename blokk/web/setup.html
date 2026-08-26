@@ -296,6 +296,7 @@
   .addmodel .hint{margin:8px 0 0;font-size:12px;color:var(--lab3)}
 
   /* Step 5 — your own data. Same materials as the rest, no new ones. */
+  .mailhint{margin:8px 4px 0}
   .fieldlabel{display:block;font-size:13px;color:var(--lab2);margin-bottom:var(--sp-2)}
   #wsid{margin:var(--sp-2) 0 0}
   #wsid code{font-family:var(--mono);color:var(--lab2)}
@@ -825,6 +826,29 @@ async function loadLocal(){
       w.querySelector('input').addEventListener('change', refreshWire);
       box.append(w);
     }
+    // Sending a text is Messages' write door, and the mirror rule of
+    // Calendar's: reading the archive never grants it. Its own unticked
+    // row — no password, no account; macOS shows its own dialog on the
+    // first send, and every send still goes through the approval queue.
+    if(LOCAL.some(s => (s.kind_local || s.kind) === 'messages')){
+      const w = el(`<label class="srcrow">
+        <input type="checkbox" id="sendtext">
+        <span class="tick" aria-hidden="true">&#10003;</span>
+        <span class="who"><b>Let Blokk send texts you approve</b>
+          <small>A reply you approve gets its own Send card; only then does
+          it leave, through Messages.app itself. Unticked, drafts stay
+          drafts you copy out.</small></span>
+      </label>`);
+      w.querySelector('input').addEventListener('change', refreshWire);
+      box.append(w);
+    }
+    // Sending mail needs one thing the browser must never touch: the
+    // password. One terminal line does the whole of it, straight into the
+    // keychain, so here it is a sentence rather than a form.
+    box.append(el(`<p class="hint mailhint">Replying by
+      email, once you want it: <code>python3 connect.py sending</code> in
+      the terminal — your address and an app-specific password, kept in
+      the keychain, never in this page.</p>`));
     holdsRow(box);
     if(LOCAL.some(s=>s.state==='blocked'||s.state==='empty'))
       $('#p5note').textContent = 'Anything with a Grant access button is '
@@ -919,9 +943,10 @@ function refreshWire(){
   const b = $('#wire');
   const n = ticked().length;
   const cw = document.querySelector('#calwrite')?.checked;
-  b.disabled = !n && !cw;
+  const st = document.querySelector('#sendtext')?.checked;
+  b.disabled = !n && !cw && !st;
   b.textContent = n ? `Connect ${n===1?'it':'these'}`
-    : cw ? 'Allow Calendar writes' : 'Nothing ticked';
+    : (cw || st) ? 'Allow it' : 'Nothing ticked';
 }
 
 $('#skip5').onclick = ()=>{ location.href='/'; };
@@ -942,6 +967,11 @@ $('#wire').onclick = async ()=>{
       const r = await post('/api/v1/permissions/set',
         {realm:'app', subject:'Calendar', verb:'write', state:'allow'});
       if(r.error) failed.push(`Calendar write: ${r.error}`);
+    }
+    if(document.querySelector('#sendtext')?.checked){
+      const r = await post('/api/v1/permissions/set',
+        {realm:'app', subject:'Messages', verb:'write', state:'allow'});
+      if(r.error) failed.push(`Messages send: ${r.error}`);
     }
     if(failed.length){
       $('#p5note').innerHTML = `<b class="bad">Some did not attach.</b><br>

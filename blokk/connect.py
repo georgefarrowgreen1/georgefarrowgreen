@@ -12,6 +12,7 @@ Wire real data in, one source at a time.
     python3 connect.py peek mail 6                   see what it would actually read
     python3 connect.py keychain blokk-mail           store a password, hidden
     python3 connect.py remove mail
+    python3 connect.py sending                       reply by email: one guided line
     python3 connect.py apps                          what Blokk may touch on this Mac
     python3 connect.py apps allow calendar write     one door, one decision
     python3 connect.py egress                        what it may reach off it
@@ -289,6 +290,63 @@ def main() -> int:
                       else "(nothing — nothing can leave this Mac)"))
         print("\n  connect.py egress allow <host>")
         print("  connect.py egress log [n]        what has actually left")
+        return 0
+
+    if cmd == "sending":
+        # Everything mail-sending needs, in one guided line: the address,
+        # the server, and the password — which goes straight into the
+        # keychain and nowhere else, which is why this cannot be a form in
+        # the wizard. Texts need none of this: that is a tick in setup or
+        # `connect.py apps allow messages write`.
+        if not sys.stdin.isatty():
+            print("  sending setup needs a terminal — it prompts for a "
+                  "password and will not take one as an argument.")
+            return 1
+        already = [r for r in sources.listing(store) if r["kind"] == "smtp"]
+        if already:
+            print(f"  Mail sending is already wired ({already[0]['name']}). "
+                  f"connect.py test proves the login still works.")
+            return 0
+        print("  Sending replies by email. One mailbox, one password, "
+              "kept in your keychain.")
+        try:
+            addr = input("  your address (the From line): ").strip()
+            if not addr or "@" not in addr:
+                print("  that is not an address — nothing was set up.")
+                return 1
+            dom = addr.rpartition("@")[2].lower()
+            guess = {"icloud.com": "smtp.mail.me.com:587",
+                     "me.com": "smtp.mail.me.com:587",
+                     "gmail.com": "smtp.gmail.com:587",
+                     "fastmail.com": "smtp.fastmail.com:465",
+                     "outlook.com": "smtp-mail.outlook.com:587",
+                     "hotmail.com": "smtp-mail.outlook.com:587",
+                     }.get(dom, "")
+            host = input(f"  SMTP server host:port"
+                         f"{f' [{guess}]' if guess else ''}: ").strip() \
+                or guess
+            if not host:
+                print("  no server — your provider's help pages call it "
+                      "the outgoing or SMTP server.")
+                return 1
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+        ref = f"blokk-smtp@{host}"
+        if not _store_password(ref):
+            print(f"  no password stored — nothing was wired. When ready:\n"
+                  f"    security add-generic-password -s {ref} -a {addr} -w\n"
+                  f"    python3 connect.py add smtp {ref}")
+            return 1
+        r = sources.add(store, "smtp", ref)
+        if r.get("error"):
+            print("  " + r["error"])
+            return 1
+        print(f"  Wired. A reply you approve now gets its own Send card, "
+              f"and only approving that sends it — capped at 20 a day, "
+              f"one person at a time.")
+        print(f"  connect.py test logs in and hangs up, to prove it, "
+              f"without sending anything.")
         return 0
 
     if cmd == "apps":

@@ -1495,6 +1495,11 @@ const KINDS = {
                    alt:['reject','Skip'],  ok:['approve','Noted']},
   asked_for:      {n:'From the chat',  c:'var(--tile-blue)',   big:true,
                    alt:['edit','Edit'],    ok:['approve','Approve']},
+  // The second decision on a reply: the draft was approved, this one is
+  // whether it leaves the Mac. Rust, the always-asks hue, because its
+  // category is pinned and no streak of good mornings changes that.
+  send_mail:      {n:'Send it',        c:'var(--tile-rust)',   big:true,
+                   alt:['reject','Don’t send'], ok:['approve','Send']},
 };
 const kindOf = a => KINDS[a.category] ||
   {n:(a.category || 'for you').replace(/_/g,' '),

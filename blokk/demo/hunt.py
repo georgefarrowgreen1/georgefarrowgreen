@@ -9147,6 +9147,170 @@ try:
     probe("A131 connecting your own Mac takes four steps of reading",
           setup_is_four_steps_of_reading)
 
+    def texts_reach_a_stranger():
+        # The second connector that reaches another person, held to every
+        # rule the first one earned: the words can be the model's, the
+        # reader of them cannot; the door is Messages' write permission,
+        # never granted by wiring the reader; and the send is a second
+        # decision, offered as its own pinned card after the draft is
+        # approved.
+        import sys as _s, sqlite3 as _sq, tempfile as _tf, json as _j
+        from pathlib import Path as _P
+        _s.path.insert(0, ".")
+        from core.durable import Store
+        from core import actions, permission as P
+        from core.connectors import messages_out as MO
+
+        # 1. The injection surface is one function wide and it holds: the
+        #    two characters that can end an AppleScript literal are
+        #    escaped, a control character is refused outright.
+        if MO._lit('a "quote" and \\ slash') != '"a \\"quote\\" and \\\\ slash"':
+            return (True, "a quote or backslash survives into the script "
+                          "— a message body can end its own literal")
+        try:
+            MO._lit("x\x07y")
+            return (True, "a control character was escaped cleverly rather "
+                          "than refused")
+        except MO.TextRefused:
+            pass
+
+        # 2. One person at a time, and a handle is a handle. The
+        #    two-numbers case matters most: without the list rule,
+        #    "123456; 7890123" survives digit-stripping as one thirteen-
+        #    digit number that belongs to nobody — a refusal-by-merge that
+        #    sends somebody's words to a stranger's phone.
+        for bad in ("a@b.c, d@e.f", "123456; 7890123", "one\ntwo",
+                    "not a number"):
+            try:
+                MO.handle(bad)
+                return (True, f"{bad!r} was accepted as a recipient")
+            except MO.TextRefused:
+                pass
+        if MO.handle("+44 7700 900-123") != "+447700900123":
+            return (True, "the same number written two ways is two handles")
+
+        # 3. The recipient is fixed when the draft is made. Availability is
+        #    stood in for so the check under test is the one that fires.
+        real_avail = MO.available
+        MO.available = lambda: (True, "")
+        try:
+            try:
+                MO.send(None, "+447700900123", "hello",
+                        expected="+447700900999")
+                return (True, "a send to a different number than the draft "
+                              "was written to went through")
+            except MO.TextRefused as e:
+                if "fixed when the draft is made" not in str(e):
+                    return (True, f"refused for the wrong reason: {e}")
+            try:
+                MO.send(None, "+447700900123", "   ")
+                return (True, "an empty message was sent")
+            except MO.TextRefused:
+                pass
+        finally:
+            MO.available = real_avail
+
+        # 4. The permission gate, on a real draft. Undecided refuses with
+        #    the door named and the knock recorded; allowed, the refusal
+        #    changes to the connector's own (no Messages.app on this box),
+        #    which is the door visibly opening.
+        tmp = _P(_tf.mkdtemp())
+        db2 = tmp / "p.db"
+        src = _sq.connect("file:blokk.db?mode=ro", uri=True)
+        dst = _sq.connect(str(db2)); src.backup(dst); dst.close(); src.close()
+        st = Store(db2)
+        st.x("DELETE FROM credential"); st.x("DELETE FROM permission")
+        st.x("INSERT OR REPLACE INTO run(id,workflow,status,input) "
+             "VALUES('r_p132','sweep','done','{}')")
+        st.x("INSERT OR REPLACE INTO approval"
+             "(id,run_id,category,title,body,evidence,decision,recipient) "
+             "VALUES('a_p132','r_p132','reply','t','the words','{}',"
+             "'approve','+447700900123')")
+        try:
+            actions.run(st, {"name": "send_reply",
+                             "args": {"approval": "a_p132"}})
+            return (True, "an undecided Messages write sent a text")
+        except actions.Rejected as e:
+            if "Messages" not in str(e) or "Permissions" not in str(e):
+                return (True, f"refused without naming the door: {e}")
+        if not [w for w in P.wants(st) if w["subject"] == "Messages"
+                and w["verb"] == P.WRITE]:
+            return (True, "the refused send left no knock for the panel")
+        P.set_state(st, P.APP, "Messages", P.WRITE, P.ALLOW)
+        try:
+            actions.run(st, {"name": "send_reply",
+                             "args": {"approval": "a_p132"}})
+            return (True, "a send claimed to work on a box with no "
+                          "Messages.app")
+        except actions.Rejected as e:
+            if "macOS only" not in str(e):
+                return (True, f"allowed, and still refused by the "
+                              f"permission rather than the Mac: {e}")
+
+        # 5. A mail-channel draft goes to the mail door, which without smtp
+        #    wired says exactly how to wire it.
+        st.x("UPDATE approval SET recipient='sam@example.com', "
+             "evidence='{\"channel\": \"mail\"}' WHERE id='a_p132'")
+        try:
+            actions.run(st, {"name": "send_reply",
+                             "args": {"approval": "a_p132"}})
+            return (True, "mail went somewhere with no smtp wired")
+        except actions.Rejected as e:
+            if "connect.py sending" not in str(e):
+                return (True, f"the mail refusal does not say how to wire "
+                              f"sending: {e}")
+
+        # 6. Approving a draft with a recipient queues the offer to send —
+        #    the second decision as its own card, pinned by category, on
+        #    its own run so the sweep's resume is not held hostage. Against
+        #    the live server, and everything it makes is taken back out.
+        d = db()
+        d.execute("INSERT OR REPLACE INTO run(id,workflow,status,input) "
+                  "VALUES('r_p132b','sweep','done','{}')")
+        d.execute("INSERT OR REPLACE INTO approval"
+                  "(id,run_id,category,title,body,evidence,recipient) "
+                  "VALUES('a_p132b','r_p132b','reply','t','words',"
+                  "'{\"channel\": \"text\"}','+447700900123')")
+        d.commit(); d.close()
+        try:
+            po('/api/v1/approvals/a_p132b/decide', {"decision": "approve"})
+            offer = [r for r in g('/api/v1/approvals')
+                     if r["id"] == "a_send_a_p132b"]
+            if not offer:
+                return (True, "the approved draft produced no send card — "
+                              "sending is unreachable from the queue again")
+            row = offer[0]
+            act = _j.loads(row["action"] or "{}")
+            if act.get("name") != "send_reply" or row["category"] != "send_mail":
+                return (True, f"the send card proposes {act.get('name')!r} "
+                              f"as {row['category']!r}")
+            if "through Messages" not in str(row["body"]):
+                return (True, "the send card does not say which door the "
+                              "words leave by")
+            if row["run_id"] == "r_p132b":
+                return (True, "the send card hangs off the sweep's run, so "
+                              "the sweep cannot resume until it is decided")
+            po(f'/api/v1/approvals/{row["id"]}/decide',
+               {"decision": "reject"})
+        finally:
+            d = db()
+            for rid in ("r_p132b", "r_send_a_p132b"):
+                d.execute("DELETE FROM run WHERE id=?", (rid,))
+            d.commit(); d.close()
+
+        # 7. And the whole channel stays behind the pin.
+        if not actions.ACTIONS["send_reply"].pinned:
+            return (True, "the one action that reaches a person can "
+                          "graduate")
+        return (False, "the literal cannot be escaped, the recipient is "
+                       "one person and fixed at draft time, the door is "
+                       "Messages' write permission with the knock "
+                       "recorded, mail routes to mail with its wiring "
+                       "named, and the send is its own pinned card on its "
+                       "own run")
+    probe("A132 a text can leave without its own decision",
+          texts_reach_a_stranger)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

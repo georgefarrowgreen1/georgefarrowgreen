@@ -74,10 +74,13 @@ APPS = (
          where="~/Library/Calendars read from disk; writes go through "
                "Calendar.app itself, which shows its own macOS dialog the "
                "first time."),
-    dict(app="Messages", verbs=(READ,),
-         what="your iMessage and SMS history",
-         where="~/Library/Messages/chat.db, opened read-only and immutable "
-               "— Blokk cannot send one."),
+    dict(app="Messages", verbs=(READ, WRITE),
+         what="your iMessage and SMS history — and, separately, sending a "
+              "text you approved",
+         where="~/Library/Messages/chat.db read-only for reading; sends go "
+               "through Messages.app itself, which shows its own macOS "
+               "dialog the first time, and only ever from your approval "
+               "queue."),
 )
 
 

@@ -153,6 +153,21 @@ now". An action that took its own `to` and `text` would let a model write the
 words, choose the reader and ask for it in one step, which is the entire thing
 the queue exists to prevent.
 
+There are two doors out and one action over both: the *channel* is a
+property of who the words are addressed to, recorded by the sweep as
+`evidence.channel` from which reader the message came through (inferred
+from the recipient's shape only for rows older than the column). Mail goes
+by `smtp_mail`; a text goes by `messages_out` — Messages.app driven the
+same way Calendar writes are, one `_lit()` wide, behind Messages' *write*
+permission that no reader's wiring grants, sharing the same daily cap
+counted off `sent_at` so twenty texts after twenty emails is not a loophole.
+And sending is reachable: approving a draft that carries a recipient makes
+`h_decide` queue the offer as its own pinned `send_mail` card, on its own
+run row (hung off the sweep's run it would park the sweep's resume), so
+the second decision the doctrine requires is a card in the queue rather
+than an action nothing could ever invoke. A132 holds all of it,
+mutation-tested six ways.
+
 `approval.recipient` is taken from the From header of the message being
 answered and from nowhere else — never from a body, because a "please reply
 to" line inside somebody's mail is text a stranger wrote. A draft with no
@@ -517,6 +532,10 @@ worse than an error.
                        (the same hold, put in Calendar.app through
                        osascript — AppleScript has no placeholders, so
                        _lit() is the whole injection surface),
+                       smtp_mail and messages_out (the two that reach
+                       another person: one send action routes between them
+                       by the channel the message arrived on, one shared
+                       daily cap, recipient fixed at draft time),
                        weather and web (the two that leave, and only through
                        core/egress.py), keychain, and the fake world.
                        free_windows() is shared: the real calendar and the
@@ -604,7 +623,7 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 35 of 132 probes have an entry and the
+Coverage is printed, never assumed: 36 of 133 probes have an entry and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.

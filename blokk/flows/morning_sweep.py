@@ -277,6 +277,14 @@ def register(engine, store):
                         # left the grounding check with nothing to check it
                         # against.
                         "diary": list(diary)[:12],
+                        # Which door a send would leave by, recorded from
+                        # which reader the message actually came through —
+                        # not inferred later from the recipient's shape,
+                        # which cannot tell an iMessage address from a
+                        # mailbox.
+                        "channel": ("text"
+                                    if m.get("subject") == "(text message)"
+                                    else "mail"),
                         "checked_at": _hour(ctx)},
                        # time-of-check vs time-of-use: re-run before the send
                        revalidate="calendar_gap",
@@ -812,8 +820,20 @@ def _reply_to(m: dict) -> str:
     recorded recipient simply cannot be sent, and that is the right outcome
     rather than a guess.
     """
-    found = ADDRESS_IN.search(str(m.get("from") or ""))
-    return found.group(0).lower() if found else ""
+    who = str(m.get("from") or "")
+    found = ADDRESS_IN.search(who)
+    if found:
+        return found.group(0).lower()
+    # A text's From is a phone number, and until this branch existed every
+    # reply drafted to one queued with no recipient — a draft that could
+    # never be sent, failing quietly on the one channel people answer
+    # fastest. The whole trimmed field has to be the number: digits *found
+    # inside* a From ("Order 128894") are not somebody to text.
+    if re.fullmatch(r"\+?[0-9][0-9 ()\-\.]{5,18}[0-9]", who.strip()):
+        digits = re.sub(r"[^0-9+]", "", who)
+        if re.fullmatch(r"\+?[0-9]{7,15}", digits):
+            return digits
+    return ""
 
 
 def _queue(ctx, store, category, body, why, evidence, revalidate=None,
