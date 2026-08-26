@@ -1370,6 +1370,17 @@ def https_attempts() -> dict:
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # Without this, a connection that never sends a byte parks its thread
+    # for ever: Safari opens speculative connections and abandons them, and
+    # both the TLS peek below and the base class's readline() block
+    # indefinitely on a socket with no deadline — the same hang the TLS
+    # alert was built to end, reintroduced one layer down, one leaked
+    # thread per preconnect. Two minutes is longer than any legitimate gap
+    # between a connection opening and a request arriving; an idle
+    # keep-alive that hits it is closed quietly (handle_error's QUIET set
+    # covers timeouts) and the client simply reconnects. Per-operation, so
+    # a slow model streaming an answer for ten minutes is untouched.
+    timeout = 120
 
     # 0x16 is a TLS handshake record and 0x03 0x0X its version; no HTTP
     # method begins with either byte, so this cannot be a real request.
@@ -1530,6 +1541,31 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self._send(204, b"")
 
+    def _drop_body(self) -> None:
+        """Read and discard the request body before an early rejection.
+
+        protocol_version is HTTP/1.1, so the connection is reused — and a
+        rejection sent with the body still on the wire leaves those bytes
+        to be parsed as the next request line, turning every request after
+        a 403 on that connection into garbage 400s. Bounded: a stranger
+        declaring a huge body gets the connection closed, not read.
+        """
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if n <= 0:
+            return
+        if n > MAX_BODY:
+            self.close_connection = True
+            return
+        remaining = n
+        while remaining > 0:
+            chunk = self.rfile.read(min(65536, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+
     # What an unauthenticated browser gets. It used to be the JSON below,
     # which on a phone is a wall of braces: somebody who typed the address
     # by hand, or opened a bookmark made before the token existed, got
@@ -1608,6 +1644,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self._cors()
         self.send_header("Connection", "close")
+        # The header tells the client; this tells the base class. Without
+        # it, the server loops back to readline() on a connection whose
+        # other end was just told there is nothing more to say.
+        self.close_connection = True
         self.end_headers()
         i = 0
         try:
@@ -1632,12 +1672,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         if not self._same_site():
+            self._drop_body()
             return self._send(403, {
                 "error": "cross-site request refused",
                 "detail": "This endpoint changes something, so it only "
                           "accepts requests from Blokk's own pages. Send "
                           "Content-Type: application/json."})
         if not self._authorised():
+            self._drop_body()
             return self._send(401, {"error": "token required"})
         if u.path == "/api/v1/update/apply":
             body = self._read_body()

@@ -9527,6 +9527,67 @@ try:
     probe("A134 the mesh link that goes nowhere says nothing",
           mesh_link_with_no_diagnosis)
 
+    def a_rejection_poisons_the_connection():
+        # protocol_version is HTTP/1.1, so a phone reuses one connection
+        # for everything. A POST rejected before its body was read — the
+        # cross-site 403, the missing-token 401 — used to leave the body
+        # bytes on the wire, and the next request on that connection parsed
+        # them as a request line: every call after one rejection answered
+        # garbage until the socket died. From a phone that renders as
+        # "Blokk stopped responding", cause invisible.
+        import http.client as _hc
+        import sys as _s
+        _s.path.insert(0, ".")
+        c = _hc.HTTPConnection("127.0.0.1", 8099, timeout=10)
+        try:
+            # A form-shaped POST with a real body: refused as cross-site,
+            # and the refusal must not eat the connection.
+            c.request("POST", "/api/v1/sweep", body=b"x=1&y=2" * 40,
+                      headers={"Content-Type": "text/plain"})
+            r = c.getresponse()
+            first = r.status
+            r.read()
+            if first != 403:
+                return (True, f"a form-shaped POST was answered {first}, "
+                              f"not refused as cross-site")
+            # The very next request on the same socket has to be normal.
+            c.request("GET", "/api/v1/health")
+            r2 = c.getresponse()
+            body = r2.read()
+            if r2.status != 200 or b'"ok"' not in body:
+                return (True, f"after one rejected POST, the same "
+                              f"connection answers {r2.status} "
+                              f"{body[:60]!r} — the unread body poisoned "
+                              f"the stream")
+        except (OSError, _hc.HTTPException) as e:
+            return (True, f"after one rejected POST the connection died: "
+                          f"{type(e).__name__}: {e}")
+        finally:
+            c.close()
+        # And a connection may never be allowed to park a thread for ever:
+        # Safari abandons preconnections, and a socket with no deadline
+        # holds its thread at readline() until the process dies.
+        import api.server as S
+        if not isinstance(S.Handler.timeout, (int, float)) \
+                or not (0 < S.Handler.timeout <= 600):
+            return (True, f"the handler has no socket deadline "
+                          f"(timeout={S.Handler.timeout!r}) — every "
+                          f"abandoned preconnect leaks a thread")
+        # The SSE path closes what it promised to close: the header tells
+        # the client, close_connection tells the base class, and only one
+        # of them was ever set.
+        import inspect as _i
+        sse = _i.getsource(S.Handler._sse)
+        if "close_connection = True" not in sse:
+            return (True, "_sse says Connection: close and then loops "
+                          "back to read another request")
+        return (False, "a rejected POST drains its body and the next "
+                       "request on the connection is normal, sockets carry "
+                       "a deadline, and the stream path closes what it "
+                       "promised")
+    probe("A135 one rejected POST and the connection answers garbage",
+          a_rejection_poisons_the_connection)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.

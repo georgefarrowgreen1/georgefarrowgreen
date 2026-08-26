@@ -637,7 +637,7 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 39 of 215 probes have an entry (the
+Coverage is printed, never assumed: 40 of 216 probes have an entry (the
 gate runs the B suite through node now, so the UI probes count and can be
 mutation-tested like the rest) and the
 gate says so on every run. A gate quietly covering a tenth of the suite is

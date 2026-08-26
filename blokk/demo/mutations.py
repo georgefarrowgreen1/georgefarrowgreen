@@ -566,6 +566,20 @@ MUTATIONS = [
          file="core/doctor.py",
          find='        for line in _pf.render(mesh_findings(mesh_status()),',
          replace='        for line in _pf.render([],'),
+    dict(probe="A135", why="a rejected POST leaves its body on the wire",
+         file="api/server.py",
+         find='        if not self._same_site():\n            '
+              'self._drop_body()',
+         replace='        if not self._same_site():'),
+    dict(probe="A135", why="an abandoned preconnect parks a thread for ever",
+         file="api/server.py",
+         find="    timeout = 120",
+         replace="    timeout = None"),
+    dict(probe="A135", why="the stream path promises close and loops back",
+         file="api/server.py",
+         find="        self.close_connection = True\n        "
+              "self.end_headers()\n        i = 0",
+         replace="        self.end_headers()\n        i = 0"),
     dict(probe="A54", why="opening an app can graduate to acting alone",
          file="core/actions.py",
          find='args=("app",), optional=("verb",), pinned=True,\n'
