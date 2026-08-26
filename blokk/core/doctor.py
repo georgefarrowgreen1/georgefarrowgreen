@@ -210,6 +210,97 @@ def phone_addresses(port: int) -> list[dict]:
     return out
 
 
+def mesh_status() -> dict:
+    """What Tailscale itself says, read and never touched.
+
+    Recognised, never published — and until now, never *asked*. The mesh
+    address was judged by its shape alone, so "unable to access via
+    Tailscale" had no diagnosis at all: a stopped tailscaled, a logged-out
+    Mac and a phone that simply is not on the tailnet all rendered as the
+    same green link that does not work. The status command answers all
+    three, read-only, and the Mac App Store build keeps its CLI inside the
+    app bundle where `which` never looks.
+
+    The findings this feeds are phrased around the split that matters:
+    everything on the Mac's side (installed, running, logged in) versus
+    the one thing only the phone can fix (its Tailscale app, signed into
+    the same tailnet, switched on).
+    """
+    import json as _json
+    import shutil as _sh
+    ts = _sh.which("tailscale") or next(
+        (p for p in ("/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+                     "/usr/local/bin/tailscale", "/opt/homebrew/bin/tailscale")
+         if Path(p).exists()), "")
+    if not ts:
+        return {"installed": False}
+    try:
+        r = subprocess.run([ts, "status", "--json"], capture_output=True,
+                           text=True, timeout=6)
+        d = _json.loads(r.stdout or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {"installed": True, "state": "unreadable"}
+    peers = []
+    for p in (d.get("Peer") or {}).values():
+        peers.append({"name": str(p.get("HostName") or "?"),
+                      "os": str(p.get("OS") or ""),
+                      "online": bool(p.get("Online"))})
+    return {"installed": True,
+            "state": str(d.get("BackendState") or "unknown"),
+            "self": str(((d.get("Self") or {}).get("HostName")) or ""),
+            "peers": peers}
+
+
+def mesh_findings(ms: dict) -> list[dict]:
+    """The mesh, as findings — worst first, empty when it is genuinely fine.
+
+    Only ever *about* the mesh: a Mac with no Tailscale gets nothing here,
+    because the LAN path is the primary one and a missing optional is not
+    a fault. Everything else is the sentence that was missing when the
+    green link did not work.
+    """
+    from core.preflight import _finding, NOTE, WARN
+    if not ms.get("installed"):
+        return []
+    state = ms.get("state", "")
+    if state == "unreadable":
+        return [_finding(NOTE, "Tailscale is installed but would not say "
+                               "how it is doing.",
+                         "Open the Tailscale menu bar app and check it is "
+                         "connected.")]
+    if state == "NeedsLogin":
+        return [_finding(WARN, "Tailscale is installed but this Mac is "
+                               "logged out of it, so the mesh address "
+                               "goes nowhere.",
+                         "Open Tailscale and sign in; the address comes "
+                         "back with it.")]
+    if state != "Running":
+        return [_finding(WARN, f"Tailscale is installed but not connected "
+                               f"({state or 'stopped'}), so the mesh "
+                               f"address goes nowhere.",
+                         "Open the Tailscale menu bar app and switch it "
+                         "on.")]
+    phones = [p for p in ms.get("peers", [])
+              if p["os"].lower() in ("ios", "android")]
+    if not phones:
+        return [_finding(WARN, "This Mac is on the tailnet, and no phone "
+                               "is — the mesh link cannot work until the "
+                               "phone joins.",
+                         "Install the Tailscale app on the phone and sign "
+                         "in with the same account. It appears here the "
+                         "moment it joins.")]
+    if not any(p["online"] for p in phones):
+        names = ", ".join(p["name"] for p in phones[:3])
+        return [_finding(WARN, f"The phone ({names}) is on the tailnet but "
+                               f"offline right now — its Tailscale is "
+                               f"switched off, and the mesh link will not "
+                               f"work until it is on.",
+                         "On the phone: open Tailscale and turn the "
+                         "toggle on. The VPN icon in the status bar is "
+                         "the tell.")]
+    return []
+
+
 def firewall() -> tuple[str, str]:
     """macOS blocks incoming connections per-binary, silently.
 
@@ -708,6 +799,13 @@ def main(argv=None) -> int:
             print(f"      {_c(murl, GREEN)}")
             print(f"  {_c('Same Blokk, over the mesh — it also works at home, and', DIM)}")
             print(f"  {_c('it does not need the Local Network permission at all.', DIM)}")
+        # And what Tailscale itself says — the diagnosis behind a mesh link
+        # that does not work. Asked whether or not the address showed up,
+        # because "logged out" is exactly the case where it does not.
+        from core import preflight as _pf
+        for line in _pf.render(mesh_findings(mesh_status()),
+                               colour=sys.stdout.isatty()):
+            print(line)
 
         # Has anything ever actually got here. This is the half of the
         # question no check on this side can measure — a probe from this Mac

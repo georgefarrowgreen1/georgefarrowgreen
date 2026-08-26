@@ -415,7 +415,13 @@ local network — which is why the causes list names it as the way out. The
 classifier judges that one range by address before interface: on macOS
 Tailscale lives on a utun, and interface-first filed the working mesh
 address under "a VPN tunnel the phone is not on". A126 holds all of it,
-mutation-tested five ways.
+mutation-tested five ways. Recognised now also means *asked*:
+`doctor.mesh_status()` reads `tailscale status --json` (read-only, the
+Mac App Store build keeps its CLI inside the app bundle), and
+`mesh_findings` turns it into the sentence behind a mesh link that goes
+nowhere — logged out, stopped, no phone on the tailnet, or the phone's
+toggle off — printed by the doctor and on the phone panel, silent when
+the mesh is healthy or absent. A134 holds it, mutation-tested six ways.
 
 **6. Fail loudly, degrade locally.**
 One broken connector must not take the night's sweep. One malformed row must
@@ -631,7 +637,7 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 38 of 214 probes have an entry (the
+Coverage is printed, never assumed: 39 of 215 probes have an entry (the
 gate runs the B suite through node now, so the UI probes count and can be
 mutation-tested like the rest) and the
 gate says so on every run. A gate quietly covering a tenth of the suite is

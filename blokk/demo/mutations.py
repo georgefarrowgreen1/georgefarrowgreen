@@ -540,6 +540,32 @@ MUTATIONS = [
          replace="""    }finally{
       b.disabled = false; b.textContent = 'Remove';
     }"""),
+    dict(probe="A134", why="a logged-out Mac reads as merely stopped",
+         file="core/doctor.py",
+         find='    if state == "NeedsLogin":',
+         replace='    if False:'),
+    dict(probe="A134", why="a phone stops counting as a phone",
+         file="core/doctor.py",
+         find='              if p["os"].lower() in ("ios", "android")]',
+         replace='              if p["os"].lower() in ("macos",)]'),
+    dict(probe="A134", why="an offline phone reads as a healthy mesh",
+         file="core/doctor.py",
+         find='    if not any(p["online"] for p in phones):',
+         replace='    if False:'),
+    dict(probe="A134", why="the phone endpoint drops the diagnosis",
+         file="api/server.py",
+         find='    out = {"url": url, "anywhere_url": anywhere,\n'
+              '           "mesh_notes": mesh_notes,',
+         replace='    out = {"url": url, "anywhere_url": anywhere,\n'
+                 '           "mesh_notes_": mesh_notes,'),
+    dict(probe="A134", why="the panel stops rendering what Tailscale said",
+         file="web/index.html",
+         find='    const meshNotes = (d.mesh_notes || []).map(f =>',
+         replace='    const meshNotes = ([]).map(f =>'),
+    dict(probe="A134", why="the doctor stops asking Tailscale",
+         file="core/doctor.py",
+         find='        for line in _pf.render(mesh_findings(mesh_status()),',
+         replace='        for line in _pf.render([],'),
     dict(probe="A54", why="opening an app can graduate to acting alone",
          file="core/actions.py",
          find='args=("app",), optional=("verb",), pinned=True,\n'

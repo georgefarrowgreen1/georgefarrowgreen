@@ -2619,11 +2619,20 @@ $('#phone').onclick = async () => {
     // QR when Tailscale is on this Mac; absent otherwise, because a panel
     // advertising an address that does not exist is the phone URL bug all
     // over again.
-    const mesh = d.anywhere_url
+    // What Tailscale itself said — the diagnosis behind a mesh link that
+    // does not work, or the reason there is no link at all. Rendered
+    // whether or not the address showed up, because "logged out" is
+    // exactly the case where it does not.
+    const meshNotes = (d.mesh_notes || []).map(f =>
+      `<p class="${f.level === 'warn' ? 'no' : 'sub'}">${esc(f.what)}
+         ${f.fix ? `<span class="sub"> ${esc(f.fix)}</span>` : ''}</p>`)
+      .join('');
+    const mesh = (d.anywhere_url
       ? `<p><b>And from anywhere</b>, through your Tailscale —
          at home this works too, and it skips the Local Network permission:</p>
          <div class="qr">${d.qr_anywhere || ''}</div>
-         <p class="link"><code>${esc(d.anywhere_url)}</code></p>` : '';
+         <p class="link"><code>${esc(d.anywhere_url)}</code></p>` : '')
+      + meshNotes;
     body.innerHTML = d.url
       ? `<p>Point the camera at this, on the same wifi as this Mac.</p>
          <div class="qr">${d.qr || ''}</div>
@@ -2634,7 +2643,7 @@ $('#phone').onclick = async () => {
          <p class="sub">Everything below is a VPN tunnel, a virtual network
            or an interface with nothing behind it. Join a wifi network, or
            turn a VPN off, and open this again.</p>
-         ${rows}${fw}`;
+         ${meshNotes}${rows}${fw}`;
   }catch(e){ body.innerHTML = `<p class="no">Could not check: ${esc(e.message)}</p>`; }
 };
 

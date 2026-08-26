@@ -878,7 +878,15 @@ def h_phone(_q):
                 None)
     anywhere = f"http://{mesh['ip']}:{port}/?t={TOKEN}" if mesh else ""
     state, note = doctor.firewall()
+    # The mesh's own diagnosis, so "the anywhere link does not work" is a
+    # sentence on this panel rather than a silence: logged out, stopped,
+    # phone not on the tailnet, phone's Tailscale switched off.
+    try:
+        mesh_notes = doctor.mesh_findings(doctor.mesh_status())
+    except Exception:                                            # noqa: BLE001
+        mesh_notes = []
     out = {"url": url, "anywhere_url": anywhere,
+           "mesh_notes": mesh_notes,
            "addresses": found, "tried": len(usable),
            "firewall": {"state": state, "note": note},
            # Somebody typing the address without http:// shows up here and

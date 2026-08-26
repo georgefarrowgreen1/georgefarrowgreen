@@ -9455,6 +9455,78 @@ try:
     probe("A133 a name is resolved to whoever the model prefers",
           a_name_becomes_a_recipient)
 
+    def mesh_link_with_no_diagnosis():
+        # "Unable to access via Tailscale" arrived with nothing to say
+        # about it: the mesh address was judged by its shape and never by
+        # what Tailscale knows. A stopped tailscaled, a logged-out Mac, a
+        # phone that is not on the tailnet and a phone whose toggle is off
+        # are four different one-line fixes, and they all rendered as the
+        # same green link that goes nowhere.
+        import sys as _s
+        _s.path.insert(0, ".")
+        from core import doctor as D
+
+        # Not installed is not a fault: the LAN path is the primary one
+        # and a missing optional gets no line. On this box that is also
+        # the live path through mesh_status().
+        if D.mesh_findings(D.mesh_status()) != [] and \
+                D.mesh_status().get("installed"):
+            pass                       # a box with real tailscale: fine
+        if D.mesh_findings({"installed": False}):
+            return (True, "a Mac with no Tailscale gets nagged about it")
+
+        def said(ms):
+            f = D.mesh_findings(ms)
+            return f[0]["what"] + " " + f[0]["fix"] if f else ""
+
+        if "logged out" not in said({"installed": True,
+                                     "state": "NeedsLogin"}) \
+                or "sign in" not in said({"installed": True,
+                                          "state": "NeedsLogin"}):
+            return (True, "a logged-out Mac is not told to sign in — the "
+                          "one case where the link never even appears")
+        if "not connected" not in said({"installed": True,
+                                        "state": "Stopped"}):
+            return (True, "a stopped Tailscale reads as something other "
+                          "than switched off")
+        if "no phone" not in said({"installed": True, "state": "Running",
+                                   "self": "mac", "peers": [
+                                       {"name": "nas", "os": "linux",
+                                        "online": True}]}):
+            return (True, "a tailnet with no phone on it does not say the "
+                          "phone has to join")
+        off = said({"installed": True, "state": "Running", "self": "mac",
+                    "peers": [{"name": "georges-iphone", "os": "iOS",
+                               "online": False}]})
+        if "georges-iphone" not in off or "switched off" not in off:
+            return (True, f"an offline phone is not named with its fix: "
+                          f"{off!r}")
+        if D.mesh_findings({"installed": True, "state": "Running",
+                            "self": "mac",
+                            "peers": [{"name": "p", "os": "iOS",
+                                       "online": True}]}):
+            return (True, "a healthy mesh still gets a warning — the line "
+                          "everyone learns to scroll past")
+
+        # And the sentences reach the surfaces: the phone panel's endpoint
+        # carries them, the page renders them, the doctor prints them.
+        if not isinstance(g('/api/v1/phone').get("mesh_notes"), list):
+            return (True, "the phone endpoint does not carry the mesh "
+                          "diagnosis")
+        page = open("web/index.html").read()
+        if "d.mesh_notes" not in page:
+            return (True, "the phone panel never renders what Tailscale "
+                          "said")
+        if "mesh_findings(mesh_status())" not in \
+                open("core/doctor.py").read():
+            return (True, "the doctor never asks Tailscale what it knows")
+        return (False, "four different mesh failures get four different "
+                       "one-line fixes, a healthy mesh gets silence, and "
+                       "the doctor, the endpoint and the panel all carry "
+                       "them")
+    probe("A134 the mesh link that goes nowhere says nothing",
+          mesh_link_with_no_diagnosis)
+
     # By design, not a defect: an episode stores before/after inline, so it is
     # self-contained. The correction is worth keeping; the row that prompted it
     # is not. Left in the suite so the choice stays visible.
