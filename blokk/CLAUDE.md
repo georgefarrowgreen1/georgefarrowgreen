@@ -631,7 +631,9 @@ asserts any more, and — the recurring lesson wearing a new coat — a
 mutation that was itself a no-op six days out of seven, because its break
 only changed the answer when today was the weekday being resolved.
 
-Coverage is printed, never assumed: 37 of 134 probes have an entry and the
+Coverage is printed, never assumed: 38 of 214 probes have an entry (the
+gate runs the B suite through node now, so the UI probes count and can be
+mutation-tested like the rest) and the
 gate says so on every run. A gate quietly covering a tenth of the suite is
 the failure it exists to prevent. Adding a probe is half the job; adding the
 mutation that proves it can fail is the other half.

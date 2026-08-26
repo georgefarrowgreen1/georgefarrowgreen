@@ -531,6 +531,15 @@ MUTATIONS = [
          file="core/ask.py",
          find='        if "to" in act.args:',
          replace='        if "recipient" in act.args:'),
+    dict(probe="B39", why="the remove button goes back to dying silently",
+         file="web/index.html",
+         find="""    }catch(e){
+      b.disabled = false; b.textContent = 'Remove';
+      showOut(`<p class="no">Could not remove: ${esc(e.message)}</p>`);
+    }""",
+         replace="""    }finally{
+      b.disabled = false; b.textContent = 'Remove';
+    }"""),
     dict(probe="A54", why="opening an app can graduate to acting alone",
          file="core/actions.py",
          find='args=("app",), optional=("verb",), pinned=True,\n'

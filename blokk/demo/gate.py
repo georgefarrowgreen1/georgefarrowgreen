@@ -45,14 +45,22 @@ BOLD, DIM, GREEN, RED, AMBER, OFF = (
 
 def run_probe(probe: str, timeout=180) -> tuple[bool, str]:
     """Run one probe. Returns (it reported a defect, the line it printed)."""
+    # A-probes live in hunt.py and take a filter; B-probes live in
+    # hunt_ui.js, which is static text checks fast enough to run whole —
+    # the line for the one probe asked about is picked out of the output.
+    cmd = (["node", "demo/hunt_ui.js"] if probe.startswith("B")
+           else [sys.executable, "demo/hunt.py", probe])
     try:
-        p = subprocess.run(
-            [sys.executable, "demo/hunt.py", probe], cwd=str(ROOT),
-            capture_output=True, text=True, timeout=timeout)
-    except subprocess.SubprocessError as e:
+        p = subprocess.run(cmd, cwd=str(ROOT),
+                           capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as e:
         return False, f"could not run: {type(e).__name__}: {e}"
     out = p.stdout or ""
     if "no probe matches" in out:
+        return False, "NO SUCH PROBE"
+    if probe.startswith("B") and not any(
+            ln.strip().split()[1:2] == [probe]
+            for ln in out.splitlines() if len(ln.split()) > 1):
         return False, "NO SUCH PROBE"
     line = ""
     for ln in out.splitlines():
@@ -173,6 +181,7 @@ def probe_names() -> list[str]:
     """
     import re
     src = (ROOT / "demo" / "hunt.py").read_text()
+    src += (ROOT / "demo" / "hunt_ui.js").read_text()
     return re.findall(r'probe\(\s*["\']([AB]\d+[a-z]?)', src)
 
 

@@ -2209,8 +2209,13 @@ async function paintSources(extra){
     <div id="srcout">${extra || ''}</div>`;
 
   body.querySelectorAll('[data-deny]').forEach(b => b.onclick = async () => {
-    const r = await post('/api/v1/egress/deny', {host: b.dataset.deny});
-    paintSources(`<p class="sub">${esc(r.detail || r.error)}</p>`);
+    try{
+      const r = await post('/api/v1/egress/deny', {host: b.dataset.deny});
+      paintSources(`<p class="sub">${esc(r.detail || r.error)}</p>`);
+    }catch(e){
+      paintSources(`<p class="no">Could not close ${esc(b.dataset.deny)}: `
+                   + `${esc(e.message)}</p>`);
+    }
   });
   const fdab = body.querySelector('#fda-open');
   if(fdab) fdab.onclick = async () => {
@@ -2281,10 +2286,18 @@ async function paintSources(extra){
   refHint(); refInside();
 
   $('#s-add').onclick = async () => {
-    const r = await post('/api/v1/sources/add', {
-      kind: $('#s-kind').value, ref: $('#s-ref').value,
-      only: [...document.querySelectorAll('#s-inside input:checked')]
-              .map(i => i.value) });
+    // The server answers a refused add as a 400, so post() throws and the
+    // sentence — "Mail is blocked in Permissions", "there is nothing at
+    // that path" — arrives as the error's message, not as r.error.
+    let r;
+    try{
+      r = await post('/api/v1/sources/add', {
+        kind: $('#s-kind').value, ref: $('#s-ref').value,
+        only: [...document.querySelectorAll('#s-inside input:checked')]
+                .map(i => i.value) });
+    }catch(e){
+      paintSources(`<p class="no">${esc(e.message)}</p>`); return;
+    }
     paintSources(r.error
       ? `<p class="no">${esc(r.error)}</p>`
       : `<p class="ok2">Added.</p>` + (r.keychain_hint
@@ -2307,7 +2320,9 @@ async function paintSources(extra){
       + 'checked one at a time, so this sits here a while.</p>');
     // Each unreachable source costs ~30s of its own timeout before it
     // answers, so allow for several.
-    const r = await post('/api/v1/sources/test', {}, 120000);
+    let r;
+    try{ r = await post('/api/v1/sources/test', {}, 120000); }
+    catch(e){ showOut(`<p class="no">${esc(e.message)}</p>`); return; }
     showOut(r.total
       ? r.results.map(x => `<div class="trow"><span class="${x.ok?'yes':'no'}">
           ${x.ok?'ok':'FAIL'}</span> <code>${esc(x.label)}</code>
@@ -2315,14 +2330,29 @@ async function paintSources(extra){
         + `<p class="sub">${r.working} of ${r.total} working</p>`
       : '<p class="sub">Nothing to test yet.</p>');
   };
+  // Every handler below catches and says so. post() throws on a 4xx, a
+  // 500 and a timeout, and an uncaught throw here is a button that dies
+  // with no word on the screen — which reads as "unable to remove", when
+  // the truth was a sentence nobody got to see.
   body.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
-    const r = await post('/api/v1/sources/remove', {name: b.dataset.rm});
-    paintSources(`<p class="sub">${esc(r.detail)}</p>`);
+    b.disabled = true; b.textContent = 'Removing…';
+    try{
+      const r = await post('/api/v1/sources/remove', {name: b.dataset.rm});
+      paintSources(`<p class="sub">${esc(r.detail || r.error || 'Removed.')}</p>`);
+    }catch(e){
+      b.disabled = false; b.textContent = 'Remove';
+      showOut(`<p class="no">Could not remove: ${esc(e.message)}</p>`);
+    }
   });
   body.querySelectorAll('[data-peek]').forEach(b => b.onclick = async () => {
     showOut('<p class="sub">reading…</p>');
-    const r = await post('/api/v1/sources/peek',
-                         {name: b.dataset.peek, n: 5}, 45000);
+    let r;
+    try{
+      r = await post('/api/v1/sources/peek',
+                     {name: b.dataset.peek, n: 5}, 45000);
+    }catch(e){
+      showOut(`<p class="no">${esc(e.message)}</p>`); return;
+    }
     // Everything below is somebody else's words. esc() on every field, and the
     // quarantine verdict shown rather than hidden — this is the one screen
     // that deliberately displays untrusted text.

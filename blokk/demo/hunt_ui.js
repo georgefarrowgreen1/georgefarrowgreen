@@ -1130,6 +1130,38 @@ probe('B18 a run that could not resume is not mentioned at all',
       : `${PAIRS.length} shared number(s), the same on both sides`);
 }
 
+// B39 — a failing sheet action dies with no word on the screen
+// post() throws on a 4xx, a 500 and a timeout — the server answers a
+// refused add or peek as a 400 on purpose — so every mutating handler in
+// the sources sheet has to catch, or the button just stops working and
+// the person reports "unable to remove sources", which is exactly what
+// happened. Checked as source: each handler's block, from its arrow to
+// the next handler, must contain a catch.
+{
+  const page = fs.readFileSync('web/index.html', 'utf8');
+  const naked = [];
+  for (const mark of ["[data-rm]", "[data-deny]", "[data-peek]",
+                      "'#s-add'", "'#s-test'"]) {
+    const at = page.indexOf(mark, page.indexOf('function paintSources'));
+    if (at < 0) { naked.push(`${mark} missing entirely`); continue; }
+    // This handler's block only — up to the next handler attachment. A
+    // fixed window read the neighbour's catch as this one's, which is a
+    // probe green for the wrong reason.
+    let end = Infinity;
+    for (const stop of ['.onclick =', '.forEach(']) {
+      const n = page.indexOf(stop, at + mark.length + 30);
+      if (n > -1 && n < end) end = n;
+    }
+    const slice = page.slice(at, end === Infinity ? at + 900 : end);
+    if (!/catch\s*[({]/.test(slice))
+      naked.push(mark);
+  }
+  probe('B39 a failing sheet action dies with no word on the screen',
+    naked.length > 0,
+    naked.length ? `no catch near: ${naked.join(', ')}`
+                 : 'every sheet action reports its failure as a sentence');
+}
+
 console.log(`\n  ${BUGS.length} issues found`);
 // Non-zero exit, for the same reason as hunt.py: a suite that cannot fail
 // is a suite nobody is running.
