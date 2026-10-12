@@ -139,6 +139,7 @@ const I = {
   compose: ico(`<path d="M11 4.5H6.5A2.5 2.5 0 0 0 4 7v10.5A2.5 2.5 0 0 0 6.5 20H17a2.5 2.5 0 0 0 2.5-2.5V13"/><path d="M17.8 3.8a1.8 1.8 0 0 1 2.5 2.5L12.5 14 9.5 15l1-3Z"/>`),
   plus: ico(`<path d="M12 5v14M5 12h14"/>`),
   minus: ico(`<path d="M5 12h14"/>`),
+  bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
@@ -520,7 +521,7 @@ async function sync() {
     try {
       const d = await api("sync");
       S.skew = d.now - Date.now();
-      S.me = d.me; S.friends = d.friends; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys;
+      S.me = d.me; S.friends = d.friends; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn;
       for (const f of S.friends) {
         checkPin(f);
         if (f.last) await decrypt(f.id, f.last);
@@ -755,6 +756,7 @@ function vAccount() {
     <div class="ghead">Pigeons</div>
     <div class="group">${cell({ icon: I.bird, tile: "orange", label: "Swift Pigeons", val: `<span class="dots" role="img" aria-label="${u.swift} of ${SWIFT_MAX}">${dots}</span>` })}</div>
     <div class="gfoot">${u.swift >= SWIFT_MAX ? "Your loft is full." : `The next one hatches in <span data-eta="${u.swiftNextAt}"></span>.`} Swift pigeons fly twice as fast and let you write when it isn’t your turn.</div>
+    ${notifySection(u)}
     <div class="ghead">Privacy &amp; Security</div>
     <div class="group">
       ${cell({ icon: I.lock, tile: "green", label: "Encryption Key", val: `<span class="mono">${S.fp}</span>` })}
@@ -765,10 +767,27 @@ function vAccount() {
     <div class="gfoot">Messages and photos are end-to-end encrypted. Your private key was made on this phone and locked with your password, so the server can’t read anything.</div>
     <div class="ghead">About</div>
     <div class="group">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}</div>
-    <div class="gfoot">There are no notifications yet, so open InFlight to check for pigeons. Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
+    <div class="gfoot">Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <div class="gap"></div>`;
+}
+const toggleCell = ({ act, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${disabled ? " disabled" : ""}>
+    <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
+function notifySection(u) {
+  const ps = pushState();
+  const pushFoot = {
+    homescreen: "To get notifications on iPhone, add InFlight to your Home Screen: tap Share, then Add to Home Screen, and open it from there.",
+    denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings, then come back here.",
+    unsupported: "This browser can’t show notifications.",
+  }[ps];
+  return `<div class="ghead">Notifications</div>
+    <div class="group">
+      ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
+      ${ps === "on" ? cell({ act: "pushtest", label: "Send a Test Notification", cls: "action" }) : ""}
+      ${S.emailOn ? toggleCell({ act: "emailtoggle", icon: I.mail, tile: "blue", label: "Email", sub: esc(u.email), on: u.notifyEmail }) : ""}
+    </div>
+    <div class="gfoot">${pushFoot ? pushFoot + " " : ""}Hear when a pigeon lands or someone adds you. Notifications say who sent a pigeon, never what it says.${S.emailOn ? " Emails come only when a pigeon has waited a while unread, at most every half hour." : ""}</div>`;
 }
 function cityOptions() {
   const cur = S.me?.place;
@@ -1279,7 +1298,14 @@ async function onClick(e) {
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
+    case "pushtest":
+      try { const r = await api("push-test", { method: "POST" }); toast(r.sent ? "Test sent. It should arrive in a moment." : "Couldn’t reach this phone. Turn notifications off and on again."); }
+      catch (err) { toast(esc(err.message)); }
+      return;
+    case "emailtoggle": return setEmailNotify(!S.me.notifyEmail);
     case "signoutgo":
+      await pushDisable(true);
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
     case "delask": return openActions({ title: "Delete your account?", message: "This deletes your account, friends, and every message and photo you’ve sent or received. It can’t be undone.", actions: [{ label: "Delete Account", act: "delgo", destructive: true }] });
@@ -1429,6 +1455,7 @@ async function onSubmit(e) {
 }
 async function afterSignIn() {
   await sync();
+  refreshPush();
   if (S.me.lat == null) return go("locpick");
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }
   go("messages");
@@ -1482,6 +1509,7 @@ async function send() {
     $ta.value = ""; fitTa(); S.stick = true;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     await sync();
+    offerNotify();
   } catch (err) { S.err = err.message; }
   S.busy = false; renderCompose();
 }
@@ -1490,10 +1518,90 @@ $(".page").addEventListener("keydown", (e) => {
 });
 
 /* ============================================================
+   Notifications
+   ============================================================ */
+// Push needs a service worker, and on iPhone only works once InFlight is on the Home Screen.
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = () => !!(window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone);
+function pushState() {
+  if (!pushSupported()) return isIOS() && !standalone() ? "homescreen" : "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  return S.pushOn ? "on" : "off";
+}
+const sameKey = (sub, key) => { const k = sub.options?.applicationServerKey; return !!k && b64url(new Uint8Array(k)) === key; };
+async function pushSub(ask) {
+  const reg = await navigator.serviceWorker.register("/pigeon/sw.js", { scope: "/pigeon/" });
+  await navigator.serviceWorker.ready;
+  const { key } = await api("push-key");
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && !sameKey(sub, key)) { await sub.unsubscribe(); sub = null; }
+  if (!sub && !ask) return null;
+  sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64url(key) });
+  await api("push-sub", { method: "POST", body: sub.toJSON() });
+  return sub;
+}
+async function pushEnable() {
+  if (pushState() !== "off") return;
+  S.pushBusy = true; render();
+  try {
+    const perm = await Notification.requestPermission();    // first, while the tap still counts
+    if (perm !== "granted") { if (perm === "denied") toast("Notifications are blocked. Turn them on for InFlight in your phone’s Settings."); return; }
+    S.pushOn = !!(await pushSub(true));
+    if (S.pushOn) toast("Notifications are on. You’ll hear when a pigeon lands.");
+  } catch (err) { console.warn("push", err); toast("Couldn’t turn on notifications on this phone."); }
+  finally { S.pushBusy = false; render(); }
+}
+async function pushDisable(quiet) {
+  if (!pushSupported()) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("/pigeon/");
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub) { await api("push-sub", { method: "DELETE", body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
+  } catch (_) { /* nothing to undo */ }
+  S.pushOn = false;
+  if (!quiet) { toast("Notifications are off on this phone."); render(); }
+}
+// On launch: if this phone already has push on, make sure the server knows it (and for this sign-in).
+async function refreshPush() {
+  if (!pushSupported() || Notification.permission !== "granted") { S.pushOn = false; return; }
+  try { S.pushOn = !!(await pushSub(false)); } catch (_) { S.pushOn = false; }
+  if (S.view === "account") render();
+}
+async function setEmailNotify(on) {
+  try { const r = await api("me", { method: "PATCH", body: { notifyEmail: on } }); S.me = r.me; render(); toast(on ? `We’ll email ${esc(S.me.email)} when a pigeon has been waiting a while.` : "Emails are off."); }
+  catch (err) { toast(esc(err.message)); }
+}
+// After someone's first pigeon: offer to tell them when the reply lands. Asked once per phone.
+async function offerNotify() {
+  if (S.pushOn || S.me?.notifyEmail || S.notifyAsked) return;
+  S.notifyAsked = true;
+  if (await idb.get("notify-asked")) return;
+  await idb.set("notify-asked", true);
+  const ps = pushState();
+  if (ps === "off") toast("Want to hear when the reply lands?", "Notify Me", () => pushEnable());
+  else if (S.emailOn) toast("Want an email when the reply lands?", "Email Me", () => setEmailNotify(true));
+  else if (ps === "homescreen") toast("Add InFlight to your Home Screen to get notified when the reply lands.", "How", () => go("account"));
+}
+// Links from notifications: #open=<friend> opens that chat, #requests the friend requests.
+function openLink(hash) {
+  const o = /#open=([0-9a-f-]{36})/.exec(hash || ""), rq = /#requests/.test(hash || "");
+  if (!o && !rq) return false;
+  if (location.hash) history.replaceState(null, "", location.pathname);
+  if (!S.me) { S.pendingLink = hash; return true; }
+  closePop(); S.sheet = null; renderSheet();
+  if (o && friend(o[1])) go("chat", o[1]);
+  else { go("friends"); if (S.incoming.length) { S.sheet = { type: "requests" }; renderSheet(); } }
+  return true;
+}
+
+/* ============================================================
    Start
    ============================================================ */
 async function start() {
   mount();
+  if (/#(open=|requests)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
+  navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { S.pendingAdd = m[1].toLowerCase(); history.replaceState(null, "", location.pathname); }
   // a reset link: take the token out of the address bar straight away
@@ -1514,9 +1622,12 @@ async function start() {
     await sync();
     if (S.me && S.me.lat == null) go("locpick");
     else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
+    else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
+    refreshPush();
   } else go("welcome");
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
+    if (openLink(location.hash)) return;
     const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
     if (!r && !a) return;
     history.replaceState(null, "", location.pathname);

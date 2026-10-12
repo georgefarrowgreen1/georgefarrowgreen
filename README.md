@@ -157,6 +157,27 @@ phones, held upright.
 | Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
 
+**Notifications.** Account → Notifications has Push (Web Push, works on
+Android and desktop browsers, and on iPhone once InFlight is added to the Home
+Screen) and Email (via Resend). They say who sent a pigeon, never what it says.
+Push payloads are encrypted to each phone; the server makes its own VAPID key
+on first use (stored in D1). Emails wait 10 minutes and go out at most every
+half hour, with a one-click unsubscribe link. Code: `functions/_notify.js`,
+`pigeon/sw.js`.
+
+Landings are noticed on the back of normal app traffic, at most once a minute.
+For notifications while nobody has the app open, set up the 5-minute nudge:
+
+1. Make a long random string (e.g. `openssl rand -hex 32`).
+2. Cloudflare → Workers & Pages → georgefarrowgreen → Settings → Variables and
+   Secrets → add **`PIGEON_TICK_SECRET`** (type Secret) = that string → redeploy.
+3. GitHub → this repo → Settings → Secrets and variables → Actions → New
+   repository secret **`INFLIGHT_TICK_SECRET`** = the same string.
+
+`.github/workflows/inflight-notify.yml` then calls `POST /api/pigeon/notify-tick`
+every 5 minutes. Optional: `PIGEON_CONTACT` = an email address push services can
+contact about your pushes.
+
 **Updates.** `functions/pigeon/_middleware.js` stamps every script and
 stylesheet an InFlight page loads (and every module `app.js` imports) with
 `?v=<fingerprint of that file>`. Pages are never cached, so a refresh always

@@ -1,0 +1,24 @@
+name: InFlight notifications
+
+# Pigeons land on a timer. The server already checks for landings on the back
+# of normal app traffic; this nudges it every 5 minutes so notifications still
+# go out when nobody has InFlight open. Needs the repository secret
+# INFLIGHT_TICK_SECRET to match PIGEON_TICK_SECRET in Cloudflare.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ask InFlight to send notifications for landed pigeons
+        env:
+          SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then echo "INFLIGHT_TICK_SECRET isn't set, so there's nothing to do."; exit 0; fi
+          curl -fsS --max-time 60 -X POST https://georgefarrowgreen.com/api/pigeon/notify-tick -H "Authorization: Bearer $SECRET"

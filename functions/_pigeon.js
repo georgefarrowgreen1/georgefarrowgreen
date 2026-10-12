@@ -87,6 +87,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS pg_resets (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_by TEXT NOT NULL,
      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS pg_resets_user ON pg_resets(user_id)`,
+  `CREATE TABLE IF NOT EXISTS pg_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS pg_push_user ON pg_push(user_id)`,
   `CREATE TABLE IF NOT EXISTS pg_admin_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT)`,
 ];
 // Columns added after launch. SQLite has no "ADD COLUMN IF NOT EXISTS", so a
@@ -94,6 +96,10 @@ const SCHEMA = [
 const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN handle_at INTEGER",   // last handle change (one a day)
   "ALTER TABLE pg_users ADD COLUMN avatar_at INTEGER",   // profile picture version, null if none
+  "ALTER TABLE pg_msgs ADD COLUMN notified_at INTEGER",  // when the recipient was told it landed
+  "ALTER TABLE pg_users ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 0",   // email when pigeons land
+  "ALTER TABLE pg_users ADD COLUMN email_at INTEGER",    // last notification email
+  "ALTER TABLE pg_users ADD COLUMN unsub TEXT",          // token for the unsubscribe link
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -292,12 +298,12 @@ export const emailReady = (env) => !!env.RESEND_API_KEY;
 // Until a domain is verified in Resend, its test sender onboarding@resend.dev
 // works, but only for mail to the Resend account's own address.
 export const emailFrom = (env) => env.PIGEON_FROM || env.CONTACT_FROM || "InFlight <onboarding@resend.dev>";
-export async function sendEmail(env, { to, subject, text, html }, { explain = false } = {}) {
+export async function sendEmail(env, { to, subject, text, html, headers }, { explain = false } = {}) {
   if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
   const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: emailFrom(env), to, subject, text, html }),
+    body: JSON.stringify({ from: emailFrom(env), to, subject, text, html, ...(headers ? { headers } : {}) }),
   });
   if (!r.ok) {
     const why = await r.json().then((d) => d.message || d.error || "", () => "");
@@ -307,13 +313,17 @@ export async function sendEmail(env, { to, subject, text, html }, { explain = fa
   }
 }
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-export function emailBody(lines, button) {
-  const text = lines.join("\n\n") + (button ? `\n\n${button.label}: ${button.url}` : "");
-  const html = `<div style="font-family:Georgia,serif;font-size:16px;line-height:1.5;color:#35271b;max-width:520px">
-    <p style="font-style:italic;font-size:22px;margin:0 0 16px">InFlight</p>
+export function emailBody(lines, button, { footer, unsub } = {}) {
+  const text = lines.join("\n\n") + (button ? `\n\n${button.label}: ${button.url}` : "")
+    + (footer ? `\n\n${footer}` : "") + (unsub ? `\nTurn these emails off: ${unsub}` : "");
+  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+  const html = `<div style="background:#f2f2f7;padding:24px 12px"><div style="font-family:${font};font-size:16px;line-height:1.45;color:#1c1c1e;max-width:480px;margin:0 auto;background:#ffffff;border-radius:22px;padding:26px 24px">
+    <p style="font-size:20px;font-weight:700;margin:0 0 16px">InFlight</p>
     ${lines.map((l) => `<p style="margin:0 0 14px">${escHtml(l)}</p>`).join("")}
-    ${button ? `<p style="margin:22px 0"><a href="${escHtml(button.url)}" style="background:#6b5443;color:#fbf4e6;padding:12px 20px;border-radius:12px;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold">${escHtml(button.label)}</a></p>
-    <p style="font-size:13px;color:#76654f;margin:0">Or paste this into your browser: ${escHtml(button.url)}</p>` : ""}</div>`;
+    ${button ? `<p style="margin:22px 0 18px"><a href="${escHtml(button.url)}" style="display:inline-block;background:#0a7aff;color:#ffffff;padding:13px 24px;border-radius:999px;text-decoration:none;font-weight:600">${escHtml(button.label)}</a></p>
+    <p style="font-size:13px;color:#8e8e93;margin:0">Or paste this into your browser: ${escHtml(button.url)}</p>` : ""}
+    ${footer || unsub ? `<p style="font-size:12px;color:#8e8e93;margin:20px 0 0;border-top:1px solid #e5e5ea;padding-top:14px">${footer ? escHtml(footer) + " " : ""}${unsub ? `<a href="${escHtml(unsub)}" style="color:#8e8e93">Turn these emails off</a>` : ""}</p>` : ""}
+  </div></div>`;
   return { text, html };
 }
 

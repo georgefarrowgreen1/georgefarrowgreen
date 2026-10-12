@@ -9,7 +9,7 @@
 
 const SECURITY = {
   "Permissions-Policy": "geolocation=(self), microphone=(), camera=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self'; manifest-src 'self'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
   "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex",
   "X-Frame-Options": "DENY",

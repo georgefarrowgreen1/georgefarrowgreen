@@ -6,6 +6,7 @@ import {
   emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -16,7 +17,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -102,6 +103,8 @@ async function updateMe({ request, env }) {
     if (!name) throw new HttpError(400, "Your name can’t be empty.", "name");
     await D.prepare("UPDATE pg_users SET name = ? WHERE id = ?").bind(name, u.id).run();
   }
+  if (b.notifyEmail !== undefined)
+    await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.lat !== undefined) {
     const p = cleanPlace(b);
     await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ? WHERE id = ?").bind(p.lat, p.lon, p.place, u.id).run();
@@ -156,6 +159,7 @@ async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
     D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_push WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
@@ -226,7 +230,7 @@ async function passkeyDelete({ request, env }) {
 }
 
 /* ---------------- friends ---------------- */
-async function addFriend({ request, env }) {
+async function addFriend({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "friend:" + u.id, 40, 60 * 60e3);
   const handle = String((await body(request)).handle || "").trim().replace(/^@/, "").toLowerCase();
@@ -239,15 +243,20 @@ async function addFriend({ request, env }) {
   if (l && l.a === u.id) return json({ message: `Your request to @${t.handle} is still waiting.` });
   if (l) {
     await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ?").bind(t.id, u.id).run();
+    waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
     return json({ message: `@${t.handle} joined your flock.` });
   }
   await D.prepare("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'pending', ?)").bind(u.id, t.id, Date.now()).run();
+  waitUntil(friendRequested(env, new URL(request.url).origin, u, t.id).catch(() => {}));
   return json({ message: `Request sent to @${t.handle}.` });
 }
-async function respondFriend({ request, env }) {
+async function respondFriend({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env);
-  if (b.accept) await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
+  if (b.accept) {
+    const r = await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
+    if (r.meta.changes) waitUntil(friendAccepted(env, u, String(b.id)).catch(() => {}));
+  }
   else await D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
   return json({ ok: true });
 }
@@ -295,7 +304,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push(brief(p));
   }
-  return json({ now: t, me: meView(u, t), friends, incoming, outgoing,
+  return json({ now: t, me: meView(u, t), friends, incoming, outgoing, emailOn: emailReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -555,6 +564,64 @@ async function adminLogList({ request, env }) {
 }
 
 /* ---------------- router ---------------- */
+/* ---------------- notifications ---------------- */
+async function pushKey({ request, env }) {
+  await requireUser(request, env);
+  return json({ key: (await vapid(env)).pub });
+}
+async function pushSubscribe({ request, env }) {
+  const u = await requireUser(request, env);
+  const b = await body(request), endpoint = String(b.endpoint || ""), p256dh = String(b.keys?.p256dh || ""), auth = String(b.keys?.auth || "");
+  if (!pushEndpointOk(endpoint) || endpoint.length > 1000) throw new HttpError(400, "This browser’s push service isn’t supported.");
+  if (fromB64url(p256dh).length !== 65 || fromB64url(auth).length !== 16) throw new HttpError(400, "That push subscription was malformed.");
+  const D = await db(env);
+  await D.prepare("DELETE FROM pg_push WHERE user_id = ? AND session = ? AND endpoint != ?").bind(u.id, u.sessionHash, endpoint).run();
+  await D.prepare("INSERT OR REPLACE INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(endpoint, u.id, u.sessionHash, p256dh, auth, Date.now()).run();
+  return json({ ok: true });
+}
+async function pushUnsubscribe({ request, env }) {
+  const u = await requireUser(request, env);
+  const endpoint = String((await body(request)).endpoint || "");
+  await (await db(env)).prepare("DELETE FROM pg_push WHERE user_id = ? AND (endpoint = ? OR session = ?)").bind(u.id, endpoint, u.sessionHash).run();
+  return json({ ok: true });
+}
+async function pushTest({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "pushtest:" + u.id, 10, 60 * 60e3);
+  const n = await pushTo(env, u.id, { title: "InFlight", body: "Notifications are on. You’ll hear when a pigeon lands.", tag: "test", url: "/pigeon/" });
+  return json({ sent: n });
+}
+async function notifyTick({ request, env }) {
+  tickAuthOk(request, env);
+  return json(await tick(env, new URL(request.url).origin));
+}
+// The link at the bottom of notification emails. GET shows a button (so mail
+// scanners that follow links don't unsubscribe anyone); POST turns email off,
+// which also serves one-click unsubscribe (RFC 8058).
+const unsubPage = (msg, form) => new Response(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>InFlight emails</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f2f2f7;font:17px/1.4 -apple-system,system-ui,sans-serif;color:#1c1c1e}main{background:#fff;border-radius:26px;padding:28px 24px;max-width:340px;margin:16px;text-align:center}h1{font-size:22px;margin:0 0 8px}p{color:#6e6e73;margin:0 0 18px}button{border:0;border-radius:999px;background:#0a7aff;color:#fff;font:600 17px -apple-system,system-ui,sans-serif;padding:14px 26px}a{color:#0a7aff}@media (prefers-color-scheme:dark){body{background:#1c1c1f;color:#f5f5f7}main{background:#2a2a2e}p{color:#a1a1a6}}</style></head>
+<body><main><h1>InFlight emails</h1><p>${msg}</p>${form || `<a href="/pigeon/">Open InFlight</a>`}</main></body></html>`,
+  { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" } });
+async function unsubUser(env, request) {
+  const q = new URL(request.url).searchParams, id = q.get("u") || "", tok = q.get("t") || "";
+  const u = UUID_RE.test(id) && tok ? await (await db(env)).prepare("SELECT id, unsub FROM pg_users WHERE id = ?").bind(id).first() : null;
+  return u && u.unsub && safeEqual(u.unsub, tok) ? u : null;
+}
+async function unsubscribeGet({ request, env }) {
+  if (!(await unsubUser(env, request))) return unsubPage("This link doesn’t work any more. You can turn emails off in InFlight, under Account.");
+  const q = new URL(request.url).search.replace(/"/g, "");
+  return unsubPage("Stop emails when pigeons land and friends add you? Push notifications on your phone aren’t affected.",
+    `<form method="post" action="/api/pigeon/unsubscribe${q}"><button>Turn Off Emails</button></form>`);
+}
+async function unsubscribePost({ request, env }) {
+  const u = await unsubUser(env, request);
+  if (!u) return unsubPage("This link doesn’t work any more. You can turn emails off in InFlight, under Account.");
+  await (await db(env)).prepare("UPDATE pg_users SET notify_email = 0 WHERE id = ?").bind(u.id).run();
+  return unsubPage("Done. InFlight won’t email you any more. You can turn emails back on under Account.");
+}
+
 const ROUTES = {
   "POST signup": signup, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault,
   "PATCH me": updateMe, "DELETE me": deleteMe,
@@ -569,11 +636,15 @@ const ROUTES = {
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
   "POST admin-test-email": adminTestEmail,
+  "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
+  "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
 };
 
 export async function onRequest(ctx) {
   const parts = new URL(ctx.request.url).pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
+  // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
+  if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, new URL(ctx.request.url).origin).catch((e) => console.error("pigeon tick", e && e.message)));
   try {
     if (!handler) throw new HttpError(404, "Not found.");
     return await handler(ctx, parts[1]);
