@@ -588,3 +588,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
   .feats{margin-top:18px;gap:12px}
   .feats span{font-size:14px;line-height:18px}
 }
+/* "End-to-end encrypted" with a green lock, under the privacy settings */
+.e2e{display:flex;align-items:center;justify-content:center;gap:6px;margin:12px 0 4px;font-size:13px;font-weight:500;color:var(--label-2)}
+.e2e svg{font-size:15px;color:var(--green);stroke-width:2.2}

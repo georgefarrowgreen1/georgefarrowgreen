@@ -856,7 +856,7 @@ function vAccount() {
       ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
       ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
     </div>
-    <div class="gfoot">Only you and your friends can read your messages and photos.</div>
+    <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>
     <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}</div>
     <div class="gfoot">Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
@@ -1279,7 +1279,7 @@ function drawSheet(refresh) {
           ${cell({ icon: I.lock, tile: "green", label: "Your Encryption Key", sub: `<span class="mono">${S.fp}</span>` })}
           ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
         </div>
-        <div class="gfoot">Messages and photos are end-to-end encrypted. Your key was made on this phone and locked with your password, so the server can’t read anything. Compare safety numbers with a friend to check no one is in between.</div>`);
+        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
       return;
     case "safetylist":
       $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
