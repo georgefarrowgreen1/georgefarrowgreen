@@ -3,7 +3,7 @@
    Light follows the phone; dark is a soft graphite grey, not black. */
 :root{
   --bg:#f2f2f7;            /* grouped background */
-  --bg-plain:#ffffff;      /* chats and the Messages list */
+  --bg-plain:#f2f2f7;      /* chats and the Messages list: the same grey as everywhere else */
   --cell:#ffffff;
   --cell-2:#f2f2f7;
   --fill:rgba(120,120,128,.12);
@@ -15,7 +15,7 @@
   --tint:#0a7aff;
   --on-tint:#ffffff;
   --green:#34c759; --orange:#ff9500; --red:#ff3b30; --indigo:#5856d6; --teal:#30b0c7; --gray:#8e8e93; --yellow:#ffcc00;
-  --bubble-in:#e9e9eb;
+  --bubble-in:#ffffff;     /* white bubbles stand out on the grey */
   --glass:rgba(255,255,255,.62);
   --glass-strong:rgba(255,255,255,.82);
   --glass-hi:rgba(255,255,255,.95);
