@@ -218,11 +218,13 @@ export function turn(me, last, t) {
   return { free: true, state: "sill" };
 }
 // How many swift, turbo or rocket pigeons are in the loft. One hatches every
-// `every` until it's full; a loft that's never been used starts full.
+// `every` until it's full; a loft that's never been used starts full. The
+// admin can give extras past full: they stay until used, and hatching picks
+// up again once the loft drops below full.
 export function loft(u, kind, t) {
   const p = PIGEONS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
   const hatched = Math.max(0, Math.floor((t - at) / p.every));
-  const count = Math.min(p.max, have + hatched);
+  const count = have >= p.max ? have : Math.min(p.max, have + hatched);
   return { count, hatched, at, nextAt: count >= p.max ? null : at + (hatched + 1) * p.every };
 }
 export const swiftState = (u, t) => loft(u, "swift", t);

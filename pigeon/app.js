@@ -877,7 +877,9 @@ function vFriends() {
 function vAccount() {
   const u = S.me;
   const dots = (kind) => Array.from({ length: KIND[kind].max }, (_, i) => `<i class="${i < (u[kind] || 0) ? "" : "e"}"></i>`).join("");
-  const loftVal = (kind) => `<span class="dots ${kind}" role="img" aria-label="${u[kind] || 0} of ${KIND[kind].max}">${dots(kind)}</span>`;
+  // extras (given by the admin) past a full loft show as +N after the dots
+  const loftVal = (kind) => { const n = u[kind] || 0, extra = n - KIND[kind].max;
+    return `<span class="dots ${kind}" role="img" aria-label="${n} of ${KIND[kind].max}">${dots(kind)}${extra > 0 ? `<b class="extra">+${extra}</b>` : ""}</span>`; };
   const hatch = (kind) => (u[kind] || 0) >= KIND[kind].max ? "full" : `next in <span data-eta="${u[kind + "NextAt"]}"></span>`;
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>

@@ -386,7 +386,7 @@ async function sendMessage({ request, env, waitUntil }) {
   if (PIGEONS[kind].max) {
     const p = PIGEONS[kind], l = loft(u, kind, t);
     if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
-    const [n, at] = l.count >= p.max ? [p.max - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
+    const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
     await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ?`).bind(n, at, u.id).run();
   }
   const swift = PIGEONS[kind].waits ? 0 : 1;
@@ -537,7 +537,7 @@ async function adminUsers({ request, env }) {
   await requireAdmin(request, env);
   const D = await db(env), t = Date.now();
   const { results } = await D.prepare(`
-    SELECT u.id, u.name, u.handle, u.email, u.place, u.created_at,
+    SELECT u.id, u.name, u.handle, u.email, u.place, u.created_at, u.swift, u.swift_at, u.turbo, u.turbo_at, u.rocket, u.rocket_at,
       (SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id) AS last_seen,
       (SELECT COUNT(*) FROM pg_sessions s WHERE s.user_id = u.id) AS sessions,
       (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys,
@@ -546,7 +546,11 @@ async function adminUsers({ request, env }) {
       (SELECT COUNT(*) FROM pg_msgs m WHERE m.sender = u.id) AS sent
     FROM pg_users u ORDER BY u.created_at DESC LIMIT 1000`).all();
   const totals = await D.prepare("SELECT COUNT(*) AS msgs, COALESCE(SUM(CASE WHEN deliver_at > ? THEN 1 ELSE 0 END), 0) AS flying FROM pg_msgs").bind(t).first();
-  return json({ now: t, users: results, totals });
+  const users = results.map(({ swift, swift_at, turbo, turbo_at, rocket, rocket_at, ...u }) => {
+    const row = { swift, swift_at, turbo, turbo_at, rocket, rocket_at };
+    return { ...u, pigeons: Object.fromEntries(GIFTABLE.map((k) => [k, loft(row, k, t).count])) };
+  });
+  return json({ now: t, users, totals });
 }
 async function adminTarget(env, b) {
   const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE id = ?").bind(String(b.id || "")).first();
@@ -571,6 +575,22 @@ async function adminReset({ request, env }) {
   const token = await createReset(env, u.id, "admin-link", RESET_TTL_ADMIN);
   await adminLog(env, "reset-link", u.id, `@${u.handle}`);
   return json({ url: resetUrl(request, token), message: `One-time link for @${u.handle}. It works for 24 hours. Send it to them privately.` });
+}
+// Give someone extra swift, turbo or rocket pigeons, even past a full loft.
+// (Standard and dumb pigeons are unlimited: they just wait their turn.)
+const GIFTABLE = ["swift", "turbo", "rocket"], GIFT_CAP = 99;
+async function adminPigeons({ request, env }) {
+  await requireAdmin(request, env, true);
+  const b = await body(request), u = await adminTarget(env, b), t = Date.now();
+  const kind = String(b.kind || ""), add = Math.floor(Number(b.add));
+  if (!GIFTABLE.includes(kind)) throw new HttpError(400, "Choose swift, turbo or rocket.");
+  if (!(add >= 1 && add <= GIFT_CAP)) throw new HttpError(400, `Add between 1 and ${GIFT_CAP}.`);
+  const p = PIGEONS[kind], l = loft(u, kind, t), n = Math.min(GIFT_CAP, l.count + add);
+  // keep the hatching clock where it was, so a gift doesn't delay the next one
+  const at = l.count >= p.max ? t : l.at + l.hatched * p.every;
+  await (await db(env)).prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ?`).bind(n, at, u.id).run();
+  await adminLog(env, "pigeons-added", u.id, `@${u.handle} · +${n - l.count} ${kind} (now ${n})`);
+  return json({ count: n, message: n - l.count ? `@${u.handle} now has ${n} ${kind} pigeon${n === 1 ? "" : "s"}.` : `@${u.handle} already has the most ${kind} pigeons (${GIFT_CAP}).` });
 }
 async function adminSignOut({ request, env }) {
   await requireAdmin(request, env, true);
@@ -676,7 +696,7 @@ const ROUTES = {
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
-  "POST admin-signout": adminSignOut, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
+  "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,

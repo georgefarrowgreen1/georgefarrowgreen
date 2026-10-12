@@ -336,6 +336,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .dots{display:flex;gap:3px}
 .dots i{width:7px;height:7px;border-radius:50%;background:var(--orange)}
 .dots i.e{background:var(--fill-2)}
+.dots{align-items:center}.dots .extra{margin-left:3px;font-size:13px;font-weight:600;color:var(--label-2);font-variant-numeric:tabular-nums}
 
 /* ---------- sheets ---------- */
 .layer:empty,.poplayer:empty,.toasts:empty{display:none}

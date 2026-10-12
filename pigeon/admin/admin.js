@@ -64,6 +64,17 @@ function vSignIn(msg) {
 }
 
 /* ---------- dashboard ---------- */
+// The app's pigeon, in each kind's colour (styles.css .pg). Standard and dumb
+// pigeons are unlimited, so only these three can be given.
+const BIRD = `<svg viewBox="0 0 24 24" class="bird" aria-hidden="true"><path d="M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z"/></svg>`;
+const GIFTS = [["rocket", "Rocket", 1], ["turbo", "Turbo", 3], ["swift", "Swift", 9]];
+const lofts = (u) => `<div class="lofts" aria-label="Pigeons">${GIFTS.map(([k, name, max]) => {
+  const n = u.pigeons?.[k] ?? 0;
+  return `<div class="loft"><span class="pg ${k}">${BIRD}</span><span class="lname">${name}</span>
+    <b class="lcount${n > max ? " extra" : ""}">${n}</b>
+    <button class="btn ghost" data-a="give" data-k="${k}" data-n="1" aria-label="Give 1 ${name.toLowerCase()} pigeon">+1</button>
+    <button class="btn ghost" data-a="give" data-k="${k}" data-n="5" aria-label="Give 5 ${name.toLowerCase()} pigeons">+5</button></div>`;
+}).join("")}</div>`;
 const chev = `<svg viewBox="0 0 24 24" class="ico chev" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>`;
 // One row per account: tap the name to open its options.
 function userRow(u) {
@@ -75,6 +86,7 @@ function userRow(u) {
     </button>
     ${open ? `<div class="upanel">
       <p class="facts">${esc(u.email)} · last active ${ago(u.last_seen)}</p>
+      ${lofts(u)}
       <div class="uacts">
         <button class="btn" data-a="email"${A.email ? "" : ' disabled title="Email isn’t set up yet"'}>Email a reset link</button>
         <button class="btn ghost" data-a="link">Make a reset link</button>
@@ -107,7 +119,7 @@ function render() {
       <ul class="logl">${A.log.map((l) => `<li><time>${fmtWhen(l.at)}</time><span>${esc(LOG[l.action] || l.action)}${l.detail ? ` · ${esc(l.detail)}` : ""}</span></li>`).join("") || `<li><span>Nothing yet.</span></li>`}</ul></details>`;
   if (focus === "q") { const i = $("#q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
-const LOG = { "test-email": "Test email sent", "reset-emailed": "Reset link emailed", "reset-link": "Reset link made", "reset-used": "Password reset", "signed-out": "Signed out everywhere", deleted: "Account deleted" };
+const LOG = { "pigeons-added": "Pigeons given", "test-email": "Test email sent", "reset-emailed": "Reset link emailed", "reset-link": "Reset link made", "reset-used": "Password reset", "signed-out": "Signed out everywhere", deleted: "Account deleted" };
 
 async function load() {
   const [u, l] = await Promise.all([call("/api/pigeon/admin-users"), call("/api/pigeon/admin-log")]);
@@ -144,7 +156,8 @@ document.addEventListener("click", async (e) => {
   if (act === "toggle") { A.open = A.open === id ? null : id; A.confirming = null; return render(); }
   if (act === "delask") { A.confirming = id; render(); $(`.ucard[data-id="${id}"] .confirm input`)?.focus(); return; }
   if (act === "delcancel") { A.confirming = null; return render(); }
-  const routes = { email: ["admin-reset", { mode: "email" }], link: ["admin-reset", { mode: "link" }], signout: ["admin-signout", {}] };
+  const routes = { email: ["admin-reset", { mode: "email" }], link: ["admin-reset", { mode: "link" }], signout: ["admin-signout", {}],
+    give: ["admin-pigeons", { kind: b.dataset.k, add: +b.dataset.n }] };
   if (!routes[act]) return;
   b.disabled = true;
   try {
