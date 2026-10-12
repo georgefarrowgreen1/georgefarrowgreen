@@ -2,7 +2,7 @@
 // here; the server (functions/api/pigeon) only ever sees ciphertext.
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
-import { PLACES, nearestPlace } from "./places.js";
+import { PLACES, nearestPlace, snapToMile } from "./places.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3;
@@ -837,7 +837,7 @@ function vAccount() {
       <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
         <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
     </div>
-    <div class="gfoot">Pigeons fly from here. It’s kept to about 10 km, and only your friends see it.</div>
+    <div class="gfoot">Pigeons fly from here. It’s kept to about 1.6 km (1 mile), and only your friends see it.</div>
     <div class="ghead">Pigeons</div>
     <div class="group">
       ${cell({ icon: I.bird, tile: "turbo", label: "Turbo", sub: `3× faster · 3 a day · ${hatch("turbo")}`, val: loftVal("turbo") })}
@@ -1063,7 +1063,7 @@ function vAuth() {
     case "reset": return vReset();
     case "locpick": return `<div class="auth">${navbar("")}
         <h1 class="large">Your Location</h1>
-        <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s kept to about 10 km, and only your friends see it.</p>
+        <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s kept to about 1.6 km (1 mile), and only your friends see it.</p>
         <div class="group mt">
           ${S.me?.place ? cell({ icon: I.check, tile: "green", label: esc(S.me.place), sub: "Current location" }) : ""}
           ${cell({ act: "locate", icon: I.loc, tile: "blue", label: S.me?.place ? "Use Current Location Again" : "Use Current Location", cls: "action" })}
@@ -1594,13 +1594,14 @@ function locate(btn) {
   if (!navigator.geolocation) return showErr("This browser can’t share your location. Choose a city instead.");
   busyBtn(btn, "Finding you…", () => new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(async (pos) => {
-      const { latitude: lat, longitude: lon } = pos.coords;
+      const { latitude, longitude } = pos.coords;
+      const { lat, lon } = snapToMile(latitude, longitude);     // the exact spot never leaves the phone
       await savePlace(lat, lon, nearestPlace(lat, lon));
       resolve();
     }, (err) => {
       showErr(err.code === 1 ? "Location is off for this site. Choose a city instead, or allow location in your browser settings." : "Couldn’t find your location. Choose a city instead.");
       resolve();
-    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * MIN });
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 10 * MIN });
   }));
 }
 async function shareHandle() {

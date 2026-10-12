@@ -302,11 +302,19 @@ export function cleanPub(p) {
   if (!ok) throw new HttpError(400, "That public key isn’t valid.");
   return JSON.stringify({ kty: "EC", crv: "P-256", x: p.x, y: p.y });
 }
+// Locations are snapped to a 1-mile grid (about 1.6 km each way, anywhere on
+// Earth): plenty for flight times, too coarse to find someone's street.
+const MILE_DEG = 1.609344 / 111.32;            // degrees of latitude in a mile
+export function snapToMile(lat, lon) {
+  const la = Math.max(-90, Math.min(90, Math.round(lat / MILE_DEG) * MILE_DEG));
+  const step = MILE_DEG / Math.max(Math.cos(la * Math.PI / 180), 0.01);
+  let lo = Math.round(lon / step) * step; if (lo > 180) lo -= 360; if (lo < -180) lo += 360;
+  return { lat: Math.round(la * 1e5) / 1e5, lon: Math.round(lo * 1e5) / 1e5 };
+}
 export function cleanPlace(b) {
   const lat = Number(b.lat), lon = Number(b.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "That location isn’t valid.");
-  // ~10 km: enough for flight times, too coarse to find someone's street
-  return { lat: Math.round(lat * 10) / 10, lon: Math.round(lon * 10) / 10, place: String(b.place || "").trim().slice(0, 60) || null };
+  return { ...snapToMile(lat, lon), place: String(b.place || "").trim().slice(0, 60) || null };
 }
 
 /* ---------------- email (Resend) ----------------
