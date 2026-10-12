@@ -1,5 +1,5 @@
 import {
-  DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
+  HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, msgView, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
@@ -16,7 +16,8 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt };
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null,
+    handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
 /* ---------------- accounts ---------------- */
@@ -79,9 +80,23 @@ async function vault({ request, env }) {
   return json({ vault: u.vault, salt: u.salt });
 }
 
+function waitText(ms) {
+  const h = Math.floor(ms / 3600e3), m = Math.ceil((ms % 3600e3) / 60e3);
+  return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
+}
 async function updateMe({ request, env }) {
   const u = await requireUser(request, env);
-  const b = await body(request), D = await db(env);
+  const b = await body(request), D = await db(env), t = Date.now();
+  if (b.handle !== undefined) {
+    const handle = String(b.handle).trim().replace(/^@/, "").toLowerCase();
+    if (!HANDLE_RE.test(handle)) throw new HttpError(400, "Use 3 to 20 letters, numbers or underscores.", "handle");
+    if (handle !== u.handle) {
+      if (u.handle_at && t - u.handle_at < HANDLE_EVERY) throw new HttpError(429, `You can change your handle once a day. Try again in ${waitText(u.handle_at + HANDLE_EVERY - t)}.`, "handle");
+      if (await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(handle).first()) throw new HttpError(409, `@${handle} is taken.`, "handle");
+      try { await D.prepare("UPDATE pg_users SET handle = ?, handle_at = ? WHERE id = ?").bind(handle, t, u.id).run(); }
+      catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, `@${handle} is taken.`, "handle"); throw e; }
+    }
+  }
   if (b.name !== undefined) {
     const name = String(b.name).trim().slice(0, 50);
     if (!name) throw new HttpError(400, "Your name can’t be empty.", "name");
@@ -95,9 +110,45 @@ async function updateMe({ request, env }) {
   return json({ me: meView(fresh, Date.now()) });
 }
 
+/* ---------------- profile pictures ----------------
+   Not end-to-end encrypted (the server shows them to several people), so
+   they're only served to the owner, their friends, and people with a
+   friend request either way. */
+const avatarKey = (id) => `pigeon-avatars/${id}`;
+async function putAvatar({ request, env }) {
+  const u = await requireUser(request, env);
+  if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
+  await limit(env, "avatar:" + u.id, 20, DAY);
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.length > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
+  if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Profile pictures must be JPEG images.");
+  const t = Date.now();
+  await env.BIO_R2.put(avatarKey(u.id), bytes, { httpMetadata: { contentType: "image/jpeg" } });
+  await (await db(env)).prepare("UPDATE pg_users SET avatar_at = ? WHERE id = ?").bind(t, u.id).run();
+  return json({ me: meView({ ...u, avatar_at: t }, t) });
+}
+async function deleteAvatar({ request, env }) {
+  const u = await requireUser(request, env);
+  if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(u.id));
+  await (await db(env)).prepare("UPDATE pg_users SET avatar_at = NULL WHERE id = ?").bind(u.id).run();
+  return json({ me: meView({ ...u, avatar_at: null }, Date.now()) });
+}
+async function getAvatar({ request, env }, id) {
+  const u = await requireUser(request, env);
+  id = String(id || "");
+  if (id !== u.id) {
+    const l = await (await db(env)).prepare("SELECT 1 FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).first();
+    if (!l) throw new HttpError(404, "No picture.");
+  }
+  const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(id)));
+  if (!obj) throw new HttpError(404, "No picture.");
+  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+}
+
 // Shared by "Delete my account" and the admin's delete.
 async function removeAccount(env, id) {
   const D = await db(env);
+  if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(id).all();
   if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`));
   await D.batch([
@@ -222,7 +273,7 @@ async function sync({ request, env, waitUntil }) {
   const ids = [...new Set(links.map(other))];
   const people = new Map();
   if (ids.length) {
-    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, avatar_at FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
     for (const p of results) people.set(p.id, p);
   }
   const { results: lasts } = await D.prepare(`
@@ -233,7 +284,7 @@ async function sync({ request, env, waitUntil }) {
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
-  const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name });
+  const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null });
   const friends = [], incoming = [], outgoing = [];
   for (const l of links) {
     const p = people.get(other(l)); if (!p) continue;
@@ -513,6 +564,7 @@ const ROUTES = {
   "POST friends": addFriend, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead,
   "GET photo": getPhoto,
+  "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,

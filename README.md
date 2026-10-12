@@ -201,6 +201,14 @@ Admin changes need the owner cookie and a header only the admin page sends,
 and every action is logged on the page. Admins never see passwords, keys or
 scrolls; the server doesn't have them.
 
+**Profiles.** In Roost → Edit profile, people can change their name any time,
+their handle once a day (enforced by the server), and add or remove a profile
+picture. Pictures are cropped square on the phone and shrunk to 512px JPEG,
+which also strips location data. They aren't end-to-end encrypted: the server
+stores them under `pigeon-avatars/` in R2 and only serves them to the owner,
+their friends and anyone with a pending friend request either way. New columns
+are added to the existing tables automatically on first use.
+
 **Safety numbers.** Tap a friend's name in a chat to compare 60 digits. The app
 also remembers each friend's key and warns if it changes.
 

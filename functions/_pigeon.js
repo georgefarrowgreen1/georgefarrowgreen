@@ -15,6 +15,8 @@ export const MAX_FLIGHT = 3 * DAY;
 export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they land
 export const SWIFT_MAX = 7;              // spare pigeons; one hatches per day
 export const DEFAULT_KM = 500;           // if the recipient hasn't set a roost
+export const HANDLE_EVERY = DAY;         // handles can change once a day
+export const MAX_AVATAR = 400 * 1024;    // the phone sends a 512px JPEG, well under this
 const SESSION_TTL = 180 * DAY;
 
 const enc = new TextEncoder();
@@ -87,11 +89,21 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS pg_resets_user ON pg_resets(user_id)`,
   `CREATE TABLE IF NOT EXISTS pg_admin_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT)`,
 ];
+// Columns added after launch. SQLite has no "ADD COLUMN IF NOT EXISTS", so a
+// duplicate-column error just means the column is already there.
+const MIGRATIONS = [
+  "ALTER TABLE pg_users ADD COLUMN handle_at INTEGER",   // last handle change (one a day)
+  "ALTER TABLE pg_users ADD COLUMN avatar_at INTEGER",   // profile picture version, null if none
+];
 let schemaReady = false;
 export async function db(env) {
   if (!env.DB) throw new HttpError(503, "InFlight isn’t set up on this server yet (no database).");
   if (!schemaReady) {
     await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
+    for (const m of MIGRATIONS) {
+      try { await env.DB.prepare(m).run(); }
+      catch (e) { if (!/duplicate column/i.test(String(e && (e.cause?.message || e.message)))) throw e; }
+    }
     schemaReady = true;
   }
   return env.DB;

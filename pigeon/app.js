@@ -17,7 +17,7 @@ const S = {
   msgs: new Map(), turns: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(),
-  resetToken: null, resetInfo: null,
+  resetToken: null, resetInfo: null, avatars: new Map(),
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -50,11 +50,12 @@ const idb = {
 };
 
 /* ---------------- server ---------------- */
-async function api(path, { method = "GET", body, form, raw } = {}) {
+async function api(path, { method = "GET", body, form, raw, blob } = {}) {
   const headers = {};
   if (S.token) headers.Authorization = "Bearer " + S.token;
   let payload;
   if (form) payload = form;
+  else if (blob) { headers["Content-Type"] = blob.type; payload = blob; }
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
   let r;
   try { r = await fetch("/api/pigeon/" + path, { method, headers, body: payload }); }
@@ -101,7 +102,26 @@ const fmtBytes = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Ma
 const initials = (n) => String(n).trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const first = (n) => String(n).trim().split(" ")[0];
 const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
-const avatar = (name, size = "") => `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${esc(initials(name))}</span>`;
+// A person's picture if they have one (fetched with this phone's sign-in, then kept as a blob URL), else their initials.
+function avatar(person, size = "") {
+  const name = person?.name || "?";
+  const url = person?.avatarAt ? avatarUrl(person) : "";
+  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(initials(name))}</span>`;
+}
+let avatarRender = 0;
+function avatarUrl(p) {
+  const key = `${p.id}:${p.avatarAt}`;
+  if (S.avatars.has(key)) return S.avatars.get(key);
+  S.avatars.set(key, "");
+  api(`avatar/${encodeURIComponent(p.id)}?v=${p.avatarAt}`, { raw: true })
+    .then((r) => r.blob())
+    .then((b) => {
+      S.avatars.set(key, URL.createObjectURL(b));
+      clearTimeout(avatarRender); avatarRender = setTimeout(() => { render(); if (S.sheet && S.sheet.type !== "map") renderSheet(true); }, 60);
+    })
+    .catch(() => {});
+  return "";
+}
 function haversineKm(aLat, aLon, bLat, bLon) {
   const r = Math.PI / 180, s = Math.sin((bLat - aLat) * r / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin((bLon - aLon) * r / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(s));
@@ -503,7 +523,7 @@ function vAviary() {
   const fr = S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last).sort((a, b) => b.at - a.at);
   const rows = fr.map(({ f, html, at }) => `
     <button class="row${f.unread ? " unread" : ""}" data-act="open" data-id="${f.id}">
-      ${avatar(f.name)}
+      ${avatar(f)}
       <span class="txt">
         <span class="l1"><span class="nm one">${esc(f.name)}</span><time>${at ? fmtAgo(at) : ""}</time></span>
         <span class="l2"><span class="pv one">${html}</span>${f.unread ? `<span class="count" aria-label="${f.unread} unread">${f.unread}</span>` : ""}</span>
@@ -570,7 +590,7 @@ function vChat() {
   return `<header class="chathdr">
       <button class="round" data-act="tab" data-id="aviary" aria-label="Back to the Aviary">${I.back}</button>
       <button class="who2" data-act="safety" data-id="${f.id}" aria-label="${esc(f.name)}: verify encryption">
-        ${avatar(f.name, "s")}
+        ${avatar(f, "s")}
         <span class="txt"><span class="nm two">${esc(f.name)}</span>
         <span class="meta">${I.pin}<span>${esc(f.place || "Roost not set")}${km != null ? ` · ${fmtMiles(km)}` : ""}</span></span></span>
       </button>
@@ -599,7 +619,7 @@ function vFlock() {
     </form>
     ${S.flash ? `<p class="flash" role="status">${esc(S.flash)}</p>` : ""}
     <div class="sect">Your flock <small>${fr.length} friend${fr.length === 1 ? "" : "s"}</small></div>
-    <div class="list">${fr.map((f) => `<button class="row" data-act="open" data-id="${f.id}">${avatar(f.name)}
+    <div class="list">${fr.map((f) => `<button class="row" data-act="open" data-id="${f.id}">${avatar(f)}
       <span class="txt"><span class="l1"><span class="nm one">${esc(f.name)}</span></span>
       <span class="l2"><span class="pv one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span></span></button>`).join("") || `<p class="empty">Your flock is empty. Share your handle, @${esc(S.me.handle)}, with a friend.</p>`}</div>
     <div class="gap"></div>`;
@@ -608,7 +628,8 @@ function vRoost() {
   const u = S.me;
   const eggs = Array.from({ length: SWIFT_MAX }, (_, i) => `<i class="${i < u.swift ? "" : "e"}"></i>`).join("");
   return `<header class="hdr"><h1>Roost</h1></header>
-    <div class="prof">${avatar(u.name, "l")}<h2>${esc(u.name)}</h2><p>@${esc(u.handle)}</p></div>
+    <div class="prof"><button class="avbtn" data-act="profile" aria-label="Edit your profile">${avatar(u, "l")}</button><h2>${esc(u.name)}</h2><p>@${esc(u.handle)}</p>
+      <button class="btn ghost" data-act="profile">Edit profile</button></div>
     <div class="sect">Your roost</div>
     <div class="card">
       <div class="kv"><span>Location</span><span class="val">${esc(u.place || "Not set")}</span></div>
@@ -833,8 +854,9 @@ function renderTabs() {
   document.title = unread ? `(${unread}) InFlight Beta` : "InFlight Beta";
 }
 const sheetHtml = (title, body, flush) => `<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-label="${esc(title)}"><header><h3>${esc(title)}</h3><button class="done" data-act="close">Done</button></header><div class="body${flush ? " flush" : ""}">${body}</div></div>`;
-function renderSheet() {
+function renderSheet(refresh) {
   const s = S.sheet;
+  if (refresh && s?.type !== "profile") return;
   if (!s) { if (!$(".toast", $layer)) $layer.innerHTML = ""; return; }
   if (s.type === "map") {
     if (!$(".map", $layer)) $layer.innerHTML = sheetHtml("Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route"></canvas><div class="mapcard"></div>`, true);
@@ -845,12 +867,12 @@ function renderSheet() {
       <div class="card"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
       <p class="foot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))}, in person or on a call. If they match, your scrolls can only be opened by the two of you. Not even our server could swap in a different key.</p>`);
   } else if (s.type === "compose") {
-    $layer.innerHTML = sheetHtml("New scroll", S.friends.length ? `<div class="list">${S.friends.map((f) => `<button class="row" data-act="open" data-id="${f.id}">${avatar(f.name)}
+    $layer.innerHTML = sheetHtml("New scroll", S.friends.length ? `<div class="list">${S.friends.map((f) => `<button class="row" data-act="open" data-id="${f.id}">${avatar(f)}
       <span class="txt"><span class="l1"><span class="nm one">${esc(f.name)}</span></span>
       <span class="l2"><span class="pv">${esc(f.place || "Roost not set")}${S.me.lat != null && f.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, f.lat, f.lon)))} by pigeon` : ""}</span></span></span></button>`).join("")}</div>`
       : `<p class="empty">Add someone to your flock first.</p>`);
   } else if (s.type === "requests") {
-    const row = (p, acts) => `<div class="row">${avatar(p.name)}<span class="txt"><span class="l1"><span class="nm one">${esc(p.name)}</span></span><span class="l2"><span class="pv">${acts ? `@${esc(p.handle)} wants to join your flock` : `Waiting for @${esc(p.handle)}`}</span></span></span>${acts ? `<button class="yes" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">${I.check}</button><button class="no" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">${I.x}</button>` : `<button class="no" data-act="unfriend" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">${I.x}</button>`}</div>`;
+    const row = (p, acts) => `<div class="row">${avatar(p)}<span class="txt"><span class="l1"><span class="nm one">${esc(p.name)}</span></span><span class="l2"><span class="pv">${acts ? `@${esc(p.handle)} wants to join your flock` : `Waiting for @${esc(p.handle)}`}</span></span></span>${acts ? `<button class="yes" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">${I.check}</button><button class="no" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">${I.x}</button>` : `<button class="no" data-act="unfriend" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">${I.x}</button>`}</div>`;
     $layer.innerHTML = sheetHtml("Friend requests",
       (S.incoming.length ? `<div class="sect">Incoming pigeons</div><div class="list">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "") +
       (S.outgoing.length ? `<div class="sect">Sent by you</div><div class="list">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : "") +
@@ -860,6 +882,29 @@ function renderSheet() {
   } else if (s.type === "askpw") {
     if (!$("#f-password", $layer)) $layer.innerHTML = sheetHtml("Link your passkey", `<p class="lead">Enter your password once so this passkey can also unlock your scrolls on a new phone.</p>
       <form class="fields" data-form="askpw" novalidate>${field("password", "Password", "password", "current-password", "")}<p class="ferr" role="alert" hidden></p><button class="btn big">Link passkey</button></form>`);
+  } else if (s.type === "profile") {
+    const u = S.me, wait = u.handleNextAt && u.handleNextAt > now() ? u.handleNextAt - now() : 0;
+    const fresh = !$("#f-name", $layer);
+    const keep = fresh ? null : { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value };
+    $layer.innerHTML = sheetHtml("Edit profile", `
+      <div class="profedit">
+        <label class="avbtn">${avatar(u, "l")}<input type="file" accept="image/*" id="av-file" aria-label="Choose a profile picture"></label>
+        <div class="avacts">
+          <label class="btn ghost">${u.avatarAt ? "Change photo" : "Add a photo"}<input type="file" accept="image/*" id="av-file2" aria-label="Choose a profile picture"></label>
+          ${u.avatarAt ? `<button type="button" class="link danger" data-act="avdel">Remove photo</button>` : ""}
+        </div>
+        <p class="hint av-hint">Your friends, and people you’ve sent or received a friend request from, can see your photo.</p>
+      </div>
+      <form class="fields" data-form="profile" novalidate>
+        ${field("name", "Name", "text", "name", "")}
+        ${field("handle", "Handle", "text", "username", wait ? `You can change your handle once a day. Next change in ${fmtDur(wait)}.` : "Friends find you by your handle. You can change it once a day.", "@")}
+        <p class="ferr" role="alert" hidden></p>
+        <button class="btn big">Save</button>
+      </form>`);
+    $("#f-name", $layer).value = keep ? keep.name : u.name;
+    $("#f-name", $layer).maxLength = 50;
+    $("#f-handle", $layer).value = keep ? keep.handle : u.handle;
+    if (wait) $("#f-handle", $layer).disabled = true;
   } else if (s.type === "changepw") {
     if (!$("#f-current", $layer)) $layer.innerHTML = sheetHtml("Change password", `<form class="fields" data-form="changepw" novalidate>
       ${field("current", "Current password", "password", "current-password", "")}
@@ -974,6 +1019,11 @@ async function onClick(e) {
       await forget(); return go("welcome");
     case "delask": S.sheet = { type: "delete" }; return renderSheet();
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
+    case "profile": S.sheet = { type: "profile" }; return renderSheet();
+    case "avdel":
+      try { await busyBtn(t, "Removing…", async () => { S.me = (await api("avatar", { method: "DELETE" })).me; }); renderSheet(true); render(); }
+      catch (err) { showErr(err.message); }
+      return;
     case "resetkeep": case "resetfresh":
       try { await resetWith(t.dataset.act === "resetkeep" ? "keep" : "fresh", t); }
       catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
@@ -988,6 +1038,7 @@ const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone alr
 
 async function onChange(e) {
   const el = e.target;
+  if ((el.id === "av-file" || el.id === "av-file2") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
   if (el.type === "file" && el.files[0]) { $menu.hidden = true; await setAttach(el.files[0]); el.value = ""; }
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
@@ -1065,6 +1116,19 @@ async function onSubmit(e) {
     const keep = $("[data-act=resetkeep]");
     try { await resetWith(keep ? "keep" : "fresh", keep || $("[data-act=resetfresh]")); }
     catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
+  } else if (kind === "profile") {
+    const name = String(v.name || "").trim(), handle = String(v.handle ?? S.me.handle).trim().replace(/^@/, "").toLowerCase();
+    if (!name) return showErr("Your name can’t be empty.", "name");
+    if (!/^[a-z0-9_]{3,20}$/.test(handle)) return showErr("Use 3 to 20 letters, numbers or underscores.", "handle");
+    const changes = {};
+    if (name !== S.me.name) changes.name = name;
+    if (handle !== S.me.handle) changes.handle = handle;
+    if (!Object.keys(changes).length) { S.sheet = null; return renderSheet(); }
+    try {
+      S.me = (await busyBtn(btn, "Saving…", () => api("me", { method: "PATCH", body: changes }))).me;
+      S.sheet = null; renderSheet(); render();
+      toast(changes.handle ? `Saved. Friends now find you as @${esc(S.me.handle)}.` : "Profile saved.");
+    } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "changepw") {
     if (!v.current) return showErr("Enter your current password.", "current");
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters.", "password");
@@ -1099,6 +1163,22 @@ async function afterSignIn() {
   if (S.me.lat == null) return go("roostpick");
   if (S.pendingAdd) return go("flock");
   go("aviary");
+}
+// Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
+async function setAvatar(file) {
+  try {
+    const bmp = await loadBitmap(file);
+    const side = Math.min(bmp.width, bmp.height), size = Math.min(512, side);
+    const c = document.createElement("canvas"); c.width = c.height = size;
+    c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+    const jpg = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+    if (!jpg) throw new Error("That picture couldn’t be read. Try another one.");
+    const r = await api("avatar", { method: "POST", blob: jpg });
+    S.me = r.me;
+    S.avatars.set(`${S.me.id}:${S.me.avatarAt}`, URL.createObjectURL(jpg));
+    renderSheet(true); render();
+    toast("Profile picture updated.");
+  } catch (err) { showErr(err.message || "That picture couldn’t be read. Try another one."); }
 }
 async function setAttach(blob) {
   clearAttach();
