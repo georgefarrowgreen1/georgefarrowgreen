@@ -95,7 +95,7 @@ function render() {
   const focus = document.activeElement?.id;
   const testSender = /@resend\.dev>?$/.test(A.from);
   root().innerHTML = `
-    <header class="adm-top"><h1>InFlight admin <span class="beta">Beta</span></h1>
+    <header class="adm-top"><h1>InFlight admin</h1>
       <span class="tools"><span class="pillstat${A.email ? "" : " off"}">${A.email ? "Reset emails on" : "Reset emails off"}</span>
       <button class="btn ghost" id="signout">Sign out</button></span></header>
     ${!A.email ? `<p class="anote">Reset emails are off. Add <b>RESEND_API_KEY</b> in Cloudflare to switch them on. Until then, use “Make a reset link”.</p>`

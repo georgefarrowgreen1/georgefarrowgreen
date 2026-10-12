@@ -8,6 +8,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift and turbo fly any time and come from lofts that refill through the day.
+const APP_VERSION = "1.0.0";            // shown in Account
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };        // a secret: start a message with /dumb
@@ -818,7 +819,7 @@ function vMessages() {
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : `<p class="empty"><b>No messages yet</b>Add a friend by their handle, then send your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Find Friends</button></p>`;
   return `${navbar("Messages", { root: true, right: nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large">Messages <span class="beta">Beta</span></h1>
+    <h1 class="large">Messages</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
 }
@@ -877,7 +878,7 @@ function vAccount() {
       ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
     </div>
     <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>
-    <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}</div>
+    <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: `Version ${APP_VERSION}` })}</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <div class="gap"></div>`;
@@ -1027,7 +1028,7 @@ function vAuth() {
     case "loading": return `<div class="loading">Opening InFlight…</div>`;
     case "welcome": return `<div class="auth welcome">
         <div class="appicon">${I.bird}</div>
-        <h1>InFlight <span class="beta">Beta</span></h1>
+        <h1>InFlight</h1>
         <ul class="feats">
           <li>${I.dist}<div><b>Real distance</b><span>Each message flies the real miles between you, at pigeon speed.</span></div></li>
           <li>${I.lock}<div><b>End-to-end encrypted</b><span>Only you and your friend can read your messages and photos.</span></div></li>

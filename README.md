@@ -142,7 +142,7 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — beta
+## InFlight (/pigeon) — 1.0.0
 
 A pigeon-post messenger at **/pigeon**: every message ("scroll") flies the real
 distance between two people at 80 km/h (5 minutes to 3 days), and photos are
