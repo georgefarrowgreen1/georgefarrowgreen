@@ -126,6 +126,11 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 .nbtn:disabled{opacity:.4}
 .nbtn:active{transform:scale(.94)}
 .large{margin:0 20px 10px;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.37px;display:flex;align-items:center;gap:10px;min-width:0}
+/* On a tab's top screen the large title sits on the same line as the round
+   buttons, both centred on it: the bar is 56px and the title line 41px. */
+.navbar.root + .large{margin-top:-48.5px;margin-right:20px;font-size:min(34px,9.4vw)}
+.navbar.root.b1 + .large{margin-right:72px}
+.navbar.root.b2 + .large{margin-right:112px}
 .beta{display:inline-flex;align-items:center;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--label-2);background:var(--fill);border-radius:999px;padding:4px 8px;line-height:1}
 
 /* ---------- search ---------- */

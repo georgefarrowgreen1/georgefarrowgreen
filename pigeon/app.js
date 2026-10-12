@@ -654,8 +654,9 @@ function mount() {
   $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
   $view.addEventListener("scroll", () => {
     const y = $view.scrollTop;
-    $view.classList.toggle("scrolled", y > 4);
-    $view.classList.toggle("titled", y > 38);
+    const root = !!$view.querySelector(".navbar.root");      // its title shares the bar's row
+    $view.classList.toggle("scrolled", y > (root ? 20 : 4));
+    $view.classList.toggle("titled", y > (root ? 26 : 38));
     S.stick = $view.scrollHeight - y - $view.clientHeight < 40;
   }, { passive: true });
   root().addEventListener("click", onClick);
@@ -696,8 +697,9 @@ function render() {
 }
 
 /* ---------- shared bits ---------- */
-const navbar = (title, { left = "", right = "", solid = false } = {}) =>
-  `<div class="navbar${solid ? " solid" : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${esc(title)}</div><div class="nb-right">${right}</div></div>`;
+// root: a tab's top screen, whose large title shares the row with the buttons
+const navbar = (title, { left = "", right = "", solid = false, root = false } = {}) =>
+  `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${esc(title)}</div><div class="nb-right">${right}</div></div>`;
 const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
 const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${id}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
 const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => {
@@ -735,7 +737,7 @@ function vMessages() {
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : `<p class="empty"><b>No messages yet</b>Add a friend by their handle, then send your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Find Friends</button></p>`;
-  return `${navbar("Messages", { right: nbtn("newmsg", I.compose, "New message") })}
+  return `${navbar("Messages", { root: true, right: nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large">Messages <span class="beta">Beta</span></h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
@@ -747,7 +749,7 @@ function vFriends() {
   const inc = S.incoming.length, out = S.outgoing.length;
   const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s")}
       <span class="ctext"><span class="one">${esc(f.name)}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
-  return `${navbar("Friends", { right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
+  return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
     ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? `${inc} waiting for you` : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
@@ -761,7 +763,7 @@ function vFriends() {
 function vAccount() {
   const u = S.me;
   const dots = Array.from({ length: SWIFT_MAX }, (_, i) => `<i class="${i < u.swift ? "" : "e"}"></i>`).join("");
-  return `${navbar("Account")}
+  return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
       <span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
