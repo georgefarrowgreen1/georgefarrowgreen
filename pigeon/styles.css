@@ -175,7 +175,14 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .av[data-c="3"]{background:linear-gradient(180deg,#f5ab83,#e0774a)}
 .av[data-c="4"]{background:linear-gradient(180deg,#8fd69a,#4fb062)}
 .av[data-c="5"]{background:linear-gradient(180deg,#c9a0f5,#9662e0)}
-.av img{display:block;width:100%;height:100%;object-fit:cover}
+.av img{display:block;width:100%;height:100%;object-fit:cover;border-radius:50%}
+/* online now: a green dot on the avatar's edge, ringed in whatever it sits on */
+.av:has(.online){position:relative;overflow:visible}
+.av .online{position:absolute;right:2%;bottom:2%;width:26%;height:26%;min-width:9px;min-height:9px;border-radius:50%;background:var(--p-standard);box-shadow:0 0 0 max(2px,.045em) var(--dot-bg,var(--bg));animation:pop .5s var(--bouncy)}
+.av.xl .online{box-shadow:0 0 0 4px var(--dot-bg,var(--bg))}
+.group .av,.chatwho .av{--dot-bg:var(--cell)}
+.screen.plain .mrow .av{--dot-bg:var(--bg-plain)}
+.on-now{color:var(--p-standard);font-weight:500}
 .av.xs{width:28px;height:28px;font-size:11px}
 .av.s{width:36px;height:36px;font-size:14px}
 .av.m{width:54px;height:54px;font-size:20px}

@@ -307,16 +307,19 @@ const lastBetween = (D, a, b) => D.prepare(
   "SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1) ORDER BY sent_at DESC LIMIT 1").bind(a, b).first();
 
 /* ---------------- sync: everything the home screens need ---------------- */
+const SEEN_EVERY = 60e3;
 async function sync({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
   waitUntil(sweepPhotos(env).catch(() => {}));
+  // an open app syncs every 15 s; note it at most once a minute for Last Online
+  if (!(t - (u.seen_at || 0) < SEEN_EVERY)) await D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id).run();
   const { results: links } = await D.prepare("SELECT a, b, status FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();
   const other = (l) => (l.a === u.id ? l.b : l.a);
   const ids = [...new Set(links.map(other))];
   const people = new Map();
   if (ids.length) {
-    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, avatar_at FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, seen_at, avatar_at FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
     for (const p of results) people.set(p.id, p);
   }
   const { results: lasts } = await D.prepare(`
@@ -333,7 +336,7 @@ async function sync({ request, env, waitUntil }) {
     const p = people.get(other(l)); if (!p) continue;
     if (l.status === "ok") {
       const last = lastBy.get(p.id);
-      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
+      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: p.seen_at || null,
         last: last ? msgView(u.id, last, t) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push(brief(p));

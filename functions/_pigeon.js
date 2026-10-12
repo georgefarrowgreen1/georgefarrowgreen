@@ -117,7 +117,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN pigeon TEXT",          // standard, swift or turbo (older rows: from swift)
   "ALTER TABLE pg_msgs ADD COLUMN legs TEXT",            // course changes: JSON [[lat, lon, at], ...] where it turned
   "ALTER TABLE pg_users ADD COLUMN loc_at INTEGER",      // when the location last changed
-  "ALTER TABLE pg_users ADD COLUMN auto_loc INTEGER NOT NULL DEFAULT 0",   // update location on opening the app    // light, dark or auto; null until first chosen
+  "ALTER TABLE pg_users ADD COLUMN auto_loc INTEGER NOT NULL DEFAULT 0",   // update location on opening the app
+  "ALTER TABLE pg_users ADD COLUMN seen_at INTEGER",     // last time the app checked in (Last Online)
 ];
 let schemaReady = false;
 export async function db(env) {

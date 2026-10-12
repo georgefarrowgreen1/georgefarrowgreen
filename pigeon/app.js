@@ -112,10 +112,21 @@ const initials = (n) => String(n).trim().split(/\s+/).map((w) => w[0]).join("").
 const first = (n) => String(n).trim().split(" ")[0];
 const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
 // A person's picture if they have one (fetched with this phone's sign-in, then kept as a blob URL), else their initials.
-function avatar(person, size = "") {
+// dot: show a green dot when they're online now
+function avatar(person, size = "", dot = false) {
   const name = person?.name || "?";
   const url = person?.avatarAt ? avatarUrl(person) : "";
-  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(initials(name))}</span>`;
+  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(initials(name))}${dot && isOnline(person) ? '<i class="online"></i>' : ""}</span>`;
+}
+// An open app checks in every 15 s and the server notes it once a minute, so
+// anyone seen in the last 2½ minutes has InFlight open now.
+const ONLINE_MS = 150e3;
+const isOnline = (p) => !!p?.seenAt && now() - p.seenAt < ONLINE_MS;
+// 5m ago, then Today 21:38, Yesterday 21:38, Mon 21:38, 3 Oct 2026
+function fmtSeen(at) {
+  if (now() - at < HOUR) return `${Math.max(1, Math.floor((now() - at) / MIN))}m ago`;
+  if (sameDay(at, now()) || sameDay(at, now() - DAY)) return `${dayLabel(at)} ${fmtTime(at)}`;
+  return now() - at < 6 * DAY ? fmtShort(at) : fmtDate(at);
 }
 let avatarRender = 0;
 function avatarUrl(p) {
@@ -174,6 +185,7 @@ const I = {
   lock: ico(`<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>`),
   shield: ico(`<path d="M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/>`),
   info: ico(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.2"/>`),
+  clock: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>`),
   dist: ico(`<circle cx="6" cy="17" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M7.8 15.6c2.5-1 3.2-3.4 5-5s3-2 3.6-2.2" stroke-dasharray="2 2.6"/>`),
   hourglass: ico(`<path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.5 8 5 8 8.5s-8 4-8 8.5M16 3.5c0 4.5-8 5-8 8.5s8 4 8 8.5"/>`),
   ok: ico(`<circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.8 2.7L16 9.5"/>`),
@@ -809,7 +821,7 @@ function vMessages() {
   const rows = fr.map(({ f, html, at }) => `
     <button class="mrow" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
-      ${avatar(f, "m")}
+      ${avatar(f, "m", true)}
       <span class="mtext">
         <span class="mtop"><span class="mname one">${esc(f.name)}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${html}</span>
@@ -828,7 +840,7 @@ function vMessages() {
 function vFriends() {
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
-  const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s")}
+  const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
       <span class="ctext"><span class="one">${esc(f.name)}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
@@ -1011,7 +1023,7 @@ function vChat() {
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${f.id}">I’ve Checked</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
-      <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s")}<span class="nm"><span>${esc(f.name)}</span>${I.chev}</span></button>
+      <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(f.name)}</span>${I.chev}</span></button>
       <div class="nb-right">${nbtn("chatmenu", I.more, "More")}</div>
     </div>
     ${warn}<div class="msgs">${status(f, t)}${body}</div>`;
@@ -1340,10 +1352,11 @@ function drawSheet(refresh) {
     case "friendinfo": {
       if (!f) { S.sheet = null; return renderSheet(); }
       const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
-      $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl")}<span class="name">${esc(f.name)}</span><span class="sub">@${esc(f.handle)}</span></div>
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${esc(f.name)}</span><span class="sub">@${esc(f.handle)}</span></div>
         <div class="group mt">
           ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set"), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
+          ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
           ${km != null ? KINDS.slice().reverse().map(([k, name, speed]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, speed)) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
