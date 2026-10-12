@@ -1,6 +1,6 @@
 /* InFlight: iOS 26 styling. Liquid Glass controls float over content: round
    glass nav buttons, a glass tab bar, glass composer, menus and sheets.
-   Light follows the phone; dark is a soft graphite grey, not black. */
+   Light by default; dark is a soft graphite grey, not black. */
 :root{
   --bg:#f2f2f7;            /* grouped background */
   --bg-plain:#f2f2f7;      /* chats and the Messages list: the same grey as everywhere else */
@@ -27,8 +27,21 @@
   --mono:ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme:light;
 }
+/* Dark mode: picked in Account → Appearance (saved on this phone), or
+   Automatic, which follows the phone. Light is the default. */
+:root[data-theme="dark"]{
+    --bg:#1c1c1f; --bg-plain:#1c1c1f; --cell:#2a2a2e; --cell-2:#343439;
+    --fill:rgba(120,120,128,.26); --fill-2:rgba(120,120,128,.36);
+    --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
+    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --indigo:#7a78ff; --teal:#46c8e0; --gray:#98989f; --yellow:#ffd60a;
+    --bubble-in:#3a3a3f;
+    --glass:rgba(62,62,68,.55); --glass-strong:rgba(58,58,64,.86); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
+    --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04);
+    color-scheme:dark;
+}
 @media (prefers-color-scheme: dark){
-  :root{
+  :root[data-theme="auto"]{
     --bg:#1c1c1f; --bg-plain:#1c1c1f; --cell:#2a2a2e; --cell-2:#343439;
     --fill:rgba(120,120,128,.26); --fill-2:rgba(120,120,128,.36);
     --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
@@ -343,6 +356,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .reqrow .ctext .one{display:block}
 .reqrow .ctext br{display:none}
 .reqrow .acts{flex:none;display:flex;gap:8px}
+.val.tick{color:var(--tint);font-size:20px;display:flex}
 .dim .group,.dim .gfoot,.dim .ghead{opacity:.55;transition:opacity .2s}
 /* iOS 26 switch */
 .switch{flex:none;position:relative;width:62px;height:28px;border-radius:999px;background:var(--fill-2);transition:background .25s}

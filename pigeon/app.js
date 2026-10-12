@@ -757,6 +757,12 @@ function vAccount() {
     <div class="ghead">Pigeons</div>
     <div class="group">${cell({ icon: I.bird, tile: "orange", label: "Swift Pigeons", val: `<span class="dots" role="img" aria-label="${u.swift} of ${SWIFT_MAX}">${dots}</span>` })}</div>
     <div class="gfoot">${u.swift >= SWIFT_MAX ? "Your loft is full." : `The next one hatches in <span data-eta="${u.swiftNextAt}"></span>.`} Swift pigeons fly twice as fast and let you write when it isn’t your turn.</div>
+    <div class="ghead">Appearance</div>
+    <div class="group">
+      ${[["light", "Light"], ["dark", "Dark"], ["auto", "Automatic"]].map(([k, l]) =>
+        `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${k}"><span class="ctext"><span>${l}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
+    </div>
+    <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting." : "Saved on this phone."}</div>
     ${notifySection(u)}
     <div class="ghead">Privacy &amp; Security</div>
     <div class="group">
@@ -1349,6 +1355,7 @@ async function onClick(e) {
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "theme": setTheme(id); return render();
     case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
@@ -1570,6 +1577,23 @@ async function send() {
 $(".page").addEventListener("keydown", (e) => {
   if (e.target.id === "msg" && e.key === "Enter" && !e.shiftKey && !/iPhone|iPad|Android/.test(navigator.userAgent)) { e.preventDefault(); send(); }
 });
+
+/* ============================================================
+   Appearance (theme.js applies it before the page draws)
+   ============================================================ */
+const THEMES = ["light", "dark", "auto"];
+function theme() { try { const t = localStorage.getItem("inflight-theme"); return THEMES.includes(t) ? t : "light"; } catch (_) { return "light"; } }
+function setTheme(t) {
+  if (!THEMES.includes(t)) return;
+  try { localStorage.setItem("inflight-theme", t); } catch (_) { /* this visit only */ }
+  applyTheme(t);
+}
+function applyTheme(t = theme()) {
+  document.documentElement.setAttribute("data-theme", t);
+  const dark = t === "dark" || (t === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#1c1c1f" : "#f2f2f7");
+}
+window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme());
 
 /* ============================================================
    Notifications
