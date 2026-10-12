@@ -858,7 +858,6 @@ function vAccount() {
     </div>
     <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>
     <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}</div>
-    <div class="gfoot">Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <div class="gap"></div>`;
