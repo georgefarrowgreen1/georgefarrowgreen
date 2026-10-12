@@ -1,7 +1,7 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, msgView, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
@@ -17,7 +17,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, locAt: u.loc_at || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -91,21 +91,23 @@ function waitText(ms) {
 // longer than its 3-day limit from when it was sent.
 async function reroute(env, u, p, t, waitUntil) {
   const D = await db(env);
-  const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ? AND deliver_at > ? AND to_lat IS NOT NULL").bind(u.id, t).all();
+  const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ?1 AND deliver_at > ?2 AND to_lat IS NOT NULL AND (lost_at IS NULL OR lost_at > ?2)").bind(u.id, t).all();
   for (const m of results) {
     const legs = m.legs ? JSON.parse(m.legs) : [];
     const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [m.from_lat, m.from_lon, m.sent_at];
     const f = Math.min(1, Math.max(0, (t - sAt) / (m.deliver_at - sAt)));
     const [pLat, pLon] = gcPoint(sLat, sLon, m.to_lat, m.to_lon, f);           // where it is right now
     const ahead = haversineKm(pLat, pLon, p.lat, p.lon);
-    const speed = PIGEONS[m.pigeon || (m.swift ? "swift" : "standard")].speed;
+    const speed = msgSpeed(m);
     const latest = m.sent_at + MAX_FLIGHT / speed;
     const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / SPEED_KMH) * 3600e3 / speed));
     const km = Math.max(0, m.km - haversineKm(pLat, pLon, m.to_lat, m.to_lon)) + ahead;
     legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
-    const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?,
+    // a doomed pigeon is still lost before it would land, now on its new course
+    const lostAt = m.lost_at == null ? null : m.lost_at < deliver ? m.lost_at : t + (deliver - t) / 2;
+    const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
       expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ?`)
-      .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), deliver + PHOTO_TTL, m.id, t).run();
+      .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
     if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
   }
 }
@@ -136,6 +138,7 @@ async function updateMe({ request, env, waitUntil }) {
   if (b.notifyEmail !== undefined)
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
+  if (b.risky !== undefined) await D.prepare("UPDATE pg_users SET risky = ? WHERE id = ?").bind(b.risky ? 1 : 0, u.id).run();
   if (b.lat !== undefined) {
     const p = cleanPlace(b);
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
@@ -327,7 +330,7 @@ async function sync({ request, env, waitUntil }) {
       SELECT m.*, ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender = ?1 THEN recipient ELSE sender END ORDER BY sent_at DESC) AS rn
       FROM pg_msgs m WHERE sender = ?1 OR recipient = ?1) WHERE rn = 1`).bind(u.id).all();
   const lastBy = new Map(lasts.map((m) => [m.sender === u.id ? m.recipient : m.sender, m]));
-  const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? GROUP BY sender").bind(u.id, t).all();
+  const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
   const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null });
@@ -392,12 +395,16 @@ async function sendMessage({ request, env, waitUntil }) {
   const swift = PIGEONS[kind].waits ? 0 : 1;
   const hasTo = r && r.lat != null;
   const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
-  const deliver = t + flightMs(km, PIGEONS[kind].speed);
+  const risky = u.risky ? 1 : 0;
+  const deliver = t + flightMs(km, PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1));
+  // Pigeon Death: 1 in 100 is lost somewhere between 15% and 85% of the way
+  const roll = crypto.getRandomValues(new Uint32Array(2));
+  const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - t)) : null;
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
-    await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, km, t, deliver, photo ? deliver + PHOTO_TTL : null,
+    await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, t, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
         u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null).run();
   } catch (e) {
     if (photo) await env.BIO_R2.delete(`pigeon/${id}`);
@@ -412,17 +419,18 @@ async function sendMessage({ request, env, waitUntil }) {
 async function markRead({ request, env }) {
   const u = await requireUser(request, env);
   const other = String((await body(request)).with || "");
-  await (await db(env)).prepare("UPDATE pg_msgs SET read_at = ?1 WHERE recipient = ?2 AND sender = ?3 AND read_at IS NULL AND deliver_at <= ?1").bind(Date.now(), u.id, other).run();
+  await (await db(env)).prepare("UPDATE pg_msgs SET read_at = ?1 WHERE recipient = ?2 AND sender = ?3 AND read_at IS NULL AND deliver_at <= ?1 AND lost_at IS NULL").bind(Date.now(), u.id, other).run();
   return json({ ok: true });
 }
 
 async function getPhoto({ request, env }, id) {
   const u = await requireUser(request, env);
   if (!UUID_RE.test(id || "")) throw new HttpError(404, "No such photo.");
-  const m = await (await db(env)).prepare("SELECT sender, recipient, photo, deliver_at, expires_at FROM pg_msgs WHERE id = ?").bind(id).first();
+  const m = await (await db(env)).prepare("SELECT sender, recipient, photo, deliver_at, expires_at, lost_at FROM pg_msgs WHERE id = ?").bind(id).first();
   const t = Date.now();
   if (!m || (m.sender !== u.id && m.recipient !== u.id)) throw new HttpError(404, "No such photo.");
   if (m.photo !== 1 || t >= m.expires_at) throw new HttpError(410, "This photo has flown away.");
+  if (m.recipient === u.id && m.lost_at != null && t >= m.lost_at) throw new HttpError(410, "This photo was lost with its pigeon.");
   if (m.recipient === u.id && t < m.deliver_at) throw new HttpError(425, "This photo is still in flight.");
   const obj = env.BIO_R2 && (await env.BIO_R2.get(`pigeon/${id}`));
   if (!obj) throw new HttpError(410, "This photo has flown away.");

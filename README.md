@@ -201,6 +201,12 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Pigeon Death.** Each person can turn this on in Account → Pigeons: everything
+they send flies 1.25× faster, but 1 in 100 pigeons is lost. The server draws
+each pigeon's fate on take-off (`lost_at`, somewhere 15–85% of the way) and
+keeps it secret until then. A lost scroll is never delivered, the sender gets
+their turn back and a notification, and the recipient sees it was lost.
+
 **Moving about.** When someone's location changes by more than 5 km, every
 pigeon flying to them turns in mid-air and heads from where it is to the new
 spot, at its own speed (still within its 3-day limit); the turn is stored in

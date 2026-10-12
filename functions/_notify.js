@@ -22,7 +22,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, requests: true, accepted: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -31,7 +31,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "requests", "accepted", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -186,7 +186,7 @@ export async function tick(env, origin) {
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
   const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
-    WHERE m.notified_at IS NULL AND m.deliver_at <= ?1 AND m.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
+    WHERE m.notified_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?1 AND m.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
   const prefs = new Map(due.map((m) => [m.recipient, prefsOf(m)]));
   const ready = due.filter((m) => !isQuiet(prefs.get(m.recipient), t));       // quiet ones wait
   let landed = [];
@@ -197,6 +197,17 @@ export async function tick(env, origin) {
     landed = results.filter((m) => prefs.get(m.recipient).landed);
   }
   let pushes = 0, emails = 0;
+  // Pigeon Death: tell the sender when one of theirs is lost on the way
+  const { results: lost } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs, r.name FROM pg_msgs m
+    JOIN pg_users u ON u.id = m.sender JOIN pg_users r ON r.id = m.recipient
+    WHERE m.notified_at IS NULL AND m.lost_at IS NOT NULL AND m.lost_at <= ?1 AND m.lost_at > ?2 LIMIT 200`).bind(t, since).all();
+  for (const m of lost) {
+    const p = prefsOf(m); if (isQuiet(p, t)) continue;
+    const claimed = await D.prepare("UPDATE pg_msgs SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, m.id).run();
+    if (!claimed.meta.changes || !p.lost) continue;
+    pushes += await pushTo(env, m.sender, { title: "Pigeon lost", body: p.names ? `Your pigeon to ${firstName(m.name)} didn’t make it. It’s your turn again.` : "One of your pigeons didn’t make it. It’s your turn again.",
+      tag: "lost-" + m.recipient, url: `/pigeon/#open=${m.recipient}` });
+  }
   if (landed.length) {
     const ids = [...new Set(landed.map((m) => m.sender))];
     const { results: senders } = await D.prepare(`SELECT id, name FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
@@ -214,7 +225,7 @@ export async function tick(env, origin) {
       SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names
       FROM pg_users u JOIN pg_msgs m ON m.recipient = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND COALESCE(u.email_at, 0) < ?1
-        AND m.read_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
+        AND m.read_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
       GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, Math.max(since, t - DAY)).all();
     for (const u of waiting) {
       const p = prefsOf(u); if (!p.landed || isQuiet(p, t)) continue;

@@ -13,6 +13,9 @@ const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX],
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };        // a secret: start a message with /dumb
 const DUMB = /^\/dumb(?:\s+|$)/i;
+// Pigeon Death (Account → Pigeons): 1.25× faster, but 1 in 100 is lost on the way
+const RISKY_SPEED = 1.25;
+const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
 const kindOf = (m) => (KIND[m?.pigeon] ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
@@ -187,6 +190,7 @@ const I = {
   shield: ico(`<path d="M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/>`),
   info: ico(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.2"/>`),
   clock: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>`),
+  skull: ico(`<path d="M12 3.5c-4.3 0-7.5 3-7.5 7 0 2.3 1 4 2.6 5.1v2.7c0 .7.5 1.2 1.2 1.2h7.4c.7 0 1.2-.5 1.2-1.2v-2.7c1.6-1.1 2.6-2.8 2.6-5.1 0-4-3.2-7-7.5-7Z"/><circle cx="9.2" cy="11" r="1.7" fill="currentColor"/><circle cx="14.8" cy="11" r="1.7" fill="currentColor"/><path d="M10.6 20v-2.2M13.4 20v-2.2"/>`),
   dist: ico(`<circle cx="6" cy="17" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M7.8 15.6c2.5-1 3.2-3.4 5-5s3-2 3.6-2.2" stroke-dasharray="2 2.6"/>`),
   hourglass: ico(`<path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.5 8 5 8 8.5s-8 4-8 8.5M16 3.5c0 4.5-8 5-8 8.5s8 4 8 8.5"/>`),
   ok: ico(`<circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.8 2.7L16 9.5"/>`),
@@ -369,7 +373,7 @@ function drawMap(cv, m, cardH) {
   g.strokeStyle = col("--tint"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
   g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.setLineDash([]);
   pts.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
-  const here = pigeonOn(P, pts, flightAt(m).t), [px, py] = here.at;
+  const here = pigeonOn(P, pts, flightAt(m, m.lost ? m.lostAt : now()).t), [px, py] = here.at;
   // labels claim space in priority order; anything that would overlap is left out
   const taken = [[px - 24, py - 20, px + 24, py + 20], [0, H - cardH, W, H]];
   const ctlEl = $(".mapctl", $layer);
@@ -407,7 +411,7 @@ function drawMap(cv, m, cardH) {
   }
   const bird = new Path2D(BIRD), flip = here.dx > 0 ? -1 : 1;   // the icon faces left; turn it the way it's flying
   g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
-  g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(bird); g.fillStyle = col("--p-" + kindOf(m)); g.fill(bird);   // the pigeon in its colour
+  g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(bird); g.fillStyle = m.lost ? col("--label-3") : col("--p-" + kindOf(m)); g.fill(bird);   // the pigeon in its colour (grey where it was lost)
   g.restore();
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
 }
@@ -584,7 +588,7 @@ async function sync() {
         checkPin(f);
         if (f.last) await decrypt(f.id, f.last);
         // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
-        if (f.last && !f.last.flying && !S.seenLanded.has(f.last.id)) {
+        if (f.last && !f.last.flying && !f.last.lost && !S.seenLanded.has(f.last.id)) {
           S.seenLanded.add(f.last.id);
           if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
           if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
@@ -641,11 +645,11 @@ async function loadChat(fid) {
     await decrypt(fid, m);
     const p = S.plain.get(m.id);
     if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
-    if (m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(m.to === S.me.id && m.flying)) loadPhoto(fid, m, p);
+    if (m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(m.to === S.me.id && (m.flying || m.lost))) loadPhoto(fid, m, p);
   }
-  if (d.messages.some((m) => m.from === fid && !m.flying && !m.readAt)) {
+  if (d.messages.some((m) => m.from === fid && !m.flying && !m.lost && !m.readAt)) {
     api("read", { method: "POST", body: { with: fid } }).catch(() => {});
-    for (const m of d.messages) if (m.from === fid && !m.flying) m.readAt = m.readAt || now();
+    for (const m of d.messages) if (m.from === fid && !m.flying && !m.lost) m.readAt = m.readAt || now();
     const f = friend(fid); if (f) f.unread = 0;
   }
 }
@@ -828,6 +832,7 @@ const pg = (kind) => `<span class="pg ${kind}" aria-hidden="true">${I.bird}</spa
 function preview(f) {
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
+  if (l.lost) return { html: `<span class="lostp">${I.skull} ${l.from === S.me.id ? "Your pigeon was lost on the way" : "A pigeon was lost on its way"}</span>`, at: l.lostAt };
   if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} In flight · <span data-eta="${l.deliverAt}"></span> to go</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
@@ -893,6 +898,8 @@ function vAccount() {
       ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free on your turn" })}
     </div>
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
+    <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
+    <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="ghead">Location</div>
     <div class="group">
       ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set"), sub: u.locAt ? `Updated ${agoText(u.locAt)}` : "" })}
@@ -955,6 +962,7 @@ function vNotifySheet() {
       ${t("landed", I.bird, "orange", "A Pigeon Lands")}
       ${t("takeoff", I.up, "teal", "A Pigeon Takes Off", "When a friend sends you one")}
       ${t("rerouted", I.loc, "blue", "A Pigeon Changes Course", "When a friend moves while yours is flying")}
+      ${t("lost", I.skull, "red", "A Pigeon Is Lost", "When Pigeon Death takes one of yours")}
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
     </div>
@@ -996,6 +1004,7 @@ function status(f, t) {
   switch (t?.state) {
     case "fresh": return B("sill", "Your pigeon is ready. Say hello.");
     case "sill": return B("sill", "Your turn to send.");
+    case "lost": return B("sill", "Your pigeon was lost. Your turn to send.");
     case "inbound": return B("inbound", `${n}’s pigeon is on its way.`);
     case "outbound": return B("", `Your pigeon is flying to ${n}.`);
     case "theirs": return B("", `${n} has the pigeon.`);
@@ -1005,6 +1014,7 @@ function status(f, t) {
 function bubble(f, m, isLastMine, gapTop) {
   const mine = m.from === S.me.id;
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
+  if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
     return `<button class="fly${fresh}" data-act="map" data-id="${m.id}" aria-label="Watch the pigeon on the map">
       <span class="t1">${pg(kindOf(m))}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}</span></span>
@@ -1021,9 +1031,10 @@ function bubble(f, m, isLastMine, gapTop) {
     else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="Photo from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${m.id}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
-  } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
+  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
-  if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
+  if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
+  else if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${m.expiresAt}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
@@ -1038,7 +1049,7 @@ function vChat() {
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (const m of msgs) {
-    const at = m.from === S.me.id || m.flying ? m.sentAt : m.deliverAt;
+    const at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
     lastStamp = at;
     body += bubble(f, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from);
@@ -1214,7 +1225,7 @@ function renderCompose() {
   } else {
     const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500;
     note.hidden = false; note.className = "note go";
-    note.innerHTML = `${pg(kind)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, KIND[kind].speed))}.</span>`;
+    note.innerHTML = `${pg(kind)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, mySpeed(kind)))}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
   }
   btn.disabled = blocked || !has || S.busy;
   $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
@@ -1381,7 +1392,7 @@ function drawSheet(refresh) {
           ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set"), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
           ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
-          ${km != null ? KINDS.slice().reverse().map(([k, name, speed]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, speed)) })).join("") : ""}
+          ${km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}</div>`);
@@ -1446,12 +1457,12 @@ function tickMap() {
   const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !m.route) return;
-  const left = m.deliverAt - now(), f = flightAt(m);
-  const speed = f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
-  card.innerHTML = `<span class="big">${pg(kindOf(m))}<span>${left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
+  const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
+  const speed = m.lost || f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
+  card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pg(kindOf(m))}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     <span class="prog"><i style="width:${(f.frac * 100).toFixed(2)}%"></i></span>
-    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}</span></span>`;
+    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
 }
@@ -1461,7 +1472,7 @@ let mapAnim = 0, mapAnimAt = 0;
 function smoothMap(m) {
   if (mapAnim || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const f = flightAt(m);
-  if (f.phase === "landed" || (f.phase === "cruise" && m.deliverAt - m.sentAt > HOUR)) return;
+  if (m.lost || f.phase === "landed" || (f.phase === "cruise" && m.deliverAt - m.sentAt > HOUR)) return;
   mapAnim = requestAnimationFrame(function step(ts) {
     mapAnim = 0;
     if (S.sheet?.type !== "map" || document.hidden) return;
@@ -1630,6 +1641,7 @@ async function onClick(e) {
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
+    case "risky": return setRisky(!S.me.risky);
     case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
@@ -1676,6 +1688,11 @@ const agoText = (at) => { const ms = now() - at; return ms < 2 * MIN ? "just now
 // can follow you. It never asks for permission by itself (only when you turn
 // it on), checks at most every 15 minutes, and ignores moves under 5 km.
 const AUTO_EVERY = 15 * MIN, AUTO_KM = 5;
+async function setRisky(on) {
+  S.me = { ...S.me, risky: on }; render();             // the switch moves straight away
+  try { const r = await api("me", { method: "PATCH", body: { risky: on } }); S.me = r.me; render(); }
+  catch (err) { S.me = { ...S.me, risky: !on }; render(); toast(esc(err.message)); }
+}
 async function setAutoLocation(on, btn) {
   try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); S.me = r.me; render(); }
   catch (err) { return toast(esc(err.message)); }

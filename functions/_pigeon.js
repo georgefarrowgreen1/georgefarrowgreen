@@ -16,6 +16,13 @@ export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they l
 export const SWIFT_MAX = 9;              // swift pigeons: 2× speed, 9 a day
 export const TURBO_MAX = 3;              // turbo pigeons: 3× speed, 3 a day
 export const ROCKET_MAX = 1;             // rocket pigeons: 9× speed, 1 a day
+// Pigeon Death (each person's choice): what they send flies 1.25× faster, but
+// 1 in 100 never arrives. Its fate is drawn on take-off and kept secret until
+// the moment it's lost, somewhere along the way.
+export const RISKY_SPEED = 1.25, RISKY_LOSS = 0.01;
+export const isLost = (m, t) => m.lost_at != null && t >= m.lost_at;
+// how fast a message's pigeon flies: its kind, plus Pigeon Death if it was on
+export const msgSpeed = (m) => PIGEONS[m.pigeon || (m.swift ? "swift" : "standard")].speed * (m.risky ? RISKY_SPEED : 1);
 // Kinds of pigeon. Standard is free but waits its turn; swift, turbo and rocket
 // can fly any time and come from a loft that refills through the day.
 export const PIGEONS = {
@@ -123,6 +130,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN seen_at INTEGER",     // last time the app checked in (Last Online)
   "ALTER TABLE pg_users ADD COLUMN rocket INTEGER",      // rocket pigeons in the loft; null = full
   "ALTER TABLE pg_users ADD COLUMN rocket_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN risky INTEGER NOT NULL DEFAULT 0",   // Pigeon Death on
+  "ALTER TABLE pg_msgs ADD COLUMN risky INTEGER NOT NULL DEFAULT 0",    // sent with Pigeon Death on
+  "ALTER TABLE pg_msgs ADD COLUMN lost_at INTEGER",                     // when it's lost (secret until then); null = arrives
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -213,6 +223,8 @@ export function flightMs(km, speed = 1) {
 // The pigeon shuttles between two people: you may send for free only when it's on your windowsill.
 export function turn(me, last, t) {
   if (!last) return { free: true, state: "fresh" };
+  // a lost pigeon never arrived, so the turn goes back to whoever sent it
+  if (isLost(last, t)) return last.sender === me ? { free: true, state: "lost" } : { free: false, state: "theirs" };
   if (last.sender === me) return { free: false, state: t < last.deliver_at ? "outbound" : "theirs" };
   if (t < last.deliver_at) return { free: false, state: "inbound" };
   return { free: true, state: "sill" };
@@ -232,16 +244,17 @@ export const swiftState = (u, t) => loft(u, "swift", t);
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
 export function msgView(me, m, t) {
-  const flying = t < m.deliver_at;
+  const lost = isLost(m, t), flying = !lost && t < m.deliver_at;
   return {
     id: m.id, from: m.sender, to: m.recipient, km: m.km,
     pigeon: m.pigeon || (m.swift ? "swift" : "standard"), swift: (m.pigeon || (m.swift ? "swift" : "standard")) === "swift",
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: m.expires_at, readAt: m.read_at,
-    photo: m.photo, photoSize: m.photo_size, flying,
+    photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
+    lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at]
     fromPlace: m.from_place, toPlace: m.to_place,
-    ct: flying && m.recipient === me ? null : m.ct,
+    ct: (flying || lost) && m.recipient === me ? null : m.ct,
   };
 }
 
