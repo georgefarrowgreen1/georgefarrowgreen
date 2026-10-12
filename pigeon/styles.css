@@ -17,7 +17,7 @@
   --green:#34c759; --orange:#ff9500; --red:#ff3b30; --indigo:#5856d6; --teal:#30b0c7; --gray:#8e8e93; --yellow:#ffcc00;
   --bubble-in:#ffffff;     /* white bubbles stand out on the grey */
   --glass:rgba(255,255,255,.62);
-  --glass-strong:rgba(255,255,255,.82);
+  --glass-strong:rgba(255,255,255,.9);
   --glass-hi:rgba(255,255,255,.95);
   --glass-edge:rgba(0,0,0,.07);
   --glass-shadow:0 8px 28px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
@@ -36,9 +36,9 @@
     --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
     --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --indigo:#7a78ff; --teal:#46c8e0; --gray:#98989f; --yellow:#ffd60a;
     --bubble-in:#3a3a3f;
-    --glass:rgba(62,62,68,.55); --glass-strong:rgba(58,58,64,.86); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
+    --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.75);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
@@ -48,9 +48,9 @@
     --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
     --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --indigo:#7a78ff; --teal:#46c8e0; --gray:#98989f; --yellow:#ffd60a;
     --bubble-in:#3a3a3f;
-    --glass:rgba(62,62,68,.55); --glass-strong:rgba(58,58,64,.86); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
+    --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.75);
     color-scheme:dark;
   }
 }
@@ -327,8 +327,8 @@ button.cell:active,label.cell:active{background:var(--fill)}
 /* ---------- account ---------- */
 .me-cell{min-height:88px;gap:14px}
 .me-cell .name{font-size:20px;line-height:25px;font-weight:600}
-.dots{display:flex;gap:4px}
-.dots i{width:8px;height:8px;border-radius:50%;background:var(--orange)}
+.dots{display:flex;gap:3px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--orange)}
 .dots i.e{background:var(--fill-2)}
 
 /* ---------- sheets ---------- */
@@ -537,7 +537,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pg svg{font-size:.9em}
 .pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}
 .tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
-.dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
+.dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:0 0 0 1.5px var(--p-dot-ring,var(--p-ring))}
 /* the picker above the message box */
 .pick{display:flex;gap:8px;justify-content:center}
 .pick button{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 10px;border:0;border-radius:999px;font-size:14px;font-weight:600;color:var(--label);
@@ -557,3 +557,34 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mrow .mprev .pg{font-size:11px;margin-right:2px}
 .meta .fl .pg{font-size:10px;margin-right:1px}
 .mapcard .big .pg{font-size:16px}
+
+/* ---------- polish ---------- */
+/* in-flight labels take their pigeon's colour (turbo reads as plain text) */
+.meta .fl.standard{color:var(--p-standard)}.meta .fl.swift{color:var(--p-swift)}.meta .fl.turbo{color:var(--label)}
+/* friend requests: handle in the small grey line, like every other list */
+.reqrow .csub{font-size:13px;line-height:18px;color:var(--label-2)}
+/* menus and confirm cards: more solid glass, so what's behind doesn't show through the words */
+.menu-pop,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:blur(30px) saturate(1.8);backdrop-filter:blur(30px) saturate(1.8)}
+/* the turn message stays on one line */
+.status span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* pigeon chips share the width and never run off a small screen */
+.pick button{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap}
+.pick button span:not(.pg){overflow:hidden;text-overflow:ellipsis}
+.note{text-wrap:balance}
+/* long labels stay on one line beside a value */
+.cell.has-icon:has(> .val) .ctext > span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell .csub .mono{font-family:var(--mono);font-size:13px;letter-spacing:.3px}
+@media (max-width:360px){
+  .pick{gap:5px}
+  .pick button{font-size:13px;padding:0 7px;gap:4px;height:34px}
+  .cell .val .mono,.cell .val.mono{font-size:13px;letter-spacing:-.3px}
+  .me-cell .name{font-size:19px}
+}
+/* short phones: the welcome screen fits without scrolling */
+@media (max-height:640px){
+  .welcome{padding-top:22px}
+  .welcome .appicon{width:72px;height:72px;border-radius:19px;font-size:44px}
+  .welcome h1{margin-top:12px;font-size:30px;line-height:36px}
+  .feats{margin-top:18px;gap:12px}
+  .feats span{font-size:14px;line-height:18px}
+}

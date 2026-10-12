@@ -830,6 +830,13 @@ function vAccount() {
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
       <span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
+    <div class="ghead">Pigeons</div>
+    <div class="group">
+      ${cell({ icon: I.bird, tile: "turbo", label: "Turbo", sub: `3× faster · ${hatch("turbo")}`, val: loftVal("turbo") })}
+      ${cell({ icon: I.bird, tile: "swift", label: "Swift", sub: `2× faster · ${hatch("swift")}`, val: loftVal("swift") })}
+      ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free on your turn" })}
+    </div>
+    <div class="gfoot">You get 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
     <div class="ghead">Location</div>
     <div class="group">
       ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set") })}
@@ -837,27 +844,21 @@ function vAccount() {
       <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
         <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
     </div>
-    <div class="gfoot">Pigeons fly from here. It’s kept to about 1.6 km (1 mile), and only your friends see it.</div>
-    <div class="ghead">Pigeons</div>
-    <div class="group">
-      ${cell({ icon: I.bird, tile: "turbo", label: "Turbo", sub: `3× faster · 3 a day · ${hatch("turbo")}`, val: loftVal("turbo") })}
-      ${cell({ icon: I.bird, tile: "swift", label: "Swift", sub: `2× faster · 9 a day · ${hatch("swift")}`, val: loftVal("swift") })}
-      ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free whenever it’s your turn" })}
+    <div class="gfoot">Pigeons fly from here. Only your friends see it, and only to within about a mile.</div>
+    <div class="group mt">
+      ${notifyCell(u)}
+      ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
     </div>
-    <div class="gfoot">A standard pigeon flies when it’s on your windowsill. Swift and turbo pigeons fly any time, and new ones hatch through the day.</div>
-    <div class="ghead">Appearance</div>
-    <div class="group">${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}</div>
-    ${notifySection(u)}
     <div class="ghead">Privacy &amp; Security</div>
     <div class="group">
-      ${cell({ icon: I.lock, tile: "green", label: "Encryption Key", val: `<span class="mono">${S.fp}</span>` })}
+      ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}
+      ${cell({ icon: I.lock, tile: "green", label: "Encryption Key", sub: `<span class="mono">${S.fp}</span>` })}
       ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
       ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
       ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
     </div>
     <div class="gfoot">Messages and photos are end-to-end encrypted. Your private key was made on this phone and locked with your password, so the server can’t read anything.</div>
-    <div class="ghead">About</div>
-    <div class="group">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}</div>
+    <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}</div>
     <div class="gfoot">Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
@@ -866,13 +867,11 @@ function vAccount() {
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${id}"` : ""}${disabled ? " disabled" : ""}>
     <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
 // Account shows one row; the settings live in their own sheet, like iOS Settings.
-function notifySection(u) {
-  const ps = pushState(), n = u.notify || {};
+function notifyCell(u) {
+  const ps = pushState();
   const on = [ps === "on" && "Push", u.notifyEmail && "Email"].filter(Boolean);
   const val = on.length ? on.join(", ") : ps === "homescreen" ? "Set Up" : "Off";
-  return `<div class="ghead">Notifications</div>
-    <div class="group">${cell({ act: "notifysheet", icon: I.bell, tile: "red", label: "Notifications", val: esc(val), chev: true })}</div>
-    <div class="gfoot">${on.length ? `${n.quiet ? `Quiet from ${hourLabel(n.quietFrom)} to ${hourLabel(n.quietTo)}. ` : ""}Notifications say who sent a pigeon, never what it says.` : "Hear when a pigeon lands or someone adds you."}</div>`;
+  return cell({ act: "notifysheet", icon: I.bell, tile: "red", label: "Notifications", val: esc(val), chev: true });
 }
 const hourLabel = (h) => `${String(h).padStart(2, "0")}:00`;
 function vNotifySheet() {
@@ -939,9 +938,9 @@ function status(f, t) {
   const n = esc(first(f.name));
   const B = (cls, text) => `<div class="status ${cls}">${I.bird}<span>${text}</span></div>`;
   switch (t?.state) {
-    case "fresh": return B("sill", "Your pigeon is ready. Send the first message.");
-    case "sill": return B("sill", "The pigeon is on your windowsill. Your turn to send.");
-    case "inbound": return B("inbound", `A pigeon from ${n} is on its way.`);
+    case "fresh": return B("sill", "Your pigeon is ready. Say hello.");
+    case "sill": return B("sill", "Your turn to send.");
+    case "inbound": return B("inbound", `${n}’s pigeon is on its way.`);
     case "outbound": return B("", `Your pigeon is flying to ${n}.`);
     case "theirs": return B("", `${n} has the pigeon.`);
     default: return "";
@@ -968,7 +967,7 @@ function bubble(f, m, isLastMine, gapTop) {
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
-  if (mine && m.flying) meta.push(`<span class="fl">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go</span>`);
+  if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${m.expiresAt}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
@@ -1157,7 +1156,7 @@ function renderCompose() {
   } else {
     const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500;
     note.hidden = false; note.className = "note go";
-    note.innerHTML = `${pg(kind)}<span>${t.free ? "" : "Not your turn for a standard pigeon. "}${KIND[kind].name} lands in ${fmtDur(flightMs(km, KIND[kind].speed))}.</span>`;
+    note.innerHTML = `${pg(kind)}<span>${t.free ? "" : "Not your turn for Standard. "}${KIND[kind].name} lands in ${fmtDur(flightMs(km, KIND[kind].speed))}.</span>`;
   }
   btn.disabled = blocked || !has || S.busy;
   $ta.disabled = blocked && !S.err;
@@ -1314,7 +1313,7 @@ function drawSheet(refresh) {
         <div class="group mt">
           ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set") })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
-          ${km != null ? cell({ icon: I.bird, tile: "orange", label: "Pigeon Flight", val: fmtDur(flightMs(km)) }) : ""}
+          ${km != null ? KINDS.slice().reverse().map(([k, name, speed]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, speed)) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}</div>`);
