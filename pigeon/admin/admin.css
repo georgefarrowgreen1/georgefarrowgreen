@@ -42,3 +42,5 @@ body.admin{height:auto;min-height:100%;overflow:auto;background:var(--app)}
 .anote{font-family:var(--sans);font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
 .signcard{max-width:420px;width:100%;margin:8vh auto 0;background:var(--card);border-radius:22px;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
 .signcard h1{margin:0;font-size:26px;font-weight:500}
+.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.mailrow .anote{flex:1;min-width:220px}

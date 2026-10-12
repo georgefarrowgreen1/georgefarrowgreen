@@ -183,11 +183,15 @@ older scrolls stay sealed and friends see a key-change warning. Every change
 signs out the account's other phones and emails a "your password was changed"
 notice.
 
-Reset emails need Resend: add **`RESEND_API_KEY`** (Secret) and
-**`PIGEON_FROM`**, a sender on a domain verified in Resend such as
-`InFlight <noreply@georgefarrowgreen.com>`, in Pages → Settings → Variables and
-Secrets, then redeploy. Without them the app says reset emails aren't on yet,
-and the admin page can still make links for you to send by hand.
+Reset emails use Resend's REST API from `functions/_pigeon.js` (no SDK
+needed). In Pages → Settings → Variables and Secrets add **`RESEND_API_KEY`**
+as a Secret (never in the code), then redeploy, and press **Send a test email**
+on the admin page. Until a domain is verified in Resend, mail goes from Resend's
+test sender `onboarding@resend.dev`, which only delivers to your own Resend
+address. To email everyone else, verify georgefarrowgreen.com in Resend and add
+**`PIGEON_FROM`** = `InFlight <noreply@georgefarrowgreen.com>`. Without a key
+the app says reset emails aren't on yet, and the admin page can still make
+links for you to send by hand.
 
 **Admin.** `/pigeon/admin/` uses the site owner sign-in (the key icon's password
 or passkey). It lists every account (name, handle, email, roost, last active,

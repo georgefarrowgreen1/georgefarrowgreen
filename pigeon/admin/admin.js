@@ -30,7 +30,7 @@ async function call(path, { method = "GET", body } = {}) {
   return data;
 }
 
-const A = { users: [], totals: {}, log: [], q: "", email: false, results: {}, confirming: null };
+const A = { users: [], totals: {}, log: [], q: "", email: false, from: "", testTo: "", results: {}, confirming: null, mail: null };
 const root = () => $("#adm");
 
 /* ---------- sign in (owner) ---------- */
@@ -109,7 +109,10 @@ function render() {
     <header class="adm-top"><h1>InFlight admin <span class="beta">Beta</span></h1>
       <span class="tools"><span class="pillstat${A.email ? "" : " off"}">${A.email ? "Reset emails on" : "Reset emails off"}</span>
       <button class="btn ghost" id="signout">Sign out</button></span></header>
-    ${A.email ? "" : `<p class="anote">Reset emails need a Resend API key on the server (see the README). Until then, use “Make a reset link” and send the link yourself.</p>`}
+    ${A.email ? `<div class="mailrow"><p class="anote">Emails go out from <b>${esc(A.from)}</b>.${/@resend\.dev>?$/.test(A.from) ? " That’s Resend’s test sender: it can only email your own Resend address, so verify your domain and set PIGEON_FROM before people can get reset emails." : ""}</p>
+        <button class="btn ghost" data-a="testmail">Send a test email</button></div>
+        ${A.mail ? `<div class="result${A.mail.bad ? " bad" : ""}" role="status">${esc(A.mail.message)}</div>` : ""}`
+      : `<p class="anote">Reset emails need a Resend API key. In Cloudflare → your Pages project → Settings → Variables and Secrets, add <b>RESEND_API_KEY</b> as a Secret, then redeploy. Until then, use “Make a reset link” and send the link yourself.</p>`}
     ${stats()}
     <div class="searchrow"><label class="field"><input id="q" placeholder="Search by name, handle or email" value="${esc(A.q)}" autocomplete="off" aria-label="Search accounts"></label><small>${list.length} of ${A.users.length}</small></div>
     <section class="users">${list.map(userCard).join("") || `<p class="empty">${A.users.length ? "No accounts match." : "No one has signed up yet."}</p>`}</section>
@@ -118,7 +121,7 @@ function render() {
     <ul class="logl">${A.log.map((l) => `<li><time>${fmtWhen(l.at)}</time><span>${esc(LOG[l.action] || l.action)}${l.detail ? ` · ${esc(l.detail)}` : ""}</span></li>`).join("") || `<li><span>Nothing yet.</span></li>`}</ul>`;
   if (focus === "q") { const i = $("#q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
-const LOG = { "reset-emailed": "Reset link emailed", "reset-link": "Reset link made", "reset-used": "Password reset", "signed-out": "Signed out everywhere", deleted: "Account deleted" };
+const LOG = { "test-email": "Test email sent", "reset-emailed": "Reset link emailed", "reset-link": "Reset link made", "reset-used": "Password reset", "signed-out": "Signed out everywhere", deleted: "Account deleted" };
 
 async function load() {
   const [u, l] = await Promise.all([call("/api/pigeon/admin-users"), call("/api/pigeon/admin-log")]);
@@ -130,7 +133,7 @@ async function boot() {
   catch (err) { root().innerHTML = `<p class="empty">${esc(err.message)}</p>`; return; }
   if (!st.configured) { root().innerHTML = `<div class="signcard"><h1>InFlight admin</h1><p class="anote">The site owner password (EDIT_PASSWORD) isn’t set on this server, so there’s no admin sign-in.</p></div>`; return; }
   if (!st.authed) return vSignIn();
-  A.email = !!st.email;
+  A.email = !!st.email; A.from = st.from || ""; A.testTo = st.testTo || "";
   try { await load(); render(); }
   catch (err) { if (err.status === 401) vSignIn(); else root().innerHTML = `<p class="empty">${esc(err.message)}</p>`; }
 }
@@ -139,6 +142,12 @@ document.addEventListener("input", (e) => { if (e.target.id === "q") { A.q = e.t
 document.addEventListener("click", async (e) => {
   if (e.target.id === "signout") { await fetch("/api/logout", { method: "POST" }); return vSignIn(); }
   const b = e.target.closest("[data-a]"); if (!b) return;
+  if (b.dataset.a === "testmail") {
+    b.disabled = true; b.textContent = "Sending…";
+    try { A.mail = { message: (await call("/api/pigeon/admin-test-email", { method: "POST", body: {} })).message }; await load(); }
+    catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); A.mail = { message: err.message, bad: true }; }
+    return render();
+  }
   const id = b.closest(".ucard")?.dataset.id;
   const act = b.dataset.a;
   if (act === "copy") {

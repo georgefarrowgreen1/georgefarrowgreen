@@ -3,7 +3,7 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, msgView, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
+  emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 
@@ -428,7 +428,8 @@ async function requireAdmin(request, env, write) {
 }
 async function adminStatus({ request, env }) {
   const authed = await isAuthed(request, env);
-  return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined });
+  return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined,
+    from: authed ? emailFrom(env) : undefined, testTo: authed ? ownerEmail(env) : undefined });
 }
 async function adminUsers({ request, env }) {
   await requireAdmin(request, env);
@@ -461,7 +462,7 @@ async function adminReset({ request, env }) {
       `Here’s a link to choose a new password for your InFlight account (@${u.handle}). It works once, for the next hour.`,
       "If you didn’t ask for this, you can ignore it. Your password won’t change.",
     ], { label: "Choose a new password", url: resetUrl(request, token) });
-    await sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html });
+    await sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }, { explain: true });
     await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
     return json({ message: `Reset link emailed to ${u.email}. It works for one hour.` });
   }
@@ -484,6 +485,18 @@ async function adminDelete({ request, env }) {
   await adminLog(env, "deleted", u.id, `@${u.handle} (${u.email})`);
   return json({ message: `@${u.handle} and their scrolls were deleted.` });
 }
+// Resend's "first email": proves the key and sender work, to the owner's own inbox.
+const ownerEmail = (env) => env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO || "georgefarrowgreen@icloud.com";
+async function adminTestEmail({ request, env }) {
+  await requireAdmin(request, env, true);
+  if (!emailReady(env)) throw new HttpError(503, "Add RESEND_API_KEY in Cloudflare first, then redeploy.");
+  const to = ownerEmail(env);
+  await sendEmail(env, { to, subject: "Hello World",
+    html: "<p>Congrats on sending your <strong>first email</strong>!</p><p>InFlight can send password reset emails.</p>",
+    text: "Congrats on sending your first email! InFlight can send password reset emails." }, { explain: true });
+  await adminLog(env, "test-email", null, to);
+  return json({ message: `Test email sent to ${to} from ${emailFrom(env)}. Check your inbox.` });
+}
 async function adminLogList({ request, env }) {
   await requireAdmin(request, env);
   const { results } = await (await db(env)).prepare("SELECT * FROM pg_admin_log ORDER BY id DESC LIMIT 100").all();
@@ -503,6 +516,7 @@ const ROUTES = {
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
+  "POST admin-test-email": adminTestEmail,
 };
 
 export async function onRequest(ctx) {

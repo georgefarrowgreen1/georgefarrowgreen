@@ -277,17 +277,21 @@ export function cleanPlace(b) {
    Needs RESEND_API_KEY and a sender on a domain verified in Resend:
    PIGEON_FROM, else CONTACT_FROM, else noreply@georgefarrowgreen.com. */
 export const emailReady = (env) => !!env.RESEND_API_KEY;
-export async function sendEmail(env, { to, subject, text, html }) {
+// Until a domain is verified in Resend, its test sender onboarding@resend.dev
+// works, but only for mail to the Resend account's own address.
+export const emailFrom = (env) => env.PIGEON_FROM || env.CONTACT_FROM || "InFlight <onboarding@resend.dev>";
+export async function sendEmail(env, { to, subject, text, html }, { explain = false } = {}) {
   if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
-  const from = env.PIGEON_FROM || env.CONTACT_FROM || "InFlight <noreply@georgefarrowgreen.com>";
   const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject, text, html }),
+    body: JSON.stringify({ from: emailFrom(env), to, subject, text, html }),
   });
   if (!r.ok) {
-    console.error("pigeon email", r.status, await r.text().catch(() => ""));
-    throw new HttpError(502, "The email couldn’t be sent. Try again in a few minutes.");
+    const why = await r.json().then((d) => d.message || d.error || "", () => "");
+    console.error("pigeon email", r.status, why);
+    // Resend's own reason is shown to the admin only; it can mention the sending setup.
+    throw new HttpError(502, explain && why ? `Resend refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");
   }
 }
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
