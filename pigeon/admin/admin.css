@@ -1,85 +1,72 @@
-/* InFlight admin: the app's iOS look on a plain, scrolling page that works on a phone or a laptop. */
+/* InFlight admin: the app's own pieces (styles.css) on a scrolling page that
+   works on a phone or a laptop. Only what the admin adds lives here. */
 body.admin{height:auto;min-height:100%;overflow:auto;background:var(--bg)}
-.adm{max-width:720px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
-.adm-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding-top:10px}
-.adm-top h1{margin:0 auto 0 0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.2px;white-space:nowrap;display:flex;align-items:center;gap:8px}
-.adm-top .tools{display:flex;align-items:center;gap:10px;margin-left:auto}
-.pillstat{font-size:13px;border-radius:999px;padding:5px 11px;background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green);font-weight:600;letter-spacing:0}
-.pillstat.off{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
-.adm .btn{min-height:40px;padding:0 18px;font-size:15px}
-.adm h2{margin:10px 0 -6px 16px;font-size:15px;font-weight:600;color:var(--label);letter-spacing:-.2px}
+body.admin.sheeted{overflow:hidden}
+.adm{min-height:100vh}
+.adm-screen{max-width:680px;margin:0 auto;padding-bottom:calc(36px + env(safe-area-inset-bottom,0px))}
 
-/* figures */
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.stat{background:var(--cell);border-radius:22px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
-.stat b{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
-.stat span{font-size:13px;color:var(--label-2);letter-spacing:0}
-@media (max-width:560px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* the bar sticks to the top of the page, under the status bar */
+.adm-screen .navbar{padding-top:calc(6px + env(safe-area-inset-top,0px))}
+.adm-screen .navbar.root + .large{margin-top:calc(-48.5px)}
 
-/* inputs */
-.field{display:flex;align-items:center;min-height:42px;padding:0 16px;border-radius:999px;background:var(--fill)}
-.field input{flex:1;min-width:0;border:0;outline:none;background:none;padding:9px 0;font-size:17px;color:var(--label)}
-.field input::placeholder{color:var(--label-2)}
-.fields{display:flex;flex-direction:column;gap:12px}
-.fl{display:flex;flex-direction:column;gap:6px}
-.fl .lbl{font-size:13px;color:var(--label-2);padding-left:16px;letter-spacing:0}
-.fl .inp{display:flex;min-height:50px;padding:0 16px;border-radius:16px;background:var(--fill)}
-.fl .inp input{flex:1;min-width:0;border:0;outline:none;background:none;font-size:17px;color:var(--label)}
-.ferr{margin:0;color:var(--red);font-size:14px;padding-left:16px}
+/* the figures, like widgets */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 16px 16px}
+.kpi{background:var(--cell);border-radius:22px;padding:12px 14px 13px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0}
+.kpi .tile{width:28px;height:28px;border-radius:8px;font-size:16px}
+.kpi b{font-size:26px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.2px}
+.kpi > span:last-child{font-size:13px;color:var(--label-2);letter-spacing:-.08px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+/* on a phone the four still share one row, just smaller */
+@media (max-width:520px){
+  .kpis{gap:8px}
+  .kpi{border-radius:18px;padding:10px 10px 11px;gap:5px}
+  .kpi .tile{width:24px;height:24px;border-radius:7px;font-size:14px}
+  .kpi b{font-size:21px}
+  .kpi > span:last-child{font-size:11.5px;letter-spacing:0}
+}
 
-.searchrow{display:flex;gap:12px;align-items:center}
-.searchrow .field{flex:1;min-width:0}
-.searchrow small{font-size:13px;color:var(--label-2);white-space:nowrap;letter-spacing:0}
+/* accounts */
+.urow{min-height:68px;padding-top:9px;padding-bottom:9px}
+.urow .ctext{flex:1}
+.urow .ctext > span{display:block}
+.urow + .cell::before,.cell + .urow::before{left:84px}
+.urow .val{font-size:15px}
+.on-now{color:var(--p-standard)!important;font-weight:500}
+.cell .chev{flex:none;margin-left:-4px;color:var(--label-3);font-size:14px;stroke-width:3}
+button.cell:active{background:var(--fill)}
+.cell.blue{color:var(--tint)}
+.cell[disabled]{opacity:.4;pointer-events:none}
+.cell.muted{color:var(--label-2)}
+.cell.busy{opacity:.55;pointer-events:none}
+.sel{-webkit-user-select:text;user-select:text}
+.adm-foot{margin:28px 36px 0;font-size:13px;line-height:18px;color:var(--label-3);text-align:center}
 
-/* accounts: a grouped list of names you tap to open */
-.users,.ulist{display:flex;flex-direction:column}
-.ulist{background:var(--cell);border-radius:26px;overflow:hidden}
-.ucard{display:flex;flex-direction:column;position:relative}
-.ucard + .ucard::before{content:"";position:absolute;top:0;left:70px;right:0;border-top:.5px solid var(--sep)}
-.uhead{display:flex;gap:12px;align-items:center;min-width:0}
-.uname{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 16px;border:0;background:none;text-align:left;color:inherit}
-.uname:active{background:var(--fill)}
-.uname .who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.uname .nm{font-size:17px;font-weight:600;overflow-wrap:anywhere}
-.uname .sub{font-size:14px;color:var(--label-2);overflow-wrap:anywhere;letter-spacing:-.1px}
-.uname .chev{flex:none;width:16px;height:16px;color:var(--label-3);transition:transform .2s}
-.ucard.open .uname .chev{transform:rotate(90deg)}
-.upanel{display:flex;flex-direction:column;gap:12px;padding:2px 16px 16px 70px}
-.facts{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;font-size:13px;color:var(--label-2);overflow-wrap:anywhere;letter-spacing:0}
-.facts b{color:var(--label);font-weight:600}
-.uacts{display:flex;flex-wrap:wrap;gap:8px}
-/* pigeons: each kind's count, with buttons to give more (even past a full loft) */
-.lofts{display:flex;flex-direction:column;background:var(--cell);border-radius:18px;overflow:hidden}
-.loft{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;font-size:15px}
-.loft + .loft{box-shadow:inset 0 .5px 0 var(--sep)}
-.loft .pg{font-size:15px}
-.loft .lname{flex:1;min-width:0}
-.loft .lcount{min-width:2ch;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
-.loft .lcount.extra{color:var(--green,#34c759)}
-.adm .loft .btn{min-height:32px;padding:0 12px;font-size:14px}
-.uacts .btn{flex:none}
-.upanel .link.danger{align-self:flex-start;font-size:15px}
-.danger-ghost{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red);box-shadow:none}
-.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:15px}
-.confirm .field{flex:1;min-width:160px}
-.result{font-size:14px;line-height:1.45;background:var(--cell-2);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;letter-spacing:-.1px}
-.result.bad{color:var(--red)}
-.linkbox{display:flex;gap:8px;align-items:center}
-.linkbox code{flex:1;min-width:0;font-family:var(--mono);font-size:12px;overflow-wrap:anywhere;background:var(--cell);border-radius:10px;padding:8px 10px}
-@media (max-width:560px){.upanel{padding-left:16px}.ucard + .ucard::before{left:16px}}
+/* an account's sheet */
+.loft{gap:12px}
+.loft .tile{font-size:17px}
+.loft .tile.rocket{background:linear-gradient(160deg,#fbe38a,var(--p-rocket) 55%,#b9850d)}
+.loft .lcount{min-width:2.2ch;text-align:right;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.loft .lcount.extra{color:var(--p-standard)}
+.loft .give{display:flex;gap:6px}
+.loft .give .btn{min-height:32px;padding:0 12px;font-size:15px;font-variant-numeric:tabular-nums}
+.loft .give .btn.busy{opacity:.5;pointer-events:none}
+.linkcell .cell{padding-top:12px;padding-bottom:12px}
+.linkcell code{font-family:var(--mono);font-size:13px;line-height:18px;overflow-wrap:anywhere;color:var(--label)}
+.adm-warn{margin:6px 32px 18px;text-align:center;color:var(--label-2);font-size:15px;line-height:20px}
+form[data-f=delete] .stack{padding:18px 16px 0}
 
-/* activity log */
-.logwrap summary{cursor:pointer;font-size:15px;font-weight:600;padding:6px 16px;list-style-position:inside}
-.logwrap .logl{margin-top:8px}
-.logl{list-style:none;margin:0;padding:0;background:var(--cell);border-radius:22px;overflow:hidden}
-.logl li{display:flex;gap:12px;padding:11px 16px;font-size:14px;line-height:1.4;letter-spacing:-.1px}
-.logl li + li{border-top:.5px solid var(--sep)}
-.logl time{flex:none;color:var(--label-2);font-variant-numeric:tabular-nums;min-width:110px}
-.logl span{min-width:0;overflow-wrap:anywhere}
-.anote{font-size:14px;color:var(--label-2);line-height:1.45;margin:0;letter-spacing:-.1px}
-.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--cell);border-radius:22px;padding:12px 16px}
-.mailrow .anote{flex:1;min-width:220px}
+/* sheets and toasts sit over the page, at most a phone's width wide on a laptop */
+.admin .layer{position:fixed;inset:0;z-index:30}
+.admin .layer:empty{display:none}
+.admin .sheet{width:min(100%,680px);margin:0 auto;top:max(12px,4vh)}
+@media (min-width:700px){.admin .sheet{border-radius:38px 38px 0 0}}
+.admin .toasts{position:fixed;left:0;right:0;top:0;z-index:40;pointer-events:none}
+.admin .toast{position:relative;margin:0 auto;max-width:520px;top:calc(10px + env(safe-area-inset-top,0px));pointer-events:auto}
+.admin .toast.bad .ticon{background:linear-gradient(160deg,#ff7a6e,var(--red))}
 
-/* sign in */
-.signcard{max-width:420px;width:100%;margin:10vh auto 0;background:var(--cell);border-radius:30px;padding:26px 22px;display:flex;flex-direction:column;gap:16px}
-.signcard h1{margin:0;font-size:28px;font-weight:700;display:flex;align-items:center;gap:8px}
+/* sign in: the app's welcome, with one field */
+.adm-auth{max-width:440px;margin:0 auto;min-height:100vh;align-items:stretch;justify-content:center;padding:calc(40px + env(safe-area-inset-top,0px)) 0 40px}
+.adm-auth .appicon{align-self:center;margin-bottom:18px}
+.adm-auth h1{margin:0 20px 8px;text-align:center;font-size:30px;line-height:36px;font-weight:700}
+.adm-auth .sub{text-align:center;margin:0 28px 24px!important}
+.adm-auth .stack{margin-top:18px;padding:0 16px}
+.adm-auth .btn .ico{font-size:20px}

@@ -537,8 +537,8 @@ async function adminUsers({ request, env }) {
   await requireAdmin(request, env);
   const D = await db(env), t = Date.now();
   const { results } = await D.prepare(`
-    SELECT u.id, u.name, u.handle, u.email, u.place, u.created_at, u.swift, u.swift_at, u.turbo, u.turbo_at, u.rocket, u.rocket_at,
-      (SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id) AS last_seen,
+    SELECT u.id, u.name, u.handle, u.email, u.place, u.created_at, u.avatar_at, u.swift, u.swift_at, u.turbo, u.turbo_at, u.rocket, u.rocket_at,
+      MAX(COALESCE(u.seen_at, 0), COALESCE((SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id), 0)) AS last_seen,
       (SELECT COUNT(*) FROM pg_sessions s WHERE s.user_id = u.id) AS sessions,
       (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys,
       (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id AND p.vault IS NOT NULL) AS unlocking,
@@ -575,6 +575,13 @@ async function adminReset({ request, env }) {
   const token = await createReset(env, u.id, "admin-link", RESET_TTL_ADMIN);
   await adminLog(env, "reset-link", u.id, `@${u.handle}`);
   return json({ url: resetUrl(request, token), message: `One-time link for @${u.handle}. It works for 24 hours. Send it to them privately.` });
+}
+// Someone's profile picture, for the admin's account list.
+async function adminAvatar({ request, env }, id) {
+  await requireAdmin(request, env);
+  const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(String(id || ""))));
+  if (!obj) throw new HttpError(404, "No picture.");
+  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
 }
 // Give someone extra swift, turbo or rocket pigeons, even past a full loft.
 // (Standard and dumb pigeons are unlimited: they just wait their turn.)
@@ -696,7 +703,7 @@ const ROUTES = {
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
-  "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
+  "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
