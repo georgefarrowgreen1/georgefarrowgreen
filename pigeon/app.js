@@ -611,7 +611,24 @@ async function loadPhoto(fid, m, p) {
    ============================================================ */
 const root = () => $("#screen");
 let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
+// No zooming the page (only the map zooms, and it handles its own pinches),
+// and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
+const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
+function lockPage() {
+  const stop = (e) => e.preventDefault();
+  ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, stop, { passive: false }));
+  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 && !e.target.closest?.(".map")) e.preventDefault(); }, { passive: false });
+  // a quick second tap zooms on iOS; let taps through, but not the zoom
+  let lastTouch = 0;
+  document.addEventListener("touchend", (e) => {
+    const now = Date.now();
+    if (now - lastTouch < 300 && !e.target.closest?.(".map, input, textarea, select, button, label, a")) e.preventDefault();
+    lastTouch = now;
+  }, { passive: false });
+  for (const n of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(n, (e) => { if (!inField(e.target)) e.preventDefault(); });
+}
 function mount() {
+  lockPage();
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="view"></div>

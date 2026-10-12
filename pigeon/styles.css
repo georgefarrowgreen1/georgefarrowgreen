@@ -57,8 +57,13 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{height:100%;background:var(--bg)}
-body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+body{height:100%;margin:0;overflow:hidden;touch-action:pan-x pan-y;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;background:var(--bg);color:var(--label);font:17px/1.29 var(--font);letter-spacing:-.41px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 button,input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
+/* the app can't be zoomed (except the map) or copied from; typing and pasting still work */
+input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+img{-webkit-user-drag:none}
+body.admin{touch-action:auto}
+body.admin,body.admin *{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 button{cursor:pointer;-webkit-user-select:none;user-select:none}
 :focus-visible{outline:2px solid var(--tint);outline-offset:2px}
 .defs{position:absolute;width:0;height:0;overflow:hidden}
