@@ -38,7 +38,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.75);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
@@ -50,7 +50,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.75);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42);
     color-scheme:dark;
   }
 }
@@ -537,7 +537,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pg svg{font-size:.9em}
 .pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}
 .tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
-.dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:0 0 0 1.5px var(--p-dot-ring,var(--p-ring))}
+.dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:inset 0 0 0 1px var(--p-dot-ring,var(--p-ring))}   /* rim inside the dot, so neighbours never touch */
 /* the picker above the message box */
 .pick{display:flex;gap:8px;justify-content:center}
 .pick button{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 10px;border:0;border-radius:999px;font-size:14px;font-weight:600;color:var(--label);
