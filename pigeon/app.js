@@ -139,6 +139,7 @@ const I = {
   compose: ico(`<path d="M11 4.5H6.5A2.5 2.5 0 0 0 4 7v10.5A2.5 2.5 0 0 0 6.5 20H17a2.5 2.5 0 0 0 2.5-2.5V13"/><path d="M17.8 3.8a1.8 1.8 0 0 1 2.5 2.5L12.5 14 9.5 15l1-3Z"/>`),
   plus: ico(`<path d="M12 5v14M5 12h14"/>`),
   minus: ico(`<path d="M5 12h14"/>`),
+  contrast: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/>`),
   moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
@@ -758,11 +759,7 @@ function vAccount() {
     <div class="group">${cell({ icon: I.bird, tile: "orange", label: "Swift Pigeons", val: `<span class="dots" role="img" aria-label="${u.swift} of ${SWIFT_MAX}">${dots}</span>` })}</div>
     <div class="gfoot">${u.swift >= SWIFT_MAX ? "Your loft is full." : `The next one hatches in <span data-eta="${u.swiftNextAt}"></span>.`} Swift pigeons fly twice as fast and let you write when it isn’t your turn.</div>
     <div class="ghead">Appearance</div>
-    <div class="group">
-      ${[["light", "Light"], ["dark", "Dark"], ["auto", "Automatic"]].map(([k, l]) =>
-        `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${k}"><span class="ctext"><span>${l}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
-    </div>
-    <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting." : "Saved on this phone."}</div>
+    <div class="group">${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}</div>
     ${notifySection(u)}
     <div class="ghead">Privacy &amp; Security</div>
     <div class="group">
@@ -1155,6 +1152,12 @@ function renderSheet(refresh) {
     case "view":
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
+    case "appearance":
+      $layer.innerHTML = sheetHtml("Appearance", `<div class="group mt-s">
+        ${THEMES.map((k) => `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${k}"><span class="ctext"><span>${THEME_NAMES[k]}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
+        </div>
+        <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting." : "Saved on this phone."}</div>`);
+      return;
     case "notifications": {
       const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
       $layer.innerHTML = sheetHtml("Notifications", vNotifySheet());
@@ -1354,7 +1357,8 @@ async function onClick(e) {
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
-    case "theme": setTheme(id); return render();
+    case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
+    case "theme": setTheme(id); render(); return renderSheet();
     case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
@@ -1581,6 +1585,7 @@ $(".page").addEventListener("keydown", (e) => {
    Appearance (theme.js applies it before the page draws)
    ============================================================ */
 const THEMES = ["light", "dark", "auto"];
+const THEME_NAMES = { light: "Light", dark: "Dark", auto: "Automatic" };
 function theme() { try { const t = localStorage.getItem("inflight-theme"); return THEMES.includes(t) ? t : "light"; } catch (_) { return "light"; } }
 function setTheme(t) {
   if (!THEMES.includes(t)) return;
