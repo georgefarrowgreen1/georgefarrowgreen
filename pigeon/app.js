@@ -107,6 +107,7 @@ function dayLabel(ts) {
 const fmtShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}`);
 const fmtDate = (ts) => { const d = new Date(ts); return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
 const fmtMiles = (km) => Math.round(km * 0.621371).toLocaleString("en-GB") + " mi";
+const fmtMph = (kmh) => Math.round(kmh * 0.621371).toLocaleString("en-GB") + " mph";
 const fmtBytes = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
 const initials = (n) => String(n).trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const first = (n) => String(n).trim().split(" ")[0];
@@ -282,9 +283,25 @@ function routePts(m) {
   }
   return pts;
 }
-// Where the pigeon is now along those points, and which way it's heading.
-function pigeonOn(P, pts) {
-  const t = now(), i = pts.findIndex((p) => p.t >= t);
+// Pigeons ease in and out: they launch hard and settle into their cruise, then
+// glide down to land. Each ramp lasts up to a minute (15% of a very short
+// flight); the pigeon cruises a touch faster in between, so it still lands
+// exactly on time. Returns how far along it is (0-1), its speed now, the phase,
+// and the "flight clock" time for that distance (route points are timed at an
+// even pace).
+const RAMP_MS = MIN;
+function flightAt(m, t = now()) {
+  const dur = Math.max(1, m.deliverAt - m.sentAt), u = Math.min(1, Math.max(0, (t - m.sentAt) / dur));
+  const r = Math.min(0.15, RAMP_MS / dur), top = 1 / (1 - 2 * r * (1 - 2 / Math.PI));
+  const q = Math.PI / (2 * r);                                   // pace in a ramp: sin(q·x), 0 → 1
+  const ramp = (x) => (top / q) * (1 - Math.cos(q * x));         // distance covered x into a ramp
+  const frac = u < r ? ramp(u) : u > 1 - r ? 1 - ramp(1 - u) : ramp(r) + top * (u - r);
+  const pace = u <= 0 || u >= 1 ? 0 : u < r ? Math.sin(q * u) : u > 1 - r ? Math.sin(q * (1 - u)) : 1;
+  return { frac, kmh: (m.km / (dur / HOUR)) * top * pace, phase: u >= 1 ? "landed" : u < r ? "up" : u > 1 - r ? "down" : "cruise", t: m.sentAt + frac * dur };
+}
+// Where the pigeon is (at flight-clock time t) along those points, and which way it's heading.
+function pigeonOn(P, pts, t = now()) {
+  const i = pts.findIndex((p) => p.t >= t);
   if (i <= 0) return { at: P[i < 0 ? P.length - 1 : 0], dx: P[P.length - 1][0] - P[0][0] };
   const f = (t - pts[i - 1].t) / Math.max(1, pts[i].t - pts[i - 1].t);
   return { at: [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f], dx: P[i][0] - P[i - 1][0] };
@@ -352,7 +369,7 @@ function drawMap(cv, m, cardH) {
   g.strokeStyle = col("--tint"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
   g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.setLineDash([]);
   pts.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
-  const here = pigeonOn(P, pts), [px, py] = here.at;
+  const here = pigeonOn(P, pts, flightAt(m).t), [px, py] = here.at;
   // labels claim space in priority order; anything that would overlap is left out
   const taken = [[px - 24, py - 20, px + 24, py + 20], [0, H - cardH, W, H]];
   const ctlEl = $(".mapctl", $layer);
@@ -1427,12 +1444,28 @@ function tickMap() {
   const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !m.route) return;
-  const left = m.deliverAt - now();
+  const left = m.deliverAt - now(), f = flightAt(m);
+  const speed = f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   card.innerHTML = `<span class="big">${pg(kindOf(m))}<span>${left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
-    <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span>
+    ${speed ? `<span class="speed">${speed}</span>` : ""}
+    <span class="prog"><i style="width:${(f.frac * 100).toFixed(2)}%"></i></span>
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}</span></span>`;
-  setProgress(card);
   drawMap(cv, m, card.offsetHeight + 14);
+  smoothMap(m);
+}
+// The once-a-second tick is plenty for a slow pigeon, but taking off, landing
+// or a fast short hop would judder, so then the map redraws ~30 times a second.
+let mapAnim = 0, mapAnimAt = 0;
+function smoothMap(m) {
+  if (mapAnim || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const f = flightAt(m);
+  if (f.phase === "landed" || (f.phase === "cruise" && m.deliverAt - m.sentAt > HOUR)) return;
+  mapAnim = requestAnimationFrame(function step(ts) {
+    mapAnim = 0;
+    if (S.sheet?.type !== "map" || document.hidden) return;
+    if (ts - mapAnimAt < 30) { mapAnim = requestAnimationFrame(step); return; }
+    mapAnimAt = ts; tickMap();          // tickMap calls back here to keep going while it's worth it
+  });
 }
 function setProgress(el) {
   el.querySelectorAll("i[data-from]").forEach((e) => { const a = +e.dataset.from, b = +e.dataset.to; e.style.width = (Math.min(1, Math.max(0, (now() - a) / (b - a))) * 100).toFixed(1) + "%"; });

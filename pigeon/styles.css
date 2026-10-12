@@ -360,6 +360,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .mapcard{position:absolute;left:14px;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:16px 18px;border-radius:30px;display:flex;flex-direction:column;gap:2px}
 .mapcard .big{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
 .mapcard .big svg{color:var(--orange)}
+.mapcard .speed{text-align:center;font-size:14px;font-weight:500;color:var(--label-2);font-variant-numeric:tabular-nums;margin-top:-1px}
 .mapcard .route{display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:13px;color:var(--label-2)}
 .mapcard .route span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .digits{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px 12px;font-family:var(--mono);font-size:20px;text-align:center}
