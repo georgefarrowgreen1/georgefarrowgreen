@@ -44,3 +44,19 @@ body.admin{height:auto;min-height:100%;overflow:auto;background:var(--app)}
 .signcard h1{margin:0;font-size:26px;font-weight:500}
 .mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .mailrow .anote{flex:1;min-width:220px}
+/* compact account list: names you tap to open */
+.ulist{background:var(--card);border-radius:18px;overflow:hidden}
+.ucard{background:none;border-radius:0;padding:0;gap:0}
+.ucard + .ucard{border-top:1px solid var(--rule)}
+.uname{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 16px;border:0;background:none;text-align:left;color:inherit}
+.uname:active{background:var(--app)}
+.uname .who{flex:1;min-width:0;display:flex;flex-direction:column}
+.uname .nm{font-size:17.5px;font-weight:600;overflow-wrap:anywhere}
+.uname .sub{font-family:var(--sans);font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
+.uname .chev{flex:none;width:18px;height:18px;color:var(--ink-3);transition:transform .2s}
+.ucard.open .uname .chev{transform:rotate(90deg)}
+.upanel{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
+.upanel .facts{margin:0;overflow-wrap:anywhere}
+.upanel .link.danger{align-self:flex-start;font-size:13.5px}
+.logwrap summary{cursor:pointer;font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);padding:6px 0;font-weight:600}
+.logwrap .logl{margin-top:8px}

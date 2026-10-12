@@ -30,7 +30,7 @@ async function call(path, { method = "GET", body } = {}) {
   return data;
 }
 
-const A = { users: [], totals: {}, log: [], q: "", email: false, from: "", testTo: "", results: {}, confirming: null, mail: null };
+const A = { users: [], totals: {}, log: [], q: "", email: false, from: "", testTo: "", results: {}, confirming: null, mail: null, open: null };
 const root = () => $("#adm");
 
 /* ---------- sign in (owner) ---------- */
@@ -64,61 +64,47 @@ function vSignIn(msg) {
 }
 
 /* ---------- dashboard ---------- */
-function stats() {
-  const week = Date.now() - 7 * 864e5;
-  return `<div class="stats">
-    <div class="stat"><b>${A.users.length}</b><span>Accounts</span></div>
-    <div class="stat"><b>${A.users.filter((u) => u.last_seen && u.last_seen > week).length}</b><span>Active this week</span></div>
-    <div class="stat"><b>${A.totals.msgs || 0}</b><span>Scrolls sent</span></div>
-    <div class="stat"><b>${A.totals.flying || 0}</b><span>In flight now</span></div>
-  </div>`;
-}
-function userCard(u) {
-  const res = A.results[u.id];
-  const confirming = A.confirming === u.id;
-  return `<article class="ucard" data-id="${esc(u.id)}">
-    <div class="uhead"><span class="av s" aria-hidden="true">${esc(u.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase())}</span>
-      <div class="who"><span class="nm">${esc(u.name)}</span><span class="sub">@${esc(u.handle)} · ${esc(u.email)}</span></div></div>
-    <div class="facts">
-      <span>Joined <b>${fmtDate(u.created_at)}</b></span>
-      <span>Last active <b>${ago(u.last_seen)}</b></span>
-      <span>Signed in on <b>${u.sessions}</b> device${u.sessions === 1 ? "" : "s"}</span>
-      <span>Passkeys <b>${u.passkeys}</b>${u.passkeys ? ` (${u.unlocking} can keep scrolls on reset)` : ""}</span>
-      <span>Friends <b>${u.friends}</b></span>
-      <span>Scrolls sent <b>${u.sent}</b></span>
-      ${u.place ? `<span>Roost <b>${esc(u.place)}</b></span>` : ""}
-    </div>
-    <div class="uacts">
-      <button class="btn ghost" data-a="email"${A.email ? "" : ' disabled title="Email isn’t set up yet"'}>Email a reset link</button>
-      <button class="btn ghost" data-a="link">Make a reset link</button>
-      <button class="btn ghost" data-a="signout"${u.sessions ? "" : " disabled"}>Sign out everywhere</button>
-      <button class="btn danger-ghost" data-a="delask">Delete…</button>
-    </div>
-    ${confirming ? `<form class="confirm" data-f="delete"><span>This deletes the account and every scroll it sent or received. Type <b>${esc(u.handle)}</b> to confirm.</span>
-      <label class="field"><input name="c" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the handle to confirm"></label>
-      <button class="btn" type="submit">Delete account</button><button class="btn ghost" type="button" data-a="delcancel">Cancel</button></form>` : ""}
-    ${res ? `<div class="result${res.bad ? " bad" : ""}" role="status"><span>${esc(res.message)}</span>
-      ${res.url ? `<div class="linkbox"><code>${esc(res.url)}</code><button class="btn" data-a="copy" data-url="${esc(res.url)}">Copy</button></div>` : ""}</div>` : ""}
+const chev = `<svg viewBox="0 0 24 24" class="ico chev" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>`;
+// One row per account: tap the name to open its options.
+function userRow(u) {
+  const res = A.results[u.id], open = A.open === u.id, confirming = A.confirming === u.id;
+  return `<article class="ucard${open ? " open" : ""}" data-id="${esc(u.id)}">
+    <button class="uname" data-a="toggle" aria-expanded="${open}">
+      <span class="av s" aria-hidden="true">${esc(u.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase())}</span>
+      <span class="who"><span class="nm">${esc(u.name)}</span><span class="sub">@${esc(u.handle)}</span></span>${chev}
+    </button>
+    ${open ? `<div class="upanel">
+      <p class="facts">${esc(u.email)} · last active ${ago(u.last_seen)}</p>
+      <div class="uacts">
+        <button class="btn" data-a="email"${A.email ? "" : ' disabled title="Email isn’t set up yet"'}>Email a reset link</button>
+        <button class="btn ghost" data-a="link">Make a reset link</button>
+        <button class="btn ghost" data-a="signout"${u.sessions ? "" : ' disabled title="Not signed in anywhere"'}>Sign out everywhere</button>
+      </div>
+      ${res ? `<div class="result${res.bad ? " bad" : ""}" role="status"><span>${esc(res.message)}</span>
+        ${res.url ? `<div class="linkbox"><code>${esc(res.url)}</code><button class="btn" data-a="copy" data-url="${esc(res.url)}">Copy</button></div>` : ""}</div>` : ""}
+      ${confirming ? `<form class="confirm" data-f="delete"><span>This deletes the account and every scroll it sent or received. Type <b>${esc(u.handle)}</b> to confirm.</span>
+        <label class="field"><input name="c" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the handle to confirm"></label>
+        <button class="btn" type="submit">Delete account</button><button class="btn ghost" type="button" data-a="delcancel">Cancel</button></form>`
+        : `<button class="link danger" data-a="delask">Delete account…</button>`}
+    </div>` : ""}
   </article>`;
 }
 function render() {
   const q = A.q.trim().toLowerCase();
   const list = q ? A.users.filter((u) => `${u.name} ${u.handle} ${u.email}`.toLowerCase().includes(q)) : A.users;
   const focus = document.activeElement?.id;
+  const testSender = /@resend\.dev>?$/.test(A.from);
   root().innerHTML = `
     <header class="adm-top"><h1>InFlight admin <span class="beta">Beta</span></h1>
       <span class="tools"><span class="pillstat${A.email ? "" : " off"}">${A.email ? "Reset emails on" : "Reset emails off"}</span>
       <button class="btn ghost" id="signout">Sign out</button></span></header>
-    ${A.email ? `<div class="mailrow"><p class="anote">Emails go out from <b>${esc(A.from)}</b>.${/@resend\.dev>?$/.test(A.from) ? " That’s Resend’s test sender: it can only email your own Resend address, so verify your domain and set PIGEON_FROM before people can get reset emails." : ""}</p>
-        <button class="btn ghost" data-a="testmail">Send a test email</button></div>
-        ${A.mail ? `<div class="result${A.mail.bad ? " bad" : ""}" role="status">${esc(A.mail.message)}</div>` : ""}`
-      : `<p class="anote">Reset emails need a Resend API key. In Cloudflare → your Pages project → Settings → Variables and Secrets, add <b>RESEND_API_KEY</b> as a Secret, then redeploy. Until then, use “Make a reset link” and send the link yourself.</p>`}
-    ${stats()}
-    <div class="searchrow"><label class="field"><input id="q" placeholder="Search by name, handle or email" value="${esc(A.q)}" autocomplete="off" aria-label="Search accounts"></label><small>${list.length} of ${A.users.length}</small></div>
-    <section class="users">${list.map(userCard).join("") || `<p class="empty">${A.users.length ? "No accounts match." : "No one has signed up yet."}</p>`}</section>
-    <p class="anote">You can see account details, not passwords, private keys or scrolls: those never reach the server in readable form. A reset link lets someone choose a new password. If they have a passkey that unlocks their key, they keep their scrolls. Otherwise they start with a new key, older scrolls can’t be opened, and their friends see a key-change warning.</p>
-    <h2>Admin activity</h2>
-    <ul class="logl">${A.log.map((l) => `<li><time>${fmtWhen(l.at)}</time><span>${esc(LOG[l.action] || l.action)}${l.detail ? ` · ${esc(l.detail)}` : ""}</span></li>`).join("") || `<li><span>Nothing yet.</span></li>`}</ul>`;
+    ${!A.email ? `<p class="anote">Reset emails are off. Add <b>RESEND_API_KEY</b> in Cloudflare to switch them on. Until then, use “Make a reset link”.</p>`
+      : testSender ? `<p class="anote">Reset emails can only reach your own Resend address until you verify your domain and set PIGEON_FROM. <button class="link" data-a="testmail">Send a test email</button></p>` : ""}
+    ${A.mail ? `<div class="result${A.mail.bad ? " bad" : ""}" role="status">${esc(A.mail.message)}</div>` : ""}
+    <div class="searchrow"><label class="field"><input id="q" placeholder="Search accounts" value="${esc(A.q)}" autocomplete="off" aria-label="Search accounts"></label><small>${list.length} account${list.length === 1 ? "" : "s"}</small></div>
+    <section class="ulist">${list.map(userRow).join("") || `<p class="empty">${A.users.length ? "No accounts match." : "No one has signed up yet."}</p>`}</section>
+    <details class="logwrap"><summary>Admin activity</summary>
+      <ul class="logl">${A.log.map((l) => `<li><time>${fmtWhen(l.at)}</time><span>${esc(LOG[l.action] || l.action)}${l.detail ? ` · ${esc(l.detail)}` : ""}</span></li>`).join("") || `<li><span>Nothing yet.</span></li>`}</ul></details>`;
   if (focus === "q") { const i = $("#q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
 const LOG = { "test-email": "Test email sent", "reset-emailed": "Reset link emailed", "reset-link": "Reset link made", "reset-used": "Password reset", "signed-out": "Signed out everywhere", deleted: "Account deleted" };
@@ -155,6 +141,7 @@ document.addEventListener("click", async (e) => {
     catch (_) { const c = b.parentElement.querySelector("code"); const r = document.createRange(); r.selectNodeContents(c); getSelection().removeAllRanges(); getSelection().addRange(r); }
     return;
   }
+  if (act === "toggle") { A.open = A.open === id ? null : id; A.confirming = null; return render(); }
   if (act === "delask") { A.confirming = id; render(); $(`.ucard[data-id="${id}"] .confirm input`)?.focus(); return; }
   if (act === "delcancel") { A.confirming = null; return render(); }
   const routes = { email: ["admin-reset", { mode: "email" }], link: ["admin-reset", { mode: "link" }], signout: ["admin-signout", {}] };
