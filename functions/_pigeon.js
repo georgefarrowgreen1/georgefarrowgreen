@@ -100,6 +100,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 0",   // email when pigeons land
   "ALTER TABLE pg_users ADD COLUMN email_at INTEGER",    // last notification email
   "ALTER TABLE pg_users ADD COLUMN unsub TEXT",          // token for the unsubscribe link
+  "ALTER TABLE pg_users ADD COLUMN notify_prefs TEXT",  // notification settings (JSON), defaults if null
 ];
 let schemaReady = false;
 export async function db(env) {

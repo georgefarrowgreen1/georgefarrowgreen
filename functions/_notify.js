@@ -18,7 +18,29 @@ import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEma
 const enc = new TextEncoder();
 const EMAIL_EVERY = 30 * MIN;     // at most one email per person per half hour
 const EMAIL_AFTER = 10 * MIN;     // give push and the app a head start before emailing
-const LOOKBACK = 2 * HOUR;        // never notify about landings older than this (e.g. on first deploy)
+const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still announced, but not forever
+
+/* ---------------- preferences ----------------
+   Account-wide (every phone follows them); whether push is on is per phone. */
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, requests: true, accepted: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export function prefsOf(u) {
+  let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
+  return { ...NOTIFY_DEFAULTS, ...p };
+}
+const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz }); return true; } catch (_) { return false; } };
+// Merge a partial update from the app, keeping only known keys and sane values.
+export function cleanPrefs(cur, b) {
+  const out = { ...cur };
+  for (const k of ["landed", "takeoff", "requests", "accepted", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
+  if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
+  return out;
+}
+export function isQuiet(p, t = Date.now()) {
+  if (!p.quiet || p.quietFrom === p.quietTo) return false;
+  const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: p.tz, hour: "numeric", hourCycle: "h23" }).format(t));
+  return p.quietFrom > p.quietTo ? h >= p.quietFrom || h < p.quietTo : h >= p.quietFrom && h < p.quietTo;
+}
 
 // Push services InFlight will send to. Subscriptions naming any other host are
 // refused, so the server can't be pointed at arbitrary URLs.
@@ -124,57 +146,83 @@ async function notifyEmail(env, origin, u, subject, lines, button) {
 
 /* ---------------- events ---------------- */
 const firstName = (n) => String(n || "").trim().split(/\s+/)[0] || "Someone";
+const userPrefs = async (env, id) => {
+  const u = await (await db(env)).prepare("SELECT id, email, notify_email, email_at, notify_prefs FROM pg_users WHERE id = ?").bind(id).first();
+  return u ? { u, p: prefsOf(u) } : null;
+};
 export async function friendRequested(env, origin, from, toId) {
-  await pushTo(env, toId, { title: "Friend request", body: `${from.name} (@${from.handle}) wants to be friends on InFlight.`, tag: "requests", url: "/pigeon/#requests" });
-  const D = await db(env);
-  const to = await D.prepare("SELECT id, email, notify_email, email_at FROM pg_users WHERE id = ?").bind(toId).first();
-  if (to?.notify_email && Date.now() - (to.email_at || 0) > EMAIL_EVERY)
-    await notifyEmail(env, origin, to, `${from.name} wants to be friends on InFlight`,
-      [`${from.name} (@${from.handle}) sent you a friend request on InFlight.`], { label: "Open InFlight", url: `${origin}/pigeon/#requests` }).catch(() => {});
+  const r = await userPrefs(env, toId); if (!r || !r.p.requests || isQuiet(r.p)) return;
+  await pushTo(env, toId, { title: r.p.names ? "Friend request" : "InFlight", body: r.p.names ? `${from.name} (@${from.handle}) wants to be friends on InFlight.` : "You have a new friend request.", tag: "requests", url: "/pigeon/#requests" });
+  if (r.u.notify_email && Date.now() - (r.u.email_at || 0) > EMAIL_EVERY)
+    await notifyEmail(env, origin, r.u, r.p.names ? `${from.name} wants to be friends on InFlight` : "You have a new friend request on InFlight",
+      [r.p.names ? `${from.name} (@${from.handle}) sent you a friend request on InFlight.` : "Someone sent you a friend request on InFlight."], { label: "Open InFlight", url: `${origin}/pigeon/#requests` }).catch(() => {});
 }
 export async function friendAccepted(env, by, toId) {
-  await pushTo(env, toId, { title: "New friend", body: `${by.name} accepted your friend request. Send them a pigeon!`, tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
+  const r = await userPrefs(env, toId); if (!r || !r.p.accepted || isQuiet(r.p)) return;
+  await pushTo(env, toId, { title: r.p.names ? "New friend" : "InFlight", body: r.p.names ? `${by.name} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
+}
+// A friend has just sent you a pigeon (off unless you turn it on).
+export async function pigeonSent(env, from, toId, deliverAt) {
+  const r = await userPrefs(env, toId); if (!r || !r.p.takeoff || isQuiet(r.p)) return;
+  const ms = deliverAt - Date.now(), h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN));
+  const eta = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`;
+  await pushTo(env, toId, { title: r.p.names ? firstName(from.name) : "InFlight", body: r.p.names ? `Sent you a pigeon. It lands in ${eta}.` : `A pigeon is on its way to you. It lands in ${eta}.`,
+    tag: "from-" + from.id, url: `/pigeon/#open=${from.id}` });
 }
 
 // Pigeons that have landed since the last tick: push now; email those who
-// asked, once things have been waiting a little while unread.
+// asked, once things have been waiting a little while unread. Quiet hours hold
+// both until they end. Only landings after notifications went live count.
 export async function tick(env, origin) {
   const D = await db(env), t = Date.now();
-  const { results: landed } = await D.prepare(
-    "UPDATE pg_msgs SET notified_at = ?1 WHERE notified_at IS NULL AND deliver_at <= ?1 AND deliver_at > ?2 RETURNING sender, recipient")
-    .bind(t, t - LOOKBACK).all();
+  await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
+  const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
+  const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
+    WHERE m.notified_at IS NULL AND m.deliver_at <= ?1 AND m.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
+  const prefs = new Map(due.map((m) => [m.recipient, prefsOf(m)]));
+  const ready = due.filter((m) => !isQuiet(prefs.get(m.recipient), t));       // quiet ones wait
+  let landed = [];
+  if (ready.length) {
+    // claim them first, so two ticks running at once can't both send
+    const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${ready.map(() => "?").join(",")}) RETURNING sender, recipient`)
+      .bind(t, ...ready.map((m) => m.id)).all();
+    landed = results.filter((m) => prefs.get(m.recipient).landed);
+  }
   let pushes = 0, emails = 0;
   if (landed.length) {
     const ids = [...new Set(landed.map((m) => m.sender))];
     const { results: senders } = await D.prepare(`SELECT id, name FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
-    const name = new Map(senders.map((s) => [s.id, s.name]));
+    const name = new Map(senders.map((x) => [x.id, x.name]));
     const pairs = new Map();
     for (const m of landed) { const k = m.recipient + "|" + m.sender; pairs.set(k, (pairs.get(k) || 0) + 1); }
     for (const [k, n] of pairs) {
-      const [to, from] = k.split("|");
-      pushes += await pushTo(env, to, { title: firstName(name.get(from)), body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.",
-        tag: "from-" + from, url: `/pigeon/#open=${from}` });
+      const [to, from] = k.split("|"), names = prefs.get(to).names;
+      pushes += await pushTo(env, to, { title: names ? firstName(name.get(from)) : "InFlight",
+        body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }
   }
   if (emailReady(env)) {
-    const { results: due } = await D.prepare(`
-      SELECT u.id, u.email, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names
+    const { results: waiting } = await D.prepare(`
+      SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names
       FROM pg_users u JOIN pg_msgs m ON m.recipient = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND COALESCE(u.email_at, 0) < ?1
         AND m.read_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
-      GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, t - DAY).all();
-    for (const u of due) {
+      GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, Math.max(since, t - DAY)).all();
+    for (const u of waiting) {
+      const p = prefsOf(u); if (!p.landed || isQuiet(p, t)) continue;
       const who = String(u.names || "").split(",").map(firstName);
       const list = who.length > 2 ? `${who.slice(0, -1).join(", ")} and ${who.at(-1)}` : who.join(" and ");
+      const subject = !p.names ? (u.n > 1 ? `${u.n} pigeons have landed` : "A pigeon has landed")
+        : u.n > 1 ? `${u.n} pigeons have landed` : `A pigeon from ${who[0]} has landed`;
       try {
-        await notifyEmail(env, origin, u, u.n > 1 ? `${u.n} pigeons have landed` : `A pigeon from ${who[0]} has landed`,
-          [`${u.n > 1 ? `${u.n} pigeons have` : "A pigeon has"} landed for you on InFlight, from ${list}.`,
+        await notifyEmail(env, origin, u, subject,
+          [`${u.n > 1 ? `${u.n} pigeons have` : "A pigeon has"} landed for you on InFlight${p.names ? `, from ${list}` : ""}.`,
             "Messages are end-to-end encrypted, so open InFlight to read them."], { label: "Open InFlight", url: `${origin}/pigeon/` });
         emails++;
       } catch (e) { console.error("pigeon notify email", e && e.message); }
     }
   }
-  return { landed: landed.length, pushes, emails };
+  return { landed: landed.length, held: due.length - ready.length, pushes, emails };
 }
 
 // Run a tick at most once a minute, shared across all servers via D1.

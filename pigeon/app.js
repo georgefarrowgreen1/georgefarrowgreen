@@ -139,6 +139,7 @@ const I = {
   compose: ico(`<path d="M11 4.5H6.5A2.5 2.5 0 0 0 4 7v10.5A2.5 2.5 0 0 0 6.5 20H17a2.5 2.5 0 0 0 2.5-2.5V13"/><path d="M17.8 3.8a1.8 1.8 0 0 1 2.5 2.5L12.5 14 9.5 15l1-3Z"/>`),
   plus: ico(`<path d="M12 5v14M5 12h14"/>`),
   minus: ico(`<path d="M5 12h14"/>`),
+  moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
@@ -772,22 +773,66 @@ function vAccount() {
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <div class="gap"></div>`;
 }
-const toggleCell = ({ act, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${disabled ? " disabled" : ""}>
+const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${id}"` : ""}${disabled ? " disabled" : ""}>
     <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
+// Account shows one row; the settings live in their own sheet, like iOS Settings.
 function notifySection(u) {
-  const ps = pushState();
-  const pushFoot = {
-    homescreen: "To get notifications on iPhone, add InFlight to your Home Screen: tap Share, then Add to Home Screen, and open it from there.",
-    denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings, then come back here.",
-    unsupported: "This browser can’t show notifications.",
-  }[ps];
+  const ps = pushState(), n = u.notify || {};
+  const on = [ps === "on" && "Push", u.notifyEmail && "Email"].filter(Boolean);
+  const val = on.length ? on.join(", ") : ps === "homescreen" ? "Set Up" : "Off";
   return `<div class="ghead">Notifications</div>
+    <div class="group">${cell({ act: "notifysheet", icon: I.bell, tile: "red", label: "Notifications", val: esc(val), chev: true })}</div>
+    <div class="gfoot">${on.length ? `${n.quiet ? `Quiet from ${hourLabel(n.quietFrom)} to ${hourLabel(n.quietTo)}. ` : ""}Notifications say who sent a pigeon, never what it says.` : "Hear when a pigeon lands or someone adds you."}</div>`;
+}
+const hourLabel = (h) => `${String(h).padStart(2, "0")}:00`;
+function vNotifySheet() {
+  const u = S.me, n = u.notify || {}, ps = pushState();
+  const pushFoot = {
+    homescreen: "On iPhone, notifications need InFlight on your Home Screen: tap Share, then Add to Home Screen, and open it from there.",
+    denied: "Notifications are blocked for InFlight. Turn them on in your phone’s Settings, then come back here.",
+    unsupported: "This browser can’t show notifications. Email still works.",
+  }[ps] || "Push notifications are set for each phone. The settings below apply to all of them.";
+  const t = (key, icon, tile, label, sub) => toggleCell({ act: "npref", id: key, icon, tile, label, sub, on: !!n[key] });
+  const hours = (key) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${n[key] === h ? " selected" : ""}>${hourLabel(h)}</option>`).join("");
+  const anyOn = ps === "on" || u.notifyEmail;
+  return `
+    <div class="ghead">This Phone</div>
     <div class="group">
       ${toggleCell({ act: "pushtoggle", icon: I.bell, tile: "red", label: "Push Notifications", on: ps === "on", disabled: !["on", "off"].includes(ps) || S.pushBusy })}
       ${ps === "on" ? cell({ act: "pushtest", label: "Send a Test Notification", cls: "action" }) : ""}
-      ${S.emailOn ? toggleCell({ act: "emailtoggle", icon: I.mail, tile: "blue", label: "Email", sub: esc(u.email), on: u.notifyEmail }) : ""}
     </div>
-    <div class="gfoot">${pushFoot ? pushFoot + " " : ""}Hear when a pigeon lands or someone adds you. Notifications say who sent a pigeon, never what it says.${S.emailOn ? " Emails come only when a pigeon has waited a while unread, at most every half hour." : ""}</div>`;
+    <div class="gfoot">${pushFoot}</div>
+    ${S.emailOn ? `<div class="ghead">Email</div>
+    <div class="group">${toggleCell({ act: "emailtoggle", icon: I.mail, tile: "blue", label: "Email Me", sub: esc(u.email), on: u.notifyEmail })}</div>
+    <div class="gfoot">Only when a pigeon has waited 10 minutes unread, and at most every half hour. Every email has a link to turn them off.</div>` : ""}
+    <div class="${anyOn ? "" : "dim"}">
+    <div class="ghead">Notify Me When</div>
+    <div class="group">
+      ${t("landed", I.bird, "orange", "A Pigeon Lands")}
+      ${t("takeoff", I.up, "teal", "A Pigeon Takes Off", "When a friend sends you one")}
+      ${t("requests", I.addp, "green", "Friend Requests")}
+      ${t("accepted", I.people, "indigo", "Request Accepted")}
+    </div>
+    <div class="ghead">Lock Screen</div>
+    <div class="group">${t("names", I.eye, "gray", "Show Names")}</div>
+    <div class="gfoot">${n.names ? "Notifications say who sent a pigeon." : "Notifications just say “A pigeon has landed”, without who sent it."} They never include what a message says: only your phone can read that.</div>
+    <div class="ghead">Quiet Hours</div>
+    <div class="group">
+      ${t("quiet", I.moon, "indigo", "Quiet Hours")}
+      ${n.quiet ? `<label class="cell"><span class="ctext"><span>From</span></span><span class="val">${hourLabel(n.quietFrom)}</span>${chevSm}
+        <select class="overlay" data-act="quiethour" data-id="quietFrom" aria-label="Quiet from">${hours("quietFrom")}</select></label>
+      <label class="cell"><span class="ctext"><span>To</span></span><span class="val">${hourLabel(n.quietTo)}</span>${chevSm}
+        <select class="overlay" data-act="quiethour" data-id="quietTo" aria-label="Quiet until">${hours("quietTo")}</select></label>` : ""}
+    </div>
+    <div class="gfoot">${n.quiet ? `Nothing arrives between ${hourLabel(n.quietFrom)} and ${hourLabel(n.quietTo)} (${esc(n.tz)} time). Pigeons that land meanwhile are announced when quiet hours end.` : "Hold notifications overnight, and hear about anything that landed when quiet hours end."}</div>
+    </div>`;
+}
+async function setNotify(patch) {
+  const before = S.me.notify;
+  S.me.notify = { ...before, ...patch }; render(); renderSheet();            // feel instant
+  try { const r = await api("me", { method: "PATCH", body: { notify: patch } }); S.me = r.me; }
+  catch (err) { S.me.notify = before; toast(esc(err.message)); }
+  render(); renderSheet();
 }
 function cityOptions() {
   const cur = S.me?.place;
@@ -1105,6 +1150,12 @@ function renderSheet(refresh) {
     case "view":
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
+    case "notifications": {
+      const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
+      $layer.innerHTML = sheetHtml("Notifications", vNotifySheet());
+      if (top) $(".sheet .body", $layer).scrollTop = top;    // toggling shouldn't jump the list
+      return;
+    }
     case "passkeys":
       $layer.innerHTML = sheetHtml("Passkeys", `
         ${S.passkeys.length ? `<div class="ghead">Saved passkeys</div><div class="group">${S.passkeys.map((p) => `<div class="cell has-icon"><span class="tile indigo">${I.key}</span><span class="ctext"><span>${esc(p.label || "Passkey")}</span><span class="csub">${p.unlocks ? "Signs in and unlocks messages" : "Signs in only"} · added ${fmtDate(p.createdAt)}</span></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}</div>` : ""}
@@ -1298,6 +1349,8 @@ async function onClick(e) {
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
+    case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
     case "pushtest":
       try { const r = await api("push-test", { method: "POST" }); toast(r.sent ? "Test sent. It should arrive in a moment." : "Couldn’t reach this phone. Turn notifications off and on again."); }
@@ -1331,6 +1384,7 @@ async function onChange(e) {
   const el = e.target;
   if ((el.id === "av-cam" || el.id === "av-lib") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
   if ((el.id === "file-cam" || el.id === "file-lib") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
+  if (el.dataset.act === "quiethour") return setNotify({ [el.dataset.id]: Number(el.value) });
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);
@@ -1550,7 +1604,7 @@ async function pushEnable() {
     S.pushOn = !!(await pushSub(true));
     if (S.pushOn) toast("Notifications are on. You’ll hear when a pigeon lands.");
   } catch (err) { console.warn("push", err); toast("Couldn’t turn on notifications on this phone."); }
-  finally { S.pushBusy = false; render(); }
+  finally { S.pushBusy = false; render(); if (S.sheet?.type === "notifications") renderSheet(); }
 }
 async function pushDisable(quiet) {
   if (!pushSupported()) return;
@@ -1560,16 +1614,20 @@ async function pushDisable(quiet) {
     if (sub) { await api("push-sub", { method: "DELETE", body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
   } catch (_) { /* nothing to undo */ }
   S.pushOn = false;
-  if (!quiet) { toast("Notifications are off on this phone."); render(); }
+  if (!quiet) { toast("Notifications are off on this phone."); render(); if (S.sheet?.type === "notifications") renderSheet(); }
 }
 // On launch: if this phone already has push on, make sure the server knows it (and for this sign-in).
 async function refreshPush() {
+  // quiet hours follow the phone's time zone
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (tz && S.me?.notify && S.me.notify.tz !== tz) api("me", { method: "PATCH", body: { notify: { tz } } }).then((r) => { S.me = r.me; }).catch(() => {});
   if (!pushSupported() || Notification.permission !== "granted") { S.pushOn = false; return; }
   try { S.pushOn = !!(await pushSub(false)); } catch (_) { S.pushOn = false; }
   if (S.view === "account") render();
+  if (S.sheet?.type === "notifications") renderSheet();
 }
 async function setEmailNotify(on) {
-  try { const r = await api("me", { method: "PATCH", body: { notifyEmail: on } }); S.me = r.me; render(); toast(on ? `We’ll email ${esc(S.me.email)} when a pigeon has been waiting a while.` : "Emails are off."); }
+  try { const r = await api("me", { method: "PATCH", body: { notifyEmail: on } }); S.me = r.me; render(); if (S.sheet?.type === "notifications") renderSheet(); toast(on ? `We’ll email ${esc(S.me.email)} when a pigeon has been waiting a while.` : "Emails are off."); }
   catch (err) { toast(esc(err.message)); }
 }
 // After someone's first pigeon: offer to tell them when the reply lands. Asked once per phone.

@@ -6,7 +6,7 @@ import {
   emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -17,7 +17,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u),
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -103,6 +103,8 @@ async function updateMe({ request, env }) {
     if (!name) throw new HttpError(400, "Your name can’t be empty.", "name");
     await D.prepare("UPDATE pg_users SET name = ? WHERE id = ?").bind(name, u.id).run();
   }
+  if (b.notify && typeof b.notify === "object")
+    await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
   if (b.notifyEmail !== undefined)
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.lat !== undefined) {
@@ -319,7 +321,7 @@ async function listMessages({ request, env }) {
   return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count });
 }
 
-async function sendMessage({ request, env }) {
+async function sendMessage({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
   let meta, photo = null;
@@ -364,6 +366,7 @@ async function sendMessage({ request, env }) {
     throw e;
   }
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
+  waitUntil(pigeonSent(env, u, to, deliver).catch(() => {}));
   return json({ message: msgView(u.id, m, t) });
 }
 

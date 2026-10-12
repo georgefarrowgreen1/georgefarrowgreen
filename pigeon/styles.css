@@ -343,6 +343,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .reqrow .ctext .one{display:block}
 .reqrow .ctext br{display:none}
 .reqrow .acts{flex:none;display:flex;gap:8px}
+.dim .group,.dim .gfoot,.dim .ghead{opacity:.55;transition:opacity .2s}
 /* iOS 26 switch */
 .switch{flex:none;position:relative;width:62px;height:28px;border-radius:999px;background:var(--fill-2);transition:background .25s}
 .switch::after{content:"";position:absolute;top:2px;left:2px;width:37px;height:24px;border-radius:999px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.04);transition:transform .3s cubic-bezier(.3,1.4,.5,1)}

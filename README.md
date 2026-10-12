@@ -159,7 +159,10 @@ phones, held upright.
 
 **Notifications.** Account → Notifications has Push (Web Push, works on
 Android and desktop browsers, and on iPhone once InFlight is added to the Home
-Screen) and Email (via Resend). They say who sent a pigeon, never what it says.
+Screen) and Email (via Resend). Push is per phone; the rest is per account:
+which events notify (a pigeon lands, takes off, friend requests, accepted
+requests), whether names show on the lock screen, and quiet hours in the
+phone's own time zone (pigeons that land then are announced when they end). They say who sent a pigeon, never what it says.
 Push payloads are encrypted to each phone; the server makes its own VAPID key
 on first use (stored in D1). Emails wait 10 minutes and go out at most every
 half hour, with a one-click unsubscribe link. Code: `functions/_notify.js`,
