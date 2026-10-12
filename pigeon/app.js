@@ -873,7 +873,9 @@ function onInput(e) {
 /* ---------- sheets ---------- */
 // header: { left: {label, act}, right: {label, act} | {label, form}, strong }
 function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain } = {}) {
-  const b = (x, cls) => !x ? "" : x.form ? `<button type="button" class="nbtn strong ${cls}" data-act="submit" data-id="${x.form}">${esc(x.label)}</button>` : `<button type="button" class="nbtn${x.strong !== false && cls === "r" ? " strong" : ""} ${cls}" data-act="${x.act}">${esc(x.label)}</button>`;
+  const b = (x, cls) => !x ? ""
+    : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${x.form}" aria-label="${esc(x.label)}">${I.check}</button>`
+    : `<button type="button" class="nbtn ${cls}" data-act="${x.act}" aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
   return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title)}"><div class="grab"></div>
     <header><span class="l">${b(left, "l")}</span><h3>${esc(title)}</h3><span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
