@@ -735,6 +735,9 @@ function ghostView() {
 function animateNav() {
   const kind = S.nav; S.nav = null;
   if (!kind) return;
+  // the old screen's copy ends where the new one does, so it never shows behind the composer
+  const g = $(".nav-ghost", root());
+  if (g) g.style.height = `${Math.min(g.offsetHeight, $view.offsetHeight)}px`;
   const els = kind === "push" && S.view === "chat" ? [$view, $compose] : [$view];
   for (const el of els) {
     el.classList.remove("nav-push", "nav-pop", "nav-fade"); void el.offsetWidth;
