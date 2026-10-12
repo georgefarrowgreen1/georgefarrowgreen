@@ -26,4 +26,5 @@ jobs:
           echo "HTTP $code"; head -c 400 reply.txt; echo
           # 404: PIGEON_TICK_SECRET isn't set in Cloudflare; 401: the two secrets differ;
           # 403 with an HTML page: Cloudflare's bot protection stopped the request.
-          [ "$code" = "200" ]
+          # warn rather than fail, so a setup problem doesn't send a failure email every 5 minutes
+          if [ "$code" != "200" ]; then echo "::warning::InFlight notify tick got HTTP $code (see the notes above)"; fi
