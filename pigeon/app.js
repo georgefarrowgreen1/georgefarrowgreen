@@ -852,12 +852,11 @@ function vAccount() {
     <div class="ghead">Privacy &amp; Security</div>
     <div class="group">
       ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}
-      ${cell({ icon: I.lock, tile: "green", label: "Encryption Key", sub: `<span class="mono">${S.fp}</span>` })}
-      ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
+      ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption", val: "On", chev: true })}
       ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
       ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
     </div>
-    <div class="gfoot">Messages and photos are end-to-end encrypted. Your private key was made on this phone and locked with your password, so the server can’t read anything.</div>
+    <div class="gfoot">Only you and your friends can read your messages and photos.</div>
     <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}</div>
     <div class="gfoot">Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
@@ -1274,11 +1273,20 @@ function drawSheet(refresh) {
         <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>`,
         { left: s.from ? { label: "Back", act: s.from } : null });
       return;
+    case "encryption":
+      $layer.innerHTML = sheetHtml("Encryption", `
+        <div class="group mt-s">
+          ${cell({ icon: I.lock, tile: "green", label: "Your Encryption Key", sub: `<span class="mono">${S.fp}</span>` })}
+          ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
+        </div>
+        <div class="gfoot">Messages and photos are end-to-end encrypted. Your key was made on this phone and locked with your password, so the server can’t read anything. Compare safety numbers with a friend to check no one is in between.</div>`);
+      return;
     case "safetylist":
       $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
         ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${x.id}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(x.name)}</span></span>${chevSm}</button>`).join("")}</div>
           <div class="gfoot">Each friend has a safety number you can compare to check your messages are private.</div>`
-        : `<p class="empty"><b>No friends yet</b>Safety numbers appear once you add a friend.</p>`);
+        : `<p class="empty"><b>No friends yet</b>Safety numbers appear once you add a friend.</p>`,
+        { left: { label: "Back", act: "encryptionsheet" } });
       return;
     case "newmsg":
       $layer.innerHTML = sheetHtml("New Message", S.friends.length
@@ -1468,6 +1476,7 @@ async function onClick(e) {
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
+    case "encryptionsheet": S.sheet = { type: "encryption" }; return renderSheet();
     case "passkeys": S.sheet = { type: "passkeys" }; return renderSheet();
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
     case "close":
