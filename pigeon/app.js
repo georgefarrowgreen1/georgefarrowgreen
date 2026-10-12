@@ -16,7 +16,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
-  pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(),
+  pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
 };
 const now = () => Date.now() + S.skew;
@@ -531,6 +531,7 @@ async function sync() {
         // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
         if (f.last && !f.last.flying && !S.seenLanded.has(f.last.id)) {
           S.seenLanded.add(f.last.id);
+          if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
           if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
             toast(`<b>${esc(f.name)}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
         }
@@ -615,6 +616,7 @@ let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
 // and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
 const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
 function lockPage() {
+  document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
   const stop = (e) => e.preventDefault();
   ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, stop, { passive: false }));
   document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 && !e.target.closest?.(".map")) e.preventDefault(); }, { passive: false });
@@ -671,6 +673,7 @@ function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline
 function go(view, chat) {
   if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
   const same = view === S.view && chat === S.chat;
+  if (!same && $view) S.nav = navKind(S.view, view);
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
   if (view !== "chat") clearAttach();
   closePop();
@@ -679,6 +682,44 @@ function go(view, chat) {
   if (view === "chat" && chat) loadChat(chat).then(render).catch((e) => toast(esc(e.message)));
 }
 
+// How the screen changes, as on iPhone: a chat pushes in from the side and pops
+// back; auth steps push forward (back to the start pops); tabs cross-fade.
+function navKind(from, to) {
+  if (!from || from === "loading") return null;
+  if (to === "chat") return "push";
+  if (from === "chat") return "pop";
+  if (AUTH_VIEWS.has(to) && AUTH_VIEWS.has(from)) return to === "welcome" ? "pop" : "push";
+  return "fade";
+}
+// For a push or pop, the old screen stays for a moment as a lifeless copy: it
+// slides aside under a new chat, or slides away to reveal the screen behind.
+function ghostView() {
+  if (S.nav !== "push" && S.nav !== "pop") return;
+  $(".nav-ghost", root())?.remove();
+  const g = $view.cloneNode(true), top = $view.scrollTop;
+  g.className = `nav-ghost nav-ghost-${S.nav}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
+  g.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+  g.style.top = `${$view.offsetTop}px`; g.style.height = `${$view.offsetHeight}px`;
+  $view.before(g); g.scrollTop = top;
+  g.addEventListener("animationend", (e) => { if (e.target === g) g.remove(); });
+  setTimeout(() => g.remove(), 900);
+}
+function animateNav() {
+  const kind = S.nav; S.nav = null;
+  if (!kind) return;
+  const els = kind === "push" && S.view === "chat" ? [$view, $compose] : [$view];
+  for (const el of els) {
+    el.classList.remove("nav-push", "nav-pop", "nav-fade"); void el.offsetWidth;
+    el.classList.add("nav-" + kind);
+    el.addEventListener("animationend", function done(e) { if (e.target === el) { el.classList.remove("nav-" + kind); el.removeEventListener("animationend", done); } });
+  }
+}
+// New bubbles pop in once; if the list redraws mid-animation, carry on from where it was.
+function playFresh() {
+  const t = Date.now();
+  for (const [id, at] of S.fresh) if (t - at > 700) S.fresh.delete(id);
+  $view.querySelectorAll("[data-fresh]").forEach((el) => { const at = S.fresh.get(el.dataset.fresh); if (at) el.style.animationDelay = `${at - t}ms`; else el.classList.remove("fresh"); });
+}
 function render() {
   if (!$view) return;
   const auth = AUTH_VIEWS.has(S.view) || !S.me;
@@ -686,14 +727,18 @@ function render() {
   root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
   $view.classList.toggle("tabs-pad", !auth && !chat);
   if (auth) {
-    $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet();
+    ghostView();
+    $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     return;
   }
+  const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
+  if (tabsBack) { $tabbar.classList.remove("rise"); void $tabbar.offsetWidth; $tabbar.classList.add("rise"); }
   const keepTop = $view.scrollTop;
+  ghostView();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
-  renderCompose(); renderTabs(); renderSheet(); live(); filterLists();
+  renderCompose(); renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh();
 }
 
 /* ---------- shared bits ---------- */
@@ -853,8 +898,12 @@ function vNotifySheet() {
 async function setNotify(patch) {
   const before = S.me.notify;
   S.me.notify = { ...before, ...patch }; render(); renderSheet();            // feel instant
-  try { const r = await api("me", { method: "PATCH", body: { notify: patch } }); S.me = r.me; }
-  catch (err) { S.me.notify = before; toast(esc(err.message)); }
+  try {
+    const r = await api("me", { method: "PATCH", body: { notify: patch } });
+    const same = JSON.stringify(r.me.notify) === JSON.stringify(S.me.notify);
+    S.me = r.me;
+    if (same) return;                 // already showing; redrawing would cut a switch off mid-glide
+  } catch (err) { S.me.notify = before; toast(esc(err.message)); }
   render(); renderSheet();
 }
 function cityOptions() {
@@ -878,8 +927,9 @@ function status(f, t) {
 }
 function bubble(f, m, isLastMine, gapTop) {
   const mine = m.from === S.me.id;
+  const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
   if (!mine && m.flying) {
-    return `<button class="fly" data-act="map" data-id="${m.id}" aria-label="Watch the pigeon on the map">
+    return `<button class="fly${fresh}" data-act="map" data-id="${m.id}" aria-label="Watch the pigeon on the map">
       <span class="t1">${I.bird}<span>On its way</span></span>
       <span class="t2"><b><span data-eta="${m.deliverAt}"></span> away</b><span>${fmtMiles(m.km)}${m.swift ? " · swift" : ""}</span></span>
       <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span></button>`;
@@ -893,8 +943,8 @@ function bubble(f, m, isLastMine, gapTop) {
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>Photo expired</span></div>`;
     else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="Photo from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${m.id}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
-    html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
-  } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}">${text}${prog}</div>`;
+    html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
+  } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
   if (mine && m.flying) meta.push(`<span class="fl">In flight · <span data-eta="${m.deliverAt}"></span> to go${m.swift ? " · swift" : ""}</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
@@ -1079,11 +1129,32 @@ function renderCompose() {
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
 }
+const TABS = [["messages", "Messages", "bubble"], ["friends", "Friends", "people"], ["account", "Account", "person"]];
+// Built once and then updated, so the highlight can slide between tabs.
 function renderTabs() {
   const unread = S.friends.reduce((n, f) => n + (f.unread || 0), 0);
   const cur = S.view === "chat" ? "messages" : S.view;
-  const tab = (id, label, icon, badge) => `<button class="tab" data-act="tab" data-id="${id}" aria-current="${cur === id}">${badge ? `<span class="badge">${badge}</span>` : ""}${icon}<span>${label}</span></button>`;
-  $tabbar.innerHTML = `<div class="tabs">${tab("messages", "Messages", I.bubble, unread)}${tab("friends", "Friends", I.people, S.incoming.length)}${tab("account", "Account", I.person, 0)}</div>`;
+  const badges = { messages: unread, friends: S.incoming.length, account: 0 };
+  let tabs = $(".tabs", $tabbar);
+  if (!tabs) {
+    $tabbar.innerHTML = `<div class="tabs">${TABS.map(([id, label, icon]) => `<button class="tab" data-act="tab" data-id="${id}" aria-current="false">${I[icon]}<span>${label}</span></button>`).join("")}</div>`;
+    tabs = $(".tabs", $tabbar);
+  }
+  for (const btn of tabs.querySelectorAll(".tab")) {
+    const id = btn.dataset.id, n = badges[id] || 0;
+    btn.setAttribute("aria-current", String(cur === id));
+    if (String(n) !== (btn.dataset.badge || "0")) {          // a new badge bounces in
+      btn.querySelector(".badge")?.remove();
+      if (n) btn.insertAdjacentHTML("afterbegin", `<span class="badge">${n}</span>`);
+      btn.dataset.badge = String(n);
+    }
+  }
+  const i = TABS.findIndex(([id]) => id === cur), was = tabs.dataset.tab;
+  if (String(i) !== was) {
+    tabs.style.setProperty("--tab", String(Math.max(0, i)));
+    if (was != null && was !== "-1" && i >= 0) { tabs.classList.remove("moving"); void tabs.offsetWidth; tabs.classList.add("moving"); }
+    tabs.dataset.tab = String(i);
+  }
   document.title = unread ? `(${unread}) InFlight` : "InFlight";
 }
 function filterLists() {
@@ -1105,7 +1176,47 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
     <header><span class="l">${b(left, "l")}</span><h3>${esc(title)}</h3><span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
+let sheetTimer = 0, sheetType = null;
+const gliding = new Map();            // switches mid-glide: key → { from, to, at }
+const switchKey = (b) => `${b.dataset.act}:${b.dataset.id || ""}`;
+// Opening springs the sheet up and settles the screen back behind it; closing
+// slides it away. Redrawing an open sheet doesn't replay its entrance, and a
+// switch that changed still glides across.
 function renderSheet(refresh) {
+  const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
+  if (!S.sheet) {
+    root().classList.remove("sheeted"); sheetType = null;
+    if (!open) { $layer.innerHTML = ""; return; }
+    if (closing) return;
+    $layer.querySelectorAll(".sheet, .scrim, .viewer").forEach((e) => { e.classList.remove("still"); e.classList.add("closing"); });
+    clearTimeout(sheetTimer); sheetTimer = setTimeout(() => { if (!S.sheet) $layer.innerHTML = ""; }, 330);
+    return;
+  }
+  clearTimeout(sheetTimer);
+  const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
+  const before = had ? new Map([...$layer.querySelectorAll("[role=switch]")].map((b) => [switchKey(b), b.getAttribute("aria-checked") === "true"])) : null;
+  const old = $(".sheet", $layer);
+  drawSheet(refresh);
+  sheetType = S.sheet?.type || null;
+  const now = $(".sheet", $layer);
+  if (had && now && now !== old) {
+    $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
+    if (swapped) $(".sheet .body", $layer)?.classList.add("swap");
+    for (const b of $layer.querySelectorAll("[role=switch]")) {
+      const k = switchKey(b), was = before.get(k), is = b.getAttribute("aria-checked") === "true", sw = $(".switch", b);
+      if (!sw || was === undefined) continue;
+      const g = gliding.get(k), t = Date.now();
+      if (was !== is) gliding.set(k, { from: was, to: is, at: t });
+      const run = was !== is ? gliding.get(k) : g && g.to === is && t - g.at < 600 ? g : null;
+      if (!run) continue;
+      // replay the glide from where it was, so a redraw never snaps it to the end
+      sw.style.setProperty("--glide", `${run.at - t}ms`);
+      sw.classList.toggle("on", run.from); void sw.offsetWidth; sw.classList.toggle("on", run.to);
+    }
+  }
+  root().classList.toggle("sheeted", !!$(".sheet", $layer));
+}
+function drawSheet(refresh) {
   const s = S.sheet;
   if (refresh && s?.type !== "profile") return;
   if (!s) { $layer.innerHTML = ""; return; }
@@ -1249,6 +1360,7 @@ function live() {
 /* ---------- menus, action sheets and banners ---------- */
 // iOS-style context menu anchored to a button. items: {label, icon, act, id, destructive}
 function openMenu(anchor, items) {
+  clearTimeout(popTimer);
   const box = root().getBoundingClientRect(), a = anchor.getBoundingClientRect();
   const up = a.top - box.top > box.height * 0.55;
   const right = a.left + a.width / 2 > box.left + box.width / 2;
@@ -1261,18 +1373,31 @@ function openMenu(anchor, items) {
   m.style.setProperty("--origin", `${up ? "bottom" : "top"} ${right ? "right" : "left"}`);
 }
 function openActions({ title, message, actions }) {
+  clearTimeout(popTimer);
   $pop.innerHTML = `<div class="scrim" data-act="closepop"></div><div class="asheet" role="dialog" aria-label="${esc(title || "Confirm")}">
     <div class="grp">${title || message ? `<div class="msg">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
       `<button class="ab${x.destructive ? " destructive" : ""}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>
     <button class="cancel" data-act="closepop">Cancel</button></div>`;
 }
-function closePop() { if ($pop) $pop.innerHTML = ""; }
+let popTimer = 0;
+function closePop() {
+  if (!$pop || !$pop.firstElementChild) return;
+  const live = $pop.querySelectorAll(".menu-pop:not(.closing), .asheet:not(.closing)");
+  if (!live.length) return;
+  $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim").forEach((e) => e.classList.add("closing"));
+  clearTimeout(popTimer); popTimer = setTimeout(() => { $pop.innerHTML = ""; }, 260);
+}
 let toastTimer = 0;
 function toast(html, btn, fn) {
   if (!$toast) return;
   $toast.innerHTML = `<div class="toast" role="status"><span class="ticon">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}</div>`;
   S.toastFn = fn;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $toast.innerHTML = ""; }, 5000);
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 5000);
+}
+function hideToast() {
+  const t = $(".toast", $toast); if (!t) return;
+  clearTimeout(toastTimer); t.classList.add("out");
+  setTimeout(() => { if (t.isConnected) t.remove(); }, 360);
 }
 
 /* ============================================================
@@ -1355,7 +1480,7 @@ async function onClick(e) {
       S.sheet = null; await sync(); return go("messages");
     case "share": return shareHandle();
     case "unattach": return clearAttach();
-    case "toast": { $toast.innerHTML = ""; const fn = S.toastFn; S.toastFn = null; return fn && fn(); }
+    case "toast": { hideToast(); const fn = S.toastFn; S.toastFn = null; return fn && fn(); }
     case "peek": { const inp = t.parentElement.querySelector("input"); const show = inp.type === "password"; inp.type = show ? "text" : "password"; t.setAttribute("aria-label", show ? "Hide password" : "Show password"); return; }
     case "locate": return locate(t);
     case "locdone": return go(passkeysSupported() ? "pkoffer" : "messages");
@@ -1592,6 +1717,7 @@ async function send() {
     if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
     $ta.value = ""; fitTa(); S.stick = true;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
+    S.fresh.set(r.message.id, Date.now());
     await sync();
     offerNotify();
   } catch (err) { S.err = err.message; }
