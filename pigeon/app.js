@@ -806,10 +806,11 @@ function render() {
   const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
   if (tabsBack) { $tabbar.classList.remove("rise"); void $tabbar.offsetWidth; $tabbar.classList.add("rise"); }
-  const keepTop = $view.scrollTop;
+  const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view);
   ghostView();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
+  if (switches?.size) keepGlides($view, switches);
   renderCompose(); renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh();
 }
 
@@ -1287,6 +1288,26 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
 let sheetTimer = 0, sheetType = null;
 const gliding = new Map();            // switches mid-glide: key → { from, to, at }
 const switchKey = (b) => `${b.dataset.act}:${b.dataset.id || ""}`;
+// Redrawing replaces a switch, which would snap it to its end. Note where each
+// one was before a redraw, then replay any glide from where it had got to.
+const switchStates = (el) => new Map([...el.querySelectorAll("[role=switch]")].map((b) => [switchKey(b), b.getAttribute("aria-checked") === "true"]));
+function keepGlides(el, before) {
+  for (const b of el.querySelectorAll("[role=switch]")) {
+    const k = switchKey(b), was = before.get(k), is = b.getAttribute("aria-checked") === "true", sw = $(".switch", b);
+    if (!sw || was === undefined) continue;
+    const g = gliding.get(k), t = performance.now();       // frame time: unaffected by clock changes
+    if (was !== is) gliding.set(k, { from: was, to: is, at: t });
+    const run = was !== is ? gliding.get(k) : g && g.to === is && t - g.at < 600 ? g : null;
+    if (!run || matchMedia("(prefers-reduced-motion: reduce)").matches) continue;
+    // a brand-new switch has nothing for CSS to transition from, so play the
+    // glide outright, picking up from wherever it had got to
+    const track = (on) => { sw.classList.toggle("on", on); return getComputedStyle(sw).backgroundColor; };
+    const [off, onCol] = [track(false), track(true)]; sw.classList.toggle("on", run.to);
+    const timing = { duration: 500, delay: run.at - t, easing: cssVar(document.documentElement, "--snappy") || "ease-out", fill: "backwards" };
+    sw.animate([{ transform: `translateX(${run.from ? 21 : 0}px)` }, { transform: `translateX(${run.to ? 21 : 0}px)` }], { ...timing, pseudoElement: "::after" });
+    sw.animate([{ backgroundColor: run.from ? onCol : off }, { backgroundColor: run.to ? onCol : off }], { ...timing, duration: 300 });
+  }
+}
 // Opening springs the sheet up and settles the screen back behind it; closing
 // slides it away. Redrawing an open sheet doesn't replay its entrance, and a
 // switch that changed still glides across.
@@ -1302,7 +1323,7 @@ function renderSheet(refresh) {
   }
   clearTimeout(sheetTimer);
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
-  const before = had ? new Map([...$layer.querySelectorAll("[role=switch]")].map((b) => [switchKey(b), b.getAttribute("aria-checked") === "true"])) : null;
+  const before = had ? switchStates($layer) : null;
   const old = $(".sheet", $layer);
   drawSheet(refresh);
   sheetType = S.sheet?.type || null;
@@ -1310,17 +1331,7 @@ function renderSheet(refresh) {
   if (had && now && now !== old) {
     $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
     if (swapped) $(".sheet .body", $layer)?.classList.add("swap");
-    for (const b of $layer.querySelectorAll("[role=switch]")) {
-      const k = switchKey(b), was = before.get(k), is = b.getAttribute("aria-checked") === "true", sw = $(".switch", b);
-      if (!sw || was === undefined) continue;
-      const g = gliding.get(k), t = Date.now();
-      if (was !== is) gliding.set(k, { from: was, to: is, at: t });
-      const run = was !== is ? gliding.get(k) : g && g.to === is && t - g.at < 600 ? g : null;
-      if (!run) continue;
-      // replay the glide from where it was, so a redraw never snaps it to the end
-      sw.style.setProperty("--glide", `${run.at - t}ms`);
-      sw.classList.toggle("on", run.from); void sw.offsetWidth; sw.classList.toggle("on", run.to);
-    }
+    keepGlides($layer, before);
   }
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
 }
@@ -1690,12 +1701,13 @@ const agoText = (at) => { const ms = now() - at; return ms < 2 * MIN ? "just now
 const AUTO_EVERY = 15 * MIN, AUTO_KM = 5;
 async function setRisky(on) {
   S.me = { ...S.me, risky: on }; render();             // the switch moves straight away
-  try { const r = await api("me", { method: "PATCH", body: { risky: on } }); S.me = r.me; render(); }
+  try { const r = await api("me", { method: "PATCH", body: { risky: on } }); const same = !!r.me.risky === on; S.me = r.me; if (!same) render(); }
   catch (err) { S.me = { ...S.me, risky: !on }; render(); toast(esc(err.message)); }
 }
 async function setAutoLocation(on, btn) {
-  try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); S.me = r.me; render(); }
-  catch (err) { return toast(esc(err.message)); }
+  S.me = { ...S.me, autoLocation: on }; render();       // the switch moves straight away
+  try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); const same = !!r.me.autoLocation === on; S.me = r.me; if (!same) render(); }
+  catch (err) { S.me = { ...S.me, autoLocation: !on }; render(); return toast(esc(err.message)); }
   if (on) { try { localStorage.removeItem("inflight-autoloc"); } catch (_) {} autoLocate(true); }
 }
 async function autoLocate(ask) {
