@@ -157,6 +157,14 @@ phones, held upright.
 | Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
 
+**Updates.** `functions/pigeon/_middleware.js` stamps every script and
+stylesheet an InFlight page loads (and every module `app.js` imports) with
+`?v=<fingerprint of that file>`. Pages are never cached, so a refresh always
+pulls whatever changed; fingerprinted files are cached for good. Open copies
+check the page's `inflight-version` when the app comes back to the screen and
+every 5 minutes, and reload themselves on a new deploy, or offer an Update
+button if you're mid-message.
+
 No new setup is needed: it uses the `DB` and `BIO_R2` bindings already in
 `wrangler.toml`. Optional backstop for photo deletion (the app already deletes
 them itself): R2 → `bio-media` → Settings → Object lifecycle rules → delete

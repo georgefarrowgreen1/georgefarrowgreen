@@ -1,62 +1,76 @@
-/* InFlight admin: a plain working page on the app's tokens. Scrolls normally, works on a phone or a laptop. */
-body.admin{height:auto;min-height:100%;overflow:auto;background:var(--app)}
-.adm{max-width:880px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:16px}
-.adm-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding-top:8px}
-.adm-top h1{margin:0 auto 0 0;font-size:28px;font-weight:500;white-space:nowrap;display:flex;align-items:center;gap:8px}
+/* InFlight admin: the app's iOS look on a plain, scrolling page that works on a phone or a laptop. */
+body.admin{height:auto;min-height:100%;overflow:auto;background:var(--bg)}
+.adm{max-width:720px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+.adm-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding-top:10px}
+.adm-top h1{margin:0 auto 0 0;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.2px;white-space:nowrap;display:flex;align-items:center;gap:8px}
 .adm-top .tools{display:flex;align-items:center;gap:10px;margin-left:auto}
-.adm-top h1 .beta{top:0}
-.pillstat{font-family:var(--sans);font-size:12.5px;border-radius:999px;padding:4px 10px;background:var(--sage-bg);color:var(--sage);font-weight:600}
-.pillstat.off{background:var(--gold-bg);color:var(--gold)}
-.adm .btn{min-height:40px;font-size:14px}
+.pillstat{font-size:13px;border-radius:999px;padding:5px 11px;background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green);font-weight:600;letter-spacing:0}
+.pillstat.off{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+.adm .btn{min-height:40px;padding:0 18px;font-size:15px}
+.adm h2{margin:10px 0 -6px 16px;font-size:15px;font-weight:600;color:var(--label);letter-spacing:-.2px}
+
+/* figures */
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.stat{background:var(--card);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
-.stat b{font-size:26px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.1}
-.stat span{font-family:var(--sans);font-size:12.5px;color:var(--ink-2)}
+.stat{background:var(--cell);border-radius:22px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.stat b{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:13px;color:var(--label-2);letter-spacing:0}
 @media (max-width:560px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.searchrow{display:flex;gap:10px;align-items:center}
-.searchrow .field{flex:1}
-.searchrow small{font-family:var(--sans);font-size:13px;color:var(--ink-2);white-space:nowrap}
-.users{display:flex;flex-direction:column;gap:10px}
-.ucard{background:var(--card);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+
+/* inputs */
+.field{display:flex;align-items:center;min-height:42px;padding:0 16px;border-radius:999px;background:var(--fill)}
+.field input{flex:1;min-width:0;border:0;outline:none;background:none;padding:9px 0;font-size:17px;color:var(--label)}
+.field input::placeholder{color:var(--label-2)}
+.fields{display:flex;flex-direction:column;gap:12px}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fl .lbl{font-size:13px;color:var(--label-2);padding-left:16px;letter-spacing:0}
+.fl .inp{display:flex;min-height:50px;padding:0 16px;border-radius:16px;background:var(--fill)}
+.fl .inp input{flex:1;min-width:0;border:0;outline:none;background:none;font-size:17px;color:var(--label)}
+.ferr{margin:0;color:var(--red);font-size:14px;padding-left:16px}
+
+.searchrow{display:flex;gap:12px;align-items:center}
+.searchrow .field{flex:1;min-width:0}
+.searchrow small{font-size:13px;color:var(--label-2);white-space:nowrap;letter-spacing:0}
+
+/* accounts: a grouped list of names you tap to open */
+.users,.ulist{display:flex;flex-direction:column}
+.ulist{background:var(--cell);border-radius:26px;overflow:hidden}
+.ucard{display:flex;flex-direction:column;position:relative}
+.ucard + .ucard::before{content:"";position:absolute;top:0;left:70px;right:0;border-top:.5px solid var(--sep)}
 .uhead{display:flex;gap:12px;align-items:center;min-width:0}
-.uhead .who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-.uhead .nm{font-size:18px;font-weight:600;overflow-wrap:anywhere}
-.uhead .sub{font-family:var(--sans);font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
-.facts{display:flex;flex-wrap:wrap;gap:6px 14px;font-family:var(--sans);font-size:12.5px;color:var(--ink-2)}
-.facts b{color:var(--ink);font-weight:600}
+.uname{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 16px;border:0;background:none;text-align:left;color:inherit}
+.uname:active{background:var(--fill)}
+.uname .who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.uname .nm{font-size:17px;font-weight:600;overflow-wrap:anywhere}
+.uname .sub{font-size:14px;color:var(--label-2);overflow-wrap:anywhere;letter-spacing:-.1px}
+.uname .chev{flex:none;width:16px;height:16px;color:var(--label-3);transition:transform .2s}
+.ucard.open .uname .chev{transform:rotate(90deg)}
+.upanel{display:flex;flex-direction:column;gap:12px;padding:2px 16px 16px 70px}
+.facts{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;font-size:13px;color:var(--label-2);overflow-wrap:anywhere;letter-spacing:0}
+.facts b{color:var(--label);font-weight:600}
 .uacts{display:flex;flex-wrap:wrap;gap:8px}
 .uacts .btn{flex:none}
-.danger-ghost{background:var(--card);color:var(--rose);box-shadow:inset 0 0 0 1px var(--rule)}
-.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-family:var(--sans);font-size:13.5px}
+.upanel .link.danger{align-self:flex-start;font-size:15px}
+.danger-ghost{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red);box-shadow:none}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:15px}
 .confirm .field{flex:1;min-width:160px}
-.result{font-family:var(--sans);font-size:13.5px;line-height:1.45;background:var(--app);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.result.bad{color:var(--rose)}
+.result{font-size:14px;line-height:1.45;background:var(--cell-2);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;letter-spacing:-.1px}
+.result.bad{color:var(--red)}
 .linkbox{display:flex;gap:8px;align-items:center}
-.linkbox code{flex:1;min-width:0;font-family:var(--mono);font-size:12px;overflow-wrap:anywhere;background:var(--card);border-radius:8px;padding:8px}
-.adm h2{margin:8px 0 0;font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
-.logl{list-style:none;margin:0;padding:0;background:var(--card);border-radius:16px}
-.logl li{display:flex;gap:12px;padding:10px 14px;font-family:var(--sans);font-size:13px;line-height:1.4}
-.logl li + li{border-top:1px solid var(--rule)}
-.logl time{flex:none;color:var(--ink-2);font-variant-numeric:tabular-nums;min-width:110px}
-.logl span{min-width:0;overflow-wrap:anywhere}
-.anote{font-family:var(--sans);font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
-.signcard{max-width:420px;width:100%;margin:8vh auto 0;background:var(--card);border-radius:22px;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
-.signcard h1{margin:0;font-size:26px;font-weight:500}
-.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
-.mailrow .anote{flex:1;min-width:220px}
-/* compact account list: names you tap to open */
-.ulist{background:var(--card);border-radius:18px;overflow:hidden}
-.ucard{background:none;border-radius:0;padding:0;gap:0}
-.ucard + .ucard{border-top:1px solid var(--rule)}
-.uname{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 16px;border:0;background:none;text-align:left;color:inherit}
-.uname:active{background:var(--app)}
-.uname .who{flex:1;min-width:0;display:flex;flex-direction:column}
-.uname .nm{font-size:17.5px;font-weight:600;overflow-wrap:anywhere}
-.uname .sub{font-family:var(--sans);font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
-.uname .chev{flex:none;width:18px;height:18px;color:var(--ink-3);transition:transform .2s}
-.ucard.open .uname .chev{transform:rotate(90deg)}
-.upanel{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
-.upanel .facts{margin:0;overflow-wrap:anywhere}
-.upanel .link.danger{align-self:flex-start;font-size:13.5px}
-.logwrap summary{cursor:pointer;font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);padding:6px 0;font-weight:600}
+.linkbox code{flex:1;min-width:0;font-family:var(--mono);font-size:12px;overflow-wrap:anywhere;background:var(--cell);border-radius:10px;padding:8px 10px}
+@media (max-width:560px){.upanel{padding-left:16px}.ucard + .ucard::before{left:16px}}
+
+/* activity log */
+.logwrap summary{cursor:pointer;font-size:15px;font-weight:600;padding:6px 16px;list-style-position:inside}
 .logwrap .logl{margin-top:8px}
+.logl{list-style:none;margin:0;padding:0;background:var(--cell);border-radius:22px;overflow:hidden}
+.logl li{display:flex;gap:12px;padding:11px 16px;font-size:14px;line-height:1.4;letter-spacing:-.1px}
+.logl li + li{border-top:.5px solid var(--sep)}
+.logl time{flex:none;color:var(--label-2);font-variant-numeric:tabular-nums;min-width:110px}
+.logl span{min-width:0;overflow-wrap:anywhere}
+.anote{font-size:14px;color:var(--label-2);line-height:1.45;margin:0;letter-spacing:-.1px}
+.mailrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--cell);border-radius:22px;padding:12px 16px}
+.mailrow .anote{flex:1;min-width:220px}
+
+/* sign in */
+.signcard{max-width:420px;width:100%;margin:10vh auto 0;background:var(--cell);border-radius:30px;padding:26px 22px;display:flex;flex-direction:column;gap:16px}
+.signcard h1{margin:0;font-size:28px;font-weight:700;display:flex;align-items:center;gap:8px}

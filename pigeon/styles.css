@@ -343,6 +343,9 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .reqrow .ctext .one{display:block}
 .reqrow .ctext br{display:none}
 .reqrow .acts{flex:none;display:flex;gap:8px}
+.reqrow.inc{flex-wrap:wrap;row-gap:10px}
+.reqrow.inc .acts{flex-basis:100%;padding-left:48px}
+.reqrow.inc .acts .btn{flex:1}
 .viewer{position:absolute;inset:0;z-index:30;background:#000;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:16px;cursor:zoom-out;animation:fade .2s ease}
 .viewer img{max-width:100%;max-height:80%;border-radius:6px}
 .viewer p{color:rgba(255,255,255,.6);font-size:13px;margin:0;text-align:center}

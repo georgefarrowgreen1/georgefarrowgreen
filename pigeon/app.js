@@ -1061,7 +1061,7 @@ function renderSheet(refresh) {
       }
       return;
     case "requests": {
-      const row = (p, inc) => `<div class="reqrow">${avatar(p, "s")}<span class="ctext"><span class="one">${esc(p.name)}</span><br><span class="csub">@${esc(p.handle)}</span></span>
+      const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext"><span class="one">${esc(p.name)}</span><br><span class="csub">@${esc(p.handle)}</span></span>
         <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">Decline</button><button class="btn small" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">Accept</button>`
           : `<button class="btn small gray" data-act="cancelreq" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">Cancel</button>`}</span></div>`;
       $layer.innerHTML = sheetHtml("Friend Requests",
@@ -1527,7 +1527,23 @@ async function start() {
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); } });
+  setInterval(checkUpdate, UPDATE_MS);
+}
+
+/* ---------------- updates ----------------
+   The page carries a fingerprint of the app. When a newer one is live, an open
+   copy reloads itself, unless you're in the middle of something, when it asks. */
+const VERSION = document.querySelector('meta[name="inflight-version"]')?.content || "";
+const UPDATE_MS = 5 * 60 * 1000;
+async function checkUpdate() {
+  if (!VERSION || document.visibilityState !== "visible") return;
+  let live = "";
+  try { live = /name="inflight-version" content="([\w-]+)"/.exec(await (await fetch("/pigeon/", { cache: "no-store" })).text())?.[1] || ""; } catch { return; }
+  if (!live || live === VERSION) return;
+  const busy = S.sheet || S.attach || ($ta && $ta.value.trim()) || (AUTH_VIEWS.has(S.view) && S.view !== "welcome") || $(".asheet, .menu-pop");
+  if (!busy) return location.reload();
+  toast("A new version of InFlight is ready.", "Update", () => location.reload());
 }
 // When a pigeon you can see lands, fetch it straight away instead of waiting for the next poll.
 let nextLanding = 0;
