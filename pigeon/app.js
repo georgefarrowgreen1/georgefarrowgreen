@@ -498,7 +498,7 @@ function vAviary() {
   const empty = S.friends.length
     ? `<p class="empty">No scrolls yet. Tap the pen to write to someone in your flock.</p>`
     : `<p class="empty">No conversations yet. Add a friend by their handle, then send your first pigeon.</p><div class="pad"><button class="btn wide" data-act="tab" data-id="flock">Find friends</button></div>`;
-  return `<header class="hdr"><h1>The Aviary</h1><button class="round" data-act="compose" aria-label="New scroll">${I.pen}</button></header>
+  return `<header class="hdr"><h1>The Aviary <span class="beta">Beta</span></h1><button class="round" data-act="compose" aria-label="New scroll">${I.pen}</button></header>
     <div class="list">${rows}</div>${rows ? "" : empty}`;
 }
 function banner(f, t) {
@@ -618,7 +618,13 @@ function vRoost() {
     <p class="foot">${S.passkeys.length ? "Passkeys let you sign in with Face ID or your fingerprint." : "Add a passkey to sign in with Face ID or your fingerprint instead of your password."} We can’t reset your password: it’s what locks your key.</p>
     <div class="pad"><button class="btn wide ghost" data-act="signout">Sign out</button></div>
     <div class="pad"><button class="btn wide ghost danger-btn" data-act="delask">Delete my account</button></div>
-    <p class="foot">InFlight beta. Pigeons fly at ${SPEED_KMH} km/h, taking at least 5 minutes and at most 3 days. Photos are deleted 24 hours after they land.</p>
+    <div class="sect">About the beta <span class="beta">Beta</span></div>
+    <div class="card"><ul class="betalist">
+      <li>There are no notifications yet. Open InFlight to check for pigeons.</li>
+      <li>Passwords can’t be changed or reset yet, so add a passkey as a backup.</li>
+      <li>Features may change while InFlight is in beta.</li>
+    </ul></div>
+    <p class="foot">Pigeons fly at ${SPEED_KMH} km/h, taking at least 5 minutes and at most 3 days. Photos are deleted 24 hours after they land.</p>
     <div class="gap"></div>`;
 }
 function cityOptions() {
@@ -639,14 +645,14 @@ function vAuth() {
     case "loading": return `<div class="loading">Opening InFlight…</div>`;
     case "welcome": return `<div class="auth welcome">
         <div class="mark">${I.bird}</div>
-        <h1 class="word">InFlight</h1>
+        <div class="wordrow"><h1 class="word">InFlight</h1><span class="beta big">Beta</span></div>
         <p class="tagline">Letters that travel the real distance between you.</p>
         <ul class="feats">
           <li>${I.dist}<span>Each scroll flies the real miles at pigeon speed.</span></li>
           <li>${I.lock}<span>End-to-end encrypted from your very first scroll.</span></li>
           <li>${I.hourglass}<span>Photos vanish 24 hours after they land.</span></li>
         </ul>
-        <p class="fine">Beta</p>
+        <p class="fine">InFlight is in beta, so things may change as it grows.</p>
         <div class="stack">
           <button class="btn big" data-act="to" data-id="signup">Create an account</button>
           <button class="btn big ghost" data-act="to" data-id="signin">Sign in</button>
@@ -742,7 +748,7 @@ function renderTabs() {
   const cur = S.view === "chat" ? "aviary" : S.view;
   const tab = (id, label, icon, badge) => `<button class="tab" data-act="tab" data-id="${id}" aria-current="${cur === id}">${badge ? `<span class="badge">${badge}</span>` : ""}${icon}<span>${label}</span></button>`;
   $tabbar.innerHTML = `<div class="tabs">${tab("aviary", "Aviary", I.aviary, unread)}${tab("flock", "Flock", I.bird, S.incoming.length)}${tab("roost", "Roost", I.roost, 0)}</div>`;
-  document.title = unread ? `(${unread}) InFlight` : "InFlight";
+  document.title = unread ? `(${unread}) InFlight Beta` : "InFlight Beta";
 }
 const sheetHtml = (title, body, flush) => `<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-label="${esc(title)}"><header><h3>${esc(title)}</h3><button class="done" data-act="close">Done</button></header><div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 function renderSheet() {

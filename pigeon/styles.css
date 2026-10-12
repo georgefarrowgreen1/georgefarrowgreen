@@ -325,3 +325,9 @@ svg.bird{fill:currentColor}
 .sheet .fields{padding:0 16px}
 .defs{position:absolute;width:0;height:0;overflow:hidden}
 .inp select{flex:1;min-width:0;border:0;background:none;padding:12px 10px 12px 0;font-size:17px;font-family:var(--sans);color:var(--ink);outline:none}
+.beta{display:inline-block;vertical-align:middle;font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;line-height:1;color:var(--bark);border:1.5px solid currentColor;border-radius:6px;padding:3px 6px 2px;margin-left:4px;position:relative;top:-2px}
+.beta.big{font-size:12px;padding:4px 8px 3px;margin:0;top:0}
+.wordrow{display:flex;align-items:center;gap:10px;margin-top:6px}
+.wordrow .word{margin:0!important}
+.sect .beta{margin-left:0;top:0}
+.betalist{margin:0;padding:12px 16px 12px 34px;display:flex;flex-direction:column;gap:8px;font-size:15.5px;line-height:1.4}
