@@ -1,7 +1,7 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, msgView, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, msgView, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
@@ -15,9 +15,9 @@ const MAX_CT = 70000;                 // an encrypted scroll (2,000 characters o
 const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 
 function meView(u, t) {
-  const s = swiftState(u, t);
+  const s = swiftState(u, t), tb = loft(u, "turbo", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -322,7 +322,7 @@ async function listMessages({ request, env }) {
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
   const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
     ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other).all();
-  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count });
+  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -345,24 +345,27 @@ async function sendMessage({ request, env, waitUntil }) {
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
   const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(to).first();
 
-  // Free when the pigeon is on your windowsill; otherwise it costs a swift pigeon and flies twice as fast.
+  // Standard pigeons are free but only fly when it's your turn. Swift (2×) and
+  // turbo (3×) fly any time, and each one sent leaves the loft. A phone that
+  // doesn't say which (older versions) sends standard if it can, else swift.
   const tn = turn(u.id, await lastBetween(D, u.id, to), t);
-  let swift = 0;
-  if (!tn.free) {
-    const s = swiftState(u, t);
-    if (s.count <= 0) throw new HttpError(409, "No swift pigeons left. One hatches every day.");
-    const [n, at] = s.count >= SWIFT_MAX ? [SWIFT_MAX - 1, t] : [s.count - 1, u.swift_at + s.hatched * DAY];
-    await D.prepare("UPDATE pg_users SET swift = ?, swift_at = ? WHERE id = ?").bind(n, at, u.id).run();
-    swift = 1;
+  const kind = PIGEONS[meta.pigeon] ? meta.pigeon : tn.free ? "standard" : "swift";
+  if (kind === "standard" && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift or turbo pigeon to write now.");
+  if (kind !== "standard") {
+    const p = PIGEONS[kind], l = loft(u, kind, t);
+    if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
+    const [n, at] = l.count >= p.max ? [p.max - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
+    await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ?`).bind(n, at, u.id).run();
   }
+  const swift = kind === "standard" ? 0 : 1;
   const hasTo = r && r.lat != null;
   const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
-  const deliver = t + flightMs(km, swift);
+  const deliver = t + flightMs(km, PIGEONS[kind].speed);
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
-    await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, km, t, deliver, photo ? deliver + PHOTO_TTL : null,
+    await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, km, sent_at, deliver_at, expires_at,
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, km, t, deliver, photo ? deliver + PHOTO_TTL : null,
         u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null).run();
   } catch (e) {
     if (photo) await env.BIO_R2.delete(`pigeon/${id}`);
@@ -370,7 +373,7 @@ async function sendMessage({ request, env, waitUntil }) {
     throw e;
   }
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
-  waitUntil(pigeonSent(env, u, to, deliver).catch(() => {}));
+  waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));
   return json({ message: msgView(u.id, m, t) });
 }
 

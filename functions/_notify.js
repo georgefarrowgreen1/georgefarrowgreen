@@ -162,11 +162,11 @@ export async function friendAccepted(env, by, toId) {
   await pushTo(env, toId, { title: r.p.names ? "New friend" : "InFlight", body: r.p.names ? `${by.name} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
 }
 // A friend has just sent you a pigeon (off unless you turn it on).
-export async function pigeonSent(env, from, toId, deliverAt) {
+export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") {
   const r = await userPrefs(env, toId); if (!r || !r.p.takeoff || isQuiet(r.p)) return;
   const ms = deliverAt - Date.now(), h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN));
   const eta = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`;
-  await pushTo(env, toId, { title: r.p.names ? firstName(from.name) : "InFlight", body: r.p.names ? `Sent you a pigeon. It lands in ${eta}.` : `A pigeon is on its way to you. It lands in ${eta}.`,
+  await pushTo(env, toId, { title: r.p.names ? firstName(from.name) : "InFlight", body: r.p.names ? `Sent you a ${kind === "standard" ? "" : kind + " "}pigeon. It lands in ${eta}.` : `A ${kind === "standard" ? "" : kind + " "}pigeon is on its way to you. It lands in ${eta}.`,
     tag: "from-" + from.id, url: `/pigeon/#open=${from.id}` });
 }
 

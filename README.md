@@ -195,6 +195,12 @@ No new setup is needed: it uses the `DB` and `BIO_R2` bindings already in
 them itself): R2 → `bio-media` → Settings → Object lifecycle rules → delete
 objects with prefix `pigeon/` after 5 days.
 
+**Pigeons.** Three kinds. *Standard* (green) flies at 80 km/h and is free, but
+only when it's your turn (the pigeon is on your windowsill). *Swift* (red, 2×,
+up to 9, one hatching every 2h 40m) and *Turbo* (black, 3×, up to 3, one every
+8 hours) fly any time and each send uses one. The phone picks in the message
+box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
+
 **Encryption.** Each phone makes an ECDH P-256 key pair. Two friends' keys give
 them a shared secret, and each scroll is sealed with its own AES-256-GCM key
 derived from it. Photos get a random key that travels inside the sealed scroll.

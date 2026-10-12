@@ -13,7 +13,15 @@ export const SPEED_KMH = 80;             // a homing pigeon's cruising speed
 export const MIN_FLIGHT = 5 * MIN;
 export const MAX_FLIGHT = 3 * DAY;
 export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they land
-export const SWIFT_MAX = 7;              // spare pigeons; one hatches per day
+export const SWIFT_MAX = 9;              // swift pigeons: 2× speed, 9 a day
+export const TURBO_MAX = 3;              // turbo pigeons: 3× speed, 3 a day
+// Three kinds of pigeon. Standard is free but waits its turn; swift and turbo
+// can fly any time and come from a loft that refills through the day.
+export const PIGEONS = {
+  standard: { speed: 1 },
+  swift: { speed: 2, max: SWIFT_MAX, every: DAY / SWIFT_MAX, col: "swift", atCol: "swift_at" },
+  turbo: { speed: 3, max: TURBO_MAX, every: DAY / TURBO_MAX, col: "turbo", atCol: "turbo_at" },
+};
 export const DEFAULT_KM = 500;           // if the recipient hasn't set a roost
 export const HANDLE_EVERY = DAY;         // handles can change once a day
 export const MAX_AVATAR = 400 * 1024;    // the phone sends a 512px JPEG, well under this
@@ -101,7 +109,10 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN email_at INTEGER",    // last notification email
   "ALTER TABLE pg_users ADD COLUMN unsub TEXT",          // token for the unsubscribe link
   "ALTER TABLE pg_users ADD COLUMN notify_prefs TEXT",  // notification settings (JSON), defaults if null
-  "ALTER TABLE pg_users ADD COLUMN appearance TEXT",    // light, dark or auto; null until first chosen
+  "ALTER TABLE pg_users ADD COLUMN appearance TEXT",
+  "ALTER TABLE pg_users ADD COLUMN turbo INTEGER",       // turbo pigeons in the loft; null = full
+  "ALTER TABLE pg_users ADD COLUMN turbo_at INTEGER",
+  "ALTER TABLE pg_msgs ADD COLUMN pigeon TEXT",          // standard, swift or turbo (older rows: from swift)    // light, dark or auto; null until first chosen
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -173,9 +184,9 @@ export function haversineKm(aLat, aLon, bLat, bLon) {
   const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(s));
 }
-export function flightMs(km, swift) {
+export function flightMs(km, speed = 1) {
   const t = Math.min(MAX_FLIGHT, Math.max(MIN_FLIGHT, (km / SPEED_KMH) * HOUR));
-  return swift ? t / 2 : t;
+  return t / (speed === true ? 2 : speed || 1);
 }
 // The pigeon shuttles between two people: you may send for free only when it's on your windowsill.
 export function turn(me, last, t) {
@@ -184,18 +195,23 @@ export function turn(me, last, t) {
   if (t < last.deliver_at) return { free: false, state: "inbound" };
   return { free: true, state: "sill" };
 }
-export function swiftState(u, t) {
-  const hatched = Math.max(0, Math.floor((t - u.swift_at) / DAY));
-  const count = Math.min(SWIFT_MAX, u.swift + hatched);
-  return { count, hatched, nextAt: count >= SWIFT_MAX ? null : u.swift_at + (hatched + 1) * DAY };
+// How many swift or turbo pigeons are in the loft. One hatches every
+// `every` until it's full; a loft that's never been used starts full.
+export function loft(u, kind, t) {
+  const p = PIGEONS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
+  const hatched = Math.max(0, Math.floor((t - at) / p.every));
+  const count = Math.min(p.max, have + hatched);
+  return { count, hatched, at, nextAt: count >= p.max ? null : at + (hatched + 1) * p.every };
 }
+export const swiftState = (u, t) => loft(u, "swift", t);
 
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
 export function msgView(me, m, t) {
   const flying = t < m.deliver_at;
   return {
-    id: m.id, from: m.sender, to: m.recipient, swift: !!m.swift, km: m.km,
+    id: m.id, from: m.sender, to: m.recipient, km: m.km,
+    pigeon: m.pigeon || (m.swift ? "swift" : "standard"), swift: (m.pigeon || (m.swift ? "swift" : "standard")) === "swift",
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: m.expires_at, readAt: m.read_at,
     photo: m.photo, photoSize: m.photo_size, flying,
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],

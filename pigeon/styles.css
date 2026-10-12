@@ -23,6 +23,7 @@
   --glass-shadow:0 8px 28px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
   --scrim:rgba(0,0,0,.22);
   --sea:#d3e6f5; --land:#f8f6f1; --land-edge:#ddd8cc; --border:#c4bcab; --grid:rgba(0,0,0,.04);
+  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-ring:transparent;   /* pigeon kinds */
   --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --mono:ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme:light;
@@ -37,7 +38,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(58,58,64,.86); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
@@ -49,7 +50,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(58,58,64,.86); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-ring:rgba(255,255,255,.32);
     color-scheme:dark;
   }
 }
@@ -530,3 +531,29 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @keyframes shake{15%{transform:translateX(-9px)}35%{transform:translateX(7px)}55%{transform:translateX(-5px)}75%{transform:translateX(3px)}}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ---------- pigeon kinds: green standard, red swift, black turbo ---------- */
+.pg{flex:none;display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;background:var(--pg);color:#fff;box-shadow:0 0 0 1px var(--p-ring);vertical-align:-.35em}
+.pg svg{font-size:.9em}
+.pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}
+.tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
+.dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
+/* the picker above the message box */
+.pick{display:flex;gap:8px;justify-content:center}
+.pick button{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 10px;border:0;border-radius:999px;font-size:14px;font-weight:600;color:var(--label);
+  background:var(--glass);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge);
+  transition:background-color .3s,color .3s,transform .45s var(--snappy),opacity .3s}
+.pick button b{font-weight:600;opacity:.7;font-variant-numeric:tabular-nums}
+.pick button:active{transform:scale(.94)}
+.pick button[aria-pressed="true"]{background:var(--pg);color:#fff;box-shadow:0 0 0 1px var(--p-ring),0 6px 16px color-mix(in srgb,var(--pg) 35%,transparent)}
+.pick button[aria-pressed="true"] .pg{background:rgba(255,255,255,.22);box-shadow:none}
+.pick button[aria-pressed="true"] b{opacity:.85}
+.pick button:disabled{opacity:.4}
+.pick .standard{--pg:var(--p-standard)}.pick .swift{--pg:var(--p-swift)}.pick .turbo{--pg:var(--p-turbo)}
+.note .pg{font-size:12px}
+.note.go{color:var(--label-2)}
+.fly .t1 .pg{font-size:15px;animation:bob 1.6s ease-in-out infinite}
+.fly .t1 .pg svg,.mapcard .big .pg svg,.mrow .mprev .pg svg{color:#fff;font-size:.9em;animation:none;margin:0;vertical-align:0}
+.mrow .mprev .pg{font-size:11px;margin-right:2px}
+.meta .fl .pg{font-size:10px;margin-right:1px}
+.mapcard .big .pg{font-size:16px}

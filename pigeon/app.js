@@ -5,7 +5,12 @@ import { LAND } from "./land.js";
 import { PLACES, nearestPlace } from "./places.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
-const SPEED_KMH = 80, SWIFT_MAX = 7;
+const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3;
+// Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
+// swift and turbo fly any time and come from lofts that refill through the day.
+const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX]];
+const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
+const kindOf = (m) => (KIND[m?.pigeon] ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
 const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
 
@@ -126,7 +131,7 @@ function haversineKm(aLat, aLon, bLat, bLon) {
   const r = Math.PI / 180, s = Math.sin((bLat - aLat) * r / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin((bLon - aLon) * r / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(s));
 }
-const flightMs = (km) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SPEED_KMH) * HOUR));
+const flightMs = (km, speed = 1) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SPEED_KMH) * HOUR)) / speed;
 
 /* ---------------- icons ---------------- */
 const BIRD = document.getElementById("bird-path").getAttribute("d");
@@ -352,7 +357,7 @@ function drawMap(cv, m, cardH) {
   }
   const bird = new Path2D(BIRD), flip = P[N][0] > P[0][0] ? -1 : 1;   // the icon faces left
   g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
-  g.lineWidth = 3; g.strokeStyle = col("--cell"); g.stroke(bird); g.fillStyle = col("--label"); g.fill(bird);
+  g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(bird); g.fillStyle = col("--p-" + kindOf(m)); g.fill(bird);   // the pigeon in its colour
   g.restore();
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
 }
@@ -635,6 +640,7 @@ function mount() {
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="view"></div>
     <form class="compose" hidden data-form="compose">
+      <div class="pick" hidden role="group" aria-label="Which pigeon"></div>
       <div class="note" hidden></div>
       <div class="attach" hidden></div>
       <div class="crow">
@@ -764,12 +770,13 @@ const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => 
     ${val != null ? `<span class="val">${val}</span>` : ""}${chev ? I.chev.replace('class="ico"', 'class="ico chev"') : ""}</${t}>`;
 };
 const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
+const pg = (kind) => `<span class="pg ${kind}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour
 
 function preview(f) {
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
-  if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${I.bird}In flight · <span data-eta="${l.deliverAt}"></span> to go</span>`, at: l.sentAt };
-  if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${I.bird}A pigeon is on its way…</span>`, at: l.sentAt };
+  if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} In flight · <span data-eta="${l.deliverAt}"></span> to go</span>`, at: l.sentAt };
+  if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
   const body = p.bad ? "Couldn’t open this message" : p.p ? (l.photo === 2 ? "Photo (expired)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
@@ -816,7 +823,9 @@ function vFriends() {
 /* ---------- Account ---------- */
 function vAccount() {
   const u = S.me;
-  const dots = Array.from({ length: SWIFT_MAX }, (_, i) => `<i class="${i < u.swift ? "" : "e"}"></i>`).join("");
+  const dots = (kind) => Array.from({ length: KIND[kind].max }, (_, i) => `<i class="${i < (u[kind] || 0) ? "" : "e"}"></i>`).join("");
+  const loftVal = (kind) => `<span class="dots ${kind}" role="img" aria-label="${u[kind] || 0} of ${KIND[kind].max}">${dots(kind)}</span>`;
+  const hatch = (kind) => (u[kind] || 0) >= KIND[kind].max ? "full" : `next in <span data-eta="${u[kind + "NextAt"]}"></span>`;
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
@@ -830,8 +839,12 @@ function vAccount() {
     </div>
     <div class="gfoot">Pigeons fly from here. It’s kept to about 10 km, and only your friends see it.</div>
     <div class="ghead">Pigeons</div>
-    <div class="group">${cell({ icon: I.bird, tile: "orange", label: "Swift Pigeons", val: `<span class="dots" role="img" aria-label="${u.swift} of ${SWIFT_MAX}">${dots}</span>` })}</div>
-    <div class="gfoot">${u.swift >= SWIFT_MAX ? "Your loft is full." : `The next one hatches in <span data-eta="${u.swiftNextAt}"></span>.`} Swift pigeons fly twice as fast and let you write when it isn’t your turn.</div>
+    <div class="group">
+      ${cell({ icon: I.bird, tile: "turbo", label: "Turbo", sub: `3× faster · 3 a day · ${hatch("turbo")}`, val: loftVal("turbo") })}
+      ${cell({ icon: I.bird, tile: "swift", label: "Swift", sub: `2× faster · 9 a day · ${hatch("swift")}`, val: loftVal("swift") })}
+      ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free whenever it’s your turn" })}
+    </div>
+    <div class="gfoot">A standard pigeon flies when it’s on your windowsill. Swift and turbo pigeons fly any time, and new ones hatch through the day.</div>
     <div class="ghead">Appearance</div>
     <div class="group">${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}</div>
     ${notifySection(u)}
@@ -939,8 +952,8 @@ function bubble(f, m, isLastMine, gapTop) {
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
   if (!mine && m.flying) {
     return `<button class="fly${fresh}" data-act="map" data-id="${m.id}" aria-label="Watch the pigeon on the map">
-      <span class="t1">${I.bird}<span>On its way</span></span>
-      <span class="t2"><b><span data-eta="${m.deliverAt}"></span> away</b><span>${fmtMiles(m.km)}${m.swift ? " · swift" : ""}</span></span>
+      <span class="t1">${pg(kindOf(m))}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}</span></span>
+      <span class="t2"><b><span data-eta="${m.deliverAt}"></span> away</b><span>${fmtMiles(m.km)}</span></span>
       <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span></button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
@@ -955,7 +968,7 @@ function bubble(f, m, isLastMine, gapTop) {
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
-  if (mine && m.flying) meta.push(`<span class="fl">In flight · <span data-eta="${m.deliverAt}"></span> to go${m.swift ? " · swift" : ""}</span>`);
+  if (mine && m.flying) meta.push(`<span class="fl">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${m.expiresAt}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
@@ -1118,16 +1131,34 @@ async function resetWith(mode, btn) {
 function renderCompose() {
   const show = S.view === "chat" && !!S.chat && !!friend(S.chat) && !!S.me;
   $compose.hidden = !show; if (!show) return;
-  const f = friend(S.chat), t = S.turns.get(f.id) || f.turn, sw = S.me.swift;
-  const note = $(".note", $compose), btn = $(".send", $compose);
+  const f = friend(S.chat), t = S.turns.get(f.id) || f.turn;
+  const note = $(".note", $compose), btn = $(".send", $compose), pick = $(".pick", $compose);
   const has = $ta.value.trim() || S.attach;
+  // which pigeons can fly now: your choice if it can, else the slowest that can
+  const can = { standard: !!t.free, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0 };
+  const kind = can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
+  S.sendKind = kind;
+  if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${k}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("");
+  for (const b of pick.children) {
+    const k = b.dataset.id;
+    b.disabled = !can[k]; b.setAttribute("aria-pressed", String(k === kind));
+    b.querySelector("b").textContent = k === "standard" ? "" : String(S.me[k] || 0);
+    b.setAttribute("aria-label", `${KIND[k].name} pigeon${k === "standard" ? "" : `, ${S.me[k] || 0} left`}`);
+  }
   let blocked = false;
+  pick.hidden = !!f.keyChanged || S.me.lat == null;
   if (S.err) { note.hidden = false; note.className = "note stop"; note.textContent = S.err; }
   else if (f.keyChanged) { note.hidden = false; note.className = "note stop"; note.textContent = "Check the new safety number before sending."; blocked = true; }
   else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your location in Account before sending."; blocked = true; }
-  else if (t.free) note.hidden = true;
-  else if (sw > 0) { note.hidden = false; note.className = "note"; note.innerHTML = `${I.bird}<span>Sends with a swift pigeon (${sw} left), 2× faster.</span>`; }
-  else { note.hidden = false; note.className = "note stop"; note.textContent = `No swift pigeons left. The next hatches in ${fmtDur(S.me.swiftNextAt - now())}.`; blocked = true; }
+  else if (!kind) {
+    const next = Math.min(...["swiftNextAt", "turboNextAt"].map((x) => S.me[x] || Infinity));
+    note.hidden = false; note.className = "note stop"; blocked = true;
+    note.textContent = `It isn’t your turn, and your lofts are empty. The next pigeon hatches in ${fmtDur(next - now())}.`;
+  } else {
+    const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500;
+    note.hidden = false; note.className = "note go";
+    note.innerHTML = `${pg(kind)}<span>${t.free ? "" : "Not your turn for a standard pigeon. "}${KIND[kind].name} lands in ${fmtDur(flightMs(km, KIND[kind].speed))}.</span>`;
+  }
   btn.disabled = blocked || !has || S.busy;
   $ta.disabled = blocked && !S.err;
   const a = $(".attach", $compose);
@@ -1349,9 +1380,9 @@ function tickMap() {
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !m.route) return;
   const left = m.deliverAt - now();
-  card.innerHTML = `<span class="big">${I.bird}<span>${left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
+  card.innerHTML = `<span class="big">${pg(kindOf(m))}<span>${left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span>
-    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${m.swift ? " · swift" : ""}</span></span>`;
+    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}</span></span>`;
   setProgress(card);
   drawMap(cv, m, card.offsetHeight + 14);
 }
@@ -1513,6 +1544,7 @@ async function onClick(e) {
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
+    case "pigeon": S.pick = id; return renderCompose();
     case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
@@ -1718,10 +1750,11 @@ async function send() {
     let r;
     if (blob) {
       const form = new FormData();
-      form.append("meta", JSON.stringify({ id, to, ct }));
+      form.append("meta", JSON.stringify({ id, to, ct, pigeon: S.sendKind }));
       form.append("photo", new Blob([blob], { type: "application/octet-stream" }), "photo.bin");
       r = await api("messages", { method: "POST", form });
-    } else r = await api("messages", { method: "POST", body: { id, to, ct } });
+    } else r = await api("messages", { method: "POST", body: { id, to, ct, pigeon: S.sendKind } });
+    S.pick = null;                    // next time, back to the default
     S.plain.set(id, payload);
     if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
     $ta.value = ""; fitTa(); S.stick = true;
