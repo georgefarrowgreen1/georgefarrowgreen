@@ -1,12 +1,12 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, msgView, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, msgView, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
-import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, prefsOf, cleanPrefs } from "../../_notify.js";
+import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -17,7 +17,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, locAt: u.loc_at || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -85,7 +85,31 @@ function waitText(ms) {
   const h = Math.floor(ms / 3600e3), m = Math.ceil((ms % 3600e3) / 60e3);
   return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
 }
-async function updateMe({ request, env }) {
+// The recipient has moved: every pigeon flying to them turns in mid-air and
+// heads for the new spot from wherever it is now, at its own speed. The turn
+// point is kept so the map can draw the path. A pigeon still can't take
+// longer than its 3-day limit from when it was sent.
+async function reroute(env, u, p, t, waitUntil) {
+  const D = await db(env);
+  const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ? AND deliver_at > ? AND to_lat IS NOT NULL").bind(u.id, t).all();
+  for (const m of results) {
+    const legs = m.legs ? JSON.parse(m.legs) : [];
+    const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [m.from_lat, m.from_lon, m.sent_at];
+    const f = Math.min(1, Math.max(0, (t - sAt) / (m.deliver_at - sAt)));
+    const [pLat, pLon] = gcPoint(sLat, sLon, m.to_lat, m.to_lon, f);           // where it is right now
+    const ahead = haversineKm(pLat, pLon, p.lat, p.lon);
+    const speed = PIGEONS[m.pigeon || (m.swift ? "swift" : "standard")].speed;
+    const latest = m.sent_at + MAX_FLIGHT / speed;
+    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / SPEED_KMH) * 3600e3 / speed));
+    const km = Math.max(0, m.km - haversineKm(pLat, pLon, m.to_lat, m.to_lon)) + ahead;
+    legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
+    const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?,
+      expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ?`)
+      .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), deliver + PHOTO_TTL, m.id, t).run();
+    if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
+  }
+}
+async function updateMe({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env), t = Date.now();
   if (b.handle !== undefined) {
@@ -111,9 +135,13 @@ async function updateMe({ request, env }) {
     await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
   if (b.notifyEmail !== undefined)
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
+  if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
   if (b.lat !== undefined) {
     const p = cleanPlace(b);
-    await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ? WHERE id = ?").bind(p.lat, p.lon, p.place, u.id).run();
+    const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
+    if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 4, 15 * 60e3);    // no bouncing pigeons about
+    await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = ? WHERE id = ?").bind(p.lat, p.lon, p.place, t, u.id).run();
+    if (u.lat != null && moved > REROUTE_KM) await reroute(env, u, p, t, waitUntil);
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ me: meView(fresh, Date.now()) });
@@ -288,7 +316,7 @@ async function sync({ request, env, waitUntil }) {
   const ids = [...new Set(links.map(other))];
   const people = new Map();
   if (ids.length) {
-    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, avatar_at FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, avatar_at FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
     for (const p of results) people.set(p.id, p);
   }
   const { results: lasts } = await D.prepare(`
@@ -305,7 +333,7 @@ async function sync({ request, env, waitUntil }) {
     const p = people.get(other(l)); if (!p) continue;
     if (l.status === "ok") {
       const last = lastBy.get(p.id);
-      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place,
+      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
         last: last ? msgView(u.id, last, t) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push(brief(p));

@@ -201,6 +201,14 @@ up to 9, one hatching every 2h 40m) and *Turbo* (black, 3×, up to 3, one every
 8 hours) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Moving about.** When someone's location changes by more than 5 km, every
+pigeon flying to them turns in mid-air and heads from where it is to the new
+spot, at its own speed (still within its 3-day limit); the turn is stored in
+`pg_msgs.legs` and drawn on the map, and the sender is told (a notification
+setting). Location changes are limited to 4 per 15 minutes. *Update
+Automatically* (off by default) refreshes your location each time you open
+InFlight, only if location permission was already given.
+
 **Encryption.** Each phone makes an ECDH P-256 key pair. Two friends' keys give
 them a shared secret, and each scroll is sealed with its own AES-256-GCM key
 derived from it. Photos get a random key that travels inside the sealed scroll.

@@ -22,7 +22,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, requests: true, accepted: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, requests: true, accepted: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -31,7 +31,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "requests", "accepted", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "requests", "accepted", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -160,6 +160,14 @@ export async function friendRequested(env, origin, from, toId) {
 export async function friendAccepted(env, by, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.accepted || isQuiet(r.p)) return;
   await pushTo(env, toId, { title: r.p.names ? "New friend" : "InFlight", body: r.p.names ? `${by.name} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
+}
+// The person you sent a pigeon to moved, so it changed course.
+export async function pigeonRerouted(env, senderId, to, deliverAt) {
+  const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p)) return;
+  const ms = deliverAt - Date.now(), h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN));
+  const eta = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`;
+  await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",
+    body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${eta}.`, tag: "course-" + to.id, url: `/pigeon/#open=${to.id}` });
 }
 // A friend has just sent you a pigeon (off unless you turn it on).
 export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") {

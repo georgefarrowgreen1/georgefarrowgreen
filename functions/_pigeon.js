@@ -112,7 +112,10 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN appearance TEXT",
   "ALTER TABLE pg_users ADD COLUMN turbo INTEGER",       // turbo pigeons in the loft; null = full
   "ALTER TABLE pg_users ADD COLUMN turbo_at INTEGER",
-  "ALTER TABLE pg_msgs ADD COLUMN pigeon TEXT",          // standard, swift or turbo (older rows: from swift)    // light, dark or auto; null until first chosen
+  "ALTER TABLE pg_msgs ADD COLUMN pigeon TEXT",          // standard, swift or turbo (older rows: from swift)
+  "ALTER TABLE pg_msgs ADD COLUMN legs TEXT",            // course changes: JSON [[lat, lon, at], ...] where it turned
+  "ALTER TABLE pg_users ADD COLUMN loc_at INTEGER",      // when the location last changed
+  "ALTER TABLE pg_users ADD COLUMN auto_loc INTEGER NOT NULL DEFAULT 0",   // update location on opening the app    // light, dark or auto; null until first chosen
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -178,6 +181,18 @@ export async function requireUser(request, env) {
 }
 
 /* ---------------- flights ---------------- */
+// The point a fraction f of the way along the great circle from a to b.
+export function gcPoint(aLat, aLon, bLat, bLon, f) {
+  const r = Math.PI / 180;
+  const v = (la, lo) => [Math.cos(la * r) * Math.cos(lo * r), Math.cos(la * r) * Math.sin(lo * r), Math.sin(la * r)];
+  const A = v(aLat, aLon), B = v(bLat, bLon);
+  const w = Math.acos(Math.min(1, Math.max(-1, A[0] * B[0] + A[1] * B[1] + A[2] * B[2])));
+  if (w < 1e-9) return [aLat, aLon];
+  const s1 = Math.sin((1 - f) * w) / Math.sin(w), s2 = Math.sin(f * w) / Math.sin(w);
+  const x = s1 * A[0] + s2 * B[0], y = s1 * A[1] + s2 * B[1], z = s1 * A[2] + s2 * B[2];
+  return [Math.atan2(z, Math.hypot(x, y)) / r, Math.atan2(y, x) / r];
+}
+export const REROUTE_KM = 5;             // smaller moves don't turn pigeons around
 export function haversineKm(aLat, aLon, bLat, bLon) {
   const R = 6371, r = Math.PI / 180;
   const dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r;
@@ -215,6 +230,7 @@ export function msgView(me, m, t) {
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: m.expires_at, readAt: m.read_at,
     photo: m.photo, photoSize: m.photo_size, flying,
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
+    legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at]
     fromPlace: m.from_place, toPlace: m.to_place,
     ct: flying && m.recipient === me ? null : m.ct,
   };

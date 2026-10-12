@@ -246,15 +246,28 @@ function gcPoint(a, b, f) {
 const cssVar = (el, n) => getComputedStyle(el).getPropertyValue(n).trim();
 const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // The route, as points along the great circle (longitudes unwrapped so it never jumps the date line).
+// The route as points along great circles, each with the time the pigeon is
+// there. A pigeon that changed course (its friend moved) flies several legs.
 function routePts(m) {
-  const a = { lat: m.route[0], lon: m.route[1] }, b = { lat: m.route[2], lon: m.route[3] };
-  const N = 96, pts = []; let prev = null;
-  for (let i = 0; i <= N; i++) {
-    const p = gcPoint(a, b, i / N);
-    if (prev != null) { while (p.lon - prev > 180) p.lon -= 360; while (p.lon - prev < -180) p.lon += 360; }
-    prev = p.lon; pts.push({ x: p.lon, y: mercY(p.lat) });
+  const stops = [[m.route[0], m.route[1], m.sentAt], ...(m.legs || []), [m.route[2], m.route[3], m.deliverAt]];
+  const pts = []; let prev = null;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [aLat, aLon, aT] = stops[i], [bLat, bLon, bT] = stops[i + 1], n = stops.length === 2 ? 96 : 48;
+    for (let j = i ? 1 : 0; j <= n; j++) {
+      const p = gcPoint({ lat: aLat, lon: aLon }, { lat: bLat, lon: bLon }, j / n);
+      if (prev != null) { while (p.lon - prev > 180) p.lon -= 360; while (p.lon - prev < -180) p.lon += 360; }   // never jump the date line
+      prev = p.lon; pts.push({ x: p.lon, y: mercY(p.lat), t: aT + (bT - aT) * j / n });
+    }
+    if (i < stops.length - 2) pts[pts.length - 1].turn = true;
   }
   return pts;
+}
+// Where the pigeon is now along those points, and which way it's heading.
+function pigeonOn(P, pts) {
+  const t = now(), i = pts.findIndex((p) => p.t >= t);
+  if (i <= 0) return { at: P[i < 0 ? P.length - 1 : 0], dx: P[P.length - 1][0] - P[0][0] };
+  const f = (t - pts[i - 1].t) / Math.max(1, pts[i].t - pts[i - 1].t);
+  return { at: [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f], dx: P[i][0] - P[i - 1][0] };
 }
 // Where the map sits: the whole route in view, unless the person has moved it.
 function mapFrame(cv, m, cardH) {
@@ -318,8 +331,8 @@ function drawMap(cv, m, cardH) {
   const N = pts.length - 1, P = pts.map((p) => [X(p.x), Y(p.y)]);
   g.strokeStyle = col("--tint"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
   g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.setLineDash([]);
-  const f = Math.min(1, Math.max(0, (now() - m.sentAt) / (m.deliverAt - m.sentAt)));
-  const [px, py] = P[Math.round(f * N)];
+  pts.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
+  const here = pigeonOn(P, pts), [px, py] = here.at;
   // labels claim space in priority order; anything that would overlap is left out
   const taken = [[px - 24, py - 20, px + 24, py + 20], [0, H - cardH, W, H]];
   const ctlEl = $(".mapctl", $layer);
@@ -355,7 +368,7 @@ function drawMap(cv, m, cardH) {
       }
     }
   }
-  const bird = new Path2D(BIRD), flip = P[N][0] > P[0][0] ? -1 : 1;   // the icon faces left
+  const bird = new Path2D(BIRD), flip = here.dx > 0 ? -1 : 1;   // the icon faces left; turn it the way it's flying
   g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
   g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(bird); g.fillStyle = col("--p-" + kindOf(m)); g.fill(bird);   // the pigeon in its colour
   g.restore();
@@ -839,12 +852,13 @@ function vAccount() {
     <div class="gfoot">You get 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
     <div class="ghead">Location</div>
     <div class="group">
-      ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set") })}
+      ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set"), sub: u.locAt ? `Updated ${agoText(u.locAt)}` : "" })}
       ${cell({ act: "locate", icon: I.loc, tile: "blue", label: "Use Current Location", cls: "action" })}
       <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
         <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
+      ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Each time you open InFlight", on: u.autoLocation })}
     </div>
-    <div class="gfoot">Pigeons fly from here. Only your friends see it, and only to within about a mile.</div>
+    <div class="gfoot">Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile.</div>
     <div class="group mt">
       ${notifyCell(u)}
       ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
@@ -897,6 +911,7 @@ function vNotifySheet() {
     <div class="group">
       ${t("landed", I.bird, "orange", "A Pigeon Lands")}
       ${t("takeoff", I.up, "teal", "A Pigeon Takes Off", "When a friend sends you one")}
+      ${t("rerouted", I.loc, "blue", "A Pigeon Changes Course", "When a friend moves while yours is flying")}
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
     </div>
@@ -965,7 +980,7 @@ function bubble(f, m, isLastMine, gapTop) {
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
-  if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go</span>`);
+  if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${m.expiresAt}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
@@ -1318,7 +1333,7 @@ function drawSheet(refresh) {
       const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
       $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl")}<span class="name">${esc(f.name)}</span><span class="sub">@${esc(f.handle)}</span></div>
         <div class="group mt">
-          ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set") })}
+          ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set"), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
           ${km != null ? KINDS.slice().reverse().map(([k, name, speed]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, speed)) })).join("") : ""}
         </div>
@@ -1552,6 +1567,7 @@ async function onClick(e) {
     case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; return renderCompose();
+    case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
@@ -1592,6 +1608,31 @@ async function onChange(e) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);
   }
+}
+const agoText = (at) => { const ms = now() - at; return ms < 2 * MIN ? "just now" : `${fmtDur(ms)} ago`; };
+// Opt-in: refresh your location when InFlight opens, so pigeons on their way
+// can follow you. It never asks for permission by itself (only when you turn
+// it on), checks at most every 15 minutes, and ignores moves under 5 km.
+const AUTO_EVERY = 15 * MIN, AUTO_KM = 5;
+async function setAutoLocation(on, btn) {
+  try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); S.me = r.me; render(); }
+  catch (err) { return toast(esc(err.message)); }
+  if (on) { try { localStorage.removeItem("inflight-autoloc"); } catch (_) {} autoLocate(true); }
+}
+async function autoLocate(ask) {
+  if (!S.me?.autoLocation || !navigator.geolocation) return;
+  let last = 0; try { last = +localStorage.getItem("inflight-autoloc") || 0; } catch (_) {}
+  if (!ask && Date.now() - last < AUTO_EVERY) return;
+  if (!ask) { try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state !== "granted") return; } catch (_) { return; } }
+  try { localStorage.setItem("inflight-autoloc", String(Date.now())); } catch (_) {}
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const { lat, lon } = snapToMile(pos.coords.latitude, pos.coords.longitude);
+    if (S.me.lat != null && haversineKm(S.me.lat, S.me.lon, lat, lon) < AUTO_KM) return;
+    const place = nearestPlace(lat, lon);
+    try { const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me; render(); toast(`Location updated to ${esc(place)}.`); }
+    catch (_) { /* try again next time */ }
+  }, (err) => { if (ask && err.code === 1) toast("Location is off for this site. Allow it in your browser settings to update automatically."); },
+  { enableHighAccuracy: true, timeout: 20000, maximumAge: 10 * MIN });
 }
 async function savePlace(lat, lon, place) {
   try { const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me; render(); }
@@ -1713,7 +1754,7 @@ async function onSubmit(e) {
 }
 async function afterSignIn() {
   await sync();
-  refreshPush();
+  refreshPush(); autoLocate();
   if (S.me.lat == null) return go("locpick");
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }
   go("messages");
@@ -1922,7 +1963,7 @@ async function start() {
     if (S.me && S.me.lat == null) go("locpick");
     else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
     else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
-    refreshPush();
+    refreshPush(); autoLocate();
   } else go("welcome");
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
@@ -1937,7 +1978,7 @@ async function start() {
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); autoLocate(); } });
   setInterval(checkUpdate, UPDATE_MS);
 }
 
