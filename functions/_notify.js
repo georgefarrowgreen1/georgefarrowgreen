@@ -134,10 +134,10 @@ export async function unsubToken(env, userId) {
   await D.prepare("UPDATE pg_users SET unsub = ? WHERE id = ? AND unsub IS NULL").bind(t, userId).run();
   return (await D.prepare("SELECT unsub FROM pg_users WHERE id = ?").bind(userId).first()).unsub;
 }
-async function notifyEmail(env, origin, u, subject, lines, button) {
+async function notifyEmail(env, origin, u, subject, mail) {
   if (!emailReady(env)) return false;
   const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
-  const { text, html } = emailBody([...lines], button, { footer: "You get these because you turned on email notifications in InFlight.", unsub });
+  const { text, html } = emailBody({ ...mail, origin, footer: "You get these because you turned on email notifications in InFlight.", unsub });
   await sendEmail(env, { to: u.email, subject, text, html,
     headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
   await (await db(env)).prepare("UPDATE pg_users SET email_at = ? WHERE id = ?").bind(Date.now(), u.id).run();
@@ -154,8 +154,13 @@ export async function friendRequested(env, origin, from, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.requests || isQuiet(r.p)) return;
   await pushTo(env, toId, { title: r.p.names ? "Friend request" : "InFlight", body: r.p.names ? `${from.name} (@${from.handle}) wants to be friends on InFlight.` : "You have a new friend request.", tag: "requests", url: "/pigeon/#requests" });
   if (r.u.notify_email && Date.now() - (r.u.email_at || 0) > EMAIL_EVERY)
-    await notifyEmail(env, origin, r.u, r.p.names ? `${from.name} wants to be friends on InFlight` : "You have a new friend request on InFlight",
-      [r.p.names ? `${from.name} (@${from.handle}) sent you a friend request on InFlight.` : "Someone sent you a friend request on InFlight."], { label: "Open InFlight", url: `${origin}/pigeon/#requests` }).catch(() => {});
+    await notifyEmail(env, origin, r.u, r.p.names ? `${from.name} wants to be friends on InFlight` : "You have a new friend request on InFlight", {
+      icon: "friend", title: r.p.names ? `${firstName(from.name)} wants to be friends` : "New friend request",
+      preheader: r.p.names ? `@${from.handle} sent you a friend request.` : "Someone sent you a friend request.",
+      lines: [r.p.names ? `${from.name} sent you a friend request. Accept it to start sending each other pigeons.` : "Someone sent you a friend request. Open InFlight to see who."],
+      rows: r.p.names ? [["From", `${from.name}`], ["Handle", `@${from.handle}`]] : [],
+      button: { label: "See Request", url: `${origin}/pigeon/#requests` },
+    }).catch(() => {});
 }
 export async function friendAccepted(env, by, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.accepted || isQuiet(r.p)) return;
@@ -234,9 +239,13 @@ export async function tick(env, origin) {
       const subject = !p.names ? (u.n > 1 ? `${u.n} pigeons have landed` : "A pigeon has landed")
         : u.n > 1 ? `${u.n} pigeons have landed` : `A pigeon from ${who[0]} has landed`;
       try {
-        await notifyEmail(env, origin, u, subject,
-          [`${u.n > 1 ? `${u.n} pigeons have` : "A pigeon has"} landed for you on InFlight${p.names ? `, from ${list}` : ""}.`,
-            "Messages are end-to-end encrypted, so open InFlight to read them."], { label: "Open InFlight", url: `${origin}/pigeon/` });
+        await notifyEmail(env, origin, u, subject, {
+          icon: "landed", title: u.n > 1 ? `${u.n} pigeons have landed` : p.names ? `A pigeon from ${who[0]} has landed` : "A pigeon has landed",
+          preheader: p.names ? `From ${list}. Open InFlight to read ${u.n > 1 ? "them" : "it"}.` : `Open InFlight to read ${u.n > 1 ? "them" : "it"}.`,
+          lines: [`${u.n > 1 ? "They’re" : "It’s"} waiting on your windowsill. Messages are end-to-end encrypted, so only InFlight on your phone can open ${u.n > 1 ? "them" : "it"}.`],
+          rows: [...(p.names ? [["From", list]] : []), ...(u.n > 1 ? [["Pigeons", String(u.n)]] : [])],
+          button: { label: u.n > 1 ? "Read Them" : "Read It", url: `${origin}/pigeon/` },
+        });
         emails++;
       } catch (e) { console.error("pigeon notify email", e && e.message); }
     }

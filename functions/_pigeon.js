@@ -377,17 +377,52 @@ export async function sendEmail(env, { to, subject, text, html, headers }, { exp
   }
 }
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-export function emailBody(lines, button, { footer, unsub } = {}) {
-  const text = lines.join("\n\n") + (button ? `\n\n${button.label}: ${button.url}` : "")
-    + (footer ? `\n\n${footer}` : "") + (unsub ? `\nTurn these emails off: ${unsub}` : "");
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
-  const html = `<div style="background:#f2f2f7;padding:24px 12px"><div style="font-family:${font};font-size:16px;line-height:1.45;color:#1c1c1e;max-width:480px;margin:0 auto;background:#ffffff;border-radius:22px;padding:26px 24px">
-    <p style="font-size:20px;font-weight:700;margin:0 0 16px">InFlight</p>
-    ${lines.map((l) => `<p style="margin:0 0 14px">${escHtml(l)}</p>`).join("")}
-    ${button ? `<p style="margin:22px 0 18px"><a href="${escHtml(button.url)}" style="display:inline-block;background:#0a7aff;color:#ffffff;padding:13px 24px;border-radius:999px;text-decoration:none;font-weight:600">${escHtml(button.label)}</a></p>
-    <p style="font-size:13px;color:#8e8e93;margin:0">Or paste this into your browser: ${escHtml(button.url)}</p>` : ""}
-    ${footer || unsub ? `<p style="font-size:12px;color:#8e8e93;margin:20px 0 0;border-top:1px solid #e5e5ea;padding-top:14px">${footer ? escHtml(footer) + " " : ""}${unsub ? `<a href="${escHtml(unsub)}" style="color:#8e8e93">Turn these emails off</a>` : ""}</p>` : ""}
-  </div></div>`;
+// Every InFlight email: the app's look (grouped card, coloured icon tile, bold
+// title, a details box and a full-width button), built from tables and inline
+// styles so it holds up in Gmail and Outlook, with a dark version for mail
+// apps that support it. Icons are PNGs (mail apps block SVG) in /pigeon/mail/.
+export const SITE = "https://georgefarrowgreen.com";
+// "12 Oct 2026, 22:15" in UK time, for "when" rows
+export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
+export function emailBody({ title, lines = [], button, icon = "bird", rows = [], footer, unsub, origin = SITE, preheader }) {
+  const text = [title, ...lines, ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
+    footer || "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
+  const e = escHtml, font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
+  const row = ([k, v], i) => `<tr><td class="ml-k" style="padding:12px 16px;font-size:15px;line-height:20px;color:#6e6e73;text-align:left;${i ? "border-top:1px solid #e5e5ea;" : ""}">${e(k)}</td>
+    <td class="ml-v" style="padding:12px 16px;font-size:15px;line-height:20px;color:#1c1c1e;font-weight:600;text-align:right;${i ? "border-top:1px solid #e5e5ea;" : ""}">${e(v)}</td></tr>`;
+  const html = `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${e(title)}</title>
+<style>
+  a{color:#0a7aff}
+  @media (prefers-color-scheme:dark){
+    .ml-bg{background:#000000!important}.ml-card{background:#1c1c1e!important}.ml-box{background:#2c2c2e!important}
+    .ml-t{color:#f5f5f7!important}.ml-p,.ml-k{color:#aeaeb2!important}.ml-v{color:#f5f5f7!important}
+    .ml-k,.ml-v{border-color:#3a3a3c!important}.ml-f{color:#8e8e93!important}
+  }
+  @media (max-width:480px){.ml-card{padding:28px 20px 24px!important}}
+</style></head>
+<body class="ml-bg" style="margin:0;padding:0;background:#f2f2f7;font-family:${font};-webkit-font-smoothing:antialiased">
+${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${e(preheader)}</div>` : ""}
+<table role="presentation" class="ml-bg" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f7"><tr><td align="center" style="padding:28px 14px 36px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px">
+  <tr><td align="center" style="padding:0 0 18px">
+    <a href="${e(origin)}/pigeon/" style="text-decoration:none"><img src="${e(origin)}/pigeon/icon-192.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;border-radius:9px">
+    <span class="ml-t" style="vertical-align:middle;margin-left:8px;font-size:19px;font-weight:700;letter-spacing:-.2px;color:#1c1c1e">InFlight</span></a>
+  </td></tr>
+  <tr><td class="ml-card" align="center" style="background:#ffffff;border-radius:28px;padding:32px 26px 28px">
+    <img src="${e(origin)}/pigeon/mail/${e(icon)}.png" width="64" height="64" alt="" style="display:block;margin:0 auto 18px;border:0">
+    <h1 class="ml-t" style="margin:0 0 10px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-.3px;color:#1c1c1e">${e(title)}</h1>
+    ${lines.map((l) => `<p class="ml-p" style="margin:0 0 10px;font-size:16px;line-height:23px;color:#6e6e73">${e(l)}</p>`).join("")}
+    ${rows.length ? `<table role="presentation" class="ml-box" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 4px;background:#f2f2f7;border-radius:16px;border-collapse:separate">${rows.map(row).join("")}</table>` : ""}
+    ${button ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 0"><tr><td align="center" bgcolor="#0a7aff" style="background:#0a7aff;border-radius:999px">
+      <a href="${e(button.url)}" style="display:block;padding:15px 20px;font-size:17px;line-height:22px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:999px">${e(button.label)}</a></td></tr></table>
+    <p class="ml-f" style="margin:14px 0 0;font-size:12px;line-height:17px;color:#8e8e93;word-break:break-all">Button not working? Paste this into your browser:<br><a href="${e(button.url)}" style="color:#8e8e93">${e(button.url)}</a></p>` : ""}
+  </td></tr>
+  <tr><td align="center" class="ml-f" style="padding:18px 22px 0;font-size:12px;line-height:18px;color:#8e8e93">
+    ${footer ? `${e(footer)}<br>` : ""}${unsub ? `<a href="${e(unsub)}" style="color:#8e8e93">Turn these emails off</a><br>` : ""}
+    InFlight · letters carried by pigeon, at the real distance between you
+  </td></tr>
+</table></td></tr></table></body></html>`;
   return { text, html };
 }
 

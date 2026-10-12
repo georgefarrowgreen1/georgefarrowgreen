@@ -3,7 +3,7 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, emailFrom, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
@@ -447,13 +447,15 @@ function checkNewSecret(b) {
   if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
   return vault;
 }
-async function notifyPasswordChanged(env, u, how) {
+async function notifyPasswordChanged(env, u, how, origin) {
   if (!emailReady(env)) return;
-  const { text, html } = emailBody([
-    `Hi ${u.name},`,
-    `The password for your InFlight account (@${u.handle}) was just changed ${how}.`,
-    "If this wasn’t you, reply to this email straight away.",
-  ]);
+  const { text, html } = emailBody({
+    origin, icon: "shield", title: "Your password was changed",
+    preheader: `The password for @${u.handle} was just changed.`,
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, the password for your InFlight account was just changed. Your messages are still safe.`,
+      "If this wasn’t you, reply to this email straight away."],
+    rows: [["Account", `@${u.handle}`], ["Changed", how], ["When", ukTime(Date.now())]],
+  });
   await sendEmail(env, { to: u.email, subject: "Your InFlight password was changed", text, html }).catch(() => {});
 }
 
@@ -469,7 +471,7 @@ async function changePassword({ request, env, waitUntil }) {
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
-  waitUntil(notifyPasswordChanged(env, u, "from the app"));
+  waitUntil(notifyPasswordChanged(env, u, "In the app", new URL(request.url).origin));
   return json({ ok: true });
 }
 
@@ -484,11 +486,14 @@ async function resetRequest({ request, env, waitUntil }) {
   if (u) allowed = await limit(env, "resetmail:" + u.id, 3, 60 * 60e3).then(() => true, () => false);
   if (allowed) {
     const token = await createReset(env, u.id, "user", RESET_TTL_EMAIL);
-    const { text, html } = emailBody([
-      `Hi ${u.name},`,
-      `Someone asked to reset the password for your InFlight account (@${u.handle}). This link works once, for the next hour.`,
-      "If it wasn’t you, ignore this email. Your password won’t change.",
-    ], { label: "Choose a new password", url: resetUrl(request, token) });
+    const { text, html } = emailBody({
+      origin: new URL(request.url).origin, icon: "key", title: "Reset your password",
+      preheader: "A link to choose a new password. It works once, for the next hour.",
+      lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, someone asked to reset the password for your InFlight account.`,
+        "If it wasn’t you, ignore this email. Your password won’t change."],
+      rows: [["Account", `@${u.handle}`], ["Link works", "Once, for 1 hour"]],
+      button: { label: "Choose a New Password", url: resetUrl(request, token) },
+    });
     waitUntil(sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }).catch((e) => console.error("reset mail", e.message)));
   }
   return json({ message: "If there’s an account for that email, a reset link is on its way. It works for one hour." });
@@ -522,7 +527,7 @@ async function resetComplete({ request, env, waitUntil }) {
   if (fresh) steps.push(D.prepare("UPDATE pg_passkeys SET vault = NULL WHERE user_id = ?").bind(u.id));
   await D.batch(steps);
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
-  waitUntil(notifyPasswordChanged(env, u, "with a reset link"));
+  waitUntil(notifyPasswordChanged(env, u, "With a reset link", new URL(request.url).origin));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ token: await issueSession(env, u.id), me: meView(updated, t) });
 }
@@ -571,11 +576,14 @@ async function adminReset({ request, env }) {
   if (b.mode === "email") {
     if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up yet. Use “Make a reset link” and send it yourself.");
     const token = await createReset(env, u.id, "admin-email", RESET_TTL_EMAIL);
-    const { text, html } = emailBody([
-      `Hi ${u.name},`,
-      `Here’s a link to choose a new password for your InFlight account (@${u.handle}). It works once, for the next hour.`,
-      "If you didn’t ask for this, you can ignore it. Your password won’t change.",
-    ], { label: "Choose a new password", url: resetUrl(request, token) });
+    const { text, html } = emailBody({
+      origin: new URL(request.url).origin, icon: "key", title: "Reset your password",
+      preheader: "Here’s a link to choose a new password for InFlight.",
+      lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, here’s a link to choose a new password for your InFlight account.`,
+        "If you didn’t ask for this, you can ignore it. Your password won’t change."],
+      rows: [["Account", `@${u.handle}`], ["Link works", "Once, for 1 hour"]],
+      button: { label: "Choose a New Password", url: resetUrl(request, token) },
+    });
     await sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }, { explain: true });
     await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
     return json({ message: `Reset link emailed to ${u.email}. It works for one hour.` });
@@ -628,9 +636,14 @@ async function adminTestEmail({ request, env }) {
   await requireAdmin(request, env, true);
   if (!emailReady(env)) throw new HttpError(503, "Add RESEND_API_KEY in Cloudflare first, then redeploy.");
   const to = ownerEmail(env);
-  await sendEmail(env, { to, subject: "Hello World",
-    html: "<p>Congrats on sending your <strong>first email</strong>!</p><p>InFlight can send password reset emails.</p>",
-    text: "Congrats on sending your first email! InFlight can send password reset emails." }, { explain: true });
+  const { text, html } = emailBody({
+    origin: new URL(request.url).origin, icon: "bird", title: "Email is working",
+    preheader: "InFlight can send password resets and notifications.",
+    lines: ["This is a test from the InFlight admin page. Password resets and notifications will arrive just like this."],
+    rows: [["From", emailFrom(env).replace(/^.*<|>$/g, "")], ["Sent", ukTime(Date.now())]],
+    button: { label: "Open InFlight", url: `${new URL(request.url).origin}/pigeon/` },
+  });
+  await sendEmail(env, { to, subject: "InFlight email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);
   return json({ message: `Test email sent to ${to} from ${emailFrom(env)}. Check your inbox.` });
 }
@@ -676,27 +689,39 @@ async function notifyTick({ request, env }) {
 // The link at the bottom of notification emails. GET shows a button (so mail
 // scanners that follow links don't unsubscribe anyone); POST turns email off,
 // which also serves one-click unsubscribe (RFC 8058).
-const unsubPage = (msg, form) => new Response(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>InFlight emails</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f2f2f7;font:17px/1.4 -apple-system,system-ui,sans-serif;color:#1c1c1e}main{background:#fff;border-radius:26px;padding:28px 24px;max-width:340px;margin:16px;text-align:center}h1{font-size:22px;margin:0 0 8px}p{color:#6e6e73;margin:0 0 18px}button{border:0;border-radius:999px;background:#0a7aff;color:#fff;font:600 17px -apple-system,system-ui,sans-serif;padding:14px 26px}a{color:#0a7aff}@media (prefers-color-scheme:dark){body{background:#1c1c1f;color:#f5f5f7}main{background:#2a2a2e}p{color:#a1a1a6}}</style></head>
-<body><main><h1>InFlight emails</h1><p>${msg}</p>${form || `<a href="/pigeon/">Open InFlight</a>`}</main></body></html>`,
+const unsubPage = (title, msg, form) => new Response(`<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>InFlight Emails</title>
+<style>
+  :root{--bg:#f2f2f7;--card:#fff;--label:#1c1c1e;--label-2:#6e6e73;--tint:#0a7aff}
+  @media (prefers-color-scheme:dark){:root{--bg:#1c1c1f;--card:#2a2a2e;--label:#f5f5f7;--label-2:#a1a1a6;--tint:#3d9bff}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:var(--bg);color:var(--label);font:17px/1.35 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:-.41px;-webkit-font-smoothing:antialiased}
+  main{width:100%;max-width:380px;display:flex;flex-direction:column;align-items:center;text-align:center}
+  img{width:88px;height:88px;border-radius:22px;box-shadow:0 10px 30px -10px rgba(10,111,240,.5);margin-bottom:22px}
+  h1{margin:0 0 10px;font-size:28px;line-height:34px;font-weight:700;letter-spacing:.2px}
+  p{margin:0 0 26px;color:var(--label-2);font-size:17px;line-height:23px;text-wrap:balance}
+  form{width:100%}
+  .btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;border:0;border-radius:999px;background:var(--tint);color:#fff;font:600 17px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;text-decoration:none;cursor:pointer}
+  .btn.plain{background:none;color:var(--tint);margin-top:6px}
+</style></head>
+<body><main><img src="/pigeon/icon-192.png" alt=""><h1>${title}</h1><p>${msg}</p>${form || `<a class="btn" href="/pigeon/">Open InFlight</a>`}</main></body></html>`,
   { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" } });
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" } });
 async function unsubUser(env, request) {
   const q = new URL(request.url).searchParams, id = q.get("u") || "", tok = q.get("t") || "";
   const u = UUID_RE.test(id) && tok ? await (await db(env)).prepare("SELECT id, unsub FROM pg_users WHERE id = ?").bind(id).first() : null;
   return u && u.unsub && safeEqual(u.unsub, tok) ? u : null;
 }
 async function unsubscribeGet({ request, env }) {
-  if (!(await unsubUser(env, request))) return unsubPage("This link doesn’t work any more. You can turn emails off in InFlight, under Account.");
+  if (!(await unsubUser(env, request))) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in InFlight, under Account → Notifications.");
   const q = new URL(request.url).search.replace(/"/g, "");
-  return unsubPage("Stop emails when pigeons land and friends add you? Push notifications on your phone aren’t affected.",
-    `<form method="post" action="/api/pigeon/unsubscribe${q}"><button>Turn Off Emails</button></form>`);
+  return unsubPage("Turn off emails?", "You won’t get emails when pigeons land or friends add you. Notifications on your phone aren’t affected.",
+    `<form method="post" action="/api/pigeon/unsubscribe${q}"><button class="btn">Turn Off Emails</button></form><a class="btn plain" href="/pigeon/">Keep Them On</a>`);
 }
 async function unsubscribePost({ request, env }) {
   const u = await unsubUser(env, request);
-  if (!u) return unsubPage("This link doesn’t work any more. You can turn emails off in InFlight, under Account.");
+  if (!u) return unsubPage("Link expired", "This link doesn’t work any more. You can turn emails off in InFlight, under Account → Notifications.");
   await (await db(env)).prepare("UPDATE pg_users SET notify_email = 0 WHERE id = ?").bind(u.id).run();
-  return unsubPage("Done. InFlight won’t email you any more. You can turn emails back on under Account.");
+  return unsubPage("Emails turned off", "InFlight won’t email you any more. You can turn them back on any time in Account → Notifications.");
 }
 
 const ROUTES = {
