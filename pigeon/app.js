@@ -921,7 +921,6 @@ function vAuth() {
     case "welcome": return `<div class="auth welcome">
         <div class="appicon">${I.bird}</div>
         <h1>InFlight <span class="beta">Beta</span></h1>
-        <p class="tag">Letters that travel the real distance between you.</p>
         <ul class="feats">
           <li>${I.dist}<div><b>Real distance</b><span>Each message flies the real miles between you, at pigeon speed.</span></div></li>
           <li>${I.lock}<div><b>End-to-end encrypted</b><span>Only you and your friend can read your messages and photos.</span></div></li>
