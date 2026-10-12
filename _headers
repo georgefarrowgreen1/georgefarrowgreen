@@ -24,3 +24,8 @@
   Referrer-Policy: no-referrer
   X-Robots-Tag: noindex
   Cache-Control: no-cache
+
+# InFlight map data never changes once published, so phones can keep it a week.
+/pigeon/map/*
+  ! Cache-Control
+  Cache-Control: public, max-age=604800

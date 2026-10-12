@@ -138,6 +138,7 @@ const I = {
   person: ico(`<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3.2"/><path d="M6.3 18.3c1.2-2.3 3.3-3.4 5.7-3.4s4.5 1.1 5.7 3.4"/>`),
   compose: ico(`<path d="M11 4.5H6.5A2.5 2.5 0 0 0 4 7v10.5A2.5 2.5 0 0 0 6.5 20H17a2.5 2.5 0 0 0 2.5-2.5V13"/><path d="M17.8 3.8a1.8 1.8 0 0 1 2.5 2.5L12.5 14 9.5 15l1-3Z"/>`),
   plus: ico(`<path d="M12 5v14M5 12h14"/>`),
+  minus: ico(`<path d="M5 12h14"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
@@ -190,10 +191,39 @@ async function prepImage(blob) {
 }
 
 /* ---------------- map ---------------- */
-let LAND_RINGS = null;
-function land() {
-  if (!LAND_RINGS) LAND_RINGS = LAND.split(";").map((r) => { const a = r.split(",").map(Number); const out = []; for (let i = 0; i < a.length; i += 2) out.push([a[i] / 2, a[i + 1] / 2]); return out; });
-  return LAND_RINGS;
+// Web Mercator, in degree-sized units so 1 unit of x is 1° of longitude.
+const R2D = 180 / Math.PI, MERC_MAX = 85;
+const mercY = (lat) => R2D * Math.log(Math.tan(Math.PI / 4 + Math.max(-MERC_MAX, Math.min(MERC_MAX, lat)) / (2 * R2D)));
+// Each ring or line: Float32Array of lon,mercY pairs, plus its bounding box.
+// Longitudes are unwrapped so shapes that cross the date line stay in one
+// piece; a ring that circles the globe (Antarctica) is closed via the pole.
+function shapes(list, closed) {
+  return list.map((src) => {
+    const a = src.slice();
+    for (let i = 2; i < a.length; i += 2) { while (a[i] - a[i - 2] > 180) a[i] -= 360; while (a[i] - a[i - 2] < -180) a[i] += 360; }
+    if (closed && a.length > 4 && Math.abs(a[a.length - 2] - a[0]) > 180) a.push(a[a.length - 2], a[1] < 0 ? -90 : 90, a[0], a[1] < 0 ? -90 : 90);
+    const f = new Float32Array(a.length); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (let i = 0; i < a.length; i += 2) { const x = a[i], y = mercY(a[i + 1]); f[i] = x; f[i + 1] = y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return { f, box: [x0, y0, x1, y1] };
+  });
+}
+// Natural Earth data (public domain), self-hosted so no map company learns
+// where anyone's pigeons fly. 110m is built in; 50m and 10m load when needed.
+const WORLD = {};
+function world(res) {
+  if (res === "110m") {
+    if (!WORLD[res]) WORLD[res] = { land: shapes(LAND.split(";").map((r) => r.split(",").map((n) => n / 2)), true), borders: [] };
+    return WORLD[res];
+  }
+  if (!WORLD[res]) {
+    WORLD[res] = "loading";
+    fetch(`/pigeon/map/world-${res}.json`).then((r) => (r.ok ? r.json() : Promise.reject(r.status))).then((d) => {
+      const dec = (str) => !str ? [] : str.split(";").map((r) => { const a = r.split(",").map(Number); for (let i = 2; i < a.length; i++) a[i] += a[i - 2]; return a.map((n) => n / d.q); });
+      WORLD[res] = { land: shapes(dec(d.land), true), borders: shapes(dec(d.borders)) };
+      redrawMap();
+    }).catch(() => { WORLD[res] = "failed"; });
+  }
+  return typeof WORLD[res] === "object" ? WORLD[res] : null;
 }
 function gcPoint(a, b, f) {
   const r = Math.PI / 180;
@@ -206,56 +236,165 @@ function gcPoint(a, b, f) {
   return { lat: Math.atan2(z, Math.hypot(x, y)) / r, lon: Math.atan2(y, x) / r };
 }
 const cssVar = (el, n) => getComputedStyle(el).getPropertyValue(n).trim();
-function drawMap(cv, m, cardH) {
-  const W = cv.clientWidth, H = cv.clientHeight; if (!W || !H) return;
-  const dpr = window.devicePixelRatio || 1;
-  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const col = (n) => cssVar(cv, n);
+const MAP_KMAX = 400;                       // pixels per degree at full zoom
+// The route, as points along the great circle (longitudes unwrapped so it never jumps the date line).
+function routePts(m) {
   const a = { lat: m.route[0], lon: m.route[1] }, b = { lat: m.route[2], lon: m.route[3] };
   const N = 96, pts = []; let prev = null;
   for (let i = 0; i <= N; i++) {
     const p = gcPoint(a, b, i / N);
     if (prev != null) { while (p.lon - prev > 180) p.lon -= 360; while (p.lon - prev < -180) p.lon += 360; }
-    prev = p.lon; pts.push(p);
+    prev = p.lon; pts.push({ x: p.lon, y: mercY(p.lat) });
   }
-  const usableH = H - cardH - 30;
-  const lons = pts.map((p) => p.lon), lats = pts.map((p) => p.lat);
-  const cx = (Math.min(...lons) + Math.max(...lons)) / 2, cy = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const cos = Math.max(0.35, Math.cos(cy * Math.PI / 180));
-  const spanX = Math.max(8, (Math.max(...lons) - Math.min(...lons)) * 1.5) * cos;
-  const spanY = Math.max(5, (Math.max(...lats) - Math.min(...lats)) * 1.6 + 6);
-  const k = Math.min(W / spanX, usableH / spanY);
-  const X = (lon) => W / 2 + (lon - cx) * cos * k, Y = (lat) => 20 + usableH / 2 - (lat - cy) * k;
+  return pts;
+}
+// Where the map sits: the whole route in view, unless the person has moved it.
+function mapFrame(cv, m, cardH) {
+  const W = cv.clientWidth, H = cv.clientHeight, usableH = Math.max(80, H - cardH - 30), sy0 = 20 + usableH / 2;
+  const pts = routePts(m);
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const fit = {
+    cx: (Math.min(...xs) + Math.max(...xs)) / 2, cy: (Math.min(...ys) + Math.max(...ys)) / 2,
+    k: Math.min(W / Math.max(8, (Math.max(...xs) - Math.min(...xs)) * 1.5), usableH / Math.max(6, (Math.max(...ys) - Math.min(...ys)) * 1.6 + 8)),
+  };
+  return { W, H, sy0, pts, fit, view: S.sheet?.view || fit, kMin: Math.max(W / 360, H / (2 * mercY(MERC_MAX))) };
+}
+function drawMap(cv, m, cardH) {
+  cv._m = m; cv._cardH = cardH;
+  const { W, H, sy0, pts, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
+  const { cx, cy, k } = view;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const col = (n) => cssVar(cv, n);
+  const ox = W / 2 - cx * k, oy = sy0 + cy * k;
+  const X = (x) => ox + x * k, Y = (y) => oy - y * k;
+  const vx0 = cx - W / 2 / k, vx1 = cx + W / 2 / k, vy0 = cy - (H - sy0) / k, vy1 = cy + sy0 / k;
   g.fillStyle = col("--sea"); g.fillRect(0, 0, W, H);
-  g.strokeStyle = col("--grid"); g.lineWidth = 1;
-  const step = spanY > 40 ? 15 : spanY > 15 ? 5 : 1;
-  for (let lon = -540; lon <= 540; lon += step) { const x = X(lon); if (x < 0 || x > W) continue; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-  for (let lat = -90; lat <= 90; lat += step) { const y = Y(lat); if (y < 0 || y > H) continue; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-  g.fillStyle = col("--land"); g.strokeStyle = col("--land-edge"); g.lineWidth = 0.8;
-  for (const off of [-360, 0, 360]) for (const ring of land()) {
-    g.beginPath(); ring.forEach(([lo, la], i) => (i ? g.lineTo(X(lo + off), Y(la)) : g.moveTo(X(lo + off), Y(la)))); g.closePath(); g.fill(); g.stroke();
+  // graticule, spaced so lines stay roughly 60px or more apart
+  const step = [1, 2, 5, 10, 15, 30].find((s) => s * k >= 60) || 30;
+  g.strokeStyle = col("--grid"); g.lineWidth = 1; g.beginPath();
+  for (let lon = Math.ceil(vx0 / step) * step; lon <= vx1; lon += step) { const x = Math.round(X(lon)) + 0.5; g.moveTo(x, 0); g.lineTo(x, H); }
+  for (let lat = -80; lat <= 80; lat += step) { const y = Y(mercY(lat)); if (y >= 0 && y <= H) { g.moveTo(0, Math.round(y) + 0.5); g.lineTo(W, Math.round(y) + 0.5); } }
+  g.stroke();
+  // coastlines: the finest data that's loaded and worth drawing at this zoom
+  const want = k < 5 ? "110m" : k < 40 ? "50m" : "10m";
+  let data = world(want);
+  if (!data && want === "10m") data = world("50m");
+  if (!data) data = world("110m");
+  // trace shapes in view; points are clamped to a box just off screen and
+  // ones under a pixel apart skipped, so even the 10m coast draws fast
+  const M = 40, offs = [];
+  for (let o = Math.floor((vx0 + 180) / 360) * 360; o <= vx1 + 180; o += 360) offs.push(o);
+  const trace = (list, close) => {
+    for (const o of offs) for (const { f, box } of list) {
+      if (box[2] + o < vx0 || box[0] + o > vx1 || box[3] < vy0 || box[1] > vy1) continue;
+      let lx = 1e9, ly = 1e9;
+      for (let i = 0, n = f.length; i < n; i += 2) {
+        const sx = Math.max(-M, Math.min(W + M, ox + (f[i] + o) * k)), sy = Math.max(-M, Math.min(H + M, oy - f[i + 1] * k));
+        if (i === 0) g.moveTo(sx, sy);
+        else if (Math.abs(sx - lx) + Math.abs(sy - ly) >= 0.75 || i === n - 2) g.lineTo(sx, sy); else continue;
+        lx = sx; ly = sy;
+      }
+      if (close) g.closePath();
+    }
+  };
+  g.beginPath(); trace(data.land, true);
+  g.fillStyle = col("--land"); g.fill("evenodd");
+  g.strokeStyle = col("--land-edge"); g.lineWidth = k > 40 ? 1.1 : 0.8; g.stroke();
+  if (data.borders.length && k >= 2.5) {
+    g.beginPath(); trace(data.borders, false);
+    g.strokeStyle = col("--border"); g.lineWidth = k > 40 ? 1.2 : 0.8; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
   }
-  const P = pts.map((p) => [X(p.lon), Y(p.lat)]);
+  // the route, from and to, and the pigeon
+  const N = pts.length - 1, P = pts.map((p) => [X(p.x), Y(p.y)]);
   g.strokeStyle = col("--tint"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
   g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.setLineDash([]);
-  // each label sits above or below its dot, away from the route, far enough out that the pigeon never covers it
-  g.font = "600 13px -apple-system, system-ui, sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
-  const label = ([x, y], toward, name) => {
-    g.fillStyle = col("--cell"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
-    g.fillStyle = col("--tint"); g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
-    if (!name) return;
-    const w = g.measureText(name).width, ly = y + (toward[1] <= y ? 28 : -28), lx = Math.min(W - 8 - w, Math.max(8, x - w / 2));
-    g.lineWidth = 4; g.strokeStyle = col("--cell"); g.lineJoin = "round"; g.strokeText(name, lx, ly);
-    g.fillStyle = col("--label"); g.fillText(name, lx, ly);
-  };
-  label(P[0], P[4], m.fromPlace); label(P[N], P[N - 4], m.toPlace);
   const f = Math.min(1, Math.max(0, (now() - m.sentAt) / (m.deliverAt - m.sentAt)));
   const [px, py] = P[Math.round(f * N)];
+  // labels claim space in priority order; anything that would overlap is left out
+  const taken = [[px - 24, py - 20, px + 24, py + 20], [0, H - cardH, W, H]];
+  const ctlEl = $(".mapctl", $layer);
+  if (ctlEl) { const r = ctlEl.getBoundingClientRect(), c = cv.getBoundingClientRect(); taken.push([r.left - c.left - 4, r.top - c.top - 4, r.right - c.left + 4, r.bottom - c.top + 4]); }
+  const free = (b) => b[0] >= 2 && b[2] <= W - 2 && b[1] >= 2 && b[3] <= H - 2 && !taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
+  g.textBaseline = "middle"; g.textAlign = "left"; g.lineJoin = "round";
+  const text = (s, x, y, color) => { g.lineWidth = 4; g.strokeStyle = col("--land"); g.strokeText(s, x, y); g.fillStyle = color; g.fillText(s, x, y); };
+  // each end's label sits above or below its dot, away from the route, far enough out that the pigeon never covers it
+  g.font = "600 13px -apple-system, system-ui, sans-serif";
+  const end = ([x, y], toward, name) => {
+    g.fillStyle = col("--cell"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
+    g.fillStyle = col("--tint"); g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
+    taken.push([x - 9, y - 9, x + 9, y + 9]);
+    if (!name || x < -10 || x > W + 10 || y < -10 || y > H + 10) return;
+    const w = g.measureText(name).width, ly = y + (toward[1] <= y ? 28 : -28), lx = Math.min(W - 8 - w, Math.max(8, x - w / 2));
+    taken.push([lx - 3, ly - 10, lx + w + 3, ly + 10]);
+    text(name, lx, ly, col("--label"));
+  };
+  end(P[0], P[4], m.fromPlace); end(P[N], P[N - 4], m.toPlace);
+  // other cities once there's room to read them
+  if (k >= 4) {
+    g.font = "500 11px -apple-system, system-ui, sans-serif";
+    const c2 = col("--label-2"), skip = new Set([m.fromPlace, m.toPlace]);
+    for (const [name, lat, lon] of PLACES) {
+      if (skip.has(name)) continue;
+      for (const o of offs) {
+        const x = X(lon + o), y = Y(mercY(lat)); if (x < -50 || x > W + 50 || y < -20 || y > H + 20) continue;
+        const w = g.measureText(name).width, box = [x - 4, y - 8, x + 8 + w, y + 8];
+        if (!free(box)) continue;
+        taken.push(box);
+        g.fillStyle = c2; g.beginPath(); g.arc(x, y, 2.5, 0, 7); g.fill();
+        text(name, x + 6, y, c2);
+      }
+    }
+  }
   const bird = new Path2D(BIRD), flip = P[N][0] > P[0][0] ? -1 : 1;   // the icon faces left
   g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
   g.lineWidth = 3; g.strokeStyle = col("--cell"); g.stroke(bird); g.fillStyle = col("--label"); g.fill(bird);
   g.restore();
+  if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
+}
+let mapFrameReq = 0;
+function redrawMap() {
+  if (mapFrameReq) return;
+  mapFrameReq = requestAnimationFrame(() => { mapFrameReq = 0; const cv = $(".map", $layer); if (cv && cv._m && S.sheet?.type === "map") drawMap(cv, cv._m, cv._cardH); });
+}
+// Move the map: zoom by `z` about screen point (sx, sy), then pan by (dx, dy) pixels.
+function moveMap(cv, z, sx, sy, dx = 0, dy = 0) {
+  if (!cv._m || S.sheet?.type !== "map") return;
+  const { W, sy0, fit, view, kMin, pts } = mapFrame(cv, cv._m, cv._cardH);
+  const k = Math.max(kMin, Math.min(MAP_KMAX, view.k * z));
+  const wx = view.cx + (sx - W / 2) / view.k, wy = view.cy - (sy - sy0) / view.k;
+  let cx = wx - (sx - W / 2) / k - dx / k, cy = wy + (sy - sy0) / k + dy / k;
+  const mid = (pts[0].x + pts[pts.length - 1].x) / 2, ymax = mercY(MERC_MAX) - (sy0 / k) * 0.5;
+  cx = Math.max(mid - 300, Math.min(mid + 300, cx));
+  cy = Math.max(-ymax, Math.min(ymax, cy));
+  S.sheet.view = { cx, cy, k };
+  if (Math.abs(k - fit.k) < 1e-6 && Math.abs(cx - fit.cx) < 1e-6 && Math.abs(cy - fit.cy) < 1e-6) S.sheet.view = null;
+  redrawMap();
+}
+// Drag to pan, pinch or scroll to zoom, double-tap to zoom in.
+function mapGestures(cv) {
+  const pts = new Map(); let last = null, lastTap = 0;
+  const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const state = () => { const a = [...pts.values()]; if (a.length === 1) return { x: a[0][0], y: a[0][1], d: 0 };
+    return { x: (a[0][0] + a[1][0]) / 2, y: (a[0][1] + a[1][1]) / 2, d: Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) }; };
+  cv.addEventListener("pointerdown", (e) => {
+    cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = state();
+    if (pts.size === 1) { const t = performance.now(); if (t - lastTap < 300) { const [x, y] = local(e); moveMap(cv, 2, x, y); lastTap = 0; } else lastTap = t; }
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, local(e)); const s = state();
+    if (last && pts.size <= 2) {
+      const z = pts.size === 2 && last.d && s.d ? s.d / last.d : 1;
+      moveMap(cv, z, last.x, last.y, s.x - last.x, s.y - last.y);
+      if (Math.abs(s.x - last.x) + Math.abs(s.y - last.y) > 6) lastTap = 0;
+    }
+    last = s;
+  });
+  const up = (e) => { pts.delete(e.pointerId); last = pts.size ? state() : null; };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); const [x, y] = local(e); moveMap(cv, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), x, y); }, { passive: false });
 }
 
 /* ============================================================
@@ -887,7 +1026,10 @@ function renderSheet(refresh) {
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
     case "map":
-      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml("Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route"></canvas><div class="mapcard"></div>`, { flush: true });
+      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml("Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
+        <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button></div>
+        <div class="mapcard"></div>`, { flush: true });
+      if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
       return tickMap();
     case "safety":
       $layer.innerHTML = sheetHtml("Safety Number", `
@@ -1072,6 +1214,11 @@ async function onClick(e) {
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
+    case "mapzoom": {
+      const cv = $(".map", $layer); if (!cv || !cv._m) return;
+      if (id === "fit") { S.sheet.view = null; return redrawMap(); }
+      return moveMap(cv, id === "in" ? 2 : 0.5, cv.clientWidth / 2, mapFrame(cv, cv._m, cv._cardH).sy0);
+    }
     case "view": S.sheet = { type: "view", id }; return renderSheet();
     case "safety": {
       const f = friend(id); if (!f) return;

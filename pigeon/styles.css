@@ -22,7 +22,7 @@
   --glass-edge:rgba(0,0,0,.07);
   --glass-shadow:0 8px 28px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
   --scrim:rgba(0,0,0,.22);
-  --sea:#d3e6f5; --land:#f8f6f1; --land-edge:#ddd8cc; --grid:rgba(0,0,0,.04);
+  --sea:#d3e6f5; --land:#f8f6f1; --land-edge:#ddd8cc; --border:#c4bcab; --grid:rgba(0,0,0,.04);
   --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --mono:ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme:light;
@@ -36,7 +36,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(58,58,64,.86); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --grid:rgba(255,255,255,.04);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04);
     color-scheme:dark;
   }
 }
@@ -320,7 +320,13 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .sheet > header .nbtn{width:42px;height:42px}
 .sheet .body{flex:1;min-height:0;overflow:auto;position:relative;padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}
 .sheet .body.flush{padding:0;overflow:hidden}
-.map{position:absolute;inset:0;width:100%;height:100%;display:block}
+.map{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.map:active{cursor:grabbing}
+.mapctl{position:absolute;top:10px;right:14px;z-index:1;display:flex;flex-direction:column;border-radius:999px;padding:3px}
+.mapctl button{display:flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:0;border-radius:50%;background:none;color:var(--label);font-size:19px}
+.mapctl button:active{background:var(--fill)}
+.mapctl .fitbtn{display:none;color:var(--tint)}
+.mapctl.moved .fitbtn{display:flex}
 .mapcard{position:absolute;left:14px;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:16px 18px;border-radius:30px;display:flex;flex-direction:column;gap:2px}
 .mapcard .big{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
 .mapcard .big svg{color:var(--orange)}

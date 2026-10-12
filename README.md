@@ -152,6 +152,7 @@ phones, held upright.
 | Part | Where |
 | --- | --- |
 | App (static, no build step) | `pigeon/` — `app.js`, `crypto.js`, `styles.css`, `land.js` (coastlines), `places.js` |
+| Map data | `pigeon/map/world-50m.json`, `world-10m.json`: Natural Earth (public domain) land and borders, loaded only as you zoom in, self-hosted so no map provider sees anyone's route |
 | API | `functions/api/pigeon/[[path]].js`, helpers in `functions/_pigeon.js` |
 | Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
