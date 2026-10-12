@@ -175,6 +175,28 @@ the server stores only as a hash. Passkeys that support WebAuthn's PRF extension
 they restore messages without the password. Passwords can't be reset, because
 the password is what locks the key.
 
+**Passwords and resets.** People can change their password in Roost, or tap
+"Forgot your password?" to get a one-hour, single-use reset link by email. The
+password locks the encryption key, so a reset keeps someone's scrolls only if
+they unlock their key with a passkey; otherwise the phone makes a new key,
+older scrolls stay sealed and friends see a key-change warning. Every change
+signs out the account's other phones and emails a "your password was changed"
+notice.
+
+Reset emails need Resend: add **`RESEND_API_KEY`** (Secret) and
+**`PIGEON_FROM`**, a sender on a domain verified in Resend such as
+`InFlight <noreply@georgefarrowgreen.com>`, in Pages → Settings → Variables and
+Secrets, then redeploy. Without them the app says reset emails aren't on yet,
+and the admin page can still make links for you to send by hand.
+
+**Admin.** `/pigeon/admin/` uses the site owner sign-in (the key icon's password
+or passkey). It lists every account (name, handle, email, roost, last active,
+passkeys, friends, scrolls sent) and can email a reset link, make a 24-hour
+reset link to send yourself, sign someone out everywhere, or delete an account.
+Admin changes need the owner cookie and a header only the admin page sends,
+and every action is logged on the page. Admins never see passwords, keys or
+scrolls; the server doesn't have them.
+
 **Safety numbers.** Tap a friend's name in a chat to compare 60 digits. The app
 also remembers each friend's key and warns if it changes.
 

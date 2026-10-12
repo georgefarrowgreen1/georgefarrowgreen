@@ -82,6 +82,10 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS pg_msgs_photo ON pg_msgs(photo, expires_at)`,
   `CREATE TABLE IF NOT EXISTS pg_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS pg_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS pg_resets (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_by TEXT NOT NULL,
+     created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS pg_resets_user ON pg_resets(user_id)`,
+  `CREATE TABLE IF NOT EXISTS pg_admin_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT)`,
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -267,4 +271,67 @@ export function cleanPlace(b) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "That location isn’t valid.");
   // ~10 km: enough for flight times, too coarse to find someone's street
   return { lat: Math.round(lat * 10) / 10, lon: Math.round(lon * 10) / 10, place: String(b.place || "").trim().slice(0, 60) || null };
+}
+
+/* ---------------- email (Resend) ----------------
+   Needs RESEND_API_KEY and a sender on a domain verified in Resend:
+   PIGEON_FROM, else CONTACT_FROM, else noreply@georgefarrowgreen.com. */
+export const emailReady = (env) => !!env.RESEND_API_KEY;
+export async function sendEmail(env, { to, subject, text, html }) {
+  if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
+  const from = env.PIGEON_FROM || env.CONTACT_FROM || "InFlight <noreply@georgefarrowgreen.com>";
+  const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to, subject, text, html }),
+  });
+  if (!r.ok) {
+    console.error("pigeon email", r.status, await r.text().catch(() => ""));
+    throw new HttpError(502, "The email couldn’t be sent. Try again in a few minutes.");
+  }
+}
+const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+export function emailBody(lines, button) {
+  const text = lines.join("\n\n") + (button ? `\n\n${button.label}: ${button.url}` : "");
+  const html = `<div style="font-family:Georgia,serif;font-size:16px;line-height:1.5;color:#35271b;max-width:520px">
+    <p style="font-style:italic;font-size:22px;margin:0 0 16px">InFlight</p>
+    ${lines.map((l) => `<p style="margin:0 0 14px">${escHtml(l)}</p>`).join("")}
+    ${button ? `<p style="margin:22px 0"><a href="${escHtml(button.url)}" style="background:#6b5443;color:#fbf4e6;padding:12px 20px;border-radius:12px;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold">${escHtml(button.label)}</a></p>
+    <p style="font-size:13px;color:#76654f;margin:0">Or paste this into your browser: ${escHtml(button.url)}</p>` : ""}</div>`;
+  return { text, html };
+}
+
+/* ---------------- password resets ----------------
+   A reset link carries a random token; only its SHA-256 is stored. Links are
+   single-use, and making a new one cancels any older unused link. */
+export const RESET_TTL_EMAIL = HOUR;
+export const RESET_TTL_ADMIN = DAY;
+export async function createReset(env, userId, by, ttl) {
+  const D = await db(env), token = randomToken(32), t = Date.now();
+  await D.batch([
+    D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(userId),
+    D.prepare("INSERT INTO pg_resets (hash, user_id, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(hex(await sha256(token)), userId, by, t, t + ttl),
+  ]);
+  return token;
+}
+export async function findReset(env, token) {
+  if (!/^[A-Za-z0-9_-]{40,50}$/.test(String(token || ""))) throw new HttpError(400, "This reset link isn’t valid. Ask for a new one.");
+  const D = await db(env);
+  const r = await D.prepare("SELECT * FROM pg_resets WHERE hash = ?").bind(hex(await sha256(token))).first();
+  if (!r) throw new HttpError(400, "This reset link isn’t valid. Ask for a new one.");
+  if (r.used_at) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
+  if (r.expires_at < Date.now()) throw new HttpError(410, "This reset link has expired. Ask for a new one.");
+  const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(r.user_id).first();
+  if (!u) throw new HttpError(410, "This account no longer exists.");
+  return { reset: r, user: u };
+}
+export const resetUrl = (request, token) => `${new URL(request.url).origin}/pigeon/#reset=${token}`;
+export function maskEmail(e) {
+  const [a, b] = String(e).split("@");
+  return `${a.slice(0, 2)}${"•".repeat(Math.max(1, Math.min(6, a.length - 2)))}@${b}`;
+}
+export async function adminLog(env, action, target, detail) {
+  await (await db(env)).prepare("INSERT INTO pg_admin_log (at, action, target, detail) VALUES (?, ?, ?, ?)")
+    .bind(Date.now(), action, target || null, detail || null).run();
 }

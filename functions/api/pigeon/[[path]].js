@@ -3,7 +3,9 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, msgView, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
+  emailReady, sendEmail, emailBody, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
+import { isAuthed } from "../../_auth.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
 // auth, error handling and schema setup in one place.
@@ -93,18 +95,23 @@ async function updateMe({ request, env }) {
   return json({ me: meView(fresh, Date.now()) });
 }
 
-async function deleteMe({ request, env }) {
-  const u = await requireUser(request, env);
+// Shared by "Delete my account" and the admin's delete.
+async function removeAccount(env, id) {
   const D = await db(env);
-  const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(u.id).all();
+  const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(id).all();
   if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`));
   await D.batch([
-    D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(u.id),
-    D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id),
-    D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(u.id),
-    D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
-    D.prepare("DELETE FROM pg_users WHERE id = ?").bind(u.id),
+    D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(id),
+    D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
+    D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
+}
+async function deleteMe({ request, env }) {
+  const u = await requireUser(request, env);
+  await removeAccount(env, u.id);
   return json({ ok: true });
 }
 
@@ -320,6 +327,169 @@ async function getPhoto({ request, env }, id) {
   return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store" } });
 }
 
+/* ---------------- password: change, forgotten, reset ----------------
+   The password locks the private key, so a reset can only keep someone's
+   scrolls if their phone unlocks the key another way (a passkey with PRF).
+   Otherwise the phone makes a new key pair and old scrolls stay sealed. */
+function checkNewSecret(b) {
+  if (fromB64url(b.salt).length !== 16 || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
+  const vault = String(b.vault || "");
+  if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
+  return vault;
+}
+async function notifyPasswordChanged(env, u, how) {
+  if (!emailReady(env)) return;
+  const { text, html } = emailBody([
+    `Hi ${u.name},`,
+    `The password for your InFlight account (@${u.handle}) was just changed ${how}.`,
+    "If this wasn’t you, reply to this email straight away.",
+  ]);
+  await sendEmail(env, { to: u.email, subject: "Your InFlight password was changed", text, html }).catch(() => {});
+}
+
+async function changePassword({ request, env, waitUntil }) {
+  const u = await requireUser(request, env);
+  await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
+  const b = await body(request);
+  if (!safeEqual(hex(await sha256(fromB64url(b.oldProof))), u.proof_hash)) throw new HttpError(401, "Your current password isn’t right.", "current");
+  const vault = checkNewSecret(b);
+  const D = await db(env);
+  await D.batch([
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ?").bind(b.salt, hex(await sha256(fromB64url(b.proof))), vault, u.id),
+    D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+    D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
+  ]);
+  waitUntil(notifyPasswordChanged(env, u, "from the app"));
+  return json({ ok: true });
+}
+
+// Always answers the same way, so it can't be used to find out who has an account.
+async function resetRequest({ request, env, waitUntil }) {
+  await limit(env, "resetreq:" + clientIp(request), 5, 60 * 60e3);
+  const email = String((await body(request)).email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
+  if (!emailReady(env)) throw new HttpError(503, "Reset emails aren’t switched on yet. Ask the person who runs InFlight for a reset link.");
+  const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
+  let allowed = !!u;
+  if (u) allowed = await limit(env, "resetmail:" + u.id, 3, 60 * 60e3).then(() => true, () => false);
+  if (allowed) {
+    const token = await createReset(env, u.id, "user", RESET_TTL_EMAIL);
+    const { text, html } = emailBody([
+      `Hi ${u.name},`,
+      `Someone asked to reset the password for your InFlight account (@${u.handle}). This link works once, for the next hour.`,
+      "If it wasn’t you, ignore this email. Your password won’t change.",
+    ], { label: "Choose a new password", url: resetUrl(request, token) });
+    waitUntil(sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }).catch((e) => console.error("reset mail", e.message)));
+  }
+  return json({ message: "If there’s an account for that email, a reset link is on its way. It works for one hour." });
+}
+
+async function resetCheck({ request, env }) {
+  await limit(env, "resetcheck:" + clientIp(request), 30, 15 * 60e3);
+  const { user: u } = await findReset(env, (await body(request)).token);
+  // Passkey copies of the key are sealed with each passkey's own secret, so they're safe to give the link holder.
+  const { results } = await (await db(env)).prepare("SELECT id, vault FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
+  return json({ name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results });
+}
+
+async function resetComplete({ request, env, waitUntil }) {
+  await limit(env, "resetdo:" + clientIp(request), 10, 15 * 60e3);
+  const b = await body(request);
+  const { reset, user: u } = await findReset(env, b.token);
+  const vault = checkNewSecret(b);
+  const D = await db(env), t = Date.now();
+  const fresh = b.pub !== undefined;
+  const pub = fresh ? cleanPub(b.pub) : u.pub;
+  // claim the link first, so two tabs can't both use it
+  const used = await D.prepare("UPDATE pg_resets SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, reset.hash).run();
+  if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
+  const steps = [
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ? WHERE id = ?").bind(b.salt, hex(await sha256(fromB64url(b.proof))), vault, pub, u.id),
+    D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
+    D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(u.id),
+  ];
+  // A new key pair makes the passkeys' copies of the old key useless; the passkeys still sign in.
+  if (fresh) steps.push(D.prepare("UPDATE pg_passkeys SET vault = NULL WHERE user_id = ?").bind(u.id));
+  await D.batch(steps);
+  await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
+  waitUntil(notifyPasswordChanged(env, u, "with a reset link"));
+  const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
+  return json({ token: await issueSession(env, u.id), me: meView(updated, t) });
+}
+
+/* ---------------- admin ----------------
+   Uses the site owner's existing sign-in (the key icon on the home page:
+   password or passkey, an HttpOnly SameSite=Strict cookie). Changes also need
+   a custom header, which a form on another site can't send. Admins see account
+   details, never passwords, keys or scrolls. */
+async function requireAdmin(request, env, write) {
+  if (!(await isAuthed(request, env))) throw new HttpError(401, "Sign in as the site owner first.");
+  if (write && request.headers.get("X-InFlight-Admin") !== "1") throw new HttpError(403, "Admin changes must come from the admin page.");
+}
+async function adminStatus({ request, env }) {
+  const authed = await isAuthed(request, env);
+  return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined });
+}
+async function adminUsers({ request, env }) {
+  await requireAdmin(request, env);
+  const D = await db(env), t = Date.now();
+  const { results } = await D.prepare(`
+    SELECT u.id, u.name, u.handle, u.email, u.place, u.created_at,
+      (SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id) AS last_seen,
+      (SELECT COUNT(*) FROM pg_sessions s WHERE s.user_id = u.id) AS sessions,
+      (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys,
+      (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id AND p.vault IS NOT NULL) AS unlocking,
+      (SELECT COUNT(*) FROM pg_links l WHERE l.status = 'ok' AND (l.a = u.id OR l.b = u.id)) AS friends,
+      (SELECT COUNT(*) FROM pg_msgs m WHERE m.sender = u.id) AS sent
+    FROM pg_users u ORDER BY u.created_at DESC LIMIT 1000`).all();
+  const totals = await D.prepare("SELECT COUNT(*) AS msgs, COALESCE(SUM(CASE WHEN deliver_at > ? THEN 1 ELSE 0 END), 0) AS flying FROM pg_msgs").bind(t).first();
+  return json({ now: t, users: results, totals });
+}
+async function adminTarget(env, b) {
+  const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE id = ?").bind(String(b.id || "")).first();
+  if (!u) throw new HttpError(404, "That account doesn’t exist any more.");
+  return u;
+}
+async function adminReset({ request, env }) {
+  await requireAdmin(request, env, true);
+  const b = await body(request), u = await adminTarget(env, b);
+  if (b.mode === "email") {
+    if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up yet. Use “Make a reset link” and send it yourself.");
+    const token = await createReset(env, u.id, "admin-email", RESET_TTL_EMAIL);
+    const { text, html } = emailBody([
+      `Hi ${u.name},`,
+      `Here’s a link to choose a new password for your InFlight account (@${u.handle}). It works once, for the next hour.`,
+      "If you didn’t ask for this, you can ignore it. Your password won’t change.",
+    ], { label: "Choose a new password", url: resetUrl(request, token) });
+    await sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html });
+    await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
+    return json({ message: `Reset link emailed to ${u.email}. It works for one hour.` });
+  }
+  const token = await createReset(env, u.id, "admin-link", RESET_TTL_ADMIN);
+  await adminLog(env, "reset-link", u.id, `@${u.handle}`);
+  return json({ url: resetUrl(request, token), message: `One-time link for @${u.handle}. It works for 24 hours. Send it to them privately.` });
+}
+async function adminSignOut({ request, env }) {
+  await requireAdmin(request, env, true);
+  const u = await adminTarget(env, await body(request));
+  const r = await (await db(env)).prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id).run();
+  await adminLog(env, "signed-out", u.id, `@${u.handle} · ${r.meta.changes} device(s)`);
+  return json({ message: `@${u.handle} was signed out on ${r.meta.changes} device${r.meta.changes === 1 ? "" : "s"}.` });
+}
+async function adminDelete({ request, env }) {
+  await requireAdmin(request, env, true);
+  const b = await body(request), u = await adminTarget(env, b);
+  if (String(b.confirm || "").trim().replace(/^@/, "").toLowerCase() !== u.handle) throw new HttpError(400, `Type ${u.handle} to confirm.`);
+  await removeAccount(env, u.id);
+  await adminLog(env, "deleted", u.id, `@${u.handle} (${u.email})`);
+  return json({ message: `@${u.handle} and their scrolls were deleted.` });
+}
+async function adminLogList({ request, env }) {
+  await requireAdmin(request, env);
+  const { results } = await (await db(env)).prepare("SELECT * FROM pg_admin_log ORDER BY id DESC LIMIT 100").all();
+  return json({ log: results });
+}
+
 /* ---------------- router ---------------- */
 const ROUTES = {
   "POST signup": signup, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault,
@@ -330,6 +500,9 @@ const ROUTES = {
   "POST friends": addFriend, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead,
   "GET photo": getPhoto,
+  "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
+  "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
+  "POST admin-signout": adminSignOut, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
 };
 
 export async function onRequest(ctx) {

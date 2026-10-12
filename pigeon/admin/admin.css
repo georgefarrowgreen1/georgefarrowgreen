@@ -1,0 +1,44 @@
+/* InFlight admin: a plain working page on the app's tokens. Scrolls normally, works on a phone or a laptop. */
+body.admin{height:auto;min-height:100%;overflow:auto;background:var(--app)}
+.adm{max-width:880px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:16px}
+.adm-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding-top:8px}
+.adm-top h1{margin:0 auto 0 0;font-size:28px;font-weight:500;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.adm-top .tools{display:flex;align-items:center;gap:10px;margin-left:auto}
+.adm-top h1 .beta{top:0}
+.pillstat{font-family:var(--sans);font-size:12.5px;border-radius:999px;padding:4px 10px;background:var(--sage-bg);color:var(--sage);font-weight:600}
+.pillstat.off{background:var(--gold-bg);color:var(--gold)}
+.adm .btn{min-height:40px;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat{background:var(--card);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.stat b{font-size:26px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-family:var(--sans);font-size:12.5px;color:var(--ink-2)}
+@media (max-width:560px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.searchrow{display:flex;gap:10px;align-items:center}
+.searchrow .field{flex:1}
+.searchrow small{font-family:var(--sans);font-size:13px;color:var(--ink-2);white-space:nowrap}
+.users{display:flex;flex-direction:column;gap:10px}
+.ucard{background:var(--card);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.uhead{display:flex;gap:12px;align-items:center;min-width:0}
+.uhead .who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.uhead .nm{font-size:18px;font-weight:600;overflow-wrap:anywhere}
+.uhead .sub{font-family:var(--sans);font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
+.facts{display:flex;flex-wrap:wrap;gap:6px 14px;font-family:var(--sans);font-size:12.5px;color:var(--ink-2)}
+.facts b{color:var(--ink);font-weight:600}
+.uacts{display:flex;flex-wrap:wrap;gap:8px}
+.uacts .btn{flex:none}
+.danger-ghost{background:var(--card);color:var(--rose);box-shadow:inset 0 0 0 1px var(--rule)}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-family:var(--sans);font-size:13.5px}
+.confirm .field{flex:1;min-width:160px}
+.result{font-family:var(--sans);font-size:13.5px;line-height:1.45;background:var(--app);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.result.bad{color:var(--rose)}
+.linkbox{display:flex;gap:8px;align-items:center}
+.linkbox code{flex:1;min-width:0;font-family:var(--mono);font-size:12px;overflow-wrap:anywhere;background:var(--card);border-radius:8px;padding:8px}
+.adm h2{margin:8px 0 0;font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.logl{list-style:none;margin:0;padding:0;background:var(--card);border-radius:16px}
+.logl li{display:flex;gap:12px;padding:10px 14px;font-family:var(--sans);font-size:13px;line-height:1.4}
+.logl li + li{border-top:1px solid var(--rule)}
+.logl time{flex:none;color:var(--ink-2);font-variant-numeric:tabular-nums;min-width:110px}
+.logl span{min-width:0;overflow-wrap:anywhere}
+.anote{font-family:var(--sans);font-size:13px;color:var(--ink-2);line-height:1.5;margin:0}
+.signcard{max-width:420px;width:100%;margin:8vh auto 0;background:var(--card);border-radius:22px;padding:22px 20px;display:flex;flex-direction:column;gap:14px}
+.signcard h1{margin:0;font-size:26px;font-weight:500}

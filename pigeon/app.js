@@ -7,7 +7,7 @@ import { PLACES, nearestPlace } from "./places.js";
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 7;
 const POLL_MS = 15000;
-const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "roostpick", "pkoffer"]);
+const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "roostpick", "pkoffer", "forgot", "reset"]);
 
 /* ---------------- state ---------------- */
 const S = {
@@ -17,6 +17,7 @@ const S = {
   msgs: new Map(), turns: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(),
+  resetToken: null, resetInfo: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -372,25 +373,37 @@ async function sync() {
 }
 function friend(id) { return S.friends.find((f) => f.id === id); }
 // First key seen for a friend is remembered on this phone; a later change is flagged.
+// Keys this phone trusted before are kept too, so scrolls sealed with them stay readable
+// after a friend resets. Only keys this phone has seen are ever tried: a key named by the
+// server alone could have been made by the server.
+const keyId = (pub) => `${pub.x}.${pub.y}`;
+const pubFromId = (k) => { const [x, y] = k.split("."); return { kty: "EC", crv: "P-256", x, y }; };
 function checkPin(f) {
-  const k = `${f.pub.x}.${f.pub.y}`;
+  const k = keyId(f.pub);
   if (!S.pins[f.id]) { S.pins[f.id] = k; idb.set("pins:" + S.me.id, S.pins); }
   f.keyChanged = S.pins[f.id] !== k;
 }
 async function trustNewKey(fid) {
   const f = friend(fid); if (!f) return;
-  S.pins[fid] = `${f.pub.x}.${f.pub.y}`; await idb.set("pins:" + S.me.id, S.pins);
-  S.pairs.delete(fid); f.keyChanged = false; render();
+  const old = S.pins[fid], hist = S.pins["old:" + fid] || [];
+  if (old && old !== keyId(f.pub) && !hist.includes(old)) S.pins["old:" + fid] = [...hist, old];
+  S.pins[fid] = keyId(f.pub); await idb.set("pins:" + S.me.id, S.pins);
+  f.keyChanged = false; render();
 }
-function base(fid) {
-  const f = friend(fid);
-  if (!S.pairs.has(fid)) S.pairs.set(fid, E2E.pair(S.priv, f.pub));
-  return S.pairs.get(fid);
+function pairFor(pub) {
+  const k = keyId(pub);
+  if (!S.pairs.has(k)) S.pairs.set(k, E2E.pair(S.priv, pub));
+  return S.pairs.get(k);
 }
+const base = (fid) => pairFor(friend(fid).pub);
 async function decrypt(fid, m) {
   if (!m.ct || S.plain.has(m.id)) return;
-  try { S.plain.set(m.id, await E2E.open(await base(fid), m, m.ct)); }
-  catch (_) { S.plain.set(m.id, { t: "", bad: true }); }
+  const f = friend(fid);
+  const tries = [keyId(f.pub), S.pins[fid], ...(S.pins["old:" + fid] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
+  for (const k of tries) {
+    try { S.plain.set(m.id, await E2E.open(await pairFor(pubFromId(k)), m, m.ct)); return; } catch (_) {}
+  }
+  S.plain.set(m.id, { t: "", bad: true });
 }
 async function loadChat(fid) {
   const d = await api("messages?with=" + encodeURIComponent(fid));
@@ -456,6 +469,7 @@ function fitTa() { $ta.style.height = "auto"; $ta.style.height = Math.min(120, $
 function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
 
 function go(view, chat) {
+  if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.flash = ""; S.err = ""; S.stick = true;
   if (view !== "chat") clearAttach();
   if ($menu) $menu.hidden = true;
@@ -614,18 +628,72 @@ function vRoost() {
       <div class="kv"><span>Email</span><span class="val">${esc(u.email)}</span></div>
       ${S.passkeys.map((p) => `<div class="kv">${I.key}<span class="pk"><span>${esc(p.label || "Passkey")}</span><small>${p.unlocks ? "Signs in and unlocks your scrolls" : "Signs in; asks for your password on a new phone"} · added ${fmtDate(p.createdAt)}</small></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}
       ${passkeysSupported() ? `<button class="kv linkrow" data-act="pkadd">${I.key}<span>Add a passkey</span>${I.chev}</button>` : ""}
+      <button class="kv linkrow" data-act="changepw">${I.lock}<span>Change password</span>${I.chev}</button>
     </div>
-    <p class="foot">${S.passkeys.length ? "Passkeys let you sign in with Face ID or your fingerprint." : "Add a passkey to sign in with Face ID or your fingerprint instead of your password."} We can’t reset your password: it’s what locks your key.</p>
+    <p class="foot">${S.passkeys.length ? "Passkeys let you sign in with Face ID or your fingerprint." : "Add a passkey to sign in with Face ID or your fingerprint instead of your password."} Your password locks your key, so a reset only keeps your scrolls if you have a passkey that unlocks them.</p>
     <div class="pad"><button class="btn wide ghost" data-act="signout">Sign out</button></div>
     <div class="pad"><button class="btn wide ghost danger-btn" data-act="delask">Delete my account</button></div>
     <div class="sect">About the beta <span class="beta">Beta</span></div>
     <div class="card"><ul class="betalist">
       <li>There are no notifications yet. Open InFlight to check for pigeons.</li>
-      <li>Passwords can’t be changed or reset yet, so add a passkey as a backup.</li>
+      <li>Forgot your password? Use the link on the sign-in screen. Without a passkey, a reset starts you with a new key.</li>
       <li>Features may change while InFlight is in beta.</li>
     </ul></div>
     <p class="foot">Pigeons fly at ${SPEED_KMH} km/h, taking at least 5 minutes and at most 3 days. Photos are deleted 24 hours after they land.</p>
     <div class="gap"></div>`;
+}
+function vReset() {
+  const info = S.resetInfo;
+  if (!info) return `<div class="loading">Checking your reset link…</div>`;
+  if (info.error) return `<div class="auth center"><div class="mark">${I.warn}</div><h1>This link won’t work</h1>
+      <p class="sub">${esc(info.error)}</p>
+      <div class="stack"><button class="btn big" data-act="to" data-id="forgot">Ask for a new link</button><button class="btn big ghost" data-act="to" data-id="welcome">Back</button></div></div>`;
+  const canKeep = info.passkeys.length && passkeysSupported();
+  return `<div class="auth">
+      <h1>Choose a new password</h1>
+      <p class="sub">For <b>${esc(info.name)}</b> (@${esc(info.handle)}, ${esc(info.email)}).</p>
+      <form class="fields" data-form="reset" novalidate>
+        ${field("password", "New password", "password", "new-password", "At least 10 characters.")}
+        <p class="ferr" role="alert" hidden></p>
+        ${canKeep ? `<button type="button" class="btn big icon" data-act="resetkeep">${I.key}<span>Keep my scrolls with my passkey</span></button>
+          <p class="fine">Your passkey unlocks your key, so all your scrolls stay readable.</p>
+          <button type="button" class="btn big ghost" data-act="resetfresh">Start fresh instead</button>` :
+        `<button type="button" class="btn big" data-act="resetfresh">Set new password</button>`}
+        <p class="fine">${canKeep ? "Starting fresh" : "Without a passkey, this"} makes a new key on this phone. Your friends stay, but scrolls from before can’t be opened, and friends will see that your security key changed.</p>
+      </form></div>`;
+}
+async function loadReset() {
+  S.resetInfo = null; render();
+  try { S.resetInfo = await api("reset-check", { method: "POST", body: { token: S.resetToken } }); }
+  catch (e) { S.resetInfo = { error: e.message }; }
+  if (S.view === "reset") render();
+}
+async function resetWith(mode, btn) {
+  const pw = $("#f-password")?.value || "";
+  if (pw.length < 10) return showErr("Use at least 10 characters.", "password");
+  await busyBtn(btn, mode === "keep" ? "Waiting for your passkey…" : "Making your new key…", async () => {
+    let ecdh, pub;
+    if (mode === "keep") {
+      const a = await navigator.credentials.get({ publicKey: {
+        challenge: rand(32), rpId: location.hostname, userVerification: "preferred", timeout: 120000,
+        allowCredentials: S.resetInfo.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })),
+        extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
+      const secret = a && prfResult(a), pk = a && S.resetInfo.passkeys.find((p) => p.id === a.id);
+      if (!secret || !pk) throw new Error("That passkey couldn’t unlock your key on this phone. You can start fresh instead.");
+      try { ({ ecdh } = await E2E.unlock(await E2E.fromSecret(secret), pk.vault)); }
+      catch (_) { throw new Error("That passkey couldn’t unlock your key. You can start fresh instead."); }
+    } else {
+      ({ privJwk: ecdh, pub } = await E2E.newIdentity());
+    }
+    const salt = rand(16);
+    const { lockKey, proof } = await E2E.fromPassword(pw, salt);
+    const vault = await E2E.lock(lockKey, { ecdh });
+    const r = await api("reset-complete", { method: "POST", body: { token: S.resetToken, salt: b64url(salt), proof, vault, ...(pub ? { pub } : {}) } });
+    S.resetToken = null; S.resetInfo = null;
+    await useKeys(r.token, r.me, ecdh);
+  });
+  await afterSignIn();
+  toast(mode === "keep" ? "Password changed. Your scrolls are safe." : "Password changed. You’re starting fresh with a new key.");
 }
 function cityOptions() {
   const cur = S.me?.place;
@@ -664,7 +732,7 @@ function vAuth() {
           ${field("name", "Your name", "text", "name", "What your friends will see")}
           ${field("handle", "Handle", "text", "username", "How friends find you", "@")}
           ${field("email", "Email", "email", "email", "")}
-          ${field("password", "Password", "password", "new-password", "At least 10 characters. It also locks your encryption key, so we can’t reset it. Add a passkey as a backup.")}
+          ${field("password", "Password", "password", "new-password", "At least 10 characters. It also locks your encryption key. Add a passkey too, so a password reset can keep your scrolls.")}
           <p class="ferr" role="alert" hidden></p>
           <button class="btn big">Create account</button>
           <p class="fine">Your scrolls are end-to-end encrypted. We can’t read them.</p>
@@ -684,6 +752,7 @@ function vAuth() {
           ${field("password", "Password", "password", "current-password", "")}
           <p class="ferr" role="alert" hidden></p>
           <button class="btn big">Sign in</button>
+          <p class="fine"><button type="button" class="link" data-act="to" data-id="forgot">Forgot your password?</button></p>
         </form>
         ${passkeysSupported() ? `<div class="or"><span>or</span></div>
         <button class="btn big ghost icon" data-act="pkget">${I.key}<span>Sign in with a passkey</span></button>` : ""}
@@ -697,7 +766,20 @@ function vAuth() {
           ${field("password", "Password", "password", "current-password", "")}
           <p class="ferr" role="alert" hidden></p>
           <button class="btn big">Unlock</button>
+          <p class="fine"><button type="button" class="link" data-act="to" data-id="forgot">Forgot your password?</button></p>
         </form></div>`;
+    case "forgot": return `<div class="auth">
+        <button class="round" data-act="to" data-id="signin" aria-label="Back">${I.back}</button>
+        <h1>Reset your password</h1>
+        <p class="sub">We’ll email you a link to choose a new password. It works once, for one hour.</p>
+        <form class="fields" data-form="forgot" novalidate>
+          ${field("email", "Email", "email", "email", "")}
+          <p class="ferr" role="alert" hidden></p>
+          <button class="btn big">Email me a reset link</button>
+        </form>
+        <p class="fine">If you have a passkey for InFlight, the reset can keep your scrolls. Without one, you’ll start with a new key and older scrolls can’t be opened.</p>
+      </div>`;
+    case "reset": return vReset();
     case "roostpick": return `<div class="auth">
         <h1>Where’s your roost?</h1>
         <p class="sub">Pigeons fly from here, so it sets how long your scrolls take. We keep it to about 10 km, and only your friends see it.</p>
@@ -778,6 +860,11 @@ function renderSheet() {
   } else if (s.type === "askpw") {
     if (!$("#f-password", $layer)) $layer.innerHTML = sheetHtml("Link your passkey", `<p class="lead">Enter your password once so this passkey can also unlock your scrolls on a new phone.</p>
       <form class="fields" data-form="askpw" novalidate>${field("password", "Password", "password", "current-password", "")}<p class="ferr" role="alert" hidden></p><button class="btn big">Link passkey</button></form>`);
+  } else if (s.type === "changepw") {
+    if (!$("#f-current", $layer)) $layer.innerHTML = sheetHtml("Change password", `<form class="fields" data-form="changepw" novalidate>
+      ${field("current", "Current password", "password", "current-password", "")}
+      ${field("password", "New password", "password", "new-password", "At least 10 characters. Other phones signed in to your account will be signed out.")}
+      <p class="ferr" role="alert" hidden></p><button class="btn big">Change password</button></form>`);
   } else if (s.type === "delete") {
     $layer.innerHTML = sheetHtml("Delete account", `<p class="lead">This deletes your account, your flock and every scroll and photo you’ve sent or received, for you and your friends. It can’t be undone.</p>
       <div class="pad"><button class="btn wide danger-btn ghost" data-act="delgo">Delete everything</button></div>`);
@@ -818,7 +905,7 @@ function toast(html, btn, fn) {
    Actions
    ============================================================ */
 function showErr(msg, field) {
-  const scope = S.sheet?.type === "askpw" ? $layer : root();
+  const scope = S.sheet && $("form", $layer) ? $layer : root();
   scope.querySelectorAll(".fl .err").forEach((e) => { e.hidden = true; });
   scope.querySelectorAll(".fl").forEach((e) => e.classList.remove("bad"));
   const f = field && $(`#f-${field}`, scope)?.closest(".fl");
@@ -886,6 +973,11 @@ async function onClick(e) {
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
     case "delask": S.sheet = { type: "delete" }; return renderSheet();
+    case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
+    case "resetkeep": case "resetfresh":
+      try { await resetWith(t.dataset.act === "resetkeep" ? "keep" : "fresh", t); }
+      catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
+      return;
     case "delgo":
       try { await busyBtn(t, "Deleting…", () => api("me", { method: "DELETE" })); await forget(); go("welcome"); toast("Your account and scrolls were deleted."); }
       catch (err) { toast(esc(err.message)); }
@@ -962,6 +1054,34 @@ async function onSubmit(e) {
   } else if (kind === "unlock") {
     try { await busyBtn(btn, "Unlocking…", () => unlockWithPassword(v.password || "")); afterSignIn(); }
     catch (err) { showErr(err.message, err.field); }
+  } else if (kind === "forgot") {
+    const email = String(v.email || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return showErr("That doesn’t look like an email address.", "email");
+    try {
+      const r = await busyBtn(btn, "Sending…", () => api("reset-request", { method: "POST", body: { email } }));
+      form.innerHTML = `<div class="locstate">${I.ok}<span>${esc(r.message)}</span></div>`;
+    } catch (err) { showErr(err.message, err.field); }
+  } else if (kind === "reset") {
+    const keep = $("[data-act=resetkeep]");
+    try { await resetWith(keep ? "keep" : "fresh", keep || $("[data-act=resetfresh]")); }
+    catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
+  } else if (kind === "changepw") {
+    if (!v.current) return showErr("Enter your current password.", "current");
+    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters.", "password");
+    try {
+      await busyBtn(btn, "Changing…", async () => {
+        const { vault, salt } = await api("vault");
+        const old = await E2E.fromPassword(v.current, fromB64url(salt));
+        let ecdh;
+        try { ({ ecdh } = await E2E.unlock(old.lockKey, vault)); }
+        catch (_) { throw Object.assign(new Error("Your current password isn’t right."), { field: "current" }); }
+        const ns = rand(16), nw = await E2E.fromPassword(v.password, ns);
+        await api("password", { method: "POST", body: { oldProof: old.proof, salt: b64url(ns), proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
+        S.secretJwk = ecdh;
+      });
+      S.sheet = null; renderSheet();
+      toast("Password changed. Any other phones were signed out.");
+    } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "askpw") {
     try {
       const jwk = await busyBtn(btn, "Unlocking…", async () => {
@@ -1027,9 +1147,16 @@ async function start() {
   mount();
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { S.pendingAdd = m[1].toLowerCase(); history.replaceState(null, "", location.pathname); }
+  // a reset link: take the token out of the address bar straight away
+  const rs = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+  if (rs) { S.resetToken = rs[1]; history.replaceState(null, "", location.pathname); }
   if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return showErr("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
   const saved = await idb.get("session");
-  if (saved?.token && saved.priv) {
+  if (S.resetToken) {
+    // a reset replaces whoever is signed in on this phone
+    if (saved?.token) await idb.del("session");
+    go("reset");
+  } else if (saved?.token && saved.priv) {
     S.token = saved.token; S.me = saved.me; S.priv = saved.priv;
     S.fp = await E2E.fingerprint(saved.me.pub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
@@ -1038,6 +1165,16 @@ async function start() {
     await sync();
     if (S.me && S.me.lat == null) go("roostpick");
   } else go("welcome");
+  // a reset or add-a-friend link opened while InFlight is already open in this tab
+  window.addEventListener("hashchange", async () => {
+    const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
+    if (!r && !a) return;
+    history.replaceState(null, "", location.pathname);
+    if (r) {
+      if (S.token) { api("logout", { method: "POST" }).catch(() => {}); await forget(); }
+      S.resetToken = r[1]; S.view = "loading"; go("reset");
+    } else { S.pendingAdd = a[1].toLowerCase(); if (S.me) go("flock"); }
+  });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
