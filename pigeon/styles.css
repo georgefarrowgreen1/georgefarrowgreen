@@ -254,7 +254,8 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .warn .btn{align-self:flex-start}
 
 /* composer: a floating glass field over the conversation */
-.compose{flex:none;position:relative;display:flex;flex-direction:column;gap:6px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,var(--bg-plain) 55%,transparent)}
+.compose{flex:none;position:relative;display:flex;flex-direction:column;gap:6px;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));transition:padding-bottom .35s var(--snappy);background:linear-gradient(to top,var(--bg-plain) 55%,transparent)}
+.screen.typing .compose{padding-bottom:6px}
 .note{display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;line-height:16px;color:var(--orange);text-align:center}
 .note svg{font-size:14px}
 .note.stop{color:var(--red)}

@@ -666,6 +666,15 @@ function mount() {
   root().addEventListener("submit", onSubmit);
   root().addEventListener("input", onInput);
   $ta.addEventListener("input", () => { fitTa(); renderCompose(); });
+  // With the keyboard up the home bar is hidden, so drop its spacing and sit the
+  // message box right on the keyboard. Touch screens only: there's no keyboard to clear otherwise.
+  const touch = window.matchMedia?.("(pointer: coarse)").matches;
+  const typing = (on) => { if (touch) root().classList.toggle("typing", on); };
+  $ta.addEventListener("focus", () => typing(true));
+  $ta.addEventListener("blur", () => typing(false));
+  window.visualViewport?.addEventListener?.("resize", () => {          // keyboard closed without leaving the box
+    if (window.innerHeight - window.visualViewport.height < 80 && document.activeElement !== $ta) typing(false);
+  });
 }
 function fitTa() { $ta.style.height = "auto"; $ta.style.height = Math.min(120, $ta.scrollHeight) + "px"; }
 function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
