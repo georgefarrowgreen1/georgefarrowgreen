@@ -15,9 +15,9 @@ const MAX_CT = 70000;                 // an encrypted scroll (2,000 characters o
 const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 
 function meView(u, t) {
-  const s = swiftState(u, t), tb = loft(u, "turbo", t);
+  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, locAt: u.loc_at || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, locAt: u.loc_at || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -353,7 +353,7 @@ async function listMessages({ request, env }) {
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
   const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
     ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other).all();
-  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count });
+  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -376,12 +376,13 @@ async function sendMessage({ request, env, waitUntil }) {
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
   const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(to).first();
 
-  // Standard pigeons are free but only fly when it's your turn. Swift (2×) and
-  // turbo (3×) fly any time, and each one sent leaves the loft. A phone that
-  // doesn't say which (older versions) sends standard if it can, else swift.
+  // Standard pigeons are free but only fly when it's your turn. Swift (2×),
+  // turbo (3×) and rocket (9×) fly any time, and each one sent leaves the loft.
+  // A phone that doesn't say which (older versions) sends standard if it can,
+  // else swift.
   const tn = turn(u.id, await lastBetween(D, u.id, to), t);
   const kind = Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free ? "standard" : "swift";
-  if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift or turbo pigeon to write now.");
+  if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
   if (PIGEONS[kind].max) {
     const p = PIGEONS[kind], l = loft(u, kind, t);
     if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);

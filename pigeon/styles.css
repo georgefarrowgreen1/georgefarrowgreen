@@ -23,7 +23,7 @@
   --glass-shadow:0 8px 28px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
   --scrim:rgba(0,0,0,.22);
   --sea:#d3e6f5; --land:#f8f6f1; --land-edge:#ddd8cc; --border:#c4bcab; --grid:rgba(0,0,0,.04);
-  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-ring:transparent;   /* pigeon kinds */
+  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-rocket:#d9a21b; --p-rocket-text:#a87a0a; --p-ring:transparent;   /* pigeon kinds */
   --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --mono:ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme:light;
@@ -38,7 +38,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
@@ -50,7 +50,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
   }
 }
@@ -538,15 +538,17 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
-/* ---------- pigeon kinds: green standard, red swift, black turbo ---------- */
+/* ---------- pigeon kinds: green standard, red swift, black turbo, gold rocket ---------- */
 .pg{flex:none;display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;color:#fff;vertical-align:-.35em;
   background:linear-gradient(to bottom,color-mix(in srgb,var(--pg),#fff 22%),var(--pg) 70%);box-shadow:inset 0 -.06em .12em rgba(0,0,0,.12)}
 /* the bird is drawn a little high in its box: nudge it to the optical centre */
 .pg svg{font-size:1.1em;transform:translate(-.02em,.07em);filter:drop-shadow(0 .03em .04em rgba(0,0,0,.18))}
 .pg.turbo{box-shadow:inset 0 0 0 1px var(--p-badge-ring,var(--p-ring)),inset 0 -.06em .12em rgba(0,0,0,.2)}   /* black needs a rim in dark mode; inside, so it never clips */
-.pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}.pg.dumb{--pg:var(--p-dumb)}
-.tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
-.dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:inset 0 0 0 1px var(--p-dot-ring,var(--p-ring))}   /* rim inside the dot, so neighbours never touch */
+.pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}.pg.dumb{--pg:var(--p-dumb)}.pg.rocket{--pg:var(--p-rocket)}
+/* gold: a brighter sheen than the others */
+.pg.rocket,.tile.rocket,.pick button.rocket[aria-pressed="true"]{background:linear-gradient(160deg,#fbe38a,var(--p-rocket) 55%,#b9850d)}
+.tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}.tile.rocket{background:var(--p-rocket)}
+.dots.swift i:not(.e){background:var(--p-swift)}.dots.rocket i:not(.e){background:linear-gradient(160deg,#fbe38a,var(--p-rocket) 60%)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:inset 0 0 0 1px var(--p-dot-ring,var(--p-ring))}   /* rim inside the dot, so neighbours never touch */
 /* the picker above the message box */
 .pick{display:flex;gap:8px;justify-content:center}
 .pick button{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 10px;border:0;border-radius:999px;font-size:14px;font-weight:600;color:var(--label);
@@ -558,7 +560,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pick button[aria-pressed="true"] .pg{background:rgba(255,255,255,.22);box-shadow:none}
 .pick button[aria-pressed="true"] b{opacity:.85}
 .pick button:disabled{opacity:.4}
-.pick .standard{--pg:var(--p-standard)}.pick .swift{--pg:var(--p-swift)}.pick .turbo{--pg:var(--p-turbo)}
+.pick .standard{--pg:var(--p-standard)}.pick .swift{--pg:var(--p-swift)}.pick .turbo{--pg:var(--p-turbo)}.pick .rocket{--pg:var(--p-rocket)}
 .note .pg{font-size:12px}
 .note.go{color:var(--label-2)}
 .fly .t1 .pg{font-size:15px;animation:bob 1.6s ease-in-out infinite}
@@ -569,23 +571,27 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 
 /* ---------- polish ---------- */
 /* in-flight labels take their pigeon's colour (turbo reads as plain text) */
-.meta .fl.standard{color:var(--p-standard)}.meta .fl.swift{color:var(--p-swift)}.meta .fl.turbo{color:var(--label)}.meta .fl.dumb{color:var(--p-dumb)}
+.meta .fl.standard{color:var(--p-standard)}.meta .fl.swift{color:var(--p-swift)}.meta .fl.turbo{color:var(--label)}.meta .fl.dumb{color:var(--p-dumb)}.meta .fl.rocket{color:var(--p-rocket-text)}
 /* friend requests: handle in the small grey line, like every other list */
 .reqrow .csub{font-size:13px;line-height:18px;color:var(--label-2)}
 /* menus and confirm cards: more solid glass, so what's behind doesn't show through the words */
 .menu-pop,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:blur(30px) saturate(1.8);backdrop-filter:blur(30px) saturate(1.8)}
 /* the turn message stays on one line */
 .status span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* pigeon chips share the width and never run off a small screen */
-.pick button{flex:1 1 0;min-width:0;overflow:hidden;white-space:nowrap}
-.pick button span:not(.pg){overflow:hidden;text-overflow:ellipsis}
+/* four pigeons share one row: only the chosen one spells out its name, the
+   rest shrink to their badge and count, and the name slides open on choosing */
+.pick button{flex:0 1 auto;max-width:none;min-width:0;gap:0;overflow:hidden;white-space:nowrap;transition:background-color .3s,color .3s,transform .45s var(--snappy),opacity .3s,padding .45s var(--snappy)}
+.pick button span:not(.pg){display:inline-block;max-width:0;opacity:0;visibility:hidden;margin-left:0;overflow:hidden;transition:max-width .45s var(--snappy),opacity .3s,margin .45s var(--snappy),visibility .3s}
+.pick button[aria-pressed="true"]{padding:0 14px 0 10px}
+.pick button[aria-pressed="true"] span:not(.pg){max-width:6em;opacity:1;visibility:visible;margin-left:6px}
+.pick button b{margin-left:5px}.pick button b:empty{display:none}
 .note{text-wrap:balance}
 /* long labels stay on one line beside a value */
 .cell.has-icon:has(> .val) .ctext > span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell .csub .mono{font-family:var(--mono);font-size:13px;letter-spacing:.3px}
 @media (max-width:360px){
-  .pick{gap:5px}
-  .pick button{font-size:13px;padding:0 7px;gap:4px;height:34px}
+  .pick{gap:6px}
+  .pick button{font-size:13px;padding:0 9px;height:34px}
   .cell .val .mono,.cell .val.mono{font-size:13px;letter-spacing:-.3px}
   .me-cell .name{font-size:19px}
 }

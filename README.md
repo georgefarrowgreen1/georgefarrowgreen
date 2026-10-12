@@ -195,10 +195,10 @@ No new setup is needed: it uses the `DB` and `BIO_R2` bindings already in
 them itself): R2 → `bio-media` → Settings → Object lifecycle rules → delete
 objects with prefix `pigeon/` after 5 days.
 
-**Pigeons.** Three kinds. *Standard* (green) flies at 80 km/h and is free, but
-only when it's your turn (the pigeon is on your windowsill). *Swift* (red, 2×,
-up to 9, one hatching every 2h 40m) and *Turbo* (black, 3×, up to 3, one every
-8 hours) fly any time and each send uses one. The phone picks in the message
+**Pigeons.** *Standard* (green) flies at 80 km/h and is free, but only when
+it's your turn (the pigeon is on your windowsill). *Swift* (red, 2×, up to 9,
+one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
+*Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
 **Moving about.** When someone's location changes by more than 5 km, every

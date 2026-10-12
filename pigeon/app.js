@@ -5,11 +5,11 @@ import { LAND } from "./land.js";
 import { PLACES, nearestPlace, snapToMile } from "./places.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
-const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3;
+const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
-// swift and turbo fly any time and come from lofts that refill through the day.
+// swift, turbo and rocket fly any time and come from lofts that refill through the day.
 const APP_VERSION = "1.0.0";            // shown in Account
-const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX]];
+const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };        // a secret: start a message with /dumb
 const DUMB = /^\/dumb(?:\s+|$)/i;
@@ -868,11 +868,12 @@ function vAccount() {
       <span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
     <div class="ghead">Pigeons</div>
     <div class="group">
+      ${cell({ icon: I.bird, tile: "rocket", label: "Rocket", sub: `9× faster · ${hatch("rocket")}`, val: loftVal("rocket") })}
       ${cell({ icon: I.bird, tile: "turbo", label: "Turbo", sub: `3× faster · ${hatch("turbo")}`, val: loftVal("turbo") })}
       ${cell({ icon: I.bird, tile: "swift", label: "Swift", sub: `2× faster · ${hatch("swift")}`, val: loftVal("swift") })}
       ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free on your turn" })}
     </div>
-    <div class="gfoot">You get 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
+    <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
     <div class="ghead">Location</div>
     <div class="group">
       ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set"), sub: u.locAt ? `Updated ${agoText(u.locAt)}` : "" })}
@@ -1171,7 +1172,7 @@ function renderCompose() {
   const dumb = dumbText();
   const has = (dumb ?? $ta.value).trim() || S.attach;
   // which pigeons can fly now: your choice if it can, else the slowest that can
-  const can = { standard: !!t.free, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0 };
+  const can = { standard: !!t.free, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0 };
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
   S.sendKind = kind;
   if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${k}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("");
@@ -1188,7 +1189,7 @@ function renderCompose() {
   else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your location in Account before sending."; blocked = true; }
   else if (!kind && dumb != null) { note.hidden = false; note.className = "note stop"; blocked = true; note.textContent = "Dumb pigeons wait their turn."; }
   else if (!kind) {
-    const next = Math.min(...["swiftNextAt", "turboNextAt"].map((x) => S.me[x] || Infinity));
+    const next = Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity));
     note.hidden = false; note.className = "note stop"; blocked = true;
     note.textContent = `It isn’t your turn, and your lofts are empty. The next pigeon hatches in ${fmtDur(next - now())}.`;
   } else {
@@ -1835,6 +1836,7 @@ async function send() {
     $ta.value = ""; fitTa(); S.stick = true;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     S.fresh.set(r.message.id, Date.now());
+    render();                         // show it now; on a slow connection the sync below can outlast the pop
     await sync();
     offerNotify();
   } catch (err) { S.err = err.message; }

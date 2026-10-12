@@ -15,12 +15,14 @@ export const MAX_FLIGHT = 3 * DAY;
 export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they land
 export const SWIFT_MAX = 9;              // swift pigeons: 2× speed, 9 a day
 export const TURBO_MAX = 3;              // turbo pigeons: 3× speed, 3 a day
-// Kinds of pigeon. Standard is free but waits its turn; swift and turbo
+export const ROCKET_MAX = 1;             // rocket pigeons: 9× speed, 1 a day
+// Kinds of pigeon. Standard is free but waits its turn; swift, turbo and rocket
 // can fly any time and come from a loft that refills through the day.
 export const PIGEONS = {
   standard: { speed: 1, waits: true },
   swift: { speed: 2, max: SWIFT_MAX, every: DAY / SWIFT_MAX, col: "swift", atCol: "swift_at" },
   turbo: { speed: 3, max: TURBO_MAX, every: DAY / TURBO_MAX, col: "turbo", atCol: "turbo_at" },
+  rocket: { speed: 9, max: ROCKET_MAX, every: DAY / ROCKET_MAX, col: "rocket", atCol: "rocket_at" },
   // a secret: start a message with /dumb. 3× slower, waits its turn like standard
   dumb: { speed: 1 / 3, waits: true },
 };
@@ -119,6 +121,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN loc_at INTEGER",      // when the location last changed
   "ALTER TABLE pg_users ADD COLUMN auto_loc INTEGER NOT NULL DEFAULT 0",   // update location on opening the app
   "ALTER TABLE pg_users ADD COLUMN seen_at INTEGER",     // last time the app checked in (Last Online)
+  "ALTER TABLE pg_users ADD COLUMN rocket INTEGER",      // rocket pigeons in the loft; null = full
+  "ALTER TABLE pg_users ADD COLUMN rocket_at INTEGER",
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -213,7 +217,7 @@ export function turn(me, last, t) {
   if (t < last.deliver_at) return { free: false, state: "inbound" };
   return { free: true, state: "sill" };
 }
-// How many swift or turbo pigeons are in the loft. One hatches every
+// How many swift, turbo or rocket pigeons are in the loft. One hatches every
 // `every` until it's full; a loft that's never been used starts full.
 export function loft(u, kind, t) {
   const p = PIGEONS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
