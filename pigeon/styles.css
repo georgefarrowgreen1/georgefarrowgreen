@@ -38,7 +38,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
@@ -50,7 +50,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42);
+    --sea:#1e2b35; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
   }
 }
@@ -533,8 +533,11 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
 /* ---------- pigeon kinds: green standard, red swift, black turbo ---------- */
-.pg{flex:none;display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;background:var(--pg);color:#fff;box-shadow:0 0 0 1px var(--p-ring);vertical-align:-.35em}
-.pg svg{font-size:.9em}
+.pg{flex:none;display:inline-grid;place-items:center;width:1.5em;height:1.5em;border-radius:50%;color:#fff;vertical-align:-.35em;
+  background:linear-gradient(to bottom,color-mix(in srgb,var(--pg),#fff 22%),var(--pg) 70%);box-shadow:inset 0 -.06em .12em rgba(0,0,0,.12)}
+/* the bird is drawn a little high in its box: nudge it to the optical centre */
+.pg svg{font-size:1.1em;transform:translate(-.02em,.07em);filter:drop-shadow(0 .03em .04em rgba(0,0,0,.18))}
+.pg.turbo{box-shadow:inset 0 0 0 1px var(--p-badge-ring,var(--p-ring)),inset 0 -.06em .12em rgba(0,0,0,.2)}   /* black needs a rim in dark mode; inside, so it never clips */
 .pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}.pg.dumb{--pg:var(--p-dumb)}
 .tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}
 .dots.swift i:not(.e){background:var(--p-swift)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:inset 0 0 0 1px var(--p-dot-ring,var(--p-ring))}   /* rim inside the dot, so neighbours never touch */
@@ -553,8 +556,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .note .pg{font-size:12px}
 .note.go{color:var(--label-2)}
 .fly .t1 .pg{font-size:15px;animation:bob 1.6s ease-in-out infinite}
-.fly .t1 .pg svg,.mapcard .big .pg svg,.mrow .mprev .pg svg{color:#fff;font-size:.9em;animation:none;margin:0;vertical-align:0}
-.mrow .mprev .pg{font-size:11px;vertical-align:0}
+.fly .t1 .pg svg,.mapcard .big .pg svg,.mrow .mprev .pg svg{color:#fff;font-size:1.1em;animation:none;margin:0;vertical-align:0}
+.mrow .mprev .pg{font-size:12px;vertical-align:0}
 .meta .fl .pg{font-size:10px;margin-right:1px}
 .mapcard .big .pg{font-size:16px}
 
