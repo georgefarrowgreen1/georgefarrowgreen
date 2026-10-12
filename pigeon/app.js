@@ -524,6 +524,7 @@ async function sync() {
       const d = await api("sync");
       S.skew = d.now - Date.now();
       S.me = d.me; S.friends = d.friends; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn;
+      syncTheme();
       for (const f of S.friends) {
         checkPin(f);
         if (f.last) await decrypt(f.id, f.last);
@@ -1156,7 +1157,7 @@ function renderSheet(refresh) {
       $layer.innerHTML = sheetHtml("Appearance", `<div class="group mt-s">
         ${THEMES.map((k) => `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${k}"><span class="ctext"><span>${THEME_NAMES[k]}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
         </div>
-        <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting." : "Saved on this phone."}</div>`);
+        <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting. " : ""}Saved to your account, so it’s the same on every phone you sign in on.</div>`);
       return;
     case "notifications": {
       const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
@@ -1587,10 +1588,27 @@ $(".page").addEventListener("keydown", (e) => {
 const THEMES = ["light", "dark", "auto"];
 const THEME_NAMES = { light: "Light", dark: "Dark", auto: "Automatic" };
 function theme() { try { const t = localStorage.getItem("inflight-theme"); return THEMES.includes(t) ? t : "light"; } catch (_) { return "light"; } }
+// Saved to the account (so every phone you sign in on matches) and kept on
+// this phone too, so theme.js can draw the right colours before the app loads.
 function setTheme(t) {
   if (!THEMES.includes(t)) return;
+  keepTheme(t);
+  if (S.me) {
+    S.me.appearance = t;
+    api("me", { method: "PATCH", body: { appearance: t } }).catch(() => toast("Couldn’t save that to your account. It’s set on this phone for now."));
+  }
+}
+function keepTheme(t) {
   try { localStorage.setItem("inflight-theme", t); } catch (_) { /* this visit only */ }
   applyTheme(t);
+}
+// After each sync: the account's choice wins; an account that has never
+// chosen takes this phone's.
+function syncTheme() {
+  if (!S.me) return;
+  const mine = S.me.appearance;
+  if (THEMES.includes(mine)) { if (mine !== theme()) { keepTheme(mine); if (S.view === "account" || S.sheet?.type === "appearance") { render(); renderSheet(); } } }
+  else if (!S.themeSent) { S.themeSent = true; api("me", { method: "PATCH", body: { appearance: theme() } }).then((r) => { S.me = r.me; }).catch(() => {}); }
 }
 function applyTheme(t = theme()) {
   document.documentElement.setAttribute("data-theme", t);

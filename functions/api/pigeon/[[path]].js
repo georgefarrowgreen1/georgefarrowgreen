@@ -17,7 +17,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u),
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -102,6 +102,10 @@ async function updateMe({ request, env }) {
     const name = String(b.name).trim().slice(0, 50);
     if (!name) throw new HttpError(400, "Your name can’t be empty.", "name");
     await D.prepare("UPDATE pg_users SET name = ? WHERE id = ?").bind(name, u.id).run();
+  }
+  if (b.appearance !== undefined) {
+    if (!["light", "dark", "auto"].includes(b.appearance)) throw new HttpError(400, "Choose Light, Dark or Automatic.");
+    await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
   }
   if (b.notify && typeof b.notify === "object")
     await D.prepare("UPDATE pg_users SET notify_prefs = ? WHERE id = ?").bind(JSON.stringify(cleanPrefs(prefsOf(u), b.notify)), u.id).run();
