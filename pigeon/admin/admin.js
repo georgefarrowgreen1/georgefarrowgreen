@@ -96,7 +96,6 @@ function vSignIn(msg) {
   root().innerHTML = `<div class="auth adm-auth">
     <div class="appicon">${I.bird}</div>
     <h1>InFlight Admin</h1>
-    <p class="sub">Sign in with your site owner password or passkey, the same ones as the key icon on georgefarrowgreen.com.</p>
     <form id="pwform" novalidate>
       <div class="group"><label class="fcell"><input id="f-pw" type="password" placeholder="Owner password" autocomplete="current-password" aria-label="Owner password"></label></div>
       <p class="gfoot bad" role="alert"${msg ? "" : " hidden"}>${esc(msg || "")}</p>

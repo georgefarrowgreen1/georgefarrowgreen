@@ -66,7 +66,7 @@ form[data-f=delete] .stack{padding:18px 16px 0}
 /* sign in: the app's welcome, with one field */
 .adm-auth{max-width:440px;margin:0 auto;min-height:100vh;align-items:stretch;justify-content:center;padding:calc(40px + env(safe-area-inset-top,0px)) 0 40px}
 .adm-auth .appicon{align-self:center;margin-bottom:18px}
-.adm-auth h1{margin:0 20px 8px;text-align:center;font-size:30px;line-height:36px;font-weight:700}
+.adm-auth h1{margin:0 20px 24px;text-align:center;font-size:30px;line-height:36px;font-weight:700}
 .adm-auth .sub{text-align:center;margin:0 28px 24px!important}
 .adm-auth .stack{margin-top:18px;padding:0 16px}
 .adm-auth .btn .ico{font-size:20px}
