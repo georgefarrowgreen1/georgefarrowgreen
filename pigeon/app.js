@@ -10,6 +10,9 @@ const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3;
 // swift and turbo fly any time and come from lofts that refill through the day.
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
+KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };        // a secret: start a message with /dumb
+const DUMB = /^\/dumb(?:\s+|$)/i;
+const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
 const kindOf = (m) => (KIND[m?.pigeon] ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
 const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
@@ -1148,10 +1151,11 @@ function renderCompose() {
   $compose.hidden = !show; if (!show) return;
   const f = friend(S.chat), t = S.turns.get(f.id) || f.turn;
   const note = $(".note", $compose), btn = $(".send", $compose), pick = $(".pick", $compose);
-  const has = $ta.value.trim() || S.attach;
+  const dumb = dumbText();
+  const has = (dumb ?? $ta.value).trim() || S.attach;
   // which pigeons can fly now: your choice if it can, else the slowest that can
   const can = { standard: !!t.free, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0 };
-  const kind = can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
+  const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
   S.sendKind = kind;
   if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${k}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("");
   for (const b of pick.children) {
@@ -1165,6 +1169,7 @@ function renderCompose() {
   if (S.err) { note.hidden = false; note.className = "note stop"; note.textContent = S.err; }
   else if (f.keyChanged) { note.hidden = false; note.className = "note stop"; note.textContent = "Check the new safety number before sending."; blocked = true; }
   else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your location in Account before sending."; blocked = true; }
+  else if (!kind && dumb != null) { note.hidden = false; note.className = "note stop"; blocked = true; note.textContent = "Dumb pigeons wait their turn."; }
   else if (!kind) {
     const next = Math.min(...["swiftNextAt", "turboNextAt"].map((x) => S.me[x] || Infinity));
     note.hidden = false; note.className = "note stop"; blocked = true;
@@ -1172,10 +1177,10 @@ function renderCompose() {
   } else {
     const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500;
     note.hidden = false; note.className = "note go";
-    note.innerHTML = `${pg(kind)}<span>${t.free ? "" : "Not your turn for Standard. "}${KIND[kind].name} lands in ${fmtDur(flightMs(km, KIND[kind].speed))}.</span>`;
+    note.innerHTML = `${pg(kind)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, KIND[kind].speed))}.</span>`;
   }
   btn.disabled = blocked || !has || S.busy;
-  $ta.disabled = blocked && !S.err;
+  $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
   const a = $(".attach", $compose);
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
@@ -1786,7 +1791,7 @@ async function setAttach(blob) {
 }
 function clearAttach() { if (S.attach) URL.revokeObjectURL(S.attach.preview); S.attach = null; if ($compose) renderCompose(); }
 async function send() {
-  const text = $ta.value.trim();
+  const text = (dumbText() ?? $ta.value).trim();
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
   S.busy = true; S.err = ""; renderCompose();
   try {

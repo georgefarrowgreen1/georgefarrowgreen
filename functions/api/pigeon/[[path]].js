@@ -377,15 +377,15 @@ async function sendMessage({ request, env, waitUntil }) {
   // turbo (3×) fly any time, and each one sent leaves the loft. A phone that
   // doesn't say which (older versions) sends standard if it can, else swift.
   const tn = turn(u.id, await lastBetween(D, u.id, to), t);
-  const kind = PIGEONS[meta.pigeon] ? meta.pigeon : tn.free ? "standard" : "swift";
-  if (kind === "standard" && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift or turbo pigeon to write now.");
-  if (kind !== "standard") {
+  const kind = Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free ? "standard" : "swift";
+  if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift or turbo pigeon to write now.");
+  if (PIGEONS[kind].max) {
     const p = PIGEONS[kind], l = loft(u, kind, t);
     if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
     const [n, at] = l.count >= p.max ? [p.max - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
     await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ?`).bind(n, at, u.id).run();
   }
-  const swift = kind === "standard" ? 0 : 1;
+  const swift = PIGEONS[kind].waits ? 0 : 1;
   const hasTo = r && r.lat != null;
   const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
   const deliver = t + flightMs(km, PIGEONS[kind].speed);

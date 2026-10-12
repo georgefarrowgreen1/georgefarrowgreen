@@ -15,12 +15,14 @@ export const MAX_FLIGHT = 3 * DAY;
 export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they land
 export const SWIFT_MAX = 9;              // swift pigeons: 2× speed, 9 a day
 export const TURBO_MAX = 3;              // turbo pigeons: 3× speed, 3 a day
-// Three kinds of pigeon. Standard is free but waits its turn; swift and turbo
+// Kinds of pigeon. Standard is free but waits its turn; swift and turbo
 // can fly any time and come from a loft that refills through the day.
 export const PIGEONS = {
-  standard: { speed: 1 },
+  standard: { speed: 1, waits: true },
   swift: { speed: 2, max: SWIFT_MAX, every: DAY / SWIFT_MAX, col: "swift", atCol: "swift_at" },
   turbo: { speed: 3, max: TURBO_MAX, every: DAY / TURBO_MAX, col: "turbo", atCol: "turbo_at" },
+  // a secret: start a message with /dumb. 3× slower, waits its turn like standard
+  dumb: { speed: 1 / 3, waits: true },
 };
 export const DEFAULT_KM = 500;           // if the recipient hasn't set a roost
 export const HANDLE_EVERY = DAY;         // handles can change once a day
