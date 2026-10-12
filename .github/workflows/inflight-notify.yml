@@ -21,7 +21,9 @@ jobs:
           SECRET: ${{ secrets.INFLIGHT_TICK_SECRET }}
         run: |
           if [ -z "$SECRET" ]; then echo "INFLIGHT_TICK_SECRET isn't set, so there's nothing to do."; exit 0; fi
-          code=$(curl -sS --max-time 60 -o reply.txt -w "%{http_code}" -X POST https://georgefarrowgreen.com/api/pigeon/notify-tick \
+          # The site's .pages.dev address: the same deployment, but outside the custom
+          # domain's bot protection, which challenges requests from GitHub's servers.
+          code=$(curl -sS --max-time 60 -o reply.txt -w "%{http_code}" -X POST https://georgefarrowgreen.pages.dev/api/pigeon/notify-tick \
             -H "Authorization: Bearer $SECRET" -H "User-Agent: InFlight-Notify/1.0 (+https://georgefarrowgreen.com/pigeon/)")
           echo "HTTP $code"; head -c 400 reply.txt; echo
           # 404: PIGEON_TICK_SECRET isn't set in Cloudflare; 401: the two secrets differ;

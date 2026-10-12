@@ -178,7 +178,8 @@ For notifications while nobody has the app open, set up the 5-minute nudge:
    repository secret **`INFLIGHT_TICK_SECRET`** = the same string.
 
 `.github/workflows/inflight-notify.yml` then calls `POST /api/pigeon/notify-tick`
-every 5 minutes. Optional: `PIGEON_CONTACT` = an email address push services can
+every 5 minutes, via the site's `georgefarrowgreen.pages.dev` address (the custom
+domain's bot protection blocks GitHub's servers). Optional: `PIGEON_CONTACT` = an email address push services can
 contact about your pushes.
 
 **Updates.** `functions/pigeon/_middleware.js` stamps every script and
