@@ -7,7 +7,7 @@ import { PLACES, nearestPlace } from "./places.js";
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 7;
 const POLL_MS = 15000;
-const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "roostpick", "pkoffer", "forgot", "reset"]);
+const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
 
 /* ---------------- state ---------------- */
 const S = {
@@ -17,7 +17,7 @@ const S = {
   msgs: new Map(), turns: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(),
-  resetToken: null, resetInfo: null, avatars: new Map(),
+  resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -133,31 +133,40 @@ const BIRD = document.getElementById("bird-path").getAttribute("d");
 const ico = (d) => `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true">${d}</svg>`;
 const I = {
   bird: `<svg viewBox="0 0 24 24" class="bird" aria-hidden="true"><path d="${BIRD}"/></svg>`,
-  back: ico(`<path d="M15 5 8 12l7 7"/>`),
+  bubble: ico(`<path d="M12 4C7 4 3 7.2 3 11.2c0 2.2 1.2 4.1 3.1 5.4L5.5 20l3.9-2c.8.2 1.7.3 2.6.3 5 0 9-3.2 9-7.1S17 4 12 4Z"/>`),
+  people: ico(`<circle cx="9" cy="8.5" r="3.3"/><path d="M3.2 19c.6-3.3 3-5.2 5.8-5.2s5.2 1.9 5.8 5.2"/><circle cx="16.8" cy="9.5" r="2.6"/><path d="M15.6 13.9c2.6-.4 4.7 1.2 5.2 4.2"/>`),
+  person: ico(`<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3.2"/><path d="M6.3 18.3c1.2-2.3 3.3-3.4 5.7-3.4s4.5 1.1 5.7 3.4"/>`),
+  compose: ico(`<path d="M11 4.5H6.5A2.5 2.5 0 0 0 4 7v10.5A2.5 2.5 0 0 0 6.5 20H17a2.5 2.5 0 0 0 2.5-2.5V13"/><path d="M17.8 3.8a1.8 1.8 0 0 1 2.5 2.5L12.5 14 9.5 15l1-3Z"/>`),
+  plus: ico(`<path d="M12 5v14M5 12h14"/>`),
+  back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
+  more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
+  search: ico(`<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>`),
+  loc: ico(`<path d="M20 4 4 10.8l6.9 2.3L13.2 20Z"/>`),
   map: ico(`<path d="M3 6.5 8.5 4l7 3L21 4.5v13L15.5 20l-7-3L3 19.5Z"/><path d="M8.5 4v13M15.5 7v13"/>`),
-  pen: ico(`<path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/>`),
   addp: ico(`<circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.8-3.4 3.4-5.3 6.5-5.3 1.4 0 2.6.3 3.7 1"/><path d="M18 14v6M15 17h6"/>`),
+  minusp: ico(`<circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.8-3.4 3.4-5.3 6.5-5.3s5.7 1.9 6.5 5.3"/><path d="M16 12h6"/>`),
   share: ico(`<path d="M12 3.5v11M8 7l4-4 4 4"/><path d="M6 11H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 20h14a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 19 11h-1"/>`),
   photo: ico(`<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m4 17 5-4.5 3.5 3 3-2.5L20 17"/>`),
   camera: ico(`<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5Z"/><circle cx="12" cy="12.5" r="3.5"/>`),
-  send: ico(`<path d="M12 19V6M6.5 11 12 5.5l5.5 5.5"/>`),
+  trash: ico(`<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/>`),
+  up: ico(`<path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>`),
   check: ico(`<path d="m5 12.5 4.5 4.5L19 7.5"/>`),
   x: ico(`<path d="M6 6l12 12M18 6 6 18"/>`),
   pin: ico(`<path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0c0 5.4 6.5 11 6.5 11Z"/><circle cx="12" cy="10" r="2.3"/>`),
   gone: ico(`<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 4l16 16"/>`),
-  aviary: ico(`<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 6.5 8.5 7 8.5-7"/>`),
-  roost: ico(`<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.9-3.9 3.8-6 7.5-6s6.6 2.1 7.5 6"/>`),
   key: ico(`<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l2.5 2.5M14 9l2 2"/>`),
   face: ico(`<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9.5v1M15 9.5v1M12 9.5V13h-1M9.5 15.5c1.4 1.2 3.6 1.2 5 0"/>`),
   eye: ico(`<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>`),
   lock: ico(`<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>`),
+  shield: ico(`<path d="M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/>`),
+  info: ico(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.2"/>`),
   dist: ico(`<circle cx="6" cy="17" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M7.8 15.6c2.5-1 3.2-3.4 5-5s3-2 3.6-2.2" stroke-dasharray="2 2.6"/>`),
   hourglass: ico(`<path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.5 8 5 8 8.5s-8 4-8 8.5M16 3.5c0 4.5-8 5-8 8.5s8 4 8 8.5"/>`),
   ok: ico(`<circle cx="12" cy="12" r="9"/><path d="m8 12.3 2.8 2.7L16 9.5"/>`),
   dot: ico(`<circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/>`),
-  locate: ico(`<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>`),
   warn: ico(`<path d="M12 4 2.8 19.5h18.4Z"/><path d="M12 10v4.5M12 17.2v.3"/>`),
+  mail: ico(`<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 6.5 8.5 7 8.5-7"/>`),
 };
 
 /* ---------------- photos ---------------- */
@@ -228,24 +237,24 @@ function drawMap(cv, m, cardH) {
     g.beginPath(); ring.forEach(([lo, la], i) => (i ? g.lineTo(X(lo + off), Y(la)) : g.moveTo(X(lo + off), Y(la)))); g.closePath(); g.fill(); g.stroke();
   }
   const P = pts.map((p) => [X(p.lon), Y(p.lat)]);
-  g.strokeStyle = col("--bark"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
+  g.strokeStyle = col("--tint"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
   g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.setLineDash([]);
   // each label sits above or below its dot, away from the route, far enough out that the pigeon never covers it
   g.font = "600 13px -apple-system, system-ui, sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
   const label = ([x, y], toward, name) => {
-    g.fillStyle = col("--card"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
-    g.fillStyle = col("--bark"); g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
+    g.fillStyle = col("--cell"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
+    g.fillStyle = col("--tint"); g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
     if (!name) return;
     const w = g.measureText(name).width, ly = y + (toward[1] <= y ? 28 : -28), lx = Math.min(W - 8 - w, Math.max(8, x - w / 2));
-    g.lineWidth = 4; g.strokeStyle = col("--card"); g.lineJoin = "round"; g.strokeText(name, lx, ly);
-    g.fillStyle = col("--ink"); g.fillText(name, lx, ly);
+    g.lineWidth = 4; g.strokeStyle = col("--cell"); g.lineJoin = "round"; g.strokeText(name, lx, ly);
+    g.fillStyle = col("--label"); g.fillText(name, lx, ly);
   };
   label(P[0], P[4], m.fromPlace); label(P[N], P[N - 4], m.toPlace);
   const f = Math.min(1, Math.max(0, (now() - m.sentAt) / (m.deliverAt - m.sentAt)));
   const [px, py] = P[Math.round(f * N)];
   const bird = new Path2D(BIRD), flip = P[N][0] > P[0][0] ? -1 : 1;   // the icon faces left
   g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
-  g.lineWidth = 3; g.strokeStyle = col("--card"); g.stroke(bird); g.fillStyle = col("--ink"); g.fill(bird);
+  g.lineWidth = 3; g.strokeStyle = col("--cell"); g.stroke(bird); g.fillStyle = col("--label"); g.fill(bird);
   g.restore();
 }
 
@@ -380,7 +389,7 @@ async function sync() {
         if (f.last && !f.last.flying && !S.seenLanded.has(f.last.id)) {
           S.seenLanded.add(f.last.id);
           if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
-            toast(`A pigeon from ${esc(first(f.name))} just landed.`, "Read", () => go("chat", f.id));
+            toast(`<b>${esc(f.name)}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
         }
       }
       S.started = true;
@@ -458,7 +467,7 @@ async function loadPhoto(fid, m, p) {
    Rendering
    ============================================================ */
 const root = () => $("#screen");
-let $view, $compose, $tabbar, $layer, $ta, $menu;
+let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
 function mount() {
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
@@ -467,220 +476,324 @@ function mount() {
       <div class="note" hidden></div>
       <div class="attach" hidden></div>
       <div class="crow">
-        <button type="button" class="ibtn" data-act="menu" aria-label="Add a photo" aria-expanded="false">${I.photo}</button>
-        <textarea rows="1" placeholder="Write your scroll…" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="send"></textarea>
-        <button type="submit" class="ibtn send" aria-label="Release the pigeon">${I.send}</button>
-      </div>
-      <div class="menu" hidden>
-        <label>${I.camera}<span>Take a photo</span><input type="file" accept="image/*" capture="environment" id="file-cam"></label>
-        <label>${I.photo}<span>Choose from library</span><input type="file" accept="image/*" id="file-lib"></label>
+        <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
+        <div class="field-wrap">
+          <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="send"></textarea>
+          <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
+        </div>
       </div>
     </form>
     <nav class="tabbar" aria-label="Sections"></nav>
-    <div class="layer"></div>`;
-  $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $ta = $("#msg"); $menu = $(".menu");
-  $view.addEventListener("scroll", () => { S.stick = $view.scrollHeight - $view.scrollTop - $view.clientHeight < 40; }, { passive: true });
+    <input type="file" accept="image/*" capture="environment" id="file-cam" hidden>
+    <input type="file" accept="image/*" id="file-lib" hidden>
+    <input type="file" accept="image/*" capture="user" id="av-cam" hidden>
+    <input type="file" accept="image/*" id="av-lib" hidden>
+    <div class="layer"></div>
+    <div class="poplayer"></div>
+    <div class="toasts"></div>`;
+  $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
+  $view.addEventListener("scroll", () => {
+    const y = $view.scrollTop;
+    $view.classList.toggle("scrolled", y > 4);
+    $view.classList.toggle("titled", y > 38);
+    S.stick = $view.scrollHeight - y - $view.clientHeight < 40;
+  }, { passive: true });
   root().addEventListener("click", onClick);
   root().addEventListener("change", onChange);
   root().addEventListener("submit", onSubmit);
+  root().addEventListener("input", onInput);
   $ta.addEventListener("input", () => { fitTa(); renderCompose(); });
 }
-function fitTa() { $ta.style.height = "auto"; $ta.style.height = Math.min(120, $ta.scrollHeight + 2) + "px"; }
+function fitTa() { $ta.style.height = "auto"; $ta.style.height = Math.min(120, $ta.scrollHeight) + "px"; }
 function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
 
 function go(view, chat) {
   if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
-  S.view = view; S.chat = chat ?? null; S.sheet = null; S.flash = ""; S.err = ""; S.stick = true;
+  const same = view === S.view && chat === S.chat;
+  S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
   if (view !== "chat") clearAttach();
-  if ($menu) $menu.hidden = true;
+  closePop();
+  if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
   if (view === "chat" && chat) loadChat(chat).then(render).catch((e) => toast(esc(e.message)));
 }
 
 function render() {
   if (!$view) return;
-  if (AUTH_VIEWS.has(S.view) || !S.me) {
+  const auth = AUTH_VIEWS.has(S.view) || !S.me;
+  const chat = !auth && S.view === "chat";
+  root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
+  $view.classList.toggle("tabs-pad", !auth && !chat);
+  if (auth) {
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet();
     return;
   }
-  $tabbar.hidden = false;
+  $tabbar.hidden = chat;
   const keepTop = $view.scrollTop;
-  $view.innerHTML = S.view === "chat" ? vChat() : S.view === "flock" ? vFlock() : S.view === "roost" ? vRoost() : vAviary();
-  if (S.view === "chat" && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
-  renderCompose(); renderTabs(); renderSheet(); live();
+  $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
+  if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
+  renderCompose(); renderTabs(); renderSheet(); live(); filterLists();
 }
+
+/* ---------- shared bits ---------- */
+const navbar = (title, { left = "", right = "", solid = false } = {}) =>
+  `<div class="navbar${solid ? " solid" : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${esc(title)}</div><div class="nb-right">${right}</div></div>`;
+const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
+const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${id}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
+const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => {
+  const t = tag || (act ? "button" : "div");
+  return `<${t} class="cell${icon ? " has-icon" : ""} ${cls}"${act ? ` data-act="${act}"` : ""}${id ? ` data-id="${esc(id)}"` : ""}${t === "button" ? ' type="button"' : ""}>
+    ${icon ? `<span class="tile ${tile || "blue"}">${icon}</span>` : ""}
+    <span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span>
+    ${val != null ? `<span class="val">${val}</span>` : ""}${chev ? I.chev.replace('class="ico"', 'class="ico chev"') : ""}</${t}>`;
+};
+const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 
 function preview(f) {
   const l = f.last;
-  if (!l) return { html: `<em>No scrolls yet</em>`, at: 0 };
-  if (l.from === S.me.id && l.flying) return { html: `${I.bird}<em>Your scroll is en route…</em>`, at: l.sentAt };
-  if (l.from !== S.me.id && l.flying) return { html: `${I.bird}<em>A pigeon is on its way…</em>`, at: l.sentAt };
+  if (!l) return { html: "No messages yet", at: 0 };
+  if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${I.bird}In flight · <span data-eta="${l.deliverAt}"></span> to go</span>`, at: l.sentAt };
+  if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${I.bird}A pigeon is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? "Couldn’t open this scroll" : p.p ? (l.photo === 2 ? "Photo (flown away)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
-  return { html: l.from === S.me.id ? `<b>You:</b> ${esc(body)}` : esc(body), at: l.deliverAt };
+  const body = p.bad ? "Couldn’t open this message" : p.p ? (l.photo === 2 ? "Photo (expired)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
+  return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
 }
-function vAviary() {
+const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
+
+/* ---------- Messages ---------- */
+function vMessages() {
   const fr = S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last).sort((a, b) => b.at - a.at);
   const rows = fr.map(({ f, html, at }) => `
-    <button class="row${f.unread ? " unread" : ""}" data-act="open" data-id="${f.id}">
-      ${avatar(f)}
-      <span class="txt">
-        <span class="l1"><span class="nm one">${esc(f.name)}</span><time>${at ? fmtAgo(at) : ""}</time></span>
-        <span class="l2"><span class="pv one">${html}</span>${f.unread ? `<span class="count" aria-label="${f.unread} unread">${f.unread}</span>` : ""}</span>
+    <button class="mrow" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">
+      ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
+      ${avatar(f, "m")}
+      <span class="mtext">
+        <span class="mtop"><span class="mname one">${esc(f.name)}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
+        <span class="mprev">${html}</span>
       </span>
     </button>`).join("");
   const empty = S.friends.length
-    ? `<p class="empty">No scrolls yet. Tap the pen to write to someone in your flock.</p>`
-    : `<p class="empty">No conversations yet. Add a friend by their handle, then send your first pigeon.</p><div class="pad"><button class="btn wide" data-act="tab" data-id="flock">Find friends</button></div>`;
-  return `<header class="hdr"><h1>The Aviary <span class="beta">Beta</span></h1><button class="round" data-act="compose" aria-label="New scroll">${I.pen}</button></header>
-    <div class="list">${rows}</div>${rows ? "" : empty}`;
+    ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
+    : `<p class="empty"><b>No messages yet</b>Add a friend by their handle, then send your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Find Friends</button></p>`;
+  return `${navbar("Messages", { right: nbtn("newmsg", I.compose, "New message") })}
+    <h1 class="large">Messages <span class="beta">Beta</span></h1>
+    ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
+    <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
 }
-function banner(f, t) {
+
+/* ---------- Friends ---------- */
+function vFriends() {
+  const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
+  const inc = S.incoming.length, out = S.outgoing.length;
+  const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s")}
+      <span class="ctext"><span class="one">${esc(f.name)}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
+  return `${navbar("Friends", { right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
+    <h1 class="large">Friends</h1>
+    ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
+    ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? `${inc} waiting for you` : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
+    ${fr.length ? `<div class="ghead">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-list="f">${rows}</div>
+      <div class="gfoot">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
+      : `<p class="empty"><b>No friends yet</b>Add someone by their handle, or share yours: @${esc(S.me.handle)}.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`}
+    <div class="gap"></div>`;
+}
+
+/* ---------- Account ---------- */
+function vAccount() {
+  const u = S.me;
+  const dots = Array.from({ length: SWIFT_MAX }, (_, i) => `<i class="${i < u.swift ? "" : "e"}"></i>`).join("");
+  return `${navbar("Account")}
+    <h1 class="large">Account</h1>
+    <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
+      <span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
+    <div class="ghead">Location</div>
+    <div class="group">
+      ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set") })}
+      ${cell({ act: "locate", icon: I.loc, tile: "blue", label: "Use Current Location", cls: "action" })}
+      <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
+        <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
+    </div>
+    <div class="gfoot">Pigeons fly from here. It’s kept to about 10 km, and only your friends see it.</div>
+    <div class="ghead">Pigeons</div>
+    <div class="group">${cell({ icon: I.bird, tile: "orange", label: "Swift Pigeons", val: `<span class="dots" role="img" aria-label="${u.swift} of ${SWIFT_MAX}">${dots}</span>` })}</div>
+    <div class="gfoot">${u.swift >= SWIFT_MAX ? "Your loft is full." : `The next one hatches in <span data-eta="${u.swiftNextAt}"></span>.`} Swift pigeons fly twice as fast and let you write when it isn’t your turn.</div>
+    <div class="ghead">Privacy &amp; Security</div>
+    <div class="group">
+      ${cell({ icon: I.lock, tile: "green", label: "Encryption Key", val: `<span class="mono">${S.fp}</span>` })}
+      ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
+      ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
+      ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
+    </div>
+    <div class="gfoot">Messages and photos are end-to-end encrypted. Your private key was made on this phone and locked with your password, so the server can’t read anything.</div>
+    <div class="ghead">About</div>
+    <div class="group">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: "Beta" })}${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}</div>
+    <div class="gfoot">There are no notifications yet, so open InFlight to check for pigeons. Pigeons fly at ${SPEED_KMH} km/h, from 5 minutes to 3 days. Photos are deleted 24 hours after they land.</div>
+    <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
+    <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
+    <div class="gap"></div>`;
+}
+function cityOptions() {
+  const cur = S.me?.place;
+  return `<option value="">Choose a city</option>` +
+    [...PLACES].sort((a, b) => a[0].localeCompare(b[0])).map(([n]) => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("");
+}
+
+/* ---------- Chat ---------- */
+function status(f, t) {
   const n = esc(first(f.name));
-  const B = (cls, text) => `<div class="banner ${cls}">${I.bird}<span>${text}</span></div>`;
+  const B = (cls, text) => `<div class="status ${cls}">${I.bird}<span>${text}</span></div>`;
   switch (t?.state) {
-    case "fresh": return B("sill", "Your pigeon is ready. Send the first scroll!");
-    case "sill": return B("sill", "The pigeon is on your windowsill. Your turn to send!");
-    case "inbound": return B("inbound", `A pigeon from ${n} is on its way to you…`);
-    case "outbound": return B("away", `Your pigeon is flying to ${n}…`);
-    case "theirs": return B("away", `${n} has the pigeon. Waiting for their reply.`);
+    case "fresh": return B("sill", "Your pigeon is ready. Send the first message.");
+    case "sill": return B("sill", "The pigeon is on your windowsill. Your turn to send.");
+    case "inbound": return B("inbound", `A pigeon from ${n} is on its way.`);
+    case "outbound": return B("", `Your pigeon is flying to ${n}.`);
+    case "theirs": return B("", `${n} has the pigeon.`);
     default: return "";
   }
 }
-function bubble(f, m) {
+function bubble(f, m, isLastMine, gapTop) {
   const mine = m.from === S.me.id;
   if (!mine && m.flying) {
     return `<button class="fly" data-act="map" data-id="${m.id}" aria-label="Watch the pigeon on the map">
-      <span class="t1">${I.bird}<span>Wings beating steadily onward…</span></span>
+      <span class="t1">${I.bird}<span>On its way</span></span>
       <span class="t2"><b><span data-eta="${m.deliverAt}"></span> away</b><span>${fmtMiles(m.km)}${m.swift ? " · swift" : ""}</span></span>
       <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span></button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
-  let photo = "";
+  const text = p.bad ? `<span class="bad-scroll">This message couldn’t be opened on this phone.</span>` : esc(p.t).replace(/\n/g, "<br>");
+  const prog = mine && m.flying ? `<div class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></div>` : "";
+  let html;
   if (p.p) {
-    if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>This photo has flown away.</span></div>`;
+    let photo;
+    if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>Photo expired</span></div>`;
     else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="Photo from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${m.id}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
-  }
+    html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
+  } else html = `<div class="b${mine ? " me" : ""}${gapTop ? " gap-top" : ""}">${text}${prog}</div>`;
   const meta = [];
-  if (mine && m.flying) meta.push(`<span>${fmtShort(m.sentAt)}</span><span class="fl">In flight · <span data-eta="${m.deliverAt}"></span> to go${m.swift ? " · swift" : ""}</span>`);
-  else if (mine) meta.push(`<span>${fmtShort(m.sentAt)}</span><span>Landed ${fmtShort(m.deliverAt)}</span>`);
-  else meta.push(`<span>Arrived ${fmtShort(m.deliverAt)}</span>`);
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo vanishes in <span data-eta="${m.expiresAt}"></span></span>`);
-  const text = p.bad ? `<em>This scroll couldn’t be opened on this phone.</em>` : esc(p.t).replace(/\n/g, "<br>");
-  const prog = mine && m.flying ? `<div class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></div>` : "";
-  return `<div class="b${mine ? " me" : ""}${p.p ? " pic" : ""}">${photo}<span class="txt">${text}</span><span class="bm">${meta.join("")}</span>${prog}</div>`;
+  if (mine && m.flying) meta.push(`<span class="fl">In flight · <span data-eta="${m.deliverAt}"></span> to go${m.swift ? " · swift" : ""}</span>`);
+  else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
+  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${m.expiresAt}"></span></span>`);
+  return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 function vChat() {
   const f = friend(S.chat);
-  if (!f) return `<header class="chathdr"><button class="round" data-act="tab" data-id="aviary" aria-label="Back">${I.back}</button></header><p class="empty">This friend isn’t in your flock any more.</p>`;
+  if (!f) return `${navbar("", { left: backBtn("tab", "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
   const t = S.turns.get(f.id) || f.turn;
-  const flying = msgs && [...msgs].reverse().find((m) => m.flying && m.route);
-  const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
-  let body = "", lastDay = "";
-  if (!msgs) body = `<p class="empty">Opening your scrolls…</p>`;
-  else if (!msgs.length) body = `<p class="empty">Scrolls to ${esc(first(f.name))} are end-to-end encrypted. Tap their name to compare safety numbers.</p>`;
+  let body = "", lastStamp = 0, prevFrom = null;
+  const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
+  if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
+  else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (const m of msgs) {
-    const d = dayLabel(m.from === S.me.id || m.flying ? m.sentAt : m.deliverAt);
-    if (d !== lastDay) { body += `<div class="day">${d}</div>`; lastDay = d; }
-    body += bubble(f, m);
+    const at = m.from === S.me.id || m.flying ? m.sentAt : m.deliverAt;
+    if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
+    lastStamp = at;
+    body += bubble(f, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from);
+    prevFrom = m.from;
   }
-  const warn = f.keyChanged ? `<div class="warnbar"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reinstall. Compare safety numbers before you send anything private.</span><button class="btn ghost" data-act="trust" data-id="${f.id}">I’ve checked with them</button></div>` : "";
-  return `<header class="chathdr">
-      <button class="round" data-act="tab" data-id="aviary" aria-label="Back to the Aviary">${I.back}</button>
-      <button class="who2" data-act="safety" data-id="${f.id}" aria-label="${esc(f.name)}: verify encryption">
-        ${avatar(f, "s")}
-        <span class="txt"><span class="nm two">${esc(f.name)}</span>
-        <span class="meta">${I.pin}<span>${esc(f.place || "Roost not set")}${km != null ? ` · ${fmtMiles(km)}` : ""}</span></span></span>
-      </button>
-      <span class="acts">
-        ${flying ? `<button class="round" data-act="map" data-id="${flying.id}" aria-label="Watch the pigeon on the map">${I.map}</button>` : ""}
-        <span class="chip" title="Swift pigeons left">${I.bird}${S.me.swift}</span>
-      </span>
-    </header>
-    ${warn}${banner(f, t)}
-    <div class="msgs">${body}</div>`;
+  const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${f.id}">I’ve Checked</button></div>` : "";
+  return `<div class="navbar solid chatnav">
+      <div class="nb-left">${backBtn("tab", "messages")}</div>
+      <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s")}<span class="nm"><span>${esc(f.name)}</span>${I.chev}</span></button>
+      <div class="nb-right">${nbtn("chatmenu", I.more, "More")}</div>
+    </div>
+    ${warn}<div class="msgs">${status(f, t)}${body}</div>`;
 }
-function vFlock() {
-  const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
-  const inc = S.incoming, out = S.outgoing;
-  return `<header class="hdr"><h1>The Flock</h1>
-      <button class="round" data-act="share" aria-label="Share your handle">${I.share}</button>
-      <button class="round" data-act="focusadd" aria-label="Add a friend">${I.addp}</button></header>
-    ${inc.length || out.length ? `<button class="reqbtn" data-act="requests">
-        <span class="n">${inc.length || out.length}</span>
-        <span class="txt"><b>${inc.length ? "Incoming carrier pigeons" : "Requests you sent"}</b><small>${inc.length ? `${inc.length} friend request${inc.length > 1 ? "s" : ""} waiting` : `${out.length} waiting for a reply`}</small></span>
-        ${I.chev}</button>` : ""}
-    <div class="sect">Add a friend</div>
-    <form class="add" data-form="add">
-      <label class="field"><span>@</span><input name="h" placeholder="their handle" aria-label="Friend's handle" id="add-h" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(S.pendingAdd || "")}"></label>
-      <button class="btn">Send</button>
-    </form>
-    ${S.flash ? `<p class="flash" role="status">${esc(S.flash)}</p>` : ""}
-    <div class="sect">Your flock <small>${fr.length} friend${fr.length === 1 ? "" : "s"}</small></div>
-    <div class="list">${fr.map((f) => `<button class="row" data-act="open" data-id="${f.id}">${avatar(f)}
-      <span class="txt"><span class="l1"><span class="nm one">${esc(f.name)}</span></span>
-      <span class="l2"><span class="pv one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span></span></button>`).join("") || `<p class="empty">Your flock is empty. Share your handle, @${esc(S.me.handle)}, with a friend.</p>`}</div>
-    <div class="gap"></div>`;
+
+/* ---------- sign-up and sign-in ---------- */
+function field(name, placeholder, type, ac, prefix) {
+  return `<label class="fcell">${prefix ? `<span class="pre">${prefix}</span>` : ""}<input id="f-${name}" name="${name}" type="${type}" placeholder="${esc(placeholder)}" autocomplete="${ac}" aria-label="${esc(placeholder)}"${type === "email" || name === "handle" ? ' autocapitalize="off" spellcheck="false"' : ""}${name === "handle" ? ' maxlength="20"' : ""}>${type === "password" ? `<button type="button" class="peek" data-act="peek" aria-label="Show password">${I.eye}</button>` : ""}</label>`;
 }
-function vRoost() {
-  const u = S.me;
-  const eggs = Array.from({ length: SWIFT_MAX }, (_, i) => `<i class="${i < u.swift ? "" : "e"}"></i>`).join("");
-  return `<header class="hdr"><h1>Roost</h1></header>
-    <div class="prof"><button class="avbtn" data-act="profile" aria-label="Edit your profile">${avatar(u, "l")}</button><h2>${esc(u.name)}</h2><p>@${esc(u.handle)}</p>
-      <button class="btn ghost" data-act="profile">Edit profile</button></div>
-    <div class="sect">Your roost</div>
-    <div class="card">
-      <div class="kv"><span>Location</span><span class="val">${esc(u.place || "Not set")}</span></div>
-      <button class="kv linkrow" data-act="locate">${I.locate}<span>Update from my location</span>${I.chev}</button>
-      <div class="kv"><span>Or choose a city</span><select data-act="city" aria-label="Choose a city" id="city">${cityOptions()}</select></div>
-      <div class="kv"><span>Swift pigeons</span><span class="eggs" role="img" aria-label="${u.swift} of ${SWIFT_MAX}">${eggs}</span></div>
-    </div>
-    <p class="foot">${u.swift >= SWIFT_MAX ? "Your loft is full." : `The next swift pigeon hatches in <span data-eta="${u.swiftNextAt}"></span>.`} Swift pigeons fly twice as fast and let you write when it isn’t your turn. Your location is kept to about 10 km.</p>
-    <div class="sect">Encryption</div>
-    <div class="card">
-      <div class="kv"><span>Your key</span><span class="val fp">${S.fp}</span></div>
-      ${S.friends.map((f) => `<button class="kv linkrow" data-act="safety" data-id="${f.id}"><span class="one">Safety number with ${esc(first(f.name))}</span>${I.chev}</button>`).join("")}
-    </div>
-    <p class="foot">Your private key was made on this phone and locked with your password before it was stored. The server holds it but can’t open it, and it can’t read your scrolls or photos.</p>
-    <div class="sect">Sign-in</div>
-    <div class="card">
-      <div class="kv"><span>Email</span><span class="val">${esc(u.email)}</span></div>
-      ${S.passkeys.map((p) => `<div class="kv">${I.key}<span class="pk"><span>${esc(p.label || "Passkey")}</span><small>${p.unlocks ? "Signs in and unlocks your scrolls" : "Signs in; asks for your password on a new phone"} · added ${fmtDate(p.createdAt)}</small></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}
-      ${passkeysSupported() ? `<button class="kv linkrow" data-act="pkadd">${I.key}<span>Add a passkey</span>${I.chev}</button>` : ""}
-      <button class="kv linkrow" data-act="changepw">${I.lock}<span>Change password</span>${I.chev}</button>
-    </div>
-    <p class="foot">${S.passkeys.length ? "Passkeys let you sign in with Face ID or your fingerprint." : "Add a passkey to sign in with Face ID or your fingerprint instead of your password."} Your password locks your key, so a reset only keeps your scrolls if you have a passkey that unlocks them.</p>
-    <div class="pad"><button class="btn wide ghost" data-act="signout">Sign out</button></div>
-    <div class="pad"><button class="btn wide ghost danger-btn" data-act="delask">Delete my account</button></div>
-    <div class="sect">About the beta <span class="beta">Beta</span></div>
-    <div class="card"><ul class="betalist">
-      <li>There are no notifications yet. Open InFlight to check for pigeons.</li>
-      <li>Forgot your password? Use the link on the sign-in screen. Without a passkey, a reset starts you with a new key.</li>
-      <li>Features may change while InFlight is in beta.</li>
-    </ul></div>
-    <p class="foot">Pigeons fly at ${SPEED_KMH} km/h, taking at least 5 minutes and at most 3 days. Photos are deleted 24 hours after they land.</p>
-    <div class="gap"></div>`;
+const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
+function vAuth() {
+  const back = (to) => navbar("", { left: backBtn("to", to) });
+  switch (S.view) {
+    case "loading": return `<div class="loading">Opening InFlight…</div>`;
+    case "welcome": return `<div class="auth welcome">
+        <div class="appicon">${I.bird}</div>
+        <h1>InFlight <span class="beta">Beta</span></h1>
+        <p class="tag">Letters that travel the real distance between you.</p>
+        <ul class="feats">
+          <li>${I.dist}<div><b>Real distance</b><span>Each message flies the real miles between you, at pigeon speed.</span></div></li>
+          <li>${I.lock}<div><b>End-to-end encrypted</b><span>Only you and your friend can read your messages and photos.</span></div></li>
+          <li>${I.hourglass}<div><b>Photos that vanish</b><span>Photos are deleted 24 hours after they land.</span></div></li>
+        </ul>
+        <div class="stack">
+          <button class="btn wide" data-act="to" data-id="signup">Create Account</button>
+          <button class="btn wide plain" data-act="to" data-id="signin">Sign In</button>
+        </div></div>`;
+    case "signup": return `<div class="auth">${back("welcome")}
+        <h1 class="large">Create Account</h1>
+        <form data-form="signup" novalidate>
+          <div class="group">${field("name", "Name", "text", "name")}${field("handle", "handle", "text", "username", "@")}</div>
+          <div class="gfoot">Friends see your name and find you by your handle.</div>
+          <div class="group mt">${field("email", "Email", "email", "email")}${field("password", "Password", "password", "new-password")}</div>
+          <div class="gfoot">At least 10 characters. Your password also locks your encryption key, so add a passkey later as a backup.</div>
+          ${ferr}
+          <div class="pad"><button class="btn wide">Create Account</button></div>
+        </form></div>`;
+    case "making": {
+      const step = (n, label) => `<li class="${S.making >= n ? "is-ok" : S.making === n - 1 ? "is-now" : ""}">${S.making >= n ? I.ok : S.making === n - 1 ? `<span class="spin"></span>` : I.dot}<span>${label}</span></li>`;
+      return `<div class="auth"><div class="hero"><div class="appicon">${I.bird}</div><h1>Setting Up Your Account</h1><p>Your key is made and locked on this phone.</p></div>
+        <ul class="steps">${step(1, "Making your key pair")}${step(2, "Locking it with your password")}${step(3, "Creating your account")}</ul></div>`;
+    }
+    case "signin": return `<div class="auth">${back("welcome")}
+        <h1 class="large">Sign In</h1>
+        <form data-form="signin" novalidate>
+          <div class="group">${field("email", "Email", "email", "username webauthn")}${field("password", "Password", "password", "current-password")}</div>
+          ${ferr}
+          <div class="pad"><button class="btn wide">Sign In</button></div>
+        </form>
+        <div class="group">${passkeysSupported() ? cell({ act: "pkget", icon: I.key, tile: "indigo", label: "Sign In with a Passkey", cls: "action" }) : ""}${cell({ act: "to", id: "forgot", label: "Forgot Password?", cls: "action" })}</div>
+        <div class="stack"><button class="btn wide plain" data-act="to" data-id="signup">Create Account</button></div>
+      </div>`;
+    case "unlock": return `<div class="auth">${navbar("", { left: backBtn("cancelunlock") })}
+        <h1 class="large">Unlock Messages</h1>
+        <p class="sub">Your passkey signed you in. Enter your password once so this phone can unlock your encryption key.</p>
+        <form data-form="unlock" novalidate>
+          <div class="group mt-s">${field("password", "Password", "password", "current-password")}</div>${ferr}
+          <div class="pad"><button class="btn wide">Unlock</button></div>
+        </form>
+        <div class="group">${cell({ act: "to", id: "forgot", label: "Forgot Password?", cls: "action" })}</div></div>`;
+    case "forgot": return `<div class="auth">${back("signin")}
+        <h1 class="large">Reset Password</h1>
+        <p class="sub">We’ll email you a link to choose a new password. It works once, for one hour.</p>
+        <form data-form="forgot" novalidate>
+          <div class="group mt-s">${field("email", "Email", "email", "email")}</div>${ferr}
+          <div class="gfoot">With a passkey, a reset keeps your messages. Without one, you start with a new key and older messages can’t be opened.</div>
+          <div class="pad"><button class="btn wide">Email Reset Link</button></div>
+        </form></div>`;
+    case "reset": return vReset();
+    case "locpick": return `<div class="auth">${navbar("")}
+        <h1 class="large">Your Location</h1>
+        <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s kept to about 10 km, and only your friends see it.</p>
+        <div class="group mt">
+          ${S.me?.place ? cell({ icon: I.check, tile: "green", label: esc(S.me.place), sub: "Current location" }) : ""}
+          ${cell({ act: "locate", icon: I.loc, tile: "blue", label: S.me?.place ? "Use Current Location Again" : "Use Current Location", cls: "action" })}
+          <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
+            <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
+        </div>${ferr}
+        <div class="stack"><button class="btn wide" data-act="locdone"${S.me?.place ? "" : " disabled"}>Continue</button></div></div>`;
+    case "pkoffer": return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.face}</span>
+        <h1>Sign In with Face ID</h1><p>Save a passkey to sign in with Face ID or your fingerprint. On most newer phones it can also unlock your messages if you forget your password.</p></div>${ferr}
+        <div class="stack"><button class="btn wide" data-act="pkadd" data-next="messages">Save a Passkey</button><button class="btn wide plain" data-act="tab" data-id="messages">Not Now</button></div></div>`;
+  }
+  return "";
 }
 function vReset() {
   const info = S.resetInfo;
   if (!info) return `<div class="loading">Checking your reset link…</div>`;
-  if (info.error) return `<div class="auth center"><div class="mark">${I.warn}</div><h1>This link won’t work</h1>
-      <p class="sub">${esc(info.error)}</p>
-      <div class="stack"><button class="btn big" data-act="to" data-id="forgot">Ask for a new link</button><button class="btn big ghost" data-act="to" data-id="welcome">Back</button></div></div>`;
+  if (info.error) return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.warn}</span><h1>This Link Won’t Work</h1><p>${esc(info.error)}</p></div>
+      <div class="stack"><button class="btn wide" data-act="to" data-id="forgot">Get a New Link</button><button class="btn wide plain" data-act="to" data-id="welcome">Back</button></div></div>`;
   const canKeep = info.passkeys.length && passkeysSupported();
-  return `<div class="auth">
-      <h1>Choose a new password</h1>
-      <p class="sub">For <b>${esc(info.name)}</b> (@${esc(info.handle)}, ${esc(info.email)}).</p>
-      <form class="fields" data-form="reset" novalidate>
-        ${field("password", "New password", "password", "new-password", "At least 10 characters.")}
-        <p class="ferr" role="alert" hidden></p>
-        ${canKeep ? `<button type="button" class="btn big icon" data-act="resetkeep">${I.key}<span>Keep my scrolls with my passkey</span></button>
-          <p class="fine">Your passkey unlocks your key, so all your scrolls stay readable.</p>
-          <button type="button" class="btn big ghost" data-act="resetfresh">Start fresh instead</button>` :
-        `<button type="button" class="btn big" data-act="resetfresh">Set new password</button>`}
-        <p class="fine">${canKeep ? "Starting fresh" : "Without a passkey, this"} makes a new key on this phone. Your friends stay, but scrolls from before can’t be opened, and friends will see that your security key changed.</p>
+  return `<div class="auth">${navbar("")}
+      <h1 class="large">New Password</h1>
+      <p class="sub">For ${esc(info.name)} (@${esc(info.handle)}, ${esc(info.email)}).</p>
+      <form data-form="reset" novalidate>
+        <div class="group mt-s">${field("password", "New password", "password", "new-password")}</div>${ferr}
+        <div class="gfoot">${canKeep ? "Use your passkey to keep all your messages readable. Starting fresh" : "Without a passkey, this"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed.</div>
+        <div class="stack">${canKeep ? `<button type="button" class="btn wide" data-act="resetkeep">${I.key}Keep Messages with Passkey</button><button type="button" class="btn wide plain" data-act="resetfresh">Start Fresh Instead</button>`
+          : `<button type="button" class="btn wide" data-act="resetfresh">Set New Password</button>`}</div>
       </form></div>`;
 }
 async function loadReset() {
@@ -714,118 +827,12 @@ async function resetWith(mode, btn) {
     await useKeys(r.token, r.me, ecdh);
   });
   await afterSignIn();
-  toast(mode === "keep" ? "Password changed. Your scrolls are safe." : "Password changed. You’re starting fresh with a new key.");
-}
-function cityOptions() {
-  const cur = S.me?.place;
-  return `<option value="">${cur && PLACES.some((p) => p[0] === cur) ? "" : "Choose…"}</option>` +
-    [...PLACES].sort((a, b) => a[0].localeCompare(b[0])).map(([n]) => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("");
+  toast(mode === "keep" ? "Password changed. Your messages are safe." : "Password changed. You’re starting fresh with a new key.");
 }
 
-/* ---------- sign-up and sign-in screens ---------- */
-function field(name, label, type, ac, hint, prefix) {
-  return `<label class="fl" for="f-${name}"><span class="lbl">${label}</span>
-    <span class="inp">${prefix ? `<span class="pre">${prefix}</span>` : ""}<input id="f-${name}" name="${name}" type="${type}" autocomplete="${ac}"${type === "email" || name === "handle" ? ' autocapitalize="off" spellcheck="false"' : ""}${name === "handle" ? ' maxlength="20"' : ""}>
-    ${type === "password" ? `<button type="button" class="peek" data-act="peek" aria-label="Show password">${I.eye}</button>` : ""}</span>
-    ${hint ? `<span class="hint">${hint}</span>` : ""}<span class="err" hidden></span></label>`;
-}
-function vAuth() {
-  switch (S.view) {
-    case "loading": return `<div class="loading">Opening InFlight…</div>`;
-    case "welcome": return `<div class="auth welcome">
-        <div class="mark">${I.bird}</div>
-        <div class="wordrow"><h1 class="word">InFlight</h1><span class="beta big">Beta</span></div>
-        <p class="tagline">Letters that travel the real distance between you.</p>
-        <ul class="feats">
-          <li>${I.dist}<span>Each scroll flies the real miles at pigeon speed.</span></li>
-          <li>${I.lock}<span>End-to-end encrypted from your very first scroll.</span></li>
-          <li>${I.hourglass}<span>Photos vanish 24 hours after they land.</span></li>
-        </ul>
-        <p class="fine">InFlight is in beta, so things may change as it grows.</p>
-        <div class="stack">
-          <button class="btn big" data-act="to" data-id="signup">Create an account</button>
-          <button class="btn big ghost" data-act="to" data-id="signin">Sign in</button>
-        </div></div>`;
-    case "signup": return `<div class="auth">
-        <button class="round" data-act="to" data-id="welcome" aria-label="Back">${I.back}</button>
-        <h1>Create your account</h1>
-        <form class="fields" data-form="signup" novalidate>
-          ${field("name", "Your name", "text", "name", "What your friends will see")}
-          ${field("handle", "Handle", "text", "username", "How friends find you", "@")}
-          ${field("email", "Email", "email", "email", "")}
-          ${field("password", "Password", "password", "new-password", "At least 10 characters. It also locks your encryption key. Add a passkey too, so a password reset can keep your scrolls.")}
-          <p class="ferr" role="alert" hidden></p>
-          <button class="btn big">Create account</button>
-          <p class="fine">Your scrolls are end-to-end encrypted. We can’t read them.</p>
-        </form></div>`;
-    case "making": {
-      const step = (n, label) => `<li class="${S.making >= n ? "is-ok" : S.making === n - 1 ? "is-now" : ""}">${S.making >= n ? I.ok : I.dot}<span>${label}</span></li>`;
-      return `<div class="auth center">
-        <div class="mark pulse">${I.bird}</div>
-        <h1>Hatching your account</h1>
-        <ul class="steps">${step(1, "Making your key pair on this phone")}${step(2, "Locking it with your password")}${step(3, "Sending the locked key to the server")}</ul></div>`;
-    }
-    case "signin": return `<div class="auth">
-        <button class="round" data-act="to" data-id="welcome" aria-label="Back">${I.back}</button>
-        <h1>Welcome back</h1>
-        <form class="fields" data-form="signin" novalidate>
-          ${field("email", "Email", "email", "username webauthn", "")}
-          ${field("password", "Password", "password", "current-password", "")}
-          <p class="ferr" role="alert" hidden></p>
-          <button class="btn big">Sign in</button>
-          <p class="fine"><button type="button" class="link" data-act="to" data-id="forgot">Forgot your password?</button></p>
-        </form>
-        ${passkeysSupported() ? `<div class="or"><span>or</span></div>
-        <button class="btn big ghost icon" data-act="pkget">${I.key}<span>Sign in with a passkey</span></button>` : ""}
-        <p class="fine">New here? <button class="link" data-act="to" data-id="signup">Create an account</button></p>
-      </div>`;
-    case "unlock": return `<div class="auth">
-        <button class="round" data-act="cancelunlock" aria-label="Back">${I.back}</button>
-        <h1>Unlock your scrolls</h1>
-        <p class="sub">Your passkey signed you in. Enter your password once so this phone can unlock your encryption key.</p>
-        <form class="fields" data-form="unlock" novalidate>
-          ${field("password", "Password", "password", "current-password", "")}
-          <p class="ferr" role="alert" hidden></p>
-          <button class="btn big">Unlock</button>
-          <p class="fine"><button type="button" class="link" data-act="to" data-id="forgot">Forgot your password?</button></p>
-        </form></div>`;
-    case "forgot": return `<div class="auth">
-        <button class="round" data-act="to" data-id="signin" aria-label="Back">${I.back}</button>
-        <h1>Reset your password</h1>
-        <p class="sub">We’ll email you a link to choose a new password. It works once, for one hour.</p>
-        <form class="fields" data-form="forgot" novalidate>
-          ${field("email", "Email", "email", "email", "")}
-          <p class="ferr" role="alert" hidden></p>
-          <button class="btn big">Email me a reset link</button>
-        </form>
-        <p class="fine">If you have a passkey for InFlight, the reset can keep your scrolls. Without one, you’ll start with a new key and older scrolls can’t be opened.</p>
-      </div>`;
-    case "reset": return vReset();
-    case "roostpick": return `<div class="auth">
-        <h1>Where’s your roost?</h1>
-        <p class="sub">Pigeons fly from here, so it sets how long your scrolls take. We keep it to about 10 km, and only your friends see it.</p>
-        <div class="loc">
-          ${S.me?.place ? `<div class="locstate">${I.pin}<span>${esc(S.me.place)}</span></div>` : ""}
-          <button class="btn big${S.me?.place ? " ghost" : ""} icon" data-act="locate">${I.locate}<span>${S.me?.place ? "Use my location again" : "Use my location"}</span></button>
-          <label class="fl" for="city"><span class="lbl">Or choose a city</span><span class="inp"><select data-act="city" id="city" class="cityselect">${cityOptions()}</select></span></label>
-          <p class="ferr" role="alert" hidden></p>
-        </div>
-        <div class="dock"><button class="btn big" data-act="roostdone"${S.me?.place ? "" : " disabled"}>Continue</button></div></div>`;
-    case "pkoffer": return `<div class="auth center">
-        <div class="mark">${I.face}</div>
-        <h1>Sign in with a glance</h1>
-        <p class="sub">Add a passkey and you can sign in with Face ID or your fingerprint. On most new phones it also unlocks your scrolls if you forget your password.</p>
-        <p class="ferr" role="alert" hidden></p>
-        <div class="stack">
-          <button class="btn big" data-act="pkadd" data-next="aviary">Add a passkey</button>
-          <button class="btn big ghost" data-act="tab" data-id="aviary">Not now</button>
-        </div></div>`;
-  }
-  return "";
-}
-
+/* ---------- composer and tab bar ---------- */
 function renderCompose() {
-  const show = S.view === "chat" && !!S.chat && !!friend(S.chat);
+  const show = S.view === "chat" && !!S.chat && !!friend(S.chat) && !!S.me;
   $compose.hidden = !show; if (!show) return;
   const f = friend(S.chat), t = S.turns.get(f.id) || f.turn, sw = S.me.swift;
   const note = $(".note", $compose), btn = $(".send", $compose);
@@ -833,86 +840,145 @@ function renderCompose() {
   let blocked = false;
   if (S.err) { note.hidden = false; note.className = "note stop"; note.textContent = S.err; }
   else if (f.keyChanged) { note.hidden = false; note.className = "note stop"; note.textContent = "Check the new safety number before sending."; blocked = true; }
-  else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your roost in the Roost tab before sending."; blocked = true; }
+  else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your location in Account before sending."; blocked = true; }
   else if (t.free) note.hidden = true;
-  else if (sw > 0) { note.hidden = false; note.className = "note"; note.innerHTML = `${I.bird}<span>Sending uses a swift pigeon (${sw} left). It flies 2× faster.</span>`; }
+  else if (sw > 0) { note.hidden = false; note.className = "note"; note.innerHTML = `${I.bird}<span>Sends with a swift pigeon (${sw} left), 2× faster.</span>`; }
   else { note.hidden = false; note.className = "note stop"; note.textContent = `No swift pigeons left. The next hatches in ${fmtDur(S.me.swiftNextAt - now())}.`; blocked = true; }
   btn.disabled = blocked || !has || S.busy;
+  $ta.disabled = blocked && !S.err;
   const a = $(".attach", $compose);
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span>Photo, ${fmtBytes(S.attach.bytes.length)}. Encrypted before it leaves this phone.</span><button type="button" data-act="unattach">Remove</button>`;
+    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span>Photo, ${fmtBytes(S.attach.bytes.length)}. Encrypted before it leaves this phone.</span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
 }
 function renderTabs() {
   const unread = S.friends.reduce((n, f) => n + (f.unread || 0), 0);
-  const cur = S.view === "chat" ? "aviary" : S.view;
+  const cur = S.view === "chat" ? "messages" : S.view;
   const tab = (id, label, icon, badge) => `<button class="tab" data-act="tab" data-id="${id}" aria-current="${cur === id}">${badge ? `<span class="badge">${badge}</span>` : ""}${icon}<span>${label}</span></button>`;
-  $tabbar.innerHTML = `<div class="tabs">${tab("aviary", "Aviary", I.aviary, unread)}${tab("flock", "Flock", I.bird, S.incoming.length)}${tab("roost", "Roost", I.roost, 0)}</div>`;
-  document.title = unread ? `(${unread}) InFlight Beta` : "InFlight Beta";
+  $tabbar.innerHTML = `<div class="tabs">${tab("messages", "Messages", I.bubble, unread)}${tab("friends", "Friends", I.people, S.incoming.length)}${tab("account", "Account", I.person, 0)}</div>`;
+  document.title = unread ? `(${unread}) InFlight` : "InFlight";
 }
-const sheetHtml = (title, body, flush) => `<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-label="${esc(title)}"><header><h3>${esc(title)}</h3><button class="done" data-act="close">Done</button></header><div class="body${flush ? " flush" : ""}">${body}</div></div>`;
+function filterLists() {
+  const run = (list, q) => { const el = $(`[data-list="${list}"]`); if (!el) return; q = q.trim().toLowerCase(); el.querySelectorAll("[data-find]").forEach((r) => { r.hidden = !!q && !r.dataset.find.includes(q); }); };
+  run("m", S.q); run("f", S.fq);
+}
+function onInput(e) {
+  if (e.target.id === "msearch") { S.q = e.target.value; filterLists(); }
+  if (e.target.id === "fsearch") { S.fq = e.target.value; filterLists(); }
+}
+
+/* ---------- sheets ---------- */
+// header: { left: {label, act}, right: {label, act} | {label, form}, strong }
+function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain } = {}) {
+  const b = (x, cls) => !x ? "" : x.form ? `<button type="button" class="nbtn strong ${cls}" data-act="submit" data-id="${x.form}">${esc(x.label)}</button>` : `<button type="button" class="nbtn${x.strong !== false && cls === "r" ? " strong" : ""} ${cls}" data-act="${x.act}">${esc(x.label)}</button>`;
+  return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title)}"><div class="grab"></div>
+    <header><span class="l">${b(left, "l")}</span><h3>${esc(title)}</h3><span class="r">${b(right, "r")}</span></header>
+    <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
+}
 function renderSheet(refresh) {
   const s = S.sheet;
   if (refresh && s?.type !== "profile") return;
-  if (!s) { if (!$(".toast", $layer)) $layer.innerHTML = ""; return; }
-  if (s.type === "map") {
-    if (!$(".map", $layer)) $layer.innerHTML = sheetHtml("Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route"></canvas><div class="mapcard"></div>`, true);
-    tickMap();
-  } else if (s.type === "safety") {
-    const f = friend(s.id);
-    $layer.innerHTML = sheetHtml("Safety number", `
-      <div class="card"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
-      <p class="foot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))}, in person or on a call. If they match, your scrolls can only be opened by the two of you. Not even our server could swap in a different key.</p>`);
-  } else if (s.type === "compose") {
-    $layer.innerHTML = sheetHtml("New scroll", S.friends.length ? `<div class="list">${S.friends.map((f) => `<button class="row" data-act="open" data-id="${f.id}">${avatar(f)}
-      <span class="txt"><span class="l1"><span class="nm one">${esc(f.name)}</span></span>
-      <span class="l2"><span class="pv">${esc(f.place || "Roost not set")}${S.me.lat != null && f.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, f.lat, f.lon)))} by pigeon` : ""}</span></span></span></button>`).join("")}</div>`
-      : `<p class="empty">Add someone to your flock first.</p>`);
-  } else if (s.type === "requests") {
-    const row = (p, acts) => `<div class="row">${avatar(p)}<span class="txt"><span class="l1"><span class="nm one">${esc(p.name)}</span></span><span class="l2"><span class="pv">${acts ? `@${esc(p.handle)} wants to join your flock` : `Waiting for @${esc(p.handle)}`}</span></span></span>${acts ? `<button class="yes" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">${I.check}</button><button class="no" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">${I.x}</button>` : `<button class="no" data-act="unfriend" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">${I.x}</button>`}</div>`;
-    $layer.innerHTML = sheetHtml("Friend requests",
-      (S.incoming.length ? `<div class="sect">Incoming pigeons</div><div class="list">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "") +
-      (S.outgoing.length ? `<div class="sect">Sent by you</div><div class="list">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : "") +
-      (S.incoming.length + S.outgoing.length ? "" : `<p class="empty">No requests waiting.</p>`));
-  } else if (s.type === "view") {
-    $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap anywhere to close.</p></div>`;
-  } else if (s.type === "askpw") {
-    if (!$("#f-password", $layer)) $layer.innerHTML = sheetHtml("Link your passkey", `<p class="lead">Enter your password once so this passkey can also unlock your scrolls on a new phone.</p>
-      <form class="fields" data-form="askpw" novalidate>${field("password", "Password", "password", "current-password", "")}<p class="ferr" role="alert" hidden></p><button class="btn big">Link passkey</button></form>`);
-  } else if (s.type === "profile") {
-    const u = S.me, wait = u.handleNextAt && u.handleNextAt > now() ? u.handleNextAt - now() : 0;
-    const fresh = !$("#f-name", $layer);
-    const keep = fresh ? null : { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value };
-    $layer.innerHTML = sheetHtml("Edit profile", `
-      <div class="profedit">
-        <label class="avbtn">${avatar(u, "l")}<input type="file" accept="image/*" id="av-file" aria-label="Choose a profile picture"></label>
-        <div class="avacts">
-          <label class="btn ghost">${u.avatarAt ? "Change photo" : "Add a photo"}<input type="file" accept="image/*" id="av-file2" aria-label="Choose a profile picture"></label>
-          ${u.avatarAt ? `<button type="button" class="link danger" data-act="avdel">Remove photo</button>` : ""}
+  if (!s) { $layer.innerHTML = ""; return; }
+  const f = s.id ? friend(s.id) : null;
+  switch (s.type) {
+    case "map":
+      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml("Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route"></canvas><div class="mapcard"></div>`, { flush: true });
+      return tickMap();
+    case "safety":
+      $layer.innerHTML = sheetHtml("Safety Number", `
+        <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(f?.name || "")}</span></div>
+        <div class="group mt-s"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
+        <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>`,
+        { left: s.from ? { label: "Back", act: s.from } : null });
+      return;
+    case "safetylist":
+      $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
+        ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${x.id}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(x.name)}</span></span>${chevSm}</button>`).join("")}</div>
+          <div class="gfoot">Each friend has a safety number you can compare to check your messages are private.</div>`
+        : `<p class="empty"><b>No friends yet</b>Safety numbers appear once you add a friend.</p>`);
+      return;
+    case "newmsg":
+      $layer.innerHTML = sheetHtml("New Message", S.friends.length
+        ? `<div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${x.id}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(x.name)}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
+        : `<p class="empty"><b>No friends yet</b>Add a friend first.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`,
+        { left: { label: "Cancel", act: "close" }, right: null });
+      return;
+    case "addfriend":
+      if (!$("#add-h", $layer)) {
+        $layer.innerHTML = sheetHtml("Add Friend", `<form id="add-form" data-form="add" novalidate>
+            <div class="group mt-s"><label class="fcell"><span class="pre">@</span><input name="h" id="add-h" placeholder="handle" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Friend’s handle"></label></div>
+            <p class="gfoot add-msg" role="status">Ask a friend for their handle. They’ll get a friend request.</p></form>
+            <div class="ghead">Your handle</div><div class="group">${cell({ label: `@${esc(S.me.handle)}` })}${cell({ act: "share", label: "Share My Handle", cls: "action" })}</div>`,
+          { left: { label: "Cancel", act: "close" }, right: { label: "Send", form: "add-form" } });
+        const i = $("#add-h", $layer); i.value = S.pendingAdd || ""; setTimeout(() => i.focus(), 300);
+      }
+      return;
+    case "requests": {
+      const row = (p, inc) => `<div class="reqrow">${avatar(p, "s")}<span class="ctext"><span class="one">${esc(p.name)}</span><br><span class="csub">@${esc(p.handle)}</span></span>
+        <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">Decline</button><button class="btn small" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">Accept</button>`
+          : `<button class="btn small gray" data-act="cancelreq" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">Cancel</button>`}</span></div>`;
+      $layer.innerHTML = sheetHtml("Friend Requests",
+        (S.incoming.length ? `<div class="ghead">Waiting for you</div><div class="group">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "") +
+        (S.outgoing.length ? `<div class="ghead">Sent</div><div class="group">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : "") +
+        (S.incoming.length + S.outgoing.length ? "" : `<p class="empty"><b>All caught up</b>No friend requests right now.</p>`));
+      return;
+    }
+    case "friendinfo": {
+      if (!f) { S.sheet = null; return renderSheet(); }
+      const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl")}<span class="name">${esc(f.name)}</span><span class="sub">@${esc(f.handle)}</span></div>
+        <div class="group mt">
+          ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set") })}
+          ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
+          ${km != null ? cell({ icon: I.bird, tile: "orange", label: "Pigeon Flight", val: fmtDur(flightMs(km)) }) : ""}
         </div>
-        <p class="hint av-hint">Your friends, and people you’ve sent or received a friend request from, can see your photo.</p>
-      </div>
-      <form class="fields" data-form="profile" novalidate>
-        ${field("name", "Name", "text", "name", "")}
-        ${field("handle", "Handle", "text", "username", wait ? `You can change your handle once a day. Next change in ${fmtDur(wait)}.` : "Friends find you by your handle. You can change it once a day.", "@")}
-        <p class="ferr" role="alert" hidden></p>
-        <button class="btn big">Save</button>
-      </form>`);
-    $("#f-name", $layer).value = keep ? keep.name : u.name;
-    $("#f-name", $layer).maxLength = 50;
-    $("#f-handle", $layer).value = keep ? keep.handle : u.handle;
-    if (wait) $("#f-handle", $layer).disabled = true;
-  } else if (s.type === "changepw") {
-    if (!$("#f-current", $layer)) $layer.innerHTML = sheetHtml("Change password", `<form class="fields" data-form="changepw" novalidate>
-      ${field("current", "Current password", "password", "current-password", "")}
-      ${field("password", "New password", "password", "new-password", "At least 10 characters. Other phones signed in to your account will be signed out.")}
-      <p class="ferr" role="alert" hidden></p><button class="btn big">Change password</button></form>`);
-  } else if (s.type === "delete") {
-    $layer.innerHTML = sheetHtml("Delete account", `<p class="lead">This deletes your account, your flock and every scroll and photo you’ve sent or received, for you and your friends. It can’t be undone.</p>
-      <div class="pad"><button class="btn wide danger-btn ghost" data-act="delgo">Delete everything</button></div>`);
+        <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
+        <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}</div>`);
+      return;
+    }
+    case "view":
+      $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
+      return;
+    case "passkeys":
+      $layer.innerHTML = sheetHtml("Passkeys", `
+        ${S.passkeys.length ? `<div class="ghead">Saved passkeys</div><div class="group">${S.passkeys.map((p) => `<div class="cell has-icon"><span class="tile indigo">${I.key}</span><span class="ctext"><span>${esc(p.label || "Passkey")}</span><span class="csub">${p.unlocks ? "Signs in and unlocks messages" : "Signs in only"} · added ${fmtDate(p.createdAt)}</span></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}</div>` : ""}
+        ${passkeysSupported() ? `<div class="group ${S.passkeys.length ? "mt" : "mt-s"}">${cell({ act: "pkadd", icon: I.plus, tile: "indigo", label: "Add a Passkey", cls: "action" })}</div>
+          <div class="gfoot">Passkeys let you sign in with Face ID or your fingerprint. On newer phones they also unlock your messages, so a password reset can keep them.</div>`
+          : `<p class="empty"><b>Not available</b>This browser can’t save passkeys.</p>`}`);
+      return;
+    case "askpw":
+      if (!$("#f-password", $layer)) $layer.innerHTML = sheetHtml("Link Passkey", `<p class="gfoot mt-s">Enter your password once so this passkey can also unlock your messages on a new phone.</p>
+        <form id="askpw-form" data-form="askpw" novalidate><div class="group mt-xs">${field("password", "Password", "password", "current-password")}</div>${ferr}</form>`,
+        { left: { label: "Cancel", act: "close" }, right: { label: "Link", form: "askpw-form" } });
+      return;
+    case "profile": {
+      const u = S.me, wait = u.handleNextAt && u.handleNextAt > now() ? u.handleNextAt - now() : 0;
+      const keep = $("#f-name", $layer) ? { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value } : null;
+      $layer.innerHTML = sheetHtml("Edit Profile", `
+        <div class="profile-head"><button type="button" class="avedit" data-act="avmenu">${avatar(u, "xl")}<span>${u.avatarAt ? "Edit Photo" : "Add Photo"}</span></button></div>
+        <form id="profile-form" data-form="profile" novalidate>
+          <div class="ghead">Name</div><div class="group">${field("name", "Name", "text", "name")}</div>
+          <div class="ghead">Handle</div><div class="group">${field("handle", "handle", "text", "username", "@")}</div>
+          <div class="gfoot">${wait ? `You can change your handle once a day. Next change in ${fmtDur(wait)}.` : "Friends find you by your handle. You can change it once a day."}</div>${ferr}
+        </form>
+        <div class="gfoot mt">Your friends, and people you’ve sent or received a friend request from, can see your photo.</div>`,
+        { left: { label: "Cancel", act: "close" }, right: { label: "Done", form: "profile-form" } });
+      $("#f-name", $layer).value = keep ? keep.name : u.name;
+      $("#f-name", $layer).maxLength = 50;
+      $("#f-handle", $layer).value = keep ? keep.handle : u.handle;
+      if (wait) $("#f-handle", $layer).disabled = true;
+      return;
+    }
+    case "changepw":
+      if (!$("#f-current", $layer)) $layer.innerHTML = sheetHtml("Change Password", `<form id="pw-form" data-form="changepw" novalidate>
+        <div class="group mt-s">${field("current", "Current password", "password", "current-password")}</div>
+        <div class="group mt">${field("password", "New password", "password", "new-password")}</div>
+        <div class="gfoot">At least 10 characters. Other phones signed in to your account will be signed out.</div>${ferr}</form>`,
+        { left: { label: "Cancel", act: "close" }, right: { label: "Change", form: "pw-form" } });
+      return;
   }
 }
 function tickMap() {
@@ -920,7 +986,7 @@ function tickMap() {
   const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !m.route) return;
-  const left = m.deliverAt - now(), f = Math.min(1, (now() - m.sentAt) / (m.deliverAt - m.sentAt));
+  const left = m.deliverAt - now();
   card.innerHTML = `<span class="big">${I.bird}<span>${left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span>
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${m.swift ? " · swift" : ""}</span></span>`;
@@ -937,13 +1003,34 @@ function live() {
   if (S.view === "chat") renderCompose();
   tickMap();
 }
+
+/* ---------- menus, action sheets and banners ---------- */
+// iOS-style context menu anchored to a button. items: {label, icon, act, id, destructive}
+function openMenu(anchor, items) {
+  const box = root().getBoundingClientRect(), a = anchor.getBoundingClientRect();
+  const up = a.top - box.top > box.height * 0.55;
+  const right = a.left + a.width / 2 > box.left + box.width / 2;
+  $pop.innerHTML = `<div class="menu-scrim" data-act="closepop"></div>
+    <div class="menu-pop" role="menu">${items.map((it) =>
+      `<button class="mi${it.destructive ? " destructive" : ""}" role="menuitem" data-act="${it.act}"${it.id ? ` data-id="${esc(it.id)}"` : ""}><span>${esc(it.label)}</span>${it.icon || ""}</button>`).join("")}</div>`;
+  const m = $(".menu-pop", $pop);
+  if (up) m.style.bottom = `${box.bottom - a.top + 6}px`; else m.style.top = `${a.bottom - box.top + 6}px`;
+  if (right) m.style.right = `${Math.max(8, box.right - a.right)}px`; else m.style.left = `${Math.max(8, a.left - box.left)}px`;
+  m.style.setProperty("--origin", `${up ? "bottom" : "top"} ${right ? "right" : "left"}`);
+}
+function openActions({ title, message, actions }) {
+  $pop.innerHTML = `<div class="scrim" data-act="closepop"></div><div class="asheet" role="dialog" aria-label="${esc(title || "Confirm")}">
+    <div class="grp">${title || message ? `<div class="msg">${title ? `<b>${esc(title)}</b>` : ""}${esc(message || "")}</div>` : ""}${actions.map((x) =>
+      `<button class="ab${x.destructive ? " destructive" : ""}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""}>${esc(x.label)}</button>`).join("")}</div>
+    <button class="cancel" data-act="closepop">Cancel</button></div>`;
+}
+function closePop() { if ($pop) $pop.innerHTML = ""; }
 let toastTimer = 0;
 function toast(html, btn, fn) {
-  if (!$layer) return;
-  $(".toast", $layer)?.remove();
-  $layer.insertAdjacentHTML("beforeend", `<div class="toast" role="status">${I.bird}<span>${html}</span>${btn ? `<button type="button" data-act="toast">${esc(btn)}</button>` : ""}</div>`);
+  if (!$toast) return;
+  $toast.innerHTML = `<div class="toast" role="status"><span class="ticon">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}</div>`;
   S.toastFn = fn;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => $(".toast", $layer)?.remove(), 6000);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { $toast.innerHTML = ""; }, 5000);
 }
 
 /* ============================================================
@@ -951,10 +1038,9 @@ function toast(html, btn, fn) {
    ============================================================ */
 function showErr(msg, field) {
   const scope = S.sheet && $("form", $layer) ? $layer : root();
-  scope.querySelectorAll(".fl .err").forEach((e) => { e.hidden = true; });
-  scope.querySelectorAll(".fl").forEach((e) => e.classList.remove("bad"));
-  const f = field && $(`#f-${field}`, scope)?.closest(".fl");
-  if (f) { f.classList.add("bad"); const e = $(".err", f); e.textContent = msg; e.hidden = false; $("input", f)?.focus(); return; }
+  scope.querySelectorAll(".fcell.bad").forEach((e) => e.classList.remove("bad"));
+  const f = field && $(`#f-${field}`, scope)?.closest(".fcell");
+  if (f) { f.classList.add("bad"); $("input", f)?.focus(); }
   const g = $(".ferr", scope); if (g) { g.textContent = msg; g.hidden = false; } else toast(esc(msg));
 }
 async function busyBtn(btn, label, fn) {
@@ -964,45 +1050,74 @@ async function busyBtn(btn, label, fn) {
 }
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
-  if ($menu && !e.target.closest(".menu") && !(t && t.dataset.act === "menu")) $menu.hidden = true;
   if (!t) return;
   const id = t.dataset.id;
+  const inPop = !!t.closest(".poplayer") && t.dataset.act !== "closepop";
+  if (inPop) closePop();
   switch (t.dataset.act) {
     case "tab": return go(id);
     case "to": return go(id);
     case "open": return go("chat", id);
-    case "compose": S.sheet = { type: "compose" }; return renderSheet();
+    case "newmsg": S.sheet = { type: "newmsg" }; return renderSheet();
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
+    case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
+    case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
+    case "passkeys": S.sheet = { type: "passkeys" }; return renderSheet();
+    case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
     case "close":
       if (S.sheet?.type === "askpw") S.sheet.resolve(null);
       S.sheet = null; return renderSheet();
+    case "closepop": return closePop();
+    case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
     case "view": S.sheet = { type: "view", id }; return renderSheet();
     case "safety": {
       const f = friend(id); if (!f) return;
-      S.sheet = { type: "safety", id, digits: await E2E.safety(S.me.id, S.me.pub, f.id, f.pub) }; return renderSheet();
+      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : null), digits: await E2E.safety(S.me.id, S.me.pub, f.id, f.pub) };
+      return renderSheet();
     }
+    case "chatmenu": {
+      const f = friend(S.chat); if (!f) return;
+      const flying = (S.msgs.get(f.id) || []).slice().reverse().find((m) => m.flying && m.route);
+      return openMenu(t, [
+        ...(flying ? [{ label: "Watch the Pigeon", icon: I.map, act: "map", id: flying.id }] : []),
+        { label: "Contact Info", icon: I.info, act: "friendinfo", id: f.id },
+        { label: "Safety Number", icon: I.shield, act: "safety", id: f.id },
+        { label: "Remove Friend", icon: I.minusp, act: "unfriendask", id: f.id, destructive: true },
+      ]);
+    }
+    case "attachmenu":
+      return openMenu(t, [{ label: "Camera", icon: I.camera, act: "pick", id: "file-cam" }, { label: "Photo Library", icon: I.photo, act: "pick", id: "file-lib" }]);
+    case "avmenu":
+      return openMenu(t, [{ label: "Choose Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Take Photo", icon: I.camera, act: "pick", id: "av-cam" },
+        ...(S.me.avatarAt ? [{ label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }] : [])]);
+    case "pick": return $("#" + id)?.click();
     case "trust": return trustNewKey(id);
     case "accept": case "decline":
       await api("friends-respond", { method: "POST", body: { id, accept: t.dataset.act === "accept" } }).catch((err) => toast(esc(err.message)));
       await sync(); return renderSheet();
-    case "unfriend":
+    case "cancelreq":
       await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
       await sync(); return renderSheet();
-    case "focusadd": $("#add-h")?.focus(); return;
+    case "unfriendask": {
+      const f = friend(id); if (!f) return;
+      return openActions({ title: `Remove ${f.name}?`, message: "You’ll stop seeing each other’s messages. You can add them again later.", actions: [{ label: "Remove Friend", act: "unfriend", id, destructive: true }] });
+    }
+    case "unfriend":
+      await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
+      S.sheet = null; await sync(); return go("messages");
     case "share": return shareHandle();
-    case "menu": $menu.hidden = !$menu.hidden; t.setAttribute("aria-expanded", String(!$menu.hidden)); return;
     case "unattach": return clearAttach();
-    case "toast": { $(".toast", $layer)?.remove(); const fn = S.toastFn; S.toastFn = null; return fn && fn(); }
+    case "toast": { $toast.innerHTML = ""; const fn = S.toastFn; S.toastFn = null; return fn && fn(); }
     case "peek": { const inp = t.parentElement.querySelector("input"); const show = inp.type === "password"; inp.type = show ? "text" : "password"; t.setAttribute("aria-label", show ? "Hide password" : "Show password"); return; }
     case "locate": return locate(t);
-    case "roostdone": return go(passkeysSupported() ? "pkoffer" : "aviary");
+    case "locdone": return go(passkeysSupported() ? "pkoffer" : "messages");
     case "pkadd":
       try {
         const unlocks = await busyBtn(t, "Waiting for your passkey…", addPasskey);
         await sync();
-        if (t.dataset.next) go(t.dataset.next);
-        toast(unlocks ? "Passkey saved. It can sign you in and unlock your scrolls." : "Passkey saved. On a new phone you’ll also need your password once.");
+        if (t.dataset.next) go(t.dataset.next); else renderSheet();
+        toast(unlocks ? "Passkey saved. It can sign you in and unlock your messages." : "Passkey saved. On a new phone you’ll also need your password once.");
       } catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
       return;
     case "pkget":
@@ -1011,26 +1126,27 @@ async function onClick(e) {
       return;
     case "pkdel":
       await api("passkey", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
-      toast("Passkey removed from your account. You can also delete it from your phone’s passwords.");
-      return sync();
+      toast("Passkey removed. You can also delete it from your phone’s Passwords app.");
+      await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
-    case "signout":
+    case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "signoutgo":
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
-    case "delask": S.sheet = { type: "delete" }; return renderSheet();
+    case "delask": return openActions({ title: "Delete your account?", message: "This deletes your account, friends, and every message and photo you’ve sent or received. It can’t be undone.", actions: [{ label: "Delete Account", act: "delgo", destructive: true }] });
+    case "delgo":
+      try { await api("me", { method: "DELETE" }); await forget(); go("welcome"); toast("Your account was deleted."); }
+      catch (err) { toast(esc(err.message)); }
+      return;
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "avdel":
-      try { await busyBtn(t, "Removing…", async () => { S.me = (await api("avatar", { method: "DELETE" })).me; }); renderSheet(true); render(); }
+      try { S.me = (await api("avatar", { method: "DELETE" })).me; renderSheet(true); render(); }
       catch (err) { showErr(err.message); }
       return;
     case "resetkeep": case "resetfresh":
       try { await resetWith(t.dataset.act === "resetkeep" ? "keep" : "fresh", t); }
       catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
-      return;
-    case "delgo":
-      try { await busyBtn(t, "Deleting…", () => api("me", { method: "DELETE" })); await forget(); go("welcome"); toast("Your account and scrolls were deleted."); }
-      catch (err) { toast(esc(err.message)); }
       return;
   }
 }
@@ -1038,8 +1154,8 @@ const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone alr
 
 async function onChange(e) {
   const el = e.target;
-  if ((el.id === "av-file" || el.id === "av-file2") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
-  if (el.type === "file" && el.files[0]) { $menu.hidden = true; await setAttach(el.files[0]); el.value = ""; }
+  if ((el.id === "av-cam" || el.id === "av-lib") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
+  if ((el.id === "file-cam" || el.id === "file-lib") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);
@@ -1057,7 +1173,7 @@ function locate(btn) {
       await savePlace(lat, lon, nearestPlace(lat, lon));
       resolve();
     }, (err) => {
-      showErr(err.code === 1 ? "Location is turned off for this site. Choose a city instead, or allow location in your browser settings." : "Couldn’t find your location. Choose a city instead.");
+      showErr(err.code === 1 ? "Location is off for this site. Choose a city instead, or allow location in your browser settings." : "Couldn’t find your location. Choose a city instead.");
       resolve();
     }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * MIN });
   }));
@@ -1073,26 +1189,30 @@ async function shareHandle() {
 async function onSubmit(e) {
   e.preventDefault();
   const form = e.target, kind = form.dataset.form;
-  const btn = form.querySelector(".btn.big, .btn");
+  const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${form.id}"]`, $layer);
   if (kind === "compose") return send();
   if (kind === "add") {
     const h = form.h.value.trim(); if (!h) return;
-    try { S.flash = (await api("friends", { method: "POST", body: { handle: h } })).message; S.pendingAdd = null; }
-    catch (err) { S.flash = err.message; }
-    await sync(); render();
-    return;
+    const msg = $(".add-msg", $layer);
+    try {
+      const r = await busyBtn(btn, "Sending…", () => api("friends", { method: "POST", body: { handle: h } }));
+      S.pendingAdd = null;
+      if (/^Request sent|joined/.test(r.message)) { S.sheet = null; renderSheet(); toast(esc(r.message)); }
+      else { msg.textContent = r.message; msg.classList.add("bad"); }
+    } catch (err) { msg.textContent = err.message; msg.classList.add("bad"); }
+    await sync(); return;
   }
   const v = Object.fromEntries(new FormData(form));
   if (kind === "signup") {
     v.handle = String(v.handle || "").trim().replace(/^@/, "").toLowerCase();
     v.email = String(v.email || "").trim();
-    if (!String(v.name || "").trim()) return showErr("Tell us your name.", "name");
-    if (!/^[a-z0-9_]{3,20}$/.test(v.handle)) return showErr("Use 3 to 20 letters, numbers or underscores.", "handle");
+    if (!String(v.name || "").trim()) return showErr("Enter your name.", "name");
+    if (!/^[a-z0-9_]{3,20}$/.test(v.handle)) return showErr("Handles use 3 to 20 letters, numbers or underscores.", "handle");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.email)) return showErr("That doesn’t look like an email address.", "email");
-    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters.", "password");
+    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your password.", "password");
     const keep = { ...v };
     S.making = 0; go("making");
-    try { await createAccount(keep); await new Promise((r) => setTimeout(r, 400)); go("roostpick"); }
+    try { await createAccount(keep); await new Promise((r) => setTimeout(r, 400)); go("locpick"); }
     catch (err) {
       go("signup");
       for (const k of ["name", "handle", "email", "password"]) { const i = $(`#f-${k}`); if (i) i.value = keep[k] || ""; }
@@ -1100,7 +1220,7 @@ async function onSubmit(e) {
     }
   } else if (kind === "signin") {
     if (!v.email || !v.password) return showErr("Enter your email and password.");
-    try { await busyBtn(btn, "Unlocking…", () => signInPassword(String(v.email).trim(), v.password)); afterSignIn(); }
+    try { await busyBtn(btn, "Signing In…", () => signInPassword(String(v.email).trim(), v.password)); afterSignIn(); }
     catch (err) { showErr(err.message); }
   } else if (kind === "unlock") {
     try { await busyBtn(btn, "Unlocking…", () => unlockWithPassword(v.password || "")); afterSignIn(); }
@@ -1110,7 +1230,7 @@ async function onSubmit(e) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return showErr("That doesn’t look like an email address.", "email");
     try {
       const r = await busyBtn(btn, "Sending…", () => api("reset-request", { method: "POST", body: { email } }));
-      form.innerHTML = `<div class="locstate">${I.ok}<span>${esc(r.message)}</span></div>`;
+      form.innerHTML = `<div class="group mt-s">${cell({ icon: I.check, tile: "green", label: "Check your email", sub: esc(r.message) })}</div>`;
     } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "reset") {
     const keep = $("[data-act=resetkeep]");
@@ -1119,7 +1239,7 @@ async function onSubmit(e) {
   } else if (kind === "profile") {
     const name = String(v.name || "").trim(), handle = String(v.handle ?? S.me.handle).trim().replace(/^@/, "").toLowerCase();
     if (!name) return showErr("Your name can’t be empty.", "name");
-    if (!/^[a-z0-9_]{3,20}$/.test(handle)) return showErr("Use 3 to 20 letters, numbers or underscores.", "handle");
+    if (!/^[a-z0-9_]{3,20}$/.test(handle)) return showErr("Handles use 3 to 20 letters, numbers or underscores.", "handle");
     const changes = {};
     if (name !== S.me.name) changes.name = name;
     if (handle !== S.me.handle) changes.handle = handle;
@@ -1131,7 +1251,7 @@ async function onSubmit(e) {
     } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "changepw") {
     if (!v.current) return showErr("Enter your current password.", "current");
-    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters.", "password");
+    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
     try {
       await busyBtn(btn, "Changing…", async () => {
         const { vault, salt } = await api("vault");
@@ -1160,9 +1280,9 @@ async function onSubmit(e) {
 }
 async function afterSignIn() {
   await sync();
-  if (S.me.lat == null) return go("roostpick");
-  if (S.pendingAdd) return go("flock");
-  go("aviary");
+  if (S.me.lat == null) return go("locpick");
+  if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }
+  go("messages");
 }
 // Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
 async function setAvatar(file) {
@@ -1230,7 +1350,7 @@ async function start() {
   // a reset link: take the token out of the address bar straight away
   const rs = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (rs) { S.resetToken = rs[1]; history.replaceState(null, "", location.pathname); }
-  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return showErr("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
+  if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
   const saved = await idb.get("session");
   if (S.resetToken) {
     // a reset replaces whoever is signed in on this phone
@@ -1240,10 +1360,11 @@ async function start() {
     S.token = saved.token; S.me = saved.me; S.priv = saved.priv;
     S.fp = await E2E.fingerprint(saved.me.pub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
-    S.view = S.pendingAdd ? "flock" : "aviary";
+    S.view = S.pendingAdd ? "friends" : "messages";
     render();
     await sync();
-    if (S.me && S.me.lat == null) go("roostpick");
+    if (S.me && S.me.lat == null) go("locpick");
+    else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
   } else go("welcome");
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
@@ -1253,7 +1374,7 @@ async function start() {
     if (r) {
       if (S.token) { api("logout", { method: "POST" }).catch(() => {}); await forget(); }
       S.resetToken = r[1]; S.view = "loading"; go("reset");
-    } else { S.pendingAdd = a[1].toLowerCase(); if (S.me) go("flock"); }
+    } else { S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); } }
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);

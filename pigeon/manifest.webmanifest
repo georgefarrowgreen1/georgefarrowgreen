@@ -6,8 +6,8 @@
   "scope": "/pigeon/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f3ecdd",
-  "theme_color": "#f3ecdd",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
   "icons": [
     { "src": "/pigeon/icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "/pigeon/icon-192.png", "sizes": "192x192", "type": "image/png" },
