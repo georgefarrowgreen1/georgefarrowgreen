@@ -142,6 +142,45 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
+## InFlight (/pigeon) — beta
+
+A pigeon-post messenger at **/pigeon**: every message ("scroll") flies the real
+distance between two people at 80 km/h (5 minutes to 3 days), and photos are
+deleted 24 hours after they land. It is end-to-end encrypted and built for
+phones, held upright.
+
+| Part | Where |
+| --- | --- |
+| App (static, no build step) | `pigeon/` — `app.js`, `crypto.js`, `styles.css`, `land.js` (coastlines), `places.js` |
+| API | `functions/api/pigeon/[[path]].js`, helpers in `functions/_pigeon.js` |
+| Data | D1 (`DB`), tables prefixed `pg_`, created on first request |
+| Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
+
+No new setup is needed: it uses the `DB` and `BIO_R2` bindings already in
+`wrangler.toml`. Optional backstop for photo deletion (the app already deletes
+them itself): R2 → `bio-media` → Settings → Object lifecycle rules → delete
+objects with prefix `pigeon/` after 5 days.
+
+**Encryption.** Each phone makes an ECDH P-256 key pair. Two friends' keys give
+them a shared secret, and each scroll is sealed with its own AES-256-GCM key
+derived from it. Photos get a random key that travels inside the sealed scroll.
+The server stores ciphertext, public keys, who is friends with whom and flight
+times, never message text, photos or private keys.
+
+**Accounts.** Email + password, plus optional passkeys. The password is
+stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
+private key before it is uploaded, the other half is the sign-in proof, which
+the server stores only as a hash. Passkeys that support WebAuthn's PRF extension
+(iOS 18+, recent Android/Chrome) also hold their own locked copy of the key, so
+they restore messages without the password. Passwords can't be reset, because
+the password is what locks the key.
+
+**Safety numbers.** Tap a friend's name in a chat to compare 60 digits. The app
+also remembers each friend's key and warns if it changes.
+
+**Headers.** `_headers` gives `/pigeon/*` a strict Content-Security-Policy and
+is the only place on the site that allows location and passkeys.
+
 ## Local preview
 
 The look works offline, but the API calls need Cloudflare's runtime. To run
