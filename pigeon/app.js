@@ -1276,7 +1276,7 @@ async function setSkin(id) {
     S.me = r.me || { ...S.me, skin };
     $(".pick", $compose).innerHTML = "";          // redrawn with the new look
     $layer.querySelectorAll(".skin2").forEach((b) => { const on = (b.dataset.id || "") === (skin || "usual"); b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
-    renderCompose(); toast(skin ? `${SKINS[skin].name} pigeons it is.` : "Back to the usual pigeons.");
+    renderCompose();                              // the chosen tile lights up; no banner over the sheet
   } catch (err) { toast(esc(err.message)); }
 }
 
