@@ -96,12 +96,17 @@ function waitText(ms) {
 // The recipient has moved: every pigeon flying to them turns in mid-air and
 // heads for the new spot from wherever it is now, at its own speed. The turn
 // point is kept so the map can draw the path. A pigeon still can't take
-// longer than its 3-day limit from when it was sent.
+// longer than its 3-day limit from when it was sent. Small moves are added up:
+// a pigeon turns once you're more than REROUTE_KM from where it's heading, and
+// at most every 10 minutes, so a drive doesn't send it zig-zagging.
+const TURN_EVERY = 10 * 60e3;
 async function reroute(env, u, p, t, waitUntil) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ?1 AND deliver_at > ?2 AND to_lat IS NOT NULL AND (lost_at IS NULL OR lost_at > ?2)").bind(u.id, t).all();
   for (const m of results) {
     const legs = m.legs ? JSON.parse(m.legs) : [];
+    if (haversineKm(m.to_lat, m.to_lon, p.lat, p.lon) <= REROUTE_KM) continue;
+    if (legs.length && t - legs[legs.length - 1][2] < TURN_EVERY) continue;
     const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [m.from_lat, m.from_lon, m.sent_at];
     const f = Math.min(1, Math.max(0, (t - sAt) / (m.deliver_at - sAt)));
     const [pLat, pLon] = gcPoint(sLat, sLon, m.to_lat, m.to_lon, f);           // where it is right now
@@ -149,9 +154,9 @@ async function updateMe({ request, env, waitUntil }) {
   if (b.lat !== undefined) {
     const p = cleanPlace(b);
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
-    if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 4, 15 * 60e3);    // no bouncing pigeons about
+    if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
     await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = ? WHERE id = ?").bind(p.lat, p.lon, p.place, t, u.id).run();
-    if (u.lat != null && moved > REROUTE_KM) await reroute(env, u, p, t, waitUntil);
+    if (u.lat != null) await reroute(env, u, p, t, waitUntil);       // also catches up a turn held back by TURN_EVERY
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ me: meView(fresh, Date.now()) });
