@@ -615,7 +615,7 @@ async function sync() {
       const d = await api("sync");
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
-      S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn;
+      S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn;
       syncTheme();
       for (const f of S.friends) {
         checkPin(f);
@@ -797,6 +797,7 @@ function mount() {
       <div class="attach" hidden></div>
       <div class="crow">
         <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
+        <button type="button" class="plus gifbtn" data-act="gifs" aria-label="Find a GIF" hidden>GIF</button>
         <div class="field-wrap">
           <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="send"></textarea>
           <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
@@ -1126,7 +1127,7 @@ function bubble(f, m, isLastMine, gapTop, g) {
   if (p.p) {
     let photo;
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
-    else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
+    else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
@@ -1386,6 +1387,7 @@ function renderCompose() {
   }
   btn.disabled = blocked || !has || S.busy;
   $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
+  $(".gifbtn", $compose).hidden = !S.gifsOn;
   const a = $(".attach", $compose);
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
@@ -1426,7 +1428,9 @@ function filterLists() {
   const run = (list, q) => { const el = $(`[data-list="${list}"]`); if (!el) return; q = q.trim().toLowerCase(); el.querySelectorAll("[data-find]").forEach((r) => { r.hidden = !!q && !r.dataset.find.includes(q); }); };
   run("m", S.q); run("f", S.fq);
 }
+let gifTimer = 0;
 function onInput(e) {
+  if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); return; }
   if (e.target.id === "msearch") { S.q = e.target.value; filterLists(); }
   if (e.target.id === "fsearch") { S.fq = e.target.value; filterLists(); }
 }
@@ -1581,6 +1585,17 @@ function drawSheet(refresh) {
           ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
         </div>
         <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`);
+      return;
+    }
+    case "gifs": {
+      // built once; searching and loading more only touch the grid
+      if (!$("#gif-q", $layer)) {
+        $layer.innerHTML = sheetHtml("GIFs", `<label class="search gifsearch">${I.search}<input type="search" id="gif-q" placeholder="Search GIPHY" autocomplete="off" enterkeyhint="search" aria-label="Search GIFs"></label>
+          <div class="gifgrid" role="list"></div><p class="giphy">Powered by GIPHY. Searches go through InFlight, so GIPHY doesn’t see who’s looking. What you send is end-to-end encrypted.</p>`,
+          { left: { label: "Cancel", act: "close" }, right: null });
+        $("#gif-q", $layer).value = s.q || "";
+      }
+      drawGifs();
       return;
     }
     case "grouprename": {
@@ -1847,6 +1862,9 @@ async function onClick(e) {
       return;
     case "trustm": return trustNewKey(id);
     case "grouprename": S.sheet = { type: "grouprename", id }; return renderSheet();
+    case "gifs": S.sheet = { type: "gifs", q: "", list: [], next: 0, busy: false }; renderSheet(); return loadGifs();
+    case "gifmore": return loadGifs(true);
+    case "gifpick": return pickGif(id, t);
     case "gmute": {
       const g = group(id); if (!g) return;
       const on = !g.muted; g.muted = on; renderSheet();            // the switch moves straight away
@@ -2242,6 +2260,55 @@ async function prepGif(blob) {
   if (!g) return prepImage(blob);                                  // not a GIF we can read: send it as a still
   if (g.bytes.length > GIF_MAX) throw Object.assign(new Error("big"), { big: true });
   return { ...g, gif: true, preview: URL.createObjectURL(new Blob([g.bytes], { type: "image/gif" })) };
+}
+/* ---------- GIF search ----------
+   Through InFlight's server (functions/_gifs.js): it asks GIPHY and fetches
+   the GIFs, so GIPHY never sees who's looking. The one picked is attached like
+   a GIF from the phone: sealed before it leaves. */
+const gifPrev = new Map();            // id → blob URL of its little moving preview
+async function loadGifs(more) {
+  const s = S.sheet; if (!s || s.type !== "gifs" || s.busy || s.next == null) return;
+  s.busy = true; drawGifs();
+  const q = s.q;
+  try {
+    const d = await api(`gif-search?q=${encodeURIComponent(q)}&offset=${more ? s.next : 0}`);
+    if (S.sheet !== s || s.q !== q) { s.busy = false; return; }
+    s.list = more ? [...s.list, ...d.gifs.filter((g) => !s.list.some((x) => x.id === g.id))] : d.gifs; s.next = d.next; s.err = "";
+  } catch (err) { s.err = err.message; }
+  s.busy = false;
+  if (S.sheet === s) drawGifs();
+}
+function drawGifs() {
+  const s = S.sheet, grid = $(".gifgrid", $layer); if (!s || !grid) return;
+  const tile = (g) => `<button type="button" class="giftile${s.picking === g.id ? " busy" : ""}" role="listitem" data-act="gifpick" data-id="${esc(g.id)}" aria-label="${esc(g.title || "GIF")}" data-ar="${(g.w / g.h).toFixed(3)}">${gifPrev.get(g.id) ? `<img src="${gifPrev.get(g.id)}" alt="">` : ""}</button>`;
+  // two columns, each tile into whichever is shorter, so the grid packs like a wall of photos
+  const cols = [[], []], hgt = [0, 0];
+  for (const g of s.list) { const c = hgt[0] <= hgt[1] ? 0 : 1; cols[c].push(g); hgt[c] += g.h / g.w; }
+  grid.innerHTML = s.list.length ? cols.map((c) => `<div class="gifcol">${c.map(tile).join("")}</div>`).join("")
+    : `<p class="empty">${s.err ? esc(s.err) : s.busy ? "Finding GIFs…" : "No GIFs found. Try another word."}</p>`;
+  grid.querySelectorAll("[data-ar]").forEach((el) => el.style.setProperty("--ar", el.dataset.ar));   // (inline style attributes are blocked)
+  grid.parentElement.querySelector(".gifmore")?.remove();
+  if (s.list.length && s.next != null) grid.insertAdjacentHTML("afterend", `<div class="gifmore"><button type="button" class="btn gray" data-act="gifmore"${s.busy ? " disabled" : ""}>${s.busy ? "Loading…" : "More GIFs"}</button></div>`);
+  // previews come through the server too, then stay as blob URLs
+  for (const g of s.list) if (!gifPrev.has(g.id)) {
+    gifPrev.set(g.id, "");
+    api(`gif/${encodeURIComponent(g.id)}?s=p`, { raw: true }).then((r) => r.blob()).then((b) => {
+      gifPrev.set(g.id, URL.createObjectURL(b));
+      const el = $(`.giftile[data-id="${CSS.escape(g.id)}"]`, $layer);
+      if (el && !el.querySelector("img")) el.insertAdjacentHTML("afterbegin", `<img src="${gifPrev.get(g.id)}" alt="">`);
+    }).catch(() => gifPrev.delete(g.id));
+  }
+}
+async function pickGif(id, el) {
+  const s = S.sheet; if (!s || s.picking) return;
+  s.picking = id; el?.classList.add("busy");
+  try {
+    const r = await api(`gif/${encodeURIComponent(id)}?s=f`, { raw: true });
+    const blob = await r.blob();
+    if (S.sheet !== s) return;
+    S.sheet = null; renderSheet();
+    await setAttach(blob);
+  } catch (err) { s.picking = null; el?.classList.remove("busy"); toast(esc(err.message)); }
 }
 async function setAttach(blob) {
   clearAttach();

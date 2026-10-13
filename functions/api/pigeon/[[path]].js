@@ -7,6 +7,7 @@ import {
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
+import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -362,7 +363,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, emailOn: emailReady(env),
+  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -768,7 +769,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES,
 };
 
 export async function onRequest(ctx) {

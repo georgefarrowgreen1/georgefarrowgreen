@@ -205,6 +205,14 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**GIFs.** A GIF from your phone is sent as a GIF (frames, timing and looping
+kept; comments and other extra blocks stripped), end-to-end encrypted like any
+photo, up to 7 MB. The GIF button beside + searches GIPHY: searches and the
+GIFs themselves go through this server (`functions/_gifs.js`), so GIPHY never
+sees who's looking, and the one picked is sealed on the phone like any other.
+Needs the secret **`GIPHY_API_KEY`** (free from developers.giphy.com: create an
+API app); without it the GIF button stays hidden.
+
 **Groups.** New Message → New Group: a name and up to 11 friends (12 people in
 all). A message flies to everyone at once, one pigeon each over the real
 distance to each person, so it lands at different times for each of them; your
