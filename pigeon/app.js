@@ -1132,15 +1132,16 @@ async function forget() {
   await idb.del("session");
 }
 async function createAccount(v) {
-  const { privJwk, pub } = await E2E.newIdentity();
-  S.making = 1; render();
-  const salt = rand(16);
-  const { lockKey, proof } = await E2E.fromPassword(v.password, salt);
+  const { privJwk, pub } = await (onb.id || E2E.newIdentity());
+  S.making = 1; if (S.view === "making") render();
+  const ready = onb.pw?.pw === v.password ? onb.pw : null, salt = ready ? ready.salt : rand(16);
+  const { lockKey, proof } = await (ready ? ready.p : E2E.fromPassword(v.password, salt));
   const vault = await E2E.lock(lockKey, { ecdh: privJwk });
-  S.making = 2; render();
+  S.making = 2; if (S.view === "making") render();
   const r = await api("signup", { method: "POST", body: { name: v.name, handle: v.handle, email: v.email, salt: b64url(salt), proof, vault, pub } });
-  S.making = 3; render();
+  S.making = 3; if (S.view === "making") render();
   await useKeys(r.token, r.me, privJwk);
+  onb.id = onb.pw = null; onb.handleTouched = false;
 }
 async function signInPassword(email, password) {
   const { salt } = await api("salt", { method: "POST", body: { email } });
@@ -1611,7 +1612,13 @@ function vMessages() {
     </button>`).join("");
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
-    : `<p class="empty"><b>No messages yet</b>Add a friend by their handle, then send your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Find Friends</button></p>`;
+    : S.outgoing.length || S.incoming.length
+    ? `<p class="empty"><b>No messages yet</b>Once a friend says yes, send them your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Friends</button></p>`
+    // brand new: the two ways to get a friend, right here
+    : `<div class="firstrun"><div class="appicon">${I.bird}</div><h2>Your loft is ready</h2>
+        <p>Pigeons fly between friends. Send your link to someone, or add them by their handle.</p>
+        <div class="stack"><button class="btn wide" data-act="share">${I.up}Share My Link</button><button class="btn wide plain" data-act="addfriend">Add a Friend by Handle</button></div>
+        <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
   return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large">Messages</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
@@ -1975,6 +1982,8 @@ function field(name, placeholder, type, ac, prefix) {
   return `<label class="fcell">${prefix ? `<span class="pre">${prefix}</span>` : ""}<input id="f-${name}" name="${name}" type="${type}" placeholder="${esc(placeholder)}" autocomplete="${ac}" aria-label="${esc(placeholder)}"${type === "email" || name === "handle" ? ' autocapitalize="off" spellcheck="false"' : ""}${name === "handle" ? ' maxlength="20"' : ""}>${type === "password" ? `<button type="button" class="peek" data-act="peek" aria-label="Show password">${I.eye}</button>` : ""}</label>`;
 }
 const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
+// Sign-up's three steps: account, location, passkey (the last only where passkeys work)
+const stepDots = (n) => { const of = passkeysSupported() ? 3 : 2; return `<p class="stepn" aria-label="Step ${n} of ${of}">${Array.from({ length: of }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</p>`; };
 function vAuth() {
   const back = (to) => navbar("", { left: backBtn("to", to) });
   switch (S.view) {
@@ -1992,12 +2001,13 @@ function vAuth() {
           <button class="btn wide plain" data-act="to" data-id="signin">Sign In</button>
         </div></div>`;
     case "signup": return `<div class="auth">${back("welcome")}
+        ${stepDots(1)}
         <h1 class="large">Create Account</h1>
         <form data-form="signup" novalidate>
           <div class="group">${field("name", "Name", "text", "name")}${field("handle", "handle", "text", "username", "@")}</div>
-          <div class="gfoot">Friends see your name and find you by your handle.</div>
+          <div class="gfoot hstat" aria-live="polite">Friends see your name and find you by your handle.</div>
           <div class="group mt">${field("email", "Email", "email", "email")}${field("password", "Password", "password", "new-password")}</div>
-          <div class="gfoot">At least 10 characters. Your password also locks your encryption key, so add a passkey later as a backup.</div>
+          <div class="gfoot pwstat" aria-live="polite">At least 10 characters. It also locks your encryption key.</div>
           ${ferr}
           <div class="pad"><button class="btn wide">Create Account</button></div>
         </form></div>`;
@@ -2034,18 +2044,20 @@ function vAuth() {
         </form></div>`;
     case "reset": return vReset();
     case "locpick": return `<div class="auth">${navbar("")}
-        <h1 class="large">Your Location</h1>
-        <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s kept to about 1.6 km (1 mile), and only your friends see it.</p>
-        <div class="group mt">
-          ${S.me?.place ? cell({ icon: I.check, tile: "green", label: esc(S.me.place), sub: "Current location" }) : ""}
-          ${cell({ act: "locate", icon: I.loc, tile: "blue", label: S.me?.place ? "Use Current Location Again" : "Use Current Location", cls: "action" })}
-          <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
+        ${stepDots(2)}
+        <h1 class="large">Where Are You?</h1>
+        <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s rounded to about a mile, and only your friends see it.</p>
+        ${S.me?.place ? `<div class="group mt">${cell({ icon: I.check, tile: "green", label: esc(S.me.place), sub: "Your location" })}</div>` : ""}
+        <div class="stack locfirst"><button class="btn wide" data-act="locate">${I.loc}${S.me?.place ? "Use My Location Again" : "Use My Location"}</button></div>
+        <div class="group">
+          <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City Instead</span></span>${chevSm}
             <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
+          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep It Up to Date", sub: "While InFlight is open, so pigeons find you", on: S.onbAuto !== false })}
         </div>${ferr}
-        <div class="stack"><button class="btn wide" data-act="locdone"${S.me?.place ? "" : " disabled"}>Continue</button></div></div>`;
-    case "pkoffer": return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.face}</span>
+        ${S.me?.place ? `<div class="stack"><button class="btn wide plain" data-act="locdone">Continue</button></div>` : ""}</div>`;
+    case "pkoffer": return `<div class="auth">${stepDots(3)}<div class="hero tall"><span class="big-ico">${I.face}</span>
         <h1>Sign In with Face ID</h1><p>Save a passkey to sign in with Face ID or your fingerprint. On most newer phones it can also unlock your messages if you forget your password.</p></div>${ferr}
-        <div class="stack"><button class="btn wide" data-act="pkadd" data-next="messages">Save a Passkey</button><button class="btn wide plain" data-act="tab" data-id="messages">Not Now</button></div></div>`;
+        <div class="stack"><button class="btn wide" data-act="pkadd" data-next="done">Save a Passkey</button><button class="btn wide plain" data-act="onbdone">Not Now</button></div></div>`;
   }
   return "";
 }
@@ -2245,7 +2257,39 @@ function filterLists() {
   run("m", S.q); run("f", S.fq);
 }
 let gifTimer = 0;
+/* ---------- sign-up, made quick ----------
+   While you type: your handle is suggested from your name and checked as you
+   go; the password shows how many more characters it needs; and the slow
+   parts (making your key pair, stretching your password) start in the
+   background, so Create Account is nearly instant. */
+const onb = { handleTouched: false, timer: 0, pwTimer: 0, id: null, pw: null };
+const handleFrom = (name) => { const p = String(name).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/\s+/).filter(Boolean); return (p.length > 1 ? p[0] + "_" + p[p.length - 1][0] : p[0] || "").replace(/[^a-z0-9_]/g, "").slice(0, 20); };
+function onbPrepare() { if (!onb.id) onb.id = E2E.newIdentity().then((x) => (onb.idDone = x)); }
+async function onbCheckHandle() {
+  const i = $("#f-handle"), st = $(".hstat"); if (!i || !st) return;
+  const h = i.value.trim().replace(/^@/, "").toLowerCase();
+  if (h.length < 3) { st.className = "gfoot hstat"; st.textContent = "Friends see your name and find you by your handle."; return; }
+  try {
+    const r = await api("handle-free?h=" + encodeURIComponent(h));
+    if (($("#f-handle")?.value || "").trim().replace(/^@/, "").toLowerCase() !== h) return;     // they've typed on
+    if (r.free) { st.className = "gfoot hstat ok"; st.innerHTML = `${I.ok}@${esc(h)} is yours.`; }
+    else { st.className = "gfoot hstat bad"; st.innerHTML = `${esc(r.reason)}${r.try?.length ? ` Try ${r.try.map((t) => `<button type="button" class="linkbtn" data-act="usehandle" data-id="${esc(t)}">@${esc(t)}</button>`).join(" or ")}.` : ""}`; }
+  } catch (_) { /* checked again when you create the account */ }
+}
+function onbInput(e) {
+  const id = e.target.id; onbPrepare();
+  if (id === "f-name" && !onb.handleTouched) { const h = $("#f-handle"); if (h) { h.value = handleFrom(e.target.value); clearTimeout(onb.timer); onb.timer = setTimeout(onbCheckHandle, 350); } }
+  if (id === "f-handle") { onb.handleTouched = true; clearTimeout(onb.timer); onb.timer = setTimeout(onbCheckHandle, 350); }
+  if (id === "f-password") {
+    const pw = e.target.value, n = 10 - pw.length, st = $(".pwstat");
+    if (st) { st.className = `gfoot pwstat${n <= 0 ? " ok" : ""}`; st.innerHTML = n > 0 ? (pw ? `${n} more character${n === 1 ? "" : "s"}.` : "At least 10 characters. It also locks your encryption key.") : `${I.ok}Good. It also locks your encryption key.`; }
+    // stretch the password in the background once it's long enough and you pause
+    clearTimeout(onb.pwTimer);
+    if (n <= 0) onb.pwTimer = setTimeout(() => { const salt = rand(16); onb.pw = { pw, salt, p: E2E.fromPassword(pw, salt) }; }, 450);
+  }
+}
 function onInput(e) {
+  if (S.view === "signup" && e.target.closest?.("[data-form=signup]")) return onbInput(e);
   if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); return; }
   if (e.target.id === "msearch") { S.q = e.target.value; filterLists(); }
   if (e.target.id === "fsearch") { S.fq = e.target.value; filterLists(); }
@@ -2931,13 +2975,21 @@ async function onClick(e) {
     case "unattach": return clearAttach();
     case "toast": { hideToast(); const fn = S.toastFn; S.toastFn = null; return fn && fn(); }
     case "peek": { const inp = t.parentElement.querySelector("input"); const show = inp.type === "password"; inp.type = show ? "text" : "password"; t.setAttribute("aria-label", show ? "Hide password" : "Show password"); return; }
-    case "locate": return locate(t);
-    case "locdone": return go(passkeysSupported() ? "pkoffer" : "messages");
+    case "locate": {
+      const found = await locate(t);
+      // signing up: keep it fresh (unless switched off), then on to the next step by itself
+      if (found && S.view === "locpick") { if (S.onbAuto !== false) setAutoLocation(true); setTimeout(() => { if (S.view === "locpick") onbNext(); }, 650); }
+      return;
+    }
+    case "onbauto": S.onbAuto = S.onbAuto === false; return render();
+    case "locdone": return onbNext();
+    case "onbdone": return finishOnboarding();
+    case "usehandle": { const i = $("#f-handle"); if (i) { i.value = id; onb.handleTouched = true; onbCheckHandle(); } return; }
     case "pkadd":
       try {
         const unlocks = await busyBtn(t, "Waiting for your passkey…", addPasskey);
         await sync();
-        if (t.dataset.next) go(t.dataset.next); else renderSheet();
+        if (t.dataset.next === "done") finishOnboarding(); else if (t.dataset.next) go(t.dataset.next); else renderSheet();
         toast(unlocks ? "Passkey saved. It can sign you in and unlock your messages." : "Passkey saved. On a new phone you’ll also need your password once.");
       } catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
       return;
@@ -3013,6 +3065,7 @@ async function onChange(e) {
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);
+    if (p && S.view === "locpick" && S.me?.place) setTimeout(() => { if (S.view === "locpick") onbNext(); }, 650);   // signing up: straight on
   }
 }
 const agoText = (at) => { const ms = now() - at; return ms < 2 * MIN ? "just now" : `${fmtDur(ms)} ago`; };
@@ -3080,15 +3133,15 @@ async function savePlace(lat, lon, place) {
 }
 function locate(btn) {
   if (!navigator.geolocation) return showErr("This browser can’t share your location. Choose a city instead.");
-  busyBtn(btn, "Finding you…", () => new Promise((resolve) => {
+  return busyBtn(btn, "Finding you…", () => new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const { latitude, longitude } = pos.coords;
       const { lat, lon } = snapToMile(latitude, longitude);     // the exact spot never leaves the phone
       await savePlace(lat, lon, nearestPlace(lat, lon));
-      resolve();
+      resolve(!!S.me?.place);
     }, (err) => {
       showErr(err.code === 1 ? "Location is off for this site. Choose a city instead, or allow location in your browser settings." : "Couldn’t find your location. Choose a city instead.");
-      resolve();
+      resolve(false);
     }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 10 * MIN });
   }));
 }
@@ -3164,11 +3217,16 @@ async function onSubmit(e) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.email)) return showErr("That doesn’t look like an email address.", "email");
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your password.", "password");
     const keep = { ...v };
-    S.making = 0; go("making");
-    try { await createAccount(keep); await new Promise((r) => setTimeout(r, 400)); go("locpick"); }
+    S.making = 0;
+    const fe = $(".ferr"); if (fe) { fe.hidden = true; fe.textContent = ""; }                  // the last attempt's error goes
+    const slow = setTimeout(() => go("making"), 250);              // only if it takes a moment (it usually doesn't: it began while you typed)
+    btn?.setAttribute("disabled", ""); if (btn) btn.textContent = "Creating…";
+    try { await createAccount(keep); clearTimeout(slow); S.onbAuto = true; go("locpick"); }
     catch (err) {
-      go("signup");
+      clearTimeout(slow); go("signup");
       for (const k of ["name", "handle", "email", "password"]) { const i = $(`#f-${k}`); if (i) i.value = keep[k] || ""; }
+      const b2 = $("[data-form=signup] .btn"); if (b2) { b2.disabled = false; b2.textContent = "Create Account"; }
+      onb.handleTouched = true;
       showErr(err.message, err.field);
     }
   } else if (kind === "signin") {
@@ -3234,6 +3292,12 @@ async function onSubmit(e) {
       const s = S.sheet; S.sheet = null; renderSheet(); s.resolve(jwk);
     } catch (err) { showErr(err.message, err.field); }
   }
+}
+// Sign-up's last steps: the passkey offer (where it works), then your first screen
+function onbNext() { if (passkeysSupported()) go("pkoffer"); else finishOnboarding(); }
+function finishOnboarding() {
+  if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }   // came from a friend's link
+  go("messages");
 }
 async function afterSignIn() {
   await sync();
@@ -3460,6 +3524,11 @@ async function send() {
   S.busy = false; renderCompose();
 }
 $(".page").addEventListener("keydown", (e) => {
+  const f = e.target.closest?.("form[data-form=signup], form[data-form=signin]");
+  if (f && e.key === "Enter" && e.target.tagName === "INPUT") {
+    const ins = [...f.querySelectorAll("input")], i = ins.indexOf(e.target);
+    if (i < ins.length - 1) { e.preventDefault(); ins[i + 1].focus(); return; }
+  }
   if (e.target.id === "msg" && e.key === "Enter" && !e.shiftKey && !/iPhone|iPad|Android/.test(navigator.userAgent)) { e.preventDefault(); send(); }
 });
 

@@ -359,6 +359,19 @@ async function removeFriend({ request, env }) {
   await (await db(env)).prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).run();
   return json({ ok: true });
 }
+// Signing up: is this handle free? If not, a few close ones that are.
+// (Handles are how friends find each other, so they're not secret.)
+async function handleFree({ request, env }) {
+  await limit(env, "hfree:" + clientIp(request), 150, 15 * 60e3);
+  const h = String(new URL(request.url).searchParams.get("h") || "").trim().replace(/^@/, "").toLowerCase();
+  if (!HANDLE_RE.test(h)) return json({ free: false, reason: "Handles use 3 to 20 letters, numbers or underscores." });
+  const D = await db(env);
+  if (!(await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(h).first())) return json({ free: true });
+  const base = h.slice(0, 17), cands = [2, 3, 4, 5, 7, 8, 9, 11, 22, 99].map((n) => base + n).concat(["_", "_x", "_hq"].map((x) => (base + x).slice(0, 20)));
+  const { results } = await D.prepare(`SELECT handle FROM pg_users WHERE handle IN (${cands.map(() => "?").join(",")})`).bind(...cands).all();
+  const taken = new Set(results.map((r) => r.handle));
+  return json({ free: false, reason: `@${h} is taken.`, try: cands.filter((c) => HANDLE_RE.test(c) && !taken.has(c)).slice(0, 3) });
+}
 // Friends you share with someone: where a pigeon to them could stop over.
 async function mutuals({ request, env }) {
   const u = await requireUser(request, env), D = await db(env), other = new URL(request.url).searchParams.get("with") || "";
@@ -907,7 +920,7 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": signup, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault,
+  "POST signup": signup, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete,

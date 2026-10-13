@@ -868,3 +868,19 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mapcard .over{display:flex;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:600;color:var(--tint)}
 .mapcard .over .ico{font-size:13px}
 .mapcard .lands{text-align:center;font-size:13px;font-weight:500;color:var(--label-2);font-variant-numeric:tabular-nums;margin-top:2px}
+/* sign-up: step dots, live checks, the first screen */
+.stepn{display:flex;gap:6px;justify-content:center;margin:2px 0 6px}
+.stepn i{width:22px;height:4px;border-radius:2px;background:var(--fill);transition:background .3s}
+.stepn i.on{background:var(--tint)}
+.gfoot.ok{color:var(--green)}
+.gfoot.ok .ico,.gfoot.bad .ico{vertical-align:-2px;margin-right:4px}
+.linkbtn{border:0;background:none;padding:0;font:inherit;color:var(--tint);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.locfirst{margin-top:18px}
+.locfirst .btn .ico,.firstrun .btn .ico{margin-right:6px}
+.firstrun{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 24px 20px;gap:10px}
+.firstrun .appicon{width:72px;height:72px;font-size:40px}
+.firstrun h2{margin:6px 0 0;font-size:24px;font-weight:700}
+.firstrun p{margin:0;color:var(--label-2);font-size:15px;line-height:1.4;max-width:300px}
+.firstrun .stack{width:100%;max-width:320px;margin-top:10px}
+.firstrun .me{font-size:13px;margin-top:6px}
+.auth > .stepn:first-child{margin-top:22px}
