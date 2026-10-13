@@ -1785,10 +1785,6 @@ function vAccount() {
     <div class="group mt">${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles flown, records and more", chev: true })}</div>
     <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
-    <div class="group mt">${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}</div>
-    <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: `Version ${APP_VERSION}` })}</div>
-    <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
-    <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <div class="gap"></div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
@@ -2784,7 +2780,7 @@ function drawSheet(refresh) {
         </div>
         <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting. " : ""}Saved to your account, so it’s the same on every phone you sign in on.</div>
         <div class="group mt">${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", sub: "A tap of feedback when you send, react and switch", on: hapticsOn() })}</div>
-        <div class="gfoot">On this phone. iPhone needs iOS 18 or later.</div>`);
+        <div class="gfoot">On this phone. iPhone needs iOS 18 or later.</div>`, { left: { label: "Back", act: "profile" } });
       return;
     case "notifications": {
       const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
@@ -2829,7 +2825,11 @@ function drawSheet(refresh) {
         <div class="group mt">
           ${notifyCell(u)}
           ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
-        </div>`,
+          ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
+        </div>
+        <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: `Version ${APP_VERSION}` })}</div>
+        <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
+        <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>`,
         { left: { label: "Close", act: "close" }, right: { label: "Done", form: "profile-form" } });
       if (top) $(".sheet .body", $layer).scrollTop = top;
       $("#f-name", $layer).value = keep ? keep.name : u.name;
@@ -3222,7 +3222,7 @@ async function onClick(e) {
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
-    case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
+    case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; return renderCompose();
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
