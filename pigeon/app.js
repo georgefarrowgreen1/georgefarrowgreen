@@ -1031,6 +1031,7 @@ function vAccount() {
       ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free on your turn" })}
     </div>
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
+    <div class="group mt">${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles flown, records and more", chev: true })}</div>
     <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="group mt">${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}</div>
@@ -1673,6 +1674,34 @@ function drawSheet(refresh) {
       drawGifs();
       return;
     }
+    case "flightlog": {
+      const d = s.data;
+      if (!d) { $layer.innerHTML = sheetHtml("Flight Log", `<p class="empty">Opening your flight log…</p>`); return; }
+      const mi = d.km * 0.621371, lap = mi / 24901, hrs = d.hours;
+      const tile = (val, label, sub = "") => `<div class="lstat"><b>${val}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ""}</div>`;
+      const n = (x) => Math.round(x).toLocaleString("en-GB");
+      const kinds = [...KINDS.map(([k]) => k), "dumb"].filter((k) => d.kinds[k]);
+      const most = Math.max(1, ...kinds.map((k) => d.kinds[k]));
+      $layer.innerHTML = sheetHtml("Flight Log", d.sent ? `
+        <div class="loghero"><div class="globe" data-lap="${Math.min(1, lap % 1 || (lap >= 1 ? 1 : 0)).toFixed(3)}"><span>${lap >= 1 ? `${Math.floor(lap)}×` : `${Math.round(lap * 100)}%`}</span></div>
+          <div class="ltext"><b>${n(mi)} mi</b><span>flown by your pigeons</span><small>${lap >= 1 ? `That’s ${lap.toFixed(1)} times around the world.` : `${Math.round(lap * 100)}% of the way around the world.`}</small></div></div>
+        <div class="lstats">
+          ${tile(n(d.sent), "Pigeons sent", d.flying ? `${d.flying} in the air now` : "")}
+          ${tile(n(d.received), "Pigeons received")}
+          ${tile(hrs >= 48 ? `${n(hrs / 24)} days` : `${n(hrs)} h`, "In the air", "landed pigeons, end to end")}
+          ${tile(d.longest ? `${n(d.longest.km * 0.621371)} mi` : "–", "Longest flight", d.longest?.place ? `to ${esc(d.longest.place)}` : "")}
+          ${tile(d.fastest ? `${n(d.fastest.kmh * 0.621371)} mph` : "–", "Fastest pigeon", d.fastest ? `a ${esc(KIND[d.fastest.kind]?.name.toLowerCase() || "")} pigeon` : "")}
+          ${tile(d.tailwind ? `${n(d.tailwind * 0.621371)} mph` : "–", "Best tailwind")}
+        </div>
+        ${kinds.length ? `<div class="ghead">By pigeon</div><div class="group">${kinds.map((k) => `<div class="cell has-icon kindrow"><span class="tile ${k === "dumb" ? "gray" : k}">${I.bird}</span><span class="ctext"><span>${KIND[k].name}</span><i class="kbar ${k}" data-w="${(d.kinds[k] / most).toFixed(3)}"></i></span><span class="val">${n(d.kinds[k])}</span></div>`).join("")}</div>` : ""}
+        <div class="group mt">${cell({ icon: I.skull, tile: "red", label: "Lost to Pigeon Death", val: n(d.lost) })}${cell({ icon: I.homing, tile: "blue", label: "Called back", val: n(d.recalled) })}</div>
+        <div class="gfoot">Since ${fmtDate(d.since)}. Worked out from distances and times only: what you wrote stays between you and your friends.</div>`
+        : `<p class="empty"><b>No flights yet</b>Send your first pigeon and its miles start here.</p>`);
+      // sizes set from code (inline style attributes are blocked)
+      $layer.querySelectorAll("[data-lap]").forEach((el) => el.style.setProperty("--lap", el.dataset.lap));
+      $layer.querySelectorAll(".kbar[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
+      return;
+    }
     case "grouprename": {
       const g = group(s.id); if (!g) { S.sheet = null; return renderSheet(); }
       if (!$("#f-gname", $layer)) {
@@ -1938,6 +1967,12 @@ async function onClick(e) {
       return;
     case "trustm": return trustNewKey(id);
     case "grouprename": S.sheet = { type: "grouprename", id }; return renderSheet();
+    case "flightlog": {
+      const sh = S.sheet = { type: "flightlog", data: null }; renderSheet();
+      try { sh.data = await api("flight-log"); if (S.sheet === sh) renderSheet(); }
+      catch (err) { if (S.sheet === sh) { S.sheet = null; renderSheet(); } toast(esc(err.message)); }
+      return;
+    }
     case "gifs": S.sheet = { type: "gifs", q: "", list: [], next: 0, busy: false }; renderSheet(); return loadGifs();
     case "gifmore": return loadGifs(true);
     case "gifpick": return pickGif(id, t);

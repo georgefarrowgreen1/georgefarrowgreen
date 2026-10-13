@@ -205,6 +205,13 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Flight Log.** Account → Flight Log: miles flown (and how far around the world
+that is), pigeons sent, received and in the air, hours in the air, the longest
+flight, the fastest pigeon, the best tailwind, pigeons by kind, and how many
+were lost to Pigeon Death or called back. Worked out by `functions/_stats.js`
+from distances, times and kinds only; a group pigeon's destination is never
+named, since it could be someone who isn't your friend.
+
 **Replies and reactions.** Tap a message that has landed: react (❤️ 👍 😂 😮 😢
 🙏) or Reply. A reply carries a quote of the original, sealed inside it; tap the
 quote to jump to it. A reaction flies back on a tiny pigeon at rocket speed:

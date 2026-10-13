@@ -733,3 +733,22 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .replybar .rtext b{font-size:12px;font-weight:600;color:var(--tint)}
 .replybar .rtext span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--label-2)}
 .replybar button{flex:none;width:30px;height:30px;border:0;border-radius:50%;background:var(--fill);display:grid;place-items:center;color:var(--label-2)}
+
+/* ---------- flight log ---------- */
+.loghero{display:flex;align-items:center;gap:18px;margin:8px 20px 18px}
+.globe{flex:none;width:96px;height:96px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--tint) calc(var(--lap,0) * 360deg),var(--fill) 0);position:relative}
+.globe::before{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--bg)}
+.globe span{position:relative;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.loghero .ltext{display:flex;flex-direction:column;min-width:0}
+.loghero .ltext b{font-size:30px;line-height:34px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.2px}
+.loghero .ltext span{color:var(--label-2);font-size:15px}
+.loghero .ltext small{margin-top:4px;color:var(--label-2);font-size:13px;line-height:17px}
+.lstats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px}
+.lstat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:20px;background:var(--cell);min-width:0}
+.lstat b{font-size:22px;line-height:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.lstat span{font-size:13px;color:var(--label-2)}
+.lstat small{font-size:12px;color:var(--label-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kindrow .ctext{gap:6px}
+.kbar{display:block;height:5px;border-radius:3px;width:calc(var(--w,0) * 100%);min-width:6px;background:var(--p-standard)}
+.kbar.swift{background:var(--p-swift)}.kbar.turbo{background:var(--label)}.kbar.rocket{background:var(--p-rocket)}.kbar.dumb{background:var(--p-dumb)}
