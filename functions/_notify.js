@@ -242,7 +242,6 @@ export async function tick(env, origin) {
         await notifyEmail(env, origin, u, subject, {
           icon: "landed", title: u.n > 1 ? `${u.n} pigeons have landed` : p.names ? `A pigeon from ${who[0]} has landed` : "A pigeon has landed",
           preheader: p.names ? `From ${list}. Open InFlight to read ${u.n > 1 ? "them" : "it"}.` : `Open InFlight to read ${u.n > 1 ? "them" : "it"}.`,
-          lines: [`${u.n > 1 ? "They’re" : "It’s"} waiting on your windowsill. Messages are end-to-end encrypted, so only InFlight on your phone can open ${u.n > 1 ? "them" : "it"}.`],
           rows: [...(p.names ? [["From", list]] : []), ...(u.n > 1 ? [["Pigeons", String(u.n)]] : [])],
           button: { label: u.n > 1 ? "Read Them" : "Read It", url: `${origin}/pigeon/` },
         });

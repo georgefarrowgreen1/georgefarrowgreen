@@ -419,8 +419,7 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
     <p class="ml-f" style="margin:14px 0 0;font-size:12px;line-height:17px;color:#8e8e93;word-break:break-all">Button not working? Paste this into your browser:<br><a href="${e(button.url)}" style="color:#8e8e93">${e(button.url)}</a></p>` : ""}
   </td></tr>
   <tr><td align="center" class="ml-f" style="padding:18px 22px 0;font-size:12px;line-height:18px;color:#8e8e93">
-    ${footer ? `${e(footer)}<br>` : ""}${unsub ? `<a href="${e(unsub)}" style="color:#8e8e93">Turn these emails off</a><br>` : ""}
-    InFlight · letters carried by pigeon, at the real distance between you
+    ${footer ? `${e(footer)}<br>` : ""}${unsub ? `<a href="${e(unsub)}" style="color:#8e8e93">Turn these emails off</a>` : ""}
   </td></tr>
 </table></td></tr></table></body></html>`;
   return { text, html };
