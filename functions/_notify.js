@@ -152,19 +152,19 @@ const userPrefs = async (env, id) => {
 };
 export async function friendRequested(env, origin, from, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.requests || isQuiet(r.p)) return;
-  await pushTo(env, toId, { title: r.p.names ? "Friend request" : "InFlight", body: r.p.names ? `${from.name} (@${from.handle}) wants to be friends on InFlight.` : "You have a new friend request.", tag: "requests", url: "/pigeon/#requests" });
+  await pushTo(env, toId, { title: r.p.names ? "Friend request" : "InFlight", body: r.p.names ? `${firstName(from.name)} (@${from.handle}) wants to be friends on InFlight.` : "You have a new friend request.", tag: "requests", url: "/pigeon/#requests" });
   if (r.u.notify_email && Date.now() - (r.u.email_at || 0) > EMAIL_EVERY)
-    await notifyEmail(env, origin, r.u, r.p.names ? `${from.name} wants to be friends on InFlight` : "You have a new friend request on InFlight", {
+    await notifyEmail(env, origin, r.u, r.p.names ? `${firstName(from.name)} wants to be friends on InFlight` : "You have a new friend request on InFlight", {
       icon: "friend", title: r.p.names ? `${firstName(from.name)} wants to be friends` : "New friend request",
       preheader: r.p.names ? `@${from.handle} sent you a friend request.` : "Someone sent you a friend request.",
-      lines: [r.p.names ? `${from.name} sent you a friend request. Accept it to start sending each other pigeons.` : "Someone sent you a friend request. Open InFlight to see who."],
-      rows: r.p.names ? [["From", `${from.name}`], ["Handle", `@${from.handle}`]] : [],
+      lines: [r.p.names ? `${firstName(from.name)} sent you a friend request. Accept it to start sending each other pigeons.` : "Someone sent you a friend request. Open InFlight to see who."],
+      rows: r.p.names ? [["From", firstName(from.name)], ["Handle", `@${from.handle}`]] : [],
       button: { label: "See Request", url: `${origin}/pigeon/#requests` },
     }).catch(() => {});
 }
 export async function friendAccepted(env, by, toId) {
   const r = await userPrefs(env, toId); if (!r || !r.p.accepted || isQuiet(r.p)) return;
-  await pushTo(env, toId, { title: r.p.names ? "New friend" : "InFlight", body: r.p.names ? `${by.name} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
+  await pushTo(env, toId, { title: r.p.names ? "New friend" : "InFlight", body: r.p.names ? `${firstName(by.name)} accepted your friend request. Send them a pigeon!` : "Someone accepted your friend request.", tag: "friend-" + by.id, url: `/pigeon/#open=${by.id}` });
 }
 // The person you sent a pigeon to moved, so it changed course.
 export async function pigeonRerouted(env, senderId, to, deliverAt) {

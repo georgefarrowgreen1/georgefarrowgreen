@@ -592,7 +592,7 @@ async function sync() {
           S.seenLanded.add(f.last.id);
           if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
           if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
-            toast(`<b>${esc(f.name)}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
+            toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
         }
       }
       S.started = true;
@@ -850,7 +850,7 @@ function vMessages() {
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
       ${avatar(f, "m", true)}
       <span class="mtext">
-        <span class="mtop"><span class="mname one">${esc(f.name)}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
+        <span class="mtop"><span class="mname one">${esc(first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${html}</span>
       </span>
     </button>`).join("");
@@ -868,7 +868,7 @@ function vFriends() {
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
   const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
-      <span class="ctext"><span class="one">${esc(f.name)}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
+      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
@@ -890,7 +890,7 @@ function vAccount() {
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
-      <span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
+      <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
     <div class="ghead">Pigeons</div>
     <div class="group">
       ${cell({ icon: I.bird, tile: "rocket", label: "Rocket", sub: `9× faster · ${hatch("rocket")}`, val: loftVal("rocket") })}
@@ -1152,7 +1152,7 @@ function vReset() {
   const canKeep = info.passkeys.length && passkeysSupported();
   return `<div class="auth">${navbar("")}
       <h1 class="large">New Password</h1>
-      <p class="sub">For ${esc(info.name)} (@${esc(info.handle)}, ${esc(info.email)}).</p>
+      <p class="sub">For ${esc(first(info.name))} (@${esc(info.handle)}, ${esc(info.email)}).</p>
       <form data-form="reset" novalidate>
         <div class="group mt-s">${field("password", "New password", "password", "new-password")}</div>${ferr}
         <div class="gfoot">${canKeep ? "Use your passkey to keep all your messages readable. Starting fresh" : "Without a passkey, this"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed.</div>
@@ -1349,7 +1349,7 @@ function drawSheet(refresh) {
       return tickMap();
     case "safety":
       $layer.innerHTML = sheetHtml("Safety Number", `
-        <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(f?.name || "")}</span></div>
+        <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span></div>
         <div class="group mt-s"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
         <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>`,
         { left: s.from ? { label: "Back", act: s.from } : null });
@@ -1364,14 +1364,14 @@ function drawSheet(refresh) {
       return;
     case "safetylist":
       $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
-        ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${x.id}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(x.name)}</span></span>${chevSm}</button>`).join("")}</div>
+        ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${x.id}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${chevSm}</button>`).join("")}</div>
           <div class="gfoot">Each friend has a safety number you can compare to check your messages are private.</div>`
         : `<p class="empty"><b>No friends yet</b>Safety numbers appear once you add a friend.</p>`,
         { left: { label: "Back", act: "encryptionsheet" } });
       return;
     case "newmsg":
       $layer.innerHTML = sheetHtml("New Message", S.friends.length
-        ? `<div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${x.id}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(x.name)}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
+        ? `<div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${x.id}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
         : `<p class="empty"><b>No friends yet</b>Add a friend first.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`,
         { left: { label: "Cancel", act: "close" }, right: null });
       return;
@@ -1386,7 +1386,7 @@ function drawSheet(refresh) {
       }
       return;
     case "requests": {
-      const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext"><span class="one">${esc(p.name)}</span><br><span class="csub">@${esc(p.handle)}</span></span>
+      const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext"><span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span></span>
         <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">Decline</button><button class="btn small" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">Accept</button>`
           : `<button class="btn small gray" data-act="cancelreq" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">Cancel</button>`}</span></div>`;
       $layer.innerHTML = sheetHtml("Friend Requests",
@@ -1398,7 +1398,7 @@ function drawSheet(refresh) {
     case "friendinfo": {
       if (!f) { S.sheet = null; return renderSheet(); }
       const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
-      $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${esc(f.name)}</span><span class="sub">@${esc(f.handle)}</span></div>
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${esc(first(f.name))}</span><span class="sub">@${esc(f.handle)}</span></div>
         <div class="group mt">
           ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set"), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
@@ -1619,7 +1619,7 @@ async function onClick(e) {
       await sync(); return renderSheet();
     case "unfriendask": {
       const f = friend(id); if (!f) return;
-      return openActions({ title: `Remove ${f.name}?`, message: "You’ll stop seeing each other’s messages. You can add them again later.", actions: [{ label: "Remove Friend", act: "unfriend", id, destructive: true }] });
+      return openActions({ title: `Remove ${first(f.name)}?`, message: "You’ll stop seeing each other’s messages. You can add them again later.", actions: [{ label: "Remove Friend", act: "unfriend", id, destructive: true }] });
     }
     case "unfriend":
       await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
