@@ -205,6 +205,10 @@ const I = {
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
+  storm: ico(`<path d="M7 15.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 15.5"/><path d="m13 12-2.5 4h3L11 20.5"/>`),
+  rain: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="m9 17.5-1 2.5M13 17.5l-1 2.5M17 17.5l-1 2.5"/>`),
+  snow: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="M9 18h.01M13 19.5h.01M17 18h.01M11 21h.01M15 21h.01"/>`),
+  fog: ico(`<path d="M7 12.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 12.5"/><path d="M4 16h16M6 19.5h12"/>`),
   heart: ico(`<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>`),
   reply: ico(`<path d="M10 8 5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
@@ -604,6 +608,30 @@ function landsLine(m) {
   const them = other?.tz && other.tz !== MY_TZ ? clockIn(at, other.tz) : null;
   if (!them || them === you) return `Lands ${you}`;
   return mine ? `Lands ${them} ${esc(first(other.name))}’s time · ${you} yours` : `Lands ${you} · ${them} for ${esc(first(other.name))}`;
+}
+
+/* ---------- what the weather did to a flight ---------- */
+// "Delayed 40m · storms over the Alps", "25m early · tailwind over France"
+const WX = { storms: ["storms", "storm"], rain: ["heavy rain", "rain"], snow: ["snow", "snow"], fog: ["fog", "fog"], gales: ["gales", "wind"],
+  headwind: ["headwinds", "wind"], tailwind: ["a tailwind", "wind"] };
+// a mountain range when it's right over one, else the country or sea
+function wxWhere(lon, lat) {
+  for (const [wd, pts, name] of RANGES) {
+    if (!name) continue;
+    for (let i = 0; i + 1 < pts.length; i++) for (let k = 0; k <= 4; k++) {
+      const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k / 4, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k / 4;
+      if (haversineKm(lat, lon, y, x) < Math.max(120, wd * 70)) return name;
+    }
+  }
+  return overWhere(lon, lat);
+}
+function wxSay(m, short) {
+  if (!m.delay || m.lost) return null;
+  const late = m.delay > 0, w = m.wx && WX[m.wx.k], landed = !m.flying;
+  const when = late ? (landed ? `Landed ${fmtDur(m.delay)} late` : `Delayed ${fmtDur(m.delay)}`) : `${fmtDur(-m.delay)} early`;
+  if (short) return late ? `${landed ? `${fmtDur(m.delay)} late` : `delayed ${fmtDur(m.delay)}`}${w ? ` by ${w[0]}` : ""}` : `${fmtDur(-m.delay)} early${w ? ` on ${w[0]}` : ""}`;
+  const why = w ? `${w[0]} over ${wxWhere(m.wx.lon, m.wx.lat)}` : late ? "bad weather" : "a tailwind";
+  return { text: `${when} · ${why}`, icon: I[w ? w[1] : "wind"], cls: late ? "late" : "early" };
 }
 
 /* ---------- where a pigeon is: over which country or sea ---------- */
@@ -1884,7 +1912,8 @@ function bubble(f, m, isLastMine, gapTop, g) {
   if (!mine && m.flying) {
     return `<button class="fly${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="Watch the pigeon on the map">
       <span class="t1">${pgm(m)}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""}</span></span>
-      <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</span></span>
+      <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}${!wxSay(m) && windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</span></span>
+      ${wxSay(m) ? `<span class="wxs ${wxSay(m).cls}">${wxSay(m).icon}<span>${esc(wxSay(m).text)}</span></span>` : ""}
       <span class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></span></button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
@@ -1918,7 +1947,7 @@ function bubble(f, m, isLastMine, gapTop, g) {
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   // scheduled: waiting in your loft (they can't see it yet)
   else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
-  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length > (m.via ? 2 : 0) ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
+  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length > (m.via ? 2 : 0) ? " · changed course" : ""}${wxSay(m, true) ? ` · ${wxSay(m, true)}` : windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
   if (!m.flying && !m.lost && m.km != null && !(g && mine)) meta[mine ? "push" : "unshift"](stampHtml(m));
@@ -2860,7 +2889,7 @@ function tickMap() {
   card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
-    ${m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
+    ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
     ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;

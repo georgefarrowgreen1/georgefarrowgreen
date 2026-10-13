@@ -179,7 +179,11 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN via_off INTEGER",      // flies on
   "ALTER TABLE pg_msgs ADD COLUMN via_place TEXT",
   "ALTER TABLE pg_msgs ADD COLUMN via_note TEXT",        // their line, sealed for the recipient
-  "ALTER TABLE pg_msgs ADD COLUMN via_told INTEGER",     // they were told it arrived        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
+  "ALTER TABLE pg_msgs ADD COLUMN via_told INTEGER",     // they were told it arrived
+  "ALTER TABLE pg_msgs ADD COLUMN wx TEXT",              // the worst weather on the way: {"k":"storms","lat":..,"lon":..}
+  "ALTER TABLE pg_msgs ADD COLUMN wx_ms INTEGER",        // how much later (or, negative, earlier) the weather made it
+  "ALTER TABLE pg_gdeliv ADD COLUMN wx TEXT",
+  "ALTER TABLE pg_gdeliv ADD COLUMN wx_ms INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -298,6 +302,19 @@ export async function spendSwift(D, u, t) {
   if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
 }
 
+// The weather's part in a flight: how much later (or earlier) it lands, and the
+// worst of it on the way. Small changes aren't worth a word.
+export function wxView(m) {
+  if (m.wx_ms == null || Math.abs(m.wx_ms) < 5 * 60e3) return {};
+  let wx = null; try { wx = m.wx ? JSON.parse(m.wx) : null; } catch (_) {}
+  return { delay: m.wx_ms, wx };
+}
+// The weather's take on a flight: the worse leg's spot, and the time it cost or saved.
+export function wxOf(ws, calm, flight) {
+  const w = ws.filter((x) => x?.wx).sort((a, b) => Math.abs(Math.log(b.f)) - Math.abs(Math.log(a.f)))[0];
+  return { wx: w ? JSON.stringify(w.wx) : null, ms: Math.round(flight - calm) };
+}
+
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
 export function msgView(me, m, t) {
@@ -316,6 +333,7 @@ export function msgView(me, m, t) {
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose
     wind: m.wind ?? null,                        // tailwind at take-off (km/h; negative: headwind)
+    ...wxView(m),
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at]
     fromPlace: m.from_place, toPlace: m.to_place,

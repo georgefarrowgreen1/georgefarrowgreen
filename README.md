@@ -275,8 +275,15 @@ the same again takes it back. Code: `functions/_reacts.js`, table `pg_reacts`.
 at five points along each route (`functions/_weather.js`). What blows the
 pigeon's way changes its cruising speed (80 km/h plus the tailwind, or minus a
 headwind; between 0.6× and 1.6×), and the 5-minute and 3-day limits still apply
-after it. The map card shows "Tailwind 13 mph · faster than usual"; messages in
-the air say tailwind or headwind. Only points along the route are sent, never
+after it. Storms slow it too: it sits out thunder (0.7×), picks its way
+through heavy rain, snow and fog, and fights gusts over 60 km/h. The server
+keeps how much later (or earlier) that makes it, and the spot where the weather
+did most of it (what and where, never who). When it's 5 minutes or more, the
+map card and the incoming pigeon say "Delayed 3h 4m · storms over the Alps" or
+"52m early · a tailwind over France", naming a mountain range when it's right
+over one, and once it lands, "Landed 3h 4m late"; the sender's message says
+"delayed 3h 4m by storms". Rerouting a pigeon clears it. Smaller changes keep
+the plain "Tailwind 13 mph · faster than usual". Only points along the route are sent, never
 who's flying; if the forecast doesn't answer within 2.5 s, the pigeon flies at
 its usual speed. The demo uses a steady westerly instead.
 

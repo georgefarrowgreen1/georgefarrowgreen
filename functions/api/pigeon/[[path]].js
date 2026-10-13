@@ -1,7 +1,7 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, spendSwift, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
@@ -120,7 +120,7 @@ async function reroute(env, u, p, t, waitUntil) {
       const deliver = m.via_off + Math.round(flightMs(ahead / (m.wind_f || 1), msgSpeed(m)));
       const km = m.km - haversineKm(vLat, vLon, m.to_lat, m.to_lon) + ahead;
       const lostAt = m.lost_at == null || m.lost_at < m.via_off ? m.lost_at : Math.round(m.via_off + ((m.lost_at - m.via_off) / (m.deliver_at - m.via_off)) * (deliver - m.via_off));
-      const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, lost_at = ?,
+      const r = await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, lost_at = ?,
         expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND via_off > ?`)
         .bind(p.lat, p.lon, p.place, deliver, km, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
       if (r.meta.changes && (await areFriends(D, u.id, m.sender))) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
@@ -131,7 +131,7 @@ async function reroute(env, u, p, t, waitUntil) {
       const km = haversineKm(m.from_lat, m.from_lon, p.lat, p.lon), flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m)));
       const off = Math.max(t, m.deliver_at - flight), deliver = off + flight;
       const lostAt = m.lost_at == null ? null : Math.round(off + ((m.lost_at - m.sent_at) / (m.deliver_at - m.sent_at)) * flight);
-      await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, km = ?, sent_at = ?, deliver_at = ?, lost_at = ?,
+      await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, to_lat = ?, to_lon = ?, to_place = ?, km = ?, sent_at = ?, deliver_at = ?, lost_at = ?,
         expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND sent_at > ?`)
         .bind(p.lat, p.lon, p.place, km, off, deliver, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
       continue;
@@ -148,7 +148,7 @@ async function reroute(env, u, p, t, waitUntil) {
     legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
     // a doomed pigeon is still lost before it would land, now on its new course
     const lostAt = m.lost_at == null ? null : m.lost_at < deliver ? m.lost_at : t + (deliver - t) / 2;
-    const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
+    const r = await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
       expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ?`)
       .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
     if (r.meta.changes && (await areFriends(D, u.id, m.sender))) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
@@ -499,19 +499,20 @@ async function sendMessage({ request, env, waitUntil }) {
   // A stopover: it rests an hour with a friend you both have, who can read it
   // (their own sealed copy) and add a line for the recipient, then flies on.
   const via = meta.via == null ? null : await stopover(D, u, to, r, String(meta.via), String(meta.viaCt || ""), landAt);
-  let km, w, flight;
+  let km, w, flight, calm;
   if (via) {
     const [w1, w2] = await windsFor(env, [[u.lat, u.lon, via.lat, via.lon], [via.lat, via.lon, r.lat, r.lon]]);
     const k1 = haversineKm(u.lat, u.lon, via.lat, via.lon), k2 = haversineKm(via.lat, via.lon, r.lat, r.lon);
     const f1 = Math.round(flightMs(k1 / w1.f, speed)), f2 = Math.round(flightMs(k2 / w2.f, speed));
     Object.assign(via, { at: t + f1, off: t + f1 + LAYOVER });
-    km = k1 + k2; flight = f1 + LAYOVER + f2;
-    w = { wind: w1.wind == null || w2.wind == null ? w1.wind ?? w2.wind : (w1.wind * k1 + w2.wind * k2) / Math.max(1, km), f: (k1 / w1.f + k2 / w2.f) ? km / (k1 / w1.f + k2 / w2.f) : 1 };
+    km = k1 + k2; flight = f1 + LAYOVER + f2; calm = flightMs(k1, speed) + LAYOVER + flightMs(k2, speed);
+    w = { ws: [w1, w2], wind: w1.wind == null || w2.wind == null ? w1.wind ?? w2.wind : (w1.wind * k1 + w2.wind * k2) / Math.max(1, km), f: (k1 / w1.f + k2 / w2.f) ? km / (k1 / w1.f + k2 / w2.f) : 1 };
   } else {
     km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
     [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
-    flight = Math.round(flightMs(km / w.f, speed));
+    flight = Math.round(flightMs(km / w.f, speed)); calm = flightMs(km, speed);
   }
+  const wx = wxOf(w.ws || [w], calm, flight);                                    // what the weather did to it
   const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off
   if (off < t) throw new HttpError(409, `That’s too soon: a ${kind} pigeon takes ${waitText(flight)} to get there.`);
   const deliver = off + flight;
@@ -530,13 +531,13 @@ async function sendMessage({ request, env, waitUntil }) {
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
     await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin, via, via_ct, via_at, via_off, via_place, legs)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin, via, via_ct, via_at, via_off, via_place, legs, wx, wx_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, off, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
         u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, u.skin || null,
         via?.id ?? null, via?.ct ?? null, via?.at ?? null, via?.off ?? null, via?.place ?? null,
         // the map draws it resting there: two stops at the same spot
-        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : null).run();
+        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : null, wx.wx, wx.ms).run();
   } catch (e) {
     if (photo && !String(e).includes("UNIQUE")) await env.BIO_R2.delete(`pigeon/${id}`);
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");

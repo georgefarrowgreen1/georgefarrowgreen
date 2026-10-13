@@ -9,7 +9,7 @@
 
 import {
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift,
+  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
@@ -51,7 +51,7 @@ async function groupFor(D, u, gid) {
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
-    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, km: d.km, readAt: d.read_at,
+    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxView(d), km: d.km, readAt: d.read_at,
       legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null };
   });
@@ -63,7 +63,7 @@ function ownView(m, dels, friends, t) {
 // where it came from only if the sender is your friend.
 function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
-  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, km: d.km, readAt: d.read_at,
+  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxView(d), km: d.km, readAt: d.read_at,
     legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
@@ -73,7 +73,7 @@ const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
   const { results } = await D.prepare(`SELECT * FROM (
-      SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+      SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
   return results;
@@ -268,19 +268,19 @@ async function send({ request, env, waitUntil }) {
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));
   const dels = to.map((r) => {
     const w = windOf.get(r.id) || { wind: null, f: 1 };
-    const km = r.lat != null ? haversineKm(u.lat, u.lon, r.lat, r.lon) : 500, at = t + flightMs(km / w.f, speed);
+    const km = r.lat != null ? haversineKm(u.lat, u.lon, r.lat, r.lon) : 500, at = t + flightMs(km / w.f, speed), wx = wxOf([w], flightMs(km, speed), at - t);
     // Pigeon Death: each pigeon takes its own chance
     const roll = crypto.getRandomValues(new Uint32Array(2));
     const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
-    return { to: r.id, km, at, lostAt, r, w };
+    return { to: r.id, km, at, lostAt, r, w, wx };
   });
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));
   await D.batch([
     D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
       photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, u.skin || null),
-    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f)),
+    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms)),
   ]);
   if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
@@ -341,7 +341,7 @@ async function getPhoto({ request, env }, id) {
 export async function groupSkies(D, uid, t) {
   const friends = await friendIds(D, uid);
   const { results: rows } = await D.prepare(`
-    SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+    SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
       FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2)
     UNION ALL
@@ -368,7 +368,7 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     const km = Math.max(0, d.km - haversineKm(pLat, pLon, d.to_lat, d.to_lon)) + ahead;
     legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
     const lostAt = d.lost_at == null ? null : d.lost_at < deliver ? d.lost_at : t + (deliver - t) / 2;
-    const r = await D.prepare(`UPDATE pg_gdeliv SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ? WHERE msg_id = ? AND user_id = ? AND deliver_at > ?`)
+    const r = await D.prepare(`UPDATE pg_gdeliv SET wx = NULL, wx_ms = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ? WHERE msg_id = ? AND user_id = ? AND deliver_at > ?`)
       .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, d.msg_id, u.id, t).run();
     if (!r.meta.changes) continue;
     // a photo stays until 24 hours after its last pigeon lands
