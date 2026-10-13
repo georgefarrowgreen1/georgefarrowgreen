@@ -10,7 +10,7 @@ import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "..
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor } from "../../_weather.js";
 import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
-import { STATS_ROUTES } from "../../_stats.js";
+import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -22,7 +22,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -167,6 +167,11 @@ async function updateMe({ request, env, waitUntil }) {
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
   if (b.risky !== undefined) await D.prepare("UPDATE pg_users SET risky = ? WHERE id = ?").bind(b.risky ? 1 : 0, u.id).run();
+  // a rare pigeon: only one whose achievement you've earned (null: back to the usual look)
+  if (b.skin !== undefined) {
+    if (b.skin !== null && !(await skinOpen(env, u.id, String(b.skin)))) throw new HttpError(403, "Earn its achievement first.");
+    await D.prepare("UPDATE pg_users SET skin = ? WHERE id = ?").bind(b.skin, u.id).run();
+  }
   if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
   if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
   if (b.lat !== undefined) {
@@ -459,9 +464,9 @@ async function sendMessage({ request, env, waitUntil }) {
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
     await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, off, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
-        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1).run();
+        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, u.skin || null).run();
   } catch (e) {
     if (photo && !String(e).includes("UNIQUE")) await env.BIO_R2.delete(`pigeon/${id}`);
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");

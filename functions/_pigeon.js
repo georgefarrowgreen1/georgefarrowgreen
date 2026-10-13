@@ -166,7 +166,10 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN hide_online INTEGER NOT NULL DEFAULT 0",   // don't show when I'm online (nor see others')
   "ALTER TABLE pg_users ADD COLUMN no_receipts INTEGER NOT NULL DEFAULT 0",   // don't send read receipts (nor see others')
   "ALTER TABLE pg_reacts ADD COLUMN notified_at INTEGER",
-  "ALTER TABLE pg_msgs ADD COLUMN sched INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
+  "ALTER TABLE pg_msgs ADD COLUMN sched INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN skin TEXT",           // rare pigeon look, unlocked by an achievement (null: the usual)
+  "ALTER TABLE pg_msgs ADD COLUMN skin TEXT",            // the look it flew with
+  "ALTER TABLE pg_gmsgs ADD COLUMN skin TEXT",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -295,6 +298,7 @@ export function msgView(me, m, t) {
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at,
     waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)
     scheduled: !!m.sched,
+    skin: m.skin || null,
     photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose

@@ -68,7 +68,7 @@ function theirView(m, d, friends, t) {
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
 }
-const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, risky: !!m.risky, sentAt: m.sent_at, photo: m.photo, photoSize: m.photo_size });
+const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, risky: !!m.risky, sentAt: m.sent_at, photo: m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
@@ -276,9 +276,9 @@ async function send({ request, env, waitUntil }) {
   });
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));
   await D.batch([
-    D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
-      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place),
+    D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
+      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, u.skin || null),
     ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f)),
   ]);

@@ -4,15 +4,38 @@
 
 import { json, db, requireUser } from "./_pigeon.js";
 
+// Rare pigeons: a look for your pigeons, each unlocked by an achievement.
+// Only the look changes; the colour still says what kind it is.
+export const SKINS = {
+  golden: { name: "Golden", badge: "fleet" },
+  midnight: { name: "Midnight", badge: "longhaul" },
+  storm: { name: "Storm", badge: "tailwind" },
+  ember: { name: "Ember", badge: "daredevil" },
+  comet: { name: "Comet", badge: "rocket" },
+  rainbow: { name: "Rainbow", badge: "world" },
+};
 async function flightLog({ request, env }) {
   const u = await requireUser(request, env);
-  const D = await db(env), t = Date.now();
+  const D = await db(env), t = Date.now(), log = await logFor(D, u.id, t);
+  const earned = new Set(log.badges.filter((b) => b.earned).map((b) => b.id));
+  return json({ ...log, skin: u.skin || null,
+    skins: Object.entries(SKINS).map(([id, k]) => ({ id, name: k.name, badge: k.badge, open: earned.has(k.badge) })) });
+}
+// Is this look yours to use?
+export async function skinOpen(env, uid, skin) {
+  if (!Object.hasOwn(SKINS, skin)) return false;
+  const log = await logFor(await db(env), uid, Date.now());
+  return log.badges.some((b) => b.id === SKINS[skin].badge && b.earned);
+}
+// Everything in the log, as it stood at time t (the weekly note compares two).
+export async function logFor(D, uid, t) {
+  const u = { id: uid };
   // one row per pigeon you've sent: one to one, and each of your group pigeons
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp FROM pg_msgs WHERE sender = ?1
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1`).bind(u.id).all();
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
   const received = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
       (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
@@ -40,15 +63,14 @@ async function flightLog({ request, env }) {
     badge("rocket", "Rocket Mail", "A rocket pigeon lands", landed.some((p) => p.pigeon === "rocket") ? 1 : 0),
     badge("tailwind", "Tailwind Rider", "Catch a 30 mph tailwind", sent.some((p) => p.wind >= 48) ? 1 : 0),
     badge("daredevil", "Daredevil", "10 Pigeon Death pigeons survive", landed.filter((p) => p.risky).length, 10),
-    badge("homing", "Second Thoughts", "Call a pigeon back", sent.some((p) => p.recalled) ? 1 : 0),
+    badge("homing", "Second Thoughts", "Call a pigeon back", sent.some((p) => p.recalled && p.lost_at <= t) ? 1 : 0),
     badge("flock", "Flock Leader", "Send a pigeon to a group", sent.some((p) => p.grp) ? 1 : 0),
     badge("fleet", "Fleet", "Fly every kind: standard, swift, turbo and rocket", ["standard", "swift", "turbo", "rocket"].filter(has).length, 4),
   ];
-  return json({
+  return {
     badges,
     sent: sent.length, landed: landed.length, received: received.n,
     flying: sent.filter((p) => p.sent_at <= t && p.deliver_at > t && !(p.lost_at != null && p.lost_at <= t)).length,
-    waiting: sent.filter((p) => p.sent_at > t).length,
     lost: sent.filter((p) => p.lost_at != null && p.lost_at <= t && !p.recalled).length,
     recalled: sent.filter((p) => p.recalled).length,
     km,
@@ -57,7 +79,7 @@ async function flightLog({ request, env }) {
     fastest: fastest ? { kmh: pace(fastest), kind: fastest.pigeon || "standard" } : null,
     tailwind: windiest && windiest.wind > 0 ? windiest.wind : null,
     kinds, since: sent.length ? Math.min(...sent.map((p) => p.sent_at)) : null,
-  });
+  };
 }
 
 export const STATS_ROUTES = { "GET flight-log": flightLog };

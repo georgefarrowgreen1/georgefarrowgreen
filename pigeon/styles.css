@@ -796,3 +796,20 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .fcell.schedat{padding-right:12px}
 .fcell.schedat .ctext{flex:none}
 .fcell.schedat input{flex:1;text-align:right;padding-left:10px;color:var(--tint);font-size:16px}
+/* rare pigeons: a ring (and a glow or tail) around the usual colour */
+.pg[class*=" sk-"]{position:relative;isolation:isolate}
+.pg.sk-golden{box-shadow:0 0 0 .1em #f5c542,0 0 .4em .06em rgba(245,197,66,.75),inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-midnight{box-shadow:0 0 0 .08em #1b2559,0 0 0 .15em #8fa2ff,inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-midnight::after{content:"";position:absolute;top:-.12em;right:-.1em;width:.32em;height:.32em;border-radius:50%;background:radial-gradient(circle,#fff 30%,rgba(143,162,255,0) 70%)}
+.pg.sk-storm{outline:.09em dashed #8ea3b8;outline-offset:.05em}
+.pg.sk-ember{box-shadow:0 0 0 .09em #ff8a00,0 0 .45em .1em rgba(255,90,0,.6),inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-comet{box-shadow:0 0 0 .09em #7ad7ff,.45em .08em .4em -.06em rgba(122,215,255,.85),inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-rainbow::before{content:"";position:absolute;inset:-.13em;border-radius:50%;background:conic-gradient(#ff3b30,#ff9500,#ffcc00,#34c759,#5ac8fa,#007aff,#af52de,#ff3b30);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 87%);mask:radial-gradient(closest-side,transparent 85%,#000 87%)}
+.skin2{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:12px 8px;border:0;border-radius:20px;background:var(--cell);min-width:0;color:var(--label);font:inherit;box-shadow:inset 0 0 0 2px transparent;transition:box-shadow .2s}
+.skin2.on{box-shadow:inset 0 0 0 2px var(--tint)}
+.skin2:active:not(:disabled){transform:scale(.96)}
+.skin2.locked .sbig{opacity:.35;filter:grayscale(1)}
+.skin2 .sbig{font-size:28px;line-height:1;margin:4px 0 8px}
+.skin2 b{font-size:13px;line-height:16px;font-weight:600}
+.skin2 small{font-size:11.5px;line-height:14px;color:var(--label-2)}
+.skin2.on small{color:var(--tint)}
