@@ -890,7 +890,7 @@ function vAccount() {
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
-      <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)} · Edit profile</span></span>${chevSm}</button></div>
+      <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)} · My Profile</span></span>${chevSm}</button></div>
     <div class="ghead">Pigeons</div>
     <div class="group">
       ${cell({ icon: I.bird, tile: "rocket", label: "Rocket", sub: `9× faster · ${hatch("rocket")}`, val: loftVal("rocket") })}
@@ -901,20 +901,7 @@ function vAccount() {
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
     <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
-    <div class="ghead">Location</div>
-    <div class="group">
-      ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set"), sub: u.locAt ? `Updated ${agoText(u.locAt)}` : "" })}
-      ${cell({ act: "locate", icon: I.loc, tile: "blue", label: "Use Current Location", cls: "action" })}
-      <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
-        <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
-      ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Each time you open InFlight", on: u.autoLocation })}
-    </div>
-    <div class="gfoot">Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile.</div>
-    <div class="group mt">
-      ${notifyCell(u)}
-      ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
-      ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
-    </div>
+    <div class="group mt">${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}</div>
     <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: `Version ${APP_VERSION}` })}</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
@@ -1355,7 +1342,7 @@ function drawSheet(refresh) {
           ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
         </div>
-        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
+        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "profile" } });
       return;
     }
     case "encryption":
@@ -1424,7 +1411,7 @@ function drawSheet(refresh) {
       return;
     case "notifications": {
       const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
-      $layer.innerHTML = sheetHtml("Notifications", vNotifySheet());
+      $layer.innerHTML = sheetHtml("Notifications", vNotifySheet(), { left: { label: "Back", act: "profile" } });
       if (top) $(".sheet .body", $layer).scrollTop = top;    // toggling shouldn't jump the list
       return;
     }
@@ -1442,16 +1429,32 @@ function drawSheet(refresh) {
       return;
     case "profile": {
       const u = S.me, wait = u.handleNextAt && u.handleNextAt > now() ? u.handleNextAt - now() : 0;
-      const keep = $("#f-name", $layer) ? { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value } : null;
-      $layer.innerHTML = sheetHtml("Edit Profile", `
+      // unsaved name and handle survive redraws and trips to Notifications or Privacy & Security
+      const keep = $("#f-name", $layer) ? { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value } : S.profileDraft;
+      const old = $(".sheet .body", $layer), top = old && $("#profile-form", $layer) ? old.scrollTop : 0;
+      $layer.innerHTML = sheetHtml("My Profile", `
         <div class="profile-head"><button type="button" class="avedit" data-act="avmenu">${avatar(u, "xl")}<span>${u.avatarAt ? "Edit Photo" : "Add Photo"}</span></button></div>
         <form id="profile-form" data-form="profile" novalidate>
           <div class="ghead">Name</div><div class="group">${field("name", "Name", "text", "name")}</div>
           <div class="ghead">Handle</div><div class="group">${field("handle", "handle", "text", "username", "@")}</div>
           <div class="gfoot">${wait ? `You can change your handle once a day. Next change in ${fmtDur(wait)}.` : "Friends find you by your handle. You can change it once a day."}</div>${ferr}
         </form>
-        <div class="gfoot mt">Your friends, and people you’ve sent or received a friend request from, can see your photo.</div>`,
-        { left: { label: "Cancel", act: "close" }, right: { label: "Done", form: "profile-form" } });
+        <div class="gfoot mt">Your friends, and people you’ve sent or received a friend request from, can see your photo.</div>
+        <div class="ghead">Location</div>
+        <div class="group">
+          ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(u.place || "Not set"), sub: u.locAt ? `Updated ${agoText(u.locAt)}` : "" })}
+          ${cell({ act: "locate", icon: I.loc, tile: "blue", label: "Use Current Location", cls: "action" })}
+          <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
+            <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
+          ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Each time you open InFlight", on: u.autoLocation })}
+        </div>
+        <div class="gfoot">Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile.</div>
+        <div class="group mt">
+          ${notifyCell(u)}
+          ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
+        </div>`,
+        { left: { label: "Close", act: "close" }, right: { label: "Done", form: "profile-form" } });
+      if (top) $(".sheet .body", $layer).scrollTop = top;
       $("#f-name", $layer).value = keep ? keep.name : u.name;
       $("#f-name", $layer).maxLength = 50;
       $("#f-handle", $layer).value = keep ? keep.handle : u.handle;
@@ -1578,13 +1581,13 @@ async function onClick(e) {
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
-    case "securitysheet": S.sheet = { type: "security" }; return renderSheet();
+    case "securitysheet": keepProfileDraft(); S.sheet = { type: "security" }; return renderSheet();
     case "encryptionsheet": S.sheet = { type: "encryption" }; return renderSheet();
     case "passkeys": S.sheet = { type: "passkeys" }; return renderSheet();
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
     case "close":
       if (S.sheet?.type === "askpw") S.sheet.resolve(null);
-      S.sheet = null; return renderSheet();
+      S.sheet = null; S.profileDraft = null; return renderSheet();
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
@@ -1658,7 +1661,7 @@ async function onClick(e) {
     case "pigeon": S.pick = id; return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "risky": return setRisky(!S.me.risky);
-    case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
+    case "notifysheet": keepProfileDraft(); S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
     case "pushtest":
@@ -1676,7 +1679,7 @@ async function onClick(e) {
       catch (err) { toast(esc(err.message)); }
       return;
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
-    case "profile": S.sheet = { type: "profile" }; return renderSheet();
+    case "profile": S.sheet = { type: "profile" }; renderSheet(); S.profileDraft = null; return;
     case "avdel":
       try { S.me = (await api("avatar", { method: "DELETE" })).me; renderSheet(true); render(); }
       catch (err) { showErr(err.message); }
@@ -1710,9 +1713,9 @@ async function setRisky(on) {
   catch (err) { S.me = { ...S.me, risky: !on }; render(); toast(esc(err.message)); }
 }
 async function setAutoLocation(on, btn) {
-  S.me = { ...S.me, autoLocation: on }; render();       // the switch moves straight away
-  try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); const same = !!r.me.autoLocation === on; S.me = r.me; if (!same) render(); }
-  catch (err) { S.me = { ...S.me, autoLocation: !on }; render(); return toast(esc(err.message)); }
+  S.me = { ...S.me, autoLocation: on }; render(); refreshProfile();       // the switch moves straight away
+  try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); const same = !!r.me.autoLocation === on; S.me = r.me; if (!same) { render(); refreshProfile(); } }
+  catch (err) { S.me = { ...S.me, autoLocation: !on }; render(); refreshProfile(); return toast(esc(err.message)); }
   if (on) { try { localStorage.removeItem("inflight-autoloc"); } catch (_) {} autoLocate(true); }
 }
 async function autoLocate(ask) {
@@ -1730,8 +1733,14 @@ async function autoLocate(ask) {
   }, (err) => { if (ask && err.code === 1) toast("Location is off for this site. Allow it in your browser settings to update automatically."); },
   { enableHighAccuracy: true, timeout: 20000, maximumAge: 10 * MIN });
 }
+// My Profile holds name and handle (saved with Done) next to settings that save
+// as soon as they change (location, notifications, security).
+function keepProfileDraft() {
+  if (S.sheet?.type === "profile" && $("#f-name", $layer)) S.profileDraft = { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value };
+}
+const refreshProfile = () => { if (S.sheet?.type === "profile") renderSheet(true); };
 async function savePlace(lat, lon, place) {
-  try { const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me; render(); }
+  try { const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me; render(); refreshProfile(); }
   catch (err) { showErr(err.message); }
 }
 function locate(btn) {
