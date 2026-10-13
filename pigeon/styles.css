@@ -912,3 +912,13 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .nbtn.pulsing{animation:pulse .7s ease-in-out infinite alternate}
 @keyframes pulse{to{transform:scale(.9);opacity:.7}}
 @media (prefers-reduced-motion: reduce){.btn .flyb,.btn .flyb svg,.addrow .btn.sent,.nbtn.pulsing{animation:none}}
+/* pull to refresh: a pigeon drops in above the list */
+.ptr{position:absolute;left:50%;top:0;z-index:3;margin-left:-19px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:var(--cell);box-shadow:0 4px 14px rgba(0,0,0,.14),inset 0 0 0 .5px var(--sep);opacity:0;transform:translateY(-40px);pointer-events:none;color:var(--label-3)}
+.ptr .ptrb{display:grid;place-items:center;font-size:22px;transform:rotate(var(--r,0deg))}
+.ptr .ptrb svg{transform:scaleY(var(--w,.35));transform-origin:50% 62%;transition:transform .08s}
+.ptr.ready,.ptr.busy{color:var(--tint)}
+.ptr.ready .ptrb{animation:pop .3s var(--bouncy)}
+.ptr.busy .ptrb svg{animation:flap .16s ease-in-out infinite alternate}
+.ptr-anim{transition:transform .38s var(--snappy),opacity .3s}
+@media (prefers-reduced-motion: reduce){.ptr.busy .ptrb svg{animation:none}}

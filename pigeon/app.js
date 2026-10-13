@@ -1406,6 +1406,44 @@ let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
 // No zooming the page (only the map zooms, and it handles its own pinches),
 // and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
 const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
+/* ---------- pull to refresh (Messages and Friends) ----------
+   Pull down from the top: a pigeon drops in, its wings opening as you pull.
+   Let go past the line and it flaps while everything syncs. */
+const PTR_AT = 70;
+const haptic = () => {};                                   // (a tap of feedback; not yet)
+function pullToRefresh() {
+  const v = $view, ind = $(".ptr", root()), bird = $(".ptrb", ind);
+  let y0 = null, pull = 0, ready = false, busy = false;
+  const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy;
+  const show = (px, anim) => {
+    for (const el of [v, ind]) el.classList.toggle("ptr-anim", !!anim);
+    v.style.transform = px ? `translateY(${px}px)` : "";
+    ind.style.transform = `translateY(${px / 2 - 19}px)`;                 // in the middle of the gap that opens
+    ind.style.opacity = String(Math.min(1, px / 40));
+    bird.style.setProperty("--w", String(0.35 + 0.65 * Math.min(1, px / PTR_AT)));
+    bird.style.setProperty("--r", `${Math.min(1, px / PTR_AT) * -14}deg`);
+  };
+  v.addEventListener("touchstart", (e) => { y0 = e.touches.length === 1 && v.scrollTop <= 0 && can() ? e.touches[0].clientY : null; pull = 0; ready = false; }, { passive: true });
+  v.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    const dy = e.touches[0].clientY - y0;
+    if (dy <= 0 || v.scrollTop > 0) { if (pull) { pull = 0; show(0); } return; }
+    e.preventDefault();                                   // ours, not the page's own bounce
+    pull = Math.min(130, dy * 0.5);
+    if (!ready && pull >= PTR_AT) { ready = true; ind.classList.add("ready"); haptic("tick"); }
+    else if (ready && pull < PTR_AT) { ready = false; ind.classList.remove("ready"); }
+    show(pull);
+  }, { passive: false });
+  const end = async () => {
+    if (y0 == null) return; y0 = null;
+    ind.classList.remove("ready");
+    if (pull < PTR_AT) { show(0, true); return; }
+    busy = true; ind.classList.add("busy"); show(PTR_AT - 6, true);
+    try { await Promise.all([sync(), new Promise((r) => setTimeout(r, 700))]); } catch (_) {}
+    ind.classList.remove("busy"); busy = false; show(0, true);
+  };
+  v.addEventListener("touchend", end); v.addEventListener("touchcancel", end);
+}
 function lockPage() {
   document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
   const stop = (e) => e.preventDefault();
@@ -1422,8 +1460,10 @@ function lockPage() {
 }
 function mount() {
   lockPage();
+  setTimeout(pullToRefresh);
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
+    <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
     <div class="view"></div>
     <form class="compose" hidden data-form="compose">
       <div class="pick" hidden role="group" aria-label="Which pigeon"></div>
