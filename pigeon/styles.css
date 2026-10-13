@@ -754,3 +754,15 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .kbar.swift{background:var(--p-swift)}.kbar.turbo{background:var(--label)}.kbar.rocket{background:var(--p-rocket)}.kbar.dumb{background:var(--p-dumb)}
 .tile.pink{background:linear-gradient(180deg,#ff7aa2,#e8457a)}
 .meta .readr{color:var(--label-2)}
+/* achievements */
+.ghead .gcount{float:right;font-weight:500;color:var(--label-2);font-size:13px}
+.badges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 16px}
+.badge2{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:12px 8px;border-radius:20px;background:var(--cell);min-width:0}
+.badge2 .bico{width:44px;height:44px;border-radius:50%;font-size:22px;margin-bottom:4px}
+.badge2:not(.earned) .bico{opacity:.45}
+.badge2 b{font-size:13px;line-height:16px;font-weight:600}
+.badge2:not(.earned) b{color:var(--label-2)}
+.badge2 small{font-size:11px;line-height:14px;color:var(--label-2)}
+.badge2 .newb{display:inline-block;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:var(--tint);color:#fff;vertical-align:1px}
+.badge2 .bprog{display:block;width:80%;height:4px;margin-top:5px;border-radius:2px;background:linear-gradient(90deg,var(--tint) calc(var(--w,0) * 100%),var(--fill) 0)}
+.badge2 .bnum{font-variant-numeric:tabular-nums;color:var(--label-3)}
