@@ -913,15 +913,8 @@ function vAccount() {
     <div class="group mt">
       ${notifyCell(u)}
       ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
+      ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
     </div>
-    <div class="ghead">Privacy &amp; Security</div>
-    <div class="group">
-      ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}
-      ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption", val: "On", chev: true })}
-      ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
-      ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
-    </div>
-    <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>
     <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: `Version ${APP_VERSION}` })}</div>
     <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
@@ -1354,13 +1347,24 @@ function drawSheet(refresh) {
         <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>`,
         { left: s.from ? { label: "Back", act: s.from } : null });
       return;
+    case "security": {
+      const u = S.me;
+      $layer.innerHTML = sheetHtml("Privacy & Security", `<div class="group mt-s">
+          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}
+          ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption", val: "On", chev: true })}
+          ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
+          ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
+        </div>
+        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
+      return;
+    }
     case "encryption":
       $layer.innerHTML = sheetHtml("Encryption", `
         <div class="group mt-s">
           ${cell({ icon: I.lock, tile: "green", label: "Your Encryption Key", sub: `<span class="mono">${S.fp}</span>` })}
           ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
         </div>
-        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
+        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "securitysheet" } });
       return;
     case "safetylist":
       $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
@@ -1429,7 +1433,7 @@ function drawSheet(refresh) {
         ${S.passkeys.length ? `<div class="ghead">Saved passkeys</div><div class="group">${S.passkeys.map((p) => `<div class="cell has-icon"><span class="tile indigo">${I.key}</span><span class="ctext"><span>${esc(p.label || "Passkey")}</span><span class="csub">Added ${fmtDate(p.createdAt)}</span></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}</div>` : ""}
         ${passkeysSupported() ? `<div class="group ${S.passkeys.length ? "mt" : "mt-s"}">${cell({ act: "pkadd", icon: I.plus, tile: "indigo", label: "Add a Passkey", cls: "action" })}</div>
           <div class="gfoot">Passkeys let you sign in with Face ID or your fingerprint. On newer phones they also unlock your messages, so a password reset can keep them.</div>`
-          : `<p class="empty"><b>Not available</b>This browser can’t save passkeys.</p>`}`);
+          : `<p class="empty"><b>Not available</b>This browser can’t save passkeys.</p>`}`, { left: { label: "Back", act: "securitysheet" } });
       return;
     case "askpw":
       if (!$("#f-password", $layer)) $layer.innerHTML = sheetHtml("Link Passkey", `<p class="gfoot mt-s">Enter your password once so this passkey can also unlock your messages on a new phone.</p>
@@ -1459,7 +1463,7 @@ function drawSheet(refresh) {
         <div class="group mt-s">${field("current", "Current password", "password", "current-password")}</div>
         <div class="group mt">${field("password", "New password", "password", "new-password")}</div>
         <div class="gfoot">At least 10 characters. Other phones signed in to your account will be signed out.</div>${ferr}</form>`,
-        { left: { label: "Cancel", act: "close" }, right: { label: "Change", form: "pw-form" } });
+        { left: { label: "Back", act: "securitysheet" }, right: { label: "Change", form: "pw-form" } });
       return;
   }
 }
@@ -1574,6 +1578,7 @@ async function onClick(e) {
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
+    case "securitysheet": S.sheet = { type: "security" }; return renderSheet();
     case "encryptionsheet": S.sheet = { type: "encryption" }; return renderSheet();
     case "passkeys": S.sheet = { type: "passkeys" }; return renderSheet();
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
