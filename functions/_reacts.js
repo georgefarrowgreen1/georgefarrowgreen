@@ -20,6 +20,7 @@ async function target(D, u, msgId, group) {
     if (!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, other).first())) throw new HttpError(403, "You can only react in your flock.");
     if (m.recipient === u.id && (t < m.deliver_at || lostBy(m, t))) throw new HttpError(409, "You can react once it has landed.");
     if (lostBy(m, t)) throw new HttpError(409, "That pigeon never arrived.");
+    if (t < m.sent_at) throw new HttpError(409, "That pigeon hasn’t taken off yet.");
     return { other, msg: m };
   }
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(msgId).first();

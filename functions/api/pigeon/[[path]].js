@@ -1,7 +1,7 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, spendSwift, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, spendSwift, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
@@ -112,6 +112,16 @@ async function reroute(env, u, p, t, waitUntil) {
   for (const m of results) {
     const legs = m.legs ? JSON.parse(m.legs) : [];
     if (haversineKm(m.to_lat, m.to_lon, p.lat, p.lon) <= REROUTE_KM) continue;
+    // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
+    if (t < m.sent_at) {
+      const km = haversineKm(m.from_lat, m.from_lon, p.lat, p.lon), flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m)));
+      const off = Math.max(t, m.deliver_at - flight), deliver = off + flight;
+      const lostAt = m.lost_at == null ? null : Math.round(off + ((m.lost_at - m.sent_at) / (m.deliver_at - m.sent_at)) * flight);
+      await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, km = ?, sent_at = ?, deliver_at = ?, lost_at = ?,
+        expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND sent_at > ?`)
+        .bind(p.lat, p.lon, p.place, km, off, deliver, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
+      continue;
+    }
     if (legs.length && t - legs[legs.length - 1][2] < TURN_EVERY) continue;
     const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [m.from_lat, m.from_lon, m.sent_at];
     const f = Math.min(1, Math.max(0, (t - sAt) / (m.deliver_at - sAt)));
@@ -332,8 +342,9 @@ async function removeFriend({ request, env }) {
 async function areFriends(D, a, b) {
   return !!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(a, b).first());
 }
-const lastBetween = (D, a, b) => D.prepare(
-  "SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1) ORDER BY sent_at DESC LIMIT 1").bind(a, b).first();
+// (a scheduled pigeon still in its loft isn't part of the conversation yet: it doesn't take a turn)
+const lastBetween = (D, a, b, t) => D.prepare(
+  "SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 1").bind(a, b, t).first();
 
 // Read receipts go both ways: if either of you has them off, neither sees them.
 const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other?.no_receipts) ? { ...v, readAt: null } : v);
@@ -357,7 +368,7 @@ async function sync({ request, env, waitUntil }) {
   const { results: lasts } = await D.prepare(`
     SELECT * FROM (
       SELECT m.*, ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender = ?1 THEN recipient ELSE sender END ORDER BY sent_at DESC) AS rn
-      FROM pg_msgs m WHERE sender = ?1 OR recipient = ?1) WHERE rn = 1`).bind(u.id).all();
+      FROM pg_msgs m WHERE (sender = ?1 OR recipient = ?1) AND sent_at <= ?2) WHERE rn = 1`).bind(u.id, t).all();
   const lastBy = new Map(lasts.map((m) => [m.sender === u.id ? m.recipient : m.sender, m]));
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
@@ -385,9 +396,10 @@ async function listMessages({ request, env }) {
   const D = await db(env), t = Date.now();
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
   const them = await D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other).first();
-  const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
-    ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other).all();
-  return json({ now: t, messages: results.map((m) => receipts(u, them, msgView(u.id, m, t))), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  // yours waiting to take off show (to you only); theirs only once they're in the air
+  const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3)
+    ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t).all();
+  return json({ now: t, messages: results.map((m) => receipts(u, them, msgView(u.id, m, t))), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results.filter((m) => m.sent_at <= t).at(-1), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -416,9 +428,23 @@ async function sendMessage({ request, env, waitUntil }) {
   // turbo (3×) and rocket (9×) fly any time, and each one sent leaves the loft.
   // A phone that doesn't say which (older versions) sends standard if it can,
   // else swift.
-  const tn = turn(u.id, await lastBetween(D, u.id, to), t);
-  const kind = Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free ? "standard" : "swift";
+  const tn = turn(u.id, await lastBetween(D, u.id, to, t), t);
+  // Scheduled: told when to land, it waits in the loft and takes off in time.
+  // Standard pigeons can't wait for a turn that far ahead, so it's swift or faster.
+  const landAt = meta.landAt == null ? null : Number(meta.landAt);
+  if (landAt != null && !(Number.isFinite(landAt) && landAt > t && landAt <= t + MAX_SCHEDULE)) throw new HttpError(400, "Pick a time in the next 30 days for it to land.");
+  const kind = Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free && landAt == null ? "standard" : "swift";
+  if (landAt != null && PIGEONS[kind].waits) throw new HttpError(409, "Scheduled pigeons are swift, turbo or rocket pigeons.");
   if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
+  const swift = PIGEONS[kind].waits ? 0 : 1;
+  const hasTo = r && r.lat != null;
+  const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
+  const risky = u.risky ? 1 : 0;
+  const [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
+  const flight = Math.round(flightMs(km / w.f, PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1)));
+  const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off
+  if (off < t) throw new HttpError(409, `That’s too soon: a ${kind} pigeon takes ${waitText(flight)} to get there.`);
+  const deliver = off + flight;
   if (PIGEONS[kind].max) {
     const p = PIGEONS[kind], l = loft(u, kind, t);
     if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
@@ -427,29 +453,42 @@ async function sendMessage({ request, env, waitUntil }) {
     const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
     if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   }
-  const swift = PIGEONS[kind].waits ? 0 : 1;
-  const hasTo = r && r.lat != null;
-  const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
-  const risky = u.risky ? 1 : 0;
-  const [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
-  const deliver = t + flightMs(km / w.f, PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1));
   // Pigeon Death: 1 in 100 is lost somewhere between 15% and 85% of the way
   const roll = crypto.getRandomValues(new Uint32Array(2));
-  const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - t)) : null;
+  const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(off + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - off)) : null;
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
     await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, t, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
-        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f).run();
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, off, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
+        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1).run();
   } catch (e) {
     if (photo && !String(e).includes("UNIQUE")) await env.BIO_R2.delete(`pigeon/${id}`);
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
     throw e;
   }
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
-  waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));
-  return json({ message: msgView(u.id, m, t) });
+  if (landAt == null) waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));       // scheduled: told when it takes off
+  const me = landAt == null ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
+  return json({ message: msgView(u.id, m, t), ...(me ? { me: meView(me, t) } : {}) });
+}
+
+// A scheduled pigeon that hasn't taken off yet: it never leaves. No one was
+// told about it, so it just goes, and the pigeon goes back in its loft.
+async function cancelScheduled(env, D, u, m, t) {
+  const r = await D.prepare("DELETE FROM pg_msgs WHERE id = ?1 AND sender = ?2 AND sent_at > ?3").bind(m.id, u.id, t).run();
+  if (!r.meta.changes) throw new HttpError(409, "It’s just taken off. Try again to call it back.");
+  if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${m.id}`);
+  const p = PIGEONS[m.pigeon];
+  for (let i = 0; p?.max && i < 3; i++) {
+    const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first(), l = loft(me, m.pigeon, t);
+    // one more in the loft; a full loft stops hatching, so its clock restarts from now
+    const at = l.count + 1 >= p.max ? t : l.at + l.hatched * p.every;
+    const ok = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(l.count + 1, at, u.id, me[p.col], me[p.atCol]).run();
+    if (ok.meta.changes) break;
+  }
+  const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
+  return json({ cancelled: m.id, me: meView(me, t) });
 }
 
 // Call a pigeon back while it's still in the air: a swift pigeon flies after it.
@@ -461,6 +500,7 @@ async function recallMessage({ request, env }) {
   const m = UUID_RE.test(id) && await D.prepare("SELECT * FROM pg_msgs WHERE id = ? AND sender = ?").bind(id, u.id).first();
   if (!m) throw new HttpError(404, "That pigeon isn’t yours to call back.");
   if (t >= m.deliver_at || (m.lost_at != null && t >= m.lost_at)) throw new HttpError(409, "Too late: that pigeon has already landed.");
+  if (t < m.sent_at) return cancelScheduled(env, D, u, m, t);
   await spendSwift(D, u, t);
   // (notified_at: nobody is told it was lost; it wasn't, it came home)
   const r = await D.prepare(`UPDATE pg_msgs SET lost_at = ?1, recalled = 1, notified_at = ?1, ct = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END

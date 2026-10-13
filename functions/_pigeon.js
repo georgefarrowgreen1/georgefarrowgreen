@@ -12,6 +12,7 @@ export const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const SPEED_KMH = 80;             // a homing pigeon's cruising speed
 export const MIN_FLIGHT = 5 * MIN;
 export const MAX_FLIGHT = 3 * DAY;
+export const MAX_SCHEDULE = 30 * DAY;    // how far ahead a pigeon can be told to land
 export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they land
 export const SWIFT_MAX = 9;              // swift pigeons: 2× speed, 9 a day
 export const TURBO_MAX = 3;              // turbo pigeons: 3× speed, 3 a day
@@ -165,6 +166,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN hide_online INTEGER NOT NULL DEFAULT 0",   // don't show when I'm online (nor see others')
   "ALTER TABLE pg_users ADD COLUMN no_receipts INTEGER NOT NULL DEFAULT 0",   // don't send read receipts (nor see others')
   "ALTER TABLE pg_reacts ADD COLUMN notified_at INTEGER",
+  "ALTER TABLE pg_msgs ADD COLUMN sched INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -291,6 +293,8 @@ export function msgView(me, m, t) {
     id: m.id, from: m.sender, to: m.recipient, km: m.km,
     pigeon: m.pigeon || (m.swift ? "swift" : "standard"), swift: (m.pigeon || (m.swift ? "swift" : "standard")) === "swift",
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at,
+    waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)
+    scheduled: !!m.sched,
     photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose

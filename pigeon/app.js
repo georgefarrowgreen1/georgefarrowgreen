@@ -122,6 +122,8 @@ function dayLabel(ts) {
   const d = new Date(ts); return `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`;
 }
 const fmtShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}`);
+// When a scheduled pigeon lands: "today at 18:00", "tomorrow at 08:00", "Sat 18 Oct at 09:30"
+const fmtLand = (ts) => { const d = new Date(ts); return sameDay(ts, now()) ? `today at ${fmtTime(ts)}` : sameDay(ts, now() + DAY) ? `tomorrow at ${fmtTime(ts)}` : `${DOW[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]} at ${fmtTime(ts)}`; };
 const fmtDate = (ts) => { const d = new Date(ts); return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
 const fmtMiles = (km) => Math.round(km * 0.621371).toLocaleString("en-GB") + " mi";
 const fmtMph = (kmh) => Math.round(kmh * 0.621371).toLocaleString("en-GB") + " mph";
@@ -1144,15 +1146,15 @@ function bubble(f, m, isLastMine, gapTop, g) {
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
   // tap: your pigeon in the air → map or call it back; anything that's arrived → react or reply
   const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}"` : "";
-  const prog = mine && m.flying ? `<div class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></div>` : "";
+  const prog = mine && m.flying && !m.waiting ? `<div class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></div>` : "";
   let html;
   if (p.p) {
     let photo;
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
     else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
-    html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || prog || quote ? `<span class="ptxt">${quote}${text}${prog}</span>` : ""}</div>`;
-  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${prog}</div>`;
+    html = `<div class="b pic${mine ? " me" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || prog || quote ? `<span class="ptxt">${quote}${text}${prog}</span>` : ""}</div>`;
+  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${prog}</div>`;
   html += reactsHtml(m, mine);
   const meta = [];
   if (g && mine) {
@@ -1164,6 +1166,8 @@ function bubble(f, m, isLastMine, gapTop, g) {
     else if (isLastMine) { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`Landed for all ${c.n}${r ? ` · read by ${r === c.n ? "all" : r}` : ""}`, "done")); }
   }
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
+  // scheduled: waiting in your loft (they can't see it yet)
+  else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
   else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
@@ -1300,7 +1304,7 @@ function vChat() {
     prevFrom = m.from;
   }
   // a pigeon in the air either way: the map button sits beside the menu
-  const flying = msgs && [...msgs].reverse().find((m) => m.flying && m.route);
+  const flying = msgs && [...msgs].reverse().find((m) => m.flying && !m.waiting && m.route);
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${esc(f.id)}">I’ve Checked</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
@@ -1440,6 +1444,27 @@ async function resetWith(mode, btn) {
 }
 
 /* ---------- composer and tab bar ---------- */
+const chatKm = (f) => (S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500);
+// A landing time chosen for this chat (one to one, not a /dumb pigeon), once it's still ahead
+function schedFor(chat, dumb = dumbText()) {
+  const sc = S.sched;
+  if (!sc || sc.chat !== chat || group(chat) || dumb != null) return null;
+  if (sc.at <= now()) { S.sched = null; return null; }
+  return sc;
+}
+// Paid pigeons you have, fastest last: what a scheduled pigeon can be
+const schedKind = () => (["swift", "turbo", "rocket"].includes(S.pick) && (S.me[S.pick] || 0) > 0 ? S.pick : ["swift", "turbo", "rocket"].find((k) => (S.me[k] || 0) > 0) || null);
+// Times worth a tap: this evening, tomorrow morning and evening, Saturday morning
+function schedPresets() {
+  const at = (days, h) => { const d = new Date(now()); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); return +d; };
+  const out = [];
+  if (at(0, 18) - now() > HOUR) out.push(["This Evening", at(0, 18)]);
+  out.push(["Tomorrow Morning", at(1, 8)], ["Tomorrow Evening", at(1, 18)]);
+  const sat = (6 - new Date(now()).getDay() + 7) % 7;
+  if (sat > 1) out.push(["Saturday Morning", at(sat, 9)]);
+  return out;
+}
+const localInput = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 function renderCompose() {
   const g = S.chat ? group(S.chat) : null;
   const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || g) && !!S.me;
@@ -1450,11 +1475,19 @@ function renderCompose() {
   const dumb = dumbText();
   const has = (dumb ?? $ta.value).trim() || S.attach;
   // which pigeons can fly now: your choice if it can, else the slowest that can
-  const can = { standard: !!t.free, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0 };
+  // told when to land: one to one only, and standard pigeons can't wait that long for a turn
+  const sched = schedFor(S.chat, dumb);
+  const can = { standard: !!t.free && !sched, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0 };
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
   S.sendKind = kind;
-  if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${esc(k)}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("");
+  if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${esc(k)}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("")
+    + `<button type="button" class="when" data-act="schedule" aria-pressed="false" aria-label="Choose when it lands">${I.clock}<span></span></button>`;
+  const when = $(".when", pick);
+  when.hidden = !!g || dumb != null;
+  when.setAttribute("aria-pressed", String(!!sched));
+  when.querySelector("span").textContent = sched ? fmtTime(sched.at) : "";             // the day is in the note
   for (const b of pick.children) {
+    if (b === when) continue;
     const k = b.dataset.id;
     b.disabled = !can[k]; b.setAttribute("aria-pressed", String(k === kind));
     b.querySelector("b").textContent = k === "standard" ? "" : String(S.me[k] || 0);
@@ -1465,7 +1498,11 @@ function renderCompose() {
   if (S.err) { note.hidden = false; note.className = "note stop"; note.textContent = S.err; }
   else if (f.keyChanged) { note.hidden = false; note.className = "note stop"; note.textContent = "Check the new safety number before sending."; blocked = true; }
   else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your location in Account before sending."; blocked = true; }
-  else if (!kind && dumb != null) { note.hidden = false; note.className = "note stop"; blocked = true; note.textContent = "Dumb pigeons wait their turn."; }
+  else if (!kind && sched) {
+    const next = Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity));
+    note.hidden = false; note.className = "note stop"; blocked = true;
+    note.textContent = `Scheduled pigeons are swift or faster, and your lofts are empty. The next one hatches in ${fmtDur(next - now())}.`;
+  } else if (!kind && dumb != null) { note.hidden = false; note.className = "note stop"; blocked = true; note.textContent = "Dumb pigeons wait their turn."; }
   else if (!kind) {
     const next = Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity));
     note.hidden = false; note.className = "note stop"; blocked = true;
@@ -1477,8 +1514,13 @@ function renderCompose() {
     const what = kind === "standard" ? (n === 1 ? "pigeon" : "pigeons") : kind === "dumb" ? (n === 1 ? "dumb pigeon" : "dumb pigeons") : KIND[kind].name.toLowerCase() + (n === 1 ? "" : "s");
     note.hidden = false; note.className = "note go";
     note.innerHTML = `${pg(kind)}<span>${t.free || kind === "dumb" ? "" : "Not your turn. "}${n} ${what} land${n === 1 ? "s" : ""} in ${span}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
+  } else if (sched) {
+    const ms = flightMs(chatKm(f), mySpeed(kind)), off = sched.at - ms;
+    note.hidden = false;
+    if (off < now()) { note.className = "note stop"; blocked = true; note.textContent = `Too soon for a ${KIND[kind].name.toLowerCase()} pigeon: it takes ${fmtDur(ms)} to get there. Pick a later time or a faster pigeon.`; }
+    else { note.className = "note go"; note.innerHTML = `${pg(kind)}<span>${KIND[kind].name} pigeon lands ${fmtLand(sched.at)}. It takes off in ${fmtDur(off - now())}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`; }
   } else {
-    const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500;
+    const km = chatKm(f);
     note.hidden = false; note.className = "note go";
     note.innerHTML = `${pg(kind)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, mySpeed(kind)))}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
   }
@@ -1735,6 +1777,25 @@ function drawSheet(refresh) {
       // sizes set from code (inline style attributes are blocked)
       $layer.querySelectorAll("[data-lap]").forEach((el) => el.style.setProperty("--lap", el.dataset.lap));
       $layer.querySelectorAll(".kbar[data-w], .bprog[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
+      return;
+    }
+    case "schedule": {
+      const f = friend(s.chat); if (!f) { S.sheet = null; return renderSheet(); }
+      if ($("#f-landat", $layer)) return;           // built once, so a sync can't undo a half-picked time
+      const k = schedKind(), ms = k ? flightMs(chatKm(f), mySpeed(k)) : 0, cur = schedFor(s.chat, null);
+      const rows = schedPresets().map(([label, at]) => {
+        const soon = !k || at - ms < now();
+        return cell({ act: soon ? null : "schedpick", id: String(at), label, sub: soon && k ? `Too soon for a ${KIND[k].name.toLowerCase()} pigeon` : "", val: `${DOW[new Date(at).getDay()]} ${fmtTime(at)}`, cls: soon ? "dim" : cur?.at === at ? "on" : "" });
+      }).join("");
+      $layer.innerHTML = sheetHtml("When Should It Land?", `<form id="sched-form" data-form="schedule" novalidate>
+        <div class="group mt-s">${rows}</div>
+        <div class="group"><label class="cell fcell schedat"><span class="ctext"><span>Another Time</span></span><input type="datetime-local" id="f-landat" aria-label="When it lands"></label></div>
+        <div class="gfoot">${k ? `It waits in your loft and takes off in time to land then. ${esc(first(f.name))} won’t know it’s coming until it takes off. A ${KIND[k].name.toLowerCase()} pigeon takes ${fmtDur(ms)} to get there.` : "Scheduled pigeons are swift or faster, and your lofts are empty."} Up to 30 days ahead.</div>${ferr}
+        ${cur ? `<div class="stack"><button type="button" class="btn wide plain" data-act="unschedule">Send It Now Instead</button></div>` : ""}</form>`,
+        { left: { label: "Cancel", act: "close" }, right: { label: "Set", form: "sched-form" } });
+      const inp = $("#f-landat", $layer);
+      inp.min = localInput(now() + ms + MIN); inp.max = localInput(now() + 30 * DAY);
+      inp.value = localInput(cur?.at ?? Math.max(now() + ms + HOUR, schedPresets()[0][1]));
       return;
     }
     case "grouprename": {
@@ -2047,11 +2108,15 @@ async function onClick(e) {
     }
     case "flymenu": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
+      if (m.waiting) return openMenu(t, [{ label: "Cancel Pigeon", icon: I.x, act: "recallask", id, destructive: true }]);
       const onMap = m.route || m.flock?.some((x) => x.route);
       return openMenu(t, [...(onMap ? [{ label: "Watch on Map", icon: I.map, act: "map", id }] : []), { label: "Call It Back", icon: I.homing, act: "recallask", id, destructive: true }]);
     }
     case "recallask": {
-      const g = group(S.chat), n = S.me.swift || 0;
+      const g = group(S.chat), n = S.me.swift || 0, w = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
+      if (w?.waiting) return openActions({ title: "Cancel this pigeon?",
+        message: `It hasn’t taken off yet, so ${first(friend(S.chat)?.name || "they")} will never know. What it carries is deleted${kindOf(w) === "standard" ? "" : `, and the ${KIND[kindOf(w)].name.toLowerCase()} pigeon goes back in your loft`}.`,
+        actions: [{ label: "Cancel Pigeon", act: "recallgo", id, destructive: true }] });
       return openActions({ title: g ? "Call your pigeons back?" : "Call your pigeon back?",
         message: `A swift pigeon flies after ${g ? "them" : "it"} (you have ${n}). ${g ? "Any that haven’t landed turn for home, and whoever already has it keeps it." : "It won’t arrive, and what it carries is deleted."}`,
         actions: [{ label: "Call It Back", act: "recallgo", id, destructive: true }] });
@@ -2060,6 +2125,11 @@ async function onClick(e) {
       try {
         const g = group(S.chat), r = await api(g ? "group-recall" : "recall", { method: "POST", body: { id } });
         const list = S.msgs.get(S.chat) || [], i = list.findIndex((x) => x.id === id);
+        if (r.cancelled) {
+          if (i >= 0) list.splice(i, 1);
+          S.plain.delete(id); S.photos.delete(id); S.me = r.me;
+          render(); renderCompose(); toast("Cancelled. It never left."); return sync();
+        }
         if (i >= 0) list[i] = r.message;
         if (r.message.recalled && !(r.message.flock || []).some((x) => !x.flying && !x.lost)) S.plain.delete(id);
         if (r.me) S.me = r.me;
@@ -2134,6 +2204,9 @@ async function onClick(e) {
     case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; return renderCompose();
+    case "schedule": S.sheet = { type: "schedule", chat: S.chat }; return renderSheet();
+    case "schedpick": S.sched = { chat: S.sheet?.chat || S.chat, at: +id }; S.sheet = null; renderSheet(); return renderCompose();
+    case "unschedule": S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "risky": return setRisky(!S.me.risky);
     case "privacy": {
@@ -2260,6 +2333,12 @@ async function onSubmit(e) {
   const form = e.target, kind = form.dataset.form;
   const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${esc(form.id)}"]`, $layer);
   if (kind === "compose") return send();
+  if (kind === "schedule") {
+    const v = $("#f-landat", $layer)?.value, at = v ? +new Date(v) : NaN;
+    if (!Number.isFinite(at) || at <= now()) return showErr("Pick a time that’s still to come.");
+    if (at > now() + 30 * DAY) return showErr("Pick a time in the next 30 days.");
+    S.sched = { chat: S.sheet.chat, at }; S.sheet = null; renderSheet(); return renderCompose();
+  }
   if (kind === "grouprename") {
     const s = S.sheet;
     try { await busyBtn(btn, "…", () => api("group-name", { method: "POST", body: { id: s.id, name: String($("#f-gname", $layer)?.value || "") } })); await sync(); S.sheet = { type: "groupinfo", id: s.id }; renderSheet(); }
@@ -2546,7 +2625,7 @@ async function send() {
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
   S.busy = true; S.err = ""; renderCompose();
   try {
-    const id = uuid(), to = S.chat;
+    const id = uuid(), to = S.chat, sc = schedFor(to);
     const payload = { t: text };
     const rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null;
     if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
@@ -2565,7 +2644,7 @@ async function send() {
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id, from: S.me.id, to: p.id }, { k: key });
       meta = { id, group: g.id, body, keys, pigeon: S.sendKind };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to }, payload), pigeon: S.sendKind };
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}) };
     const path = g ? "group-messages" : "messages";
     let r;
     if (blob) {
@@ -2579,6 +2658,7 @@ async function send() {
     } else r = await api(path, { method: "POST", body: meta });
     S.pick = null;                    // next time, back to the default
     if (rt) S.replyTo = null;
+    if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
     S.plain.set(id, payload);
     if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
     $ta.value = ""; fitTa(); S.stick = true;
@@ -2785,7 +2865,7 @@ function flightCheck() {
   const t = now();
   const lands = [];
   for (const f of S.friends) if (f.last?.flying) lands.push(f.last.deliverAt);
-  for (const list of S.msgs.values()) for (const m of list) if (m.flying) lands.push(m.deliverAt);
+  for (const list of S.msgs.values()) for (const m of list) if (m.flying) lands.push(m.waiting ? m.sentAt : m.deliverAt);
   const due = lands.filter((x) => x <= t);
   if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(sync, 1500); }
 }

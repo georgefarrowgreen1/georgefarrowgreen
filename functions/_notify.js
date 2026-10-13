@@ -314,6 +314,13 @@ export async function tick(env, origin) {
         body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }
   }
+  // scheduled pigeons that have just taken off: now their recipient can hear about them
+  const { results: off } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.deliver_at, m.pigeon, u.name FROM pg_msgs m JOIN pg_users u ON u.id = m.sender
+    WHERE m.sched = 1 AND m.sent_at <= ?1 LIMIT 200`).bind(t).all();
+  for (const m of off) {
+    const claimed = await D.prepare("UPDATE pg_msgs SET sched = 2 WHERE id = ? AND sched = 1").bind(m.id).run();
+    if (claimed.meta.changes && m.deliver_at > t) { await pigeonSent(env, { id: m.sender, name: m.name }, m.recipient, m.deliver_at, m.pigeon).catch(() => {}); }
+  }
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

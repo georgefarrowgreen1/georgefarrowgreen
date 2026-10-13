@@ -205,6 +205,16 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Scheduled pigeons.** Tap the clock beside the pigeons in a one-to-one chat
+and pick when it should *land* (this evening, tomorrow morning, or any time in
+the next 30 days). The pigeon waits in your loft and takes off just in time:
+`sent_at` is its take-off, `deliver_at` the time you picked, `sched` 1 until it
+leaves. Until then only you can see it, and it doesn't take anyone's turn.
+The tick tells the recipient when it takes off. If they move first, it
+re-plans its take-off so it still lands on time. Cancelling before take-off is
+free and puts the pigeon back in your loft. Scheduled pigeons must be swift,
+turbo or rocket: a standard pigeon can't wait that long for its turn.
+
 **Flight Log.** Account → Flight Log: miles flown (and how far around the world
 that is), pigeons sent, received and in the air, hours in the air, the longest
 flight, the fastest pigeon, the best tailwind, pigeons by kind, and how many

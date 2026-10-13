@@ -47,7 +47,8 @@ async function flightLog({ request, env }) {
   return json({
     badges,
     sent: sent.length, landed: landed.length, received: received.n,
-    flying: sent.filter((p) => p.deliver_at > t && !(p.lost_at != null && p.lost_at <= t)).length,
+    flying: sent.filter((p) => p.sent_at <= t && p.deliver_at > t && !(p.lost_at != null && p.lost_at <= t)).length,
+    waiting: sent.filter((p) => p.sent_at > t).length,
     lost: sent.filter((p) => p.lost_at != null && p.lost_at <= t && !p.recalled).length,
     recalled: sent.filter((p) => p.recalled).length,
     km,

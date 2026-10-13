@@ -783,3 +783,16 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pstamp:not([disabled]):active{transform:rotate(0) scale(1.15)}
 .pstamp[disabled]{cursor:default}
 .pstamp.swift{--ink:var(--p-swift)}.pstamp.turbo{--ink:var(--label)}.pstamp.rocket{--ink:var(--p-rocket-text,var(--p-rocket))}.pstamp.dumb{--ink:var(--p-dumb)}
+/* scheduled pigeons: the clock in the picker, waiting bubbles, the landing-time sheet */
+.pick .when{--pg:var(--tint)}
+.pick .when .ico{font-size:17px}
+.pick .when[aria-pressed="true"] span{max-width:8em}
+.b.me.waiting{background:none;color:var(--tint);border:1.5px dashed color-mix(in srgb,var(--tint) 60%,transparent)}
+.b.pic.waiting{opacity:.6}
+.meta .fl.flock.sched{color:var(--tint)}
+.meta .fl.flock.sched .ico{font-size:13px;color:inherit}
+.cell.dim{opacity:.45}
+.cell.on .val{color:var(--tint);font-weight:600}
+.fcell.schedat{padding-right:12px}
+.fcell.schedat .ctext{flex:none}
+.fcell.schedat input{flex:1;text-align:right;padding-left:10px;color:var(--tint);font-size:16px}
