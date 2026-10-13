@@ -1885,21 +1885,19 @@ async function afterSignIn() {
 // Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
 // A ring fills around your photo in My Profile while it uploads.
 // A new profile photo is only a preview until you tap Done; then it uploads,
-// with a ring that fills smoothly around it.
+// with a slim bar under it that fills smoothly.
 async function uploadAvatarDraft() {
   const d = S.avatarDraft, b = $(".avedit", $layer);
-  if (b && !$(".upring", b)) b.insertAdjacentHTML("afterbegin", '<i class="upring" aria-hidden="true"></i>');
+  if (b && !$(".avbar", b)) b.insertAdjacentHTML("beforeend", '<i class="avbar" role="progressbar" aria-label="Uploading photo"><b></b></i>');
   b?.classList.add("uploading");
-  const ring = smoothProgress((x) => {
-    b?.style.setProperty("--up", x);
-    const t = b && $("span:not(.av)", b); if (t) t.textContent = x >= 1 ? "Finishing up…" : `Uploading… ${Math.floor(x * 100)}%`;
-  });
-  ring.set(0.02);
+  const bar = b && $(".avbar b", b);
+  const fill = smoothProgress((x) => { if (bar) bar.style.transform = `scaleX(${x})`; });
+  fill.set(0.02);
   try {
-    const r = await api("avatar", { method: "POST", blob: d.blob, onProgress: (f) => ring.set(f) });
-    ring.set(1); await new Promise((res) => setTimeout(res, 300));
+    const r = await api("avatar", { method: "POST", blob: d.blob, onProgress: (f) => fill.set(f) });
+    fill.set(1); await new Promise((res) => setTimeout(res, 300));
     S.me = r.me; S.avatars.set(`${S.me.id}:${S.me.avatarAt}`, d.url); S.avatarDraft = null;
-  } finally { ring.stop(); b?.classList.remove("uploading"); $(".upring", b || document.createElement("i"))?.remove(); }
+  } finally { fill.stop(); b?.classList.remove("uploading"); b && $(".avbar", b)?.remove(); }
 }
 function dropAvatarDraft() { if (S.avatarDraft) { URL.revokeObjectURL(S.avatarDraft.url); S.avatarDraft = null; } }
 async function setAvatar(file) {

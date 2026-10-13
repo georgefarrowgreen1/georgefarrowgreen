@@ -293,9 +293,10 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .attach.sealing .upbar b{width:35%;transform:none;animation:seal 0.9s ease-in-out infinite}
 @keyframes seal{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
 .avedit{position:relative}
-.avedit .upring{position:absolute;left:50%;top:-6px;width:116px;height:116px;margin-left:-58px;border-radius:50%;pointer-events:none;
-  background:conic-gradient(var(--tint) calc(var(--up,0) * 1turn),var(--fill-2) 0);
-  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3.5px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3.5px))}
+/* a profile photo uploading: just a slim bar where "New Photo" was */
+.avedit .avbar{display:block;width:88px;height:4px;margin:9px auto 7px;border-radius:2px;background:var(--fill-2);overflow:hidden}
+.avedit .avbar b{display:block;height:100%;border-radius:2px;background:var(--tint);transform-origin:left;transform:scaleX(0)}
+.avedit.uploading > span:not(.av){display:none}
 .avedit.uploading .av{opacity:.75}
 .avedit.uploading{pointer-events:none}
 .attach span{flex:1;min-width:0;line-height:17px}
