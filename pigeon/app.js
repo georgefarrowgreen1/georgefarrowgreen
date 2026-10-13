@@ -346,9 +346,9 @@ function flightAt(m, t = now()) {
 // Where the pigeon is (at flight-clock time t) along those points, and which way it's heading.
 function pigeonOn(P, pts, t = now()) {
   const i = pts.findIndex((p) => p.t >= t);
-  if (i <= 0) return { at: P[i < 0 ? P.length - 1 : 0], dx: P[P.length - 1][0] - P[0][0] };
+  if (i <= 0) { const a = P[Math.max(0, P.length - 2)], b = P[P.length - 1]; return { at: P[i < 0 ? P.length - 1 : 0], dx: P[P.length - 1][0] - P[0][0], dy: i < 0 ? 0 : b[1] - a[1] }; }
   const f = (t - pts[i - 1].t) / Math.max(1, pts[i].t - pts[i - 1].t);
-  return { at: [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f], dx: P[i][0] - P[i - 1][0] };
+  return { at: [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f], dx: P[i][0] - P[i - 1][0], dy: P[i][1] - P[i - 1][1] };
 }
 // The routes a map shows: one, or for your message to a group, one per member
 // whose location you can see (friends; others' routes stay off the map).
@@ -473,14 +473,39 @@ function drawMap(cv, m, cardH) {
       }
     }
   }
-  const bird = new Path2D(BIRD);
-  for (const { r, at: [px, py], dx } of birds) {
+  // keep the map without its pigeons: between full redraws only the pigeons are drawn again (wings flapping)
+  const base = cv._base || (cv._base = document.createElement("canvas"));
+  if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
+  base.getContext("2d").drawImage(cv, 0, 0);
+  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  drawBirds(cv, performance.now());
+  if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
+}
+// The pigeon, with its wing at w (1 up, 0 folded down to its back): the wing's
+// points are drawn toward the body line, so it flaps.
+const WING = [[12.6, 3.6], [14.4, 3], [15.6, 4], [15.4, 5.8]];
+const birdAt = (w) => {
+  const y = (v) => (10.4 - (10.4 - v) * w).toFixed(2), [a, b, c, d] = WING;
+  return new Path2D(`M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L${a[0]} ${y(a[1])}C${b[0]} ${y(b[1])} ${c[0]} ${y(c[1])} ${d[0]} ${y(d[1])}L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z`);
+};
+const STILL = matchMedia("(prefers-reduced-motion: reduce)");
+// Draw the pigeons over the saved map: flapping in cruise, faster taking off
+// and landing, folded once landed; tilted the way they're heading.
+function drawBirds(cv, ts) {
+  const g = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  if (!cv._base || !cv._birds) return;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._base, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const { r, at: [px, py], dx, dy, phase, color } of cv._birds) {
+    const flying = phase === "up" || phase === "cruise" || phase === "down", hz = phase === "cruise" ? 2.2 : 5;
+    const w = !flying ? 0.45 : STILL.matches ? 1 : 0.62 + 0.38 * Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997));
+    const bob = flying && !STILL.matches ? Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997) - 1.2) * 1.2 : 0;
     const flip = dx > 0 ? -1 : 1;                                 // the icon faces left; turn it the way it's flying
-    g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
-    g.lineWidth = r.skin && SKINS[r.skin] ? 4 : 3; g.strokeStyle = SKINS[r.skin]?.ring || "#fff"; g.stroke(bird); g.fillStyle = r.lost ? col("--label-3") : col("--p-" + kindOf(r)); g.fill(bird);   // the pigeon in its colour (grey where it was lost)
+    const tilt = flying ? Math.max(-0.35, Math.min(0.35, Math.atan2(dy, Math.abs(dx) || 1))) * -flip : 0;   // nose up or down with its course
+    g.save(); g.translate(px, py + bob); g.rotate(-tilt); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
+    const bird = birdAt(w);
+    g.lineWidth = r.skin && SKINS[r.skin] ? 4 : 3; g.strokeStyle = SKINS[r.skin]?.ring || "#fff"; g.stroke(bird); g.fillStyle = color; g.fill(bird);   // the pigeon in its colour (grey where it was lost)
     g.restore();
   }
-  if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
 }
 let mapFrameReq = 0;
 function redrawMap() {
@@ -2086,7 +2111,7 @@ function tickSkies(card, cv) {
   // nothing in the air: just your roost
   const here = S.me.lat != null ? [{ here: true, route: [S.me.lat, S.me.lon, S.me.lat, S.me.lon], sentAt: 0, deliverAt: 1, km: 0, fromPlace: S.me.place, toPlace: S.me.place }] : [];
   const skies = onMap.length ? onMap : here;
-  if (skies.length) drawMap(cv, { skies }, card.offsetHeight + 14);
+  if (skies.length) { drawMap(cv, { skies }, card.offsetHeight + 14); smoothMap({ skies, lost: true }); }
 }
 
 // Your message to a group: how far each pigeon has got.
@@ -2101,20 +2126,23 @@ function tickFlockMap(m, card, cv) {
     ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}
     <span class="prog"><i></i></span><span class="frows">${rows}</span>`;
   $(".prog i", card).style.width = (frac * 100).toFixed(2) + "%";
-  if (routesOf(m).length) drawMap(cv, m, card.offsetHeight + 14);
+  if (routesOf(m).length) { drawMap(cv, m, card.offsetHeight + 14); smoothMap({ ...m, lost: true }); }
 }
 // The once-a-second tick is plenty for a slow pigeon, but taking off, landing
 // or a fast short hop would judder, so then the map redraws ~30 times a second.
 let mapAnim = 0, mapAnimAt = 0;
 function smoothMap(m) {
-  if (mapAnim || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const f = flightAt(m);
-  if (m.lost || f.phase === "landed" || (f.phase === "cruise" && m.deliverAt - m.sentAt > HOUR)) return;
+  if (mapAnim || STILL.matches) return;
+  const f = flightAt(m), moving = !m.lost && f.phase !== "landed" && !(f.phase === "cruise" && m.deliverAt - m.sentAt > HOUR);
   mapAnim = requestAnimationFrame(function step(ts) {
     mapAnim = 0;
     if (S.sheet?.type !== "map" || document.hidden) return;
+    const cv = $(".map", $layer);
     if (ts - mapAnimAt < 30) { mapAnim = requestAnimationFrame(step); return; }
-    mapAnimAt = ts; tickMap();          // tickMap calls back here to keep going while it's worth it
+    mapAnimAt = ts;
+    if (moving) return tickMap();       // it visibly moves: redraw it all (tickMap calls back here)
+    if (!cv?._birds?.some((b) => b.phase !== "landed" && b.phase !== "lost")) return;
+    drawBirds(cv, ts); mapAnim = requestAnimationFrame(step);   // just the wings
   });
 }
 function setProgress(el) {
