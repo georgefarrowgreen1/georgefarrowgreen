@@ -62,7 +62,19 @@ const idb = {
 };
 
 /* ---------------- server ---------------- */
-async function api(path, { method = "GET", body, form, raw, blob } = {}) {
+// fetch can't report upload progress; XMLHttpRequest can, so photo uploads use it
+function xhrFetch(url, { method, headers, body, onProgress }) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open(method, url);
+    for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    x.onload = () => resolve(new Response(x.responseText, { status: x.status, headers: { "Content-Type": x.getResponseHeader("Content-Type") || "application/json" } }));
+    x.onerror = x.onabort = () => reject(new TypeError("Network error"));
+    x.send(body);
+  });
+}
+async function api(path, { method = "GET", body, form, raw, blob, onProgress } = {}) {
   const headers = {};
   if (S.token) headers.Authorization = "Bearer " + S.token;
   let payload;
@@ -70,7 +82,7 @@ async function api(path, { method = "GET", body, form, raw, blob } = {}) {
   else if (blob) { headers["Content-Type"] = blob.type; payload = blob; }
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
   let r;
-  try { r = await fetch("/api/pigeon/" + path, { method, headers, body: payload }); }
+  try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload }); }
   catch (_) { S.offline = true; renderOffline(); throw new Error("You’re offline. Check your connection and try again."); }
   if (S.offline) { S.offline = false; renderOffline(); }
   if (raw && r.ok) return r;
@@ -1216,7 +1228,7 @@ function renderCompose() {
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span>Photo, ${fmtBytes(S.attach.bytes.length)}. Encrypted before it leaves this phone.</span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
+    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="atext" aria-live="polite">${attachText()}</span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button><i class="upbar" aria-hidden="true"><b></b></i>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
 }
@@ -1866,6 +1878,14 @@ async function afterSignIn() {
   if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }   // the link you came in on
 }
 // Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
+// A ring fills around your photo in My Profile while it uploads.
+function avatarUpload(f) {
+  const b = $(".avedit", $layer); if (!b) return;
+  if (f == null) { b.classList.remove("uploading"); $(".upring", b)?.remove(); return; }
+  if (!$(".upring", b)) b.insertAdjacentHTML("afterbegin", '<i class="upring" aria-hidden="true"></i>');
+  b.classList.add("uploading"); b.style.setProperty("--up", f);
+  const t = $("span:not(.av)", b); if (t) t.textContent = `Uploading… ${Math.round(f * 100)}%`;
+}
 async function setAvatar(file) {
   try {
     const bmp = await loadBitmap(file);
@@ -1874,12 +1894,13 @@ async function setAvatar(file) {
     c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
     const jpg = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
     if (!jpg) throw new Error("That picture couldn’t be read. Try another one.");
-    const r = await api("avatar", { method: "POST", blob: jpg });
+    avatarUpload(0);
+    const r = await api("avatar", { method: "POST", blob: jpg, onProgress: avatarUpload });
     S.me = r.me;
     S.avatars.set(`${S.me.id}:${S.me.avatarAt}`, URL.createObjectURL(jpg));
     renderSheet(true); render();
     toast("Profile picture updated.");
-  } catch (err) { showErr(err.message || "That picture couldn’t be read. Try another one."); }
+  } catch (err) { avatarUpload(null); renderSheet(true); showErr(err.message || "That picture couldn’t be read. Try another one."); }
 }
 async function setAttach(blob) {
   clearAttach();
@@ -1888,6 +1909,14 @@ async function setAttach(blob) {
   renderCompose();
 }
 function clearAttach() { if (S.attach) URL.revokeObjectURL(S.attach.preview); S.attach = null; if ($compose) renderCompose(); }
+// The photo's upload, shown on its preview: encrypting first, then sending with a bar.
+const attachText = () => `Photo, ${fmtBytes(S.attach.bytes.length)}. Encrypted before it leaves this phone.`;
+function showUpload(stage, f = 0) {
+  const a = $(".attach", $compose); if (!a || !S.attach) return;
+  a.classList.toggle("uploading", !!stage);
+  a.style.setProperty("--up", `${Math.round(f * 100)}%`);
+  $(".atext", a).textContent = stage === "seal" ? "Encrypting photo…" : stage === "send" ? `Sending photo… ${Math.round(f * 100)}%` : attachText();
+}
 async function send() {
   const text = (dumbText() ?? $ta.value).trim();
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
@@ -1897,6 +1926,7 @@ async function send() {
     const payload = { t: text };
     let blob = null;
     if (S.attach) {
+      showUpload("seal");
       const sealed = await E2E.sealPhoto(id, S.attach.bytes);
       payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h };
       blob = sealed.data;
@@ -1907,7 +1937,8 @@ async function send() {
       const form = new FormData();
       form.append("meta", JSON.stringify({ id, to, ct, pigeon: S.sendKind }));
       form.append("photo", new Blob([blob], { type: "application/octet-stream" }), "photo.bin");
-      r = await api("messages", { method: "POST", form });
+      showUpload("send", 0);
+      r = await api("messages", { method: "POST", form, onProgress: (f) => showUpload("send", f) });
     } else r = await api("messages", { method: "POST", body: { id, to, ct, pigeon: S.sendKind } });
     S.pick = null;                    // next time, back to the default
     S.plain.set(id, payload);
@@ -1918,7 +1949,7 @@ async function send() {
     render();                         // show it now; on a slow connection the sync below can outlast the pop
     await sync();
     offerNotify();
-  } catch (err) { S.err = err.message; }
+  } catch (err) { S.err = err.message; showUpload(null); }
   S.busy = false; renderCompose();
 }
 $(".page").addEventListener("keydown", (e) => {

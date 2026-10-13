@@ -277,6 +277,20 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .send:disabled{opacity:0;pointer-events:none;width:0;margin:0}
 .attach{display:flex;align-items:center;gap:10px;padding:8px;border-radius:22px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:13px;color:var(--label-2)}
 .attach img{flex:none;width:46px;height:46px;object-fit:cover;border-radius:14px}
+/* upload progress: a bar along the photo's preview, and a ring round your profile photo */
+.attach{position:relative;overflow:hidden}
+.attach .upbar{position:absolute;left:14px;right:14px;bottom:4px;height:3px;border-radius:2px;background:var(--fill-2);opacity:0;transition:opacity .25s}
+.attach .upbar b{display:block;height:100%;width:var(--up,0%);border-radius:2px;background:var(--tint);transition:width .25s linear}
+.attach.uploading .upbar{opacity:1}
+.attach.uploading img{opacity:.7}
+.attach.uploading button{opacity:.3;pointer-events:none}
+.attach .atext{font-variant-numeric:tabular-nums}
+.avedit{position:relative}
+.avedit .upring{position:absolute;left:50%;top:-6px;width:116px;height:116px;margin-left:-58px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(var(--tint) calc(var(--up,0) * 1turn),var(--fill-2) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3.5px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3.5px))}
+.avedit.uploading .av{opacity:.75}
+.avedit.uploading{pointer-events:none}
 .attach span{flex:1;min-width:0;line-height:17px}
 .attach button{flex:none;border:0;background:var(--fill);color:var(--label-2);width:28px;height:28px;border-radius:50%;display:grid;place-items:center}
 .attach button svg{font-size:13px;stroke-width:2.6}
