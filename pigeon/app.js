@@ -1406,6 +1406,50 @@ let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
 // No zooming the page (only the map zooms, and it handles its own pinches),
 // and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
 const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
+/* ---------- swipe a chat row for quick actions ----------
+   Drag a row in Messages to the left: Read, Mute or Info, and Leave or
+   Remove slide out from behind it. One row open at a time; a tap anywhere
+   else (or on the row) closes it. */
+let swOpen = null, swPending = false;
+function closeSwipe(anim = true) {
+  if (!swOpen) return;
+  const r = swOpen; swOpen = null;
+  r.classList.toggle("swanim", anim); r.style.transform = ""; r.parentElement?.classList.remove("open");
+  if (swPending) { swPending = false; setTimeout(render, anim ? 330 : 0); }
+}
+function swipeRows() {
+  const v = $view; let st = null;
+  v.addEventListener("touchstart", (e) => {
+    const row = e.target.closest?.(".swrow .mrow");
+    if (swOpen && row !== swOpen && !e.target.closest(".swacts")) closeSwipe();
+    if (!row || e.touches.length !== 1) { st = null; return; }
+    const w = row.parentElement.querySelector(".swacts").offsetWidth;
+    st = { row, x: e.touches[0].clientX, y: e.touches[0].clientY, w, base: swOpen === row ? -w : 0, dir: null, dx: 0 };
+    row.classList.remove("swanim");
+  }, { passive: true });
+  v.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const dx = e.touches[0].clientX - st.x, dy = e.touches[0].clientY - st.y;
+    if (!st.dir) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.dir = Math.abs(dx) > Math.abs(dy) ? "x" : "y"; }
+    if (st.dir !== "x") return;
+    e.preventDefault();
+    let x = st.base + dx;
+    if (x > 0) x = x * 0.25;                                       // a little give past closed
+    if (x < -st.w) x = -st.w + (x + st.w) * 0.3;                   // and past open
+    st.dx = dx; st.row.style.transform = `translateX(${x}px)`;
+    st.row.parentElement.classList.add("open");
+  }, { passive: false });
+  const end = () => {
+    if (!st) return; const s2 = st; st = null;
+    if (s2.dir !== "x") return;
+    s2.row.dataset.swiped = "1"; setTimeout(() => { delete s2.row.dataset.swiped; }, 350);   // a swipe isn't a tap
+    const x = s2.base + s2.dx, open = x < -s2.w * 0.4;
+    s2.row.classList.add("swanim");
+    if (open) { swOpen = s2.row; s2.row.style.transform = `translateX(${-s2.w}px)`; haptic("tick"); }
+    else { if (swOpen === s2.row) swOpen = null; s2.row.style.transform = ""; setTimeout(() => { if (swOpen !== s2.row) s2.row.parentElement?.classList.remove("open"); }, 320); }
+  };
+  v.addEventListener("touchend", end); v.addEventListener("touchcancel", end);
+}
 /* ---------- pull to refresh (Messages and Friends) ----------
    Pull down from the top: a pigeon drops in, its wings opening as you pull.
    Let go past the line and it flaps while everything syncs. */
@@ -1460,7 +1504,7 @@ function lockPage() {
 }
 function mount() {
   lockPage();
-  setTimeout(pullToRefresh);
+  setTimeout(() => { pullToRefresh(); swipeRows(); });
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
@@ -1566,6 +1610,7 @@ function playFresh() {
 }
 function render() {
   if (!$view) return;
+  if (swOpen?.isConnected && S.view === "messages") { swPending = true; return; }   // a row is swiped open: redraw once it closes
   const auth = AUTH_VIEWS.has(S.view) || !S.me;
   const chat = !auth && S.view === "chat";
   root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
@@ -1642,15 +1687,24 @@ function vMessages() {
     ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
-  const rows = fr.map(({ f, g, html, at }) => `
-    <button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
+  // swipe a row left for quick actions
+  const acts = (f, g) => [
+    f.unread ? `<button type="button" class="swa read" data-act="swread" data-id="${esc(f.id)}">${I.check}<span>Read</span></button>` : "",
+    g ? `<button type="button" class="swa mute" data-act="swmute" data-id="${esc(g.id)}">${I.bell}<span>${g.muted ? "Unmute" : "Mute"}</span></button>`
+      : `<button type="button" class="swa info" data-act="swinfo" data-id="${esc(f.id)}">${I.info}<span>Info</span></button>`,
+    g ? `<button type="button" class="swa del" data-act="groupleaveask" data-id="${esc(g.id)}">${I.minusp}<span>Leave</span></button>`
+      : `<button type="button" class="swa del" data-act="unfriendask" data-id="${esc(f.id)}">${I.minusp}<span>Remove</span></button>`,
+  ].join("");
+  const rows = fr.map(({ f, g, html, at }) => `<div class="swrow" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
+    <div class="swacts">${acts(f, g)}</div>
+    <button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}">
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext">
         <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${html}</span>
       </span>
-    </button>`).join("");
+    </button></div>`).join("");
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : S.outgoing.length || S.incoming.length
@@ -2930,10 +2984,29 @@ async function onClick(e) {
   const id = t.dataset.id;
   const inPop = !!t.closest(".poplayer") && t.dataset.act !== "closepop";
   if (inPop) closePop();
+  if (swOpen && !t.closest(".swrow")) closeSwipe();                 // any other tap closes an open row
+  else if (swOpen && t.closest(".swacts")) closeSwipe();
   switch (t.dataset.act) {
     case "tab": return go(id);
     case "to": return go(id);
-    case "open": return go("chat", id);
+    case "open":
+      if (t.dataset.swiped) return;
+      if (swOpen) { const was = swOpen === t; closeSwipe(); if (was) return; }
+      return go("chat", id);
+    case "swread": {
+      closeSwipe();
+      const g = group(id), f = friend(id);
+      if (g) { g.unread = 0; api("group-read", { method: "POST", body: { id } }).catch(() => {}); }
+      else if (f) { f.unread = 0; api("read", { method: "POST", body: { with: id } }).catch(() => {}); }
+      return render();
+    }
+    case "swmute": {
+      closeSwipe(); const g = group(id); if (!g) return;
+      const on = !g.muted; g.muted = on; render(); toast(on ? `${esc(g.name)} is muted.` : `${esc(g.name)} is unmuted.`);
+      try { await api("group-mute", { method: "POST", body: { id, muted: on } }); } catch (err) { g.muted = !on; render(); toast(esc(err.message)); }
+      return;
+    }
+    case "swinfo": closeSwipe(false); S.sheet = { type: "friendinfo", id }; return renderSheet();
     case "newmsg": S.sheet = { type: "newmsg" }; return renderSheet();
     case "newgroup": S.sheet = { type: "newgroup", pick: new Set() }; renderSheet(); setTimeout(() => $("#f-gname", $layer)?.focus(), 300); return;
     case "groupadd": S.sheet = { type: "groupadd", id: id || S.sheet?.id, pick: new Set() }; return renderSheet();
