@@ -823,7 +823,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* The Skies: each row opens that chat */
 .mapcard .skyrow{width:100%;border:0;background:none;padding:2px 0;font:inherit;text-align:left;cursor:pointer}
 .mapcard .skyrow b{color:var(--orange)}
-.mapcard .skyrow .pg{font-size:12px;margin-right:2px}
+.mapcard .skyrow .pg{flex:none;font-size:13px;vertical-align:0;margin:0 2px}   /* its own column beside the name: centred, never clipped */
+.mapcard .skyrow .pg svg{color:#fff;margin:0;vertical-align:0}
 .mapcard .big > .ico{color:var(--tint)}
 /* stopovers: the card for the friend it rests with, and their line under the message */
 .pick .viab[aria-pressed="true"] span{max-width:7em}
