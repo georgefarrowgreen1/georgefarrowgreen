@@ -113,7 +113,7 @@ const fmtMiles = (km) => Math.round(km * 0.621371).toLocaleString("en-GB") + " m
 const fmtMph = (kmh) => Math.round(kmh * 0.621371).toLocaleString("en-GB") + " mph";
 const fmtBytes = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
 const initials = (n) => String(n).trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-const first = (n) => String(n).trim().split(" ")[0];
+const first = (n) => String(n).trim().split(/\s+/)[0];
 const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
 // A person's picture if they have one (fetched with this phone's sign-in, then kept as a blob URL), else their initials.
 // dot: show a green dot when they're online now
@@ -1059,7 +1059,7 @@ function vChat() {
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${f.id}">I’ve Checked</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
-      <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(f.name)}</span>${I.chev}</span></button>
+      <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
       <div class="nb-right">${nbtn("chatmenu", I.more, "More")}</div>
     </div>
     ${warn}<div class="msgs">${status(f, t)}${body}</div>`;
