@@ -692,3 +692,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .giphy{margin:14px 24px calc(18px + env(safe-area-inset-bottom,0px));font-size:12px;line-height:16px;color:var(--label-3);text-align:center}
 /* a GIF shows whole, at its own shape (they often have words to the edges) */
 .b.pic img.gif{aspect-ratio:auto;height:auto;max-height:380px;object-fit:contain}
+/* a pigeon called back by its sender */
+.lostnote.homing .ico{color:var(--tint)}
+.homing{display:inline-flex;align-items:center;gap:4px;color:var(--label-2)}
+.homing .ico{flex:none;font-size:1.05em}
+.b.me[data-act=flymenu]{cursor:pointer}
+.meta .fl.flock .homing .ico{color:var(--tint)}

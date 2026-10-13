@@ -1,7 +1,7 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, spendSwift, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
@@ -439,6 +439,26 @@ async function sendMessage({ request, env, waitUntil }) {
   return json({ message: msgView(u.id, m, t) });
 }
 
+// Call a pigeon back while it's still in the air: a swift pigeon flies after it.
+// It never arrives, what it carried is deleted, and it's the sender's turn again.
+async function recallMessage({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "recall:" + u.id, 30, 60 * 60e3);
+  const id = String((await body(request)).id || ""), D = await db(env), t = Date.now();
+  const m = UUID_RE.test(id) && await D.prepare("SELECT * FROM pg_msgs WHERE id = ? AND sender = ?").bind(id, u.id).first();
+  if (!m) throw new HttpError(404, "That pigeon isn’t yours to call back.");
+  if (t >= m.deliver_at || (m.lost_at != null && t >= m.lost_at)) throw new HttpError(409, "Too late: that pigeon has already landed.");
+  await spendSwift(D, u, t);
+  // (notified_at: nobody is told it was lost; it wasn't, it came home)
+  const r = await D.prepare(`UPDATE pg_msgs SET lost_at = ?1, recalled = 1, notified_at = ?1, ct = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END
+    WHERE id = ?2 AND sender = ?3 AND deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)`).bind(t, id, u.id).run();
+  if (!r.meta.changes) throw new HttpError(409, "Too late: that pigeon has already landed.");
+  if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${id}`);
+  const fresh = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
+  const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
+  return json({ message: msgView(u.id, fresh, t), me: meView(me, t) });
+}
+
 async function markRead({ request, env }) {
   const u = await requireUser(request, env);
   const other = String((await body(request)).with || "");
@@ -760,7 +780,7 @@ const ROUTES = {
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete,
   "GET sync": sync,
   "POST friends": addFriend, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
-  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead,
+  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,

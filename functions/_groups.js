@@ -9,7 +9,7 @@
 
 import {
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey,
+  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 
@@ -49,19 +49,19 @@ async function groupFor(D, u, gid) {
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
-    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, km: d.km, readAt: d.read_at,
+    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, km: d.km, readAt: d.read_at,
       legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null };
   });
   const live = flock.filter((x) => !x.lost);
   return { ...baseView(m), flock, deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
-    lost: flock.length > 0 && flock.every((x) => x.lost), fromPlace: m.from_place, body: m.body, key: m.sender_key, expiresAt: m.expires_at };
+    lost: flock.length > 0 && flock.every((x) => x.lost), recalled: flock.some((x) => x.recalled), fromPlace: m.from_place, body: m.body, key: m.sender_key, expiresAt: m.expires_at };
 }
 // Someone else's: your pigeon only. Its contents and key once it has landed;
 // where it came from only if the sender is your friend.
 function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
-  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, km: d.km, readAt: d.read_at,
+  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, km: d.km, readAt: d.read_at,
     legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
@@ -71,7 +71,7 @@ const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
   const { results } = await D.prepare(`SELECT * FROM (
-      SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+      SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
   return results;
@@ -101,8 +101,8 @@ async function turnIn(D, uid, gid, t) {
     const any = await D.prepare(`SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?2 WHERE m.group_id = ?1 LIMIT 1`).bind(gid, uid).first();
     return { free: true, state: inbound ? "inbound" : any ? "sill" : "fresh" };
   }
-  const { results: dels } = await D.prepare("SELECT deliver_at, lost_at FROM pg_gdeliv WHERE msg_id = ?").bind(mine.id).all();
-  if (dels.length && dels.every((d) => lostBy(d, t))) return { free: true, state: "lost" };
+  const { results: dels } = await D.prepare("SELECT deliver_at, lost_at, recalled FROM pg_gdeliv WHERE msg_id = ?").bind(mine.id).all();
+  if (dels.length && dels.every((d) => lostBy(d, t))) return { free: true, state: dels.some((d) => d.recalled) ? "recalled" : "lost" };
   const heard = await D.prepare(`SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?2
     WHERE m.group_id = ?1 AND m.sender != ?2 AND m.sent_at > ?3 AND d.deliver_at <= ?4 AND d.lost_at IS NULL LIMIT 1`).bind(gid, uid, mine.sent_at, t).first();
   if (heard) return { free: true, state: "sill" };
@@ -269,6 +269,29 @@ async function send({ request, env, waitUntil }) {
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
 }
 
+// Call back a group message: every pigeon of it still in the air turns for home
+// (ones that already landed stay). If none had landed, its contents go too.
+async function recall({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "recall:" + u.id, 30, 60 * 60e3);
+  const id = String((await body(request)).id || ""), D = await db(env), t = Date.now();
+  const m = UUID_RE.test(id) && await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ? AND sender = ?").bind(id, u.id).first();
+  if (!m) throw new HttpError(404, "That pigeon isn’t yours to call back.");
+  await groupFor(D, u, m.group_id);
+  const flying = await D.prepare("SELECT 1 FROM pg_gdeliv WHERE msg_id = ?1 AND deliver_at > ?2 AND (lost_at IS NULL OR lost_at > ?2) LIMIT 1").bind(id, t).first();
+  if (!flying) throw new HttpError(409, "Too late: those pigeons have already landed.");
+  await spendSwift(D, u, t);
+  const r = await D.prepare(`UPDATE pg_gdeliv SET lost_at = ?1, recalled = 1, notified_at = ?1 WHERE msg_id = ?2 AND deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)`).bind(t, id).run();
+  if (!r.meta.changes) throw new HttpError(409, "Too late: those pigeons have already landed.");
+  const landed = await D.prepare("SELECT 1 FROM pg_gdeliv WHERE msg_id = ? AND deliver_at <= ? AND lost_at IS NULL LIMIT 1").bind(id, t).first();
+  if (!landed) {
+    await D.prepare("UPDATE pg_gmsgs SET body = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END WHERE id = ?").bind(id).run();
+    if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(groupPhotoKey(id));
+  }
+  const fresh = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
+  return json({ message: (await views(D, u.id, [fresh], await friendIds(D, u.id), t))[0] });
+}
+
 async function markRead({ request, env }) {
   const u = await requireUser(request, env);
   const D = await db(env), g = await groupFor(D, u, (await body(request)).id), t = Date.now();
@@ -337,5 +360,5 @@ export async function removeFromGroups(env, uid) {
 
 export const GROUP_ROUTES = {
   "POST groups": createGroup, "POST group-add": addMembers, "POST group-leave": leave, "POST group-mute": mute, "POST group-name": rename,
-  "GET group-messages": listMessages, "POST group-messages": send, "POST group-read": markRead, "GET group-photo": getPhoto,
+  "GET group-messages": listMessages, "POST group-messages": send, "POST group-read": markRead, "GET group-photo": getPhoto, "POST group-recall": recall,
 };

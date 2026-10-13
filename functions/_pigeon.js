@@ -149,6 +149,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN risky INTEGER NOT NULL DEFAULT 0",   // Pigeon Death on
   "ALTER TABLE pg_msgs ADD COLUMN risky INTEGER NOT NULL DEFAULT 0",    // sent with Pigeon Death on
   "ALTER TABLE pg_msgs ADD COLUMN lost_at INTEGER",                     // when it's lost (secret until then); null = arrives
+  "ALTER TABLE pg_msgs ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0", // its sender called it back (lost_at = when)
+  "ALTER TABLE pg_gdeliv ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0",
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -239,7 +241,7 @@ export function flightMs(km, speed = 1) {
 export function turn(me, last, t) {
   if (!last) return { free: true, state: "fresh" };
   // a lost pigeon never arrived, so the turn goes back to whoever sent it
-  if (isLost(last, t)) return last.sender === me ? { free: true, state: "lost" } : { free: false, state: "theirs" };
+  if (isLost(last, t)) return last.sender === me ? { free: true, state: last.recalled ? "recalled" : "lost" } : { free: false, state: "theirs" };
   if (last.sender === me) return { free: false, state: t < last.deliver_at ? "outbound" : "theirs" };
   if (t < last.deliver_at) return { free: false, state: "inbound" };
   return { free: true, state: "sill" };
@@ -255,6 +257,17 @@ export function loft(u, kind, t) {
   return { count, hatched, at, nextAt: count >= p.max ? null : at + (hatched + 1) * p.every };
 }
 export const swiftState = (u, t) => loft(u, "swift", t);
+// Recalling a pigeon sends a swift one after it (atomic, so two at once can't share one).
+export async function spendSwift(D, u, t) {
+  const p = PIGEONS.swift, l = loft(u, "swift", t);
+  if (l.count <= 0) {
+    const ms = l.nextAt - t, h = Math.floor(ms / HOUR), m = Math.max(1, Math.ceil((ms % HOUR) / MIN));
+    throw new HttpError(409, `No swift pigeons left to send after it. The next one hatches in ${h ? `${h}h ${m}m` : `${m} minutes`}.`);
+  }
+  const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
+  const r = await D.prepare("UPDATE pg_users SET swift = ?, swift_at = ? WHERE id = ? AND swift IS ? AND swift_at IS ?").bind(n, at, u.id, u.swift, u.swift_at).run();
+  if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
+}
 
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
@@ -266,6 +279,7 @@ export function msgView(me, m, t) {
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at,
     photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
+    recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at]
     fromPlace: m.from_place, toPlace: m.to_place,

@@ -187,6 +187,7 @@ const I = {
   moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
+  homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
   search: ico(`<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>`),
@@ -932,6 +933,7 @@ const picWord = (p) => (p.p?.m === "image/gif" ? "GIF" : "Photo");
 function preview(f) {
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
+  if (l.recalled) return { html: `<span class="homing">${I.homing} ${l.from === S.me.id ? "You called your pigeon back" : `${esc(first(f.name))} called their pigeon back`}</span>`, at: l.lostAt };
   if (l.lost) return { html: `<span class="lostp">${I.skull} ${l.from === S.me.id ? "Your pigeon was lost on the way" : "A pigeon was lost on its way"}</span>`, at: l.lostAt };
   if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} In flight · <span data-eta="${esc(l.deliverAt)}"></span> to go</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
@@ -941,14 +943,16 @@ function preview(f) {
 }
 // how far a flock has got: landed for how many of how many, and how many lost
 function flockCount(m) {
-  const fl = m.flock || [], landed = fl.filter((x) => !x.flying && !x.lost).length, lost = fl.filter((x) => x.lost).length;
+  const fl = m.flock || [], landed = fl.filter((x) => !x.flying && !x.lost).length, lost = fl.filter((x) => x.lost && !x.recalled).length, recalled = fl.filter((x) => x.recalled).length;
   const next = fl.filter((x) => x.flying).reduce((a, x) => Math.min(a, x.deliverAt), Infinity);
-  return { n: fl.length, landed, lost, next: next === Infinity ? null : next };
+  return { n: fl.length, landed, lost, recalled, next: next === Infinity ? null : next };
 }
 function gpreview(g) {
   const l = g.last;
   if (!l) return { html: `${others(g).map((p) => esc(first(p.name))).join(", ")}`, at: g.createdAt };
   const who = l.from === S.me.id ? "You" : esc(first(member(g, l.from)?.name || "Someone"));
+  if (l.from === S.me.id && l.recalled && !flockCount(l).landed) return { html: `<span class="homing">${I.homing} You called your pigeons back</span>`, at: l.sentAt };
+  if (l.from !== S.me.id && l.recalled) return { html: `<span class="homing">${I.homing} ${who} called their pigeon back</span>`, at: l.lostAt };
   if (l.from === S.me.id && l.flying) { const c = flockCount(l); return { html: `<span class="fl">${pg(kindOf(l))} In flight · ${c.landed} of ${c.n} landed</span>`, at: l.sentAt }; }
   if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${who}’s pigeon is on its way…</span>`, at: l.sentAt };
@@ -1105,6 +1109,7 @@ function status(f, t) {
     case "fresh": return B("sill", "Your pigeon is ready. Say hello.");
     case "sill": return B("sill", "Your turn to send.");
     case "lost": return B("sill", "Your pigeon was lost. Your turn to send.");
+    case "recalled": return B("sill", "You called your pigeon back. Your turn to send.");
     case "inbound": return B("inbound", `${n}’s pigeon is on its way.`);
     case "outbound": return B("", `Your pigeon is flying to ${n}.`);
     case "theirs": return B("", `${n} has the pigeon.`);
@@ -1114,6 +1119,7 @@ function status(f, t) {
 function bubble(f, m, isLastMine, gapTop, g) {
   const mine = m.from === S.me.id;
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
+  if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}">${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
     return `<button class="fly${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="Watch the pigeon on the map">
@@ -1131,17 +1137,18 @@ function bubble(f, m, isLastMine, gapTop, g) {
     else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
-  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
+  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}"${mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : ""}>${text}${prog}</div>`;
   const meta = [];
   if (g && mine) {
-    const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="map" data-id="${esc(m.id)}">${inner}</button>`;
+    const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="${m.flying ? "flymenu" : "map"}" data-id="${esc(m.id)}">${inner}</button>`;
     if (m.flying) meta.push(tap(`${pg(kindOf(m))} ${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, kindOf(m)));
+    else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>`, "done"));
     else if (c.lost === c.n) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
     else if (isLastMine) meta.push(tap(`Landed for all ${c.n}`, "done"));
   }
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
-  else if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
+  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}</button>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
@@ -1154,6 +1161,7 @@ function gstatus(g, t) {
     case "fresh": return B("sill", "Your pigeons are ready. Say hello.");
     case "sill": return B("sill", "Your turn to send.");
     case "lost": return B("sill", "Your pigeons were lost. Your turn to send.");
+    case "recalled": return B("sill", "You called your pigeons back. Your turn to send.");
     case "inbound": return B("inbound", `${esc(first(member(g, inbound?.from)?.name || "Someone"))}’s pigeon is on its way.`);
     case "outbound": return B("", "Your pigeons are flying.");
     case "theirs": return B("", "Waiting for someone else to write.");
@@ -1886,6 +1894,28 @@ async function onClick(e) {
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
+    case "flymenu": {
+      const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
+      const onMap = m.route || m.flock?.some((x) => x.route);
+      return openMenu(t, [...(onMap ? [{ label: "Watch on Map", icon: I.map, act: "map", id }] : []), { label: "Call It Back", icon: I.homing, act: "recallask", id, destructive: true }]);
+    }
+    case "recallask": {
+      const g = group(S.chat), n = S.me.swift || 0;
+      return openActions({ title: g ? "Call your pigeons back?" : "Call your pigeon back?",
+        message: `A swift pigeon flies after ${g ? "them" : "it"} (you have ${n}). ${g ? "Any that haven’t landed turn for home, and whoever already has it keeps it." : "It won’t arrive, and what it carries is deleted."}`,
+        actions: [{ label: "Call It Back", act: "recallgo", id, destructive: true }] });
+    }
+    case "recallgo":
+      try {
+        const g = group(S.chat), r = await api(g ? "group-recall" : "recall", { method: "POST", body: { id } });
+        const list = S.msgs.get(S.chat) || [], i = list.findIndex((x) => x.id === id);
+        if (i >= 0) list[i] = r.message;
+        if (r.message.recalled && !(r.message.flock || []).some((x) => !x.flying && !x.lost)) S.plain.delete(id);
+        if (r.me) S.me = r.me;
+        if (S.sheet?.type === "map") S.sheet = null;
+        render(); toast(g ? "Your pigeons are flying home." : "Your pigeon is flying home."); await sync();
+      } catch (err) { toast(esc(err.message)); }
+      return;
     case "mapzoom": {
       const cv = $(".map", $layer); if (!cv || !cv._m) return;
       if (id === "fit") { S.sheet.view = null; return redrawMap(); }

@@ -205,6 +205,12 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Calling a pigeon back.** Tap your own pigeon while it's in the air → Call It
+Back. A swift pigeon flies after it (so it costs one): it never arrives, what it
+carried is deleted from the server, and it's your turn again. The other person
+sees "George called their pigeon back." In a group, only pigeons still flying
+turn back; anyone who already has it keeps it.
+
 **GIFs.** A GIF from your phone is sent as a GIF (frames, timing and looping
 kept; comments and other extra blocks stripped), end-to-end encrypted like any
 photo, up to 7 MB. The GIF button beside + searches GIPHY: searches and the
