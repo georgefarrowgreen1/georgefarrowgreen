@@ -39,24 +39,30 @@ async function search({ request, env }) {
   return json({ gifs, next: list.length && offset + list.length < Math.min(total || Infinity, 4999) ? offset + list.length : null });
 }
 
-// One GIF, fetched from GIPHY by this server: a small moving preview for the
-// picker ("p"), or the GIF to send ("f", GIPHY's under-2 MB version).
+// One GIF, fetched from GIPHY by this server: a light moving preview for the
+// picker ("p", GIPHY's downsampled 200px WebP, ~60 KB), or the GIF to send
+// ("f": GIPHY's under-2 MB version, else its 200px one). It streams straight
+// through rather than being held in memory, which keeps each request well
+// inside Cloudflare's per-request CPU limit.
+const FILES = { p: ["200w_d.webp", "200w.webp"], f: ["giphy-downsized.gif", "200w.gif"] };
 async function file({ request, env }, id) {
   const u = await requireUser(request, env);
   if (!gifsReady(env)) throw new HttpError(503, "GIF search isn’t set up yet.");
   if (!GIF_ID.test(String(id || ""))) throw new HttpError(404, "No such GIF.");
   await limit(env, "giff:" + u.id, 1500, 60 * 60e3);
-  const full = new URL(request.url).searchParams.get("s") === "f";
-  const name = full ? "giphy-downsized.gif" : "200w.webp";
-  let r;
-  try { r = await fetch(`${env.GIPHY_MEDIA_URL || "https://media.giphy.com"}/media/${id}/${name}`, { cf: { cacheTtl: 86400, cacheEverything: true } }); }
-  catch (_) { throw new HttpError(502, "That GIF didn’t load. Try another."); }
-  const type = (r.headers.get("Content-Type") || "").split(";")[0].trim();
-  if (!r.ok || !["image/gif", "image/webp"].includes(type)) throw new HttpError(502, "That GIF didn’t load. Try another.");
-  if (Number(r.headers.get("Content-Length")) > MAX_GIF) throw new HttpError(413, "That GIF is too big to send.");
-  const bytes = await r.arrayBuffer();
-  if (bytes.byteLength > MAX_GIF) throw new HttpError(413, "That GIF is too big to send.");
-  return new Response(bytes, { headers: { "Content-Type": type, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+  const kind = new URL(request.url).searchParams.get("s") === "f" ? "f" : "p";
+  for (const name of FILES[kind]) {
+    let r;
+    try { r = await fetch(`${env.GIPHY_MEDIA_URL || "https://media.giphy.com"}/media/${id}/${name}`, { cf: { cacheTtl: 86400, cacheEverything: true } }); }
+    catch (_) { continue; }
+    const type = (r.headers.get("Content-Type") || "").split(";")[0].trim(), size = Number(r.headers.get("Content-Length"));
+    if (!r.ok || !r.body || !["image/gif", "image/webp"].includes(type) || size > MAX_GIF) { r.body?.cancel(); continue; }
+    // no size given: count as it passes, and stop anything too big
+    let n = 0;
+    const body = size > 0 ? r.body : r.body.pipeThrough(new TransformStream({ transform(c, out) { n += c.byteLength; if (n > MAX_GIF) out.error(new Error("too big")); else out.enqueue(c); } }));
+    return new Response(body, { headers: { "Content-Type": type, ...(size > 0 ? { "Content-Length": String(size) } : {}), "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+  }
+  throw new HttpError(502, "That GIF didn’t load. Try another.");
 }
 
 export const GIF_ROUTES = { "GET gif-search": search, "GET gif": file };

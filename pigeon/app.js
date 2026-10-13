@@ -89,7 +89,8 @@ async function api(path, { method = "GET", body, form, raw, blob, onProgress } =
   let data = {};
   try { data = await r.json(); } catch (_) {}
   if (r.status === 401 && S.token && !/^(login|passkey-login)/.test(path)) { await forget(); go("welcome"); }
-  if (!r.ok) throw Object.assign(new Error(data.error || "Something went wrong. Try again."), { status: r.status, field: data.field });
+  // a reply with no message of ours came from somewhere in between: say which, so it can be traced
+  if (!r.ok) throw Object.assign(new Error(data.error || `Something went wrong (error ${r.status}). Try again.`), { status: r.status, field: data.field });
   return data;
 }
 
