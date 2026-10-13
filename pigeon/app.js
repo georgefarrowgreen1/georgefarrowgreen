@@ -3,7 +3,7 @@
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
 import { PLACES, nearestPlace, snapToMile } from "./places.js";
-import { COUNTRIES, RANGES } from "./countries.js";
+import { COUNTRIES, RANGES, SEAS } from "./countries.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
@@ -585,6 +585,57 @@ function drawNight(g, W, H, ox, oy, k) {
   }
   return spots;
 }
+/* ---------- where a pigeon is: over which country or sea ---------- */
+// on land? (the coarse coastline, even-odd over every ring)
+function onLand(lon, lat) {
+  const y = mercY(lat), land = world("110m").land;
+  let inside = false;
+  for (const { f, box } of land) for (const o of [0, 360, -360]) {
+    const x = lon + o; if (x < box[0] || x > box[2] || y < box[1] || y > box[3]) continue;
+    for (let i = 0, j = f.length - 2; i < f.length; j = i, i += 2) {
+      const xi = f[i], yi = f[i + 1], xj = f[j], yj = f[j + 1];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+// "France", "the North Atlantic": the nearest country's middle (bigger countries reach further), or the sea it's in
+function overWhere(lon, lat) {
+  lon = ((lon + 540) % 360) - 180;
+  if (onLand(lon, lat)) {
+    let best = null, bd = Infinity;
+    for (const [name, la, lo, tier] of COUNTRIES) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
+    return best && bd < 1500 ? (/^(United|Netherlands|Philippines|Central|Dominican|UAE)/.test(best) ? "the " + best : best) : "land";
+  }
+  const sea = SEAS.find(([, s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e); if (sea) return sea[0];
+  if (lat > 66) return "the Arctic Ocean";
+  if (lat < -60) return "the Southern Ocean";
+  const atl = lon >= (lat > 15 ? -85 : lat > 8 ? -80 : -70) && lon < 20 && !(lat < -35 && lon > 20);
+  if (atl) return lat >= 0 ? "the North Atlantic" : "the South Atlantic";
+  if (lon >= 20 && lon < 147 && lat < 25) return "the Indian Ocean";
+  return lat >= 0 ? "the North Pacific" : "the South Pacific";
+}
+// where the pigeon is now, as [lon, lat]
+function pigeonLL(r) {
+  const pts = routePts(r), t = flightAt(r, r.lost ? r.lostAt : now()).t, i = pts.findIndex((p) => p.t >= t);
+  if (i <= 0) { const p = pts[i < 0 ? pts.length - 1 : 0]; return [p.x, latOf(p.y)]; }
+  const a = pts[i - 1], b = pts[i], f = (t - a.t) / Math.max(1, b.t - a.t);
+  return [a.x + (b.x - a.x) * f, latOf(a.y + (b.y - a.y) * f)];
+}
+// Tap the pigeon: what it's doing right now
+function birdTip(cv, bird) {
+  const tip = $(".birdtip", $layer); if (!tip) return;
+  const r = bird.r, f = flightAt(r, r.lost ? r.lostAt : now()), [lon, lat] = pigeonLL(r), left = r.deliverAt - now();
+  const who = r.from && r.from !== S.me.id ? `${esc(first(friend(r.from)?.name || member(group(r.gid || S.chat), r.from)?.name || "A friend"))}’s pigeon` : `${KIND[kindOf(r)]?.name || "Your"} pigeon`;
+  const state = r.lost ? "Lost on the way" : f.phase === "landed" ? `Landed ${fmtShort(r.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
+  tip.innerHTML = `<b>${pgm(r)}<span>${who}</span></b><span>${state}</span><span>${r.lost ? "Lost" : f.phase === "landed" ? "At" : "Over"} ${esc(overWhere(lon, lat))}</span>${!r.lost && left > 0 ? `<span class="eta"><span data-eta="${esc(r.deliverAt)}">${fmtDur(left)}</span> to go</span>` : ""}`;
+  tip.hidden = false;
+  const w = tip.offsetWidth, h = tip.offsetHeight, [x, y] = bird.at;
+  tip.style.left = `${Math.max(8, Math.min(cv.clientWidth - w - 8, x - w / 2))}px`; tip.style.top = `${y - h - 26 < 8 ? y + 26 : y - h - 26}px`;
+  tip.classList.remove("pop"); void tip.offsetWidth; tip.classList.add("pop");
+  clearTimeout(birdTip.t); birdTip.t = setTimeout(() => { tip.hidden = true; }, 6000);
+}
+
 /* ---------- the wind map: the wind everywhere, as drifting trails ---------- */
 const windOn = () => { try { return localStorage.getItem("inflight-windmap") !== "0"; } catch (_) { return true; } };
 // the wind (km/h east, north) anywhere in the grid, blended from the four points around it
@@ -930,7 +981,7 @@ function mapGestures(cv) {
     return { x: (a[0][0] + a[1][0]) / 2, y: (a[0][1] + a[1][1]) / 2, d: Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) }; };
   let down = null;
   cv.addEventListener("pointerdown", (e) => {
-    const tip = $(".windtip", $layer); if (tip) tip.hidden = true;
+    for (const el of $layer.querySelectorAll(".windtip, .birdtip")) el.hidden = true;
     cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = state();
     down = pts.size === 1 ? { at: performance.now(), p: local(e), moved: 0 } : null;
     if (pts.size === 1) { const t = performance.now(); if (t - lastTap < 300) { const [x, y] = local(e); moveMap(cv, 2, x, y); lastTap = 0; } else lastTap = t; }
@@ -949,7 +1000,11 @@ function mapGestures(cv) {
   const up = (e) => {
     pts.delete(e.pointerId); last = pts.size ? state() : null;
     // a quick tap that didn't move (and isn't the first half of a double tap): the wind there
-    if (down && !pts.size && down.moved < 8 && performance.now() - down.at < 350) { const d = down, tap = lastTap; setTimeout(() => { if (lastTap === tap && tap) windTip(cv, d.p[0], d.p[1]); }, 320); }
+    if (down && !pts.size && down.moved < 8 && performance.now() - down.at < 350) {
+      const d = down, tap = lastTap;
+      const bird = (cv._birds || []).find((b) => Math.hypot(b.at[0] - d.p[0], b.at[1] - d.p[1]) < 30);
+      setTimeout(() => { if (lastTap !== tap || !tap) return; bird ? birdTip(cv, bird) : windTip(cv, d.p[0], d.p[1]); }, 320);
+    }
     down = null;
   };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
@@ -2171,7 +2226,7 @@ function drawSheet(refresh) {
       if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button><button type="button" class="layerbtn" data-act="maplayers" aria-pressed="${windOn()}" aria-label="Wind map">${I.layers}</button></div>
         <div class="windkey glass"${windOn() ? "" : " hidden"}><b>Wind</b><i></i><span><small>0</small><small>10</small><small>20</small><small>30+ mph</small></span></div>
-        <div class="windtip" hidden></div>
+        <div class="windtip" hidden></div><div class="birdtip glass" hidden></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
       return tickMap();

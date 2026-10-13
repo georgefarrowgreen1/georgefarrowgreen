@@ -858,3 +858,9 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .windtip b{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0}
 .windtip small{font-size:10px;font-weight:600;color:var(--label-2);text-transform:uppercase}
 .windtip.pop{animation:pop .35s var(--bouncy)}
+/* tap the pigeon: what it's doing */
+.birdtip{position:absolute;z-index:2;display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-radius:18px;font-size:13px;color:var(--label-2);pointer-events:none;max-width:240px}
+.birdtip b{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;color:var(--label)}
+.birdtip .pg{font-size:14px}
+.birdtip .eta{color:var(--orange);font-weight:600;font-variant-numeric:tabular-nums}
+.birdtip.pop{animation:pop .35s var(--bouncy)}

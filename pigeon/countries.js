@@ -59,3 +59,16 @@ export const RANGES = [
   [1.2, [[22, 47.8], [25, 47.5], [26, 45.6], [23, 45.3]]],                                                  // Carpathians
   [1.2, [[136.5, 36], [137.8, 35.5], [138.5, 36.5]]],                                                       // Japanese Alps
 ];
+// Seas, as boxes (s, n, w, e), smallest first: the first that holds a point at sea names it.
+export const SEAS = [
+  ["the English Channel", 49.2, 51.1, -5.5, 1.8], ["the Irish Sea", 51.8, 55, -6.5, -2.8], ["the Adriatic Sea", 40, 45.8, 12, 19.7],
+  ["the Aegean Sea", 35, 41, 22.5, 28], ["the Persian Gulf", 23.5, 30.5, 47.5, 57], ["the Red Sea", 12.5, 30, 32, 43.5],
+  ["the Bay of Biscay", 43.3, 48.5, -10, -1], ["the North Sea", 51, 61, -4, 9], ["the Baltic Sea", 53.5, 66, 9.5, 30.5],
+  ["the Black Sea", 40.8, 47, 27.3, 42], ["the Caspian Sea", 36.5, 47.2, 46.5, 54.8], ["the Mediterranean", 30, 46, -6, 36.5],
+  ["the Gulf of Mexico", 18, 31, -98, -80.5], ["the Caribbean", 9, 22, -88, -59.5], ["Hudson Bay", 51, 64, -95, -76],
+  ["the Labrador Sea", 52, 64, -64, -44], ["the Norwegian Sea", 61, 72, -5, 16], ["the Barents Sea", 68, 81, 16, 60],
+  ["the Gulf of Alaska", 50, 61, -158, -132], ["the Bering Sea", 51.5, 66, 162, 180], ["the Bering Sea", 51.5, 66, -180, -157],
+  ["the Sea of Okhotsk", 43, 62, 135, 163], ["the Sea of Japan", 33, 52, 127, 142], ["the East China Sea", 23, 33, 117, 131],
+  ["the South China Sea", 0, 23, 99, 121], ["the Bay of Bengal", 5, 23, 79.5, 95], ["the Arabian Sea", 5, 25, 50, 77],
+  ["the Coral Sea", -30, -9, 142, 165], ["the Tasman Sea", -47, -30, 147, 175],
+];
