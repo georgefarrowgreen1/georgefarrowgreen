@@ -368,11 +368,12 @@ function mapFrame(cv, m, cardH) {
 }
 function drawMap(cv, m, cardH) {
   cv._m = m; cv._cardH = cardH;
+  if (mapMoving() && cv._base) return fastFrame(cv);        // fingers on it: the quick version; the full one follows
   $(".mapctl [data-act=mapglobe]", $layer)?.setAttribute("aria-pressed", String(globeOn(m)));
   if (globeOn(m)) return drawGlobe(cv, m, cardH);
   const { W, H, sy0, pts, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
   const { cx, cy, k } = view;
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = window.devicePixelRatio || 1; cv._dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const col = (n) => cssVar(cv, n);
@@ -505,6 +506,7 @@ function drawMap(cv, m, cardH) {
   base.getContext("2d").drawImage(cv, 0, 0);
   cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   // the wind it met, for the streaks: each route still being flown, measured along its length
+  cv._snap = { ox, oy, k, globe: false }; cv._seaCol = col("--sea");
   cv._fwd = (lon, lat) => { const L = lon + 360 * Math.round((cx - lon) / 360); return [X(L), Y(mercY(lat))]; };
   cv._inv = (x, y) => [(x - ox) / k, latOf((oy - y) / k)];
   cv._kArc = (lat) => k / Math.max(0.05, Math.cos(lat * Math.PI / 180));        // pixels per degree of arc here
@@ -776,14 +778,21 @@ const birdAt = (w) => {
 const STILL = matchMedia("(prefers-reduced-motion: reduce)");
 // Draw the pigeons over the saved map: flapping in cruise, faster taking off
 // and landing, folded once landed; tilted the way they're heading.
-function drawBirds(cv, ts) {
-  const g = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
+function drawBirds(cv, ts, xf) {
+  const g = cv.getContext("2d"), dpr = cv._dpr || window.devicePixelRatio || 1;
   if (!cv._base || !cv._birds) return;
-  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._base, 0, 0);
-  if (windOn() && S.windGrid && stepWind(cv, ts)) g.drawImage(cv._trail, 0, 0);
+  if (xf) {
+    // the last full picture, moved and scaled to where the map is now
+    g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = cv._seaCol || "#000"; g.fillRect(0, 0, cv.width, cv.height);
+    g.imageSmoothingEnabled = true; g.setTransform(xf.a, 0, 0, xf.a, xf.bx * dpr, xf.by * dpr); g.drawImage(cv._base, 0, 0);
+  } else {
+    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._base, 0, 0);
+    if (windOn() && S.windGrid && !mapMoving() && stepWind(cv, ts)) g.drawImage(cv._trail, 0, 0);     // (the wind waits while the map moves)
+  }
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawWind(g, cv, STILL.matches ? 0 : ts);
-  for (const { r, at: [px, py], dx, dy, phase, color } of cv._birds) {
+  if (!xf) drawWind(g, cv, STILL.matches ? 0 : ts);
+  for (const { r, at: [px0, py0], dx, dy, phase, color } of cv._birds) {
+    const px = xf ? xf.a * px0 + xf.bx : px0, py = xf ? xf.a * py0 + xf.by : py0;
     const flying = phase === "up" || phase === "cruise" || phase === "down", hz = phase === "cruise" ? 2.2 : 5;
     const w = !flying ? 0.45 : STILL.matches ? 1 : 0.62 + 0.38 * Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997));
     const bob = flying && !STILL.matches ? Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997) - 1.2) * 1.2 : 0;
@@ -818,11 +827,12 @@ function moveGlobe(cv, z, dx, dy) {
   // zooming in leans towards the route itself (the fit looks at it from a little below)
   const lean = z > 1 && s2 > v.s ? 0.6 * (1 - v.s / s2) : 0, dLon = ((fit.lon - v.lon + 540) % 360) - 180;
   S.sheet.gview = { lon: v.lon - (dx / R) * R2D + dLon * lean, lat: Math.max(-80, Math.min(80, v.lat + (dy / R) * R2D + (fit.mid - v.lat) * lean)), s: s2 };
-  redrawMap();
+  nudgeMap(cv);
 }
-function drawGlobe(cv, m, cardH) {
+function drawGlobe(cv, m, cardH, fast) {
   const { W, H, cx, cy, R, v } = globeFrame(cv, m, cardH); if (!W || !H) return;
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = fast ? Math.min(1, window.devicePixelRatio || 1) : window.devicePixelRatio || 1;     // fewer pixels while it turns
+  cv._dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const col = (n) => cssVar(cv, n), rad = Math.PI / 180;
@@ -852,7 +862,7 @@ function drawGlobe(cv, m, cardH) {
   for (let lo = -180; lo < 180; lo += 30) curve(Array.from({ length: 61 }, (_, i) => [lo, -90 + i * 3]));
   for (let la = -60; la <= 60; la += 30) curve(Array.from({ length: 121 }, (_, i) => [-180 + i * 3, la]));
   // land (finer once it's big), with the coast's shallow water, and the mountains
-  const want = R > 700 ? "50m" : "110m", data = world(want) || world("110m");
+  const want = R > 700 && !fast ? "50m" : "110m", data = world(want) || world("110m");
   g.beginPath();
   for (const sh of data.land) {
     const f = sh.f, lat = sh.lat || (sh.lat = Float32Array.from({ length: f.length / 2 }, (_, i) => latOf(f[i * 2 + 1])));
@@ -863,14 +873,17 @@ function drawGlobe(cv, m, cardH) {
     P.forEach(([x, y], i) => { if (i && Math.abs(x - lx) + Math.abs(y - ly) < 0.7 && i < P.length - 1) return; i ? g.lineTo(x, y) : g.moveTo(x, y); lx = x; ly = y; });
     g.closePath();
   }
-  g.save(); g.lineJoin = "round"; g.strokeStyle = col("--shelf");
-  for (const [w, a] of [[Math.min(16, 3 + k * 0.9), 0.5], [Math.min(8, 2 + k * 0.45), 1]]) { g.globalAlpha = a; g.lineWidth = w; g.stroke(); }
-  g.restore();
+  if (!fast) {
+    g.save(); g.lineJoin = "round"; g.strokeStyle = col("--shelf");
+    for (const [w, a] of [[Math.min(16, 3 + k * 0.9), 0.5], [Math.min(8, 2 + k * 0.45), 1]]) { g.globalAlpha = a; g.lineWidth = w; g.stroke(); }
+    g.restore();
+  }
   g.fillStyle = col("--land"); g.fill("evenodd");
-  g.save(); g.clip("evenodd"); drawRelief(g, [pt], k, col("--relief-hi"), col("--relief-lo")); g.restore();
+  if (!fast) { g.save(); g.clip("evenodd"); drawRelief(g, [pt], k, col("--relief-hi"), col("--relief-lo")); g.restore(); }
   g.strokeStyle = col("--land-edge"); g.lineWidth = 0.8; g.stroke();
-  // night, on the sphere
+  // night, on the sphere (left out while it's turning)
   const sun = sunAt(), sd = Math.sin(sun.lat * rad), sdc = Math.cos(sun.lat * rad);
+  if (!fast) {
   const x0 = Math.floor(cx - R), y0 = Math.floor(cy - R), cw = Math.ceil((2 * R) / NIGHT_STEP) + 1;
   const off = drawGlobe.c || (drawGlobe.c = document.createElement("canvas"));
   if (off.width !== cw || off.height !== cw) { off.width = cw; off.height = cw; }
@@ -885,6 +898,7 @@ function drawGlobe(cv, m, cardH) {
     px[o] = nr; px[o + 1] = ng; px[o + 2] = nb; px[o + 3] = Math.round(255 * top * n);
   }
   oc.putImageData(img, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(off, x0, y0, cw * NIGHT_STEP, cw * NIGHT_STEP);
+  }
   // light from the top left, shadow at the rim: it reads as a ball
   const shade = g.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
   shade.addColorStop(0, "rgba(255,255,255,.10)"); shade.addColorStop(0.7, "rgba(255,255,255,0)"); shade.addColorStop(1, "rgba(0,0,0,.18)");
@@ -931,7 +945,7 @@ function drawGlobe(cv, m, cardH) {
     const w = g.measureText(name).width, ly = y + ((P[Math.max(0, j)] || P[i])[1] <= y ? 28 : -28), lx = Math.min(W - 8 - w, Math.max(8, x - w / 2)), box = [lx - 3, ly - 10, lx + w + 3, ly + 10];
     if (!free(box)) continue; taken.push(box); text(name, lx, ly, col("--label"));
   }
-  if (k >= 2.2) {
+  if (k >= 2.2 && !fast) {
     g.save(); g.font = "600 10px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = col("--label-3");
     const tier = k >= 9 ? 3 : k >= 4.5 ? 2 : 1;
     for (const [name, lat, lon, t] of COUNTRIES) {
@@ -941,7 +955,7 @@ function drawGlobe(cv, m, cardH) {
     }
     g.restore();
   }
-  if (k >= 4) {
+  if (k >= 4 && !fast) {
     g.font = "500 11px -apple-system, system-ui, sans-serif"; const c2 = col("--label-2");
     for (const [name, lat, lon] of PLACES) {
       if (done.has(name)) continue; const p = pt(lon, lat); if (!p || Math.hypot(p[0] - cx, p[1] - cy) > R * 0.95) continue;
@@ -954,6 +968,7 @@ function drawGlobe(cv, m, cardH) {
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
   cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  cv._snap = { globe: true, lon: lon0, lat: lat0, R }; cv._seaCol = col("--bg") || col("--sea");
   cv._fwd = (lon, lat) => { const p = proj(lon, lat); return p[2] ? [p[0], p[1]] : null; };
   cv._inv = (x, y) => {
     const a = (x - cx) / R, b = -(y - cy) / R, r2 = a * a + b * b; if (r2 > 1) return null;
@@ -962,7 +977,7 @@ function drawGlobe(cv, m, cardH) {
   cv._kArc = () => R * rad;
   cv._viewKey = `g${lon0.toFixed(3)},${lat0.toFixed(3)},${R.toFixed(2)},${W},${H}`;
   cv._area = (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= R * R * 0.995 && x >= 0 && x <= W && y >= 0 && y <= H;
-  windEnsure(cv);
+  if (!fast) windEnsure(cv);
   cv._winds = windOn() ? [] : tracks.filter(({ r, up }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt && up.every(Boolean)).map(({ r, P }) => {
     const cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
     return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
@@ -970,6 +985,46 @@ function drawGlobe(cv, m, cardH) {
   cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
   drawBirds(cv, performance.now());
   $(".mapctl", $layer)?.classList.toggle("moved", !!S.sheet?.gview);
+}
+/* ---------- moving the map smoothly ---------- */
+let mapMotionUntil = 0, mapSettle = 0, mapFastReq = 0, mapGlide = 0;
+const mapMoving = () => performance.now() < mapMotionUntil;
+// Something moved it: quick frames now, the full map once it's been still a moment.
+function nudgeMap(cv) {
+  mapMotionUntil = performance.now() + 140;
+  if (!mapFastReq) mapFastReq = requestAnimationFrame(() => { mapFastReq = 0; if (S.sheet?.type === "map") fastFrame(cv); });
+  clearTimeout(mapSettle);
+  mapSettle = setTimeout(function settle() { if (mapMoving()) { mapSettle = setTimeout(settle, 60); return; } redrawMap(); }, 150);
+}
+function fastFrame(cv) {
+  if (!cv._base || !cv._m) return;
+  if (globeOn(cv._m)) return drawGlobe(cv, cv._m, cv._cardH, true);
+  if (cv._snap?.globe) return redrawMapNow(cv);
+  const { W, sy0, view } = mapFrame(cv, cv._m, cv._cardH), ox = W / 2 - view.cx * view.k, oy = sy0 + view.cy * view.k, s0 = cv._snap;
+  const a = view.k / s0.k;
+  if (a > 3 || a < 0.33) return redrawMapNow(cv);           // too far from the last full picture: draw it again
+  drawBirds(cv, performance.now(), { a, bx: ox - s0.ox * a, by: oy - s0.oy * a });
+}
+function redrawMapNow(cv) { const until = mapMotionUntil; mapMotionUntil = 0; drawMap(cv, cv._m, cv._cardH); mapMotionUntil = until; }
+// Glide: run step(e, prev) with e easing 0 → 1 over ms (zoom buttons, double tap, fit, flicks)
+function glideMap(step, ms = 300) {
+  cancelAnimationFrame(mapGlide);
+  if (STILL.matches) { step(1, 0); return; }
+  const t0 = performance.now(); let prev = 0;
+  const run = (t) => { const p = Math.min(1, (t - t0) / ms), e = 1 - (1 - p) ** 3; step(e, prev); prev = e; if (p < 1) mapGlide = requestAnimationFrame(run); };
+  mapGlide = requestAnimationFrame(run);
+}
+function zoomMapBy(cv, factor, sx, sy) { const L = Math.log(factor); glideMap((e, prev) => moveMap(cv, Math.exp(L * (e - prev)), sx, sy), 280); }
+// Back to the whole route, gliding there
+function fitMap(cv) {
+  if (globeOn(cv._m)) {
+    const { v, fit } = globeFrame(cv, cv._m, cv._cardH); if (!S.sheet.gview) return;
+    const dLon = ((fit.lon - v.lon + 540) % 360) - 180;
+    glideMap((e) => { S.sheet.gview = e >= 1 ? null : { lon: v.lon + dLon * e, lat: v.lat + (fit.lat - v.lat) * e, s: Math.exp(Math.log(v.s) + (Math.log(fit.s) - Math.log(v.s)) * e) }; e >= 1 ? redrawMap() : nudgeMap(cv); }, 420);
+    return;
+  }
+  const { view, fit } = mapFrame(cv, cv._m, cv._cardH); if (!S.sheet.view) return;
+  glideMap((e) => { S.sheet.view = e >= 1 ? null : { cx: view.cx + (fit.cx - view.cx) * e, cy: view.cy + (fit.cy - view.cy) * e, k: Math.exp(Math.log(view.k) + (Math.log(fit.k) - Math.log(view.k)) * e) }; e >= 1 ? redrawMap() : nudgeMap(cv); }, 420);
 }
 let mapFrameReq = 0;
 function redrawMap() {
@@ -989,44 +1044,66 @@ function moveMap(cv, z, sx, sy, dx = 0, dy = 0) {
   cy = Math.max(-ymax, Math.min(ymax, cy));
   S.sheet.view = { cx, cy, k };
   if (Math.abs(k - fit.k) < 1e-6 && Math.abs(cx - fit.cx) < 1e-6 && Math.abs(cy - fit.cy) < 1e-6) S.sheet.view = null;
-  redrawMap();
+  nudgeMap(cv);
 }
 // Drag to pan, pinch or scroll to zoom, double-tap to zoom in.
 function mapGestures(cv) {
-  const pts = new Map(); let last = null, lastTap = 0;
+  const pts = new Map(); let last = null, lastTap = 0, trail = [];
   const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   const state = () => { const a = [...pts.values()]; if (a.length === 1) return { x: a[0][0], y: a[0][1], d: 0 };
     return { x: (a[0][0] + a[1][0]) / 2, y: (a[0][1] + a[1][1]) / 2, d: Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) }; };
   let down = null;
   cv.addEventListener("pointerdown", (e) => {
+    cancelAnimationFrame(mapGlide);                                // a finger stops a glide or a flick
     for (const el of $layer.querySelectorAll(".windtip, .birdtip")) el.hidden = true;
-    cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = state();
+    cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = state(); trail = [];
     down = pts.size === 1 ? { at: performance.now(), p: local(e), moved: 0 } : null;
-    if (pts.size === 1) { const t = performance.now(); if (t - lastTap < 300) { const [x, y] = local(e); moveMap(cv, 2, x, y); lastTap = 0; } else lastTap = t; }
+    if (pts.size === 1) { const t = performance.now(); if (t - lastTap < 280) { const [x, y] = local(e); zoomMapBy(cv, 2, x, y); lastTap = 0; } else lastTap = t; }
   });
   cv.addEventListener("pointermove", (e) => {
     if (!pts.has(e.pointerId)) return;
-    pts.set(e.pointerId, local(e)); const s = state();
+    // every point the finger passed through since the last frame (smoother on fast drags)
+    const evs = e.getCoalescedEvents?.(), r = cv.getBoundingClientRect(), p = evs?.length ? evs[evs.length - 1] : e;
+    pts.set(e.pointerId, [p.clientX - r.left, p.clientY - r.top]); const s = state();
     if (last && pts.size <= 2) {
       const z = pts.size === 2 && last.d && s.d ? s.d / last.d : 1;
       moveMap(cv, z, last.x, last.y, s.x - last.x, s.y - last.y);
       if (Math.abs(s.x - last.x) + Math.abs(s.y - last.y) > 6) lastTap = 0;
       if (down) down.moved += Math.abs(s.x - last.x) + Math.abs(s.y - last.y);
+      if (pts.size === 1) { const t = e.timeStamp; trail.push([t, s.x, s.y]); while (trail.length > 2 && t - trail[0][0] > 90) trail.shift(); } else trail = [];
     }
     last = s;
   });
   const up = (e) => {
     pts.delete(e.pointerId); last = pts.size ? state() : null;
-    // a quick tap that didn't move (and isn't the first half of a double tap): the wind there
-    if (down && !pts.size && down.moved < 8 && performance.now() - down.at < 350) {
+    if (pts.size) { trail = []; return; }
+    // a flick: it carries on, slowing down
+    const t = e.timeStamp, [t0, x0, y0] = trail[0] || [], [t1, x1, y1] = trail[trail.length - 1] || [];
+    if (trail.length > 1 && t - t1 < 100 && t1 > t0) {
+      let vx = (x1 - x0) / (t1 - t0), vy = (y1 - y0) / (t1 - t0);
+      if (Math.hypot(vx, vy) > 0.25 && !STILL.matches) {
+        let prevT = 0; cancelAnimationFrame(mapGlide);
+        const run = (now2) => {
+          const dt = prevT ? Math.min(40, Math.max(0, now2 - prevT)) : 16; prevT = now2;
+          const f = Math.exp(-dt / 280); vx *= f; vy *= f;
+          moveMap(cv, 1, 0, 0, vx * dt, vy * dt);
+          if (Math.hypot(vx, vy) > 0.02) mapGlide = requestAnimationFrame(run);
+        };
+        mapGlide = requestAnimationFrame(run);
+      }
+    }
+    trail = [];
+    // a quick tap that didn't move (and isn't the first half of a double tap): the pigeon, or the wind there
+    if (down && down.moved < 8 && performance.now() - down.at < 300) {
       const d = down, tap = lastTap;
       const bird = (cv._birds || []).find((b) => Math.hypot(b.at[0] - d.p[0], b.at[1] - d.p[1]) < 30);
-      setTimeout(() => { if (lastTap !== tap || !tap) return; bird ? birdTip(cv, bird) : windTip(cv, d.p[0], d.p[1]); }, 320);
+      setTimeout(() => { if (lastTap !== tap || !tap) return; bird ? birdTip(cv, bird) : windTip(cv, d.p[0], d.p[1]); }, 260);
     }
     down = null;
   };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-  cv.addEventListener("wheel", (e) => { e.preventDefault(); const [x, y] = local(e); moveMap(cv, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), x, y); }, { passive: false });
+  // trackpads and mice: pinch (ctrl + wheel) or scroll to zoom, smoothly
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); cancelAnimationFrame(mapGlide); const [x, y] = local(e); moveMap(cv, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), x, y); }, { passive: false });
 }
 
 /* ============================================================
@@ -2624,7 +2701,8 @@ function smoothMap(m) {
     mapAnimAt = ts;
     if (moving) return tickMap();       // it visibly moves: redraw it all (tickMap calls back here)
     if (!cv?._birds?.some((b) => b.phase !== "landed" && b.phase !== "lost") && !(windOn() && S.windGrid)) return;
-    drawBirds(cv, ts); mapAnim = requestAnimationFrame(step);   // just the wings
+    if (mapMoving()) fastFrame(cv); else drawBirds(cv, ts);
+    mapAnim = requestAnimationFrame(step);   // just the wings
   });
 }
 function setProgress(el) {
@@ -2804,8 +2882,8 @@ async function onClick(e) {
       return;
     case "mapzoom": {
       const cv = $(".map", $layer); if (!cv || !cv._m) return;
-      if (id === "fit") { S.sheet.view = null; S.sheet.gview = null; return redrawMap(); }
-      return moveMap(cv, id === "in" ? 2 : 0.5, cv.clientWidth / 2, mapFrame(cv, cv._m, cv._cardH).sy0);
+      if (id === "fit") return fitMap(cv);
+      return zoomMapBy(cv, id === "in" ? 2 : 0.5, cv.clientWidth / 2, mapFrame(cv, cv._m, cv._cardH).sy0);
     }
     case "view": S.sheet = { type: "view", id }; return renderSheet();
     case "maplayers": {
