@@ -30,6 +30,7 @@ const S = {
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
+  reacts: new Map(), replyTo: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -191,6 +192,7 @@ const I = {
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
+  reply: ico(`<path d="M10 8 5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
@@ -727,7 +729,8 @@ async function loadGroup(gid) {
   const g = group(gid); if (!g) return;
   const d = await api("group-messages?id=" + encodeURIComponent(gid));
   S.skew = d.now - Date.now();
-  S.msgs.set(gid, d.messages); S.turns.set(gid, d.turn);
+  S.msgs.set(gid, d.messages); S.turns.set(gid, d.turn); S.reacts.set(gid, d.reacts || []);
+  for (const r of d.reacts || []) await decryptGroup(g, r);
   for (const m of d.messages) {
     await decryptGroup(g, m);
     const p = S.plain.get(m.id);
@@ -744,7 +747,8 @@ async function loadChat(fid) {
   if (group(fid)) return loadGroup(fid);
   const d = await api("messages?with=" + encodeURIComponent(fid));
   S.skew = d.now - Date.now();
-  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn);
+  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []);
+  for (const r of d.reacts || []) await decrypt(fid, r);
   for (const m of d.messages) {
     await decrypt(fid, m);
     const p = S.plain.get(m.id);
@@ -801,6 +805,7 @@ function mount() {
       <div class="pick" hidden role="group" aria-label="Which pigeon"></div>
       <div class="note" hidden></div>
       <div class="attach" hidden></div>
+      <div class="replybar" hidden></div>
       <div class="crow">
         <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
         <button type="button" class="plus gifbtn" data-act="gifs" aria-label="Find a GIF" hidden>GIF</button>
@@ -1132,7 +1137,10 @@ function bubble(f, m, isLastMine, gapTop, g) {
       <span class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></span></button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
+  const quote = p.q ? quoteHtml(p.q, g) : "";
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
+  // tap: your pigeon in the air → map or call it back; anything that's arrived → react or reply
+  const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}"` : "";
   const prog = mine && m.flying ? `<div class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></div>` : "";
   let html;
   if (p.p) {
@@ -1140,8 +1148,9 @@ function bubble(f, m, isLastMine, gapTop, g) {
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
     else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
-    html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
-  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}"${mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : ""}>${text}${prog}</div>`;
+    html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || prog || quote ? `<span class="ptxt">${quote}${text}${prog}</span>` : ""}</div>`;
+  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${prog}</div>`;
+  html += reactsHtml(m, mine);
   const meta = [];
   if (g && mine) {
     const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="${m.flying ? "flymenu" : "map"}" data-id="${esc(m.id)}">${inner}</button>`;
@@ -1171,6 +1180,52 @@ function gstatus(g, t) {
     case "theirs": return B("", "Waiting for someone else to write.");
     default: return "";
   }
+}
+/* ---------- replies and reactions ---------- */
+const REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
+const chatName = (id, g) => (id === S.me.id ? "You" : first((g ? member(g, id) : friend(id))?.name || "Someone"));
+function quoteHtml(q, g) {
+  return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
+}
+// The reactions on a message: each once it has landed (yours straight away)
+function reactsHtml(m, mine) {
+  const list = (S.reacts.get(S.chat) || []).filter((r) => r.msg === m.id && (r.from === S.me.id || !r.flying) && S.plain.get(r.id)?.r);
+  if (!list.length) return "";
+  const by = new Map();
+  for (const r of list) { const e = S.plain.get(r.id).r, x = by.get(e) || { n: 0, me: false, flying: false }; x.n++; if (r.from === S.me.id) { x.me = true; x.flying = r.flying; } by.set(e, x); }
+  return `<div class="reacts${mine ? " me" : ""}">${[...by].map(([e, x]) => `<span class="rpill${x.me ? " mine" : ""}${x.flying ? " flying" : ""}" title="${x.flying ? "On its way" : ""}">${esc(e)}${x.n > 1 ? `<b>${x.n}</b>` : ""}</span>`).join("")}</div>`;
+}
+function openReactMenu(anchor, id) {
+  const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
+  const cur = mineNow && S.plain.get(mineNow.id)?.r;
+  openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id }]);
+  $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="group" aria-label="React">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
+}
+async function sendReact(id, e) {
+  const g = group(S.chat), chat = S.chat, list = S.reacts.get(chat) || [];
+  const mineNow = list.find((r) => r.msg === id && r.from === S.me.id);
+  try {
+    if (mineNow && S.plain.get(mineNow.id)?.r === e) {          // the same one again takes it back
+      await api("react", { method: "DELETE", body: { msg: id } });
+      S.reacts.set(chat, list.filter((r) => r !== mineNow)); return render();
+    }
+    const m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m) return;
+    const rid = uuid(), payload = { r: e };
+    let body;
+    if (g) {
+      const { body: sealed, key } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id }, payload);
+      const keys = {};
+      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id: rid, from: S.me.id, to: p.id }, { k: key });
+      body = { id: rid, msg: id, group: true, body: sealed, keys };
+    } else {
+      const to = m.from === S.me.id ? m.to : m.from;
+      body = { id: rid, msg: id, ct: await E2E.seal(await base(chat), { id: rid, from: S.me.id, to }, payload) };
+    }
+    const r = await api("react", { method: "POST", body });
+    S.plain.set(rid, payload);
+    S.reacts.set(chat, [...list.filter((x) => x !== mineNow), r.react]);
+    render();
+  } catch (err) { toast(esc(err.message)); }
 }
 function vGroupChat(g) {
   const msgs = S.msgs.get(g.id);
@@ -1401,6 +1456,13 @@ function renderCompose() {
   btn.disabled = blocked || !has || S.busy;
   $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
   $(".gifbtn", $compose).hidden = !S.gifsOn;
+  const rb = $(".replybar", $compose), rt = S.replyTo && S.replyTo.chat === S.chat ? S.replyTo : null;
+  rb.hidden = !rt;
+  if (rt && rb.dataset.for !== rt.id) {
+    rb.dataset.for = rt.id;
+    rb.innerHTML = `${I.reply}<span class="rtext"><b>Replying to ${esc(chatName(rt.from, g))}</b><span>${rt.p ? (rt.p === "gif" ? "GIF" : "Photo") + (rt.t ? ": " : "") : ""}${esc(rt.t)}</span></span><button type="button" data-act="unreply" aria-label="Cancel reply">${I.x}</button>`;
+  }
+  if (!rt && rb.dataset.for) { rb.dataset.for = ""; rb.innerHTML = ""; }
   const a = $(".attach", $compose);
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
@@ -1899,6 +1961,19 @@ async function onClick(e) {
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
+    case "msgmenu": return openReactMenu(t, id);
+    case "react": return sendReact(id, t.dataset.e);
+    case "reply": {
+      const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id), p = m && S.plain.get(id); if (!p) return;
+      S.replyTo = { chat: S.chat, id, from: m.from, t: String(p.t || "").replace(/\s+/g, " ").slice(0, 90), p: p.p ? (p.p.m === "image/gif" ? "gif" : "photo") : "" };
+      renderCompose(); $ta.focus(); return;
+    }
+    case "unreply": S.replyTo = null; return renderCompose();
+    case "jumpto": {
+      const el = $(`[data-mid="${CSS.escape(id)}"]`, $view); if (!el) return;
+      el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+      el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return;
+    }
     case "flymenu": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
       const onMap = m.route || m.flock?.some((x) => x.route);
@@ -2395,6 +2470,8 @@ async function send() {
   try {
     const id = uuid(), to = S.chat;
     const payload = { t: text };
+    const rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null;
+    if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
     let blob = null;
     if (S.attach) {
       showUpload("seal");
@@ -2423,6 +2500,7 @@ async function send() {
       upAnim?.stop(); upAnim = null;
     } else r = await api(path, { method: "POST", body: meta });
     S.pick = null;                    // next time, back to the default
+    if (rt) S.replyTo = null;
     S.plain.set(id, payload);
     if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
     $ta.value = ""; fitTa(); S.stick = true;

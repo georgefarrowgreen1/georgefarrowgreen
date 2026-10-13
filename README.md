@@ -205,6 +205,14 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Replies and reactions.** Tap a message that has landed: react (❤️ 👍 😂 😮 😢
+🙏) or Reply. A reply carries a quote of the original, sealed inside it; tap the
+quote to jump to it. A reaction flies back on a tiny pigeon at rocket speed:
+free, and it never uses anyone's turn. Reactions are sealed too (one to one with
+the pair key; in a group sealed once with a key for each member), so the server
+can't see which one it was. One per person per message: another replaces it,
+the same again takes it back. Code: `functions/_reacts.js`, table `pg_reacts`.
+
 **Weather.** At take-off the server asks Open-Meteo (free, no key) for the wind
 at five points along each route (`functions/_weather.js`). What blows the
 pigeon's way changes its cruising speed (80 km/h plus the tailwind, or minus a

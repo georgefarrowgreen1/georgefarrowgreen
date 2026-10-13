@@ -13,6 +13,7 @@ import {
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
+import { reactsFor, dropReacts } from "./_reacts.js";
 
 export const GROUP_MAX = 12;
 const MAX_BODY = 70000, MAX_PHOTO = 8 * 1024 * 1024;
@@ -178,6 +179,7 @@ export async function leaveGroup(env, uid, gid) {
   if (await D.prepare("SELECT 1 FROM pg_group_members WHERE group_id = ?").bind(gid).first()) return;
   const { results } = await D.prepare("SELECT id FROM pg_gmsgs WHERE group_id = ? AND photo = 1").bind(gid).all();
   if (env.BIO_R2) for (let i = 0; i < results.length; i += 900) await env.BIO_R2.delete(results.slice(i, i + 900).map((r) => groupPhotoKey(r.id)));
+  await dropReacts(env, { group: gid });
   await D.batch([
     D.prepare("DELETE FROM pg_gdeliv WHERE msg_id IN (SELECT id FROM pg_gmsgs WHERE group_id = ?)").bind(gid),
     D.prepare("DELETE FROM pg_gmsgs WHERE group_id = ?").bind(gid),
@@ -208,7 +210,7 @@ async function listMessages({ request, env }) {
   const D = await db(env), g = await groupFor(D, u, new URL(request.url).searchParams.get("id")), t = Date.now();
   const friends = await friendIds(D, u.id);
   const rows = await visible(D, u.id, g.id);
-  return json({ now: t, messages: await views(D, u.id, rows, friends, t), turn: await turnIn(D, u.id, g.id, t) });
+  return json({ now: t, messages: await views(D, u.id, rows, friends, t), reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
 }
 
 async function send({ request, env, waitUntil }) {

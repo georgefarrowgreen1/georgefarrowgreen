@@ -9,6 +9,7 @@ import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor } from "../../_weather.js";
+import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -206,6 +207,7 @@ async function getAvatar({ request, env }, id) {
 
 // Shared by "Delete my account" and the admin's delete.
 async function removeAccount(env, id) {
+  await dropReacts(env, { user: id });
   await removeFromGroups(env, id);
   const D = await db(env);
   if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));
@@ -376,7 +378,7 @@ async function listMessages({ request, env }) {
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
   const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
     ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other).all();
-  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -791,7 +793,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES,
 };
 
 export async function onRequest(ctx) {

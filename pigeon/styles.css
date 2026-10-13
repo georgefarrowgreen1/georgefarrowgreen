@@ -703,3 +703,33 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mapcard .wind .ico{font-size:15px}
 .mapcard .wind.tail{color:var(--green)}
 .mapcard .wind.head{color:var(--orange)}
+
+/* ---------- replies and reactions ---------- */
+.b[data-act=msgmenu]{cursor:pointer}
+.b.flash{animation:flash 1.1s var(--snappy)}
+@keyframes flash{30%{transform:scale(1.04);filter:brightness(1.12)}}
+/* the quoted message, at the top of a reply */
+.quote{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;margin:1px 0 6px;padding:6px 10px;border:0;border-left:3px solid var(--tint);border-radius:10px;background:var(--fill);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.quote b{font-size:12px;font-weight:600;color:var(--tint)}
+.quote span{font-size:14px;line-height:18px;opacity:.85;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.b.me .quote{background:rgba(255,255,255,.18);border-left-color:#fff}
+.b.me .quote b{color:#fff}
+/* reactions, tucked under the message they're on */
+.reacts{display:flex;flex-wrap:wrap;gap:4px;margin:-4px 10px 2px;align-self:flex-start;position:relative;z-index:1}
+.reacts.me{align-self:flex-end}
+.rpill{display:inline-flex;align-items:center;gap:3px;min-height:24px;padding:1px 8px;border-radius:999px;background:var(--cell);box-shadow:0 0 0 2px var(--bg),0 2px 6px rgba(0,0,0,.08);font-size:14px;line-height:1}
+.rpill b{font-size:11px;font-weight:600;color:var(--label-2)}
+.rpill.mine{background:color-mix(in srgb,var(--tint) 16%,var(--cell))}
+.rpill.flying{opacity:.55}
+/* the reaction row on top of the message menu */
+.rrow{display:flex;justify-content:space-between;gap:2px;padding:8px 8px 6px;border-bottom:.5px solid var(--sep)}
+.rrow button{width:40px;height:40px;border:0;border-radius:50%;background:none;font-size:24px;line-height:1;display:grid;place-items:center;transition:transform .3s var(--bouncy)}
+.rrow button:active{transform:scale(1.25)}
+.rrow button.on{background:color-mix(in srgb,var(--tint) 18%,transparent)}
+/* replying to: above the message box */
+.replybar{display:flex;align-items:center;gap:10px;margin:0 6px 6px;padding:8px 8px 8px 14px;border-radius:20px;background:var(--glass-strong);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 0 0 .5px var(--glass-edge);font-size:14px}
+.replybar>.ico{flex:none;color:var(--tint);font-size:18px}
+.replybar .rtext{flex:1;min-width:0;display:flex;flex-direction:column}
+.replybar .rtext b{font-size:12px;font-weight:600;color:var(--tint)}
+.replybar .rtext span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--label-2)}
+.replybar button{flex:none;width:30px;height:30px;border:0;border-radius:50%;background:var(--fill);display:grid;place-items:center;color:var(--label-2)}

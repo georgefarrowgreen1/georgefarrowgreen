@@ -128,6 +128,10 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS pg_gdeliv (msg_id TEXT NOT NULL, user_id TEXT NOT NULL, wrap TEXT NOT NULL, km REAL NOT NULL, deliver_at INTEGER NOT NULL,
      lost_at INTEGER, read_at INTEGER, notified_at INTEGER, to_lat REAL, to_lon REAL, to_place TEXT, legs TEXT, PRIMARY KEY (msg_id, user_id))`,
   `CREATE INDEX IF NOT EXISTS pg_gdeliv_user ON pg_gdeliv(user_id, deliver_at)`,
+  // reactions (functions/_reacts.js): sealed, one per person per message
+  `CREATE TABLE IF NOT EXISTS pg_reacts (id TEXT PRIMARY KEY, msg_id TEXT NOT NULL, group_id TEXT, sender TEXT NOT NULL, recipient TEXT,
+     ct TEXT NOT NULL, keys TEXT, sent_at INTEGER NOT NULL, deliver_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS pg_reacts_msg ON pg_reacts(msg_id)`,
 ];
 // Columns added after launch. SQLite has no "ADD COLUMN IF NOT EXISTS", so a
 // duplicate-column error just means the column is already there.
