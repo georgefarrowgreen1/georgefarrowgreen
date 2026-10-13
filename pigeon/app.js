@@ -1291,7 +1291,7 @@ async function sync() {
       }
       S.started = true;
       if (S.view === "chat" && S.chat) await loadChat(S.chat);
-      if (S.sheet?.type === "map" && S.sheet.id === "skies") loadSkies();
+      if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
       if (!AUTH_VIEWS.has(S.view)) render();
     } catch (e) { if (e.status !== 401) console.warn("sync", e.message); }
     finally { syncing = null; }
@@ -1605,7 +1605,12 @@ function go(view, chat) {
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
-  if (view === "chat" && chat) loadChat(chat).then(render).catch((e) => toast(esc(e.message)));
+  if (view === "chat" && chat) loadChat(chat).then(() => {
+    // from the In the air strip: straight on to the map
+    const id = S.mapNext; S.mapNext = null;
+    if (id && S.chat === chat && (S.msgs.get(chat) || []).some((x) => x.id === id)) S.sheet = { type: "map", id };
+    render();
+  }).catch((e) => toast(esc(e.message)));
 }
 
 // How the screen changes, as on iPhone: a chat pushes in from the side and pops
@@ -1671,6 +1676,7 @@ function render() {
   if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
   if (chat) pinChat();
   if (switches?.size) keepGlides($view, switches);
+  if (!chat && S.view === "messages") airMount();
   renderCompose(); renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh();
 }
 
@@ -1771,6 +1777,7 @@ function vMessages() {
   return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large">Messages</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
+    <div class="airslot"></div>
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
 }
 
@@ -2404,6 +2411,7 @@ function renderTabs() {
 function filterLists() {
   const run = (list, q) => { const el = $(`[data-list="${list}"]`); if (!el) return; q = q.trim().toLowerCase(); el.querySelectorAll("[data-find]").forEach((r) => { r.hidden = !!q && !r.dataset.find.includes(q); }); };
   run("m", S.q); run("f", S.fq);
+  if (airEl) airEl.classList.toggle("q", !!S.q.trim());
 }
 let gifTimer = 0;
 /* ---------- sign-up, made quick ----------
@@ -2897,12 +2905,119 @@ function tickMap() {
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
 }
+/* ---------- In the air: every pigeon flying to or from you, at the top of Messages ----------
+   One element that outlives re-renders (the list is redrawn on every sync), so
+   cards keep their place, their scroll and their animations. Cards spring in,
+   the pigeon on each track flaps along it, and on landing it hops onto a tick
+   and the card folds away. */
+let airEl = null;
+const airKey = (r) => String(r.id);
+// 4:29 under an hour (it ticks), then 1h 04m, then 2d 3h
+function airTime(ms) {
+  ms = Math.max(0, ms);
+  if (ms >= DAY) return fmtDur(ms);
+  if (ms >= HOUR) return `${Math.floor(ms / HOUR)}h ${pad2(Math.floor((ms % HOUR) / MIN))}m`;
+  return `${Math.floor(ms / MIN)}:${pad2(Math.floor((ms % MIN) / 1000))}`;
+}
+function airMount() {
+  const slot = $(".airslot", $view); if (!slot) return;
+  if (!airEl) {
+    airEl = document.createElement("section");
+    airEl.className = "air"; airEl.setAttribute("aria-label", "Pigeons in the air");
+    airEl.innerHTML = `<div class="airin"><div class="airhead"><b>In the air<span class="airn"></span></b><span class="airnext"></span></div><div class="rail" role="list"></div></div>`;
+  }
+  const rail = $(".rail", airEl), x = rail.scrollLeft;
+  slot.replaceWith(airEl);
+  rail.scrollLeft = x;
+  airSync();
+  if (!S.skiesAt || Date.now() - S.skiesAt > 20e3) loadSkies();
+}
+function airCard(r) {
+  const el = document.createElement("button");
+  el.type = "button"; el.className = "acard"; el.setAttribute("role", "listitem");
+  el.dataset.act = "airopen"; el.dataset.id = r.chat; el.dataset.m = String(r.id).split(":")[0]; el.dataset.k = airKey(r);
+  el.innerHTML = `<span class="awho">${pgm(r)}<span class="one"></span></span>
+    <span class="aeta"><span class="acd">${airTime(r.deliverAt - now())}</span><span class="aok">${I.check}Landed</span></span>
+    <span class="atrack"><i></i><span class="abird">${I.bird}</span></span>
+    <span class="asub"></span>`;
+  return airFill(el, r);
+}
+// what a card says (names arrive with the sync; a rerouted pigeon lands at a new time)
+function airFill(el, r) {
+  const who = r.label.split(" · ")[0], wx = wxSay(r, true);
+  el.dataset.at = r.deliverAt; el.dataset.from = r.sentAt;
+  el.setAttribute("aria-label", `${who}, ${r.out ? "your pigeon" : "on its way to you"}${r.g ? `, in ${r.g.name}` : ""}. Watch it on the map.`);
+  $(".awho .one", el).textContent = who;
+  const sub = $(".asub", el);
+  sub.className = `asub${wx ? (r.delay > 0 ? " late" : " early") : ""}`;
+  sub.textContent = wx || (r.g ? r.g.name : r.fromPlace && r.toPlace ? `${r.fromPlace} → ${r.toPlace}` : fmtMiles(r.km || 0));
+  return el;
+}
+// bring the cards in line with what's in the air
+function airSync() {
+  if (!airEl || S.view !== "messages") return;
+  const rail = $(".rail", airEl), list = (skyRoutes(true) || []).filter((r) => r.deliverAt > now() - 1500);
+  const want = new Map(list.map((r) => [airKey(r), r])), have = new Map([...rail.children].map((c) => [c.dataset.k, c]));
+  // gone from the sky without landing (called back, or lost): it drops away
+  for (const [k, c] of have) if (!want.has(k) && !c.classList.contains("landed") && !c.classList.contains("out")) {
+    if (+c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
+  }
+  const atStart = rail.scrollLeft < 8;
+  let i = 0;
+  for (const r of list) {
+    const k = airKey(r);
+    if (have.has(k)) { const c = have.get(k); if (!c.classList.contains("landed") && !c.classList.contains("out")) airFill(c, r); continue; }
+    if (r.deliverAt <= now()) continue;          // landed before we saw it
+    const c = airCard(r);
+    c.style.setProperty("--i", i++);
+    c.classList.add("enter");
+    c.addEventListener("animationend", (e) => { if (e.animationName === "acard-in") c.classList.remove("enter"); });
+    // keep them in landing order
+    const after = [...rail.children].find((x) => +x.dataset.at > r.deliverAt && !x.classList.contains("out"));
+    rail.insertBefore(c, after || null);
+  }
+  if (atStart && i) rail.scrollLeft = 0;        // (scroll snapping would hold on to the card that was first)
+  airTick();
+}
+function airLand(c) {
+  if (c.classList.contains("landed")) return;
+  c.classList.add("landed"); c.classList.remove("soon");
+  if (S.view === "messages" && !document.hidden) haptic("success");
+  airFold(c, 1900);
+  setTimeout(() => sync(), 600);                 // the chat below shows what landed
+}
+function airFold(c, after) {
+  setTimeout(() => {
+    c.style.setProperty("--w", c.offsetWidth + "px");
+    c.classList.add("out");
+    setTimeout(() => { c.remove(); airTick(); }, 520);
+  }, after);
+}
+// once a second: the countdowns, the pigeons along their tracks, and landings
+function airTick() {
+  if (!airEl) return;
+  const t = now(), cards = [...$(".rail", airEl).children], flying = cards.filter((c) => !c.classList.contains("landed") && !c.classList.contains("out") && !c.classList.contains("lost"));
+  for (const c of cards) {
+    const at = +c.dataset.at, from = +c.dataset.from, f = Math.min(1, Math.max(0, (t - from) / Math.max(1, at - from)));
+    c.style.setProperty("--f", f.toFixed(4));
+    if (c.classList.contains("landed") || c.classList.contains("lost")) continue;
+    if (at <= t) { airLand(c); continue; }
+    $(".acd", c).textContent = airTime(at - t);
+    c.classList.toggle("soon", at - t < 10 * MIN);
+    c.classList.toggle("final", at - t < MIN);
+  }
+  const n = flying.filter((c) => +c.dataset.at > t).length, next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
+  airEl.classList.toggle("has", cards.length > 0);
+  $(".airn", airEl).textContent = n ? ` · ${n}` : "";
+  $(".airnext", airEl).textContent = next ? `Next lands in ${airTime(next - t)}` : cards.length ? "Landed" : "";
+}
+
 // The Skies: every pigeon in the air to or from you, from every chat.
 async function loadSkies() {
-  try { S.skies = await api("skies"); if (S.sheet?.id === "skies") tickMap(); }
+  try { S.skies = await api("skies"); S.skiesAt = Date.now(); if (S.sheet?.id === "skies") tickMap(); airSync(); }
   catch (err) { if (!S.skies) toast(esc(err.message)); }
 }
-function skyRoutes() {
+function skyRoutes(all) {
   const d = S.skies; if (!d) return null;
   const out = [];
   for (const m of d.pigeons) {
@@ -2917,7 +3032,7 @@ function skyRoutes() {
       out.push({ ...x, id: m.id + ":" + x.to, sentAt: m.sentAt, pigeon: m.pigeon, risky: m.risky, skin: m.skin, fromPlace: m.fromPlace, chat: g.id, out: true, who: p, g, label: `To ${first(p?.name || "someone")} · ${g.name}` });
     } else out.push({ ...m, chat: g.id, out: false, who: member(g, m.from), g, label: `From ${first(member(g, m.from)?.name || "someone")} · ${g.name}` });
   }
-  return out.filter((r) => r.deliverAt > now() && !(r.lostAt && r.lostAt <= now())).sort((a, b) => a.deliverAt - b.deliverAt);
+  return out.filter((r) => (all || r.deliverAt > now()) && !(r.lostAt && r.lostAt <= now())).sort((a, b) => a.deliverAt - b.deliverAt);
 }
 function tickSkies(card, cv) {
   if (!card || !cv) return;
@@ -2977,6 +3092,7 @@ function live() {
   const r = root();
   r.querySelectorAll("[data-eta]").forEach((e) => { e.textContent = fmtDur(+e.dataset.eta - now()); });
   setProgress(r);
+  if (S.view === "messages") airTick();
   if (S.view === "chat") renderCompose();
   tickMap();
 }
@@ -3122,6 +3238,7 @@ async function onClick(e) {
     case "map": S.sheet = { type: "map", id }; return renderSheet();
     case "skies": S.sheet = { type: "map", id: "skies" }; renderSheet(); return loadSkies();
     case "skyopen": S.sheet = null; renderSheet(); return go("chat", id);
+    case "airopen": haptic("tick"); S.mapNext = t.dataset.m; return go("chat", id);
     case "msgmenu": return openReactMenu(t, id);
     case "react": return sendReact(id, t.dataset.e);
     case "reply": {

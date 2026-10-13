@@ -244,6 +244,14 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**In the air.** The same pigeons, as a row of cards at the top of Messages,
+soonest to land first: who it's to or from, a countdown (minutes and seconds
+in the last hour), the pigeon flapping along its route, and the weather's delay
+if there is one. Tap one for its chat and map. Cards spring in, glow green in
+the last 10 minutes, and on landing the pigeon hops onto a tick before the
+card folds away; the row closes when nothing is flying. It hides while you
+search, and keeps still for Reduce Motion.
+
 **Your week in flight.** On Sunday from 6pm in your time zone (quiet hours
 win), anyone who had pigeons come or go that week gets one note: miles flown,
 pigeons sent and received, any badge earned, or how close the next one is. It
