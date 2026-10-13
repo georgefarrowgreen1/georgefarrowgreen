@@ -23,6 +23,9 @@ export const RISKY_SPEED = 1.25, RISKY_LOSS = 0.01;
 export const isLost = (m, t) => m.lost_at != null && t >= m.lost_at;
 // how fast a message's pigeon flies: its kind, plus Pigeon Death if it was on
 export const msgSpeed = (m) => PIGEONS[m.pigeon || (m.swift ? "swift" : "standard")].speed * (m.risky ? RISKY_SPEED : 1);
+// Wind changes how fast a pigeon cruises (80 km/h, plus or minus what blows its
+// way); the 5-minute and 3-day limits still apply after it. So it's measured
+// as distance: a 25% tailwind makes the route fly like one 20% shorter.
 // Kinds of pigeon. Standard is free but waits its turn; swift, turbo and rocket
 // can fly any time and come from a loft that refills through the day.
 export const PIGEONS = {
@@ -151,6 +154,10 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN lost_at INTEGER",                     // when it's lost (secret until then); null = arrives
   "ALTER TABLE pg_msgs ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0", // its sender called it back (lost_at = when)
   "ALTER TABLE pg_gdeliv ADD COLUMN recalled INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE pg_msgs ADD COLUMN wind REAL",            // tailwind along the route at take-off, km/h (negative: headwind)
+  "ALTER TABLE pg_msgs ADD COLUMN wind_f REAL",          // what that did to its speed (1 = none)
+  "ALTER TABLE pg_gdeliv ADD COLUMN wind REAL",
+  "ALTER TABLE pg_gdeliv ADD COLUMN wind_f REAL",
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -280,6 +287,7 @@ export function msgView(me, m, t) {
     photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose
+    wind: m.wind ?? null,                        // tailwind at take-off (km/h; negative: headwind)
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at]
     fromPlace: m.from_place, toPlace: m.to_place,

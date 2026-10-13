@@ -698,3 +698,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .homing .ico{flex:none;font-size:1.05em}
 .b.me[data-act=flymenu]{cursor:pointer}
 .meta .fl.flock .homing .ico{color:var(--tint)}
+/* the wind a pigeon met */
+.mapcard .wind{display:flex;align-items:center;justify-content:center;gap:5px;font-size:13px;font-weight:500;color:var(--label-2)}
+.mapcard .wind .ico{font-size:15px}
+.mapcard .wind.tail{color:var(--green)}
+.mapcard .wind.head{color:var(--orange)}

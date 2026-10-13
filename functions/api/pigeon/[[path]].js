@@ -8,6 +8,7 @@ import {
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
+import { windsFor } from "../../_weather.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -115,7 +116,7 @@ async function reroute(env, u, p, t, waitUntil) {
     const ahead = haversineKm(pLat, pLon, p.lat, p.lon);
     const speed = msgSpeed(m);
     const latest = m.sent_at + MAX_FLIGHT / speed;
-    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / SPEED_KMH) * 3600e3 / speed));
+    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed));
     const km = Math.max(0, m.km - haversineKm(pLat, pLon, m.to_lat, m.to_lon)) + ahead;
     legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
     // a doomed pigeon is still lost before it would land, now on its new course
@@ -419,16 +420,17 @@ async function sendMessage({ request, env, waitUntil }) {
   const hasTo = r && r.lat != null;
   const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
   const risky = u.risky ? 1 : 0;
-  const deliver = t + flightMs(km, PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1));
+  const [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
+  const deliver = t + flightMs(km / w.f, PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1));
   // Pigeon Death: 1 in 100 is lost somewhere between 15% and 85% of the way
   const roll = crypto.getRandomValues(new Uint32Array(2));
   const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - t)) : null;
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
     await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, t, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
-        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null).run();
+        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f).run();
   } catch (e) {
     if (photo && !String(e).includes("UNIQUE")) await env.BIO_R2.delete(`pigeon/${id}`);
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");

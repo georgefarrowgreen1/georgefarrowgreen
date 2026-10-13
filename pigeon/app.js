@@ -124,6 +124,9 @@ const fmtShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : `${DOW[new Date(ts)
 const fmtDate = (ts) => { const d = new Date(ts); return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
 const fmtMiles = (km) => Math.round(km * 0.621371).toLocaleString("en-GB") + " mi";
 const fmtMph = (kmh) => Math.round(kmh * 0.621371).toLocaleString("en-GB") + " mph";
+// The wind a pigeon had at take-off: what blew its way (km/h; negative is a headwind).
+const windWord = (w) => (w == null ? "" : Math.abs(w) < 3 ? "calm" : w > 0 ? "tailwind" : "headwind");
+const fmtWind = (w) => (w == null ? "" : Math.abs(w) < 3 ? "Calm skies" : `${w > 0 ? "Tailwind" : "Headwind"} ${Math.round(Math.abs(w) * 0.621371)} mph`);
 const fmtBytes = (n) => (n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB");
 const initials = (n) => String(n).trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 const first = (n) => String(n).trim().split(/\s+/)[0];
@@ -187,6 +190,7 @@ const I = {
   moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
+  wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
@@ -1124,7 +1128,7 @@ function bubble(f, m, isLastMine, gapTop, g) {
   if (!mine && m.flying) {
     return `<button class="fly${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="Watch the pigeon on the map">
       <span class="t1">${pg(kindOf(m))}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}</span></span>
-      <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}</span></span>
+      <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</span></span>
       <span class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></span></button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
@@ -1148,7 +1152,7 @@ function bubble(f, m, isLastMine, gapTop, g) {
     else if (isLastMine) meta.push(tap(`Landed for all ${c.n}`, "done"));
   }
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
-  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}</button>`);
+  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
@@ -1732,6 +1736,7 @@ function tickMap() {
   const speed = m.lost || f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pg(kindOf(m))}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
+    ${m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;
   $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";

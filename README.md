@@ -205,6 +205,15 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Weather.** At take-off the server asks Open-Meteo (free, no key) for the wind
+at five points along each route (`functions/_weather.js`). What blows the
+pigeon's way changes its cruising speed (80 km/h plus the tailwind, or minus a
+headwind; between 0.6× and 1.6×), and the 5-minute and 3-day limits still apply
+after it. The map card shows "Tailwind 13 mph · faster than usual"; messages in
+the air say tailwind or headwind. Only points along the route are sent, never
+who's flying; if the forecast doesn't answer within 2.5 s, the pigeon flies at
+its usual speed. The demo uses a steady westerly instead.
+
 **Calling a pigeon back.** Tap your own pigeon while it's in the air → Call It
 Back. A swift pigeon flies after it (so it costs one): it never arrives, what it
 carried is deleted from the server, and it's your turn again. The other person
