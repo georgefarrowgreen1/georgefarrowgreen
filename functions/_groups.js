@@ -345,7 +345,7 @@ export async function groupSkies(D, uid, t) {
       FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2)
     UNION ALL
-    SELECT m.*, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM pg_gmsgs m
+    SELECT m.*, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM pg_gmsgs m
       WHERE m.sender = ?1 AND EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2))
     LIMIT 100`).bind(uid, t).all();
   return views(D, uid, rows, friends, t);
