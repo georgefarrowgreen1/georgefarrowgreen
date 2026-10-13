@@ -183,6 +183,7 @@ function vUser(u) {
     <div class="group mt">
       ${cell({ icon: I.people, tile: "teal", label: "Friends", val: u.friends })}
       ${cell({ icon: I.bubble, tile: "indigo", label: "Scrolls Sent", val: u.sent })}
+      ${cell({ icon: I.people, tile: "green", label: "Groups", val: u.groups || 0 })}
       ${cell({ icon: I.phone, tile: "gray", label: "Signed In On", val: `${u.sessions} device${u.sessions === 1 ? "" : "s"}` })}
       ${cell({ icon: I.key, tile: "indigo", label: "Passkeys", val: u.passkeys ? `${u.passkeys}${u.unlocking ? ` · ${u.unlocking} unlock${u.unlocking === 1 ? "s" : ""}` : ""}` : "None" })}
     </div>

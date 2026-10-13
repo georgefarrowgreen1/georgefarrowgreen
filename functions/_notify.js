@@ -183,6 +183,72 @@ export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") 
     tag: "from-" + from.id, url: `/pigeon/#open=${from.id}` });
 }
 
+/* ---------- groups: the same events, said with the group's name ---------- */
+const etaText = (ms) => { const h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN)); return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`; };
+const isMuted = async (env, gid, uid) => !!(await (await db(env)).prepare("SELECT muted FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(gid, uid).first())?.muted;
+export async function groupAdded(env, by, ids, g) {
+  for (const id of ids) {
+    const r = await userPrefs(env, id); if (!r || !r.p.requests || isQuiet(r.p)) continue;
+    await pushTo(env, id, { title: r.p.names ? g.name : "InFlight", body: r.p.names ? `${firstName(by.name)} added you to the group.` : "You were added to a group.", tag: "group-" + g.id, url: `/pigeon/#open=${g.id}` });
+  }
+}
+export async function groupSent(env, from, g, dels, kind = "standard") {
+  for (const d of dels) {
+    const r = await userPrefs(env, d.to); if (!r || !r.p.takeoff || isQuiet(r.p) || await isMuted(env, g.id, d.to)) continue;
+    const what = kind === "standard" ? "pigeon" : `${kind} pigeon`, eta = etaText(d.at - Date.now());
+    await pushTo(env, d.to, { title: r.p.names ? g.name : "InFlight", body: r.p.names ? `${firstName(from.name)} sent a ${what}. It lands in ${eta}.` : `A ${what} is on its way to you. It lands in ${eta}.`,
+      tag: "group-" + g.id, url: `/pigeon/#open=${g.id}` });
+  }
+}
+export async function groupRerouted(env, senderId, to, gid, deliverAt) {
+  const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
+  await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",
+    body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${etaText(deliverAt - Date.now())}.`, tag: "course-" + to.id, url: `/pigeon/#open=${gid}` });
+}
+// Group pigeons that landed or were lost since the last tick.
+async function groupTick(env, D, t, since) {
+  let pushes = 0, landedN = 0, held = 0;
+  const { results: due } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, gm.muted, s.name AS sname
+    FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id JOIN pg_users s ON s.id = m.sender
+    LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
+    WHERE d.notified_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?1 AND d.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
+  const ready = due.filter((d) => !isQuiet(prefsOf(d), t));
+  held = due.length - ready.length;
+  if (ready.length) {
+    for (let i = 0; i < ready.length; i += 90) {
+      const part = ready.slice(i, i + 90);
+      const { results } = await D.prepare(`UPDATE pg_gdeliv SET notified_at = ? WHERE notified_at IS NULL AND rowid IN (${part.map(() => "?").join(",")}) RETURNING rowid AS rid`).bind(t, ...part.map((d) => d.rid)).all();
+      const claimed = new Set(results.map((r) => r.rid));
+      // one notification per person per group: who sent it, or how many landed
+      const by = new Map();
+      for (const d of part) {
+        if (!claimed.has(d.rid)) continue;
+        landedN++;
+        if (d.muted || !prefsOf(d).landed) continue;
+        const k = d.user_id + "|" + d.group_id, x = by.get(k) || { d, n: 0, from: new Set() };
+        x.n++; x.from.add(firstName(d.sname)); by.set(k, x);
+      }
+      for (const { d, n, from } of by.values()) {
+        const names = prefsOf(d).names;
+        pushes += await pushTo(env, d.user_id, { title: names ? d.gname : "InFlight",
+          body: n > 1 ? `${n} pigeons have landed.` : names ? `${[...from][0]}’s pigeon has landed.` : "A pigeon has landed.", tag: "group-" + d.group_id, url: `/pigeon/#open=${d.group_id}` });
+      }
+    }
+  }
+  const { results: lost } = await D.prepare(`SELECT d.rowid AS rid, m.sender, m.group_id, g.name AS gname, u.notify_prefs, r.name, gm.muted
+    FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = m.sender JOIN pg_users r ON r.id = d.user_id
+    LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = m.sender
+    WHERE d.notified_at IS NULL AND d.lost_at IS NOT NULL AND d.lost_at <= ?1 AND d.lost_at > ?2 LIMIT 200`).bind(t, since).all();
+  for (const d of lost) {
+    const p = prefsOf(d); if (isQuiet(p, t)) continue;
+    const c = await D.prepare("UPDATE pg_gdeliv SET notified_at = ? WHERE rowid = ? AND notified_at IS NULL").bind(t, d.rid).run();
+    if (!c.meta.changes || !p.lost || d.muted) continue;
+    pushes += await pushTo(env, d.sender, { title: "Pigeon lost", body: p.names ? `Your pigeon to ${firstName(d.name)} in ${d.gname} didn’t make it.` : "One of your pigeons didn’t make it.",
+      tag: "lost-" + d.group_id, url: `/pigeon/#open=${d.group_id}` });
+  }
+  return { pushes, landed: landedN, held };
+}
+
 // Pigeons that have landed since the last tick: push now; email those who
 // asked, once things have been waiting a little while unread. Quiet hours hold
 // both until they end. Only landings after notifications went live count.
@@ -229,10 +295,18 @@ export async function tick(env, origin) {
         body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }
   }
+  const gt = await groupTick(env, D, t, since);
+  pushes += gt.pushes;
   if (emailReady(env)) {
+    // everything waiting unread: one-to-one pigeons, and group ones (unless that group is muted)
     const { results: waiting } = await D.prepare(`
-      SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT s.id) AS senders
-      FROM pg_users u JOIN pg_msgs m ON m.recipient = u.id JOIN pg_users s ON s.id = m.sender
+      WITH inbox AS (
+        SELECT recipient AS to_id, sender, sender AS chat, id, read_at, lost_at, deliver_at FROM pg_msgs
+        UNION ALL
+        SELECT d.user_id, g.sender, g.group_id, d.msg_id, d.read_at, d.lost_at, d.deliver_at FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
+          JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0)
+      SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
+      FROM pg_users u JOIN inbox m ON m.to_id = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND COALESCE(u.email_at, 0) < ?1
         AND m.read_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
       GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, Math.max(since, t - DAY)).all();
@@ -254,7 +328,7 @@ export async function tick(env, origin) {
       } catch (e) { console.error("pigeon notify email", e && e.message); }
     }
   }
-  return { landed: landed.length, held: due.length - ready.length, pushes, emails };
+  return { landed: landed.length + gt.landed, held: due.length - ready.length + gt.held, pushes, emails };
 }
 
 // Run a tick at most once a minute, shared across all servers via D1.

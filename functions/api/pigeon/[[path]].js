@@ -6,6 +6,7 @@ import {
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
+import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -156,7 +157,7 @@ async function updateMe({ request, env, waitUntil }) {
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
     if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
     await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = ? WHERE id = ?").bind(p.lat, p.lon, p.place, t, u.id).run();
-    if (u.lat != null) await reroute(env, u, p, t, waitUntil);       // also catches up a turn held back by TURN_EVERY
+    if (u.lat != null) { await reroute(env, u, p, t, waitUntil); await rerouteGroups(env, u, p, t, waitUntil); }   // also catches up a turn held back by TURN_EVERY
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ me: meView(fresh, Date.now()) });
@@ -164,8 +165,8 @@ async function updateMe({ request, env, waitUntil }) {
 
 /* ---------------- profile pictures ----------------
    Not end-to-end encrypted (the server shows them to several people), so
-   they're only served to the owner, their friends, and people they've sent a
-   friend request to. Asking to be someone's friend shows you nothing of
+   they're only served to the owner, their friends, people in a group with
+   them, and people they've sent a friend request to. Asking to be someone's friend shows you nothing of
    them until they say yes. */
 const avatarKey = (id) => `pigeon-avatars/${id}`;
 async function putAvatar({ request, env }) {
@@ -191,7 +192,9 @@ async function getAvatar({ request, env }, id) {
   const u = await requireUser(request, env);
   id = String(id || "");
   if (id !== u.id) {
-    const l = await (await db(env)).prepare("SELECT 1 FROM pg_links WHERE (a = ?2 AND b = ?1) OR (a = ?1 AND b = ?2 AND status = 'ok')").bind(u.id, id).first();
+    // or someone in a group with you
+    const l = await (await db(env)).prepare(`SELECT 1 FROM pg_links WHERE (a = ?2 AND b = ?1) OR (a = ?1 AND b = ?2 AND status = 'ok')
+      UNION ALL SELECT 1 FROM pg_group_members x JOIN pg_group_members y ON y.group_id = x.group_id WHERE x.user_id = ?1 AND y.user_id = ?2 LIMIT 1`).bind(u.id, id).first();
     if (!l) throw new HttpError(404, "No picture.");
   }
   const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(id)));
@@ -201,6 +204,7 @@ async function getAvatar({ request, env }, id) {
 
 // Shared by "Delete my account" and the admin's delete.
 async function removeAccount(env, id) {
+  await removeFromGroups(env, id);
   const D = await db(env);
   if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(id).all();
@@ -358,7 +362,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: meView(u, t), friends, incoming, outgoing, emailOn: emailReady(env),
+  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, emailOn: emailReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -575,9 +579,13 @@ async function adminUsers({ request, env }) {
       (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys,
       (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id AND p.vault IS NOT NULL) AS unlocking,
       (SELECT COUNT(*) FROM pg_links l WHERE l.status = 'ok' AND (l.a = u.id OR l.b = u.id)) AS friends,
-      (SELECT COUNT(*) FROM pg_msgs m WHERE m.sender = u.id) AS sent
+      (SELECT COUNT(*) FROM pg_msgs m WHERE m.sender = u.id) + (SELECT COUNT(*) FROM pg_gmsgs m WHERE m.sender = u.id) AS sent,
+      (SELECT COUNT(*) FROM pg_group_members g WHERE g.user_id = u.id) AS groups
     FROM pg_users u ORDER BY u.created_at DESC LIMIT 1000`).all();
-  const totals = await D.prepare("SELECT COUNT(*) AS msgs, COALESCE(SUM(CASE WHEN deliver_at > ? THEN 1 ELSE 0 END), 0) AS flying FROM pg_msgs").bind(t).first();
+  // a group message counts once; each of its pigeons still in the air counts as flying
+  const totals = await D.prepare(`SELECT (SELECT COUNT(*) FROM pg_msgs) + (SELECT COUNT(*) FROM pg_gmsgs) AS msgs,
+    (SELECT COUNT(*) FROM pg_msgs WHERE deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)) + (SELECT COUNT(*) FROM pg_gdeliv WHERE deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)) AS flying,
+    (SELECT COUNT(*) FROM pg_groups) AS groups`).bind(t).first();
   const users = results.map(({ swift, swift_at, turbo, turbo_at, rocket, rocket_at, ...u }) => {
     const row = { swift, swift_at, turbo, turbo_at, rocket, rocket_at };
     return { ...u, pigeons: Object.fromEntries(GIFTABLE.map((k) => [k, loft(row, k, t).count])) };
@@ -760,6 +768,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
+  ...GROUP_ROUTES,
 };
 
 export async function onRequest(ctx) {

@@ -110,6 +110,21 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS pg_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS pg_push_user ON pg_push(user_id)`,
   `CREATE TABLE IF NOT EXISTS pg_admin_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT)`,
+  // Groups (functions/_groups.js). A message is stored once (body sealed under
+  // its own key, which the sender keeps a sealed copy of) and flies as one
+  // delivery per member: their copy of the key, distance, landing and fate.
+  `CREATE TABLE IF NOT EXISTS pg_groups (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_by TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS pg_group_members (group_id TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT NOT NULL, joined_at INTEGER NOT NULL,
+     muted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (group_id, user_id))`,
+  `CREATE INDEX IF NOT EXISTS pg_group_members_user ON pg_group_members(user_id)`,
+  `CREATE TABLE IF NOT EXISTS pg_gmsgs (id TEXT PRIMARY KEY, group_id TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, sender_key TEXT NOT NULL,
+     photo INTEGER NOT NULL DEFAULT 0, photo_size INTEGER, pigeon TEXT NOT NULL, risky INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL, expires_at INTEGER,
+     from_lat REAL, from_lon REAL, from_place TEXT)`,
+  `CREATE INDEX IF NOT EXISTS pg_gmsgs_group ON pg_gmsgs(group_id, sent_at)`,
+  `CREATE INDEX IF NOT EXISTS pg_gmsgs_photo ON pg_gmsgs(photo, expires_at)`,
+  `CREATE TABLE IF NOT EXISTS pg_gdeliv (msg_id TEXT NOT NULL, user_id TEXT NOT NULL, wrap TEXT NOT NULL, km REAL NOT NULL, deliver_at INTEGER NOT NULL,
+     lost_at INTEGER, read_at INTEGER, notified_at INTEGER, to_lat REAL, to_lon REAL, to_place TEXT, legs TEXT, PRIMARY KEY (msg_id, user_id))`,
+  `CREATE INDEX IF NOT EXISTS pg_gdeliv_user ON pg_gdeliv(user_id, deliver_at)`,
 ];
 // Columns added after launch. SQLite has no "ADD COLUMN IF NOT EXISTS", so a
 // duplicate-column error just means the column is already there.
@@ -262,11 +277,19 @@ export function msgView(me, m, t) {
 export async function sweepPhotos(env) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND expires_at < ? LIMIT 50").bind(Date.now()).all();
-  if (!results?.length) return;
-  const ids = results.map((r) => r.id);
-  if (env.BIO_R2) await env.BIO_R2.delete(ids.map((id) => `pigeon/${id}`));
-  await D.batch(ids.map((id) => D.prepare("UPDATE pg_msgs SET photo = 2 WHERE id = ?").bind(id)));
+  if (results?.length) {
+    const ids = results.map((r) => r.id);
+    if (env.BIO_R2) await env.BIO_R2.delete(ids.map((id) => `pigeon/${id}`));
+    await D.batch(ids.map((id) => D.prepare("UPDATE pg_msgs SET photo = 2 WHERE id = ?").bind(id)));
+  }
+  // group photos: 24 hours after the last member's pigeon lands
+  const { results: g } = await D.prepare("SELECT id FROM pg_gmsgs WHERE photo = 1 AND expires_at < ? LIMIT 50").bind(Date.now()).all();
+  if (!g?.length) return;
+  if (env.BIO_R2) await env.BIO_R2.delete(g.map((r) => groupPhotoKey(r.id)));
+  await D.batch(g.map((r) => D.prepare("UPDATE pg_gmsgs SET photo = 2 WHERE id = ?").bind(r.id)));
 }
+// group photos live apart from one-to-one ones, so one id can never land on another's photo
+export const groupPhotoKey = (id) => `pigeon-g/${id}`;
 
 /* ---------------- WebAuthn (passkeys) ----------------
    Mirrors functions/api/passkeys.js: ES256 and RS256, "none" attestation,

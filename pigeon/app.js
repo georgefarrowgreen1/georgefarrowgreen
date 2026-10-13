@@ -129,17 +129,17 @@ const first = (n) => String(n).trim().split(/\s+/)[0];
 const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
 // A person's picture if they have one (fetched with this phone's sign-in, then kept as a blob URL), else their initials.
 // dot: show a green dot when they're online now
-function avatar(person, size = "", dot = false) {
+function avatar(person, size = "", dot = false, one = false) {
   const name = person?.name || person?.handle || "?";
   const url = person?.avatarAt ? avatarUrl(person) : "";
-  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(initials(name))}${dot && isOnline(person) ? '<i class="online"></i>' : ""}</span>`;
+  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(one ? initials(name).slice(0, 1) : initials(name))}${dot && isOnline(person) ? '<i class="online"></i>' : ""}</span>`;
 }
 // A group's picture: two of its other members, overlapping.
 function gavatar(g, size = "") {
   const two = others(g).slice(0, 2);
   if (two.length < 2) return avatar(two[0] || { name: g.name }, size);
-  const one = (p) => avatar({ ...p, name: first(p.name) }, "");       // one initial each, so neither is cut off
-  return `<span class="gav ${size}" aria-hidden="true">${one(two[0])}${one(two[1])}</span>`;
+  // one initial each, so neither is cut off; colours as everywhere else
+  return `<span class="gav ${size}" aria-hidden="true">${avatar(two[0], "", false, true)}${avatar(two[1], "", false, true)}</span>`;
 }
 // An open app checks in every 15 s and the server notes it once a minute, so
 // anyone seen in the last 2½ minutes has InFlight open now.
@@ -1577,7 +1577,22 @@ function drawSheet(refresh) {
         <div class="ghead">People</div><div class="group">${list.map(row).join("")}
           ${g.members.length < GROUP_MAX ? cell({ act: "groupadd", id: g.id, icon: I.addp, tile: "green", label: "Add People", cls: "action" }) : ""}</div>
         <div class="gfoot">Only friends see where each other are. Anyone in the group can add their own friends.</div>
+        <div class="group mt">
+          ${toggleCell({ act: "gmute", id: g.id, icon: I.moon, tile: "indigo", label: "Mute Notifications", sub: g.muted ? "No notifications or emails from this group" : "", on: g.muted })}
+          ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
+        </div>
         <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`);
+      return;
+    }
+    case "grouprename": {
+      const g = group(s.id); if (!g) { S.sheet = null; return renderSheet(); }
+      if (!$("#f-gname", $layer)) {
+        $layer.innerHTML = sheetHtml("Group Name", `<form id="gname-form" data-form="grouprename" novalidate>
+          <div class="group mt-s"><label class="fcell"><input id="f-gname" name="name" placeholder="Group name" maxlength="40" autocomplete="off" aria-label="Group name"></label></div>
+          <div class="gfoot">Everyone in the group sees the new name.</div>${ferr}</form>`,
+          { left: { label: "Back", act: "groupinfo" }, right: { label: "Save", form: "gname-form" } });
+        $("#f-gname", $layer).value = g.name;
+      }
       return;
     }
     case "addfriend":
@@ -1832,6 +1847,14 @@ async function onClick(e) {
       catch (err) { toast(esc(err.message)); }
       return;
     case "trustm": return trustNewKey(id);
+    case "grouprename": S.sheet = { type: "grouprename", id }; return renderSheet();
+    case "gmute": {
+      const g = group(id); if (!g) return;
+      const on = !g.muted; g.muted = on; renderSheet();            // the switch moves straight away
+      try { await api("group-mute", { method: "POST", body: { id, muted: on } }); }
+      catch (err) { g.muted = !on; renderSheet(); toast(esc(err.message)); }
+      return;
+    }
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
@@ -2030,6 +2053,12 @@ async function onSubmit(e) {
   const form = e.target, kind = form.dataset.form;
   const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${esc(form.id)}"]`, $layer);
   if (kind === "compose") return send();
+  if (kind === "grouprename") {
+    const s = S.sheet;
+    try { await busyBtn(btn, "…", () => api("group-name", { method: "POST", body: { id: s.id, name: String($("#f-gname", $layer)?.value || "") } })); await sync(); S.sheet = { type: "groupinfo", id: s.id }; renderSheet(); }
+    catch (err) { showErr(err.message, err.field); }
+    return;
+  }
   if (kind === "newgroup" || kind === "groupadd") {
     const s = S.sheet, name = String($("#f-gname", $layer)?.value || "").trim();
     if (kind === "newgroup" && !name) return showErr("Give the group a name.", "gname");

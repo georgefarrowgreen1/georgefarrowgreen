@@ -205,6 +205,23 @@ one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
 *Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
 box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
+**Groups.** New Message → New Group: a name and up to 11 friends (12 people in
+all). A message flies to everyone at once, one pigeon each over the real
+distance to each person, so it lands at different times for each of them; your
+own message shows how many have landed, and its map shows every route. You can
+send a standard pigeon once someone else's message has landed for you since your
+last; one swift, turbo or rocket covers the whole group. Each pigeon takes its
+own Pigeon Death chance and follows its person if they move. Anyone in a group
+can add their own friends, rename it, mute it or leave; the last one out takes
+its messages and photos with them. People in a group who aren't friends see each
+other's names and pictures, never each other's locations (their routes stay off
+the map). Encryption: each message is sealed once under its own random key, and
+that key is sealed for each member with the pair key the sender shares with
+them, so the server stores one sealed body plus a sealed key per member and can
+read none of it. Code: `functions/_groups.js`; tables `pg_groups`,
+`pg_group_members`, `pg_gmsgs` and `pg_gdeliv` (one row per member's pigeon);
+group photos live in R2 under `pigeon-g/`.
+
 **Pigeon Death.** Each person can turn this on in Account → Pigeons: everything
 they send flies 1.25× faster, but 1 in 100 pigeons is lost. The server draws
 each pigeon's fate on take-off (`lost_at`, somewhere 15–85% of the way) and
