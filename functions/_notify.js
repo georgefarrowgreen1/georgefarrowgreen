@@ -23,7 +23,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -32,7 +32,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -252,6 +252,44 @@ async function groupTick(env, D, t, since) {
 
 // Reactions that have landed: "Mira reacted to your message". (Which reaction
 // stays sealed: the server can't read it, so it can't say.)
+// Weather: when a pigeon flies into whatever is holding it up (15 minutes or
+// more), its sender and recipient hear how late it'll be. In a group only the
+// recipient does, so one message can't set off a notification per member.
+const WX_WORDS = { storms: "storms", rain: "heavy rain", snow: "snow", fog: "fog", gales: "gales", headwind: "strong headwinds" };
+const WX_MIN = 15 * MIN;
+const lateBy = (ms) => { const m = Math.round(ms / MIN); return m >= 90 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`; };
+const clockAt = (ts, tz) => { try { return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ts); } catch (_) { return ""; } };
+async function wxTick(env, D, t, since) {
+  let pushes = 0;
+  const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.wx, m.wx_ms, m.deliver_at, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
+    JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
+    WHERE m.wx_at IS NOT NULL AND m.wx_told IS NULL AND m.wx_at <= ?1 AND m.wx_at > ?2 AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND m.wx_ms >= ?3
+      AND (m.lost_at IS NULL OR m.lost_at > ?1) LIMIT 200`).bind(t, since, WX_MIN).all();
+  for (const m of one) {
+    const claimed = await D.prepare("UPDATE pg_msgs SET wx_told = ? WHERE id = ? AND wx_told IS NULL").bind(t, m.id).run();
+    if (!claimed.meta.changes) continue;
+    let k = "bad weather"; try { k = WX_WORDS[JSON.parse(m.wx).k] || k; } catch (_) {}
+    const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
+    if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "InFlight",
+      body: `Your pigeon flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, at ${clockAt(m.deliver_at, sp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.recipient}` });
+    if (rp.delays && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
+      body: `${rp.names ? "Their" : "A"} pigeon to you flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, at ${clockAt(m.deliver_at, rp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.sender}` });
+  }
+  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, gm.muted FROM pg_gdeliv d
+    JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
+    LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
+    WHERE d.wx_at IS NOT NULL AND d.wx_told IS NULL AND d.wx_at <= ?1 AND d.wx_at > ?2 AND d.deliver_at > ?1 AND d.wx_ms >= ?3
+      AND (d.lost_at IS NULL OR d.lost_at > ?1) LIMIT 200`).bind(t, since, WX_MIN).all();
+  for (const d of grp) {
+    const claimed = await D.prepare("UPDATE pg_gdeliv SET wx_told = ? WHERE rowid = ? AND wx_told IS NULL").bind(t, d.rid).run();
+    if (!claimed.meta.changes) continue;
+    const p = prefsOf(d); if (!p.delays || isQuiet(p, t) || d.muted) continue;
+    let k = "bad weather"; try { k = WX_WORDS[JSON.parse(d.wx).k] || k; } catch (_) {}
+    pushes += await pushTo(env, d.user_id, { title: p.names ? d.gname : "InFlight",
+      body: `A pigeon to you flew into ${k}. It’ll land ${lateBy(d.wx_ms)} late, at ${clockAt(d.deliver_at, p.tz)}.`, tag: "wx-" + d.rid, url: `/pigeon/#open=${d.group_id}` });
+  }
+  return pushes;
+}
 async function reactTick(env, D, t, since) {
   let pushes = 0;
   const { results } = await D.prepare(`SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, gm.muted
@@ -334,6 +372,7 @@ export async function tick(env, origin) {
       body: p.names ? `It’s resting with you on its way to ${firstName(m.rname)}. Add a line before it flies on.` : "It’s resting with you for an hour. Add a line before it flies on.",
       tag: "via-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
+  pushes += await wxTick(env, D, t, since);
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

@@ -183,7 +183,11 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN wx TEXT",              // the worst weather on the way: {"k":"storms","lat":..,"lon":..}
   "ALTER TABLE pg_msgs ADD COLUMN wx_ms INTEGER",        // how much later (or, negative, earlier) the weather made it
   "ALTER TABLE pg_gdeliv ADD COLUMN wx TEXT",
-  "ALTER TABLE pg_gdeliv ADD COLUMN wx_ms INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
+  "ALTER TABLE pg_gdeliv ADD COLUMN wx_ms INTEGER",
+  "ALTER TABLE pg_msgs ADD COLUMN wx_at INTEGER",        // when it flies into that weather (a notification then)
+  "ALTER TABLE pg_msgs ADD COLUMN wx_told INTEGER",
+  "ALTER TABLE pg_gdeliv ADD COLUMN wx_at INTEGER",
+  "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -309,10 +313,14 @@ export function wxView(m) {
   let wx = null; try { wx = m.wx ? JSON.parse(m.wx) : null; } catch (_) {}
   return { delay: m.wx_ms, wx };
 }
-// The weather's take on a flight: the worse leg's spot, and the time it cost or saved.
-export function wxOf(ws, calm, flight) {
-  const w = ws.filter((x) => x?.wx).sort((a, b) => Math.abs(Math.log(b.f)) - Math.abs(Math.log(a.f)))[0];
-  return { wx: w ? JSON.stringify(w.wx) : null, ms: Math.round(flight - calm) };
+// The weather's take on a flight: the worse leg's spot, the time it cost or
+// saved, and when (after take-off) the pigeon reaches it. legs: [start, length]
+// of each leg's flying, in ms after take-off.
+export function wxOf(ws, calm, flight, legs = [[0, flight]]) {
+  const i = ws.map((x, j) => j).filter((j) => ws[j]?.wx).sort((a, b) => Math.abs(Math.log(ws[b].f)) - Math.abs(Math.log(ws[a].f)))[0];
+  if (i == null) return { wx: null, ms: Math.round(flight - calm), reach: null };
+  const { at, ...wx } = ws[i].wx, [start, len] = legs[i] || legs[0];
+  return { wx: JSON.stringify(wx), ms: Math.round(flight - calm), reach: Math.round(start + (at ?? 0.5) * len) };
 }
 
 // What one phone may see of a message. An inbound scroll's ciphertext stays

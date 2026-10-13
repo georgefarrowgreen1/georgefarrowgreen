@@ -40,7 +40,7 @@ function bearing(aLat, aLon, bLat, bLon) {
 }
 // Wind on several routes at once (one request). routes: [[fromLat, fromLon, toLat, toLon], ...]
 // Returns, for each, { wind: average tailwind in km/h (negative: headwind), f: speed factor,
-// wx: the spot that changed its speed most, { k: what, lat, lon }, or null }.
+// wx: the spot that changed its speed most, { k: what, lat, lon, at: how far along (0 to 1) }, or null }.
 export async function windsFor(env, routes) {
   const calm = routes.map(() => ({ wind: null, f: 1, wx: null }));
   if (!routes.length || env.WEATHER_OFF) return calm;
@@ -48,7 +48,7 @@ export async function windsFor(env, routes) {
   routes.forEach(([aLat, aLon, bLat, bLon], i) => {
     for (const f of POINTS) {
       const [lat, lon] = gcPoint(aLat, aLon, bLat, bLon, f), [nLat, nLon] = gcPoint(aLat, aLon, bLat, bLon, Math.min(1, f + 0.02));
-      pts.push({ i, lat: Math.round(lat * 100) / 100, lon: Math.round(((lon + 540) % 360 - 180) * 100) / 100, head: bearing(lat, lon, nLat, nLon) });
+      pts.push({ i, f, lat: Math.round(lat * 100) / 100, lon: Math.round(((lon + 540) % 360 - 180) * 100) / 100, head: bearing(lat, lon, nLat, nLon) });
     }
   });
   let data;
@@ -73,13 +73,13 @@ export async function windsFor(env, routes) {
     const f = Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), s = sum[pts[k].i];
     s.tail += tail; s.slow += 1 / f; s.n++;
     const k2 = f >= 1 ? "tailwind" : sky.k || "headwind";
-    const here = { f, k: k2, lat: pts[k].lat, lon: pts[k].lon };
+    const here = { f, k: k2, lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f };
     if (!s.lo || f < s.lo.f) s.lo = here;
     if (!s.hi || f > s.hi.f) s.hi = here;
   });
   return sum.map(({ tail, slow, n, lo, hi }) => {
     if (!n) return { wind: null, f: 1, wx: null };
     const f = Math.min(MAX_F, Math.max(MIN_F, n / slow)), worst = f < 1 ? lo : hi;   // the spot that did most of it
-    return { wind: Math.round(tail / n), f, wx: Math.abs(Math.log(worst.f)) >= 0.05 ? { k: worst.k, lat: worst.lat, lon: worst.lon } : null };
+    return { wind: Math.round(tail / n), f, wx: Math.abs(Math.log(worst.f)) >= 0.05 ? { k: worst.k, lat: worst.lat, lon: worst.lon, at: worst.at } : null };
   });
 }

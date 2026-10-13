@@ -172,6 +172,14 @@ on first use (stored in D1). Emails wait 10 minutes and go out at most every
 half hour, with a one-click unsubscribe link. Code: `functions/_notify.js`,
 `pigeon/sw.js`.
 
+**Weather delays.** When a pigeon flies into whatever is making it 15 minutes or
+more late (the spot along its route where the weather did most, worked out at
+take-off), its sender and recipient get "Your pigeon flew into storms. It'll
+land 3h 5m late, at 11:52.", in their own time zone. In a group only the
+recipient hears (one per member would be a lot for the sender), and muted
+groups stay quiet. A switch under Notify Me When (on by default); quiet hours
+apply. A rerouted pigeon's old weather is forgotten.
+
 Landings are noticed on the back of normal app traffic, at most once a minute.
 For notifications while nobody has the app open, set up the 5-minute nudge:
 

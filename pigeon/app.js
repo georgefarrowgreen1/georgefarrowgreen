@@ -2075,6 +2075,7 @@ function vNotifySheet() {
       ${t("takeoff", I.up, "teal", "A Pigeon Takes Off", "When a friend sends you one")}
       ${t("rerouted", I.loc, "blue", "A Pigeon Changes Course", "When a friend moves while yours is flying")}
       ${t("lost", I.skull, "red", "A Pigeon Is Lost", "When Pigeon Death takes one of yours")}
+      ${t("delays", I.storm, "indigo", "Weather Delays", "When one flies into weather that makes it late")}
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
       ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
