@@ -2314,14 +2314,33 @@ function addLookup() {
     }[r.state] || "";
   }, 300);
 }
+// Add: the button folds into a circle, a pigeon flies out of it, and it lands as a green tick.
 async function addGo(h, btn) {
-  const msg = $(".add-msg", $layer);
-  try {
-    const r = await busyBtn(btn, "Sending…", () => api("friends", { method: "POST", body: { handle: h } }));
+  const msg = $(".add-msg", $layer), row = $(".addres .addrow", $layer);
+  const b = row?.querySelector("[data-act=addgo]") || (btn?.classList.contains("btn") ? btn : null);
+  const still = STILL.matches, wait = (ms) => new Promise((r) => setTimeout(r, still ? 0 : ms));
+  if (b) { b.style.width = `${b.offsetWidth}px`; b.disabled = true; void b.offsetWidth; b.classList.add("sending"); b.style.width = ""; b.innerHTML = `<span class="flyb">${I.bird}</span>`; }
+  else btn?.classList.add("pulsing");
+  let r, err;
+  try { [r] = await Promise.all([api("friends", { method: "POST", body: { handle: h } }), wait(700)]); } catch (e) { err = e; }
+  btn?.classList.remove("pulsing");
+  const ok = r && /^Request sent|joined/.test(r.message);
+  if (ok) {
     S.pendingAdd = null;
-    if (/^Request sent|joined/.test(r.message)) { toast(esc(r.message)); const i = $("#add-h", $layer); if (i) i.value = ""; $(".addres", $layer).innerHTML = ""; if (msg) { msg.className = "gfoot add-msg"; msg.textContent = "Add another, or let them scan your code."; } }
-    else if (msg) { msg.textContent = r.message; msg.classList.add("bad"); }
-  } catch (err) { if (msg) { msg.textContent = err.message; msg.classList.add("bad"); } }
+    if (b) { b.classList.remove("sending"); b.classList.add("sent"); b.innerHTML = I.check; b.setAttribute("aria-label", "Sent"); }
+    const sub = row?.querySelector(".csub"); if (sub) sub.textContent = /joined/.test(r.message) ? "You’re friends now" : "Request sent";
+    if (!b) toast(esc(r.message));
+    await sync();
+    await wait(1200);
+    // ready for the next one (unless they've started typing another already)
+    const i = $("#add-h", $layer);
+    if (i && i.value.trim().replace(/^@/, "").toLowerCase() === h.toLowerCase()) { i.value = ""; const box = $(".addres", $layer); if (box) box.innerHTML = ""; }
+    if (msg) { msg.className = "gfoot add-msg"; msg.textContent = "Add another, or let them scan your code."; }
+    if (S.sheet?.type === "addfriend") renderSheet();
+    return;
+  }
+  if (b) { b.classList.remove("sending"); b.disabled = false; b.textContent = "Add"; }
+  if (msg) { msg.textContent = err ? err.message : r.message; msg.classList.add("bad"); }
   await sync(); if (S.sheet?.type === "addfriend") { renderSheet(); addLookup(); }
 }
 function onInput(e) {

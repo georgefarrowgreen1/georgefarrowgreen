@@ -899,3 +899,16 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mycode .row2{display:flex;gap:10px;margin-top:8px}
 .mycode .row2 .btn .ico{margin-right:5px}
 .addres:not(:empty) + .add-msg:not(.bad){display:none}
+/* Add Friend: Add folds into a circle, a pigeon flies off, then a green tick */
+.addrow .btn{transition:width .35s var(--snappy),padding .35s var(--snappy),background-color .3s,box-shadow .3s}
+.addrow .btn.sending,.addrow .btn.sent{width:36px;padding:0;overflow:visible;opacity:1}
+.addrow .btn.sending:disabled,.addrow .btn.sent:disabled{opacity:1}
+.btn .flyb{display:grid;place-items:center;font-size:18px;color:var(--on-tint);animation:flyoff .7s cubic-bezier(.45,0,.55,1) .1s both}
+.btn .flyb svg{animation:flap .14s ease-in-out infinite alternate;transform-origin:50% 60%}
+@keyframes flyoff{0%{transform:translate(0,0) scale(1);opacity:1}35%{transform:translate(3px,-3px) rotate(-6deg) scale(1.05)}100%{transform:translate(34px,-42px) rotate(-18deg) scale(.55);opacity:0}}
+@keyframes flap{from{transform:scaleY(1)}to{transform:scaleY(.72)}}
+.addrow .btn.sent{background:var(--green);box-shadow:0 6px 16px color-mix(in srgb,var(--green) 35%,transparent);animation:pop .4s var(--bouncy)}
+.addrow .btn.sent .ico{font-size:18px;stroke-width:3;color:#fff}
+.nbtn.pulsing{animation:pulse .7s ease-in-out infinite alternate}
+@keyframes pulse{to{transform:scale(.9);opacity:.7}}
+@media (prefers-reduced-motion: reduce){.btn .flyb,.btn .flyb svg,.addrow .btn.sent,.nbtn.pulsing{animation:none}}
