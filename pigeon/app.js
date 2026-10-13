@@ -3,6 +3,7 @@
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
 import { PLACES, nearestPlace, snapToMile } from "./places.js";
+import { COUNTRIES, RANGES } from "./countries.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
@@ -405,13 +406,18 @@ function drawMap(cv, m, cardH) {
     }
   };
   g.beginPath(); trace(data.land, true);
+  // shallow water along every coast, then the land, then the mountains on it (lit from the north-west)
+  g.save(); g.lineJoin = "round"; g.strokeStyle = col("--shelf");
+  for (const [w, a] of [[Math.min(16, 3 + k * 0.9), 0.5], [Math.min(8, 2 + k * 0.45), 1]]) { g.globalAlpha = a; g.lineWidth = w; g.stroke(); }
+  g.restore();
   g.fillStyle = col("--land"); g.fill("evenodd");
+  g.save(); g.clip("evenodd"); drawRelief(g, X, Y, k, vx0, vx1, offs, col("--relief-hi"), col("--relief-lo")); g.restore();
   g.strokeStyle = col("--land-edge"); g.lineWidth = k > 40 ? 1.1 : 0.8; g.stroke();
   if (data.borders.length && k >= 2.5) {
     g.beginPath(); trace(data.borders, false);
     g.strokeStyle = col("--border"); g.lineWidth = k > 40 ? 1.2 : 0.8; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
   }
-  drawNight(g, W, H, ox, oy, k);
+  const suns = drawNight(g, W, H, ox, oy, k);
   // the routes (a message to a group has one per member), their ends, and each pigeon
   const tracks = routesOf(m).map((r) => { const rp = routePts(r); return { r, rp, P: rp.map((p) => [X(p.x), Y(p.y)]) }; });
   // the trail: solid where it has flown, dashed (and fainter) where it has still to go
@@ -430,7 +436,7 @@ function drawMap(cv, m, cardH) {
   for (const { rp, P } of tracks) rp.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
   const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
   // labels claim space in priority order; anything that would overlap is left out
-  const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H]];
+  const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H], ...suns];
   const ctlEl = $(".mapctl", $layer);
   if (ctlEl) { const r = ctlEl.getBoundingClientRect(), c = cv.getBoundingClientRect(); taken.push([r.left - c.left - 4, r.top - c.top - 4, r.right - c.left + 4, r.bottom - c.top + 4]); }
   const free = (b) => b[0] >= 2 && b[2] <= W - 2 && b[1] >= 2 && b[3] <= H - 2 && !taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
@@ -457,6 +463,22 @@ function drawMap(cv, m, cardH) {
   } else {
     end(tracks[0].P[0], tracks[0].P[4], m.fromPlace);
     for (const { r, P } of tracks) end(P[P.length - 1], P[P.length - 5], r.toPlace);
+  }
+  // country names: the biggest first, smaller ones as you zoom in (only where there's room)
+  if (k >= 2.2 && k < 60) {
+    g.save(); g.font = "600 10px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = col("--label-3");
+    const tier = k >= 9 ? 3 : k >= 4.5 ? 2 : 1;
+    for (const [name, lat, lon, t] of COUNTRIES) {
+      if (t > tier) continue;
+      const label = name.toUpperCase().split("").join("\u200a");
+      for (const o of offs) {
+        const x = X(lon + o), y = Y(mercY(lat)); if (x < -60 || x > W + 60 || y < -20 || y > H + 20) continue;
+        const w = g.measureText(label).width, box = [x - w / 2 - 3, y - 7, x + w / 2 + 3, y + 7];
+        if (!free(box)) continue;
+        taken.push(box); g.fillText(label, x, y);
+      }
+    }
+    g.restore();
   }
   // other cities once there's room to read them
   if (k >= 4) {
@@ -487,6 +509,22 @@ function drawMap(cv, m, cardH) {
   cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
   drawBirds(cv, performance.now());
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
+}
+// Mountains: each range a soft ridge, a light side to the north-west and a
+// shadow to the south-east, built from a few wide translucent strokes.
+function drawRelief(g, X, Y, k, vx0, vx1, offs, hi, lo) {
+  if (k > 120) return;
+  g.lineCap = "round"; g.lineJoin = "round";
+  for (const [wd, pts] of RANGES) for (const o of offs) {
+    const xs = pts.map(([lon]) => lon + o); if (Math.max(...xs) + wd < vx0 || Math.min(...xs) - wd > vx1) continue;
+    const P = pts.map(([lon, lat]) => [X(lon + o), Y(mercY(lat))]), w = wd * k, sh = Math.max(1, w * 0.18);
+    const path = (dx, dy) => { g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x + dx, y + dy) : g.moveTo(x + dx, y + dy))); };
+    for (const [c, dx, dy] of [[lo, sh, sh], [hi, -sh, -sh]]) {
+      g.strokeStyle = c;
+      for (const [f, a] of [[1.5, 0.035], [1, 0.045], [0.6, 0.05]]) { g.globalAlpha = a; g.lineWidth = w * f; path(dx, dy); g.stroke(); }
+    }
+  }
+  g.globalAlpha = 1;
 }
 // Where the sun is overhead right now (degrees): the usual low-precision
 // solar formulas, good to a fraction of a degree.
@@ -522,10 +560,12 @@ function drawNight(g, W, H, ox, oy, k) {
   oc.putImageData(img, 0, 0);
   g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
   g.drawImage(off, 0, 0, cw * NIGHT_STEP, ch * NIGHT_STEP); g.restore();
-  // the sun, where it's overhead (once on each copy of the world in view)
+  // the sun, where it's overhead (once on each copy of the world in view); its spots, for labels to keep clear of
+  const spots = [];
   for (let o = -360; o <= 360; o += 360) {
     const sx = ox + (sun.lon + o) * k, sy = oy - mercY(sun.lat) * k;
     if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
+    spots.push([sx - 15, sy - 15, sx + 15, sy + 15]);
     g.save(); g.translate(sx, sy);
     const glow = g.createRadialGradient(0, 0, 2, 0, 0, 22); glow.addColorStop(0, "rgba(255,204,0,.55)"); glow.addColorStop(1, "rgba(255,204,0,0)");
     g.fillStyle = glow; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill();
@@ -534,6 +574,7 @@ function drawNight(g, W, H, ox, oy, k) {
     for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4); g.beginPath(); g.moveTo(c * 9, s2 * 9); g.lineTo(c * 12.5, s2 * 12.5); g.stroke(); }
     g.restore();
   }
+  return spots;
 }
 // Wind: short streaks drifting beside the route, with the pigeon for a
 // tailwind (green), against it for a headwind (orange); faster the stronger it blew.
