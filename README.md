@@ -230,6 +230,14 @@ colour still says what kind it is. Your friends see it too. The server only
 accepts a look whose badge you've earned (`SKINS` and `skinOpen` in
 `functions/_stats.js`), and each pigeon keeps the look it flew with.
 
+**The map.** Flights over 3,000 km open on a globe that you can drag to spin and
+pinch to zoom; the globe button switches to the flat map and back. Both show:
+- the trail, solid where the pigeon has flown and dashed ahead;
+- night and twilight, worked out from where the sun really is, with the sun drawn where it's overhead;
+- wind streaks along the route, green for a tailwind and orange for a headwind;
+- shallow water along the coasts, softly shaded mountain ranges, and country names as you zoom in (`pigeon/countries.js`);
+- a pigeon that flaps, tilts with its course and flutters as it takes off and lands. Only the pigeon is redrawn each frame; the map stays as it was drawn.
+
 **The Skies.** The globe button on Messages opens one live map of every pigeon
 in the air to or from you, from every chat and group, with a countdown for
 each. Tap a row to open that chat. It shows exactly what those chats already

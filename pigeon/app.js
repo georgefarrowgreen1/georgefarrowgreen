@@ -367,6 +367,8 @@ function mapFrame(cv, m, cardH) {
 }
 function drawMap(cv, m, cardH) {
   cv._m = m; cv._cardH = cardH;
+  $(".mapctl [data-act=mapglobe]", $layer)?.setAttribute("aria-pressed", String(globeOn(m)));
+  if (globeOn(m)) return drawGlobe(cv, m, cardH);
   const { W, H, sy0, pts, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
   const { cx, cy, k } = view;
   const dpr = window.devicePixelRatio || 1;
@@ -411,7 +413,7 @@ function drawMap(cv, m, cardH) {
   for (const [w, a] of [[Math.min(16, 3 + k * 0.9), 0.5], [Math.min(8, 2 + k * 0.45), 1]]) { g.globalAlpha = a; g.lineWidth = w; g.stroke(); }
   g.restore();
   g.fillStyle = col("--land"); g.fill("evenodd");
-  g.save(); g.clip("evenodd"); drawRelief(g, X, Y, k, vx0, vx1, offs, col("--relief-hi"), col("--relief-lo")); g.restore();
+  g.save(); g.clip("evenodd"); drawRelief(g, offs.map((o) => (lon, lat) => [X(lon + o), Y(mercY(lat))]), k, col("--relief-hi"), col("--relief-lo")); g.restore();
   g.strokeStyle = col("--land-edge"); g.lineWidth = k > 40 ? 1.1 : 0.8; g.stroke();
   if (data.borders.length && k >= 2.5) {
     g.beginPath(); trace(data.borders, false);
@@ -512,12 +514,12 @@ function drawMap(cv, m, cardH) {
 }
 // Mountains: each range a soft ridge, a light side to the north-west and a
 // shadow to the south-east, built from a few wide translucent strokes.
-function drawRelief(g, X, Y, k, vx0, vx1, offs, hi, lo) {
+function drawRelief(g, pts1, k, hi, lo) {
   if (k > 120) return;
   g.lineCap = "round"; g.lineJoin = "round";
-  for (const [wd, pts] of RANGES) for (const o of offs) {
-    const xs = pts.map(([lon]) => lon + o); if (Math.max(...xs) + wd < vx0 || Math.min(...xs) - wd > vx1) continue;
-    const P = pts.map(([lon, lat]) => [X(lon + o), Y(mercY(lat))]), w = wd * k, sh = Math.max(1, w * 0.18);
+  for (const [wd, pts] of RANGES) for (const pt of pts1) {
+    const P = pts.map(([lon, lat]) => pt(lon, lat)); if (P.some((p) => !p)) continue;
+    const w = wd * k, sh = Math.max(1, w * 0.18);
     const path = (dx, dy) => { g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x + dx, y + dy) : g.moveTo(x + dx, y + dy))); };
     for (const [c, dx, dy] of [[lo, sh, sh], [hi, -sh, -sh]]) {
       g.strokeStyle = c;
@@ -621,6 +623,173 @@ function drawBirds(cv, ts) {
     g.restore();
   }
 }
+/* ---------- the globe: long flights curve round the Earth ---------- */
+const GLOBE_KM = 3000;
+const globeOn = (m) => S.sheet?.globe ?? Math.max(0, ...routesOf(m).filter((r) => !r.here).map((r) => r.km || 0)) >= GLOBE_KM;
+const latOf = (my) => 2 * Math.atan(Math.exp(my / R2D)) * R2D - 90;
+// the middle of everything on the map, as a direction from the centre of the Earth
+function globeFit(m) {
+  let x = 0, y = 0, z = 0;
+  for (const r of routesOf(m)) for (const p of routePts(r)) { const a = latOf(p.y) * Math.PI / 180, b = p.x * Math.PI / 180; x += Math.cos(a) * Math.cos(b); y += Math.cos(a) * Math.sin(b); z += Math.sin(a); }
+  // looked at from a little below (towards the equator), so a long route arcs over the curve of the Earth
+  const lat = Math.atan2(z, Math.hypot(x, y)) * R2D;
+  return { lat: lat - Math.sign(lat || 1) * Math.min(24, Math.abs(lat) + 8), lon: Math.atan2(y, x) * R2D, s: 1, mid: lat };
+}
+function globeFrame(cv, m, cardH) {
+  const W = cv.clientWidth, H = cv.clientHeight, usableH = Math.max(80, H - cardH - 30);
+  const fit = globeFit(m), v = S.sheet?.gview || fit;
+  return { W, H, cx: W / 2, cy: 20 + usableH / 2, R: Math.min(W * 0.48, usableH * 0.47) * v.s, v, fit };
+}
+function moveGlobe(cv, z, dx, dy) {
+  const { R, v, fit } = globeFrame(cv, cv._m, cv._cardH);
+  const s2 = Math.max(1, Math.min(10, v.s * z));
+  // zooming in leans towards the route itself (the fit looks at it from a little below)
+  const lean = z > 1 && s2 > v.s ? 0.6 * (1 - v.s / s2) : 0, dLon = ((fit.lon - v.lon + 540) % 360) - 180;
+  S.sheet.gview = { lon: v.lon - (dx / R) * R2D + dLon * lean, lat: Math.max(-80, Math.min(80, v.lat + (dy / R) * R2D + (fit.mid - v.lat) * lean)), s: s2 };
+  redrawMap();
+}
+function drawGlobe(cv, m, cardH) {
+  const { W, H, cx, cy, R, v } = globeFrame(cv, m, cardH); if (!W || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const col = (n) => cssVar(cv, n), rad = Math.PI / 180;
+  // a little spin as it opens
+  if (cv._spin == null || cv._spin === 0) cv._spin = STILL.matches || S.sheet?.gview ? -1 : performance.now();
+  let lon0 = v.lon; const lat0 = v.lat;
+  if (cv._spin > 0) { const p = Math.min(1, (performance.now() - cv._spin) / 1100); lon0 -= 40 * (1 - p) ** 3; if (p < 1) requestAnimationFrame(redrawMap); else cv._spin = -1; }
+  const s0 = Math.sin(lat0 * rad), c0 = Math.cos(lat0 * rad);
+  // orthographic: [x, y, in sight]; out of sight points go to the rim
+  const proj = (lon, lat) => {
+    const f = lat * rad, d = (lon - lon0) * rad, cf = Math.cos(f), cd = Math.cos(d);
+    let x = cf * Math.sin(d), y = c0 * Math.sin(f) - s0 * cf * cd; const up = s0 * Math.sin(f) + c0 * cf * cd >= 0;
+    if (!up) { const n = Math.hypot(x, y) || 1; x /= n; y /= n; }
+    return [cx + R * x, cy - R * y, up];
+  };
+  const pt = (lon, lat) => { const p = proj(lon, lat); return p[2] ? p : null; };
+  const k = R * rad;                                                   // pixels per degree at the middle
+  g.fillStyle = col("--bg") || col("--sea"); g.fillRect(0, 0, W, H);
+  // the air around it
+  const halo = g.createRadialGradient(cx, cy, R * 0.98, cx, cy, R + 18); halo.addColorStop(0, "rgba(90,160,255,.35)"); halo.addColorStop(1, "rgba(90,160,255,0)");
+  g.fillStyle = halo; g.beginPath(); g.arc(cx, cy, R + 18, 0, 7); g.fill();
+  g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
+  g.fillStyle = col("--sea"); g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+  // graticule
+  g.strokeStyle = col("--grid"); g.lineWidth = 1;
+  const curve = (pts) => { g.beginPath(); let on = false; for (const [lo, la] of pts) { const p = proj(lo, la); if (!p[2]) { on = false; continue; } on ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); on = true; } g.stroke(); };
+  for (let lo = -180; lo < 180; lo += 30) curve(Array.from({ length: 61 }, (_, i) => [lo, -90 + i * 3]));
+  for (let la = -60; la <= 60; la += 30) curve(Array.from({ length: 121 }, (_, i) => [-180 + i * 3, la]));
+  // land (finer once it's big), with the coast's shallow water, and the mountains
+  const want = R > 700 ? "50m" : "110m", data = world(want) || world("110m");
+  g.beginPath();
+  for (const sh of data.land) {
+    const f = sh.f, lat = sh.lat || (sh.lat = Float32Array.from({ length: f.length / 2 }, (_, i) => latOf(f[i * 2 + 1])));
+    let any = false; const P = [];
+    for (let i = 0; i < f.length; i += 2) { const p = proj(f[i], lat[i / 2]); if (p[2]) any = true; P.push(p); }
+    if (!any) continue;
+    let lx = 1e9, ly = 1e9;
+    P.forEach(([x, y], i) => { if (i && Math.abs(x - lx) + Math.abs(y - ly) < 0.7 && i < P.length - 1) return; i ? g.lineTo(x, y) : g.moveTo(x, y); lx = x; ly = y; });
+    g.closePath();
+  }
+  g.save(); g.lineJoin = "round"; g.strokeStyle = col("--shelf");
+  for (const [w, a] of [[Math.min(16, 3 + k * 0.9), 0.5], [Math.min(8, 2 + k * 0.45), 1]]) { g.globalAlpha = a; g.lineWidth = w; g.stroke(); }
+  g.restore();
+  g.fillStyle = col("--land"); g.fill("evenodd");
+  g.save(); g.clip("evenodd"); drawRelief(g, [pt], k, col("--relief-hi"), col("--relief-lo")); g.restore();
+  g.strokeStyle = col("--land-edge"); g.lineWidth = 0.8; g.stroke();
+  // night, on the sphere
+  const sun = sunAt(), sd = Math.sin(sun.lat * rad), sdc = Math.cos(sun.lat * rad);
+  const x0 = Math.floor(cx - R), y0 = Math.floor(cy - R), cw = Math.ceil((2 * R) / NIGHT_STEP) + 1;
+  const off = drawGlobe.c || (drawGlobe.c = document.createElement("canvas"));
+  if (off.width !== cw || off.height !== cw) { off.width = cw; off.height = cw; }
+  const oc = off.getContext("2d"), img = oc.createImageData(cw, cw), px = img.data;
+  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const [nr, ng, nb, top] = dark ? [0, 0, 0, 0.42] : [12, 26, 64, 0.26];
+  for (let j = 0; j < cw; j++) for (let i = 0; i < cw; i++) {
+    const x = (x0 + i * NIGHT_STEP - cx) / R, y = -(y0 + j * NIGHT_STEP - cy) / R, r2 = x * x + y * y; if (r2 > 1.02) continue;
+    const z = Math.sqrt(Math.max(0, 1 - r2)), lat = Math.asin(z * s0 + y * c0), lon = lon0 * rad + Math.atan2(x, z * c0 - y * s0);
+    const alt = Math.asin(Math.sin(lat) * sd + Math.cos(lat) * sdc * Math.cos(lon - sun.lon * rad)) / rad;
+    const n = alt >= 0 ? 0 : alt <= -12 ? 1 : ((q) => q * q * (3 - 2 * q))(-alt / 12), o = (j * cw + i) * 4;
+    px[o] = nr; px[o + 1] = ng; px[o + 2] = nb; px[o + 3] = Math.round(255 * top * n);
+  }
+  oc.putImageData(img, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(off, x0, y0, cw * NIGHT_STEP, cw * NIGHT_STEP);
+  // light from the top left, shadow at the rim: it reads as a ball
+  const shade = g.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
+  shade.addColorStop(0, "rgba(255,255,255,.10)"); shade.addColorStop(0.7, "rgba(255,255,255,0)"); shade.addColorStop(1, "rgba(0,0,0,.18)");
+  g.fillStyle = shade; g.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+  // the sun where it's overhead
+  const sp = pt(sun.lon, sun.lat), suns = [];
+  if (sp) {
+    suns.push([sp[0] - 15, sp[1] - 15, sp[0] + 15, sp[1] + 15]);
+    g.save(); g.translate(sp[0], sp[1]); const gl = g.createRadialGradient(0, 0, 2, 0, 0, 22); gl.addColorStop(0, "rgba(255,204,0,.55)"); gl.addColorStop(1, "rgba(255,204,0,0)");
+    g.fillStyle = gl; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill(); g.fillStyle = "#ffcc00"; g.strokeStyle = "#ff9f0a"; g.lineWidth = 1.5; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill(); g.stroke();
+    g.strokeStyle = "#ffb800"; g.lineWidth = 1.6; g.lineCap = "round";
+    for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4); g.beginPath(); g.moveTo(c * 9, s2 * 9); g.lineTo(c * 12.5, s2 * 12.5); g.stroke(); }
+    g.restore();
+  }
+  // routes: solid where flown, dashed ahead; hidden round the back
+  const tracks = routesOf(m).map((r) => { const rp = routePts(r); const PP = rp.map((p) => proj(p.x, latOf(p.y))); return { r, rp, P: PP.map(([x, y]) => [x, y]), up: PP.map((p) => p[2]) }; });
+  const seg = (P, up, a, b) => { g.beginPath(); let on = false; for (let i = a; i <= b; i++) { if (!up[i]) { on = false; continue; } on ? g.lineTo(P[i][0], P[i][1]) : g.moveTo(P[i][0], P[i][1]); on = true; } g.stroke(); };
+  const lw = tracks.length > 1 ? 3 : 3.5, tint = col("--tint");
+  g.lineCap = "round"; g.lineJoin = "round";
+  for (const { r, rp, P, up } of tracks) {
+    if (r.here) continue;
+    const ft = flightAt(r, r.lost ? r.lostAt : now()).t, i = rp.findIndex((p) => p.t >= ft), cut = i < 0 ? P.length - 1 : Math.max(0, i - 1);
+    if (i >= 0) { g.globalAlpha = r.lost ? 0.3 : 0.6; g.strokeStyle = tint; g.lineWidth = lw - 0.5; g.setLineDash([9, 8]); seg(P, up, cut, P.length - 1); }
+    g.globalAlpha = 1; g.setLineDash([]);
+    if (cut > 0) { g.lineWidth = lw + 1.5; g.strokeStyle = col("--cell"); seg(P, up, 0, cut); g.lineWidth = lw; g.strokeStyle = tint; seg(P, up, 0, cut); }
+  }
+  g.globalAlpha = 1;
+  g.restore();                                                         // (out of the globe's clip)
+  // ends and labels
+  const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P, up }) => { const ft = flightAt(r, r.lost ? r.lostAt : now()).t, i = rp.findIndex((p) => p.t >= ft); return { r, vis: up[i < 0 ? up.length - 1 : i], ...pigeonOn(P, rp, ft) }; }).filter((b) => b.vis);
+  const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H], ...suns];
+  const ctl = $(".mapctl", $layer);
+  if (ctl) { const r = ctl.getBoundingClientRect(), c = cv.getBoundingClientRect(); taken.push([r.left - c.left - 4, r.top - c.top - 4, r.right - c.left + 4, r.bottom - c.top + 4]); }
+  const free = (b) => b[0] >= 2 && b[2] <= W - 2 && b[1] >= 2 && b[3] <= H - 2 && !taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
+  const text = (str, x, y, color) => { g.lineWidth = 4; g.strokeStyle = col("--land"); g.strokeText(str, x, y); g.fillStyle = color; g.fillText(str, x, y); };
+  g.textBaseline = "middle"; g.textAlign = "left"; g.lineJoin = "round"; g.font = "600 13px -apple-system, system-ui, sans-serif";
+  const done = new Set();
+  for (const { r, P, up } of tracks) for (const [i, j, name] of [[0, 4, r.fromPlace ?? m.fromPlace], [P.length - 1, P.length - 5, r.toPlace]]) {
+    if (!up[i]) continue;
+    const [x, y] = P[i], key = `${Math.round(x)},${Math.round(y)}`; if (done.has(key)) continue; done.add(key);
+    g.fillStyle = col("--cell"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill();
+    taken.push([x - 9, y - 9, x + 9, y + 9]);
+    if (!name) continue;
+    const w = g.measureText(name).width, ly = y + ((P[Math.max(0, j)] || P[i])[1] <= y ? 28 : -28), lx = Math.min(W - 8 - w, Math.max(8, x - w / 2)), box = [lx - 3, ly - 10, lx + w + 3, ly + 10];
+    if (!free(box)) continue; taken.push(box); text(name, lx, ly, col("--label"));
+  }
+  if (k >= 2.2) {
+    g.save(); g.font = "600 10px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = col("--label-3");
+    const tier = k >= 9 ? 3 : k >= 4.5 ? 2 : 1;
+    for (const [name, lat, lon, t] of COUNTRIES) {
+      if (t > tier) continue; const p = pt(lon, lat); if (!p) continue;
+      const label = name.toUpperCase().split("").join("\u200a"), w = g.measureText(label).width, box = [p[0] - w / 2 - 3, p[1] - 7, p[0] + w / 2 + 3, p[1] + 7];
+      if (Math.hypot(p[0] - cx, p[1] - cy) > R * 0.92 || !free(box)) continue; taken.push(box); g.fillText(label, p[0], p[1]);
+    }
+    g.restore();
+  }
+  if (k >= 4) {
+    g.font = "500 11px -apple-system, system-ui, sans-serif"; const c2 = col("--label-2");
+    for (const [name, lat, lon] of PLACES) {
+      if (done.has(name)) continue; const p = pt(lon, lat); if (!p || Math.hypot(p[0] - cx, p[1] - cy) > R * 0.95) continue;
+      const w = g.measureText(name).width, box = [p[0] - 4, p[1] - 8, p[0] + 8 + w, p[1] + 8]; if (!free(box)) continue;
+      taken.push(box); g.fillStyle = c2; g.beginPath(); g.arc(p[0], p[1], 2.5, 0, 7); g.fill(); text(name, p[0] + 6, p[1], c2);
+    }
+  }
+  // as the flat map: keep it without its pigeons, then draw them (and the wind) on top
+  const base = cv._base || (cv._base = document.createElement("canvas"));
+  if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
+  base.getContext("2d").drawImage(cv, 0, 0);
+  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  cv._winds = tracks.filter(({ r, up }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt && up.every(Boolean)).map(({ r, P }) => {
+    const cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+    return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
+  });
+  cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
+  drawBirds(cv, performance.now());
+  $(".mapctl", $layer)?.classList.toggle("moved", !!S.sheet?.gview);
+}
 let mapFrameReq = 0;
 function redrawMap() {
   if (mapFrameReq) return;
@@ -629,6 +798,7 @@ function redrawMap() {
 // Move the map: zoom by `z` about screen point (sx, sy), then pan by (dx, dy) pixels.
 function moveMap(cv, z, sx, sy, dx = 0, dy = 0) {
   if (!cv._m || S.sheet?.type !== "map") return;
+  if (globeOn(cv._m)) return moveGlobe(cv, z, dx, dy);
   const { W, sy0, fit, view, kMin, pts } = mapFrame(cv, cv._m, cv._cardH);
   const k = Math.max(kMin, Math.min(MAP_KMAX, view.k * z));
   const wx = view.cx + (sx - W / 2) / view.k, wy = view.cy - (sy - sy0) / view.k;
@@ -1878,7 +2048,7 @@ function drawSheet(refresh) {
   switch (s.type) {
     case "map":
       if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
-        <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button></div>
+        <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
       return tickMap();
@@ -2436,10 +2606,11 @@ async function onClick(e) {
       return;
     case "mapzoom": {
       const cv = $(".map", $layer); if (!cv || !cv._m) return;
-      if (id === "fit") { S.sheet.view = null; return redrawMap(); }
+      if (id === "fit") { S.sheet.view = null; S.sheet.gview = null; return redrawMap(); }
       return moveMap(cv, id === "in" ? 2 : 0.5, cv.clientWidth / 2, mapFrame(cv, cv._m, cv._cardH).sy0);
     }
     case "view": S.sheet = { type: "view", id }; return renderSheet();
+    case "mapglobe": { const cv = $(".map", $layer); if (!cv?._m) return; S.sheet.globe = !globeOn(cv._m); S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap(); }
     case "safety": {
       const f = friend(id); if (!f) return;
       S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : null), digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };

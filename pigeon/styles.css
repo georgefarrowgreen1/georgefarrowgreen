@@ -843,3 +843,5 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pick .when{padding:0 9px;min-width:36px}
 .pick .when[aria-pressed="true"]{padding:0 12px 0 9px}
 .skin2.on .sbig{animation:pop .4s var(--bouncy)}
+/* the globe / flat map switch */
+.mapctl .globebtn[aria-pressed="true"]{color:var(--tint)}
