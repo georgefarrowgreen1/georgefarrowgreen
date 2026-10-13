@@ -1096,3 +1096,12 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .frr .pg{font-size:11px}
 .frr .n{width:56px;flex:none;font-weight:500}
 @media (prefers-reduced-motion: reduce){.ctrack::before,.ctrack .cbird,.fly.chip .c1 .pg{animation:none}.ctrack i{transition:none}}
+/* the outbox: your message, waiting on the perch for signal */
+.b.me.pending{opacity:.72;animation:perch 2.4s ease-in-out infinite}
+.b.me.pending.failed{opacity:1;animation:none;background:var(--fill-2);color:var(--label)}
+@keyframes perch{50%{opacity:.5}}
+.meta .fl.outq{border:0;background:none;font:inherit;color:var(--label-2);padding:0;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.meta .fl.outq .ico{font-size:13px}
+.meta .fl.outq.bad{color:var(--red);max-width:100%;text-align:right}
+.offline{transition:opacity .3s}
+@media (prefers-reduced-motion: reduce){.b.me.pending{animation:none}}

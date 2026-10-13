@@ -253,6 +253,16 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**No signal.** Send with no connection and the pigeon waits on the perch:
+your message, faded, "Waiting for signal". It's kept on the phone already
+sealed (ciphertext only, opened again with your key after a reload) and takes
+off by itself when the phone is back online, on returning to the app, or at
+the next sync; the server takes each message id once, so a retry can't send it
+twice. If the server turns it down meanwhile (no swifts left, not your turn),
+it stays, marked "Not sent" with why, to try again or delete. One standard
+pigeon waits per chat; a swift, turbo or rocket can wait beside it. Signing out
+deletes what's waiting.
+
 **Opens at once.** After every sync the phone keeps a copy of what the server
 sent, and of the last 12 chats you opened, in IndexedDB. Message contents stay
 sealed in it; they're opened with the key that's already on the phone, as they

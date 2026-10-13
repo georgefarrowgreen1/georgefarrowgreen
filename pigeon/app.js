@@ -39,7 +39,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
-  chatRaw: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
+  chatRaw: new Map(), outbox: [], pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), replyTo: null,
 };
@@ -95,7 +95,7 @@ async function api(path, { method = "GET", body, form, raw, blob, onProgress } =
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
   let r;
   try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload }); }
-  catch (_) { S.offline = true; renderOffline(); throw new Error("You’re offline. Check your connection and try again."); }
+  catch (_) { S.offline = true; renderOffline(); throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); }
   if (S.offline) { S.offline = false; renderOffline(); }
   if (raw && r.ok) return r;
   let data = {};
@@ -1337,7 +1337,8 @@ async function useKeys(token, me, privJwk) {
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
   clearTimeout(cacheTimer);
-  if (S.me?.id) await idb.del("cache:" + S.me.id).catch(() => {});
+  if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {}); }
+  S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
@@ -1485,6 +1486,7 @@ async function sync() {
       S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view)) render();
       cacheSave();
+      if (S.outbox.length) outboxFlush();
     } catch (e) { if (e.status !== 401) console.warn("sync", e.message); }
     finally { syncing = null; }
   })();
@@ -1823,7 +1825,7 @@ function go(view, chat) {
     const id = S.mapNext; S.mapNext = null;
     if (id && S.chat === chat && (S.msgs.get(chat) || []).some((x) => x.id === id)) S.sheet = { type: "map", id };
     render();
-  }).catch((e) => toast(esc(e.message)));
+  }).catch((e) => { if (!e.offline) toast(esc(e.message)); });    // (offline: the banner says so)
 }
 
 // How the screen changes, as on iPhone: a chat pushes in from the side and pops
@@ -1923,6 +1925,8 @@ const pgm = (m) => pg(kindOf(m), m?.skin);
 
 const picWord = (p) => (p.p?.m === "image/gif" ? "GIF" : "Photo");
 function preview(f) {
+  const out = S.outbox.filter((o) => o.to === f.id).at(-1);
+  if (out) return { html: `<span class="${out.err ? "lostp" : "fl"}">${out.err ? I.warn : I.clock} ${out.err ? "Not sent" : "Waiting for signal"}</span>`, at: out.at };
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
   if (l.recalled) return { html: `<span class="homing">${I.homing} ${l.from === S.me.id ? "You called your pigeon back" : `${esc(first(f.name))} called their pigeon back`}</span>`, at: l.lostAt };
@@ -1940,6 +1944,8 @@ function flockCount(m) {
   return { n: fl.length, landed, lost, recalled, next: next === Infinity ? null : next };
 }
 function gpreview(g) {
+  const out = S.outbox.filter((o) => o.to === g.id).at(-1);
+  if (out) return { html: `<span class="${out.err ? "lostp" : "fl"}">${out.err ? I.warn : I.clock} ${out.err ? "Not sent" : "Waiting for signal"}</span>`, at: out.at };
   const l = g.last;
   if (!l) return { html: `${others(g).map((p) => esc(first(p.name))).join(", ")}`, at: g.createdAt };
   const who = l.from === S.me.id ? "You" : esc(first(member(g, l.from)?.name || "Someone"));
@@ -1957,7 +1963,7 @@ const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return
 /* ---------- Messages ---------- */
 function vMessages() {
   const fr = [
-    ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last),
+    ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last || S.outbox.some((o) => o.to === x.f.id)),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
   // swipe a row left for quick actions
@@ -2332,6 +2338,7 @@ function vGroupChat(g) {
   let body = "", lastStamp = 0, prevFrom = null;
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
+  else if (!msgs.length && S.outbox.some((o) => o.to === g.id)) body = "";
   else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
@@ -2353,7 +2360,7 @@ function vGroupChat(g) {
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="nm"><span>${esc(g.name)}</span>${I.chev}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
-    ${warn}<div class="msgs">${gstatus(g, t)}${body}</div>`;
+    ${warn}<div class="msgs">${gstatus(g, t)}${body}${outboxBubbles(g.id)}</div>`;
 }
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
@@ -2364,6 +2371,7 @@ function vChat() {
   let body = "", lastStamp = 0, prevFrom = null;
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
+  else if (!msgs.length && S.outbox.some((o) => o.to === f.id)) body = "";
   else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
@@ -2382,7 +2390,7 @@ function vChat() {
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    ${warn}<div class="msgs">${status(f, t)}${body}</div>`;
+    ${warn}<div class="msgs">${status(f, t)}${body}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -3610,6 +3618,12 @@ async function onClick(e) {
       el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
       el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return;
     }
+    case "outmenu": {
+      const o = S.outbox.find((x) => x.id === id); if (!o) return;
+      return openMenu(t, [{ label: o.err ? "Try Again" : "Send Now", icon: I.up, act: "outretry", id }, { label: "Delete", icon: I.trash, act: "outdel", id, destructive: true }]);
+    }
+    case "outretry": { closePop(); const o = S.outbox.find((x) => x.id === id); if (o) { o.err = null; await outboxSave(); render(); } return outboxFlush(true); }
+    case "outdel": { closePop(); S.outbox = S.outbox.filter((x) => x.id !== id); await outboxSave(); haptic("tick"); return render(); }
     case "whohas": haptic("tick"); S.sheet = { type: "whohas", id }; return renderSheet();
     case "flymenu": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
@@ -4189,9 +4203,77 @@ function showUpload(stage, f = 0) {
   });
   upAnim.set(f);
 }
+/* ---------- the outbox: pigeons waiting for signal ----------
+   A message sent with no connection is already sealed; it waits here (in
+   IndexedDB, as ciphertext, never as words) and takes off by itself once the
+   phone is back online. The server takes each id once, so sending one twice
+   is harmless. If the server turns one down (not your turn any more, say) it
+   stays, marked, for you to retry or delete. */
+const outKey = () => "outbox:" + S.me.id;
+async function outboxSave() { try { await idb.set(outKey(), S.outbox.map(({ id, to, path, meta, blob, kind, at, err }) => ({ id, to, path, meta, blob, kind, at, err }))); } catch (_) {} }
+async function outboxAdd(o) { S.outbox.push(o); await outboxSave(); }
+async function outboxLoad() {
+  let list = [];
+  try { list = (await idb.get(outKey())) || []; } catch (_) {}
+  S.outbox = list;
+  for (const o of list) await outboxOpen(o);
+}
+// what one says, opened again with this phone's key (after a reload)
+async function outboxOpen(o) {
+  if (!S.plain.has(o.id)) {
+    const g = group(o.to);
+    if (g) await decryptGroup(g, { id: o.id, from: S.me.id, body: o.meta.body, key: o.meta.keys[S.me.id] });
+    else if (friend(o.to)) await decrypt(o.to, { id: o.id, from: S.me.id, to: o.to, ct: o.meta.ct });
+  }
+  const p = S.plain.get(o.id);
+  if (o.blob && p?.p && !S.photos.has(o.id)) {
+    try { S.photos.set(o.id, URL.createObjectURL(new Blob([await E2E.openPhoto(o.id, p.p, o.blob)], { type: p.p.m === "image/gif" ? "image/gif" : "image/jpeg" }))); } catch (_) {}
+  }
+}
+let flushing = null;
+async function outboxFlush(force) {
+  if (!S.me || !S.outbox.length || flushing) return flushing;
+  if (navigator.onLine === false && !force) return;
+  flushing = (async () => {
+    let sent = 0;
+    for (const o of [...S.outbox]) {
+      if (o.err && !force) continue;
+      try {
+        if (o.blob) {
+          const form = new FormData();
+          form.append("meta", JSON.stringify(o.meta));
+          form.append("photo", new Blob([o.blob], { type: "application/octet-stream" }), "photo.bin");
+          await api(o.path, { method: "POST", form });
+        } else await api(o.path, { method: "POST", body: o.meta });
+        sent++;
+      } catch (e) {
+        if (e.offline) break;                                   // still no signal: try again later
+        if (e.status !== 409 || !/already sent/.test(e.message)) { o.err = e.message; await outboxSave(); continue; }
+      }
+      S.outbox = S.outbox.filter((x) => x.id !== o.id); await outboxSave();
+      S.fresh.set(o.id, Date.now());
+    }
+    if (sent) { haptic("success"); toast(sent === 1 ? "Your pigeon took off." : `${sent} pigeons took off.`); }
+    if (sent || S.outbox.some((o) => o.err)) { for (const id of new Set([S.chat])) if (id && S.view === "chat") await loadChat(id).catch(() => {}); render(); }
+  })();
+  try { await flushing; } finally { flushing = null; }
+}
+window.addEventListener("online", () => { S.offline = false; renderOffline(); outboxFlush(); sync(); });
+window.addEventListener("offline", () => { S.offline = true; renderOffline(); });
+// a waiting pigeon in its chat: your message, with a badge
+function outboxBubbles(chat) {
+  return S.outbox.filter((o) => o.to === chat).map((o) => {
+    const p = S.plain.get(o.id) || { t: "" }, ph = S.photos.get(o.id);
+    const pic = p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
+    return `<div class="b me pending${o.err ? " failed" : ""}" data-mid="${esc(o.id)}">${pic}${esc(p.t || "").replace(/\n/g, "<br>")}</div>
+      <div class="meta me"><button type="button" class="fl outq${o.err ? " bad" : ""}" data-act="outmenu" data-id="${esc(o.id)}">${o.err ? `${I.warn} Not sent · ${esc(o.err)}` : `${I.clock} Waiting for signal`}</button></div>`;
+  }).join("");
+}
+
 async function send() {
   const text = (dumbText() ?? $ta.value).trim();
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
+  if (S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
   S.busy = true; S.err = ""; renderCompose();
   try {
     const id = uuid(), to = S.chat, sc = schedFor(to), vi = !sc && viaFor(to);
@@ -4217,7 +4299,19 @@ async function send() {
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
       ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
+    // no signal: it waits on the perch (sealed already) and takes off once there is
+    const queue = async () => {
+      await outboxAdd({ id, to, path, meta, blob, kind: S.sendKind, at: Date.now() });
+      S.plain.set(id, payload);
+      if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }
+      if (rt) S.replyTo = null;
+      if (sc) S.sched = null; if (vi) S.via = null;
+      S.pick = null; $ta.value = ""; fitTa(); S.stick = true; showUpload(null);
+      haptic("tick"); render();
+    };
+    if (navigator.onLine === false) { await queue(); S.busy = false; renderCompose(); return; }
     let r;
+    try {
     if (blob) {
       const form = new FormData();
       form.append("meta", JSON.stringify(meta));
@@ -4227,6 +4321,7 @@ async function send() {
       showUpload("send", 1); await new Promise((res) => setTimeout(res, 300));   // let the bar finish its glide
       upAnim?.stop(); upAnim = null;
     } else r = await api(path, { method: "POST", body: meta });
+    } catch (e) { if (!e.offline) throw e; upAnim?.stop(); upAnim = null; await queue(); S.busy = false; renderCompose(); return; }
     S.pick = null;                    // next time, back to the default
     haptic("success");
     if (rt) S.replyTo = null;
@@ -4404,8 +4499,10 @@ async function start() {
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
     S.view = S.pendingAdd ? "friends" : "messages";
     await cacheLoad();                             // what you saw last time, at once
+    await outboxLoad();
     render();
     await sync();
+    outboxFlush();
     if (S.me && S.me.lat == null) go("locpick");
     else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
     else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
