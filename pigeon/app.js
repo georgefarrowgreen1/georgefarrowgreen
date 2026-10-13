@@ -2878,27 +2878,42 @@ async function setAutoLocation(on, btn) {
   S.me = { ...S.me, autoLocation: on }; render(); refreshProfile();       // the switch moves straight away
   try { const r = await api("me", { method: "PATCH", body: { autoLocation: on } }); const same = !!r.me.autoLocation === on; S.me = r.me; if (!same) { render(); refreshProfile(); } }
   catch (err) { S.me = { ...S.me, autoLocation: !on }; render(); refreshProfile(); return toast(esc(err.message)); }
-  if (on) { try { localStorage.removeItem("inflight-autoloc"); } catch (_) {} autoLocate(true); }
+  if (on) autoLocate(true); else stopLocWatch();
 }
+// While InFlight is open (and you've turned it on) the phone watches your
+// location: iPhone asks once a session, then reports as you move. The minute
+// timer saves what it last heard (a new square mile at once; otherwise a
+// "still here" every few minutes), and asks directly if the watch goes quiet.
+// (Safari often says permission is only "prompt" even once allowed, so only a
+// clear "denied" stops it.)
+let locWatch = null, lastFix = null, lastFixAt = 0, lastSave = 0, saving = false;
+function stopLocWatch() { if (locWatch != null) { navigator.geolocation.clearWatch(locWatch); locWatch = null; } }
 async function autoLocate(ask) {
-  if (!S.me?.autoLocation || !navigator.geolocation) return;
-  let last = 0; try { last = +localStorage.getItem("inflight-autoloc") || 0; } catch (_) {}
-  if (!ask && Date.now() - last < AUTO_EVERY / 2) return;     // the minute timer, not other triggers, sets the pace
-  if (!ask) { try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state !== "granted") return; } catch (_) { return; } }
-  try { localStorage.setItem("inflight-autoloc", String(Date.now())); } catch (_) {}
-  navigator.geolocation.getCurrentPosition(async (pos) => {
-    const { lat, lon } = snapToMile(pos.coords.latitude, pos.coords.longitude);
-    const moved = S.me.lat == null || haversineKm(S.me.lat, S.me.lon, lat, lon) >= AUTO_KM;
-    if (!moved && now() - (S.me.locAt || 0) < AUTO_FRESH) return;
-    // still here: keep the spot (and its name) and just refresh when it was checked
-    const body = moved ? { lat, lon, place: nearestPlace(lat, lon) } : { lat: S.me.lat, lon: S.me.lon, place: S.me.place };
-    const before = S.me.place;
-    try {
-      const r = await api("me", { method: "PATCH", body }); S.me = r.me; render(); refreshProfile();
-      if (moved && r.me.place !== before) toast(`Location updated to ${esc(r.me.place)}.`);
-    } catch (_) { /* try again next time */ }
-  }, (err) => { if (ask && err.code === 1) toast("Location is off for this site. Allow it in your browser settings to update automatically."); },
-  { enableHighAccuracy: false, timeout: 20000, maximumAge: 30e3 });
+  if (!S.me?.autoLocation || !navigator.geolocation) return stopLocWatch();
+  if (document.visibilityState !== "visible") return;
+  if (!ask) { try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "denied") return stopLocWatch(); } catch (_) { /* can't tell: try */ } }
+  const opts = { enableHighAccuracy: false, timeout: 30000, maximumAge: 30e3 };
+  const fail = (err) => { if (err.code === 1) { stopLocWatch(); if (ask) toast("Location is off for this site. Allow it in your phone’s settings to update automatically."); } };
+  if (locWatch == null) locWatch = navigator.geolocation.watchPosition((pos) => { lastFix = pos; lastFixAt = Date.now(); saveFix(); }, fail, opts);
+  // quiet for two minutes (or just switched on): ask once directly
+  if (ask || Date.now() - lastFixAt > 2 * MIN) navigator.geolocation.getCurrentPosition((pos) => { lastFix = pos; lastFixAt = Date.now(); saveFix(true); }, fail, opts);
+  else saveFix();
+}
+async function saveFix(force) {
+  if (!lastFix || !S.me?.autoLocation || saving) return;
+  const { lat, lon } = snapToMile(lastFix.coords.latitude, lastFix.coords.longitude);     // the exact spot never leaves the phone
+  const moved = S.me.lat == null || haversineKm(S.me.lat, S.me.lon, lat, lon) >= AUTO_KM;
+  if (!moved && now() - (S.me.locAt || 0) < AUTO_FRESH) return;
+  if (!force && Date.now() - lastSave < 20e3) return;                                       // a burst of fixes saves once
+  // still here: keep the spot (and its name) and just refresh when it was checked
+  const body = moved ? { lat, lon, place: nearestPlace(lat, lon) } : { lat: S.me.lat, lon: S.me.lon, place: S.me.place };
+  const before = S.me.place;
+  saving = true; lastSave = Date.now();
+  try {
+    const r = await api("me", { method: "PATCH", body }); S.me = r.me; render(); refreshProfile();
+    if (moved && r.me.place !== before) toast(`Location updated to ${esc(r.me.place)}.`);
+  } catch (_) { /* try again next time */ }
+  saving = false;
 }
 // My Profile holds name and handle (saved with Done) next to settings that save
 // as soon as they change (location, notifications, security).
@@ -3467,7 +3482,7 @@ async function start() {
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);
   setInterval(() => { if (document.visibilityState === "visible") autoLocate(); }, AUTO_EVERY);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); autoLocate(); } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); autoLocate(); } else stopLocWatch(); });
   setInterval(checkUpdate, UPDATE_MS);
 }
 
