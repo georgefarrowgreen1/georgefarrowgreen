@@ -455,6 +455,7 @@ async function notifyPasswordChanged(env, u, how, origin) {
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, the password for your InFlight account was just changed. Your messages are still safe.`,
       "If this wasn’t you, reply to this email straight away."],
     rows: [["Account", `@${u.handle}`], ["Changed", how], ["When", ukTime(Date.now())]],
+    button: { label: "Review Your Account", url: `${origin}/pigeon/#account` },
   });
   await sendEmail(env, { to: u.email, subject: "Your InFlight password was changed", text, html }).catch(() => {});
 }
@@ -641,7 +642,7 @@ async function adminTestEmail({ request, env }) {
     preheader: "InFlight can send password resets and notifications.",
     lines: ["This is a test from the InFlight admin page. Password resets and notifications will arrive just like this."],
     rows: [["From", emailFrom(env).replace(/^.*<|>$/g, "")], ["Sent", ukTime(Date.now())]],
-    button: { label: "Open InFlight", url: `${new URL(request.url).origin}/pigeon/` },
+    button: { label: "Back to Admin", url: `${new URL(request.url).origin}/pigeon/admin/` },
   });
   await sendEmail(env, { to, subject: "InFlight email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);

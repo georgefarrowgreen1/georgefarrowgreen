@@ -227,7 +227,7 @@ export async function tick(env, origin) {
   }
   if (emailReady(env)) {
     const { results: waiting } = await D.prepare(`
-      SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names
+      SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT s.id) AS senders
       FROM pg_users u JOIN pg_msgs m ON m.recipient = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND COALESCE(u.email_at, 0) < ?1
         AND m.read_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
@@ -243,7 +243,8 @@ export async function tick(env, origin) {
           icon: "landed", title: u.n > 1 ? `${u.n} pigeons have landed` : p.names ? `A pigeon from ${who[0]} has landed` : "A pigeon has landed",
           preheader: p.names ? `From ${list}. Open InFlight to read ${u.n > 1 ? "them" : "it"}.` : `Open InFlight to read ${u.n > 1 ? "them" : "it"}.`,
           rows: [...(p.names ? [["From", list]] : []), ...(u.n > 1 ? [["Pigeons", String(u.n)]] : [])],
-          button: { label: u.n > 1 ? "Read Them" : "Read It", url: `${origin}/pigeon/` },
+          // one sender: straight into their chat; several: the Messages list
+          button: { label: u.n > 1 ? "Read Them" : "Read It", url: `${origin}/pigeon/${String(u.senders || "").includes(",") || !u.senders ? "" : `#open=${u.senders}`}` },
         });
         emails++;
       } catch (e) { console.error("pigeon notify email", e && e.message); }

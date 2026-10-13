@@ -1849,6 +1849,7 @@ async function afterSignIn() {
   if (S.me.lat == null) return go("locpick");
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }
   go("messages");
+  if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }   // the link you came in on
 }
 // Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
 async function setAvatar(file) {
@@ -2015,14 +2016,17 @@ async function offerNotify() {
   else if (S.emailOn) toast("Want an email when the reply lands?", "Email Me", () => setEmailNotify(true));
   else if (ps === "homescreen") toast("Add InFlight to your Home Screen to get notified when the reply lands.", "How", () => go("account"));
 }
-// Links from notifications: #open=<friend> opens that chat, #requests the friend requests.
+// Links from notifications and emails: #open=<friend> opens that chat,
+// #requests the friend requests, #account the Account tab. Opened while
+// signed out, they wait until you've signed in.
 function openLink(hash) {
-  const o = /#open=([0-9a-f-]{36})/.exec(hash || ""), rq = /#requests/.test(hash || "");
-  if (!o && !rq) return false;
+  const o = /#open=([0-9a-f-]{36})/.exec(hash || ""), rq = /#requests/.test(hash || ""), acc = /#account\b/.test(hash || "");
+  if (!o && !rq && !acc) return false;
   if (location.hash) history.replaceState(null, "", location.pathname);
   if (!S.me) { S.pendingLink = hash; return true; }
   closePop(); S.sheet = null; renderSheet();
-  if (o && friend(o[1])) go("chat", o[1]);
+  if (acc) go("account");
+  else if (o && friend(o[1])) go("chat", o[1]);
   else { go("friends"); if (S.incoming.length) { S.sheet = { type: "requests" }; renderSheet(); } }
   return true;
 }
@@ -2032,7 +2036,7 @@ function openLink(hash) {
    ============================================================ */
 async function start() {
   mount();
-  if (/#(open=|requests)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
+  if (/#(open=|requests|account\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { S.pendingAdd = m[1].toLowerCase(); history.replaceState(null, "", location.pathname); }
