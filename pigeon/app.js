@@ -413,9 +413,19 @@ function drawMap(cv, m, cardH) {
   }
   // the routes (a message to a group has one per member), their ends, and each pigeon
   const tracks = routesOf(m).map((r) => { const rp = routePts(r); return { r, rp, P: rp.map((p) => [X(p.x), Y(p.y)]) }; });
-  g.strokeStyle = col("--tint"); g.lineWidth = tracks.length > 1 ? 3 : 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
-  for (const { r, P } of tracks) { if (r.here) continue; g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); }
-  g.setLineDash([]);
+  // the trail: solid where it has flown, dashed (and fainter) where it has still to go
+  const line = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); };
+  const lw = tracks.length > 1 ? 3 : 3.5, tint = col("--tint");
+  g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = tint;
+  for (const { r, rp, P } of tracks) {
+    if (r.here) continue;
+    const ft = flightAt(r, r.lost ? r.lostAt : now()).t, i = rp.findIndex((p) => p.t >= ft);
+    const at = pigeonOn(P, rp, ft).at, flown = i < 0 ? P : i === 0 ? [P[0]] : [...P.slice(0, i), at], ahead = i < 0 ? [] : [at, ...P.slice(i)];
+    if (ahead.length > 1) { g.globalAlpha = r.lost ? 0.3 : 0.6; g.lineWidth = lw - 0.5; g.setLineDash([9, 8]); line(ahead); }
+    g.globalAlpha = 1; g.setLineDash([]);
+    if (flown.length > 1) { g.lineWidth = lw + 1.5; g.strokeStyle = col("--cell"); line(flown); g.lineWidth = lw; g.strokeStyle = tint; line(flown); }   // a light edge so it reads on land and sea
+  }
+  g.globalAlpha = 1; g.setLineDash([]);
   for (const { rp, P } of tracks) rp.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
   const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
   // labels claim space in priority order; anything that would overlap is left out
