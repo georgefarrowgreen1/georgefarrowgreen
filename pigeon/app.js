@@ -1036,11 +1036,13 @@ function vChat() {
     body += bubble(f, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from);
     prevFrom = m.from;
   }
+  // a pigeon in the air either way: the map button sits beside the menu
+  const flying = msgs && [...msgs].reverse().find((m) => m.flying && m.route);
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${f.id}">I’ve Checked</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
       <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
-      <div class="nb-right">${nbtn("chatmenu", I.more, "More")}</div>
+      <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${flying.id}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
     ${warn}<div class="msgs">${status(f, t)}${body}</div>`;
 }
@@ -1604,9 +1606,7 @@ async function onClick(e) {
     }
     case "chatmenu": {
       const f = friend(S.chat); if (!f) return;
-      const flying = (S.msgs.get(f.id) || []).slice().reverse().find((m) => m.flying && m.route);
       return openMenu(t, [
-        ...(flying ? [{ label: "Watch the Pigeon", icon: I.map, act: "map", id: flying.id }] : []),
         { label: "Contact Info", icon: I.info, act: "friendinfo", id: f.id },
         { label: "Safety Number", icon: I.shield, act: "safety", id: f.id },
         { label: "Remove Friend", icon: I.minusp, act: "unfriendask", id: f.id, destructive: true },
