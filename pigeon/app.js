@@ -210,6 +210,7 @@ const I = {
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
   search: ico(`<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>`),
   loc: ico(`<path d="M20 4 4 10.8l6.9 2.3L13.2 20Z"/>`),
+  globe: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.5 3.6 5.3 3.6 8.5s-1.2 6-3.6 8.5c-2.4-2.5-3.6-5.3-3.6-8.5s1.2-6 3.6-8.5Z"/>`),
   map: ico(`<path d="M3 6.5 8.5 4l7 3L21 4.5v13L15.5 20l-7-3L3 19.5Z"/><path d="M8.5 4v13M15.5 7v13"/>`),
   addp: ico(`<circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.8-3.4 3.4-5.3 6.5-5.3 1.4 0 2.6.3 3.7 1"/><path d="M18 14v6M15 17h6"/>`),
   minusp: ico(`<circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.8-3.4 3.4-5.3 6.5-5.3s5.7 1.9 6.5 5.3"/><path d="M16 12h6"/>`),
@@ -351,7 +352,7 @@ function pigeonOn(P, pts, t = now()) {
 }
 // The routes a map shows: one, or for your message to a group, one per member
 // whose location you can see (friends; others' routes stay off the map).
-const routesOf = (m) => m.flock ? m.flock.filter((r) => r.route).map((r) => ({ ...r, sentAt: m.sentAt, pigeon: m.pigeon, risky: m.risky, fromPlace: m.fromPlace })) : [m];
+const routesOf = (m) => m.skies ? m.skies : m.flock ? m.flock.filter((r) => r.route).map((r) => ({ ...r, sentAt: m.sentAt, pigeon: m.pigeon, risky: m.risky, fromPlace: m.fromPlace })) : [m];
 // Where the map sits: every route in view, unless the person has moved it.
 function mapFrame(cv, m, cardH) {
   const W = cv.clientWidth, H = cv.clientHeight, usableH = Math.max(80, H - cardH - 30), sy0 = 20 + usableH / 2;
@@ -413,10 +414,10 @@ function drawMap(cv, m, cardH) {
   // the routes (a message to a group has one per member), their ends, and each pigeon
   const tracks = routesOf(m).map((r) => { const rp = routePts(r); return { r, rp, P: rp.map((p) => [X(p.x), Y(p.y)]) }; });
   g.strokeStyle = col("--tint"); g.lineWidth = tracks.length > 1 ? 3 : 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
-  for (const { P } of tracks) { g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); }
+  for (const { r, P } of tracks) { if (r.here) continue; g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); }
   g.setLineDash([]);
   for (const { rp, P } of tracks) rp.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
-  const birds = tracks.map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
+  const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
   // labels claim space in priority order; anything that would overlap is left out
   const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H]];
   const ctlEl = $(".mapctl", $layer);
@@ -435,12 +436,21 @@ function drawMap(cv, m, cardH) {
     taken.push([lx - 3, ly - 10, lx + w + 3, ly + 10]);
     text(name, lx, ly, col("--label"));
   };
-  end(tracks[0].P[0], tracks[0].P[4], m.fromPlace);
-  for (const { r, P } of tracks) end(P[P.length - 1], P[P.length - 5], r.toPlace);
+  if (m.skies) {
+    // every pigeon in the air: each place once, wherever several routes share it
+    const done = new Set();
+    for (const { r, P } of tracks) for (const [p, toward, name] of [[P[0], P[4], r.fromPlace], [P[P.length - 1], P[P.length - 5], r.toPlace]]) {
+      const key = `${Math.round(p[0])},${Math.round(p[1])}`; if (done.has(key)) continue;
+      done.add(key); end(p, toward, name);
+    }
+  } else {
+    end(tracks[0].P[0], tracks[0].P[4], m.fromPlace);
+    for (const { r, P } of tracks) end(P[P.length - 1], P[P.length - 5], r.toPlace);
+  }
   // other cities once there's room to read them
   if (k >= 4) {
     g.font = "500 11px -apple-system, system-ui, sans-serif";
-    const c2 = col("--label-2"), skip = new Set([m.fromPlace, ...tracks.map(({ r }) => r.toPlace)]);
+    const c2 = col("--label-2"), skip = new Set([m.fromPlace, ...tracks.flatMap(({ r }) => [r.fromPlace, r.toPlace])]);
     for (const [name, lat, lon] of PLACES) {
       if (skip.has(name)) continue;
       for (const o of offs) {
@@ -661,6 +671,7 @@ async function sync() {
       }
       S.started = true;
       if (S.view === "chat" && S.chat) await loadChat(S.chat);
+      if (S.sheet?.type === "map" && S.sheet.id === "skies") loadSkies();
       if (!AUTH_VIEWS.has(S.view)) render();
     } catch (e) { if (e.status !== 401) console.warn("sync", e.message); }
     finally { syncing = null; }
@@ -1002,7 +1013,7 @@ function vMessages() {
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : `<p class="empty"><b>No messages yet</b>Add a friend by their handle, then send your first pigeon.<br><button class="btn" data-act="tab" data-id="friends">Find Friends</button></p>`;
-  return `${navbar("Messages", { root: true, right: nbtn("newmsg", I.compose, "New message") })}
+  return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large">Messages</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
@@ -1678,7 +1689,7 @@ function drawSheet(refresh) {
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
     case "map":
-      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
+      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
@@ -1946,6 +1957,7 @@ function drawSheet(refresh) {
 }
 function tickMap() {
   const s = S.sheet; if (!s || s.type !== "map") return;
+  if (s.id === "skies") return tickSkies($(".mapcard", $layer), $(".map", $layer));
   const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !(m.route || m.flock)) return;
@@ -1962,6 +1974,47 @@ function tickMap() {
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
 }
+// The Skies: every pigeon in the air to or from you, from every chat.
+async function loadSkies() {
+  try { S.skies = await api("skies"); if (S.sheet?.id === "skies") tickMap(); }
+  catch (err) { if (!S.skies) toast(esc(err.message)); }
+}
+function skyRoutes() {
+  const d = S.skies; if (!d) return null;
+  const out = [];
+  for (const m of d.pigeons) {
+    const other = m.from === S.me.id ? m.to : m.from, f = friend(other);
+    out.push({ ...m, chat: other, out: m.from === S.me.id, who: f, label: `${m.from === S.me.id ? "To" : "From"} ${first(f?.name || "a friend")}` });
+  }
+  for (const m of d.groups) {
+    const g = group(m.gid); if (!g) continue;
+    if (m.from === S.me.id) for (const x of m.flock || []) {
+      if (!x.flying) continue;
+      const p = member(g, x.to);
+      out.push({ ...x, id: m.id + ":" + x.to, sentAt: m.sentAt, pigeon: m.pigeon, risky: m.risky, skin: m.skin, fromPlace: m.fromPlace, chat: g.id, out: true, who: p, g, label: `To ${first(p?.name || "someone")} · ${g.name}` });
+    } else out.push({ ...m, chat: g.id, out: false, who: member(g, m.from), g, label: `From ${first(member(g, m.from)?.name || "someone")} · ${g.name}` });
+  }
+  return out.filter((r) => r.deliverAt > now() && !(r.lostAt && r.lostAt <= now())).sort((a, b) => a.deliverAt - b.deliverAt);
+}
+function tickSkies(card, cv) {
+  if (!card || !cv) return;
+  const list = skyRoutes();
+  if (!list) { card.innerHTML = `<span class="speed">Looking up…</span>`; return; }
+  const onMap = list.filter((r) => r.route), n = list.length, key = list.map((r) => r.id).join() || "-";
+  if (card.dataset.k !== key) {           // rows only change when the list does (the times tick by themselves)
+    card.dataset.k = key;
+    const rows = list.map((r) => `<button type="button" class="frow skyrow" data-act="skyopen" data-id="${esc(r.chat)}">${r.g && !r.who ? gavatar(r.g, "xs") : avatar(r.who || { name: "?" }, "xs")}
+        <span class="one">${pgm(r)} ${esc(r.label)}${r.route ? "" : ` <span class="hid">· not on map</span>`}</span><b><span data-eta="${esc(r.deliverAt)}">${fmtDur(r.deliverAt - now())}</span></b></button>`).join("");
+    card.innerHTML = `<span class="big">${I.globe}<span>${n ? `${n} pigeon${n === 1 ? "" : "s"} in the air` : "Clear skies"}</span></span>
+      ${n ? `<span class="speed">${list.filter((r) => r.out).length} yours, ${list.filter((r) => !r.out).length} coming to you</span>` : `<span class="speed">No pigeons are flying to or from you right now.</span>`}
+      ${n ? `<span class="frows">${rows}</span>` : ""}`;
+  }
+  // nothing in the air: just your roost
+  const here = S.me.lat != null ? [{ here: true, route: [S.me.lat, S.me.lon, S.me.lat, S.me.lon], sentAt: 0, deliverAt: 1, km: 0, fromPlace: S.me.place, toPlace: S.me.place }] : [];
+  const skies = onMap.length ? onMap : here;
+  if (skies.length) drawMap(cv, { skies }, card.offsetHeight + 14);
+}
+
 // Your message to a group: how far each pigeon has got.
 function tickFlockMap(m, card, cv) {
   const g = group(S.chat), c = flockCount(m), end = Math.max(...m.flock.map((x) => x.deliverAt));
@@ -2124,6 +2177,8 @@ async function onClick(e) {
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
+    case "skies": S.sheet = { type: "map", id: "skies" }; renderSheet(); return loadSkies();
+    case "skyopen": S.sheet = null; renderSheet(); return go("chat", id);
     case "msgmenu": return openReactMenu(t, id);
     case "react": return sendReact(id, t.dataset.e);
     case "reply": {

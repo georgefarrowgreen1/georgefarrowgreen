@@ -337,6 +337,19 @@ async function getPhoto({ request, env }, id) {
 
 // Someone moved: their group pigeons turn too, the same way as one-to-one ones.
 // Senders hear about it only if they're friends (the new place is theirs to know).
+// The Skies: group pigeons in the air that are yours, or flying to you.
+export async function groupSkies(D, uid, t) {
+  const friends = await friendIds(D, uid);
+  const { results: rows } = await D.prepare(`
+    SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+      FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
+      WHERE d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2)
+    UNION ALL
+    SELECT m.*, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM pg_gmsgs m
+      WHERE m.sender = ?1 AND EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2))
+    LIMIT 100`).bind(uid, t).all();
+  return views(D, uid, rows, friends, t);
+}
 export async function rerouteGroups(env, u, p, t, waitUntil) {
   const D = await db(env);
   const { results } = await D.prepare(`SELECT d.*, m.sender, m.sent_at, m.from_lat, m.from_lon, m.pigeon, m.risky, m.group_id, m.photo FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id

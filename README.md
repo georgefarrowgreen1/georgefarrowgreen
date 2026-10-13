@@ -222,6 +222,20 @@ were lost to Pigeon Death or called back. Worked out by `functions/_stats.js`
 from distances, times and kinds only; a group pigeon's destination is never
 named, since it could be someone who isn't your friend.
 
+**Rare pigeons.** Each one is unlocked by an achievement: Golden (Fleet),
+Midnight (Long Haul), Storm (Tailwind Rider), Ember (Daredevil), Comet (Rocket
+Mail) and Rainbow (Around the World). Pick one in the Flight Log, and every
+pigeon you send wears it: a ring, glow or tail around the usual colour, so the
+colour still says what kind it is. Your friends see it too. The server only
+accepts a look whose badge you've earned (`SKINS` and `skinOpen` in
+`functions/_stats.js`), and each pigeon keeps the look it flew with.
+
+**The Skies.** The globe button on Messages opens one live map of every pigeon
+in the air to or from you, from every chat and group, with a countdown for
+each. Tap a row to open that chat. It shows exactly what those chats already
+show you (`functions/_skies.js`): a group pigeon from someone who isn't your
+friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
+
 **Replies and reactions.** Tap a message that has landed: react (❤️ 👍 😂 😮 😢
 🙏) or Reply. A reply carries a quote of the original, sealed inside it; tap the
 quote to jump to it. A reaction flies back on a tiny pigeon at rocket speed:
