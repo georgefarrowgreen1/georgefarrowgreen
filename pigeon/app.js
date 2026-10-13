@@ -756,7 +756,7 @@ async function loadPhoto(fid, m, p) {
   try {
     const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true });
     const plain = await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
-    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: "image/jpeg" })));
+    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
   } catch (e) {
     S.photos.delete(m.id);
     if (e.status === 410) S.photoGone.add(m.id);
@@ -926,6 +926,7 @@ const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => 
 const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 const pg = (kind) => `<span class="pg ${kind}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour
 
+const picWord = (p) => (p.p?.m === "image/gif" ? "GIF" : "Photo");
 function preview(f) {
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
@@ -933,7 +934,7 @@ function preview(f) {
   if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} In flight · <span data-eta="${esc(l.deliverAt)}"></span> to go</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.p ? (l.photo === 2 ? "Photo (expired)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.p ? (l.photo === 2 ? `${picWord(p)} (expired)` : picWord(p)) + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
 }
 // how far a flock has got: landed for how many of how many, and how many lost
@@ -950,7 +951,7 @@ function gpreview(g) {
   if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${who}’s pigeon is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? "Couldn’t open this message" : p.p ? "Photo" + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? "Couldn’t open this message" : p.p ? picWord(p) + (p.t ? ": " + p.t : "") : p.t;
   return { html: `${who}: ${esc(body)}`, at: l.from === S.me.id ? l.sentAt : l.deliverAt };
 }
 const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
@@ -1124,8 +1125,8 @@ function bubble(f, m, isLastMine, gapTop, g) {
   let html;
   if (p.p) {
     let photo;
-    if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>Photo expired</span></div>`;
-    else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="Photo from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
+    if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
+    else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
@@ -1140,7 +1141,7 @@ function bubble(f, m, isLastMine, gapTop, g) {
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   else if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
+  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 function gstatus(g, t) {
@@ -1389,7 +1390,7 @@ function renderCompose() {
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>Photo</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
+    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
 }
@@ -2201,10 +2202,54 @@ async function setAvatar(file) {
     renderSheet(true);
   } catch (err) { showErr(err.message || "That picture couldn’t be read. Try another one."); }
 }
+// Animated GIFs keep every frame: they're sent as they are (sealed like any
+// photo) instead of being redrawn as a still JPEG. Only the picture, its timing
+// and looping are kept; comments and other extra blocks, which can carry
+// details nobody meant to share, are dropped.
+const GIF_MAX = 7 * 1024 * 1024;
+function cleanGif(u) {
+  const sig = String.fromCharCode(...u.slice(0, 6));
+  if (u.length < 14 || (sig !== "GIF89a" && sig !== "GIF87a")) return null;
+  const w = u[6] | (u[7] << 8), h = u[8] | (u[9] << 8);
+  let i = 13 + (u[10] & 0x80 ? 3 * (2 << (u[10] & 7)) : 0);
+  const keep = [u.subarray(0, i)];
+  // a run of data sub-blocks ends with an empty one; returns where the next block starts
+  const skip = (j) => { while (j < u.length && u[j] !== 0) j += u[j] + 1; return j < u.length ? j + 1 : -1; };
+  while (i < u.length) {
+    const t = u[i];
+    if (t === 0x3b) break;                                         // the end
+    let j;
+    if (t === 0x2c) {                                              // a frame: descriptor, colours, then its pixels
+      if (i + 10 >= u.length) return null;
+      j = skip(i + 10 + (u[i + 9] & 0x80 ? 3 * (2 << (u[i + 9] & 7)) : 0) + 1);
+      if (j < 0) return null;
+      keep.push(u.subarray(i, j));
+    } else if (t === 0x21) {                                       // an extension block
+      const label = u[i + 1];
+      j = skip(i + 2); if (j < 0) return null;
+      const app = label === 0xff && u[i + 2] === 11 ? String.fromCharCode(...u.slice(i + 3, i + 14)) : "";
+      if (label === 0xf9 || label === 0x01 || app === "NETSCAPE2.0" || app === "ANIMEXTS1.0") keep.push(u.subarray(i, j));   // timing, text, looping
+    } else return null;
+    i = j;
+  }
+  keep.push(new Uint8Array([0x3b]));
+  const out = new Uint8Array(keep.reduce((n, x) => n + x.length, 0));
+  let o = 0; for (const x of keep) { out.set(x, o); o += x.length; }
+  return { bytes: out, w, h };
+}
+async function prepGif(blob) {
+  const g = cleanGif(new Uint8Array(await blob.arrayBuffer()));
+  if (!g) return prepImage(blob);                                  // not a GIF we can read: send it as a still
+  if (g.bytes.length > GIF_MAX) throw Object.assign(new Error("big"), { big: true });
+  return { ...g, gif: true, preview: URL.createObjectURL(new Blob([g.bytes], { type: "image/gif" })) };
+}
 async function setAttach(blob) {
   clearAttach();
-  try { S.attach = await prepImage(blob); S.err = ""; }
-  catch (_) { S.err = "That file couldn’t be opened as a photo."; }
+  try {
+    const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+    const gif = head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x38;      // "GIF8"
+    S.attach = gif ? await prepGif(blob) : await prepImage(blob); S.err = "";
+  } catch (e) { S.err = e.big ? `That GIF is too big to send. Choose one under ${GIF_MAX / 1024 / 1024} MB.` : "That file couldn’t be opened as a photo."; }
   renderCompose();
 }
 function clearAttach() { if (S.attach) URL.revokeObjectURL(S.attach.preview); S.attach = null; if ($compose) renderCompose(); }
@@ -2251,7 +2296,7 @@ async function send() {
     if (S.attach) {
       showUpload("seal");
       const sealed = await E2E.sealPhoto(id, S.attach.bytes);
-      payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h };
+      payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };
       blob = sealed.data;
     }
     const g = group(to);
