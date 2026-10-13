@@ -162,6 +162,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN wind_f REAL",          // what that did to its speed (1 = none)
   "ALTER TABLE pg_gdeliv ADD COLUMN wind REAL",
   "ALTER TABLE pg_gdeliv ADD COLUMN wind_f REAL",
+  "ALTER TABLE pg_users ADD COLUMN hide_online INTEGER NOT NULL DEFAULT 0",   // don't show when I'm online (nor see others')
+  "ALTER TABLE pg_users ADD COLUMN no_receipts INTEGER NOT NULL DEFAULT 0",   // don't send read receipts (nor see others')
+  "ALTER TABLE pg_reacts ADD COLUMN notified_at INTEGER",
 ];
 let schemaReady = false;
 export async function db(env) {

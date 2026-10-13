@@ -22,7 +22,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -31,7 +31,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -249,6 +249,25 @@ async function groupTick(env, D, t, since) {
   return { pushes, landed: landedN, held };
 }
 
+// Reactions that have landed: "Mira reacted to your message". (Which reaction
+// stays sealed: the server can't read it, so it can't say.)
+async function reactTick(env, D, t, since) {
+  let pushes = 0;
+  const { results } = await D.prepare(`SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, gm.muted
+    FROM pg_reacts r JOIN pg_users u ON u.id = r.recipient JOIN pg_users s ON s.id = r.sender
+    LEFT JOIN pg_groups g ON g.id = r.group_id LEFT JOIN pg_group_members gm ON gm.group_id = r.group_id AND gm.user_id = r.recipient
+    WHERE r.recipient IS NOT NULL AND r.notified_at IS NULL AND r.deliver_at <= ?1 AND r.deliver_at > ?2 LIMIT 200`).bind(t, since).all();
+  for (const r of results) {
+    const p = prefsOf(r); if (isQuiet(p, t)) continue;                      // held until quiet hours end
+    const c = await D.prepare("UPDATE pg_reacts SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, r.id).run();
+    if (!c.meta.changes || !p.reactions || r.muted) continue;
+    const chat = r.group_id || r.sender;
+    pushes += await pushTo(env, r.recipient, { title: p.names ? (r.gname || firstName(r.sname)) : "InFlight",
+      body: p.names ? `${r.gname ? firstName(r.sname) + " r" : "R"}eacted to your message.` : "Someone reacted to your message.", tag: "react-" + chat, url: `/pigeon/#open=${chat}` });
+  }
+  return pushes;
+}
+
 // Pigeons that have landed since the last tick: push now; email those who
 // asked, once things have been waiting a little while unread. Quiet hours hold
 // both until they end. Only landings after notifications went live count.
@@ -297,6 +316,7 @@ export async function tick(env, origin) {
   }
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
+  pushes += await reactTick(env, D, t, since);
   if (emailReady(env)) {
     // everything waiting unread: one-to-one pigeons, and group ones (unless that group is muted)
     const { results: waiting } = await D.prepare(`

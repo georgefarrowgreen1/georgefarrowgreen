@@ -752,3 +752,5 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .kindrow .ctext{gap:6px}
 .kbar{display:block;height:5px;border-radius:3px;width:calc(var(--w,0) * 100%);min-width:6px;background:var(--p-standard)}
 .kbar.swift{background:var(--p-swift)}.kbar.turbo{background:var(--label)}.kbar.rocket{background:var(--p-rocket)}.kbar.dumb{background:var(--p-dumb)}
+.tile.pink{background:linear-gradient(180deg,#ff7aa2,#e8457a)}
+.meta .readr{color:var(--label-2)}

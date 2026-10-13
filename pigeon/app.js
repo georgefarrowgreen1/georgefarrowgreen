@@ -192,6 +192,7 @@ const I = {
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
+  heart: ico(`<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>`),
   reply: ico(`<path d="M10 8 5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
   chev: ico(`<path d="m9 5 7 7-7 7"/>`),
@@ -1079,6 +1080,7 @@ function vNotifySheet() {
       ${t("lost", I.skull, "red", "A Pigeon Is Lost", "When Pigeon Death takes one of yours")}
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
+      ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
     </div>
     <div class="ghead">Lock Screen</div>
     <div class="group">${t("names", I.eye, "gray", "Show Names")}</div>
@@ -1159,11 +1161,11 @@ function bubble(f, m, isLastMine, gapTop, g) {
     else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>`, "done"));
     else if (c.lost === c.n) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
-    else if (isLastMine) meta.push(tap(`Landed for all ${c.n}`, "done"));
+    else if (isLastMine) { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`Landed for all ${c.n}${r ? ` · read by ${r === c.n ? "all" : r}` : ""}`, "done")); }
   }
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
-  else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
+  else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
@@ -1598,6 +1600,12 @@ function drawSheet(refresh) {
           ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
         </div>
+        <div class="ghead">Privacy</div>
+        <div class="group">
+          ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
+          ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
+        </div>
+        <div class="gfoot">These work both ways: turn one off and you won’t see other people’s either.</div>
         <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "profile" } });
       return;
     }
@@ -2100,6 +2108,13 @@ async function onClick(e) {
     case "pigeon": S.pick = id; return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "risky": return setRisky(!S.me.risky);
+    case "privacy": {
+      const on = S.me[id] === false;                                   // switching it back on
+      S.me = { ...S.me, [id]: on }; renderSheet();
+      try { S.me = (await api("me", { method: "PATCH", body: { [id]: on } })).me; await sync(); }
+      catch (err) { S.me = { ...S.me, [id]: !on }; renderSheet(); toast(esc(err.message)); }
+      return;
+    }
     case "notifysheet": keepProfileDraft(); S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();

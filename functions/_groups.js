@@ -90,7 +90,19 @@ async function deliveriesOf(D, ids) {
 async function views(D, uid, rows, friends, t) {
   const mine = rows.filter((m) => m.sender === uid).map((m) => m.id);
   const dels = await deliveriesOf(D, mine);
-  return rows.map((m) => (m.sender === uid ? ownView(m, dels.get(m.id), friends, t) : theirView(m, m, friends, t)));
+  // read receipts go both ways: anyone with them off (you included) shows none
+  const ids = [...new Set([uid, ...[...dels.values()].flat().map((d) => d.user_id)])];
+  const off = new Set();
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    for (const r of (await D.prepare(`SELECT id FROM pg_users WHERE no_receipts = 1 AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results) off.add(r.id);
+  }
+  return rows.map((m) => {
+    if (m.sender !== uid) return theirView(m, m, friends, t);
+    const v = ownView(m, dels.get(m.id), friends, t);
+    for (const x of v.flock) if (off.has(uid) || off.has(x.to)) x.readAt = null;
+    return v;
+  });
 }
 
 // Standard pigeons wait their turn: you can send one once something someone
@@ -119,12 +131,12 @@ export async function groupsForSync(env, u, t) {
   if (!gs.length) return [];
   const friends = await friendIds(D, u.id), out = [];
   for (const g of gs) {
-    const { results: mem } = await D.prepare(`SELECT gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.loc_at, u.seen_at
+    const { results: mem } = await D.prepare(`SELECT gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.loc_at, u.seen_at, u.hide_online
       FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id WHERE gm.group_id = ? ORDER BY gm.joined_at`).bind(g.id).all();
     const members = mem.map((p) => {
       const friend = p.user_id === u.id || friends.has(p.user_id);
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
-        ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: p.seen_at || null }
+        ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
           : { km: u.lat != null && p.lat != null ? Math.round(haversineKm(u.lat, u.lon, p.lat, p.lon) / 10) * 10 : null }) };   // rough distance, no spot
     });
     const last = (await visible(D, u.id, g.id, 1))[0];

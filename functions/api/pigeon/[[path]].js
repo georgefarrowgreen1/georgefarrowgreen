@@ -22,7 +22,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
 }
 
@@ -51,9 +51,10 @@ async function signup({ request, env }) {
   if (await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(handle).first()) throw new HttpError(409, `@${handle} is taken.`, "handle");
   if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "There’s already an account with that email. Sign in instead.", "email");
   const id = crypto.randomUUID(), t = Date.now();
-  await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, handle, name, email, pub, b.salt, hex(await sha256(fromB64url(b.proof))), vault, SWIFT_MAX, t, t).run();
+  // new accounts start with names hidden on the lock screen (they can turn them on)
+  await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, notify_prefs)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, handle, name, email, pub, b.salt, hex(await sha256(fromB64url(b.proof))), vault, SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
   return json({ token: await issueSession(env, id), me: meView(u, t) });
 }
@@ -156,6 +157,8 @@ async function updateMe({ request, env, waitUntil }) {
     await D.prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.notifyEmail ? 1 : 0, t, u.id).run();
   if (b.autoLocation !== undefined) await D.prepare("UPDATE pg_users SET auto_loc = ? WHERE id = ?").bind(b.autoLocation ? 1 : 0, u.id).run();
   if (b.risky !== undefined) await D.prepare("UPDATE pg_users SET risky = ? WHERE id = ?").bind(b.risky ? 1 : 0, u.id).run();
+  if (b.showOnline !== undefined) await D.prepare("UPDATE pg_users SET hide_online = ? WHERE id = ?").bind(b.showOnline ? 0 : 1, u.id).run();
+  if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
   if (b.lat !== undefined) {
     const p = cleanPlace(b);
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
@@ -332,6 +335,9 @@ async function areFriends(D, a, b) {
 const lastBetween = (D, a, b) => D.prepare(
   "SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1) ORDER BY sent_at DESC LIMIT 1").bind(a, b).first();
 
+// Read receipts go both ways: if either of you has them off, neither sees them.
+const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other?.no_receipts) ? { ...v, readAt: null } : v);
+
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
 async function sync({ request, env, waitUntil }) {
@@ -345,7 +351,7 @@ async function sync({ request, env, waitUntil }) {
   const ids = [...new Set(links.map(other))];
   const people = new Map();
   if (ids.length) {
-    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, seen_at, avatar_at FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, seen_at, avatar_at, hide_online, no_receipts FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
     for (const p of results) people.set(p.id, p);
   }
   const { results: lasts } = await D.prepare(`
@@ -362,8 +368,9 @@ async function sync({ request, env, waitUntil }) {
     const p = people.get(other(l)); if (!p) continue;
     if (l.status === "ok") {
       const last = lastBy.get(p.id);
-      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: p.seen_at || null,
-        last: last ? msgView(u.id, last, t) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
+      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
+        seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
+        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
@@ -377,9 +384,10 @@ async function listMessages({ request, env }) {
   const other = new URL(request.url).searchParams.get("with") || "";
   const D = await db(env), t = Date.now();
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
+  const them = await D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other).first();
   const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)
     ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other).all();
-  return json({ now: t, messages: results.map((m) => msgView(u.id, m, t)), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  return json({ now: t, messages: results.map((m) => receipts(u, them, msgView(u.id, m, t))), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results[results.length - 1], t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
