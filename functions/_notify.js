@@ -13,7 +13,7 @@
 // back of ordinary API traffic, and from an outside scheduler (see
 // .github/workflows/inflight-notify.yml) when nobody is using the app.
 
-import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos } from "./_pigeon.js";
+import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 
 const enc = new TextEncoder();
@@ -315,7 +315,8 @@ export async function tick(env, origin) {
   await sweepPhotos(env).catch(() => {});     // photos go 24 h after landing, even if no one opens the app
   // old rate-limit windows and ended sessions
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
-    D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY)]).catch(() => {});
+    D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
+    D.prepare("DELETE FROM pg_links WHERE status = 'pending' AND created_at < ?").bind(t - 30 * DAY)]).catch(() => {});
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
   const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
@@ -325,9 +326,11 @@ export async function tick(env, origin) {
   let landed = [];
   if (ready.length) {
     // claim them first, so two ticks running at once can't both send
-    const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${ready.map(() => "?").join(",")}) RETURNING sender, recipient`)
-      .bind(t, ...ready.map((m) => m.id)).all();
-    landed = results.filter((m) => prefs.get(m.recipient).landed);
+    for (const part of chunks(ready)) {
+      const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${part.map(() => "?").join(",")}) RETURNING sender, recipient`)
+        .bind(t, ...part.map((m) => m.id)).all();
+      landed.push(...results.filter((m) => prefs.get(m.recipient).landed));
+    }
   }
   let pushes = 0, emails = 0;
   // Pigeon Death: tell the sender when one of theirs is lost on the way
@@ -342,9 +345,11 @@ export async function tick(env, origin) {
       tag: "lost-" + m.recipient, url: `/pigeon/#open=${m.recipient}` });
   }
   if (landed.length) {
-    const ids = [...new Set(landed.map((m) => m.sender))];
-    const { results: senders } = await D.prepare(`SELECT id, name FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
-    const name = new Map(senders.map((x) => [x.id, x.name]));
+    const ids = [...new Set(landed.map((m) => m.sender))], name = new Map();
+    for (const part of chunks(ids)) {
+      const { results: senders } = await D.prepare(`SELECT id, name FROM pg_users WHERE id IN (${part.map(() => "?").join(",")})`).bind(...part).all();
+      for (const x of senders) name.set(x.id, x.name);
+    }
     const pairs = new Map();
     for (const m of landed) { const k = m.recipient + "|" + m.sender; pairs.set(k, (pairs.get(k) || 0) + 1); }
     for (const [k, n] of pairs) {

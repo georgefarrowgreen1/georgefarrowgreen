@@ -336,6 +336,7 @@ async function friendStatus({ request, env }) {
   const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, t.id).first();
   return json({ handle: t.handle, id: t.id, state: !l ? "new" : l.status === "ok" ? "friends" : l.a === u.id ? "sent" : "incoming" });
 }
+const PENDING_MAX = 50;                  // friend requests waiting for one person (older than 30 days go)
 async function addFriend({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "friend:" + u.id, 40, 60 * 60e3);
@@ -352,6 +353,9 @@ async function addFriend({ request, env, waitUntil }) {
     waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
     return json({ message: `@${t.handle} joined your flock.` });
   }
+  // a cap on requests waiting for one person, so no one can bury them
+  const waiting = await D.prepare("SELECT COUNT(*) AS n FROM pg_links WHERE b = ? AND status = 'pending'").bind(t.id).first();
+  if (waiting.n >= PENDING_MAX) return json({ message: `@${t.handle} has a lot of requests waiting. Try again later.` });
   await D.prepare("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'pending', ?)").bind(u.id, t.id, Date.now()).run();
   waitUntil(friendRequested(env, linkOrigin(request), u, t.id).catch(() => {}));
   return json({ message: `Request sent to @${t.handle}.` });
@@ -413,10 +417,12 @@ async function sync({ request, env, waitUntil }) {
   if (!(t - (u.seen_at || 0) < SEEN_EVERY)) await D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id).run();
   const { results: links } = await D.prepare("SELECT a, b, status FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();
   const other = (l) => (l.a === u.id ? l.b : l.a);
-  const ids = [...new Set(links.map(other))];
+  // everyone linked to you, in one query whatever their number (an IN list would
+  // overflow D1's 100 parameters, and others can add rows here by asking)
   const people = new Map();
-  if (ids.length) {
-    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, seen_at, avatar_at, hide_online, no_receipts, notify_prefs FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+  if (links.length) {
+    const { results } = await D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
+      FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id).all();
     for (const p of results) people.set(p.id, p);
   }
   const { results: lasts } = await D.prepare(`

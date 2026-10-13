@@ -56,6 +56,9 @@ export function json(body, status = 200, headers = {}) {
   });
 }
 
+// D1 binds at most 100 parameters a statement: lists for IN (...) go in slices.
+export const chunks = (a, n = 90) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
+
 /* ---------------- encoding ---------------- */
 export function b64url(buf) {
   const u = new Uint8Array(buf);
