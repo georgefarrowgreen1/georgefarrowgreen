@@ -234,7 +234,7 @@ accepts a look whose badge you've earned (`SKINS` and `skinOpen` in
 pinch to zoom; the globe button switches to the flat map and back. Both show:
 - the trail, solid where the pigeon has flown and dashed ahead;
 - night and twilight, worked out from where the sun really is, with the sun drawn where it's overhead;
-- wind streaks along the route, green for a tailwind and orange for a headwind;
+- the wind everywhere, as thousands of drifting trails, brighter where it blows harder, with a key. Tap anywhere for the wind there, as direction and mph. The layers button turns it off, and the route gets its own green or orange tailwind and headwind streaks instead. The grid comes from Open-Meteo through InFlight (`functions/_windmap.js`): only a box of the world is sent, never who is looking, and it's cached for everyone per place and hour;
 - shallow water along the coasts, softly shaded mountain ranges, and country names as you zoom in (`pigeon/countries.js`);
 - a pigeon that flaps, tilts with its course and flutters as it takes off and lands. Only the pigeon is redrawn each frame; the map stays as it was drawn.
 

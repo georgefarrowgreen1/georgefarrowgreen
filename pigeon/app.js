@@ -230,6 +230,7 @@ const I = {
   lock: ico(`<rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>`),
   shield: ico(`<path d="M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/>`),
   info: ico(`<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.2"/>`),
+  layers: ico(`<path d="m12 3.5 8.5 4.5-8.5 4.5L3.5 8Z"/><path d="m3.5 12 8.5 4.5 8.5-4.5"/><path d="m3.5 16 8.5 4.5 8.5-4.5"/>`),
   clock: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>`),
   skull: ico(`<path d="M12 3.5c-4.3 0-7.5 3-7.5 7 0 2.3 1 4 2.6 5.1v2.7c0 .7.5 1.2 1.2 1.2h7.4c.7 0 1.2-.5 1.2-1.2v-2.7c1.6-1.1 2.6-2.8 2.6-5.1 0-4-3.2-7-7.5-7Z"/><circle cx="9.2" cy="11" r="1.7" fill="currentColor"/><circle cx="14.8" cy="11" r="1.7" fill="currentColor"/><path d="M10.6 20v-2.2M13.4 20v-2.2"/>`),
   dist: ico(`<circle cx="6" cy="17" r="2.2"/><circle cx="18" cy="7" r="2.2"/><path d="M7.8 15.6c2.5-1 3.2-3.4 5-5s3-2 3.6-2.2" stroke-dasharray="2 2.6"/>`),
@@ -504,7 +505,13 @@ function drawMap(cv, m, cardH) {
   base.getContext("2d").drawImage(cv, 0, 0);
   cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   // the wind it met, for the streaks: each route still being flown, measured along its length
-  cv._winds = tracks.filter(({ r }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt).map(({ r, P }) => {
+  cv._fwd = (lon, lat) => { const L = lon + 360 * Math.round((cx - lon) / 360); return [X(L), Y(mercY(lat))]; };
+  cv._inv = (x, y) => [(x - ox) / k, latOf((oy - y) / k)];
+  cv._kArc = (lat) => k / Math.max(0.05, Math.cos(lat * Math.PI / 180));        // pixels per degree of arc here
+  cv._viewKey = `f${ox.toFixed(1)},${oy.toFixed(1)},${k.toFixed(5)},${W},${H}`;
+  cv._area = (x, y) => x >= 0 && x <= W && y >= 0 && y <= H;
+  windEnsure(cv);
+  cv._winds = windOn() ? [] : tracks.filter(({ r }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt).map(({ r, P }) => {
     const cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
     return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
   });
@@ -578,6 +585,100 @@ function drawNight(g, W, H, ox, oy, k) {
   }
   return spots;
 }
+/* ---------- the wind map: the wind everywhere, as drifting trails ---------- */
+const windOn = () => { try { return localStorage.getItem("inflight-windmap") !== "0"; } catch (_) { return true; } };
+// the wind (km/h east, north) anywhere in the grid, blended from the four points around it
+function windAt(gr, lon, lat) {
+  const span = (gr.cols - 1) * gr.step;
+  let x = (lon - gr.w) / gr.step;
+  if (span >= 359.9) x = ((x % (gr.cols - 1)) + (gr.cols - 1)) % (gr.cols - 1);
+  else { let l = lon; while (l < gr.w) l += 360; while (l > gr.w + span) l -= 360; x = (l - gr.w) / gr.step; if (x < 0 || x > gr.cols - 1) return null; }
+  const y = (lat - gr.s) / gr.step; if (y < 0 || y > gr.rows - 1) return null;
+  const i = Math.min(gr.cols - 2, Math.floor(x)), j = Math.min(gr.rows - 2, Math.floor(y)), fx = x - i, fy = y - j, at = (a, jj, ii) => a[jj * gr.cols + ii];
+  const mix = (a) => (at(a, j, i) * (1 - fx) + at(a, j, i + 1) * fx) * (1 - fy) + (at(a, j + 1, i) * (1 - fx) + at(a, j + 1, i + 1) * fx) * fy;
+  return [mix(gr.u), mix(gr.v)];
+}
+// What part of the world is showing (sampled across the screen), so the right grid is asked for.
+function viewBox(cv) {
+  const W = cv.clientWidth, H = cv.clientHeight; let s = 90, n = -90, w = 1e9, e = -1e9, any = false;
+  for (let i = 0; i <= 8; i++) for (let j = 0; j <= 10; j++) {
+    const ll = cv._inv((W * i) / 8, (H * j) / 10); if (!ll) continue; any = true;
+    s = Math.min(s, ll[1]); n = Math.max(n, ll[1]); w = Math.min(w, ll[0]); e = Math.max(e, ll[0]);
+  }
+  if (!any) return null;
+  if (cv._fwd(0, 89.9) || cv._fwd(0, -89.9) || e - w > 300) { w = Math.min(w, (w + e) / 2 - 180); e = w + 360; if (cv._fwd(0, 89.9)) n = 84; if (cv._fwd(0, -89.9)) s = -84; }
+  return { s: Math.max(-84, s), n: Math.min(84, n), w, e };
+}
+let windTimer = 0;
+function windEnsure(cv) {
+  if (!windOn()) return;
+  const b = viewBox(cv); if (!b) return;
+  const g = S.windGrid, ideal = Math.max(b.n - b.s, b.e - b.w) / 15;
+  if (g) {
+    const gn = g.s + (g.rows - 1) * g.step, ge = g.w + (g.cols - 1) * g.step, full = ge - g.w >= 359.9;
+    const shift = full ? 0 : 360 * Math.round((g.w + ge - b.w - b.e) / 720);
+    if (b.s >= g.s && b.n <= gn && (full || (b.w + shift >= g.w && b.e + shift <= ge)) && g.step <= Math.max(0.25, ideal) * 2.6 && (g.step >= ideal / 2.6 || g.step <= 0.25)) return;
+  }
+  clearTimeout(windTimer);
+  windTimer = setTimeout(async () => {
+    const q = `s=${b.s.toFixed(2)}&n=${b.n.toFixed(2)}&w=${b.w.toFixed(2)}&e=${b.e.toFixed(2)}`;
+    if (S.windAsk === q) return;
+    S.windAsk = q;
+    try { S.windGrid = await api("wind-grid?" + q); const c = $(".map", $layer); if (c) { c._parts = null; smoothMap({ lost: true }); } } catch (_) { /* no wind map this time */ }
+    S.windAsk = null;
+  }, 300);
+}
+// Move each speck along the wind and draw its step on the trail layer (which fades a little every frame).
+function stepWind(cv, ts) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight, gr = S.windGrid;
+  const tc = cv._trail || (cv._trail = document.createElement("canvas"));
+  if (tc.width !== cv.width || tc.height !== cv.height) { tc.width = cv.width; tc.height = cv.height; cv._trailKey = null; }
+  const t = tc.getContext("2d");
+  if (cv._trailKey !== cv._viewKey || cv._trailGrid !== gr) { t.setTransform(1, 0, 0, 1, 0, 0); t.clearRect(0, 0, tc.width, tc.height); cv._trailKey = cv._viewKey; cv._trailGrid = gr; cv._parts = null; cv._wts = 0; }
+  const still = STILL.matches, dt = still ? 16 : Math.min(50, ts - (cv._wts || ts - 16)); cv._wts = ts;
+  if (still && cv._parts) return true;                       // reduced motion: one still frame of short strokes
+  const spawn = (p) => {
+    for (let tries = 0; tries < 8; tries++) {
+      const x = Math.random() * W, y = Math.random() * H; if (!cv._area(x, y)) continue;
+      const ll = cv._inv(x, y); if (!ll) continue;
+      p.lon = ll[0]; p.lat = ll[1]; p.age = 0; p.max = 50 + Math.random() * 90; return p;
+    }
+    p.age = 1e9; return p;
+  };
+  if (!cv._parts) { const n = Math.round(Math.max(500, Math.min(1700, (W * H) / 120))); cv._parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.max; return p; }); }
+  t.setTransform(1, 0, 0, 1, 0, 0);
+  if (!still) { t.globalCompositeOperation = "destination-out"; t.fillStyle = `rgba(0,0,0,${Math.min(0.4, 0.09 * dt / 16)})`; t.fillRect(0, 0, tc.width, tc.height); t.globalCompositeOperation = "source-over"; }
+  t.setTransform(dpr, 0, 0, dpr, 0, 0); t.lineCap = "round"; t.lineWidth = 1.1;
+  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const rgb = dark ? "235,244,255" : "24,64,140", buckets = [[], [], [], []];
+  for (const p of cv._parts) {
+    if (p.age++ > p.max) spawn(p);
+    const w = p.age < 1e8 && windAt(gr, p.lon, p.lat); if (!w) { spawn(p); continue; }
+    const sp = Math.hypot(w[0], w[1]); if (sp < 0.5) { p.age += 4; continue; }
+    const len = (still ? 9 : (0.35 + sp * 0.035) * dt / 16) / cv._kArc(p.lat), cl = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
+    const nlat = p.lat + (w[1] / sp) * len, nlon = p.lon + ((w[0] / sp) * len) / cl;
+    const a = cv._fwd(p.lon, p.lat), b = cv._fwd(nlon, nlat);
+    if (!a || !b || !cv._area(b[0], b[1]) || Math.abs(b[0] - a[0]) > 40) { spawn(p); continue; }
+    buckets[Math.min(3, Math.floor(sp / 15))].push(a[0], a[1], b[0], b[1]);
+    p.lon = nlon; p.lat = nlat;
+  }
+  buckets.forEach((seg, i) => {
+    if (!seg.length) return;
+    t.strokeStyle = `rgba(${rgb},${[0.22, 0.34, 0.48, 0.62][i]})`; t.beginPath();
+    for (let k = 0; k < seg.length; k += 4) { t.moveTo(seg[k], seg[k + 1]); t.lineTo(seg[k + 2], seg[k + 3]); }
+    t.stroke();
+  });
+  return true;
+}
+// Tap the map: the wind there, which way it blows from and how hard
+function windTip(cv, x, y) {
+  const tip = $(".windtip", $layer), gr = S.windGrid; if (!tip || !windOn() || !gr) return;
+  const ll = cv._inv(x, y), w = ll && windAt(gr, ll[0], ll[1]); if (!w) return;
+  const sp = Math.hypot(w[0], w[1]), from = (Math.atan2(w[0], w[1]) * R2D + 540) % 360;
+  tip.innerHTML = `<small>${["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(from / 45) % 8]}</small><b>${Math.round(sp * 0.621371)}</b><small>mph</small>`;
+  tip.style.left = `${x - 34}px`; tip.style.top = `${y - 34}px`; tip.hidden = false; tip.classList.remove("pop"); void tip.offsetWidth; tip.classList.add("pop");
+  clearTimeout(windTip.t); windTip.t = setTimeout(() => { tip.hidden = true; }, 4000);
+}
 // Wind: short streaks drifting beside the route, with the pigeon for a
 // tailwind (green), against it for a headwind (orange); faster the stronger it blew.
 function drawWind(g, cv, ts) {
@@ -609,7 +710,9 @@ const STILL = matchMedia("(prefers-reduced-motion: reduce)");
 function drawBirds(cv, ts) {
   const g = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
   if (!cv._base || !cv._birds) return;
-  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._base, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._base, 0, 0);
+  if (windOn() && S.windGrid && stepWind(cv, ts)) g.drawImage(cv._trail, 0, 0);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawWind(g, cv, STILL.matches ? 0 : ts);
   for (const { r, at: [px, py], dx, dy, phase, color } of cv._birds) {
     const flying = phase === "up" || phase === "cruise" || phase === "down", hz = phase === "cruise" ? 2.2 : 5;
@@ -782,7 +885,16 @@ function drawGlobe(cv, m, cardH) {
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
   cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
-  cv._winds = tracks.filter(({ r, up }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt && up.every(Boolean)).map(({ r, P }) => {
+  cv._fwd = (lon, lat) => { const p = proj(lon, lat); return p[2] ? [p[0], p[1]] : null; };
+  cv._inv = (x, y) => {
+    const a = (x - cx) / R, b = -(y - cy) / R, r2 = a * a + b * b; if (r2 > 1) return null;
+    const z = Math.sqrt(1 - r2); return [lon0 + Math.atan2(a, z * c0 - b * s0) / rad, Math.asin(z * s0 + b * c0) / rad];
+  };
+  cv._kArc = () => R * rad;
+  cv._viewKey = `g${lon0.toFixed(3)},${lat0.toFixed(3)},${R.toFixed(2)},${W},${H}`;
+  cv._area = (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= R * R * 0.995 && x >= 0 && x <= W && y >= 0 && y <= H;
+  windEnsure(cv);
+  cv._winds = windOn() ? [] : tracks.filter(({ r, up }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt && up.every(Boolean)).map(({ r, P }) => {
     const cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
     return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
   });
@@ -816,8 +928,11 @@ function mapGestures(cv) {
   const local = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   const state = () => { const a = [...pts.values()]; if (a.length === 1) return { x: a[0][0], y: a[0][1], d: 0 };
     return { x: (a[0][0] + a[1][0]) / 2, y: (a[0][1] + a[1][1]) / 2, d: Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) }; };
+  let down = null;
   cv.addEventListener("pointerdown", (e) => {
+    const tip = $(".windtip", $layer); if (tip) tip.hidden = true;
     cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = state();
+    down = pts.size === 1 ? { at: performance.now(), p: local(e), moved: 0 } : null;
     if (pts.size === 1) { const t = performance.now(); if (t - lastTap < 300) { const [x, y] = local(e); moveMap(cv, 2, x, y); lastTap = 0; } else lastTap = t; }
   });
   cv.addEventListener("pointermove", (e) => {
@@ -827,10 +942,16 @@ function mapGestures(cv) {
       const z = pts.size === 2 && last.d && s.d ? s.d / last.d : 1;
       moveMap(cv, z, last.x, last.y, s.x - last.x, s.y - last.y);
       if (Math.abs(s.x - last.x) + Math.abs(s.y - last.y) > 6) lastTap = 0;
+      if (down) down.moved += Math.abs(s.x - last.x) + Math.abs(s.y - last.y);
     }
     last = s;
   });
-  const up = (e) => { pts.delete(e.pointerId); last = pts.size ? state() : null; };
+  const up = (e) => {
+    pts.delete(e.pointerId); last = pts.size ? state() : null;
+    // a quick tap that didn't move (and isn't the first half of a double tap): the wind there
+    if (down && !pts.size && down.moved < 8 && performance.now() - down.at < 350) { const d = down, tap = lastTap; setTimeout(() => { if (lastTap === tap && tap) windTip(cv, d.p[0], d.p[1]); }, 320); }
+    down = null;
+  };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
   cv.addEventListener("wheel", (e) => { e.preventDefault(); const [x, y] = local(e); moveMap(cv, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), x, y); }, { passive: false });
 }
@@ -2048,7 +2169,9 @@ function drawSheet(refresh) {
   switch (s.type) {
     case "map":
       if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
-        <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button></div>
+        <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button><button type="button" class="layerbtn" data-act="maplayers" aria-pressed="${windOn()}" aria-label="Wind map">${I.layers}</button></div>
+        <div class="windkey glass"${windOn() ? "" : " hidden"}><b>Wind</b><i></i><span><small>0</small><small>10</small><small>20</small><small>30+ mph</small></span></div>
+        <div class="windtip" hidden></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
       return tickMap();
@@ -2425,7 +2548,7 @@ function smoothMap(m) {
     if (ts - mapAnimAt < 30) { mapAnim = requestAnimationFrame(step); return; }
     mapAnimAt = ts;
     if (moving) return tickMap();       // it visibly moves: redraw it all (tickMap calls back here)
-    if (!cv?._birds?.some((b) => b.phase !== "landed" && b.phase !== "lost")) return;
+    if (!cv?._birds?.some((b) => b.phase !== "landed" && b.phase !== "lost") && !(windOn() && S.windGrid)) return;
     drawBirds(cv, ts); mapAnim = requestAnimationFrame(step);   // just the wings
   });
 }
@@ -2610,6 +2733,12 @@ async function onClick(e) {
       return moveMap(cv, id === "in" ? 2 : 0.5, cv.clientWidth / 2, mapFrame(cv, cv._m, cv._cardH).sy0);
     }
     case "view": S.sheet = { type: "view", id }; return renderSheet();
+    case "maplayers": {
+      const on = !windOn(); try { localStorage.setItem("inflight-windmap", on ? "1" : "0"); } catch (_) {}
+      t.setAttribute("aria-pressed", String(on)); const k = $(".windkey", $layer); if (k) k.hidden = !on;
+      const cv = $(".map", $layer); if (cv) { cv._parts = null; cv._trailKey = null; }
+      redrawMap(); return;
+    }
     case "mapglobe": { const cv = $(".map", $layer); if (!cv?._m) return; S.sheet.globe = !globeOn(cv._m); S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap(); }
     case "safety": {
       const f = friend(id); if (!f) return;

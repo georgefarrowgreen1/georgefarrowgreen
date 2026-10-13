@@ -845,3 +845,16 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .skin2.on .sbig{animation:pop .4s var(--bouncy)}
 /* the globe / flat map switch */
 .mapctl .globebtn[aria-pressed="true"]{color:var(--tint)}
+/* the wind map: its switch, its key, and the bubble where you tap */
+.mapctl .layerbtn[aria-pressed="true"]{color:var(--tint)}
+.windkey{position:absolute;top:10px;left:14px;z-index:1;display:flex;flex-direction:column;gap:4px;padding:8px 12px 7px;border-radius:16px;font-size:11px;color:var(--label-2);pointer-events:none}
+.windkey b{font-size:12px;font-weight:600;color:var(--label)}
+.windkey i{display:block;width:120px;height:4px;border-radius:2px;background:linear-gradient(90deg,rgba(24,64,140,.3),rgba(24,64,140,.9))}
+.windkey span{display:flex;justify-content:space-between;width:120px}
+.windkey small{font-size:10px;font-variant-numeric:tabular-nums}
+:root[data-theme="dark"] .windkey i{background:linear-gradient(90deg,rgba(235,244,255,.3),rgba(235,244,255,.9))}
+@media (prefers-color-scheme: dark){:root[data-theme="auto"] .windkey i{background:linear-gradient(90deg,rgba(235,244,255,.3),rgba(235,244,255,.9))}}
+.windtip{position:absolute;z-index:2;width:68px;height:68px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--cell);color:var(--tint);box-shadow:0 6px 20px rgba(0,0,0,.18);pointer-events:none;line-height:1}
+.windtip b{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0}
+.windtip small{font-size:10px;font-weight:600;color:var(--label-2);text-transform:uppercase}
+.windtip.pop{animation:pop .35s var(--bouncy)}
