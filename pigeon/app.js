@@ -411,6 +411,7 @@ function drawMap(cv, m, cardH) {
     g.beginPath(); trace(data.borders, false);
     g.strokeStyle = col("--border"); g.lineWidth = k > 40 ? 1.2 : 0.8; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
   }
+  drawNight(g, W, H, ox, oy, k);
   // the routes (a message to a group has one per member), their ends, and each pigeon
   const tracks = routesOf(m).map((r) => { const rp = routePts(r); return { r, rp, P: rp.map((p) => [X(p.x), Y(p.y)]) }; });
   // the trail: solid where it has flown, dashed (and fainter) where it has still to go
@@ -480,6 +481,53 @@ function drawMap(cv, m, cardH) {
   cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   drawBirds(cv, performance.now());
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
+}
+// Where the sun is overhead right now (degrees): the usual low-precision
+// solar formulas, good to a fraction of a degree.
+function sunAt(t = now()) {
+  const d = t / DAY - 10957.5, rad = Math.PI / 180;
+  const g = (357.529 + 0.98560028 * d) * rad, q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad, e = (23.439 - 0.00000036 * d) * rad;
+  const dec = Math.asin(Math.sin(e) * Math.sin(L)), ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)) / rad;
+  const eot = ((((q - ra) % 360) + 540) % 360 - 180) * 4 / 60;          // equation of time, hours
+  const utc = (t % DAY) / HOUR;
+  return { lat: dec / rad, lon: ((((12 - utc - eot) * 15) % 360) + 540) % 360 - 180 };
+}
+// Night: shade where the sun is down, deepening through twilight (to 12° below
+// the horizon). Worked out on a coarse grid and smoothed, so it's cheap.
+const NIGHT_STEP = 6;
+function drawNight(g, W, H, ox, oy, k) {
+  const sun = sunAt(), rad = Math.PI / 180, sd = Math.sin(sun.lat * rad), cd = Math.cos(sun.lat * rad);
+  const cw = Math.ceil(W / NIGHT_STEP) + 1, ch = Math.ceil(H / NIGHT_STEP) + 1;
+  const off = drawNight.c || (drawNight.c = document.createElement("canvas"));
+  if (off.width !== cw || off.height !== ch) { off.width = cw; off.height = ch; }
+  const oc = off.getContext("2d"), img = oc.createImageData(cw, ch), px = img.data;
+  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const [r, gg, b, top] = dark ? [0, 0, 0, 0.42] : [12, 26, 64, 0.26];
+  const lats = Array.from({ length: ch }, (_, j) => { const y = (oy - j * NIGHT_STEP) / k; return (2 * Math.atan(Math.exp(y / R2D)) * R2D - 90) * rad; });
+  for (let i = 0; i < cw; i++) {
+    const cosH = Math.cos(((i * NIGHT_STEP - ox) / k - sun.lon) * rad);
+    for (let j = 0; j < ch; j++) {
+      const alt = Math.asin(Math.sin(lats[j]) * sd + Math.cos(lats[j]) * cd * cosH) / rad;
+      const n = alt >= 0 ? 0 : alt <= -12 ? 1 : (x => x * x * (3 - 2 * x))(-alt / 12);
+      const o = (j * cw + i) * 4; px[o] = r; px[o + 1] = gg; px[o + 2] = b; px[o + 3] = Math.round(255 * top * n);
+    }
+  }
+  oc.putImageData(img, 0, 0);
+  g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+  g.drawImage(off, 0, 0, cw * NIGHT_STEP, ch * NIGHT_STEP); g.restore();
+  // the sun, where it's overhead (once on each copy of the world in view)
+  for (let o = -360; o <= 360; o += 360) {
+    const sx = ox + (sun.lon + o) * k, sy = oy - mercY(sun.lat) * k;
+    if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) continue;
+    g.save(); g.translate(sx, sy);
+    const glow = g.createRadialGradient(0, 0, 2, 0, 0, 22); glow.addColorStop(0, "rgba(255,204,0,.55)"); glow.addColorStop(1, "rgba(255,204,0,0)");
+    g.fillStyle = glow; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill();
+    g.fillStyle = "#ffcc00"; g.strokeStyle = "#ff9f0a"; g.lineWidth = 1.5; g.beginPath(); g.arc(0, 0, 6, 0, 7); g.fill(); g.stroke();
+    g.strokeStyle = "#ffb800"; g.lineWidth = 1.6; g.lineCap = "round";
+    for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4); g.beginPath(); g.moveTo(c * 9, s2 * 9); g.lineTo(c * 12.5, s2 * 12.5); g.stroke(); }
+    g.restore();
+  }
 }
 // The pigeon, with its wing at w (1 up, 0 folded down to its back): the wing's
 // points are drawn toward the body line, so it flaps.
