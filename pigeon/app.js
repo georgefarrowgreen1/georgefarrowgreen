@@ -2127,6 +2127,19 @@ function status(f, t) {
     default: return "";
   }
 }
+/* ---------- who has it: your message to a group, member by member ---------- */
+const whoState = (x) => (x.recalled ? "back" : x.lost ? "lost" : x.flying ? "fly" : x.readAt ? "read" : "landed");
+const whoCls = (x) => "w-" + whoState(x);              // (prefixed: .fly is the incoming pigeon's card)
+const whoOrder = (m) => [...(m.flock || [])].sort((a, b) => a.deliverAt - b.deliverAt);
+function whoDots(m) {
+  const fl = whoOrder(m), more = fl.length > 12 ? fl.length - 11 : 0;
+  return `<span class="whodots" aria-hidden="true">${(more ? fl.slice(0, 11) : fl).map((x) => `<i class="${whoCls(x)}"></i>`).join("")}${more ? `<b>+${more}</b>` : ""}</span>`;
+}
+function whoHasLabel(m) {
+  const fl = m.flock || [], n = (s) => fl.filter((x) => whoState(x) === s).length;
+  return `Who has it: ${n("read")} read, ${n("landed")} landed, ${n("fly")} still flying${n("lost") ? `, ${n("lost")} lost` : ""}${n("back") ? `, ${n("back")} called back` : ""}. Show who.`;
+}
+
 function bubble(f, m, isLastMine, gapTop, g) {
   if (m.stopover) return stopCard(f, m);
   const mine = m.from === S.me.id;
@@ -2161,12 +2174,13 @@ function bubble(f, m, isLastMine, gapTop, g) {
   html += reactsHtml(m, mine);
   const meta = [];
   if (g && mine) {
-    const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="${m.flying ? "flymenu" : "map"}" data-id="${esc(m.id)}">${inner}</button>`;
-    if (m.flying) meta.push(tap(`${pgm(m)} ${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, kindOf(m)));
+    // a dot for each of them, filling in as their pigeons land (and turning blue once they've read it); tap for who
+    const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="whohas" data-id="${esc(m.id)}" aria-label="${esc(whoHasLabel(m))}">${whoDots(m)}${inner}</button>`;
+    if (m.flying) meta.push(tap(`${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, kindOf(m)));
     else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>`, "done"));
-    else if (c.lost === c.n) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
+    else if (c.lost === c.n) meta.push(`<button class="fl lostm" data-act="whohas" data-id="${esc(m.id)}">${I.skull} Lost on the way · Pigeon Death</button>`);
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
-    else if (isLastMine) { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`Landed for all ${c.n}${r ? ` · read by ${r === c.n ? "all" : r}` : ""}`, "done")); }
+    else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   // scheduled: waiting in your loft (they can't see it yet)
@@ -3002,6 +3016,26 @@ function drawSheet(refresh) {
         if (rq) rq.innerHTML = (S.incoming.length ? `<div class="ghead">Want to be your friend</div><div class="group">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "")
           + (S.outgoing.length ? `<div class="ghead">Sent</div><div class="group">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : ""); }
       return;
+    case "whohas": {
+      const g = group(S.chat), m = (S.msgs.get(S.chat) || []).find((x) => x.id === S.sheet.id);
+      if (!g || !m?.flock) { S.sheet = null; return renderSheet(); }
+      const c = flockCount(m), onMap = m.flock.some((x) => x.route);
+      const status = (x) => {
+        const st = whoState(x);
+        return st === "read" ? `<span class="ws w-read">${I.check}Read ${esc(fmtShort(x.readAt))}</span>`
+          : st === "landed" ? `<span class="ws w-landed">Landed ${esc(fmtShort(x.deliverAt))}</span>`
+          : st === "fly" ? `<span class="ws w-fly"><span data-eta="${esc(x.deliverAt)}">${fmtDur(x.deliverAt - now())}</span> away</span>`
+          : st === "lost" ? `<span class="ws w-lost">${I.skull}Lost</span>` : `<span class="ws w-back">${I.homing}Called back</span>`;
+      };
+      const rows = whoOrder(m).map((x) => { const p = member(g, x.to) || { name: "Someone" };
+        return `<div class="cell whorow"><span class="who-av ${whoCls(x)}">${avatar(p, "s")}</span><span class="ctext"><span class="one">${esc(first(p.name))}</span>${x.toPlace ? `<span class="csub one">${esc(x.toPlace)}${x.km ? ` · ${fmtMiles(x.km)}` : ""}</span>` : ""}</span>${status(x)}</div>`; }).join("");
+      const read = m.flock.filter((x) => x.readAt).length;
+      $layer.innerHTML = sheetHtml("Who Has It",
+        `<div class="whohead">${pgm(m)}<b>${m.flying ? `${c.landed} of ${c.n} landed` : `Landed for ${c.landed} of ${c.n}`}</b><span>${read ? `Read by ${read === c.n ? "everyone" : read}` : "Not read yet"}${m.flying && c.next ? ` · next lands in <span data-eta="${esc(c.next)}">${fmtDur(c.next - now())}</span>` : ""}</span>${whoDots(m)}</div>
+        <div class="group">${rows}</div>
+        ${onMap || m.flying ? `<div class="group mt">${onMap ? cell({ act: "map", id: m.id, icon: I.map, tile: "blue", label: m.flying ? "Watch on Map" : "See the Flights", chev: true }) : ""}${m.flying ? cell({ act: "recallask", id: m.id, label: "Call Them Back", cls: "center destructive" }) : ""}</div>` : ""}`);
+      return;
+    }
     case "requests": {
       const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext">${p.name ? `<span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span>` : `<span class="one">@${esc(p.handle)}</span><br><span class="csub">Waiting for them to say yes</span>`}</span>
         <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${esc(p.id)}" aria-label="Decline ${esc(p.name)}">Decline</button><button class="btn small" data-act="accept" data-id="${esc(p.id)}" aria-label="Accept ${esc(p.name)}">Accept</button>`
@@ -3555,6 +3589,7 @@ async function onClick(e) {
       el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
       el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return;
     }
+    case "whohas": haptic("tick"); S.sheet = { type: "whohas", id }; return renderSheet();
     case "flymenu": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
       if (m.waiting) return openMenu(t, [{ label: "Cancel Pigeon", icon: I.x, act: "recallask", id, destructive: true }]);

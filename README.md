@@ -334,7 +334,11 @@ API app); without it the GIF button stays hidden.
 **Groups.** New Message → New Group: a name and up to 11 friends (12 people in
 all). A message flies to everyone at once, one pigeon each over the real
 distance to each person, so it lands at different times for each of them; your
-own message shows how many have landed, and its map shows every route. You can
+own message shows how many have landed, with a dot for each person (hollow
+while their pigeon flies, green once it lands, blue once they've read it, red if
+lost); tap it for Who Has It, everyone by name with when it landed or was read,
+or how long it has to go, plus the map and Call Them Back. Its map shows every
+route. You can
 send a standard pigeon once someone else's message has landed for you since your
 last; one swift, turbo or rocket covers the whole group. Each pigeon takes its
 own Pigeon Death chance and follows its person if they move. Anyone in a group

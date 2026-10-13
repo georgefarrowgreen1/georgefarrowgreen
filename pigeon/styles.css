@@ -1043,3 +1043,32 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mlist.skel .mrow:nth-child(2) .l2{width:58%}.mlist.skel .mrow:nth-child(3) .l2{width:66%}.mlist.skel .mrow:nth-child(4) .l2{width:48%}
 @keyframes sk-shine{from{background-position:100% 0}to{background-position:0 0}}
 @media (prefers-reduced-motion: reduce){.sk{animation:none}}
+/* who has it: a dot for each member under your message to a group */
+.whodots{display:inline-flex;align-items:center;gap:3px;margin-right:6px;vertical-align:-1px}
+.whodots i{width:7px;height:7px;border-radius:50%;background:var(--label-3);transition:background-color .4s,transform .4s}
+.whodots i.w-fly{background:transparent;box-shadow:inset 0 0 0 1.5px var(--label-3)}
+.whodots i.w-landed{background:var(--green)}
+.whodots i.w-read{background:var(--tint)}
+.whodots i.w-lost{background:var(--red)}
+.whodots i.w-back{background:var(--label-3);opacity:.5}
+.whodots b{font-size:11px;font-weight:600;color:var(--label-2);margin-left:2px}
+.meta .fl.flock .whodots{margin-right:5px}
+.meta button.fl.lostm{border:0;background:none;font:inherit;color:inherit;padding:0;cursor:pointer}
+/* the sheet */
+.whohead{display:flex;flex-direction:column;align-items:center;gap:4px;margin:6px 16px 16px;text-align:center}
+.whohead .pg{font-size:26px;margin-bottom:4px}
+.whohead b{font-size:20px;font-weight:700}
+.whohead > span:not(.whodots){font-size:14px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.whohead .whodots{margin:8px 0 0;gap:5px}
+.whohead .whodots i{width:10px;height:10px}
+.whorow{cursor:default}
+.whorow .who-av{position:relative;flex:none;border-radius:50%}
+.whorow .who-av::after{content:"";position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;box-shadow:0 0 0 2px var(--cell);background:var(--label-3)}
+.whorow .who-av.w-fly::after{background:var(--cell);box-shadow:0 0 0 2px var(--cell),inset 0 0 0 2px var(--label-3)}
+.whorow .who-av.w-landed::after{background:var(--green)}
+.whorow .who-av.w-read::after{background:var(--tint)}
+.whorow .who-av.w-lost::after{background:var(--red)}
+.whorow .who-av.w-back::after{opacity:.5}
+.ws{flex:none;display:inline-flex;align-items:center;gap:4px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.ws .ico{font-size:15px;stroke-width:2.4}
+.ws.w-read{color:var(--tint)}.ws.w-landed{color:var(--green)}.ws.w-fly{color:var(--orange)}.ws.w-lost{color:var(--red)}.ws.w-back{color:var(--label-2)}
