@@ -523,6 +523,7 @@ function drawMap(cv, m, cardH) {
     return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
   });
   cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
+  cv._wx = wxCells(tracks.map(({ r }) => r)); cv._wxText = col("--label-2"); cv._wxHalo = col("--land");
   drawBirds(cv, performance.now());
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
 }
@@ -706,12 +707,14 @@ function viewBox(cv) {
     s = Math.min(s, ll[1]); n = Math.max(n, ll[1]); w = Math.min(w, ll[0]); e = Math.max(e, ll[0]);
   }
   if (!any) return null;
-  if (cv._fwd(0, 89.9) || cv._fwd(0, -89.9) || e - w > 300) { w = Math.min(w, (w + e) / 2 - 180); e = w + 360; if (cv._fwd(0, 89.9)) n = 84; if (cv._fwd(0, -89.9)) s = -84; }
+  // a pole in sight (on the globe), or most of the way round: the whole width of the world
+  const pole = (lat) => { const p = cv._fwd(0, lat); return !!p && cv._area(p[0], p[1]); };
+  if (pole(89.9) || pole(-89.9) || e - w > 300) { w = Math.min(w, (w + e) / 2 - 180); e = w + 360; if (pole(89.9)) n = 84; if (pole(-89.9)) s = -84; }
   return { s: Math.max(-84, s), n: Math.min(84, n), w, e };
 }
 let windTimer = 0;
 function windEnsure(cv) {
-  if (!windOn()) return;
+  if (!windOn()) return;                          // (a pigeon's own storm is drawn without it)
   const b = viewBox(cv); if (!b) return;
   const g = S.windGrid, ideal = Math.max(b.n - b.s, b.e - b.w) / 15;
   if (g) {
@@ -719,9 +722,13 @@ function windEnsure(cv) {
     const shift = full ? 0 : 360 * Math.round((g.w + ge - b.w - b.e) / 720);
     if (b.s >= g.s && b.n <= gn && (full || (b.w + shift >= g.w && b.e + shift <= ge)) && g.step <= Math.max(0.25, ideal) * 2.6 && (g.step >= ideal / 2.6 || g.step <= 0.25)) return;
   }
+  // (a map redrawn every frame, as while a pigeon takes off, mustn't keep putting the ask off)
+  const q = `s=${b.s.toFixed(2)}&n=${b.n.toFixed(2)}&w=${b.w.toFixed(2)}&e=${b.e.toFixed(2)}`;
+  if (windTimer && S.windWant === q) return;
+  S.windWant = q;
   clearTimeout(windTimer);
   windTimer = setTimeout(async () => {
-    const q = `s=${b.s.toFixed(2)}&n=${b.n.toFixed(2)}&w=${b.w.toFixed(2)}&e=${b.e.toFixed(2)}`;
+    windTimer = 0;
     if (S.windAsk === q) return;
     S.windAsk = q;
     try { S.windGrid = await api("wind-grid?" + q); const c = $(".map", $layer); if (c) { c._parts = null; smoothMap({ lost: true }); } } catch (_) { /* no wind map this time */ }
@@ -781,6 +788,177 @@ function windTip(cv, x, y) {
 }
 // Wind: short streaks drifting beside the route, with the pigeon for a
 // tailwind (green), against it for a headwind (orange); faster the stronger it blew.
+/* ---------- the rain radar ----------
+   How hard it's raining, coloured like a weather radar: light blue drizzle,
+   blue and purple rain, orange and yellow cloudbursts. The real rain (a coarse
+   grid from Open-Meteo, with the wind map) is given a radar's grain by a
+   streaky noise that drifts slowly; the storm that held a pigeon up always
+   shows, as an intense cell. Worked out at a third of the screen's resolution
+   and smoothed up, a few times a second. */
+const RAIN_K = { storms: 16, rain: 8, snow: 4 };      // how hard (mm an hour) at the heart of a pigeon's weather
+const RAMP = [[0.15, 80, 170, 255, 0], [0.4, 70, 150, 255, 0.42], [1.2, 60, 105, 245, 0.55], [2.6, 112, 78, 232, 0.62], [5, 170, 62, 205, 0.68],
+  [8.5, 226, 82, 150, 0.74], [13, 255, 132, 62, 0.8], [20, 255, 206, 58, 0.86], [30, 255, 246, 140, 0.9]];
+const RAMP_LUT = (() => {
+  const lut = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) {
+    const mm = 0.1 * Math.pow(400, i / 255);                // 0.1 to 40 mm an hour, on a log scale
+    let j = 0; while (j < RAMP.length - 2 && mm > RAMP[j + 1][0]) j++;
+    const [a, b] = [RAMP[j], RAMP[j + 1]], f = Math.max(0, Math.min(1, (Math.log(mm) - Math.log(a[0])) / (Math.log(b[0]) - Math.log(a[0]))));
+    for (let c = 0; c < 4; c++) lut[i * 4 + c] = (c < 3 ? a[c + 1] + (b[c + 1] - a[c + 1]) * f : 255 * (a[4] + (b[4] - a[4]) * f));
+  }
+  return lut;
+})();
+// value noise: smooth, repeatable, cheap
+const nHash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = nHash(xi, yi), b = nHash(xi + 1, yi), c = nHash(xi, yi + 1), d = nHash(xi + 1, yi + 1);
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+}
+// streaky radar grain: bands running south-west to north-east, warped so they wander
+function rainGrain(lon, lat, t) {
+  const u = lon * 0.82 + lat * 0.57, v = -lon * 0.57 + lat * 0.82;          // turned 35°
+  let x = u * 1.1 + t * 0.03, y = v * 3.2 - t * 0.012;                        // stretched along the bands
+  const wx = vnoise(x * 0.5 + 7.1, y * 0.5) - 0.5, wy = vnoise(x * 0.5, y * 0.5 + 3.3) - 0.5;
+  x += wx * 2.2; y += wy * 2.2;
+  const fine = vnoise(x, y) * 0.55 + vnoise(x * 2.3 + 1.7, y * 2.3) * 0.3 + vnoise(x * 5.1, y * 5.1 + 9.2) * 0.15;
+  // and big bands and gaps, a few hundred kilometres across, so it isn't even all over
+  const big = vnoise(u * 0.32 + 5.3 + t * 0.008, v * 0.75 + 1.1);
+  return fine * 0.62 + big * 0.58;
+}
+function gridAt(gr, a, lon, lat) {
+  const span = (gr.cols - 1) * gr.step;
+  let x = (lon - gr.w) / gr.step;
+  if (span >= 359.9) x = ((x % (gr.cols - 1)) + (gr.cols - 1)) % (gr.cols - 1);
+  else { let l = lon; while (l < gr.w) l += 360; while (l > gr.w + span) l -= 360; x = (l - gr.w) / gr.step; if (x < 0 || x > gr.cols - 1) return 0; }
+  const y = (lat - gr.s) / gr.step; if (y < 0 || y > gr.rows - 1) return 0;
+  const i = Math.min(gr.cols - 2, Math.floor(x)), j = Math.min(gr.rows - 2, Math.floor(y)), fx = x - i, fy = y - j, at = (jj, ii) => a[jj * gr.cols + ii];
+  return (at(j, i) * (1 - fx) + at(j, i + 1) * fx) * (1 - fy) + (at(j + 1, i) * (1 - fx) + at(j + 1, i + 1) * fx) * fy;
+}
+const radarCells = (cv) => (cv._wx || []).filter((w) => RAIN_K[w.k]);
+function radarWanted(cv) { return radarCells(cv).length > 0 || (windOn() && S.windGrid?.p?.some((v) => v >= 0.2)); }
+function drawRadar(g, cv, ts, xf) {
+  const want = !!cv._inv && radarWanted(cv), keyEl = $(".rainkey", $layer);
+  if (keyEl && keyEl.hidden === want) keyEl.hidden = !want;
+  if (!want) return;
+  const W = cv.clientWidth, H = cv.clientHeight, ST = 3, cw = Math.ceil(W / ST), ch = Math.ceil(H / ST);
+  const off = cv._radar || (cv._radar = document.createElement("canvas"));
+  const t = STILL.matches ? 0 : ts / 1000;
+  // drawn afresh when the view, the rain or (four times a second) the drift changes; while the map moves, the last one moves with it
+  const key = `${cv._viewKey}|${S.windGrid?.hour ?? ""}|${(cv._wx || []).length}`;
+  if (!xf && (key !== cv._radarKey || (!STILL.matches && ts - (cv._radarAt || 0) > 250))) {
+    cv._radarKey = key; cv._radarAt = ts;
+    if (off.width !== cw || off.height !== ch) { off.width = cw; off.height = ch; }
+    const oc = off.getContext("2d"), img = oc.createImageData(cw, ch), px = img.data, gr = windOn() ? S.windGrid : null, gp = gr?.p;
+    const cells = radarCells(cv).map((w) => ({ lat: w.lat, lon: w.lon, peak: RAIN_K[w.k], cl: Math.cos(w.lat * Math.PI / 180) }));
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      const x = i * ST + ST / 2, y = j * ST + ST / 2; if (!cv._area(x, y)) continue;
+      const ll = cv._inv(x, y); if (!ll) continue;
+      const [lon, lat] = ll;
+      let mm = gp ? gridAt(gr, gp, lon, lat) : 0;
+      for (const c of cells) {
+        // a long cell along the bands, ~300 km by ~120 km
+        const dx = (lon - c.lon) * c.cl * 111, dy = (lat - c.lat) * 111, a = dx * 0.82 + dy * 0.57, b = -dx * 0.57 + dy * 0.82;
+        mm = Math.max(mm, c.peak * Math.exp(-((a / 150) ** 2 + (b / 60) ** 2)));
+      }
+      if (mm < 0.12) continue;
+      const n = rainGrain(lon, lat, t), v = mm * Math.max(0, n - 0.5) ** 1.25 * 4.2;
+      if (v < 0.15) continue;
+      const li = Math.max(0, Math.min(255, Math.round(255 * Math.log(v / 0.1) / Math.log(400)))) * 4, o = (j * cw + i) * 4;
+      px[o] = RAMP_LUT[li]; px[o + 1] = RAMP_LUT[li + 1]; px[o + 2] = RAMP_LUT[li + 2]; px[o + 3] = RAMP_LUT[li + 3];
+    }
+    oc.putImageData(img, 0, 0);
+  }
+  if (!off.width) return;
+  g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+  if (xf) g.setTransform(xf.a * (cv._dpr || 1), 0, 0, xf.a * (cv._dpr || 1), xf.bx * (cv._dpr || 1), xf.by * (cv._dpr || 1));
+  g.drawImage(off, 0, 0, cw * ST, ch * ST);
+  g.restore();
+}
+
+// The weather that's holding a pigeon up, drawn where it is: a cloud with rain
+// falling, a storm cloud that flashes, drifting snow, banks of fog, or gusts.
+const WX_SKY = { storms: ["#596072", 0.7, "Storms"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
+function wxCells(routes) {
+  return routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt)
+    .filter((r, i, a) => a.findIndex((x) => x.wx.lat === r.wx.lat && x.wx.lon === r.wx.lon) === i)
+    .map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon, seed: (Math.abs(r.wx.lat * 7 + r.wx.lon * 13) % 10) }));
+}
+function drawWx(g, cv, ts, xf) {
+  const t = STILL.matches ? 0 : ts / 1000;
+  for (const w of cv._wx || []) {
+    let p = cv._fwd?.(w.lon, w.lat); if (!p) continue;
+    let R = Math.max(34, Math.min(100, cv._kArc(w.lat) * 1.6));
+    if (xf) { p = [xf.a * p[0] + xf.bx, xf.a * p[1] + xf.by]; R *= xf.a; }
+    const [x, y] = p, [c, a, label] = WX_SKY[w.k];
+    if (x < -2 * R || y < -2 * R || x > cv.clientWidth + 2 * R || y > cv.clientHeight + 2 * R) continue;
+    g.save();
+    const radar = !!RAIN_K[w.k];                           // (rain, storms and snow are on the radar)
+    // what falls from it
+    if (radar) { /* the radar draws it */ } else if (w.k === "rain" || w.k === "storms") {
+      g.strokeStyle = w.k === "storms" ? "#4f7fc4" : "#5b8fd6"; g.lineWidth = Math.max(1, R / 40); g.lineCap = "round";
+      for (let i = 0; i < 16; i++) {
+        const ph = ((t * 1.5 + i * 0.381 + w.seed * 0.1) % 1 + 1) % 1, dx = -0.8 + (i / 15) * 1.6 + Math.sin(i * 7.3) * 0.06;
+        const xx = x + dx * R * 0.75, yy = y + R * 0.38 + ph * R * 0.8, len = R * 0.15;
+        g.globalAlpha = 0.75 * Math.sin(Math.PI * ph);
+        g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx - len * 0.3, yy + len); g.stroke();
+      }
+    } else if (w.k === "snow") {
+      g.fillStyle = "#fff"; g.strokeStyle = "rgba(0,0,0,.18)"; g.lineWidth = 0.8;
+      for (let i = 0; i < 18; i++) {
+        const ph = ((t * 0.32 + i * 0.29 + w.seed * 0.1) % 1 + 1) % 1, dx = -0.85 + (i / 17) * 1.7;
+        const xx = x + dx * R * 0.75 + Math.sin(t * 1.3 + i) * R * 0.06, yy = y + R * 0.38 + ph * R * 0.8;
+        g.globalAlpha = Math.sin(Math.PI * ph);
+        g.beginPath(); g.arc(xx, yy, Math.max(1.4, R / 34), 0, 7); g.fill(); g.stroke();
+      }
+    }
+    // the cloud: soft puffs that drift a little
+    if (radar) { /* none */ } else if (w.k !== "fog") {
+      const flash = w.k === "storms" && (STILL.matches || ((t + w.seed) % 3.4) < 0.16);
+      // one shape (puffs on a flat base), so it reads as a cloud, not a bunch of balls
+      const puffs = [[-0.5, 0.02, 0.36], [-0.16, -0.2, 0.48], [0.24, -0.12, 0.42], [0.56, 0.06, 0.3]], shape = new Path2D();
+      for (const [i, [px, py, pr]] of puffs.entries()) {
+        const cx = x + px * R + Math.sin(t * 0.35 + i * 1.7) * R * 0.03, cy = y + py * R, rr = pr * R;
+        shape.moveTo(cx + rr, cy); shape.arc(cx, cy, rr, 0, Math.PI * 2);
+      }
+      shape.moveTo(x - 0.78 * R, y + 0.05 * R); shape.roundRect ? shape.roundRect(x - 0.84 * R, y - 0.06 * R, 1.68 * R, 0.4 * R, 0.2 * R) : shape.rect(x - 0.84 * R, y - 0.06 * R, 1.68 * R, 0.4 * R);
+      const grd = g.createLinearGradient(0, y - 0.7 * R, 0, y + 0.34 * R);
+      grd.addColorStop(0, flash ? "#f4f5ff" : "#ffffff"); grd.addColorStop(0.45, flash ? "#d6d9ee" : c); grd.addColorStop(1, flash ? "#b9bdd6" : c);
+      g.globalAlpha = a; g.shadowColor = "rgba(0,0,0,.22)"; g.shadowBlur = R * 0.18; g.shadowOffsetY = R * 0.06;
+      g.fillStyle = grd; g.fill(shape, "nonzero");
+      g.shadowColor = "transparent"; g.shadowBlur = 0; g.shadowOffsetY = 0;
+      if (flash) {                                           // lightning
+        g.globalAlpha = 1; g.strokeStyle = "#ffd60a"; g.lineWidth = Math.max(2, R / 22); g.lineJoin = "round"; g.shadowColor = "#ffe680"; g.shadowBlur = 10;
+        g.beginPath(); g.moveTo(x + 0.08 * R, y + 0.3 * R); g.lineTo(x - 0.1 * R, y + 0.65 * R); g.lineTo(x + 0.08 * R, y + 0.65 * R); g.lineTo(x - 0.06 * R, y + 1.05 * R); g.stroke();
+        g.shadowBlur = 0;
+      }
+      if (w.k === "gales") {                                // gusts curling past
+        g.strokeStyle = "#7d8799"; g.lineWidth = Math.max(1.2, R / 32); g.lineCap = "round";
+        for (let i = 0; i < 3; i++) {
+          const ph = ((t * 0.5 + i / 3) % 1 + 1) % 1, gx = x - R + ph * 2 * R, gy = y + (i - 1) * R * 0.32 + R * 0.35;
+          g.globalAlpha = 0.8 * Math.sin(Math.PI * ph);
+          g.beginPath(); g.moveTo(gx - R * 0.35, gy); g.lineTo(gx, gy); g.arc(gx, gy - R * 0.1, R * 0.1, Math.PI / 2, -Math.PI, true); g.stroke();
+        }
+      }
+    } else {                                               // fog: low banks sliding past
+      g.fillStyle = c;
+      for (let i = 0; i < 4; i++) {
+        const bw = R * (1.9 - i * 0.2), bx = x - bw / 2 + Math.sin(t * 0.4 + i * 1.9) * R * 0.25, by = y - R * 0.5 + i * R * 0.3;
+        g.globalAlpha = a * (0.75 + 0.25 * Math.sin(t * 0.6 + i));
+        g.shadowColor = "rgba(0,0,0,.12)"; g.shadowBlur = R * 0.1;
+        g.beginPath(); g.roundRect ? g.roundRect(bx, by, bw, R * 0.22, R * 0.11) : g.rect(bx, by, bw, R * 0.22); g.fill();
+        g.shadowColor = "transparent"; g.shadowBlur = 0;
+      }
+    }
+    // what it is
+    if (R >= 30) {
+      g.globalAlpha = 1; g.font = "600 11px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+      const ly = radar ? y + R * 1.1 : y + R * (w.k === "fog" ? 0.8 : 1.3);
+      g.lineWidth = 4; g.strokeStyle = cv._wxHalo || "#fff"; g.strokeText(label, x, ly); g.fillStyle = cv._wxText || "#555"; g.fillText(label, x, ly);
+    }
+    g.restore();
+  }
+}
 function drawWind(g, cv, ts) {
   for (const { P, cum, L, wind, seed } of cv._winds || []) {
     if (L < 40) continue;
@@ -819,6 +997,8 @@ function drawBirds(cv, ts, xf) {
     if (windOn() && S.windGrid && !mapMoving() && stepWind(cv, ts)) g.drawImage(cv._trail, 0, 0);     // (the wind waits while the map moves)
   }
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawRadar(g, cv, ts, xf);
+  drawWx(g, cv, ts, xf);
   if (!xf) drawWind(g, cv, STILL.matches ? 0 : ts);
   for (const { r, at: [px0, py0], dx, dy, phase, color } of cv._birds) {
     const px = xf ? xf.a * px0 + xf.bx : px0, py = xf ? xf.a * py0 + xf.by : py0;
@@ -1012,6 +1192,7 @@ function drawGlobe(cv, m, cardH, fast) {
     return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
   });
   cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
+  cv._wx = wxCells(tracks.map(({ r }) => r)); cv._wxText = col("--label-2"); cv._wxHalo = col("--land");
   drawBirds(cv, performance.now());
   $(".mapctl", $layer)?.classList.toggle("moved", !!S.sheet?.gview);
 }
@@ -2613,6 +2794,7 @@ function drawSheet(refresh) {
       if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button><button type="button" class="layerbtn" data-act="maplayers" aria-pressed="${windOn()}" aria-label="Wind map">${I.layers}</button></div>
         <div class="windkey glass"${windOn() ? "" : " hidden"}><b>Wind</b><i></i><span><small>0</small><small>10</small><small>20</small><small>30+ mph</small></span></div>
+        <div class="rainkey glass" hidden><b>Rain</b><i></i><span><small>Light</small><small>Heavy</small><small>Extreme</small></span></div>
         <div class="windtip" hidden></div><div class="birdtip glass" hidden></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }

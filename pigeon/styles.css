@@ -857,6 +857,12 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* the wind map: its switch, its key, and the bubble where you tap */
 .mapctl .layerbtn[aria-pressed="true"]{color:var(--tint)}
 .windkey{position:absolute;top:10px;left:14px;z-index:1;display:flex;flex-direction:column;gap:4px;padding:8px 12px 7px;border-radius:16px;font-size:11px;color:var(--label-2);pointer-events:none}
+.rainkey{position:absolute;top:10px;left:14px;z-index:1;display:flex;flex-direction:column;gap:4px;padding:8px 12px 7px;border-radius:16px;font-size:11px;color:var(--label-2);pointer-events:none;transition:top .3s}
+.windkey:not([hidden]) ~ .rainkey{top:78px}
+.rainkey b{font-size:12px;font-weight:600;color:var(--label)}
+.rainkey i{display:block;width:120px;height:4px;border-radius:2px;background:linear-gradient(90deg,rgb(70,150,255),rgb(60,105,245) 25%,rgb(112,78,232) 42%,rgb(170,62,205) 55%,rgb(226,82,150) 68%,rgb(255,132,62) 82%,rgb(255,206,58) 92%,rgb(255,246,140))}
+.rainkey span{display:flex;justify-content:space-between;width:120px}
+.rainkey small{font-size:10px}
 .windkey b{font-size:12px;font-weight:600;color:var(--label)}
 .windkey i{display:block;width:120px;height:4px;border-radius:2px;background:linear-gradient(90deg,rgba(24,64,140,.3),rgba(24,64,140,.9))}
 .windkey span{display:flex;justify-content:space-between;width:120px}

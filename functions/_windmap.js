@@ -1,4 +1,5 @@
-// The wind map: a grid of the wind now (10 m above the ground) over whatever
+// The wind map: a grid of the wind now (10 m above the ground), and how hard
+// it's raining (mm an hour, for the radar), over whatever
 // part of the world the map is showing, for the app to animate. Asked of
 // Open-Meteo through InFlight, so it never learns who is looking or where
 // they are; only a box of the world, snapped to a grid and shared by
@@ -28,7 +29,7 @@ async function windGrid({ request, env }) {
   const w0 = Math.floor(w / step) * step - step, e0 = Math.min(w0 + 360, Math.ceil(e / step) * step + step);
   const rows = Math.round((n0 - s0) / step) + 1, cols = Math.round((e0 - w0) / step) + 1;
   const hour = Math.floor(Date.now() / KEEP) * 3;
-  const key = new Request(`https://inflight-wind.cache/v1/${s0}/${w0}/${step}/${rows}/${cols}/${hour}`);
+  const key = new Request(`https://inflight-wind.cache/v2/${s0}/${w0}/${step}/${rows}/${cols}/${hour}`);
   const cache = typeof caches !== "undefined" ? caches.default : null;
   const hit = cache && await cache.match(key).catch(() => null);
   if (hit) return new Response(hit.body, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -38,20 +39,21 @@ async function windGrid({ request, env }) {
   try {
     const url = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
     url.searchParams.set("latitude", lats.join(",")); url.searchParams.set("longitude", lons.join(","));
-    url.searchParams.set("current", "wind_speed_10m,wind_direction_10m"); url.searchParams.set("wind_speed_unit", "kmh");
+    url.searchParams.set("current", "wind_speed_10m,wind_direction_10m,precipitation"); url.searchParams.set("wind_speed_unit", "kmh");
     const res = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json(); list = Array.isArray(d) ? d : [d];
     if (list.length !== lats.length) throw new Error("short");
   } catch (_) { throw new HttpError(503, "The wind map isn’t available right now."); }
   // u: towards the east, v: towards the north (km/h); direction is where it blows from
-  const U = [], V = [];
+  const U = [], V = [], P = [];
   for (const p of list) {
+    const mm = Number(p?.current?.precipitation); P.push(Number.isFinite(mm) && mm > 0 ? Math.round(mm * 40) / 10 : 0);   // (the last 15 minutes' rain, as a rate)
     const sp = Number(p?.current?.wind_speed_10m), from = Number(p?.current?.wind_direction_10m);
     const ok = Number.isFinite(sp) && Number.isFinite(from), to = (from + 180) * r;
     U.push(ok ? Math.round(sp * Math.sin(to) * 10) / 10 : 0); V.push(ok ? Math.round(sp * Math.cos(to) * 10) / 10 : 0);
   }
-  const body = JSON.stringify({ s: s0, w: w0, step, rows, cols, u: U, v: V, hour });
+  const body = JSON.stringify({ s: s0, w: w0, step, rows, cols, u: U, v: V, p: P, hour });
   if (cache) await cache.put(key, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=10800" } })).catch(() => {});
   return new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
