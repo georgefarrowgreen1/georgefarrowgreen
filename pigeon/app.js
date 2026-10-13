@@ -1454,7 +1454,20 @@ function swipeRows() {
    Pull down from the top: a pigeon drops in, its wings opening as you pull.
    Let go past the line and it flaps while everything syncs. */
 const PTR_AT = 70;
-const haptic = () => {};                                   // (a tap of feedback; not yet)
+// Haptics: a tap of feedback. iPhone's Safari has no vibration API, but
+// flipping a switch control gives the system's own tick (iOS 18 and later),
+// so a hidden one is flipped; elsewhere, navigator.vibrate. Off in Appearance.
+let hapticEl = null;
+const hapticsOn = () => { try { return localStorage.getItem("inflight-haptics") !== "0"; } catch (_) { return true; } };
+function haptic(kind = "tick") {
+  if (!hapticsOn()) return;
+  try {
+    if (navigator.vibrate && !/iPhone|iPad/.test(navigator.userAgent)) { navigator.vibrate(kind === "success" ? [10, 70, 16] : kind === "heavy" ? [22, 40, 22] : 8); return; }
+    if (!hapticEl) { hapticEl = document.createElement("label"); hapticEl.className = "hapt"; hapticEl.setAttribute("aria-hidden", "true"); hapticEl.innerHTML = '<input type="checkbox" switch tabindex="-1">'; document.body.appendChild(hapticEl); }
+    hapticEl.click();
+    if (kind === "success" || kind === "heavy") setTimeout(() => hapticEl.click(), kind === "heavy" ? 60 : 110);
+  } catch (_) { /* no haptics here */ }
+}
 function pullToRefresh() {
   const v = $view, ind = $(".ptr", root()), bird = $(".ptrb", ind);
   let y0 = null, pull = 0, ready = false, busy = false;
@@ -1993,6 +2006,7 @@ function openReactMenu(anchor, id) {
   $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="group" aria-label="React">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
 }
 async function sendReact(id, e) {
+  haptic("tick");
   const g = group(S.chat), chat = S.chat, list = S.reacts.get(chat) || [];
   const mineNow = list.find((r) => r.msg === id && r.from === S.me.id);
   try {
@@ -2422,6 +2436,7 @@ async function addGo(h, btn) {
   if (ok) {
     S.pendingAdd = null;
     if (b) { b.classList.remove("sending"); b.classList.add("sent"); b.innerHTML = I.check; b.setAttribute("aria-label", "Sent"); }
+    haptic("success");
     const sub = row?.querySelector(".csub"); if (sub) sub.textContent = /joined/.test(r.message) ? "You’re friends now" : "Request sent";
     if (!b) toast(esc(r.message));
     await sync();
@@ -2752,7 +2767,9 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml("Appearance", `<div class="group mt-s">
         ${THEMES.map((k) => `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${esc(k)}"><span class="ctext"><span>${THEME_NAMES[k]}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
         </div>
-        <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting. " : ""}Saved to your account, so it’s the same on every phone you sign in on.</div>`);
+        <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting. " : ""}Saved to your account, so it’s the same on every phone you sign in on.</div>
+        <div class="group mt">${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", sub: "A tap of feedback when you send, react and switch", on: hapticsOn() })}</div>
+        <div class="gfoot">On this phone. iPhone needs iOS 18 or later.</div>`);
       return;
     case "notifications": {
       const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
@@ -2923,6 +2940,7 @@ function live() {
 /* ---------- menus, action sheets and banners ---------- */
 // iOS-style context menu anchored to a button. items: {label, icon, act, id, destructive}
 function openMenu(anchor, items) {
+  haptic("tick");
   clearTimeout(popTimer);
   const box = root().getBoundingClientRect(), a = anchor.getBoundingClientRect();
   const up = a.top - box.top > box.height * 0.55;
@@ -2984,6 +3002,7 @@ async function onClick(e) {
   const id = t.dataset.id;
   const inPop = !!t.closest(".poplayer") && t.dataset.act !== "closepop";
   if (inPop) closePop();
+  if (t.getAttribute("role") === "switch" || t.dataset.act === "pigeon" || t.dataset.act === "schedpick" || t.dataset.act === "viapick") haptic("tick");
   if (swOpen && !t.closest(".swrow")) closeSwipe();                 // any other tap closes an open row
   else if (swOpen && t.closest(".swacts")) closeSwipe();
   switch (t.dataset.act) {
@@ -3088,6 +3107,7 @@ async function onClick(e) {
         actions: [{ label: "Call It Back", act: "recallgo", id, destructive: true }] });
     }
     case "recallgo":
+      haptic("heavy");
       try {
         const g = group(S.chat), r = await api(g ? "group-recall" : "recall", { method: "POST", body: { id } });
         const list = S.msgs.get(S.chat) || [], i = list.findIndex((x) => x.id === id);
@@ -3190,6 +3210,7 @@ async function onClick(e) {
     case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; return renderCompose();
+    case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
     case "via": S.sheet = { type: "via", chat: S.chat, ids: null }; renderSheet();
@@ -3686,6 +3707,7 @@ async function send() {
       upAnim?.stop(); upAnim = null;
     } else r = await api(path, { method: "POST", body: meta });
     S.pick = null;                    // next time, back to the default
+    haptic("success");
     if (rt) S.replyTo = null;
     if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
     if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }

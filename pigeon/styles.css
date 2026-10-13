@@ -933,3 +933,5 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .swa .ico{font-size:21px}
 .swa:active{filter:brightness(.92)}
 .swa.read{background:var(--tint)}.swa.mute{background:var(--indigo)}.swa.info{background:var(--gray)}.swa.del{background:var(--red)}
+/* the hidden switch flipped for iPhone haptics */
+.hapt{position:fixed;left:-200px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
