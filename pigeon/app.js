@@ -1228,7 +1228,7 @@ function renderCompose() {
   a.hidden = !S.attach;
   if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="atext" aria-live="polite">${attachText()}</span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button><i class="upbar" aria-hidden="true"><b></b></i>`;
+    a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>Photo</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
   if (!S.attach && a.dataset.for) { a.dataset.for = ""; a.innerHTML = ""; }
 }
@@ -1447,7 +1447,7 @@ function drawSheet(refresh) {
       const keep = $("#f-name", $layer) ? { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value } : S.profileDraft;
       const old = $(".sheet .body", $layer), top = old && $("#profile-form", $layer) ? old.scrollTop : 0;
       $layer.innerHTML = sheetHtml("My Profile", `
-        <div class="profile-head"><button type="button" class="avedit" data-act="avmenu">${avatar(u, "xl")}<span>${u.avatarAt ? "Edit Photo" : "Add Photo"}</span></button></div>
+        <div class="profile-head"><button type="button" class="avedit" data-act="avmenu">${S.avatarDraft ? `<span class="av xl" aria-hidden="true"><img src="${S.avatarDraft.url}" alt=""></span>` : avatar(u, "xl")}<span>${S.avatarDraft ? "New Photo" : u.avatarAt ? "Edit Photo" : "Add Photo"}</span></button></div>
         <form id="profile-form" data-form="profile" novalidate>
           <div class="ghead">Name</div><div class="group">${field("name", "Name", "text", "name")}</div>
           <div class="ghead">Handle</div><div class="group">${field("handle", "handle", "text", "username", "@")}</div>
@@ -1601,7 +1601,7 @@ async function onClick(e) {
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
     case "close":
       if (S.sheet?.type === "askpw") S.sheet.resolve(null);
-      S.sheet = null; S.profileDraft = null; return renderSheet();
+      S.sheet = null; S.profileDraft = null; dropAvatarDraft(); return renderSheet();
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
@@ -1628,7 +1628,7 @@ async function onClick(e) {
       return openMenu(t, [{ label: "Camera", icon: I.camera, act: "pick", id: "file-cam" }, { label: "Photo Library", icon: I.photo, act: "pick", id: "file-lib" }]);
     case "avmenu":
       return openMenu(t, [{ label: "Choose Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Take Photo", icon: I.camera, act: "pick", id: "av-cam" },
-        ...(S.me.avatarAt ? [{ label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }] : [])]);
+        ...(S.me.avatarAt || S.avatarDraft ? [{ label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }] : [])]);
     case "pick": return $("#" + id)?.click();
     case "trust": return trustNewKey(id);
     case "accept": case "decline":
@@ -1693,6 +1693,7 @@ async function onClick(e) {
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; renderSheet(); S.profileDraft = null; return;
     case "avdel":
+      if (S.avatarDraft) { dropAvatarDraft(); return renderSheet(true); }   // a photo you haven't saved yet just goes
       try { S.me = (await api("avatar", { method: "DELETE" })).me; renderSheet(true); render(); }
       catch (err) { showErr(err.message); }
       return;
@@ -1834,11 +1835,15 @@ async function onSubmit(e) {
     const changes = {};
     if (name !== S.me.name) changes.name = name;
     if (handle !== S.me.handle) changes.handle = handle;
-    if (!Object.keys(changes).length) { S.sheet = null; return renderSheet(); }
+    const photo = !!S.avatarDraft;
+    if (!Object.keys(changes).length && !photo) { S.sheet = null; return renderSheet(); }
     try {
-      S.me = (await busyBtn(btn, "Saving…", () => api("me", { method: "PATCH", body: changes }))).me;
-      S.sheet = null; renderSheet(); render();
-      toast(changes.handle ? `Saved. Friends now find you as @${esc(S.me.handle)}.` : "Profile saved.");
+      await busyBtn(btn, "Saving…", async () => {
+        if (photo) await uploadAvatarDraft();
+        if (Object.keys(changes).length) S.me = (await api("me", { method: "PATCH", body: changes })).me;
+      });
+      S.sheet = null; S.profileDraft = null; renderSheet(); render();
+      toast(changes.handle ? `Saved. Friends now find you as @${esc(S.me.handle)}.` : photo && !changes.name ? "Profile photo updated." : "Profile saved.");
     } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "changepw") {
     if (!v.current) return showErr("Enter your current password.", "current");
@@ -1879,13 +1884,24 @@ async function afterSignIn() {
 }
 // Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
 // A ring fills around your photo in My Profile while it uploads.
-function avatarUpload(f) {
-  const b = $(".avedit", $layer); if (!b) return;
-  if (f == null) { b.classList.remove("uploading"); $(".upring", b)?.remove(); return; }
-  if (!$(".upring", b)) b.insertAdjacentHTML("afterbegin", '<i class="upring" aria-hidden="true"></i>');
-  b.classList.add("uploading"); b.style.setProperty("--up", f);
-  const t = $("span:not(.av)", b); if (t) t.textContent = `Uploading… ${Math.round(f * 100)}%`;
+// A new profile photo is only a preview until you tap Done; then it uploads,
+// with a ring that fills smoothly around it.
+async function uploadAvatarDraft() {
+  const d = S.avatarDraft, b = $(".avedit", $layer);
+  if (b && !$(".upring", b)) b.insertAdjacentHTML("afterbegin", '<i class="upring" aria-hidden="true"></i>');
+  b?.classList.add("uploading");
+  const ring = smoothProgress((x) => {
+    b?.style.setProperty("--up", x);
+    const t = b && $("span:not(.av)", b); if (t) t.textContent = x >= 1 ? "Finishing up…" : `Uploading… ${Math.floor(x * 100)}%`;
+  });
+  ring.set(0.02);
+  try {
+    const r = await api("avatar", { method: "POST", blob: d.blob, onProgress: (f) => ring.set(f) });
+    ring.set(1); await new Promise((res) => setTimeout(res, 300));
+    S.me = r.me; S.avatars.set(`${S.me.id}:${S.me.avatarAt}`, d.url); S.avatarDraft = null;
+  } finally { ring.stop(); b?.classList.remove("uploading"); $(".upring", b || document.createElement("i"))?.remove(); }
 }
+function dropAvatarDraft() { if (S.avatarDraft) { URL.revokeObjectURL(S.avatarDraft.url); S.avatarDraft = null; } }
 async function setAvatar(file) {
   try {
     const bmp = await loadBitmap(file);
@@ -1894,13 +1910,10 @@ async function setAvatar(file) {
     c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
     const jpg = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
     if (!jpg) throw new Error("That picture couldn’t be read. Try another one.");
-    avatarUpload(0);
-    const r = await api("avatar", { method: "POST", blob: jpg, onProgress: avatarUpload });
-    S.me = r.me;
-    S.avatars.set(`${S.me.id}:${S.me.avatarAt}`, URL.createObjectURL(jpg));
-    renderSheet(true); render();
-    toast("Profile picture updated.");
-  } catch (err) { avatarUpload(null); renderSheet(true); showErr(err.message || "That picture couldn’t be read. Try another one."); }
+    dropAvatarDraft();
+    S.avatarDraft = { blob: jpg, url: URL.createObjectURL(jpg) };   // uploads when you tap Done
+    renderSheet(true);
+  } catch (err) { showErr(err.message || "That picture couldn’t be read. Try another one."); }
 }
 async function setAttach(blob) {
   clearAttach();
@@ -1909,13 +1922,37 @@ async function setAttach(blob) {
   renderCompose();
 }
 function clearAttach() { if (S.attach) URL.revokeObjectURL(S.attach.preview); S.attach = null; if ($compose) renderCompose(); }
-// The photo's upload, shown on its preview: encrypting first, then sending with a bar.
-const attachText = () => `Photo, ${fmtBytes(S.attach.bytes.length)}. Encrypted before it leaves this phone.`;
+// Upload progress glides: the browser reports progress in uneven jumps, so the
+// shown figure eases towards the real one every frame instead of leaping.
+function smoothProgress(draw) {
+  let target = 0, shown = 0, raf = 0, last = 0;
+  const step = (ts) => {
+    const dt = last ? Math.min(0.05, (ts - last) / 1000) : 1 / 60; last = ts;
+    shown += (target - shown) * (1 - Math.exp(-dt * 7));
+    if (Math.abs(target - shown) < 0.002) shown = target;
+    draw(shown);
+    raf = shown === target ? 0 : requestAnimationFrame(step);
+  };
+  return {
+    set(f) { target = Math.max(target, Math.min(1, f)); if (!raf) { last = 0; raf = requestAnimationFrame(step); } },
+    stop() { cancelAnimationFrame(raf); raf = 0; },
+  };
+}
+// The photo's upload, shown on its card: only once Send is pressed.
+const attachText = () => `${fmtBytes(S.attach.bytes.length)} · End-to-end encrypted`;
+let upAnim = null;
 function showUpload(stage, f = 0) {
   const a = $(".attach", $compose); if (!a || !S.attach) return;
+  const txt = $(".atext", a), bar = $(".upbar b", a);
   a.classList.toggle("uploading", !!stage);
-  a.style.setProperty("--up", `${Math.round(f * 100)}%`);
-  $(".atext", a).textContent = stage === "seal" ? "Encrypting photo…" : stage === "send" ? `Sending photo… ${Math.round(f * 100)}%` : attachText();
+  a.classList.toggle("sealing", stage === "seal");
+  if (!stage) { upAnim?.stop(); upAnim = null; bar.style.transform = "scaleX(0)"; txt.textContent = attachText(); return; }
+  if (stage === "seal") { txt.textContent = "Encrypting…"; return; }
+  if (!upAnim) upAnim = smoothProgress((x) => {
+    bar.style.transform = `scaleX(${x})`;
+    txt.textContent = x >= 1 ? "Finishing up…" : `Sending… ${Math.floor(x * 100)}%`;
+  });
+  upAnim.set(f);
 }
 async function send() {
   const text = (dumbText() ?? $ta.value).trim();
@@ -1939,6 +1976,8 @@ async function send() {
       form.append("photo", new Blob([blob], { type: "application/octet-stream" }), "photo.bin");
       showUpload("send", 0);
       r = await api("messages", { method: "POST", form, onProgress: (f) => showUpload("send", f) });
+      showUpload("send", 1); await new Promise((res) => setTimeout(res, 300));   // let the bar finish its glide
+      upAnim?.stop(); upAnim = null;
     } else r = await api("messages", { method: "POST", body: { id, to, ct, pigeon: S.sendKind } });
     S.pick = null;                    // next time, back to the default
     S.plain.set(id, payload);
