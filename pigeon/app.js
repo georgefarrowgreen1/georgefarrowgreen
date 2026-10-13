@@ -641,13 +641,13 @@ function stepWind(cv, ts) {
     for (let tries = 0; tries < 8; tries++) {
       const x = Math.random() * W, y = Math.random() * H; if (!cv._area(x, y)) continue;
       const ll = cv._inv(x, y); if (!ll) continue;
-      p.lon = ll[0]; p.lat = ll[1]; p.age = 0; p.max = 50 + Math.random() * 90; return p;
+      p.lon = ll[0]; p.lat = ll[1]; p.age = 0; p.max = 110 + Math.random() * 170; return p;
     }
     p.age = 1e9; return p;
   };
   if (!cv._parts) { const n = Math.round(Math.max(500, Math.min(1700, (W * H) / 120))); cv._parts = Array.from({ length: n }, () => { const p = spawn({}); p.age = Math.random() * p.max; return p; }); }
   t.setTransform(1, 0, 0, 1, 0, 0);
-  if (!still) { t.globalCompositeOperation = "destination-out"; t.fillStyle = `rgba(0,0,0,${Math.min(0.4, 0.09 * dt / 16)})`; t.fillRect(0, 0, tc.width, tc.height); t.globalCompositeOperation = "source-over"; }
+  if (!still) { t.globalCompositeOperation = "destination-out"; t.fillStyle = `rgba(0,0,0,${Math.min(0.25, 0.045 * dt / 16)})`; t.fillRect(0, 0, tc.width, tc.height); t.globalCompositeOperation = "source-over"; }
   t.setTransform(dpr, 0, 0, dpr, 0, 0); t.lineCap = "round"; t.lineWidth = 1.1;
   const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   const rgb = dark ? "235,244,255" : "24,64,140", buckets = [[], [], [], []];
@@ -655,7 +655,7 @@ function stepWind(cv, ts) {
     if (p.age++ > p.max) spawn(p);
     const w = p.age < 1e8 && windAt(gr, p.lon, p.lat); if (!w) { spawn(p); continue; }
     const sp = Math.hypot(w[0], w[1]); if (sp < 0.5) { p.age += 4; continue; }
-    const len = (still ? 9 : (0.35 + sp * 0.035) * dt / 16) / cv._kArc(p.lat), cl = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
+    const len = (still ? 9 : (0.12 + sp * 0.013) * dt / 16) / cv._kArc(p.lat), cl = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
     const nlat = p.lat + (w[1] / sp) * len, nlon = p.lon + ((w[0] / sp) * len) / cl;
     const a = cv._fwd(p.lon, p.lat), b = cv._fwd(nlon, nlat);
     if (!a || !b || !cv._area(b[0], b[1]) || Math.abs(b[0] - a[0]) > 40) { spawn(p); continue; }
