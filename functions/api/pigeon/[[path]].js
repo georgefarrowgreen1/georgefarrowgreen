@@ -1,7 +1,7 @@
 import {
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, spendSwift, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, spendSwift, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
@@ -113,6 +113,18 @@ async function reroute(env, u, p, t, waitUntil) {
   for (const m of results) {
     const legs = m.legs ? JSON.parse(m.legs) : [];
     if (haversineKm(m.to_lat, m.to_lon, p.lat, p.lon) <= REROUTE_KM) continue;
+    // resting with a friend (or on its way to them): it flies on at the same time, to the new spot
+    if (m.via && t < m.via_off) {
+      const [[vLat, vLon]] = legs, ahead = haversineKm(vLat, vLon, p.lat, p.lon);
+      const deliver = m.via_off + Math.round(flightMs(ahead / (m.wind_f || 1), msgSpeed(m)));
+      const km = m.km - haversineKm(vLat, vLon, m.to_lat, m.to_lon) + ahead;
+      const lostAt = m.lost_at == null || m.lost_at < m.via_off ? m.lost_at : Math.round(m.via_off + ((m.lost_at - m.via_off) / (m.deliver_at - m.via_off)) * (deliver - m.via_off));
+      const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, lost_at = ?,
+        expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND via_off > ?`)
+        .bind(p.lat, p.lon, p.place, deliver, km, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
+      if (r.meta.changes && (await areFriends(D, u.id, m.sender))) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
+      continue;
+    }
     // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
     if (t < m.sent_at) {
       const km = haversineKm(m.from_lat, m.from_lon, p.lat, p.lon), flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m)));
@@ -235,6 +247,7 @@ async function removeAccount(env, id) {
   if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`));
   await D.batch([
     D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(id),
+    D.prepare("UPDATE pg_msgs SET via_ct = '', via_note = NULL WHERE via = ?1").bind(id),     // a stopover with them: their copy goes
     D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
     D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
@@ -345,6 +358,14 @@ async function removeFriend({ request, env }) {
   await (await db(env)).prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).run();
   return json({ ok: true });
 }
+// Friends you share with someone: where a pigeon to them could stop over.
+async function mutuals({ request, env }) {
+  const u = await requireUser(request, env), D = await db(env), other = new URL(request.url).searchParams.get("with") || "";
+  if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only send pigeons to your flock.");
+  const { results } = await D.prepare(`SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'ok' AND (a = ?1 OR b = ?1)
+    INTERSECT SELECT CASE WHEN a = ?2 THEN b ELSE a END FROM pg_links WHERE status = 'ok' AND (a = ?2 OR b = ?2)`).bind(u.id, other).all();
+  return json({ ids: results.map((r) => r.id).filter((id) => id !== u.id && id !== other) });
+}
 async function areFriends(D, a, b) {
   return !!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(a, b).first());
 }
@@ -405,7 +426,9 @@ async function listMessages({ request, env }) {
   // yours waiting to take off show (to you only); theirs only once they're in the air
   const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3)
     ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t).all();
-  return json({ now: t, messages: results.map((m) => receipts(u, them, msgView(u.id, m, t))), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results.filter((m) => m.sent_at <= t).at(-1), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  const { results: stops } = await D.prepare("SELECT * FROM pg_msgs WHERE via = ?1 AND sender = ?2 AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 50").bind(u.id, other, t).all();
+  const views = [...results.map((m) => receipts(u, them, msgView(u.id, m, t))), ...stops.map((m) => stopView(u.id, m, t))].sort((a, b) => a.sentAt - b.sentAt);
+  return json({ now: t, messages: views, reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results.filter((m) => m.sent_at <= t).at(-1), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -444,10 +467,23 @@ async function sendMessage({ request, env, waitUntil }) {
   if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
   const swift = PIGEONS[kind].waits ? 0 : 1;
   const hasTo = r && r.lat != null;
-  const km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
-  const risky = u.risky ? 1 : 0;
-  const [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
-  const flight = Math.round(flightMs(km / w.f, PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1)));
+  const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1);
+  // A stopover: it rests an hour with a friend you both have, who can read it
+  // (their own sealed copy) and add a line for the recipient, then flies on.
+  const via = meta.via == null ? null : await stopover(D, u, to, r, String(meta.via), String(meta.viaCt || ""), landAt);
+  let km, w, flight;
+  if (via) {
+    const [w1, w2] = await windsFor(env, [[u.lat, u.lon, via.lat, via.lon], [via.lat, via.lon, r.lat, r.lon]]);
+    const k1 = haversineKm(u.lat, u.lon, via.lat, via.lon), k2 = haversineKm(via.lat, via.lon, r.lat, r.lon);
+    const f1 = Math.round(flightMs(k1 / w1.f, speed)), f2 = Math.round(flightMs(k2 / w2.f, speed));
+    Object.assign(via, { at: t + f1, off: t + f1 + LAYOVER });
+    km = k1 + k2; flight = f1 + LAYOVER + f2;
+    w = { wind: w1.wind == null || w2.wind == null ? w1.wind ?? w2.wind : (w1.wind * k1 + w2.wind * k2) / Math.max(1, km), f: (k1 / w1.f + k2 / w2.f) ? km / (k1 / w1.f + k2 / w2.f) : 1 };
+  } else {
+    km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
+    [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
+    flight = Math.round(flightMs(km / w.f, speed));
+  }
   const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off
   if (off < t) throw new HttpError(409, `That’s too soon: a ${kind} pigeon takes ${waitText(flight)} to get there.`);
   const deliver = off + flight;
@@ -461,13 +497,18 @@ async function sendMessage({ request, env, waitUntil }) {
   }
   // Pigeon Death: 1 in 100 is lost somewhere between 15% and 85% of the way
   const roll = crypto.getRandomValues(new Uint32Array(2));
-  const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(off + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - off)) : null;
+  let lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(off + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - off)) : null;
+  if (via && lostAt != null && lostAt >= via.at && lostAt < via.off) lostAt = via.off + (lostAt - via.at);   // never while resting with a friend
   if (photo) await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   try {
     await D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin, via, via_ct, via_at, via_off, via_place, legs)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, off, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
-        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, u.skin || null).run();
+        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, u.skin || null,
+        via?.id ?? null, via?.ct ?? null, via?.at ?? null, via?.off ?? null, via?.place ?? null,
+        // the map draws it resting there: two stops at the same spot
+        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : null).run();
   } catch (e) {
     if (photo && !String(e).includes("UNIQUE")) await env.BIO_R2.delete(`pigeon/${id}`);
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
@@ -497,6 +538,37 @@ async function cancelScheduled(env, D, u, m, t) {
   return json({ cancelled: m.id, me: meView(me, t) });
 }
 
+// Checks a stopover and finds where it is: a friend of you both, with a location.
+async function stopover(D, u, to, r, viaId, viaCt, landAt) {
+  if (landAt != null) throw new HttpError(400, "A scheduled pigeon can’t make a stopover.");
+  if (!UUID_RE.test(viaId) || viaId === to || viaId === u.id) throw new HttpError(400, "Pick a friend for it to stop with.");
+  if (viaCt.length < 20 || viaCt.length > MAX_CT) throw new HttpError(400, "That scroll was malformed.");
+  if (!(await areFriends(D, u.id, viaId)) || !(await areFriends(D, viaId, to))) throw new HttpError(403, "It can only stop with a friend you both have.");
+  const v = await D.prepare("SELECT id, lat, lon, place FROM pg_users WHERE id = ?").bind(viaId).first();
+  if (v?.lat == null || r?.lat == null) throw new HttpError(409, "A stopover needs both friends’ locations.");
+  return { ...v, ct: viaCt };
+}
+// The friend it stops with adds a line, sealed for the recipient, while it rests with them.
+async function stopoverNote({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "note:" + u.id, 60, 60 * 60e3);
+  const b = await body(request), id = String(b.id || ""), ct = String(b.ct || ""), D = await db(env), t = Date.now();
+  if (!UUID_RE.test(id) || ct.length < 20 || ct.length > 4000) throw new HttpError(400, "That line was malformed.");
+  const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ? AND via = ?").bind(id, u.id).first();
+  if (!m) throw new HttpError(404, "That pigeon isn’t stopping with you.");
+  if (t < m.via_at) throw new HttpError(409, "It hasn’t reached you yet.");
+  const r = await D.prepare("UPDATE pg_msgs SET via_note = ?1 WHERE id = ?2 AND via = ?3 AND via_note IS NULL AND via_off > ?4 AND (lost_at IS NULL OR lost_at > ?4)").bind(ct, id, u.id, t).run();
+  if (!r.meta.changes) throw new HttpError(409, m.via_note ? "You’ve already added a line." : "Too late: it has flown on.");
+  return json({ ok: true });
+}
+// What the friend on the way sees: whose pigeon, to whom, when, and (once it reaches them) what it says.
+function stopView(me, m, t) {
+  const lost = m.lost_at != null && t >= m.lost_at, here = !lost && t >= m.via_at;
+  return { id: m.id, from: m.sender, to: me, stopover: true, finalTo: m.recipient, pigeon: m.pigeon, skin: m.skin || null, risky: !!m.risky,
+    sentAt: m.sent_at, viaAt: m.via_at, viaOff: m.via_off, deliverAt: m.via_at, km: null, flying: !lost && t < m.via_at, resting: here && t < m.via_off,
+    lost, recalled: lost && !!m.recalled, ct: here || (!lost && t >= m.via_off) ? m.via_ct : null, mine: m.via_note || null, photo: 0 };
+}
+
 // Call a pigeon back while it's still in the air: a swift pigeon flies after it.
 // It never arrives, what it carried is deleted, and it's the sender's turn again.
 async function recallMessage({ request, env }) {
@@ -509,7 +581,7 @@ async function recallMessage({ request, env }) {
   if (t < m.sent_at) return cancelScheduled(env, D, u, m, t);
   await spendSwift(D, u, t);
   // (notified_at: nobody is told it was lost; it wasn't, it came home)
-  const r = await D.prepare(`UPDATE pg_msgs SET lost_at = ?1, recalled = 1, notified_at = ?1, ct = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END
+  const r = await D.prepare(`UPDATE pg_msgs SET lost_at = ?1, recalled = 1, notified_at = ?1, ct = '', via_ct = CASE WHEN via IS NULL THEN NULL ELSE '' END, via_note = NULL, photo = CASE WHEN photo = 1 THEN 2 ELSE photo END
     WHERE id = ?2 AND sender = ?3 AND deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)`).bind(t, id, u.id).run();
   if (!r.meta.changes) throw new HttpError(409, "Too late: that pigeon has already landed.");
   if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${id}`);
@@ -839,7 +911,7 @@ const ROUTES = {
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete,
   "GET sync": sync,
   "POST friends": addFriend, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
-  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage,
+  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,

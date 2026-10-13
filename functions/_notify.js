@@ -322,6 +322,18 @@ export async function tick(env, origin) {
     const claimed = await D.prepare("UPDATE pg_msgs SET sched = 2 WHERE id = ? AND sched = 1").bind(m.id).run();
     if (claimed.meta.changes && m.deliver_at > t) { await pigeonSent(env, { id: m.sender, name: m.name }, m.recipient, m.deliver_at, m.pigeon).catch(() => {}); }
   }
+  // stopovers: tell the friend it's resting with them, so they can add a line before it flies on
+  const { results: rests } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.via, m.via_off, s.name AS sname, r.name AS rname, v.notify_prefs FROM pg_msgs m
+    JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient JOIN pg_users v ON v.id = m.via
+    WHERE m.via IS NOT NULL AND m.via_told IS NULL AND m.via_at <= ?1 AND m.via_at > ?2 AND (m.lost_at IS NULL OR m.lost_at > ?1) LIMIT 200`).bind(t, since).all();
+  for (const m of rests) {
+    const p = prefsOf(m); if (isQuiet(p, t)) continue;
+    const claimed = await D.prepare("UPDATE pg_msgs SET via_told = ? WHERE id = ? AND via_told IS NULL").bind(t, m.id).run();
+    if (!claimed.meta.changes || !p.landed || m.via_off <= t) continue;
+    pushes += await pushTo(env, m.via, { title: p.names ? `${firstName(m.sname)}’s pigeon stopped by` : "A pigeon stopped by",
+      body: p.names ? `It’s resting with you on its way to ${firstName(m.rname)}. Add a line before it flies on.` : "It’s resting with you for an hour. Add a line before it flies on.",
+      tag: "via-" + m.id, url: `/pigeon/#open=${m.sender}` });
+  }
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

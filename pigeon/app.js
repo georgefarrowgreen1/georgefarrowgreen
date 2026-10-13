@@ -35,7 +35,7 @@ const S = {
   token: null, me: null, priv: null, secretJwk: null, fp: "",
   friends: [], groups: [], incoming: [], outgoing: [], passkeys: [], skew: 0,
   view: "loading", chat: null, sheet: null, flash: "", err: "",
-  msgs: new Map(), turns: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(),
+  msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
@@ -537,7 +537,7 @@ async function useKeys(token, me, privJwk) {
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], passkeys: [],
-    msgs: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
+    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
   clearAttach();
   await idb.del("session");
 }
@@ -777,12 +777,21 @@ async function loadChat(fid) {
     const p = S.plain.get(m.id);
     if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
     if (m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(m.to === S.me.id && (m.flying || m.lost))) loadPhoto(fid, m, p);
+    // a stopover's line: from the friend it stopped with (to you), or the one you added (on your card)
+    if (m.note && m.via) await openNote(m.id, m.via, S.me.id, m.note);
+    if (m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
   }
-  if (d.messages.some((m) => m.from === fid && !m.flying && !m.lost && !m.readAt)) {
+  if (d.messages.some((m) => m.from === fid && !m.stopover && !m.flying && !m.lost && !m.readAt)) {
     api("read", { method: "POST", body: { with: fid } }).catch(() => {});
     for (const m of d.messages) if (m.from === fid && !m.flying && !m.lost) m.readAt = m.readAt || now();
     const f = friend(fid); if (f) f.unread = 0;
   }
+}
+// A stopover's line is sealed between the friend it stopped with and the recipient.
+async function openNote(id, from, to, ct) {
+  if (S.notes.has(id)) return;
+  const other = friend(from === S.me.id ? to : from); if (!other) return;
+  try { S.notes.set(id, (await E2E.open(await pairFor(other.pub), { id: id + ":via", from, to }, ct)).t || ""); } catch (_) {}
 }
 async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
@@ -1153,13 +1162,14 @@ function status(f, t) {
   }
 }
 function bubble(f, m, isLastMine, gapTop, g) {
+  if (m.stopover) return stopCard(f, m);
   const mine = m.from === S.me.id;
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
   if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}">${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
     return `<button class="fly${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="Watch the pigeon on the map">
-      <span class="t1">${pgm(m)}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}</span></span>
+      <span class="t1">${pgm(m)}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""}</span></span>
       <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</span></span>
       <span class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></span></button>`;
   }
@@ -1177,6 +1187,8 @@ function bubble(f, m, isLastMine, gapTop, g) {
     else photo = `<div class="ph">Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || prog || quote ? `<span class="ptxt">${quote}${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${prog}</div>`;
+  // a line added by the friend it stopped with on the way
+  if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
   const meta = [];
   if (g && mine) {
@@ -1190,12 +1202,24 @@ function bubble(f, m, isLastMine, gapTop, g) {
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   // scheduled: waiting in your loft (they can't see it yet)
   else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
-  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
+  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length > (m.via ? 2 : 0) ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
   if (!m.flying && !m.lost && m.km != null && !(g && mine)) meta[mine ? "push" : "unshift"](stampHtml(m));
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
+}
+// A friend's pigeon to someone else, stopping with you on the way: read it, and add a line.
+function stopCard(f, m) {
+  const to = friend(m.finalTo), toName = esc(first(to?.name || "a friend")), p = S.plain.get(m.id), fresh = S.fresh.has(m.id) ? " fresh" : "";
+  if (m.recalled) return `<div class="lostnote homing${fresh}">${I.homing}<span>${esc(first(f.name))} called back their pigeon to ${toName}.</span></div>`;
+  if (m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon to ${toName} was lost on the way.</span></div>`;
+  const t = now(), state = t < m.viaAt ? `Stopping with you on its way to ${toName} · here in <span data-eta="${esc(m.viaAt)}"></span>`
+    : t < m.viaOff ? `Resting with you on its way to ${toName} · flies on in <span data-eta="${esc(m.viaOff)}"></span>` : `Stopped with you, then flew on to ${toName}`;
+  const text = p && !p.bad ? `<p class="stext">${esc(p.t).replace(/\n/g, "<br>")}${p.ph ? `<span class="hid">${I.photo} A photo only ${toName} can see</span>` : ""}</p>` : p?.bad ? `<p class="stext bad-scroll">This message couldn’t be opened on this phone.</p>` : "";
+  const line = S.notes.get(m.id);
+  const add = line != null ? `<p class="smine"><b>You added</b>${esc(line)}</p>` : m.resting && to ? `<button type="button" class="btn small" data-act="vianote" data-id="${esc(m.id)}">${I.compose}Add a Line for ${toName}</button>` : "";
+  return `<div class="stopcard${fresh}" data-mid="${esc(m.id)}"><span class="st1">${pgm(m)}<span>${state}</span></span>${text}${add}</div>`;
 }
 function gstatus(g, t) {
   const B = (cls, text) => `<div class="status ${cls}">${I.bird}<span>${text}</span></div>`;
@@ -1494,6 +1518,13 @@ function schedFor(chat, dumb = dumbText()) {
   if (sc.at <= now()) { S.sched = null; return null; }
   return sc;
 }
+// A friend to stop over with on the way (one to one, still a friend, with a location)
+function viaFor(chat, dumb = dumbText()) {
+  const v = S.via;
+  if (!v || v.chat !== chat || group(chat) || dumb != null) return null;
+  if (friend(v.id)?.lat == null) { S.via = null; return null; }
+  return v;
+}
 // Paid pigeons you have, fastest last: what a scheduled pigeon can be
 const schedKind = () => (["swift", "turbo", "rocket"].includes(S.pick) && (S.me[S.pick] || 0) > 0 ? S.pick : ["swift", "turbo", "rocket"].find((k) => (S.me[k] || 0) > 0) || null);
 // Times worth a tap: this evening, tomorrow morning and evening, Saturday morning
@@ -1523,13 +1554,16 @@ function renderCompose() {
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
   S.sendKind = kind;
   if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${esc(k)}" aria-pressed="false">${pg(k, S.me.skin)}<span>${name}</span><b></b></button>`).join("")
-    + `<button type="button" class="when" data-act="schedule" aria-pressed="false" aria-label="Choose when it lands">${I.clock}<span></span></button>`;
-  const when = $(".when", pick);
-  when.hidden = !!g || dumb != null;
+    + `<button type="button" class="when" data-act="schedule" aria-pressed="false" aria-label="Choose when it lands">${I.clock}<span></span></button>`
+    + `<button type="button" class="when viab" data-act="via" aria-pressed="false" aria-label="Stop over with a friend on the way">${I.people}<span></span></button>`;
+  const when = $(".when:not(.viab)", pick), viab = $(".viab", pick), via = viaFor(S.chat, dumb);
+  when.hidden = viab.hidden = !!g || dumb != null;
   when.setAttribute("aria-pressed", String(!!sched));
   when.querySelector("span").textContent = sched ? fmtTime(sched.at) : "";             // the day is in the note
+  viab.setAttribute("aria-pressed", String(!!via));
+  viab.querySelector("span").textContent = via ? first(friend(via.id).name) : "";
   for (const b of pick.children) {
-    if (b === when) continue;
+    if (b === when || b === viab) continue;
     const k = b.dataset.id;
     b.disabled = !can[k]; b.setAttribute("aria-pressed", String(k === kind));
     b.querySelector("b").textContent = k === "standard" ? "" : String(S.me[k] || 0);
@@ -1556,6 +1590,10 @@ function renderCompose() {
     const what = kind === "standard" ? (n === 1 ? "pigeon" : "pigeons") : kind === "dumb" ? (n === 1 ? "dumb pigeon" : "dumb pigeons") : KIND[kind].name.toLowerCase() + (n === 1 ? "" : "s");
     note.hidden = false; note.className = "note go";
     note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn. "}${n} ${what} land${n === 1 ? "s" : ""} in ${span}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
+  } else if (via) {
+    const p = friend(via.id), sp = mySpeed(kind), ms = flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, f.lat ?? p.lat, f.lon ?? p.lon), sp);
+    note.hidden = false; note.className = "note go";
+    note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}Stops with ${esc(first(p.name))} for an hour, lands in ${fmtDur(ms)}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
   } else if (sched) {
     const ms = flightMs(chatKm(f), mySpeed(kind)), off = sched.at - ms;
     note.hidden = false;
@@ -1820,6 +1858,31 @@ function drawSheet(refresh) {
       // sizes set from code (inline style attributes are blocked)
       $layer.querySelectorAll("[data-lap]").forEach((el) => el.style.setProperty("--lap", el.dataset.lap));
       $layer.querySelectorAll(".kbar[data-w], .bprog[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
+      return;
+    }
+    case "vianote": {
+      if ($("#f-vianote", $layer)) return;
+      const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id), to = m && friend(m.finalTo);
+      $layer.innerHTML = sheetHtml("Add a Line", `<form id="vianote-form" data-form="vianote" novalidate>
+        <div class="group mt-s"><label class="fcell"><textarea id="f-vianote" rows="3" maxlength="200" placeholder="Say something to ${esc(first(to?.name || "them"))}" aria-label="Your line"></textarea></label></div>
+        <div class="gfoot">It flies on with the pigeon, end-to-end encrypted: only ${esc(first(to?.name || "they"))} can read it, when it lands. You can add one line.</div>${ferr}</form>`,
+        { left: { label: "Cancel", act: "close" }, right: { label: "Add", form: "vianote-form" } });
+      return;
+    }
+    case "via": {
+      const f = friend(s.chat); if (!f) { S.sheet = null; return renderSheet(); }
+      const k = S.sendKind && S.sendKind !== "dumb" ? S.sendKind : "standard", sp = mySpeed(k), cur = S.via?.chat === s.chat ? S.via.id : null;
+      const direct = flightMs(chatKm(f), sp);
+      const rows = (s.ids || []).map(friend).filter(Boolean).map((p) => {
+        const ms = p.lat == null || f.lat == null || S.me.lat == null ? null : flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, f.lat, f.lon), sp);
+        return `<button type="button" class="cell${cur === p.id ? " on" : ""}${ms == null ? " dim" : ""}" ${ms == null ? "disabled" : `data-act="viapick" data-id="${esc(p.id)}"`}>${avatar(p, "s")}
+          <span class="ctext"><span>${esc(p.name)}</span><span class="csub">${ms == null ? "No location set" : `${esc(p.place || "")}${p.place ? " · " : ""}lands in ${fmtDur(ms)} (+${fmtDur(Math.max(0, ms - direct))})`}</span></span>${cur === p.id ? I.check : ""}</button>`;
+      }).join("");
+      $layer.innerHTML = sheetHtml("Stop Over", s.ids == null ? `<p class="empty">Finding friends you share…</p>`
+        : rows ? `<div class="group mt-s">${rows}</div><div class="gfoot">Your pigeon rests with them for an hour on the way. They can read it and add a line for ${esc(first(f.name))}, then it flies on.</div>
+          ${cur ? `<div class="stack"><button type="button" class="btn wide plain" data-act="unvia">Fly Straight There</button></div>` : ""}`
+        : `<p class="empty"><b>No friends in common</b>A stopover needs a friend you and ${esc(first(f.name))} both have.</p>`,
+        { left: { label: "Cancel", act: "close" }, right: null });
       return;
     }
     case "schedule": {
@@ -2287,8 +2350,14 @@ async function onClick(e) {
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; return renderCompose();
     case "skin": return setSkin(id);
+    case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
+    case "via": S.sheet = { type: "via", chat: S.chat, ids: null }; renderSheet();
+      try { const r = await api("mutuals?with=" + encodeURIComponent(S.chat)); if (S.sheet?.type === "via") { S.sheet.ids = r.ids; renderSheet(); } } catch (err) { toast(esc(err.message)); }
+      return;
+    case "viapick": S.via = { chat: S.sheet?.chat || S.chat, id }; S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
+    case "unvia": S.via = null; S.sheet = null; renderSheet(); return renderCompose();
     case "schedule": S.sheet = { type: "schedule", chat: S.chat }; return renderSheet();
-    case "schedpick": S.sched = { chat: S.sheet?.chat || S.chat, at: +id }; S.sheet = null; renderSheet(); return renderCompose();
+    case "schedpick": S.sched = { chat: S.sheet?.chat || S.chat, at: +id }; S.via = null; S.sheet = null; renderSheet(); return renderCompose();
     case "unschedule": S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "risky": return setRisky(!S.me.risky);
@@ -2420,7 +2489,21 @@ async function onSubmit(e) {
     const v = $("#f-landat", $layer)?.value, at = v ? +new Date(v) : NaN;
     if (!Number.isFinite(at) || at <= now()) return showErr("Pick a time that’s still to come.");
     if (at > now() + 30 * DAY) return showErr("Pick a time in the next 30 days.");
-    S.sched = { chat: S.sheet.chat, at }; S.sheet = null; renderSheet(); return renderCompose();
+    S.sched = { chat: S.sheet.chat, at }; S.via = null; S.sheet = null; renderSheet(); return renderCompose();
+  }
+  if (kind === "vianote") {
+    const s = S.sheet, text = String($("#f-vianote", $layer)?.value || "").trim();
+    const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id), to = m && friend(m.finalTo);
+    if (!text) return showErr("Write a line first.");
+    if (!m || !to) return showErr("You’re not friends with who it’s going to any more.");
+    try {
+      await busyBtn(btn, "…", async () => {
+        const ct = await E2E.seal(await pairFor(to.pub), { id: m.id + ":via", from: S.me.id, to: to.id }, { t: text });
+        await api("stopover-note", { method: "POST", body: { id: m.id, ct } });
+      });
+      S.notes.set(m.id, text); m.mine = "sent"; S.sheet = null; renderSheet(); render(); toast(`Added. ${esc(first(to.name))} will see it when it lands.`);
+    } catch (err) { showErr(err.message); }
+    return;
   }
   if (kind === "grouprename") {
     const s = S.sheet;
@@ -2708,7 +2791,7 @@ async function send() {
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
   S.busy = true; S.err = ""; renderCompose();
   try {
-    const id = uuid(), to = S.chat, sc = schedFor(to);
+    const id = uuid(), to = S.chat, sc = schedFor(to), vi = !sc && viaFor(to);
     const payload = { t: text };
     const rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null;
     if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
@@ -2727,7 +2810,9 @@ async function send() {
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id, from: S.me.id, to: p.id }, { k: key });
       meta = { id, group: g.id, body, keys, pigeon: S.sendKind };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}) };
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}),
+      // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
+      ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
     let r;
     if (blob) {
@@ -2742,6 +2827,7 @@ async function send() {
     S.pick = null;                    // next time, back to the default
     if (rt) S.replyTo = null;
     if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
+    if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }
     S.plain.set(id, payload);
     if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
     $ta.value = ""; fitTa(); S.stick = true;

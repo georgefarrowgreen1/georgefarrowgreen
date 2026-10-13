@@ -13,6 +13,7 @@ export const SPEED_KMH = 80;             // a homing pigeon's cruising speed
 export const MIN_FLIGHT = 5 * MIN;
 export const MAX_FLIGHT = 3 * DAY;
 export const MAX_SCHEDULE = 30 * DAY;    // how far ahead a pigeon can be told to land
+export const LAYOVER = HOUR;             // a stopover: how long it rests with the friend on the way
 export const PHOTO_TTL = DAY;            // photos are deleted 24 h after they land
 export const SWIFT_MAX = 9;              // swift pigeons: 2× speed, 9 a day
 export const TURBO_MAX = 3;              // turbo pigeons: 3× speed, 3 a day
@@ -170,7 +171,15 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN skin TEXT",           // rare pigeon look, unlocked by an achievement (null: the usual)
   "ALTER TABLE pg_msgs ADD COLUMN skin TEXT",            // the look it flew with
   "ALTER TABLE pg_gmsgs ADD COLUMN skin TEXT",
-  "ALTER TABLE pg_users ADD COLUMN weekly_at INTEGER",   // last "your week in flight"        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
+  "ALTER TABLE pg_users ADD COLUMN weekly_at INTEGER",   // last "your week in flight"
+  // stopovers: the friend it rests with on the way (an hour), their copy, and the line they add
+  "ALTER TABLE pg_msgs ADD COLUMN via TEXT",
+  "ALTER TABLE pg_msgs ADD COLUMN via_ct TEXT",          // sealed for the stopover friend
+  "ALTER TABLE pg_msgs ADD COLUMN via_at INTEGER",       // lands with them
+  "ALTER TABLE pg_msgs ADD COLUMN via_off INTEGER",      // flies on
+  "ALTER TABLE pg_msgs ADD COLUMN via_place TEXT",
+  "ALTER TABLE pg_msgs ADD COLUMN via_note TEXT",        // their line, sealed for the recipient
+  "ALTER TABLE pg_msgs ADD COLUMN via_told INTEGER",     // they were told it arrived        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -300,6 +309,9 @@ export function msgView(me, m, t) {
     waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)
     scheduled: !!m.sched,
     skin: m.skin || null,
+    // a stopover: who, where and when (the line they added only reaches the recipient, once it lands)
+    ...(m.via ? { via: m.via, viaPlace: m.via_place, viaAt: m.via_at, viaOff: m.via_off,
+      note: m.recipient === me && !flying && !lost ? m.via_note || null : null } : {}),
     photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose
