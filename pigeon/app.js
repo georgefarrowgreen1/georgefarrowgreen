@@ -585,6 +585,24 @@ function drawNight(g, W, H, ox, oy, k) {
   }
   return spots;
 }
+/* ---------- when it lands, in your time and your friend's ---------- */
+const MY_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { return null; } })();
+// "08:12", or "Sat 08:12" when that's not today there
+function clockIn(ts, tz) {
+  try {
+    const f = (t, o) => new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, ...o }).format(t), ymd = { year: "numeric", month: "numeric", day: "numeric" };
+    const time = f(ts, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    return f(ts, ymd) === f(now(), ymd) ? time : `${f(ts, { weekday: "short" })} ${time}`;
+  } catch (_) { return fmtShort(ts); }
+}
+// Lands 08:12 Mira's time · 16:12 yours (when your clocks differ)
+function landsLine(m) {
+  const mine = m.from === S.me.id, other = friend(mine ? m.to : m.from), at = m.deliverAt, you = clockIn(at, MY_TZ);
+  const them = other?.tz && other.tz !== MY_TZ ? clockIn(at, other.tz) : null;
+  if (!them || them === you) return `Lands ${you}`;
+  return mine ? `Lands ${them} ${esc(first(other.name))}’s time · ${you} yours` : `Lands ${you} · ${them} for ${esc(first(other.name))}`;
+}
+
 /* ---------- where a pigeon is: over which country or sea ---------- */
 // on land? (the coarse coastline, even-odd over every ring)
 function onLand(lon, lat) {
@@ -2531,6 +2549,7 @@ function tickMap() {
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
+    ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;
   $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";
   drawMap(cv, m, card.offsetHeight + 14);

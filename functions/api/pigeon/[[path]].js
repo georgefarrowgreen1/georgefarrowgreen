@@ -390,7 +390,7 @@ async function sync({ request, env, waitUntil }) {
   const ids = [...new Set(links.map(other))];
   const people = new Map();
   if (ids.length) {
-    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, seen_at, avatar_at, hide_online, no_receipts FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
+    const { results } = await D.prepare(`SELECT id, handle, name, pub, lat, lon, place, loc_at, seen_at, avatar_at, hide_online, no_receipts, notify_prefs FROM pg_users WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all();
     for (const p of results) people.set(p.id, p);
   }
   const { results: lasts } = await D.prepare(`
@@ -409,6 +409,7 @@ async function sync({ request, env, waitUntil }) {
       const last = lastBy.get(p.id);
       friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
         seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
+        tz: ((z) => (z && z !== "UTC" ? z : null))(prefsOf(p).tz),                    // their phone's time zone: "lands 08:12 their time"
         last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes

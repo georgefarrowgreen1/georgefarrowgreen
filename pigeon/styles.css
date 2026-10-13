@@ -867,3 +867,4 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* the map card: where it is right now */
 .mapcard .over{display:flex;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:600;color:var(--tint)}
 .mapcard .over .ico{font-size:13px}
+.mapcard .lands{text-align:center;font-size:13px;font-weight:500;color:var(--label-2);font-variant-numeric:tabular-nums;margin-top:2px}
