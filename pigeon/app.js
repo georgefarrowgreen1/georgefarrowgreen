@@ -39,7 +39,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
-  pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
+  chatRaw: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), replyTo: null,
 };
@@ -1155,6 +1155,9 @@ async function useKeys(token, me, privJwk) {
 }
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
+  clearTimeout(cacheTimer);
+  if (S.me?.id) await idb.del("cache:" + S.me.id).catch(() => {});
+  S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
   clearAttach();
@@ -1257,6 +1260,34 @@ function askPasswordForKey() {
    Sync with the server
    ============================================================ */
 let syncing = null;
+// What the server says (fresh, or the copy kept on this phone): friends,
+// groups and each chat's last message, opened with the key on this phone.
+async function applySync(d) {
+  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn;
+  syncTheme();
+  for (const f of S.friends) {
+    checkPin(f);
+    if (f.last) await decrypt(f.id, f.last);
+    // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
+    if (f.last && !f.last.flying && !f.last.lost && !S.seenLanded.has(f.last.id)) {
+      S.seenLanded.add(f.last.id);
+      if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
+      if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
+        toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
+    }
+  }
+  for (const g of S.groups) {
+    for (const p of g.members) if (p.id !== S.me.id) checkPin(p);
+    if (g.last) await decryptGroup(g, g.last);
+    const l = g.last;
+    if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
+      S.seenLanded.add(l.id);
+      if (S.started) S.fresh.set(l.id, Date.now());
+      if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id))
+        toast(`<b>${esc(g.name)}</b><br>A pigeon from ${esc(first(member(g, l.from)?.name || "someone"))} just landed.`, "Read", () => go("chat", g.id));
+    }
+  }
+}
 async function sync() {
   if (!S.token || !S.priv) return;
   if (syncing) return syncing;
@@ -1265,34 +1296,14 @@ async function sync() {
       const d = await api("sync");
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
-      S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn;
-      syncTheme();
-      for (const f of S.friends) {
-        checkPin(f);
-        if (f.last) await decrypt(f.id, f.last);
-        // a notice for pigeons that land while the app is open (not for ones already waiting at launch)
-        if (f.last && !f.last.flying && !f.last.lost && !S.seenLanded.has(f.last.id)) {
-          S.seenLanded.add(f.last.id);
-          if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
-          if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
-            toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
-        }
-      }
-      for (const g of S.groups) {
-        for (const p of g.members) if (p.id !== S.me.id) checkPin(p);
-        if (g.last) await decryptGroup(g, g.last);
-        const l = g.last;
-        if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
-          S.seenLanded.add(l.id);
-          if (S.started) S.fresh.set(l.id, Date.now());
-          if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id))
-            toast(`<b>${esc(g.name)}</b><br>A pigeon from ${esc(first(member(g, l.from)?.name || "someone"))} just landed.`, "Read", () => go("chat", g.id));
-        }
-      }
+      S.raw = d;
+      await applySync(d);
       S.started = true;
       if (S.view === "chat" && S.chat) await loadChat(S.chat);
       if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
+      S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view)) render();
+      cacheSave();
     } catch (e) { if (e.status !== 401) console.warn("sync", e.message); }
     finally { syncing = null; }
   })();
@@ -1368,44 +1379,64 @@ async function decryptGroup(g, m) {
   }
   S.plain.set(m.id, { t: "", bad: true, unchecked: !!from?.keyChanged });
 }
-async function loadGroup(gid) {
-  const g = group(gid); if (!g) return;
-  const d = await api("group-messages?id=" + encodeURIComponent(gid));
+async function loadGroup(gid) { return loadChat(gid); }
+async function loadChat(fid) {
+  const g = group(fid);
+  const d = await api(g ? "group-messages?id=" + encodeURIComponent(fid) : "messages?with=" + encodeURIComponent(fid));
   S.skew = d.now - Date.now();
-  S.msgs.set(gid, d.messages); S.turns.set(gid, d.turn); S.reacts.set(gid, d.reacts || []);
-  for (const r of d.reacts || []) await decryptGroup(g, r);
+  S.chatRaw.delete(fid); S.chatRaw.set(fid, d); cacheSave();
+  await applyChat(fid, d, true);
+}
+// One chat's messages, opened. A copy from this phone (live = false) only
+// fills in until the fresh one arrives, and never tells the server anything.
+async function applyChat(fid, d, live) {
+  const g = group(fid), open = (m) => (g ? decryptGroup(g, m) : decrypt(fid, m));
+  if (!g && !friend(fid)) return;
+  for (const r of d.reacts || []) await open(r);
   for (const m of d.messages) {
-    await decryptGroup(g, m);
-    const p = S.plain.get(m.id);
-    if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
-    if (m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(m.from !== S.me.id && (m.flying || m.lost))) loadPhoto(gid, m, p);
+    await open(m);
+    if (!g && m.note && m.via) await openNote(m.id, m.via, S.me.id, m.note);
+    if (!g && m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
   }
-  if (d.messages.some((m) => m.from !== S.me.id && !m.flying && !m.lost && !m.readAt)) {
-    api("group-read", { method: "POST", body: { id: gid } }).catch(() => {});
-    for (const m of d.messages) if (m.from !== S.me.id && !m.flying && !m.lost) m.readAt = m.readAt || now();
-    g.unread = 0;
+  if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
+  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []);
+  for (const m of d.messages) {
+    const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
+    if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
+    if (live && m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
+  }
+  if (!live) return;
+  const unread = (m) => (g ? m.from !== S.me.id : m.from === fid && !m.stopover) && !m.flying && !m.lost && !m.readAt;
+  if (d.messages.some(unread)) {
+    api(g ? "group-read" : "read", { method: "POST", body: g ? { id: fid } : { with: fid } }).catch(() => {});
+    for (const m of d.messages) if ((g ? m.from !== S.me.id : m.from === fid) && !m.flying && !m.lost) m.readAt = m.readAt || now();
+    const x = g || friend(fid); if (x) x.unread = 0;
   }
 }
-async function loadChat(fid) {
-  if (group(fid)) return loadGroup(fid);
-  const d = await api("messages?with=" + encodeURIComponent(fid));
-  S.skew = d.now - Date.now();
-  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []);
-  for (const r of d.reacts || []) await decrypt(fid, r);
-  for (const m of d.messages) {
-    await decrypt(fid, m);
-    const p = S.plain.get(m.id);
-    if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
-    if (m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(m.to === S.me.id && (m.flying || m.lost))) loadPhoto(fid, m, p);
-    // a stopover's line: from the friend it stopped with (to you), or the one you added (on your card)
-    if (m.note && m.via) await openNote(m.id, m.via, S.me.id, m.note);
-    if (m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
-  }
-  if (d.messages.some((m) => m.from === fid && !m.stopover && !m.flying && !m.lost && !m.readAt)) {
-    api("read", { method: "POST", body: { with: fid } }).catch(() => {});
-    for (const m of d.messages) if (m.from === fid && !m.flying && !m.lost) m.readAt = m.readAt || now();
-    const f = friend(fid); if (f) f.unread = 0;
-  }
+
+/* ---------- the last-known state, kept on this phone so InFlight opens at once ----------
+   What the server last sent (message contents still sealed; they open with the
+   key that's already on this phone) and the last few chats you opened. Shown
+   straight away at launch while the fresh copy loads; deleted on sign out. */
+const CACHE_V = 1, CACHE_CHATS = 12;
+let cacheTimer = 0;
+function cacheSave() {
+  clearTimeout(cacheTimer);
+  cacheTimer = setTimeout(() => {
+    if (!S.me || !S.raw) return;
+    idb.set("cache:" + S.me.id, { v: CACHE_V, at: Date.now(), sync: S.raw, skies: S.skies || null, chats: [...S.chatRaw].slice(-CACHE_CHATS) }).catch(() => {});
+  }, 600);
+}
+async function cacheLoad() {
+  let c = null;
+  try { c = await idb.get("cache:" + S.me.id); } catch (_) {}
+  if (!c || c.v !== CACHE_V || !c.sync) return false;
+  S.chatRaw = new Map(c.chats || []);
+  if (c.skies) S.skies = c.skies;
+  S.raw = c.sync;
+  await applySync(c.sync);
+  S.fromCache = true;
+  return true;
 }
 // A stopover's line is sealed between the friend it stopped with and the recipient.
 async function openNote(id, from, to, ct) {
@@ -1605,6 +1636,7 @@ function go(view, chat) {
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
+  if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
   if (view === "chat" && chat) loadChat(chat).then(() => {
     // from the In the air strip: straight on to the map
     const id = S.mapNext; S.mapNext = null;
@@ -1765,6 +1797,9 @@ function vMessages() {
         <span class="mprev">${html}</span>
       </span>
     </button></div>`).join("");
+  // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
+  if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
+    <h1 class="large">Messages</h1><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : S.outgoing.length || S.incoming.length
@@ -3016,6 +3051,21 @@ function airSync() {
   if (atStart && i) rail.scrollLeft = 0;        // (scroll snapping would hold on to the card that was first)
   airTick();
 }
+// Soonest to land first. When that changes (a fresher copy, a group's next
+// pigeon), the cards glide to their new places.
+function airOrder(rail) {
+  const live = [...rail.children].filter((c) => !c.classList.contains("out"));
+  const sorted = [...live].sort((a, b) => +a.dataset.at - +b.dataset.at);
+  if (sorted.every((c, i) => c === live[i])) return;
+  const atStart = rail.scrollLeft < 8, was = new Map(live.map((c) => [c, c.getBoundingClientRect().left]));
+  for (const c of sorted) rail.insertBefore(c, rail.querySelector(".acard.out"));
+  if (atStart) rail.scrollLeft = 0;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const c of sorted) {
+    const dx = was.get(c) - c.getBoundingClientRect().left;
+    if (Math.abs(dx) > 1) c.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: 480, easing: "cubic-bezier(.2,.9,.3,1)" });
+  }
+}
 // A group card: each pigeon a dot along one line (nudged apart when they'd
 // overlap), turning green with a pop as it lands.
 function airDots(c, t) {
@@ -3030,16 +3080,17 @@ function airDots(c, t) {
     const d = track.children[x.i], landed = pts[x.i].at <= t;
     d.style.left = (Math.max(0, x.x) * 100).toFixed(2) + "%";
     if (landed) done++;
-    if (landed && !d.classList.contains("done")) { d.classList.add("done", "pop"); if (S.view === "messages" && !document.hidden) haptic("tick"); }
+    if (landed && !d.classList.contains("done")) { d.classList.add("done", "pop"); setTimeout(() => d.classList.remove("pop"), 700); if (S.view === "messages" && !document.hidden) haptic("tick"); }
   }
   return { n, done, next: pts.filter((p) => p.at > t).reduce((a, p) => Math.min(a, p.at), Infinity) };
 }
 function airLand(c) {
   if (c.classList.contains("landed")) return;
   c.classList.add("landed"); c.classList.remove("soon");
+  setTimeout(() => c.classList.add("settled"), 1050);   // played once: a re-render mustn’t replay it
   if (S.view === "messages" && !document.hidden) haptic("success");
   airFold(c, 1900);
-  setTimeout(() => sync(), 600);                 // the chat below shows what landed
+  setTimeout(() => sync(), 1150);                // the chat below shows what landed (once the tick has played)
 }
 function airFold(c, after) {
   setTimeout(() => {
@@ -3074,6 +3125,7 @@ function airTick() {
     c.classList.toggle("soon", at - t < 10 * MIN);
     c.classList.toggle("final", at - t < MIN);
   }
+  airOrder($(".rail", airEl));
   const next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
   airEl.classList.toggle("has", cards.length > 0);
   $(".airn", airEl).textContent = n ? ` · ${n}` : "";
@@ -3723,6 +3775,7 @@ async function onSubmit(e) {
 // Sign-up's last steps: the passkey offer (where it works), then your first screen
 function onbNext() { if (passkeysSupported()) go("pkoffer"); else finishOnboarding(); }
 function finishOnboarding() {
+  S.started = true;                               // a brand new account: nothing to wait for
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }   // came from a friend's link
   go("messages");
 }
@@ -4111,6 +4164,7 @@ async function start() {
     S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
     S.view = S.pendingAdd ? "friends" : "messages";
+    await cacheLoad();                             // what you saw last time, at once
     render();
     await sync();
     if (S.me && S.me.lat == null) go("locpick");

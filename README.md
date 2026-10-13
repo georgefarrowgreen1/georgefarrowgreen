@@ -244,6 +244,14 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Opens at once.** After every sync the phone keeps a copy of what the server
+sent, and of the last 12 chats you opened, in IndexedDB. Message contents stay
+sealed in it; they're opened with the key that's already on the phone, as they
+are anyway. At launch InFlight draws your chats from that copy straight away,
+then swaps in the fresh one; with no connection, you still see the last-known
+state. Before there's any copy (a new phone), placeholder rows shimmer instead
+of a misleading "No messages yet". Signing out deletes the copy.
+
 **In the air.** The same pigeons, as a row of cards at the top of Messages,
 soonest to land first: who it's to or from, a countdown (minutes and seconds
 in the last hour), the pigeon flapping along its route, and the weather's delay

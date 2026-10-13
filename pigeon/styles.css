@@ -1014,6 +1014,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 @keyframes air-tick{to{stroke-dashoffset:0}}
 @keyframes air-hop{0%{transform:translateY(0)}35%{transform:translateY(-9px) rotate(-12deg) scaleY(.75)}70%{transform:translateY(1px) scaleY(.9)}100%{transform:none}}
 @keyframes air-ripple{from{opacity:.45;transform:scale(1)}to{opacity:0;transform:scale(9)}}
+.acard.landed.settled .aok .ico,.acard.landed.settled .abird svg,.acard.landed.settled::after{animation:none}
+.acard.landed.settled .aok .ico{stroke-dashoffset:0}
 /* called back or lost: it tumbles out of the sky */
 .acard.lost{opacity:.6;filter:grayscale(1)}
 .acard.lost .abird svg{animation:air-fall .7s ease-in forwards}
@@ -1026,3 +1028,12 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
   .acard.landed .aok .ico{animation:none;stroke-dashoffset:0}
   .adot,.adot.pop,.acard.enter .adot{transition:none;animation:none}
 }
+/* before the first sync, with nothing kept on this phone yet: placeholder rows that shimmer */
+.mlist.skel .mrow{pointer-events:none}
+.sk{display:block;border-radius:999px;background:linear-gradient(90deg,var(--fill) 30%,var(--fill-2) 50%,var(--fill) 70%);background-size:300% 100%;animation:sk-shine 1.4s ease-in-out infinite}
+.sk.av{flex:none;width:54px;height:54px;border-radius:50%}
+.sk.l1{width:38%;height:14px;margin-bottom:9px}
+.sk.l2{width:72%;height:12px}
+.mlist.skel .mrow:nth-child(2) .l2{width:58%}.mlist.skel .mrow:nth-child(3) .l2{width:66%}.mlist.skel .mrow:nth-child(4) .l2{width:48%}
+@keyframes sk-shine{from{background-position:100% 0}to{background-position:0 0}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
