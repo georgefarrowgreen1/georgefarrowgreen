@@ -2127,6 +2127,22 @@ function status(f, t) {
     default: return "";
   }
 }
+/* ---------- pigeons on their way to you, kept small ---------- */
+const flyTrack = (m) => `<span class="ctrack" aria-hidden="true"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><svg viewBox="0 0 24 24" class="cbird"><path d="${BIRD}" transform="matrix(-1 0 0 1 24 0)"/></svg></i></span>`;
+const inbound = (m) => m.from !== S.me.id && m.flying && !m.lost && !m.stopover;
+// Several on their way at once (a group, or swifts one after another): one card, a row each
+function flyRun(run, g) {
+  const next = Math.min(...run.map((m) => m.deliverAt)), kinds = [...new Set(run.map((m) => kindOf(m)))];
+  const rows = run.map((m) => {
+    const who = g ? member(g, m.from) || { id: m.from, name: "Former member" } : null;
+    const name = g ? esc(first(who.name)) : kindOf(m) === "standard" ? "Standard" : KIND[kindOf(m)].name;
+    return `<button type="button" class="frr" data-act="map" data-id="${esc(m.id)}" aria-label="${name}${g ? "’s pigeon" : " pigeon"}, lands in ${esc(fmtDur(m.deliverAt - now()))}. Watch it on the map.">
+      ${g ? avatar(who, "xs") : ""}${pgm(m)}<span class="n one">${name}</span>${flyTrack(m)}<b><span data-eta="${esc(m.deliverAt)}"></span></b></button>`;
+  }).join("");
+  return `<div class="flyrun" role="group" aria-label="${run.length} pigeons on their way">
+    <div class="frh"><span class="stack">${kinds.slice(0, 3).map((k) => pg(k)).join("")}</span><b>${run.length} on their way</b><small>next in <span data-eta="${esc(next)}"></span></small></div>${rows}</div>`;
+}
+
 /* ---------- who has it: your message to a group, member by member ---------- */
 const whoState = (x) => (x.recalled ? "back" : x.lost ? "lost" : x.flying ? "fly" : x.readAt ? "read" : "landed");
 const whoCls = (x) => "w-" + whoState(x);              // (prefixed: .fly is the incoming pigeon's card)
@@ -2147,11 +2163,11 @@ function bubble(f, m, isLastMine, gapTop, g) {
   if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}">${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
-    return `<button class="fly${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="Watch the pigeon on the map">
-      <span class="t1">${pgm(m)}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""}</span></span>
-      <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}${!wxSay(m) && windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</span></span>
-      ${wxSay(m) ? `<span class="wxs ${wxSay(m).cls}">${wxSay(m).icon}<span>${esc(wxSay(m).text)}</span></span>` : ""}
-      <span class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></span></button>`;
+    // one slim line: the pigeon, a little route with it on it, and the time to go
+    const label = `${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon`}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""}`, wx = wxSay(m);
+    return `<button class="fly chip${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="${label}, lands in ${esc(fmtDur(m.deliverAt - now()))}. Watch it on the map.">
+      <span class="c1">${pgm(m)}<span class="cl">${label}</span>${flyTrack(m)}<b><span data-eta="${esc(m.deliverAt)}"></span></b></span>
+      ${wx ? `<span class="wxs ${wx.cls}">${wx.icon}<span>${esc(wx.text)}</span></span>` : ""}</button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
   const quote = p.q ? quoteHtml(p.q, g) : "";
@@ -2317,10 +2333,13 @@ function vGroupChat(g) {
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
-  else for (const m of msgs) {
-    const mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
+  else for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
     lastStamp = at;
+    // pigeons still flying to you, one after another: one card between them
+    let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
+    if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
     const who = member(g, m.from) || { id: m.from, name: "Former member" };
     if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
     body += bubble(who, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
@@ -2346,10 +2365,12 @@ function vChat() {
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
-  else for (const m of msgs) {
-    const at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
+  else for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
     lastStamp = at;
+    let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
+    if (j - i >= 2) { body += flyRun(msgs.slice(i, j), null); i = j - 1; prevFrom = null; continue; }
     body += bubble(f, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from);
     prevFrom = m.from;
   }

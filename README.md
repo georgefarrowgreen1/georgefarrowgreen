@@ -331,6 +331,12 @@ GIFs stream through the server (never held whole in memory), with GIPHY's
 Needs the secret **`GIPHY_API_KEY`** (free from developers.giphy.com: create an
 API app); without it the GIF button stays hidden.
 
+**On its way.** A pigeon flying to you is one slim line in the chat: its
+colour, a little route with it flapping along, and the time to go (and the
+weather's delay, if any). Several on their way at once, from a group or a run
+of swifts, share one "3 on their way" card with a row each; tap one for its
+map. Each leaves the card as it lands and becomes the message.
+
 **Groups.** New Message → New Group: a name and up to 11 friends (12 people in
 all). A message flies to everyone at once, one pigeon each over the real
 distance to each person, so it lands at different times for each of them; your
