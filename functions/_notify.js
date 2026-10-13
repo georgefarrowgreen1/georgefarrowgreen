@@ -14,6 +14,7 @@
 // .github/workflows/inflight-notify.yml) when nobody is using the app.
 
 import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos } from "./_pigeon.js";
+import { logFor } from "./_stats.js";
 
 const enc = new TextEncoder();
 const EMAIL_EVERY = 30 * MIN;     // at most one email per person per half hour
@@ -22,7 +23,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -31,7 +32,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -324,6 +325,8 @@ export async function tick(env, origin) {
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);
+  const wk = await weeklyTick(env, D, t, origin);
+  pushes += wk.pushes;
   if (emailReady(env)) {
     // everything waiting unread: one-to-one pigeons, and group ones (unless that group is muted)
     const { results: waiting } = await D.prepare(`
@@ -355,7 +358,56 @@ export async function tick(env, origin) {
       } catch (e) { console.error("pigeon notify email", e && e.message); }
     }
   }
-  return { landed: landed.length + gt.landed, held: due.length - ready.length + gt.held, pushes, emails };
+  return { landed: landed.length + gt.landed, held: due.length - ready.length + gt.held, pushes, emails: emails + wk.emails, weekly: wk.sent };
+}
+
+/* ---------- your week in flight: Sunday evening, wherever you are ---------- */
+const WEEK = 7 * DAY;
+// Sunday from 6pm in your time zone (quiet hours win). PIGEON_WEEKLY_ANYTIME
+// (local testing only) makes any time count.
+function weeklyDue(env, p, t) {
+  if (env.PIGEON_WEEKLY_ANYTIME === "1") return true;
+  const f = new Intl.DateTimeFormat("en-GB", { timeZone: p.tz, weekday: "short", hour: "numeric", hourCycle: "h23" }).formatToParts(t);
+  const day = f.find((x) => x.type === "weekday")?.value, h = Number(f.find((x) => x.type === "hour")?.value);
+  return day === "Sun" && h >= 18 && !isQuiet(p, t);
+}
+// What changed in the last seven days, said in a line (null: a quiet week, so nothing is sent)
+export async function weekOf(D, uid, t) {
+  const [now, then] = [await logFor(D, uid, t), await logFor(D, uid, t - WEEK)];
+  const sent = now.sent - then.sent, got = now.received - then.received, mi = Math.round((now.km - then.km) * 0.621371);
+  if (!sent && !got) return null;
+  const was = new Map(then.badges.map((b) => [b.id, b.earned]));
+  const fresh = now.badges.filter((b) => b.earned && !was.get(b.id));
+  const next = now.badges.filter((b) => !b.earned).sort((a, b) => b.progress - a.progress)[0];
+  const n = (x, one, many = one + "s") => `${x.toLocaleString("en-GB")} ${x === 1 ? one : many}`;
+  const head = mi ? `Your pigeons flew ${mi.toLocaleString("en-GB")} mi this week: ${sent} sent, ${got} received.` : `This week: ${n(sent, "pigeon")} sent, ${got} received.`;
+  const tail = fresh.length ? ` New badge${fresh.length > 1 ? "s" : ""}: ${fresh.map((b) => b.name).join(", ")}.` : next && next.progress > 0 ? ` You’re ${Math.round(next.progress * 100)}% of the way to ${next.name}.` : "";
+  return { sent, got, mi, fresh: fresh.map((b) => b.name), next: next ? { name: next.name, progress: next.progress } : null, line: head + tail };
+}
+async function weeklyTick(env, D, t, origin) {
+  const out = { pushes: 0, emails: 0, sent: 0 };
+  // a random slice each minute, so over Sunday evening everyone's turn comes round
+  const { results } = await D.prepare(`SELECT id, name, email, notify_email, email_at, notify_prefs FROM pg_users
+    WHERE COALESCE(weekly_at, 0) < ?1 AND (notify_email = 1 OR EXISTS (SELECT 1 FROM pg_push WHERE user_id = pg_users.id)) ORDER BY RANDOM() LIMIT 300`).bind(t - 6 * DAY).all();
+  for (const u of results) {
+    const p = prefsOf(u);
+    if (!weeklyDue(env, p, t)) continue;
+    const claimed = await D.prepare("UPDATE pg_users SET weekly_at = ?1 WHERE id = ?2 AND COALESCE(weekly_at, 0) < ?3").bind(t, u.id, t - 6 * DAY).run();
+    if (!claimed.meta.changes || !p.weekly) continue;
+    const w = await weekOf(D, u.id, t); if (!w) continue;
+    out.sent++;
+    out.pushes += await pushTo(env, u.id, { title: "Your week in flight", body: w.line, tag: "weekly", url: "/pigeon/#flightlog" });
+    if (u.notify_email && emailReady(env)) {
+      try {
+        await notifyEmail(env, origin, u, "Your week in flight", { icon: "bird", title: "Your week in flight", preheader: w.line,
+          rows: [...(w.mi ? [["Miles flown", `${w.mi.toLocaleString("en-GB")} mi`]] : []), ["Pigeons sent", String(w.sent)], ["Pigeons received", String(w.got)],
+            ...(w.fresh.length ? [["New badges", w.fresh.join(", ")]] : w.next && w.next.progress > 0 ? [["Next badge", `${w.next.name}, ${Math.round(w.next.progress * 100)}% there`]] : [])],
+          button: { label: "Open Your Flight Log", url: `${origin}/pigeon/#flightlog` } });
+        out.emails++;
+      } catch (e) { console.error("pigeon weekly email", e && e.message); }
+    }
+  }
+  return out;
 }
 
 // Run a tick at most once a minute, shared across all servers via D1.

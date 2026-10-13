@@ -169,7 +169,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN sched INTEGER",
   "ALTER TABLE pg_users ADD COLUMN skin TEXT",           // rare pigeon look, unlocked by an achievement (null: the usual)
   "ALTER TABLE pg_msgs ADD COLUMN skin TEXT",            // the look it flew with
-  "ALTER TABLE pg_gmsgs ADD COLUMN skin TEXT",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
+  "ALTER TABLE pg_gmsgs ADD COLUMN skin TEXT",
+  "ALTER TABLE pg_users ADD COLUMN weekly_at INTEGER",   // last "your week in flight"        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
 ];
 let schemaReady = false;
 export async function db(env) {

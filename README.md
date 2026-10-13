@@ -236,6 +236,14 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Your week in flight.** On Sunday from 6pm in your time zone (quiet hours
+win), anyone who had pigeons come or go that week gets one note: miles flown,
+pigeons sent and received, any badge earned, or how close the next one is. It
+comes by push, and by email too if you have emails on. Switch it off under
+Notifications → Your Week in Flight. A quiet week sends nothing. It's worked
+out by `weekOf` in `functions/_notify.js` from two Flight Logs a week apart. For
+testing, `PIGEON_WEEKLY_ANYTIME=1` makes any time count.
+
 **Replies and reactions.** Tap a message that has landed: react (❤️ 👍 😂 😮 😢
 🙏) or Reply. A reply carries a quote of the original, sealed inside it; tap the
 quote to jump to it. A reaction flies back on a tiny pigeon at rocket speed:
