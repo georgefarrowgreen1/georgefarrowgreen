@@ -244,6 +244,17 @@ Notifications → Your Week in Flight. A quiet week sends nothing. It's worked
 out by `weekOf` in `functions/_notify.js` from two Flight Logs a week apart. For
 testing, `PIGEON_WEEKLY_ANYTIME=1` makes any time count.
 
+**Stopovers.** Tap the two-people button beside the pigeons in a one-to-one
+chat and pick a friend you and they both have. The pigeon flies to that friend,
+rests with them for an hour, then flies on. The friend gets their own sealed
+copy (words only; photos stay between you two) and can add one line for the
+recipient, sealed between the two of them, which shows under the message when
+it lands. The trip is longer by the detour and the hour. If the recipient moves,
+it still leaves the friend on time and heads for the new spot. Calling it back
+deletes the friend's copy too. A scheduled pigeon can't make a stopover. Code:
+`stopover`, `stopoverNote` and `mutuals` in `functions/api/pigeon/[[path]].js`;
+the `via_*` columns on `pg_msgs`.
+
 **Replies and reactions.** Tap a message that has landed: react (❤️ 👍 😂 😮 😢
 🙏) or Reply. A reply carries a quote of the original, sealed inside it; tap the
 quote to jump to it. A reaction flies back on a tiny pigeon at rocket speed:
