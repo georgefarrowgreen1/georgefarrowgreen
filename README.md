@@ -210,6 +210,8 @@ kept; comments and other extra blocks stripped), end-to-end encrypted like any
 photo, up to 7 MB. The GIF button beside + searches GIPHY: searches and the
 GIFs themselves go through this server (`functions/_gifs.js`), so GIPHY never
 sees who's looking, and the one picked is sealed on the phone like any other.
+GIFs stream through the server (never held whole in memory), with GIPHY's
+~60 KB downsampled previews in the picker.
 Needs the secret **`GIPHY_API_KEY`** (free from developers.giphy.com: create an
 API app); without it the GIF button stays hidden.
 
