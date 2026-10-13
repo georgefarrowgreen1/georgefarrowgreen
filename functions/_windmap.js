@@ -8,8 +8,11 @@
 
 import { HOUR, HttpError, json, requireUser, limit } from "./_pigeon.js";
 
-const STEPS = [0.25, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 24];
-const MAX = 18;                                   // points along each side, at most
+const STEPS = [0.25, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 24, 30, 36, 45];
+// Open-Meteo counts every point as a call (10,000 a day), so the grid is
+// small (blended smoothly on the phone) and kept for three hours.
+const MAX = 13;                                   // points along each side, at most
+const KEEP = 3 * HOUR;
 const r = Math.PI / 180;
 
 async function windGrid({ request, env }) {
@@ -20,11 +23,11 @@ async function windGrid({ request, env }) {
   if (![s, n, w, e].every(Number.isFinite) || n <= s || e <= w) throw new HttpError(400, "That part of the map didn’t make sense.");
   s = Math.max(-84, s); n = Math.min(84, n); if (e - w > 360) e = w + 360;
   // the coarsest-but-fine-enough step, and the box snapped out to it (one step of margin)
-  const step = STEPS.find((st) => (n - s) / st + 3 <= MAX && (e - w) / st + 3 <= MAX) || 24;
+  const step = STEPS.find((st) => (n - s) / st + 4 <= MAX && Math.min(360 / st + 1, (e - w) / st + 4) <= MAX) || 45;
   const s0 = Math.max(-84, Math.floor(s / step) * step - step), n0 = Math.min(84, Math.ceil(n / step) * step + step);
   const w0 = Math.floor(w / step) * step - step, e0 = Math.min(w0 + 360, Math.ceil(e / step) * step + step);
   const rows = Math.round((n0 - s0) / step) + 1, cols = Math.round((e0 - w0) / step) + 1;
-  const hour = Math.floor(Date.now() / HOUR);
+  const hour = Math.floor(Date.now() / KEEP) * 3;
   const key = new Request(`https://inflight-wind.cache/v1/${s0}/${w0}/${step}/${rows}/${cols}/${hour}`);
   const cache = typeof caches !== "undefined" ? caches.default : null;
   const hit = cache && await cache.match(key).catch(() => null);
@@ -49,7 +52,7 @@ async function windGrid({ request, env }) {
     U.push(ok ? Math.round(sp * Math.sin(to) * 10) / 10 : 0); V.push(ok ? Math.round(sp * Math.cos(to) * 10) / 10 : 0);
   }
   const body = JSON.stringify({ s: s0, w: w0, step, rows, cols, u: U, v: V, hour });
-  if (cache) await cache.put(key, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=1800" } })).catch(() => {});
+  if (cache) await cache.put(key, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=10800" } })).catch(() => {});
   return new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 
