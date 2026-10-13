@@ -804,9 +804,7 @@ function mount() {
       </div>
     </form>
     <nav class="tabbar" aria-label="Sections"></nav>
-    <input type="file" accept="image/*" capture="environment" id="file-cam" hidden>
     <input type="file" accept="image/*" id="file-lib" hidden>
-    <input type="file" accept="image/*" capture="user" id="av-cam" hidden>
     <input type="file" accept="image/*" id="av-lib" hidden>
     <div class="layer"></div>
     <div class="poplayer"></div>
@@ -1887,11 +1885,12 @@ async function onClick(e) {
         { label: "Remove Friend", icon: I.minusp, act: "unfriendask", id: f.id, destructive: true },
       ]);
     }
-    case "attachmenu":
-      return openMenu(t, [{ label: "Camera", icon: I.camera, act: "pick", id: "file-cam" }, { label: "Photo Library", icon: I.photo, act: "pick", id: "file-lib" }]);
+    // The phone's own picker already offers Photo Library, Take Photo and Choose File,
+    // so go straight to it rather than putting a menu of ours in front of it.
+    case "attachmenu": return $("#file-lib")?.click();
     case "avmenu":
-      return openMenu(t, [{ label: "Choose Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Take Photo", icon: I.camera, act: "pick", id: "av-cam" },
-        ...(S.me.avatarAt || S.avatarDraft ? [{ label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }] : [])]);
+      if (!S.me.avatarAt && !S.avatarDraft) return $("#av-lib")?.click();
+      return openMenu(t, [{ label: "Change Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }]);
     case "pick": return $("#" + id)?.click();
     case "trust": return trustNewKey(id);
     case "accept": case "decline":
@@ -1970,8 +1969,8 @@ const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone alr
 
 async function onChange(e) {
   const el = e.target;
-  if ((el.id === "av-cam" || el.id === "av-lib") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
-  if ((el.id === "file-cam" || el.id === "file-lib") && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
+  if (el.id === "av-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
+  if (el.id === "file-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
   if (el.dataset.act === "quiethour") return setNotify({ [el.dataset.id]: Number(el.value) });
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
