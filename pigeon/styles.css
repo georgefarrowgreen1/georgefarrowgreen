@@ -981,6 +981,18 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .acard .asub.early{color:var(--green);font-weight:600}
 @keyframes air-march{to{background-position:-7px 0}}
 @keyframes air-flap{from{transform:scaleY(1) rotate(-2deg)}to{transform:scaleY(.7) rotate(3deg)}}
+/* a group: every pigeon a dot on one line, green once it lands */
+.acard .awho .gav{flex:none;width:22px;height:22px;font-size:22px;--gav-ring:var(--cell)}
+.acard .awho .gav .av{box-shadow:0 0 0 1.5px var(--cell)}
+.acard .atrack.dots::before{animation:none}
+.adot{position:absolute;top:3px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--dot);
+  box-shadow:0 0 0 2px var(--cell),inset 0 0 0 1px var(--p-dot-ring,transparent);transition:left 1s linear,background-color .35s}
+.adot.standard{--dot:var(--p-standard)}.adot.swift{--dot:var(--p-swift)}.adot.turbo{--dot:var(--p-turbo)}.adot.rocket{--dot:var(--p-rocket)}.adot.dumb{--dot:var(--p-dumb)}
+.adot.done{--dot:var(--green)}
+.adot.pop{animation:adot-pop .6s cubic-bezier(.3,1.6,.5,1)}
+@keyframes adot-pop{0%{transform:scale(1)}40%{transform:scale(1.9)}100%{transform:scale(1)}}
+.acard.enter .adot{animation:adot-in .5s cubic-bezier(.3,1.5,.5,1) calc(var(--i, 0) * 70ms + .25s) both}
+@keyframes adot-in{from{transform:scale(0)}}
 /* nearly there: a soft green glow breathes around it */
 .acard.soon{animation:air-glow 2.4s ease-in-out infinite}
 @keyframes air-glow{50%{box-shadow:0 0 0 2px color-mix(in srgb,var(--green) 40%,transparent),0 8px 22px -8px color-mix(in srgb,var(--green) 55%,transparent)}}
@@ -1012,4 +1024,5 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
   .air,.acard,.acard .acd,.acard .aok,.acard .atrack i,.acard .abird{transition:none}
   .acard.enter,.acard.soon,.acard.enter .awho .pg,.acard .awho .pg,.acard .abird svg,.acard .atrack::before,.acard.landed::after{animation:none}
   .acard.landed .aok .ico{animation:none;stroke-dashoffset:0}
+  .adot,.adot.pop,.acard.enter .adot{transition:none;animation:none}
 }

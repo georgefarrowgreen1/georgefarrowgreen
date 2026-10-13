@@ -247,7 +247,10 @@ friend is listed but not mapped, and a scheduled pigeon appears once it takes of
 **In the air.** The same pigeons, as a row of cards at the top of Messages,
 soonest to land first: who it's to or from, a countdown (minutes and seconds
 in the last hour), the pigeon flapping along its route, and the weather's delay
-if there is one. Tap one for its chat and map. Cards spring in, glow green in
+if there is one. A group is one card, not one per pigeon: its next landing,
+every pigeon to or from it as a dot on one line (nudged apart when they'd
+overlap), each turning green with a pop as it lands, and "2 of 8 landed"; tap
+it for the group's chat. Tap any other card for its chat and map. Cards spring in, glow green in
 the last 10 minutes, and on landing the pigeon hops onto a tick before the
 card folds away; the row closes when nothing is flying. It hides while you
 search, and keeps still for Reduce Motion.

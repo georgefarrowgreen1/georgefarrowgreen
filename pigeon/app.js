@@ -2953,31 +2953,86 @@ function airFill(el, r) {
   sub.textContent = wx || (r.g ? r.g.name : r.fromPlace && r.toPlace ? `${r.fromPlace} → ${r.toPlace}` : fmtMiles(r.km || 0));
   return el;
 }
+// One card per chat: a group's pigeons, coming and going, share one card.
+function airModels() {
+  const t = now(), list = (skyRoutes(true) || []).filter((r) => r.deliverAt > t - 1500), out = [], groups = new Map();
+  for (const r of list) {
+    if (!r.g) { out.push({ k: airKey(r), r, at: r.deliverAt }); continue; }
+    let m = groups.get(r.g.id);
+    if (!m) { m = { k: "g:" + r.g.id, g: r.g, pts: [] }; groups.set(r.g.id, m); out.push(m); }
+    m.pts.push({ id: airKey(r), at: r.deliverAt, from: r.sentAt, kind: kindOf(r) });
+  }
+  // your own pigeons to the group that have already landed still count
+  for (const m of S.skies?.groups || []) {
+    const gm = groups.get(m.gid); if (!gm || m.from !== S.me.id) continue;
+    for (const x of m.flock || []) if (!x.flying && !x.lost && !gm.pts.some((p) => p.id === m.id + ":" + x.to)) gm.pts.push({ id: m.id + ":" + x.to, at: x.deliverAt, from: m.sentAt, kind: kindOf(m) });
+  }
+  for (const m of groups.values()) m.at = airNext(m.pts, t);
+  return out;
+}
+// when a group's next pigeon lands (or, once they all have, when the last did)
+const airNext = (pts, t) => { const up = pts.filter((p) => p.at > t).map((p) => p.at); return up.length ? Math.min(...up) : Math.max(...pts.map((p) => p.at)); };
+function airGroupCard(m) {
+  const el = document.createElement("button");
+  el.type = "button"; el.className = "acard grp"; el.setAttribute("role", "listitem");
+  el.dataset.act = "airopen"; el.dataset.id = m.g.id; el.dataset.m = ""; el.dataset.k = m.k;
+  el.innerHTML = `<span class="awho">${gavatar(m.g, "xs")}<span class="one"></span></span>
+    <span class="aeta"><span class="acd"></span><span class="aok">${I.check}Landed</span></span>
+    <span class="atrack dots"></span>
+    <span class="asub"></span>`;
+  el._pts = [];
+  return airGroupFill(el, m);
+}
+function airGroupFill(el, m) {
+  // a pigeon that has landed and left the sky stays on the card, green
+  const t = now(), ids = new Set(m.pts.map((p) => p.id));
+  el._pts = [...m.pts, ...el._pts.filter((p) => !ids.has(p.id) && p.at <= t)];
+  el.dataset.at = airNext(el._pts, t);
+  $(".awho .one", el).textContent = m.g.name;
+  return el;
+}
 // bring the cards in line with what's in the air
 function airSync() {
   if (!airEl || S.view !== "messages") return;
-  const rail = $(".rail", airEl), list = (skyRoutes(true) || []).filter((r) => r.deliverAt > now() - 1500);
-  const want = new Map(list.map((r) => [airKey(r), r])), have = new Map([...rail.children].map((c) => [c.dataset.k, c]));
+  const rail = $(".rail", airEl), list = airModels();
+  const want = new Map(list.map((m) => [m.k, m])), have = new Map([...rail.children].map((c) => [c.dataset.k, c]));
   // gone from the sky without landing (called back, or lost): it drops away
   for (const [k, c] of have) if (!want.has(k) && !c.classList.contains("landed") && !c.classList.contains("out")) {
-    if (+c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
+    if (c._pts ? c._pts.every((p) => p.at <= now()) : +c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
   }
   const atStart = rail.scrollLeft < 8;
   let i = 0;
-  for (const r of list) {
-    const k = airKey(r);
-    if (have.has(k)) { const c = have.get(k); if (!c.classList.contains("landed") && !c.classList.contains("out")) airFill(c, r); continue; }
-    if (r.deliverAt <= now()) continue;          // landed before we saw it
-    const c = airCard(r);
+  for (const m of list) {
+    if (have.has(m.k)) { const c = have.get(m.k); if (!c.classList.contains("landed") && !c.classList.contains("out")) m.g ? airGroupFill(c, m) : airFill(c, m.r); continue; }
+    if (m.g ? m.pts.every((p) => p.at <= now()) : m.at <= now()) continue;    // landed before we saw it
+    const c = m.g ? airGroupCard(m) : airCard(m.r);
     c.style.setProperty("--i", i++);
     c.classList.add("enter");
     c.addEventListener("animationend", (e) => { if (e.animationName === "acard-in") c.classList.remove("enter"); });
     // keep them in landing order
-    const after = [...rail.children].find((x) => +x.dataset.at > r.deliverAt && !x.classList.contains("out"));
+    const after = [...rail.children].find((x) => +x.dataset.at > m.at && !x.classList.contains("out"));
     rail.insertBefore(c, after || null);
   }
   if (atStart && i) rail.scrollLeft = 0;        // (scroll snapping would hold on to the card that was first)
   airTick();
+}
+// A group card: each pigeon a dot along one line (nudged apart when they'd
+// overlap), turning green with a pop as it lands.
+function airDots(c, t) {
+  const pts = c._pts, track = $(".atrack", c), n = pts.length;
+  if (track.children.length !== n || [...track.children].some((d, i) => d.dataset.id !== pts[i].id))
+    track.innerHTML = pts.map((p) => `<span class="adot ${p.kind}${p.at <= t ? " done" : ""}" data-id="${esc(p.id)}"></span>`).join("");
+  const gap = Math.min(0.1, 0.9 / Math.max(1, n)), fs = pts.map((p, i) => ({ i, f: Math.min(1, Math.max(0, (t - p.from) / Math.max(1, p.at - p.from))) })).sort((a, b) => a.f - b.f);
+  fs.forEach((x, j) => { x.x = j ? Math.max(x.f, fs[j - 1].x + gap) : x.f; });
+  for (let j = fs.length - 1; j >= 0; j--) fs[j].x = Math.min(fs[j].x, j === fs.length - 1 ? 1 : fs[j + 1].x - gap);
+  let done = 0;
+  for (const x of fs) {
+    const d = track.children[x.i], landed = pts[x.i].at <= t;
+    d.style.left = (Math.max(0, x.x) * 100).toFixed(2) + "%";
+    if (landed) done++;
+    if (landed && !d.classList.contains("done")) { d.classList.add("done", "pop"); if (S.view === "messages" && !document.hidden) haptic("tick"); }
+  }
+  return { n, done, next: pts.filter((p) => p.at > t).reduce((a, p) => Math.min(a, p.at), Infinity) };
 }
 function airLand(c) {
   if (c.classList.contains("landed")) return;
@@ -2997,16 +3052,29 @@ function airFold(c, after) {
 function airTick() {
   if (!airEl) return;
   const t = now(), cards = [...$(".rail", airEl).children], flying = cards.filter((c) => !c.classList.contains("landed") && !c.classList.contains("out") && !c.classList.contains("lost"));
+  let n = 0;
   for (const c of cards) {
+    if (c._pts) {                                 // a group
+      if (c.classList.contains("landed") || c.classList.contains("lost") || c.classList.contains("out")) continue;
+      const g = airDots(c, t);
+      $(".asub", c).textContent = `${g.done} of ${g.n} landed`;
+      c.setAttribute("aria-label", `${$(".awho .one", c).textContent}: ${g.n - g.done} pigeon${g.n - g.done === 1 ? "" : "s"} in the air, ${g.done} landed. Open the chat.`);
+      if (g.next === Infinity) { airLand(c); continue; }
+      n += g.n - g.done; c.dataset.at = g.next;
+      $(".acd", c).textContent = airTime(g.next - t);
+      c.classList.toggle("soon", g.next - t < 10 * MIN);
+      continue;
+    }
     const at = +c.dataset.at, from = +c.dataset.from, f = Math.min(1, Math.max(0, (t - from) / Math.max(1, at - from)));
     c.style.setProperty("--f", f.toFixed(4));
     if (c.classList.contains("landed") || c.classList.contains("lost")) continue;
     if (at <= t) { airLand(c); continue; }
+    n++;
     $(".acd", c).textContent = airTime(at - t);
     c.classList.toggle("soon", at - t < 10 * MIN);
     c.classList.toggle("final", at - t < MIN);
   }
-  const n = flying.filter((c) => +c.dataset.at > t).length, next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
+  const next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
   airEl.classList.toggle("has", cards.length > 0);
   $(".airn", airEl).textContent = n ? ` · ${n}` : "";
   $(".airnext", airEl).textContent = next ? `Next lands in ${airTime(next - t)}` : cards.length ? "Landed" : "";
