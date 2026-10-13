@@ -1166,6 +1166,8 @@ function bubble(f, m, isLastMine, gapTop, g) {
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}${windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
+  // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
+  if (!m.flying && !m.lost && m.km != null && !(g && mine)) meta[mine ? "push" : "unshift"](stampHtml(m));
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
@@ -1184,6 +1186,12 @@ function gstatus(g, t) {
     default: return "";
   }
 }
+/* ---------- postcard stamps ---------- */
+function stampHtml(m) {
+  const k = kindOf(m), canMap = !!(m.route || m.flock?.some((x) => x.route));
+  return `<button type="button" class="pstamp ${k}"${canMap ? ` data-act="map" data-id="${esc(m.id)}"` : " disabled"} aria-label="${esc(`${KIND[k].name} airmail, ${fmtMiles(m.km)}${canMap ? ". Show the flight" : ""}`)}"><span>${I.bird}</span><b>${fmtMiles(m.km)}</b></button>`;
+}
+
 /* ---------- achievements (in the Flight Log) ---------- */
 const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
   world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] };
@@ -1598,7 +1606,7 @@ function drawSheet(refresh) {
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
     case "map":
-      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)?.flock ? "Pigeons in Flight" : "Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
+      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
@@ -1851,7 +1859,8 @@ function tickMap() {
   if (!m || !card || !(m.route || m.flock)) return;
   if (m.flock) return tickFlockMap(m, card, cv);
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
-  const speed = m.lost || f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
+  const flew = m.deliverAt - m.sentAt;
+  const speed = m.lost ? "" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pg(kindOf(m))}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}

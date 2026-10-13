@@ -766,3 +766,20 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .badge2 .newb{display:inline-block;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:var(--tint);color:#fff;vertical-align:1px}
 .badge2 .bprog{display:block;width:80%;height:4px;margin-top:5px;border-radius:2px;background:linear-gradient(90deg,var(--tint) calc(var(--w,0) * 100%),var(--fill) 0)}
 .badge2 .bnum{font-variant-numeric:tabular-nums;color:var(--label-3)}
+/* ---------- postcard stamps: a little airmail stamp on every pigeon that arrived ---------- */
+.meta{align-items:center}
+.pstamp{--ink:var(--p-standard);position:relative;display:inline-flex;align-items:center;gap:3px;height:26px;padding:0 9px 0 7px;margin:3px 1px;border:0;
+  background:var(--cell);color:var(--ink);font:700 11px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:.2px;font-variant-numeric:tabular-nums;
+  transform:rotate(-2.5deg);filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.18));
+  /* a frame set in from the paper's edge, like a real stamp */
+  box-shadow:inset 0 0 0 3.5px var(--cell),inset 0 0 0 5px color-mix(in srgb,var(--ink) 60%,transparent);
+  /* perforated edges: holes punched round the outside */
+  -webkit-mask:radial-gradient(circle,transparent 1.7px,#000 2px) -3px -3px/6px 6px,linear-gradient(#000,#000) 3px 3px/calc(100% - 6px) calc(100% - 6px) no-repeat;
+  mask:radial-gradient(circle,transparent 1.7px,#000 2px) -3px -3px/6px 6px,linear-gradient(#000,#000) 3px 3px/calc(100% - 6px) calc(100% - 6px) no-repeat;
+  transition:transform .3s var(--bouncy)}
+.meta.me .pstamp{transform:rotate(2.5deg)}
+.pstamp span{display:grid;place-items:center;font-size:12px}
+.pstamp b{font-weight:700}
+.pstamp:not([disabled]):active{transform:rotate(0) scale(1.15)}
+.pstamp[disabled]{cursor:default}
+.pstamp.swift{--ink:var(--p-swift)}.pstamp.turbo{--ink:var(--label)}.pstamp.rocket{--ink:var(--p-rocket-text,var(--p-rocket))}.pstamp.dumb{--ink:var(--p-dumb)}
