@@ -1639,9 +1639,22 @@ function render() {
   const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view);
   ghostView();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
+  if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
+  if (chat) pinChat();
   if (switches?.size) keepGlides($view, switches);
   renderCompose(); renderTabs(); renderSheet(); live(); filterLists(); animateNav(); playFresh();
+}
+
+// In a chat, stay at the newest message while anything below grows (a photo
+// loading, a reply bar opening), unless you've scrolled up to read.
+let pinObs = null;
+function pinChat() {
+  if (!window.ResizeObserver) return;
+  if (!pinObs) pinObs = new ResizeObserver(() => { if (S.view === "chat" && S.stick) $view.scrollTop = $view.scrollHeight; });
+  pinObs.disconnect();
+  const m = $(".msgs", $view); if (m) pinObs.observe(m);
+  pinObs.observe($view);
 }
 
 /* ---------- shared bits ---------- */
@@ -1887,9 +1900,11 @@ function bubble(f, m, isLastMine, gapTop, g) {
   let html;
   if (p.p) {
     let photo;
+    // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
+    const ar = p.p.w > 0 && p.p.h > 0 ? ` data-ar="${Math.max(0.4, Math.min(2.5, p.p.w / p.p.h)).toFixed(4)}"` : "";
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
-    else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
-    else photo = `<div class="ph">Opening photo…</div>`;
+    else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""}${ar} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
+    else photo = `<div class="ph"${ar}>Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || prog || quote ? `<span class="ptxt">${quote}${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${prog}</div>`;
   // a line added by the friend it stopped with on the way
