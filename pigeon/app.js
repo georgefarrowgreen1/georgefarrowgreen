@@ -2528,6 +2528,7 @@ function tickMap() {
   const speed = m.lost ? "" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
+    ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;

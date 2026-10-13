@@ -864,3 +864,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .birdtip .pg{font-size:14px}
 .birdtip .eta{color:var(--orange);font-weight:600;font-variant-numeric:tabular-nums}
 .birdtip.pop{animation:pop .35s var(--bouncy)}
+/* the map card: where it is right now */
+.mapcard .over{display:flex;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:600;color:var(--tint)}
+.mapcard .over .ico{font-size:13px}
