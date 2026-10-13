@@ -9,11 +9,13 @@
 
 const SECURITY = {
   "Permissions-Policy": "geolocation=(self), microphone=(), camera=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
   "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Strict-Transport-Security": "max-age=31536000",
 };
 const FOREVER = "public, max-age=31536000, immutable";
 

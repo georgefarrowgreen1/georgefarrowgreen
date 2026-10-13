@@ -47,7 +47,7 @@ export class HttpError extends Error {
 export function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...headers },
   });
 }
 
@@ -61,7 +61,8 @@ export function b64url(buf) {
 export function fromB64url(str) {
   str = String(str || "").replace(/-/g, "+").replace(/_/g, "/");
   while (str.length % 4) str += "=";
-  const bin = atob(str);
+  let bin;
+  try { bin = atob(str); } catch (_) { throw new HttpError(400, "That request had a malformed field."); }
   const u = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
   return u;
@@ -71,9 +72,9 @@ export async function sha256(data) {
 }
 export const hex = (u) => [...u].map((b) => b.toString(16).padStart(2, "0")).join("");
 export function safeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  a = String(a); b = String(b);
+  let out = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i % (b.length || 1));
   return out === 0;
 }
 export const randomToken = (n = 32) => b64url(crypto.getRandomValues(new Uint8Array(n)));
@@ -157,13 +158,12 @@ export const clientIp = (request) => request.headers.get("CF-Connecting-IP") || 
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
 export async function limit(env, key, max, windowMs) {
   const D = await db(env), t = Date.now();
-  const row = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
-  if (!row || row.reset_at < t) {
-    await D.prepare("INSERT OR REPLACE INTO pg_limits (key, count, reset_at) VALUES (?, 1, ?)").bind(key, t + windowMs).run();
-    return;
-  }
-  if (row.count >= max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((row.reset_at - t) / MIN)} minutes and try again.`);
-  await D.prepare("UPDATE pg_limits SET count = count + 1 WHERE key = ?").bind(key).run();
+  // one statement, so parallel requests can't all slip under the limit
+  const row = await D.prepare(`INSERT INTO pg_limits (key, count, reset_at) VALUES (?1, 1, ?2)
+    ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ?3 THEN 1 ELSE count + 1 END,
+      reset_at = CASE WHEN reset_at < ?3 THEN ?2 ELSE reset_at END
+    RETURNING count, reset_at`).bind(key, t + windowMs, t).first();
+  if (row.count > max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((row.reset_at - t) / MIN)} minutes and try again.`);
 }
 
 // A per-install random secret (used to fake salts for unknown emails).
@@ -248,7 +248,7 @@ export function msgView(me, m, t) {
   return {
     id: m.id, from: m.sender, to: m.recipient, km: m.km,
     pigeon: m.pigeon || (m.swift ? "swift" : "standard"), swift: (m.pigeon || (m.swift ? "swift" : "standard")) === "swift",
-    sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: m.expires_at, readAt: m.read_at,
+    sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at,
     photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
@@ -308,7 +308,8 @@ async function takeChallenge(env, c, mode, userId) {
 }
 export async function checkClientData(env, request, b, type, mode, userId) {
   await takeChallenge(env, b.challenge, mode, userId);
-  const cd = JSON.parse(new TextDecoder().decode(fromB64url(b.clientDataJSON)));
+  let cd;
+  try { cd = JSON.parse(new TextDecoder().decode(fromB64url(b.clientDataJSON))); } catch (_) { cd = {}; }
   if (cd.type !== type || cd.challenge !== b.challenge || !originOk(cd.origin, request)) throw new HttpError(400, "The passkey response didn’t match this site.");
 }
 export async function verifyAssertion(cred, request, b) {
@@ -351,7 +352,7 @@ export function snapToMile(lat, lon) {
 }
 export function cleanPlace(b) {
   const lat = Number(b.lat), lon = Number(b.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "That location isn’t valid.");
+  if (b.lat == null || b.lon == null || b.lat === "" || b.lon === "" || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "That location isn’t valid.");
   return { ...snapToMile(lat, lon), place: String(b.place || "").trim().slice(0, 60) || null };
 }
 
@@ -382,6 +383,12 @@ const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
 // styles so it holds up in Gmail and Outlook, with a dark version for mail
 // apps that support it. Icons are PNGs (mail apps block SVG) in /pigeon/mail/.
 export const SITE = "https://georgefarrowgreen.com";
+// Where links in emails point: this site, or a local test server. Never a
+// *.pages.dev or preview host (the notification tick runs through one).
+export function linkOrigin(request) {
+  const u = new URL(typeof request === "string" ? request : request.url);
+  return /^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.origin : SITE;
+}
 // "12 Oct 2026, 22:15" in UK time, for "when" rows
 export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
 export function emailBody({ title, lines = [], button, icon = "bird", rows = [], footer, unsub, origin = SITE, preheader }) {
@@ -450,7 +457,7 @@ export async function findReset(env, token) {
   if (!u) throw new HttpError(410, "This account no longer exists.");
   return { reset: r, user: u };
 }
-export const resetUrl = (request, token) => `${new URL(request.url).origin}/pigeon/#reset=${token}`;
+export const resetUrl = (request, token) => `${linkOrigin(request)}/pigeon/#reset=${token}`;
 export function maskEmail(e) {
   const [a, b] = String(e).split("@");
   return `${a.slice(0, 2)}${"•".repeat(Math.max(1, Math.min(6, a.length - 2)))}@${b}`;

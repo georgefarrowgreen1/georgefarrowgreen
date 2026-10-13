@@ -17,7 +17,7 @@ const DUMB = /^\/dumb(?:\s+|$)/i;
 const RISKY_SPEED = 1.25;
 const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
-const kindOf = (m) => (KIND[m?.pigeon] ? m.pigeon : m?.swift ? "swift" : "standard");
+const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
 const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
 
@@ -130,7 +130,7 @@ const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) 
 // A person's picture if they have one (fetched with this phone's sign-in, then kept as a blob URL), else their initials.
 // dot: show a green dot when they're online now
 function avatar(person, size = "", dot = false) {
-  const name = person?.name || "?";
+  const name = person?.name || person?.handle || "?";
   const url = person?.avatarAt ? avatarUrl(person) : "";
   return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(initials(name))}${dot && isOnline(person) ? '<i class="online"></i>' : ""}</span>`;
 }
@@ -474,19 +474,24 @@ function mapGestures(cv) {
 /* ============================================================
    Keys and accounts
    ============================================================ */
+// This phone's own public key comes from its private key, never from the
+// server: safety numbers and "Your Encryption Key" are built from it, so a
+// server that showed friends a different key for you couldn't hide it.
 async function useKeys(token, me, privJwk) {
   S.token = token; S.me = me;
   S.secretJwk = privJwk;                          // memory only: lets a new passkey lock its own copy
   S.priv = await E2E.importPriv(privJwk);
-  S.fp = await E2E.fingerprint(me.pub);
+  S.myPub = { kty: "EC", crv: "P-256", x: privJwk.x, y: privJwk.y };
+  S.fp = await E2E.fingerprint(S.myPub);
   S.pairs = new Map(); S.plain = new Map(); S.msgs = new Map();
   S.pins = (await idb.get("pins:" + me.id)) || {};
-  const saved = await idb.set("session", { token, me, priv: S.priv });
+  checkMyKey(me);
+  const saved = await idb.set("session", { token, me, priv: S.priv, pub: S.myPub });
   if (saved === null) console.warn("InFlight: couldn’t save the session on this phone; you’ll sign in again next time.");
 }
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
-  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, fp: "", friends: [], incoming: [], outgoing: [], passkeys: [],
+  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], incoming: [], outgoing: [], passkeys: [],
     msgs: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
   clearAttach();
   await idb.del("session");
@@ -521,7 +526,7 @@ const prfResult = (cred) => { const r = cred.getClientExtensionResults?.().prf; 
 async function signInPasskey() {
   const o = await api("passkey-options", { method: "POST", body: { mode: "login" } });
   const a = await navigator.credentials.get({ publicKey: {
-    challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "preferred", timeout: 120000,
+    challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
     extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
   if (!a) throw new Error("No passkey was chosen.");
   const r = await api("passkey-login", { method: "POST", body: {
@@ -553,7 +558,7 @@ async function addPasskey() {
     challenge: fromB64url(o.challenge), rp: { id: o.rpId, name: "InFlight" },
     user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
     pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-    authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "preferred" },
+    authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
     excludeCredentials: o.exclude.map((id) => ({ type: "public-key", id: fromB64url(id) })),
     attestation: "none", timeout: 120000, extensions: { prf: { eval: { first: prfSalt } } } } });
   const resp = cred.response;
@@ -566,7 +571,7 @@ async function addPasskey() {
   if (!secret && ext?.enabled) {
     // Some phones only hand over the PRF secret when the passkey is used, so use it once now.
     try {
-      const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: o.rpId, userVerification: "preferred",
+      const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: o.rpId, userVerification: "required",
         allowCredentials: [{ type: "public-key", id: cred.rawId }], extensions: { prf: { eval: { first: prfSalt } } } } });
       secret = a && prfResult(a);
     } catch (_) { /* the passkey still signs in; it just won't unlock messages by itself */ }
@@ -594,6 +599,7 @@ async function sync() {
     try {
       const d = await api("sync");
       S.skew = d.now - Date.now();
+      checkMyKey(d.me);
       S.me = d.me; S.friends = d.friends; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn;
       syncTheme();
       for (const f of S.friends) {
@@ -616,6 +622,13 @@ async function sync() {
   return syncing;
 }
 function friend(id) { return S.friends.find((f) => f.id === id); }
+// The server should show everyone the key this phone holds. If it ever says otherwise, say so.
+function checkMyKey(me) {
+  if (!S.myPub || !me?.pub || keyId(me.pub) === keyId(S.myPub)) return;
+  if (S.keyWarned) return;
+  S.keyWarned = true;
+  toast("<b>Your security key doesn’t match</b><br>The server is showing a different key for you than the one on this phone. Don’t send anything private, and sign out and back in.");
+}
 // First key seen for a friend is remembered on this phone; a later change is flagged.
 // Keys this phone trusted before are kept too, so scrolls sealed with them stay readable
 // after a friend resets. Only keys this phone has seen are ever tried: a key named by the
@@ -632,7 +645,11 @@ async function trustNewKey(fid) {
   const old = S.pins[fid], hist = S.pins["old:" + fid] || [];
   if (old && old !== keyId(f.pub) && !hist.includes(old)) S.pins["old:" + fid] = [...hist, old];
   S.pins[fid] = keyId(f.pub); await idb.set("pins:" + S.me.id, S.pins);
-  f.keyChanged = false; render();
+  f.keyChanged = false;
+  for (const [id, p] of S.plain) if (p.unchecked) S.plain.delete(id);     // now they can be opened
+  if (f.last) await decrypt(fid, f.last);
+  if (S.view === "chat" && S.chat === fid) await loadChat(fid).catch(() => {});
+  render();
 }
 function pairFor(pub) {
   const k = keyId(pub);
@@ -643,11 +660,12 @@ const base = (fid) => pairFor(friend(fid).pub);
 async function decrypt(fid, m) {
   if (!m.ct || S.plain.has(m.id)) return;
   const f = friend(fid);
-  const tries = [keyId(f.pub), S.pins[fid], ...(S.pins["old:" + fid] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
+  // a key the server says changed isn't used until you've checked it
+  const tries = [f.keyChanged ? null : keyId(f.pub), S.pins[fid], ...(S.pins["old:" + fid] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
   for (const k of tries) {
     try { S.plain.set(m.id, await E2E.open(await pairFor(pubFromId(k)), m, m.ct)); return; } catch (_) {}
   }
-  S.plain.set(m.id, { t: "", bad: true });
+  S.plain.set(m.id, { t: "", bad: true, unchecked: !!f.keyChanged });
 }
 async function loadChat(fid) {
   const d = await api("messages?with=" + encodeURIComponent(fid));
@@ -831,7 +849,7 @@ function render() {
 const navbar = (title, { left = "", right = "", solid = false, root = false } = {}) =>
   `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${esc(title)}</div><div class="nb-right">${right}</div></div>`;
 const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
-const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${id}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
+const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
 const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => {
   const t = tag || (act ? "button" : "div");
   return `<${t} class="cell${icon ? " has-icon" : ""} ${cls}"${act ? ` data-act="${act}"` : ""}${id ? ` data-id="${esc(id)}"` : ""}${t === "button" ? ' type="button"' : ""}>
@@ -846,10 +864,10 @@ function preview(f) {
   const l = f.last;
   if (!l) return { html: "No messages yet", at: 0 };
   if (l.lost) return { html: `<span class="lostp">${I.skull} ${l.from === S.me.id ? "Your pigeon was lost on the way" : "A pigeon was lost on its way"}</span>`, at: l.lostAt };
-  if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} In flight · <span data-eta="${l.deliverAt}"></span> to go</span>`, at: l.sentAt };
+  if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} In flight · <span data-eta="${esc(l.deliverAt)}"></span> to go</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? "Couldn’t open this message" : p.p ? (l.photo === 2 ? "Photo (expired)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.p ? (l.photo === 2 ? "Photo (expired)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
 }
 const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
@@ -858,7 +876,7 @@ const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return
 function vMessages() {
   const fr = S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last).sort((a, b) => b.at - a.at);
   const rows = fr.map(({ f, html, at }) => `
-    <button class="mrow" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">
+    <button class="mrow" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
       ${avatar(f, "m", true)}
       <span class="mtext">
@@ -879,7 +897,7 @@ function vMessages() {
 function vFriends() {
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
-  const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${f.id}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
+  const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
       <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
@@ -919,7 +937,7 @@ function vAccount() {
     <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <div class="gap"></div>`;
 }
-const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${id}"` : ""}${disabled ? " disabled" : ""}>
+const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
     <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span>${sub ? `<span class="csub">${sub}</span>` : ""}</span><span class="switch${on ? " on" : ""}" aria-hidden="true"></span></button>`;
 // Account shows one row; the settings live in their own sheet, like iOS Settings.
 function notifyCell(u) {
@@ -1009,27 +1027,27 @@ function bubble(f, m, isLastMine, gapTop) {
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
-    return `<button class="fly${fresh}" data-act="map" data-id="${m.id}" aria-label="Watch the pigeon on the map">
+    return `<button class="fly${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="Watch the pigeon on the map">
       <span class="t1">${pg(kindOf(m))}<span>${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon on its way`}</span></span>
-      <span class="t2"><b><span data-eta="${m.deliverAt}"></span> away</b><span>${fmtMiles(m.km)}</span></span>
-      <span class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></span></button>`;
+      <span class="t2"><b><span data-eta="${esc(m.deliverAt)}"></span> away</b><span>${fmtMiles(m.km)}</span></span>
+      <span class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></span></button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
-  const text = p.bad ? `<span class="bad-scroll">This message couldn’t be opened on this phone.</span>` : esc(p.t).replace(/\n/g, "<br>");
-  const prog = mine && m.flying ? `<div class="prog"><i data-from="${m.sentAt}" data-to="${m.deliverAt}"></i></div>` : "";
+  const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
+  const prog = mine && m.flying ? `<div class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></div>` : "";
   let html;
   if (p.p) {
     let photo;
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>Photo expired</span></div>`;
-    else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="Photo from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${m.id}">`;
+    else if (S.photos.get(m.id)) photo = `<img src="${S.photos.get(m.id)}" alt="Photo from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph">Opening photo…</div>`;
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
   if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
-  else if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${m.deliverAt}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
+  else if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${m.expiresAt}"></span></span>`);
+  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 function vChat() {
@@ -1050,11 +1068,11 @@ function vChat() {
   }
   // a pigeon in the air either way: the map button sits beside the menu
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && m.route);
-  const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${f.id}">I’ve Checked</button></div>` : "";
+  const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${esc(f.id)}">I’ve Checked</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
-      <button class="chatwho" data-act="friendinfo" data-id="${f.id}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
-      <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${flying.id}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
+      <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
+      <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
     ${warn}<div class="msgs">${status(f, t)}${body}</div>`;
 }
@@ -1167,7 +1185,7 @@ async function resetWith(mode, btn) {
     let ecdh, pub;
     if (mode === "keep") {
       const a = await navigator.credentials.get({ publicKey: {
-        challenge: rand(32), rpId: location.hostname, userVerification: "preferred", timeout: 120000,
+        challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 120000,
         allowCredentials: S.resetInfo.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })),
         extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
       const secret = a && prfResult(a), pk = a && S.resetInfo.passkeys.find((p) => p.id === a.id);
@@ -1200,7 +1218,7 @@ function renderCompose() {
   const can = { standard: !!t.free, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0 };
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
   S.sendKind = kind;
-  if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${k}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("");
+  if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${esc(k)}" aria-pressed="false">${pg(k)}<span>${name}</span><b></b></button>`).join("");
   for (const b of pick.children) {
     const k = b.dataset.id;
     b.disabled = !can[k]; b.setAttribute("aria-pressed", String(k === kind));
@@ -1240,7 +1258,7 @@ function renderTabs() {
   const badges = { messages: unread, friends: S.incoming.length, account: 0 };
   let tabs = $(".tabs", $tabbar);
   if (!tabs) {
-    $tabbar.innerHTML = `<div class="tabs">${TABS.map(([id, label, icon]) => `<button class="tab" data-act="tab" data-id="${id}" aria-current="false">${I[icon]}<span>${label}</span></button>`).join("")}</div>`;
+    $tabbar.innerHTML = `<div class="tabs">${TABS.map(([id, label, icon]) => `<button class="tab" data-act="tab" data-id="${esc(id)}" aria-current="false">${I[icon]}<span>${label}</span></button>`).join("")}</div>`;
     tabs = $(".tabs", $tabbar);
   }
   for (const btn of tabs.querySelectorAll(".tab")) {
@@ -1273,7 +1291,7 @@ function onInput(e) {
 // header: { left: {label, act}, right: {label, act} | {label, form}, strong }
 function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain } = {}) {
   const b = (x, cls) => !x ? ""
-    : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${x.form}" aria-label="${esc(x.label)}">${I.check}</button>`
+    : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
     : `<button type="button" class="nbtn ${cls}" data-act="${x.act}" aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
   return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title)}"><div class="grab"></div>
     <header><span class="l">${b(left, "l")}</span><h3>${esc(title)}</h3><span class="r">${b(right, "r")}</span></header>
@@ -1369,14 +1387,14 @@ function drawSheet(refresh) {
       return;
     case "safetylist":
       $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
-        ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${x.id}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${chevSm}</button>`).join("")}</div>
+        ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${chevSm}</button>`).join("")}</div>
           <div class="gfoot">Each friend has a safety number you can compare to check your messages are private.</div>`
         : `<p class="empty"><b>No friends yet</b>Safety numbers appear once you add a friend.</p>`,
         { left: { label: "Back", act: "encryptionsheet" } });
       return;
     case "newmsg":
       $layer.innerHTML = sheetHtml("New Message", S.friends.length
-        ? `<div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${x.id}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
+        ? `<div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
         : `<p class="empty"><b>No friends yet</b>Add a friend first.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`,
         { left: { label: "Cancel", act: "close" }, right: null });
       return;
@@ -1391,9 +1409,9 @@ function drawSheet(refresh) {
       }
       return;
     case "requests": {
-      const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext"><span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span></span>
-        <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${p.id}" aria-label="Decline ${esc(p.name)}">Decline</button><button class="btn small" data-act="accept" data-id="${p.id}" aria-label="Accept ${esc(p.name)}">Accept</button>`
-          : `<button class="btn small gray" data-act="cancelreq" data-id="${p.id}" aria-label="Cancel request to ${esc(p.name)}">Cancel</button>`}</span></div>`;
+      const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext">${p.name ? `<span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span>` : `<span class="one">@${esc(p.handle)}</span><br><span class="csub">Waiting for them to say yes</span>`}</span>
+        <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${esc(p.id)}" aria-label="Decline ${esc(p.name)}">Decline</button><button class="btn small" data-act="accept" data-id="${esc(p.id)}" aria-label="Accept ${esc(p.name)}">Accept</button>`
+          : `<button class="btn small gray" data-act="cancelreq" data-id="${esc(p.id)}" aria-label="Cancel request to @${esc(p.handle)}">Cancel</button>`}</span></div>`;
       $layer.innerHTML = sheetHtml("Friend Requests",
         (S.incoming.length ? `<div class="ghead">Waiting for you</div><div class="group">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "") +
         (S.outgoing.length ? `<div class="ghead">Sent</div><div class="group">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : "") +
@@ -1419,7 +1437,7 @@ function drawSheet(refresh) {
       return;
     case "appearance":
       $layer.innerHTML = sheetHtml("Appearance", `<div class="group mt-s">
-        ${THEMES.map((k) => `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${k}"><span class="ctext"><span>${THEME_NAMES[k]}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
+        ${THEMES.map((k) => `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${esc(k)}"><span class="ctext"><span>${THEME_NAMES[k]}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
         </div>
         <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting. " : ""}Saved to your account, so it’s the same on every phone you sign in on.</div>`);
       return;
@@ -1493,8 +1511,9 @@ function tickMap() {
   const speed = m.lost || f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pg(kindOf(m))}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
-    <span class="prog"><i style="width:${(f.frac * 100).toFixed(2)}%"></i></span>
+    <span class="prog"><i></i></span>
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;
+  $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
 }
@@ -1613,7 +1632,7 @@ async function onClick(e) {
     case "view": S.sheet = { type: "view", id }; return renderSheet();
     case "safety": {
       const f = friend(id); if (!f) return;
-      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : null), digits: await E2E.safety(S.me.id, S.me.pub, f.id, f.pub) };
+      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : null), digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
       return renderSheet();
     }
     case "chatmenu": {
@@ -1744,7 +1763,7 @@ async function autoLocate(ask) {
     try { const r = await api("me", { method: "PATCH", body: { lat, lon, place } }); S.me = r.me; render(); toast(`Location updated to ${esc(place)}.`); }
     catch (_) { /* try again next time */ }
   }, (err) => { if (ask && err.code === 1) toast("Location is off for this site. Allow it in your browser settings to update automatically."); },
-  { enableHighAccuracy: true, timeout: 20000, maximumAge: 10 * MIN });
+  { enableHighAccuracy: false, timeout: 20000, maximumAge: 10 * MIN });
 }
 // My Profile holds name and handle (saved with Done) next to settings that save
 // as soon as they change (location, notifications, security).
@@ -1767,7 +1786,7 @@ function locate(btn) {
     }, (err) => {
       showErr(err.code === 1 ? "Location is off for this site. Choose a city instead, or allow location in your browser settings." : "Couldn’t find your location. Choose a city instead.");
       resolve();
-    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 10 * MIN });
+    }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 10 * MIN });
   }));
 }
 async function shareHandle() {
@@ -1781,7 +1800,7 @@ async function shareHandle() {
 async function onSubmit(e) {
   e.preventDefault();
   const form = e.target, kind = form.dataset.form;
-  const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${form.id}"]`, $layer);
+  const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${esc(form.id)}"]`, $layer);
   if (kind === "compose") return send();
   if (kind === "add") {
     const h = form.h.value.trim(); if (!h) return;
@@ -2129,11 +2148,13 @@ async function start() {
   const saved = await idb.get("session");
   if (S.resetToken) {
     // a reset replaces whoever is signed in on this phone
-    if (saved?.token) await idb.del("session");
+    if (saved?.token) { S.token = saved.token; await api("logout", { method: "POST" }).catch(() => {}); S.token = null; await idb.del("session"); }
     go("reset");
   } else if (saved?.token && saved.priv) {
     S.token = saved.token; S.me = saved.me; S.priv = saved.priv;
-    S.fp = await E2E.fingerprint(saved.me.pub);
+    S.myPub = saved.pub || saved.me.pub;          // sessions saved before this kept the key as it was at sign-in
+    if (!saved.pub) idb.set("session", { ...saved, pub: S.myPub });
+    S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
     S.view = S.pendingAdd ? "friends" : "messages";
     render();

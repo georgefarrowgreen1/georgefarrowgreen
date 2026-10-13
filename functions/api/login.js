@@ -1,4 +1,5 @@
 import { passwordValid, createToken, sessionCookie, json } from "../_auth.js";
+import { limit, HttpError } from "../_pigeon.js";
 
 // Brute-force protection: lock out an IP after too many failures in a window.
 const MAX_FAILS = 8;
@@ -31,6 +32,17 @@ export async function onRequestPost({ request, env }) {
   }
 
   const ip = clientIp(request);
+  // KV is eventually consistent, so a burst of guesses could all read "0 fails".
+  // D1 counts every try at once: per IP, and for everyone together.
+  if (env.DB) {
+    try {
+      await limit(env, "owner:" + ip, 20, WINDOW_SECONDS * 1000);
+      await limit(env, "owner:all", 100, 60 * 60e3);
+    } catch (e) {
+      if (e instanceof HttpError) return json({ error: "Too many attempts. Try again in a few minutes." }, 429);
+      throw e;
+    }
+  }
   if ((await getFails(env, ip)) >= MAX_FAILS) {
     return json({ error: "Too many attempts. Try again in a few minutes." }, 429);
   }

@@ -136,7 +136,11 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 ### Security
 
 - Login is **rate-limited** per IP (8 failures → 15-minute lockout, tracked in
-  KV) to blunt password-guessing.
+  KV) to blunt password-guessing, plus a strongly consistent D1 count of every
+  try (20 per IP per 15 minutes, 100 an hour in all), so a burst of parallel
+  guesses can't slip past KV's delay.
+- Passkeys are tied to the password they were added under: changing
+  `EDIT_PASSWORD` retires them along with every session.
 - The password lives only as a Cloudflare secret; sessions are HMAC-signed in an
   `HttpOnly; Secure; SameSite=Strict` cookie.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
@@ -291,6 +295,25 @@ show a friendly "backend not set up" message).
 - Sessions are signed with HMAC-SHA256 using a key derived from the password and
   carried in an `HttpOnly; Secure; SameSite=Strict` cookie.
 - Reads are public (it's a bio); only authenticated requests can write.
+
+### InFlight's security model
+
+- **What the server can't see:** message text, photos and private keys. Phones
+  encrypt with AES-256-GCM under keys only the two friends can derive (ECDH
+  P-256). The server stores ciphertext, public keys, who's friends with whom,
+  each pigeon's route, and a hash of a login proof (never the password).
+- **Safety numbers** are built from your own key as your phone holds it, never
+  the server's copy, and the phone warns if the server ever shows a different
+  key for you. A friend's changed key is flagged, blocks sending, and isn't used
+  to open their messages until you've checked it.
+- **Friend requests** show the person you asked nothing of them (name or
+  picture) until they say yes.
+- **Location** is snapped to a 1-mile grid on the phone before it's sent, and
+  only friends see it. Photos are re-encoded, which strips EXIF and GPS.
+- **Limits:** no forward secrecy (each pair of friends shares one long-term
+  key, so a stolen phone key or a guessed password opens past messages), and,
+  like any web app, the phone runs whatever JavaScript the server serves.
+  Profile pictures aren't end-to-end encrypted; only friends can fetch them.
 
 ## Branch / deploy note
 

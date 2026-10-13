@@ -1,4 +1,4 @@
-import { isAuthed, createToken, sessionCookie, json } from "../_auth.js";
+import { isAuthed, createToken, sessionCookie, json, passwordTag } from "../_auth.js";
 
 /* ----------------------------------------------------------------------
    Passkey (WebAuthn) login — single-user.
@@ -11,7 +11,7 @@ import { isAuthed, createToken, sessionCookie, json } from "../_auth.js";
    KV layout (in BIO_KV):
      passkeys        -> JSON array of { id, publicKey, alg, label, createdAt }
      pk_chal_reg     -> base64url challenge for registration (TTL 5 min)
-     pk_chal_auth    -> base64url challenge for authentication (TTL 5 min)
+     pk_chal_auth:<c> -> each authentication challenge handed out (TTL 5 min)
 ---------------------------------------------------------------------- */
 
 const enc = (s) => new TextEncoder().encode(s);
@@ -199,6 +199,7 @@ export async function onRequestPost({ request, env }) {
       id: body.id,
       publicKey: body.publicKey,
       alg: body.alg,
+      pw: await passwordTag(env),
       label: String(body.label || "Passkey").slice(0, 40),
       createdAt: Date.now(),
     });
@@ -210,18 +211,22 @@ export async function onRequestPost({ request, env }) {
   if (action === "auth-options") {
     const list = await getPasskeys(env);
     const challenge = randomChallenge();
-    await env.BIO_KV.put("pk_chal_auth", challenge, { expirationTtl: 300 });
+    // one per request, so someone else asking for a challenge can't spoil yours
+    await env.BIO_KV.put("pk_chal_auth:" + challenge, "1", { expirationTtl: 300 });
     return json({ challenge, rpId, allowCredentials: list.map((c) => c.id) });
   }
 
   if (action === "auth-verify") {
-    const expected = await env.BIO_KV.get("pk_chal_auth");
-    if (!expected) return json({ error: "Challenge expired. Try again." }, 400);
-    await env.BIO_KV.delete("pk_chal_auth");
+    let expected = "";
+    try { expected = String(JSON.parse(new TextDecoder().decode(b64urlToBuf(body.clientDataJSON))).challenge || ""); } catch (_) {}
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(expected) || !(await env.BIO_KV.get("pk_chal_auth:" + expected))) return json({ error: "Challenge expired. Try again." }, 400);
+    await env.BIO_KV.delete("pk_chal_auth:" + expected);
 
     const list = await getPasskeys(env);
     const cred = list.find((c) => c.id === body.id);
     if (!cred) return json({ error: "Unknown passkey." }, 401);
+    // added under an older password: retired (passkeys from before this check count as current)
+    if (cred.pw && cred.pw !== (await passwordTag(env))) return json({ error: "This passkey was added before the password changed. Sign in with the password and add it again." }, 401);
 
     const clientBuf = b64urlToBuf(body.clientDataJSON);
     if (!(await verifyClientData(clientBuf, "webauthn.get", expected, rpId))) {
@@ -231,6 +236,7 @@ export async function onRequestPost({ request, env }) {
       cred, b64urlToBuf(body.authenticatorData), clientBuf, b64urlToBuf(body.signature), rpId
     );
     if (!valid) return json({ error: "Signature check failed." }, 401);
+    if (!cred.pw) { cred.pw = await passwordTag(env); await putPasskeys(env, list); }
 
     const token = await createToken(env);
     return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token) });

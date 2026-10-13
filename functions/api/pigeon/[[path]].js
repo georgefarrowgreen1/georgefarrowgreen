@@ -3,7 +3,7 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, msgView, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
@@ -22,13 +22,20 @@ function meView(u, t) {
 }
 
 /* ---------------- accounts ---------------- */
+// Names go into emails and notifications other people get, so they can't look
+// like a web address, an email or a handle.
+function cleanName(v, empty) {
+  const name = String(v || "").normalize("NFC").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().replace(/\s+/g, " ").slice(0, 50);
+  if (!name) throw new HttpError(400, empty, "name");
+  if (/[@/\\:<>]|\.\S|www\./i.test(name)) throw new HttpError(400, "Names can’t include web addresses or symbols like @ / :", "name");
+  return name;
+}
 async function signup({ request, env }) {
   await limit(env, "signup:" + clientIp(request), 10, 60 * 60e3);
   const b = await body(request);
-  const name = String(b.name || "").trim().slice(0, 50);
+  const name = cleanName(b.name, "Tell us your name.");
   const handle = String(b.handle || "").trim().replace(/^@/, "").toLowerCase();
   const email = String(b.email || "").trim().toLowerCase();
-  if (!name) throw new HttpError(400, "Tell us your name.", "name");
   if (!HANDLE_RE.test(handle)) throw new HttpError(400, "Use 3 to 20 letters, numbers or underscores.", "handle");
   if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
   if (fromB64url(b.salt).length !== 16 || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
@@ -61,6 +68,7 @@ async function login({ request, env }) {
   const b = await body(request);
   const email = String(b.email || "").trim().toLowerCase();
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
+  await limit(env, "loginacct:" + email, 30, 60 * 60e3);
   const D = await db(env);
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   const given = hex(await sha256(fromB64url(b.proof)));
@@ -108,7 +116,7 @@ async function reroute(env, u, p, t, waitUntil) {
     const r = await D.prepare(`UPDATE pg_msgs SET to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
       expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ?`)
       .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
-    if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
+    if (r.meta.changes && (await areFriends(D, u.id, m.sender))) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
   }
 }
 async function updateMe({ request, env, waitUntil }) {
@@ -125,8 +133,7 @@ async function updateMe({ request, env, waitUntil }) {
     }
   }
   if (b.name !== undefined) {
-    const name = String(b.name).trim().slice(0, 50);
-    if (!name) throw new HttpError(400, "Your name can’t be empty.", "name");
+    const name = cleanName(b.name, "Your name can’t be empty.");
     await D.prepare("UPDATE pg_users SET name = ? WHERE id = ?").bind(name, u.id).run();
   }
   if (b.appearance !== undefined) {
@@ -152,13 +159,15 @@ async function updateMe({ request, env, waitUntil }) {
 
 /* ---------------- profile pictures ----------------
    Not end-to-end encrypted (the server shows them to several people), so
-   they're only served to the owner, their friends, and people with a
-   friend request either way. */
+   they're only served to the owner, their friends, and people they've sent a
+   friend request to. Asking to be someone's friend shows you nothing of
+   them until they say yes. */
 const avatarKey = (id) => `pigeon-avatars/${id}`;
 async function putAvatar({ request, env }) {
   const u = await requireUser(request, env);
   if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   await limit(env, "avatar:" + u.id, 20, DAY);
+  if (Number(request.headers.get("Content-Length")) > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (bytes.length > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
   if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Profile pictures must be JPEG images.");
@@ -177,7 +186,7 @@ async function getAvatar({ request, env }, id) {
   const u = await requireUser(request, env);
   id = String(id || "");
   if (id !== u.id) {
-    const l = await (await db(env)).prepare("SELECT 1 FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).first();
+    const l = await (await db(env)).prepare("SELECT 1 FROM pg_links WHERE (a = ?2 AND b = ?1) OR (a = ?1 AND b = ?2 AND status = 'ok')").bind(u.id, id).first();
     if (!l) throw new HttpError(404, "No picture.");
   }
   const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(id)));
@@ -226,7 +235,7 @@ async function passkeyRegister({ request, env }) {
   const b = await body(request);
   await checkClientData(env, request, b, "webauthn.create", "register", u.id);
   if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type InFlight doesn’t support.");
-  if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !b.publicKey) throw new HttpError(400, "The passkey response was incomplete.");
+  if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
   const D = await db(env);
   if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
   await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, created_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -284,7 +293,7 @@ async function addFriend({ request, env, waitUntil }) {
     return json({ message: `@${t.handle} joined your flock.` });
   }
   await D.prepare("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'pending', ?)").bind(u.id, t.id, Date.now()).run();
-  waitUntil(friendRequested(env, new URL(request.url).origin, u, t.id).catch(() => {}));
+  waitUntil(friendRequested(env, linkOrigin(request), u, t.id).catch(() => {}));
   return json({ message: `Request sent to @${t.handle}.` });
 }
 async function respondFriend({ request, env, waitUntil }) {
@@ -342,7 +351,7 @@ async function sync({ request, env, waitUntil }) {
       friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: p.seen_at || null,
         last: last ? msgView(u.id, last, t) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
     } else if (l.b === u.id) incoming.push(brief(p));
-    else outgoing.push(brief(p));
+    else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
   return json({ now: t, me: meView(u, t), friends, incoming, outgoing, emailOn: emailReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
@@ -363,6 +372,7 @@ async function sendMessage({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
   let meta, photo = null;
+  if (Number(request.headers.get("Content-Length")) > MAX_PHOTO + MAX_CT + 4096) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
     const f = await request.formData();
     try { meta = JSON.parse(f.get("meta")); } catch (_) { throw new HttpError(400, "That scroll was malformed."); }
@@ -375,6 +385,7 @@ async function sendMessage({ request, env, waitUntil }) {
   if (photo && photo.size > MAX_PHOTO) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   const D = await db(env), t = Date.now();
+  if (await D.prepare("SELECT 1 FROM pg_msgs WHERE id = ?").bind(id).first()) throw new HttpError(409, "That scroll was already sent.");
   if (!u.lat && u.lat !== 0) throw new HttpError(409, "Set your roost in the Roost tab before sending pigeons.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
   const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(to).first();
@@ -390,7 +401,9 @@ async function sendMessage({ request, env, waitUntil }) {
     const p = PIGEONS[kind], l = loft(u, kind, t);
     if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
     const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
-    await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ?`).bind(n, at, u.id).run();
+    // only if the loft is still as we read it, so two sends at once can't share a pigeon
+    const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
+    if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   }
   const swift = PIGEONS[kind].waits ? 0 : 1;
   const hasTo = r && r.lat != null;
@@ -407,7 +420,7 @@ async function sendMessage({ request, env, waitUntil }) {
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, t, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
         u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null).run();
   } catch (e) {
-    if (photo) await env.BIO_R2.delete(`pigeon/${id}`);
+    if (photo && !String(e).includes("UNIQUE")) await env.BIO_R2.delete(`pigeon/${id}`);
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
     throw e;
   }
@@ -434,7 +447,7 @@ async function getPhoto({ request, env }, id) {
   if (m.recipient === u.id && t < m.deliver_at) throw new HttpError(425, "This photo is still in flight.");
   const obj = env.BIO_R2 && (await env.BIO_R2.get(`pigeon/${id}`));
   if (!obj) throw new HttpError(410, "This photo has flown away.");
-  return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store" } });
+  return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
 
 /* ---------------- password: change, forgotten, reset ----------------
@@ -472,7 +485,7 @@ async function changePassword({ request, env, waitUntil }) {
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
-  waitUntil(notifyPasswordChanged(env, u, "In the app", new URL(request.url).origin));
+  waitUntil(notifyPasswordChanged(env, u, "In the app", linkOrigin(request)));
   return json({ ok: true });
 }
 
@@ -483,12 +496,12 @@ async function resetRequest({ request, env, waitUntil }) {
   if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
   if (!emailReady(env)) throw new HttpError(503, "Reset emails aren’t switched on yet. Ask the person who runs InFlight for a reset link.");
   const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
-  let allowed = !!u;
-  if (u) allowed = await limit(env, "resetmail:" + u.id, 3, 60 * 60e3).then(() => true, () => false);
+  // limit by email, existing or not, so the timing is the same either way
+  const allowed = await limit(env, "resetmail:" + hex(await sha256(email)).slice(0, 24), 3, 60 * 60e3).then(() => !!u, () => false);
   if (allowed) {
     const token = await createReset(env, u.id, "user", RESET_TTL_EMAIL);
     const { text, html } = emailBody({
-      origin: new URL(request.url).origin, icon: "key", title: "Reset your password",
+      origin: linkOrigin(request), icon: "key", title: "Reset your password",
       preheader: "A link to choose a new password. It works once, for the next hour.",
       lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, someone asked to reset the password for your InFlight account.`,
         "If it wasn’t you, ignore this email. Your password won’t change."],
@@ -528,7 +541,7 @@ async function resetComplete({ request, env, waitUntil }) {
   if (fresh) steps.push(D.prepare("UPDATE pg_passkeys SET vault = NULL WHERE user_id = ?").bind(u.id));
   await D.batch(steps);
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
-  waitUntil(notifyPasswordChanged(env, u, "With a reset link", new URL(request.url).origin));
+  waitUntil(notifyPasswordChanged(env, u, "With a reset link", linkOrigin(request)));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ token: await issueSession(env, u.id), me: meView(updated, t) });
 }
@@ -578,7 +591,7 @@ async function adminReset({ request, env }) {
     if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up yet. Use “Make a reset link” and send it yourself.");
     const token = await createReset(env, u.id, "admin-email", RESET_TTL_EMAIL);
     const { text, html } = emailBody({
-      origin: new URL(request.url).origin, icon: "key", title: "Reset your password",
+      origin: linkOrigin(request), icon: "key", title: "Reset your password",
       preheader: "Here’s a link to choose a new password for InFlight.",
       lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, here’s a link to choose a new password for your InFlight account.`,
         "If you didn’t ask for this, you can ignore it. Your password won’t change."],
@@ -628,7 +641,7 @@ async function adminDelete({ request, env }) {
   const b = await body(request), u = await adminTarget(env, b);
   if (String(b.confirm || "").trim().replace(/^@/, "").toLowerCase() !== u.handle) throw new HttpError(400, `Type ${u.handle} to confirm.`);
   await removeAccount(env, u.id);
-  await adminLog(env, "deleted", u.id, `@${u.handle} (${u.email})`);
+  await adminLog(env, "deleted", u.id, `@${u.handle}`);
   return json({ message: `@${u.handle} and their scrolls were deleted.` });
 }
 // Resend's "first email": proves the key and sender work, to the owner's own inbox.
@@ -638,11 +651,11 @@ async function adminTestEmail({ request, env }) {
   if (!emailReady(env)) throw new HttpError(503, "Add RESEND_API_KEY in Cloudflare first, then redeploy.");
   const to = ownerEmail(env);
   const { text, html } = emailBody({
-    origin: new URL(request.url).origin, icon: "bird", title: "Email is working",
+    origin: linkOrigin(request), icon: "bird", title: "Email is working",
     preheader: "InFlight can send password resets and notifications.",
     lines: ["This is a test from the InFlight admin page. Password resets and notifications will arrive just like this."],
     rows: [["From", emailFrom(env).replace(/^.*<|>$/g, "")], ["Sent", ukTime(Date.now())]],
-    button: { label: "Back to Admin", url: `${new URL(request.url).origin}/pigeon/admin/` },
+    button: { label: "Back to Admin", url: `${linkOrigin(request)}/pigeon/admin/` },
   });
   await sendEmail(env, { to, subject: "InFlight email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);
@@ -669,6 +682,7 @@ async function pushSubscribe({ request, env }) {
   await D.prepare("DELETE FROM pg_push WHERE user_id = ? AND session = ? AND endpoint != ?").bind(u.id, u.sessionHash, endpoint).run();
   await D.prepare("INSERT OR REPLACE INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .bind(endpoint, u.id, u.sessionHash, p256dh, auth, Date.now()).run();
+  await D.prepare("DELETE FROM pg_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM pg_push WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 10)").bind(u.id).run();
   return json({ ok: true });
 }
 async function pushUnsubscribe({ request, env }) {
@@ -685,7 +699,7 @@ async function pushTest({ request, env }) {
 }
 async function notifyTick({ request, env }) {
   tickAuthOk(request, env);
-  return json(await tick(env, new URL(request.url).origin));
+  return json(await tick(env, linkOrigin(request)));
 }
 // The link at the bottom of notification emails. GET shows a button (so mail
 // scanners that follow links don't unsubscribe anyone); POST turns email off,
@@ -747,7 +761,7 @@ export async function onRequest(ctx) {
   const parts = new URL(ctx.request.url).pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
-  if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, new URL(ctx.request.url).origin).catch((e) => console.error("pigeon tick", e && e.message)));
+  if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));
   try {
     if (!handler) throw new HttpError(404, "Not found.");
     return await handler(ctx, parts[1]);

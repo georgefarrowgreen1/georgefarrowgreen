@@ -19,18 +19,24 @@ async function hmac(secret, data) {
   return toHex(await crypto.subtle.sign("HMAC", key, enc(data)));
 }
 
-// Constant-time-ish string compare
+// Constant-time string compare (of equal-length hex digests)
 function safeEqual(a, b) {
   if (a.length !== b.length) return false;
   let out = 0;
   for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return out === 0;
 }
+const digest = async (s) => toHex(await crypto.subtle.digest("SHA-256", enc(s)));
 
+// Compares digests, so the time taken says nothing about the password's length.
 export async function passwordValid(password, env) {
   if (!env.EDIT_PASSWORD) return false;
-  return safeEqual(String(password || ""), String(env.EDIT_PASSWORD));
+  return safeEqual(await digest(String(password || "")), await digest(String(env.EDIT_PASSWORD)));
 }
+
+// Ties a passkey to the password it was added under: changing EDIT_PASSWORD
+// retires every passkey, like every session.
+export const passwordTag = (env) => hmac(env.EDIT_PASSWORD, "passkey");
 
 export async function createToken(env) {
   const exp = Date.now() + TTL_MS;
