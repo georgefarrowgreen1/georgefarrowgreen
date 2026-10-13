@@ -479,6 +479,12 @@ function drawMap(cv, m, cardH) {
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
   cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  // the wind it met, for the streaks: each route still being flown, measured along its length
+  cv._winds = tracks.filter(({ r }) => !r.here && !r.lost && r.wind != null && Math.abs(r.wind) >= 3 && now() < r.deliverAt).map(({ r, P }) => {
+    const cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+    return { P, cum, L: cum[cum.length - 1], wind: r.wind, seed: r.deliverAt % 1000 };
+  });
+  cv._windCol = [col("--green") || "#34c759", col("--orange") || "#ff9500"];
   drawBirds(cv, performance.now());
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
 }
@@ -529,6 +535,24 @@ function drawNight(g, W, H, ox, oy, k) {
     g.restore();
   }
 }
+// Wind: short streaks drifting beside the route, with the pigeon for a
+// tailwind (green), against it for a headwind (orange); faster the stronger it blew.
+function drawWind(g, cv, ts) {
+  for (const { P, cum, L, wind, seed } of cv._winds || []) {
+    if (L < 40) continue;
+    const v = (18 + Math.min(80, Math.abs(wind)) * 0.9) * Math.sign(wind), gap = 46, n = Math.ceil(L / gap);
+    g.save(); g.strokeStyle = cv._windCol[wind > 0 ? 0 : 1]; g.lineCap = "round"; g.lineWidth = 1.6;
+    for (const lane of [-11, 11]) for (let k = 0; k < n; k++) {
+      const d = ((k * gap + (lane > 0 ? gap / 2 : 0) + seed + (ts / 1000) * v) % L + L) % L;
+      let i = 1; while (i < cum.length - 1 && cum[i] < d) i++;
+      const f = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]), ax = P[i][0] - P[i - 1][0], ay = P[i][1] - P[i - 1][1], len = Math.hypot(ax, ay) || 1;
+      const ux = ax / len, uy = ay / len, x = P[i - 1][0] + ax * f - uy * lane, y = P[i - 1][1] + ay * f + ux * lane;
+      g.globalAlpha = 0.5 * Math.sin(Math.PI * (d / L)) ** 0.5;        // fading in and out at the ends
+      g.beginPath(); g.moveTo(x - ux * 7, y - uy * 7); g.lineTo(x + ux * 7, y + uy * 7); g.stroke();
+    }
+    g.restore();
+  }
+}
 // The pigeon, with its wing at w (1 up, 0 folded down to its back): the wing's
 // points are drawn toward the body line, so it flaps.
 const WING = [[12.6, 3.6], [14.4, 3], [15.6, 4], [15.4, 5.8]];
@@ -543,6 +567,7 @@ function drawBirds(cv, ts) {
   const g = cv.getContext("2d"), dpr = window.devicePixelRatio || 1;
   if (!cv._base || !cv._birds) return;
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._base, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawWind(g, cv, STILL.matches ? 0 : ts);
   for (const { r, at: [px, py], dx, dy, phase, color } of cv._birds) {
     const flying = phase === "up" || phase === "cruise" || phase === "down", hz = phase === "cruise" ? 2.2 : 5;
     const w = !flying ? 0.45 : STILL.matches ? 1 : 0.62 + 0.38 * Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997));
