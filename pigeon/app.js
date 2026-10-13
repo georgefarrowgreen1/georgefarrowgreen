@@ -4,6 +4,7 @@ import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
 import { PLACES, nearestPlace, snapToMile } from "./places.js";
 import { COUNTRIES, RANGES, SEAS } from "./countries.js";
+import { qrSvg } from "./qr.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
@@ -2288,7 +2289,43 @@ function onbInput(e) {
     if (n <= 0) onb.pwTimer = setTimeout(() => { const salt = rand(16); onb.pw = { pw, salt, p: E2E.fromPassword(pw, salt) }; }, 450);
   }
 }
+/* ---------- Add Friend: look them up as you type ---------- */
+const myLink = () => `${location.origin}/pigeon/#add=${S.me.handle}`;
+let addTimer = 0;
+function addLookup() {
+  clearTimeout(addTimer);
+  const i = $("#add-h", $layer), box = $(".addres", $layer); if (!i || !box) return;
+  const h = i.value.trim().replace(/^@/, "").toLowerCase();
+  if (h.length < 3) { box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="group"><div class="cell addrow"><span class="spin"></span><span class="ctext"><span>@${esc(h)}</span><span class="csub">Looking…</span></span></div></div>`;
+  addTimer = setTimeout(async () => {
+    let r; try { r = await api("friend-status?h=" + encodeURIComponent(h)); } catch (_) { box.innerHTML = ""; return; }
+    if (($("#add-h", $layer)?.value || "").trim().replace(/^@/, "").toLowerCase() !== h) return;     // typed on
+    const ini = avatar({ name: h }, "s", false, true);
+    const row = (sub, btn, cls = "") => `<div class="group"><div class="cell addrow ${cls}">${ini}<span class="ctext"><span>@${esc(r.handle || h)}</span><span class="csub">${sub}</span></span>${btn}</div></div>`;
+    box.innerHTML = {
+      invalid: `<p class="gfoot bad">Handles use 3 to 20 letters, numbers or underscores.</p>`,
+      none: row("No one has that handle yet", `<button type="button" class="btn small gray" data-act="share">Invite</button>`, "dim"),
+      self: row("That’s you", ""),
+      new: row("On InFlight", `<button type="button" class="btn small" data-act="addgo" data-id="${esc(r.handle)}">Add</button>`),
+      sent: row("Request sent · waiting for them", `<button type="button" class="btn small gray" data-act="cancelreq" data-id="${esc(r.id)}">Cancel</button>`),
+      incoming: row("Wants to be your friend", `<button type="button" class="btn small" data-act="accept" data-id="${esc(r.id)}">Accept</button>`),
+      friends: row("Already friends", `<button type="button" class="btn small gray" data-act="addchat" data-id="${esc(r.id)}">Message</button>`),
+    }[r.state] || "";
+  }, 300);
+}
+async function addGo(h, btn) {
+  const msg = $(".add-msg", $layer);
+  try {
+    const r = await busyBtn(btn, "Sending…", () => api("friends", { method: "POST", body: { handle: h } }));
+    S.pendingAdd = null;
+    if (/^Request sent|joined/.test(r.message)) { toast(esc(r.message)); const i = $("#add-h", $layer); if (i) i.value = ""; $(".addres", $layer).innerHTML = ""; if (msg) { msg.className = "gfoot add-msg"; msg.textContent = "Add another, or let them scan your code."; } }
+    else if (msg) { msg.textContent = r.message; msg.classList.add("bad"); }
+  } catch (err) { if (msg) { msg.textContent = err.message; msg.classList.add("bad"); } }
+  await sync(); if (S.sheet?.type === "addfriend") { renderSheet(); addLookup(); }
+}
 function onInput(e) {
+  if (e.target.id === "add-h") { const m = $(".add-msg", $layer); if (m) m.classList.remove("bad"); return addLookup(); }
   if (S.view === "signup" && e.target.closest?.("[data-form=signup]")) return onbInput(e);
   if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); return; }
   if (e.target.id === "msearch") { S.q = e.target.value; filterLists(); }
@@ -2554,12 +2591,22 @@ function drawSheet(refresh) {
     case "addfriend":
       if (!$("#add-h", $layer)) {
         $layer.innerHTML = sheetHtml("Add Friend", `<form id="add-form" data-form="add" novalidate>
-            <div class="group mt-s"><label class="fcell"><span class="pre">@</span><input name="h" id="add-h" placeholder="handle" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Friend’s handle"></label></div>
-            <p class="gfoot add-msg" role="status">Ask a friend for their handle. They’ll get a friend request.</p></form>
-            <div class="ghead">Your handle</div><div class="group">${cell({ label: `@${esc(S.me.handle)}` })}${cell({ act: "share", label: "Share My Handle", cls: "action" })}</div>`,
+            <div class="group mt-s"><label class="fcell"><span class="pre">@</span><input name="h" id="add-h" placeholder="their handle" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="Friend’s handle"></label></div>
+            <div class="addres" aria-live="polite"></div>
+            <p class="gfoot add-msg" role="status">Type a friend’s handle, or let them scan your code.</p></form>
+            <div class="addreqs"></div>
+            <div class="ghead">Your code</div>
+            <div class="mycode"><div class="qrbox" aria-label="QR code for your add-a-friend link">${qrSvg(myLink())}</div>
+              <b>@${esc(S.me.handle)}</b><span>A friend can scan this with their phone’s camera to add you.</span>
+              <div class="row2"><button type="button" class="btn small" data-act="share">${I.up}Share Link</button><button type="button" class="btn small gray" data-act="copylink">Copy Link</button></div></div>`,
           { left: { label: "Cancel", act: "close" }, right: { label: "Send", form: "add-form" } });
-        const i = $("#add-h", $layer); i.value = S.pendingAdd || ""; setTimeout(() => i.focus(), 300);
+        const i = $("#add-h", $layer); i.value = S.pendingAdd || ""; if (i.value) addLookup(); setTimeout(() => i.focus(), 300);
       }
+      // requests, kept here too (they change as you accept, decline or cancel)
+      { const rq = $(".addreqs", $layer), row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext">${p.name ? `<span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span>` : `<span class="one">@${esc(p.handle)}</span><br><span class="csub">Waiting for them to say yes</span>`}</span>
+          <span class="acts">${inc ? `<button class="btn small gray" data-act="decline" data-id="${esc(p.id)}">Decline</button><button class="btn small" data-act="accept" data-id="${esc(p.id)}">Accept</button>` : `<button class="btn small gray" data-act="cancelreq" data-id="${esc(p.id)}">Cancel</button>`}</span></div>`;
+        if (rq) rq.innerHTML = (S.incoming.length ? `<div class="ghead">Want to be your friend</div><div class="group">${S.incoming.map((p) => row(p, true)).join("")}</div>` : "")
+          + (S.outgoing.length ? `<div class="ghead">Sent</div><div class="group">${S.outgoing.map((p) => row(p, false)).join("")}</div>` : ""); }
       return;
     case "requests": {
       const row = (p, inc) => `<div class="reqrow${inc ? " inc" : ""}">${avatar(p, "s")}<span class="ctext">${p.name ? `<span class="one">${esc(first(p.name))}</span><br><span class="csub">@${esc(p.handle)}</span>` : `<span class="one">@${esc(p.handle)}</span><br><span class="csub">Waiting for them to say yes</span>`}</span>
@@ -2960,10 +3007,15 @@ async function onClick(e) {
     case "trust": return trustNewKey(id);
     case "accept": case "decline":
       await api("friends-respond", { method: "POST", body: { id, accept: t.dataset.act === "accept" } }).catch((err) => toast(esc(err.message)));
-      await sync(); return renderSheet();
+      await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
     case "cancelreq":
       await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
-      await sync(); return renderSheet();
+      await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
+    case "addgo": return addGo(id, t);
+    case "addchat": S.sheet = null; renderSheet(); return go("chat", id);
+    case "copylink":
+      try { await navigator.clipboard.writeText(myLink()); toast("Link copied."); } catch (_) { toast(esc(myLink())); }
+      return;
     case "unfriendask": {
       const f = friend(id); if (!f) return;
       return openActions({ title: `Remove ${first(f.name)}?`, message: "You’ll stop seeing each other’s messages. You can add them again later.", actions: [{ label: "Remove Friend", act: "unfriend", id, destructive: true }] });
@@ -3146,7 +3198,7 @@ function locate(btn) {
   }));
 }
 async function shareHandle() {
-  const url = `${location.origin}/pigeon/#add=${S.me.handle}`;
+  const url = myLink();
   const text = `Send me a pigeon on InFlight: @${S.me.handle}`;
   try {
     if (navigator.share) await navigator.share({ title: "InFlight", text, url });
@@ -3198,15 +3250,8 @@ async function onSubmit(e) {
     return;
   }
   if (kind === "add") {
-    const h = form.h.value.trim(); if (!h) return;
-    const msg = $(".add-msg", $layer);
-    try {
-      const r = await busyBtn(btn, "Sending…", () => api("friends", { method: "POST", body: { handle: h } }));
-      S.pendingAdd = null;
-      if (/^Request sent|joined/.test(r.message)) { S.sheet = null; renderSheet(); toast(esc(r.message)); }
-      else { msg.textContent = r.message; msg.classList.add("bad"); }
-    } catch (err) { msg.textContent = err.message; msg.classList.add("bad"); }
-    await sync(); return;
+    const h = form.h.value.trim().replace(/^@/, ""); if (!h) return;
+    return addGo(h, btn);
   }
   const v = Object.fromEntries(new FormData(form));
   if (kind === "signup") {

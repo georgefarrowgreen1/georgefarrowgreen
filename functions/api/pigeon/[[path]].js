@@ -323,6 +323,19 @@ async function passkeyDelete({ request, env }) {
 }
 
 /* ---------------- friends ---------------- */
+// Add Friend, as you type: is there someone with this handle, and where do you stand?
+// Only the handle comes back (no name or photo until they say yes).
+async function friendStatus({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "fstat:" + u.id, 400, 60 * 60e3);
+  const h = String(new URL(request.url).searchParams.get("h") || "").trim().replace(/^@/, "").toLowerCase();
+  if (!HANDLE_RE.test(h)) return json({ state: "invalid" });
+  const D = await db(env), t = await D.prepare("SELECT id, handle FROM pg_users WHERE handle = ?").bind(h).first();
+  if (!t) return json({ state: "none", handle: h });
+  if (t.id === u.id) return json({ state: "self", handle: h });
+  const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, t.id).first();
+  return json({ handle: t.handle, id: t.id, state: !l ? "new" : l.status === "ok" ? "friends" : l.a === u.id ? "sent" : "incoming" });
+}
 async function addFriend({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "friend:" + u.id, 40, 60 * 60e3);
@@ -925,7 +938,7 @@ const ROUTES = {
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete,
   "GET sync": sync,
-  "POST friends": addFriend, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
+  "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
