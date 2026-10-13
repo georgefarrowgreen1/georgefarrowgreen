@@ -101,6 +101,21 @@ export const E2E = {
     return crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(p.iv), additionalData: te.encode("inflight/photo/v1|" + id) }, await aesKey(unb64(p.k), ["decrypt"]), data);
   },
 
+  // Groups: a message is sealed once under its own random key, and that key
+  // travels to each member sealed with the pair key the sender shares with
+  // them (seal above, so it's bound to the message id, sender and member).
+  // A new member can't open what came before; someone who left, what comes after.
+  async sealGroup(meta, obj) {
+    const raw = rand(32), iv = rand(12);
+    const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode(`inflight/group/v1|${meta.id}|${meta.from}|${meta.group}`) }, await aesKey(raw, ["encrypt"]), te.encode(JSON.stringify(obj)));
+    return { body: JSON.stringify({ v: 1, iv: b64(iv), d: b64(d) }), key: b64(raw) };
+  },
+  async openGroup(meta, key, body) {
+    const e = JSON.parse(body);
+    const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(e.iv), additionalData: te.encode(`inflight/group/v1|${meta.id}|${meta.from}|${meta.group}`) }, await aesKey(unb64(key), ["decrypt"]), unb64(e.d));
+    return JSON.parse(td.decode(p));
+  },
+
   // 60 digits both friends can compare; identical only if no one swapped a key in between
   async safety(aId, aPub, bId, bPub) {
     const [x, y] = [[aId, aPub], [bId, bPub]].sort((m, n) => (m[0] < n[0] ? -1 : 1));

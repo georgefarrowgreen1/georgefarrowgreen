@@ -24,7 +24,7 @@ const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "
 /* ---------------- state ---------------- */
 const S = {
   token: null, me: null, priv: null, secretJwk: null, fp: "",
-  friends: [], incoming: [], outgoing: [], passkeys: [], skew: 0,
+  friends: [], groups: [], incoming: [], outgoing: [], passkeys: [], skew: 0,
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
@@ -133,6 +133,13 @@ function avatar(person, size = "", dot = false) {
   const name = person?.name || person?.handle || "?";
   const url = person?.avatarAt ? avatarUrl(person) : "";
   return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(initials(name))}${dot && isOnline(person) ? '<i class="online"></i>' : ""}</span>`;
+}
+// A group's picture: two of its other members, overlapping.
+function gavatar(g, size = "") {
+  const two = others(g).slice(0, 2);
+  if (two.length < 2) return avatar(two[0] || { name: g.name }, size);
+  const one = (p) => avatar({ ...p, name: first(p.name) }, "");       // one initial each, so neither is cut off
+  return `<span class="gav ${size}" aria-hidden="true">${one(two[0])}${one(two[1])}</span>`;
 }
 // An open app checks in every 15 s and the server notes it once a minute, so
 // anyone seen in the last 2½ minutes has InFlight open now.
@@ -322,10 +329,13 @@ function pigeonOn(P, pts, t = now()) {
   const f = (t - pts[i - 1].t) / Math.max(1, pts[i].t - pts[i - 1].t);
   return { at: [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f], dx: P[i][0] - P[i - 1][0] };
 }
-// Where the map sits: the whole route in view, unless the person has moved it.
+// The routes a map shows: one, or for your message to a group, one per member
+// whose location you can see (friends; others' routes stay off the map).
+const routesOf = (m) => m.flock ? m.flock.filter((r) => r.route).map((r) => ({ ...r, sentAt: m.sentAt, pigeon: m.pigeon, risky: m.risky, fromPlace: m.fromPlace })) : [m];
+// Where the map sits: every route in view, unless the person has moved it.
 function mapFrame(cv, m, cardH) {
   const W = cv.clientWidth, H = cv.clientHeight, usableH = Math.max(80, H - cardH - 30), sy0 = 20 + usableH / 2;
-  const pts = routePts(m);
+  const pts = routesOf(m).flatMap(routePts);
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const fit = {
     cx: (Math.min(...xs) + Math.max(...xs)) / 2, cy: (Math.min(...ys) + Math.max(...ys)) / 2,
@@ -380,14 +390,15 @@ function drawMap(cv, m, cardH) {
     g.beginPath(); trace(data.borders, false);
     g.strokeStyle = col("--border"); g.lineWidth = k > 40 ? 1.2 : 0.8; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
   }
-  // the route, from and to, and the pigeon
-  const N = pts.length - 1, P = pts.map((p) => [X(p.x), Y(p.y)]);
-  g.strokeStyle = col("--tint"); g.lineWidth = 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
-  g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); g.setLineDash([]);
-  pts.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
-  const here = pigeonOn(P, pts, flightAt(m, m.lost ? m.lostAt : now()).t), [px, py] = here.at;
+  // the routes (a message to a group has one per member), their ends, and each pigeon
+  const tracks = routesOf(m).map((r) => { const rp = routePts(r); return { r, rp, P: rp.map((p) => [X(p.x), Y(p.y)]) }; });
+  g.strokeStyle = col("--tint"); g.lineWidth = tracks.length > 1 ? 3 : 3.5; g.setLineDash([11, 8]); g.lineCap = "round";
+  for (const { P } of tracks) { g.beginPath(); P.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); }
+  g.setLineDash([]);
+  for (const { rp, P } of tracks) rp.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
+  const birds = tracks.map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
   // labels claim space in priority order; anything that would overlap is left out
-  const taken = [[px - 24, py - 20, px + 24, py + 20], [0, H - cardH, W, H]];
+  const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H]];
   const ctlEl = $(".mapctl", $layer);
   if (ctlEl) { const r = ctlEl.getBoundingClientRect(), c = cv.getBoundingClientRect(); taken.push([r.left - c.left - 4, r.top - c.top - 4, r.right - c.left + 4, r.bottom - c.top + 4]); }
   const free = (b) => b[0] >= 2 && b[2] <= W - 2 && b[1] >= 2 && b[3] <= H - 2 && !taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
@@ -404,11 +415,12 @@ function drawMap(cv, m, cardH) {
     taken.push([lx - 3, ly - 10, lx + w + 3, ly + 10]);
     text(name, lx, ly, col("--label"));
   };
-  end(P[0], P[4], m.fromPlace); end(P[N], P[N - 4], m.toPlace);
+  end(tracks[0].P[0], tracks[0].P[4], m.fromPlace);
+  for (const { r, P } of tracks) end(P[P.length - 1], P[P.length - 5], r.toPlace);
   // other cities once there's room to read them
   if (k >= 4) {
     g.font = "500 11px -apple-system, system-ui, sans-serif";
-    const c2 = col("--label-2"), skip = new Set([m.fromPlace, m.toPlace]);
+    const c2 = col("--label-2"), skip = new Set([m.fromPlace, ...tracks.map(({ r }) => r.toPlace)]);
     for (const [name, lat, lon] of PLACES) {
       if (skip.has(name)) continue;
       for (const o of offs) {
@@ -421,10 +433,13 @@ function drawMap(cv, m, cardH) {
       }
     }
   }
-  const bird = new Path2D(BIRD), flip = here.dx > 0 ? -1 : 1;   // the icon faces left; turn it the way it's flying
-  g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
-  g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(bird); g.fillStyle = m.lost ? col("--label-3") : col("--p-" + kindOf(m)); g.fill(bird);   // the pigeon in its colour (grey where it was lost)
-  g.restore();
+  const bird = new Path2D(BIRD);
+  for (const { r, at: [px, py], dx } of birds) {
+    const flip = dx > 0 ? -1 : 1;                                 // the icon faces left; turn it the way it's flying
+    g.save(); g.translate(px, py); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
+    g.lineWidth = 3; g.strokeStyle = "#fff"; g.stroke(bird); g.fillStyle = r.lost ? col("--label-3") : col("--p-" + kindOf(r)); g.fill(bird);   // the pigeon in its colour (grey where it was lost)
+    g.restore();
+  }
   if (ctlEl) ctlEl.classList.toggle("moved", !!S.sheet?.view);
 }
 let mapFrameReq = 0;
@@ -491,7 +506,7 @@ async function useKeys(token, me, privJwk) {
 }
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
-  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], incoming: [], outgoing: [], passkeys: [],
+  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], passkeys: [],
     msgs: new Map(), plain: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
   clearAttach();
   await idb.del("session");
@@ -600,7 +615,7 @@ async function sync() {
       const d = await api("sync");
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
-      S.me = d.me; S.friends = d.friends; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn;
+      S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn;
       syncTheme();
       for (const f of S.friends) {
         checkPin(f);
@@ -611,6 +626,17 @@ async function sync() {
           if (S.started && f.last.from === f.id) S.fresh.set(f.last.id, Date.now());   // it lands in front of you
           if (S.started && f.last.from === f.id && !f.last.readAt && !(S.view === "chat" && S.chat === f.id))
             toast(`<b>${esc(first(f.name))}</b><br>A pigeon just landed.`, "Read", () => go("chat", f.id));
+        }
+      }
+      for (const g of S.groups) {
+        for (const p of g.members) if (p.id !== S.me.id) checkPin(p);
+        if (g.last) await decryptGroup(g, g.last);
+        const l = g.last;
+        if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
+          S.seenLanded.add(l.id);
+          if (S.started) S.fresh.set(l.id, Date.now());
+          if (S.started && !l.readAt && !(S.view === "chat" && S.chat === g.id))
+            toast(`<b>${esc(g.name)}</b><br>A pigeon from ${esc(first(member(g, l.from)?.name || "someone"))} just landed.`, "Read", () => go("chat", g.id));
         }
       }
       S.started = true;
@@ -641,14 +667,16 @@ function checkPin(f) {
   f.keyChanged = S.pins[f.id] !== k;
 }
 async function trustNewKey(fid) {
-  const f = friend(fid); if (!f) return;
+  const f = friend(fid) || S.groups.map((g) => member(g, fid)).find(Boolean); if (!f) return;
   const old = S.pins[fid], hist = S.pins["old:" + fid] || [];
   if (old && old !== keyId(f.pub) && !hist.includes(old)) S.pins["old:" + fid] = [...hist, old];
   S.pins[fid] = keyId(f.pub); await idb.set("pins:" + S.me.id, S.pins);
   f.keyChanged = false;
+  for (const x of [friend(fid), ...S.groups.map((g) => member(g, fid))]) if (x) x.keyChanged = false;   // the same person, wherever they appear
   for (const [id, p] of S.plain) if (p.unchecked) S.plain.delete(id);     // now they can be opened
-  if (f.last) await decrypt(fid, f.last);
-  if (S.view === "chat" && S.chat === fid) await loadChat(fid).catch(() => {});
+  if (friend(fid)?.last) await decrypt(fid, friend(fid).last);
+  for (const g of S.groups) if (g.last) await decryptGroup(g, g.last);
+  if (S.view === "chat" && (S.chat === fid || group(S.chat))) await loadChat(S.chat).catch(() => {});
   render();
 }
 function pairFor(pub) {
@@ -657,17 +685,57 @@ function pairFor(pub) {
   return S.pairs.get(k);
 }
 const base = (fid) => pairFor(friend(fid).pub);
+// Keys to try for someone's messages: theirs now (once checked), then ones this phone pinned before.
+// A key the server says changed isn't used until you've checked it.
+const keysOf = (p) => [p.keyChanged ? null : keyId(p.pub), S.pins[p.id], ...(S.pins["old:" + p.id] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
 async function decrypt(fid, m) {
   if (!m.ct || S.plain.has(m.id)) return;
   const f = friend(fid);
-  // a key the server says changed isn't used until you've checked it
-  const tries = [f.keyChanged ? null : keyId(f.pub), S.pins[fid], ...(S.pins["old:" + fid] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
+  const tries = keysOf(f);
   for (const k of tries) {
     try { S.plain.set(m.id, await E2E.open(await pairFor(pubFromId(k)), m, m.ct)); return; } catch (_) {}
   }
   S.plain.set(m.id, { t: "", bad: true, unchecked: !!f.keyChanged });
 }
+/* ---------- groups ----------
+   Everyone in a group gets their own pigeon, flying their own distance, so a
+   message lands for each person at a different time. */
+function group(id) { return S.groups.find((g) => g.id === id); }
+const GROUP_MAX = 12;
+const memberKm = (p) => p.lat != null && S.me.lat != null ? haversineKm(S.me.lat, S.me.lon, p.lat, p.lon) : p.km ?? 500;
+const member = (g, id) => g?.members.find((p) => p.id === id);
+const others = (g) => g.members.filter((p) => p.id !== S.me.id);
+async function decryptGroup(g, m) {
+  if (!m.body || !m.key || S.plain.has(m.id)) return;
+  const from = m.from === S.me.id ? { id: S.me.id, pub: S.myPub || S.me.pub } : member(g, m.from);
+  const tries = !from ? [] : from.id === S.me.id ? [keyId(from.pub)] : keysOf(from);
+  for (const k of tries) {
+    try {
+      const { k: key } = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: S.me.id }, m.key);
+      S.plain.set(m.id, await E2E.openGroup({ id: m.id, from: m.from, group: g.id }, key, m.body)); return;
+    } catch (_) {}
+  }
+  S.plain.set(m.id, { t: "", bad: true, unchecked: !!from?.keyChanged });
+}
+async function loadGroup(gid) {
+  const g = group(gid); if (!g) return;
+  const d = await api("group-messages?id=" + encodeURIComponent(gid));
+  S.skew = d.now - Date.now();
+  S.msgs.set(gid, d.messages); S.turns.set(gid, d.turn);
+  for (const m of d.messages) {
+    await decryptGroup(g, m);
+    const p = S.plain.get(m.id);
+    if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
+    if (m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(m.from !== S.me.id && (m.flying || m.lost))) loadPhoto(gid, m, p);
+  }
+  if (d.messages.some((m) => m.from !== S.me.id && !m.flying && !m.lost && !m.readAt)) {
+    api("group-read", { method: "POST", body: { id: gid } }).catch(() => {});
+    for (const m of d.messages) if (m.from !== S.me.id && !m.flying && !m.lost) m.readAt = m.readAt || now();
+    g.unread = 0;
+  }
+}
 async function loadChat(fid) {
+  if (group(fid)) return loadGroup(fid);
   const d = await api("messages?with=" + encodeURIComponent(fid));
   S.skew = d.now - Date.now();
   S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn);
@@ -686,7 +754,7 @@ async function loadChat(fid) {
 async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
   try {
-    const r = await api("photo/" + m.id, { raw: true });
+    const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true });
     const plain = await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
     S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: "image/jpeg" })));
   } catch (e) {
@@ -870,17 +938,37 @@ function preview(f) {
   const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.p ? (l.photo === 2 ? "Photo (expired)" : "Photo") + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
 }
+// how far a flock has got: landed for how many of how many, and how many lost
+function flockCount(m) {
+  const fl = m.flock || [], landed = fl.filter((x) => !x.flying && !x.lost).length, lost = fl.filter((x) => x.lost).length;
+  const next = fl.filter((x) => x.flying).reduce((a, x) => Math.min(a, x.deliverAt), Infinity);
+  return { n: fl.length, landed, lost, next: next === Infinity ? null : next };
+}
+function gpreview(g) {
+  const l = g.last;
+  if (!l) return { html: `${others(g).map((p) => esc(first(p.name))).join(", ")}`, at: g.createdAt };
+  const who = l.from === S.me.id ? "You" : esc(first(member(g, l.from)?.name || "Someone"));
+  if (l.from === S.me.id && l.flying) { const c = flockCount(l); return { html: `<span class="fl">${pg(kindOf(l))} In flight · ${c.landed} of ${c.n} landed</span>`, at: l.sentAt }; }
+  if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
+  if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pg(kindOf(l))} ${who}’s pigeon is on its way…</span>`, at: l.sentAt };
+  const p = S.plain.get(l.id) || { t: "" };
+  const body = p.bad ? "Couldn’t open this message" : p.p ? "Photo" + (p.t ? ": " + p.t : "") : p.t;
+  return { html: `${who}: ${esc(body)}`, at: l.from === S.me.id ? l.sentAt : l.deliverAt };
+}
 const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
 
 /* ---------- Messages ---------- */
 function vMessages() {
-  const fr = S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last).sort((a, b) => b.at - a.at);
-  const rows = fr.map(({ f, html, at }) => `
-    <button class="mrow" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">
+  const fr = [
+    ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last),
+    ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
+  ].sort((a, b) => b.at - a.at);
+  const rows = fr.map(({ f, g, html, at }) => `
+    <button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
-      ${avatar(f, "m", true)}
+      ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext">
-        <span class="mtop"><span class="mname one">${esc(first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
+        <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${html}</span>
       </span>
     </button>`).join("");
@@ -1022,7 +1110,7 @@ function status(f, t) {
     default: return "";
   }
 }
-function bubble(f, m, isLastMine, gapTop) {
+function bubble(f, m, isLastMine, gapTop, g) {
   const mine = m.from === S.me.id;
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
@@ -1044,13 +1132,61 @@ function bubble(f, m, isLastMine, gapTop) {
     html = `<div class="b pic${mine ? " me" : ""}${gapTop ? " gap-top" : ""}${fresh}">${photo}${p.t || prog ? `<span class="ptxt">${text}${prog}</span>` : ""}</div>`;
   } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}">${text}${prog}</div>`;
   const meta = [];
-  if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
+  if (g && mine) {
+    const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="map" data-id="${esc(m.id)}">${inner}</button>`;
+    if (m.flying) meta.push(tap(`${pg(kindOf(m))} ${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, kindOf(m)));
+    else if (c.lost === c.n) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
+    else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
+    else if (isLastMine) meta.push(tap(`Landed for all ${c.n}`, "done"));
+  }
+  else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   else if (mine && m.flying) meta.push(`<span class="fl ${kindOf(m)}">${pg(kindOf(m))} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length ? " · changed course" : ""}</span>`);
   else if (mine && isLastMine) meta.push(`<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">Photo disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
+function gstatus(g, t) {
+  const B = (cls, text) => `<div class="status ${cls}">${I.bird}<span>${text}</span></div>`;
+  const msgs = S.msgs.get(g.id) || [];
+  const inbound = [...msgs].reverse().find((m) => m.from !== S.me.id && m.flying);
+  switch (t?.state) {
+    case "fresh": return B("sill", "Your pigeons are ready. Say hello.");
+    case "sill": return B("sill", "Your turn to send.");
+    case "lost": return B("sill", "Your pigeons were lost. Your turn to send.");
+    case "inbound": return B("inbound", `${esc(first(member(g, inbound?.from)?.name || "Someone"))}’s pigeon is on its way.`);
+    case "outbound": return B("", "Your pigeons are flying.");
+    case "theirs": return B("", "Waiting for someone else to write.");
+    default: return "";
+  }
+}
+function vGroupChat(g) {
+  const msgs = S.msgs.get(g.id);
+  const t = S.turns.get(g.id) || g.turn;
+  let body = "", lastStamp = 0, prevFrom = null;
+  const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
+  if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
+  else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
+  else for (const m of msgs) {
+    const mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
+    if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
+    lastStamp = at;
+    const who = member(g, m.from) || { id: m.from, name: "Former member" };
+    if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
+    body += bubble(who, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
+    prevFrom = m.from;
+  }
+  const flying = msgs && [...msgs].reverse().find((m) => m.flying && (m.route || m.flock?.some((x) => x.route)));
+  const changed = others(g).filter((p) => p.keyChanged);
+  const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="trustm" data-id="${esc(changed[0].id)}">I’ve Checked</button></div>` : "";
+  return `<div class="navbar solid chatnav">
+      <div class="nb-left">${backBtn("tab", "messages")}</div>
+      <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="nm"><span>${esc(g.name)}</span>${I.chev}</span></button>
+      <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
+    </div>
+    ${warn}<div class="msgs">${gstatus(g, t)}${body}</div>`;
+}
 function vChat() {
+  if (group(S.chat)) return vGroupChat(group(S.chat));
   const f = friend(S.chat);
   if (!f) return `${navbar("", { left: backBtn("tab", "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
@@ -1208,9 +1344,11 @@ async function resetWith(mode, btn) {
 
 /* ---------- composer and tab bar ---------- */
 function renderCompose() {
-  const show = S.view === "chat" && !!S.chat && !!friend(S.chat) && !!S.me;
+  const g = S.chat ? group(S.chat) : null;
+  const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || g) && !!S.me;
   $compose.hidden = !show; if (!show) return;
-  const f = friend(S.chat), t = S.turns.get(f.id) || f.turn;
+  // a group stands in for a friend here: its turn, and any member's changed key
+  const f = g ? { id: g.id, turn: g.turn, keyChanged: others(g).some((p) => p.keyChanged) } : friend(S.chat), t = S.turns.get(f.id) || f.turn;
   const note = $(".note", $compose), btn = $(".send", $compose), pick = $(".pick", $compose);
   const dumb = dumbText();
   const has = (dumb ?? $ta.value).trim() || S.attach;
@@ -1235,6 +1373,13 @@ function renderCompose() {
     const next = Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity));
     note.hidden = false; note.className = "note stop"; blocked = true;
     note.textContent = `It isn’t your turn, and your lofts are empty. The next pigeon hatches in ${fmtDur(next - now())}.`;
+  } else if (g) {
+    // one pigeon each: say when the first and the last land
+    const kms = others(g).map(memberKm).sort((a, b) => a - b), ms = (k) => fmtDur(flightMs(k, mySpeed(kind))), n = kms.length;
+    const span = !n ? "" : ms(kms[0]) === ms(kms[n - 1]) ? ms(kms[0]) : `${ms(kms[0])}–${ms(kms[n - 1])}`;
+    const what = kind === "standard" ? (n === 1 ? "pigeon" : "pigeons") : kind === "dumb" ? (n === 1 ? "dumb pigeon" : "dumb pigeons") : KIND[kind].name.toLowerCase() + (n === 1 ? "" : "s");
+    note.hidden = false; note.className = "note go";
+    note.innerHTML = `${pg(kind)}<span>${t.free || kind === "dumb" ? "" : "Not your turn. "}${n} ${what} land${n === 1 ? "s" : ""} in ${span}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
   } else {
     const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500;
     note.hidden = false; note.className = "note go";
@@ -1253,7 +1398,7 @@ function renderCompose() {
 const TABS = [["messages", "Messages", "bubble"], ["friends", "Friends", "people"], ["account", "Account", "person"]];
 // Built once and then updated, so the highlight can slide between tabs.
 function renderTabs() {
-  const unread = S.friends.reduce((n, f) => n + (f.unread || 0), 0);
+  const unread = [...S.friends, ...S.groups].reduce((n, f) => n + (f.unread || 0), 0);
   const cur = S.view === "chat" ? "messages" : S.view;
   const badges = { messages: unread, friends: S.incoming.length, account: 0 };
   let tabs = $(".tabs", $tabbar);
@@ -1354,7 +1499,7 @@ function drawSheet(refresh) {
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
     case "map":
-      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml("Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
+      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)?.flock ? "Pigeons in Flight" : "Pigeon in Flight", `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button></div>
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
@@ -1394,10 +1539,47 @@ function drawSheet(refresh) {
       return;
     case "newmsg":
       $layer.innerHTML = sheetHtml("New Message", S.friends.length
-        ? `<div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
+        ? `<div class="group mt-s">${cell({ act: "newgroup", icon: I.people, tile: "green", label: "New Group", cls: "action" })}</div>
+          ${S.groups.length ? `<div class="ghead">Groups</div><div class="group">${S.groups.map((g) => `<button class="cell" data-act="open" data-id="${esc(g.id)}">${gavatar(g, "s")}<span class="ctext"><span class="one">${esc(g.name)}</span><span class="csub one">${g.members.length} people</span></span>${chevSm}</button>`).join("")}</div>` : ""}
+          <div class="ghead">To</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="open" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}${S.me.lat != null && x.lat != null ? ` · ${fmtDur(flightMs(haversineKm(S.me.lat, S.me.lon, x.lat, x.lon)))} by pigeon` : ""}</span></span>${chevSm}</button>`).join("")}</div>`
         : `<p class="empty"><b>No friends yet</b>Add a friend first.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`,
         { left: { label: "Cancel", act: "close" }, right: null });
       return;
+    case "newgroup": case "groupadd": {
+      // pick friends with a tick; a new group also gets a name
+      const g = s.type === "groupadd" ? group(s.id) : null;
+      const pool = S.friends.filter((x) => !g || !member(g, x.id)).sort((a, b) => a.name.localeCompare(b.name));
+      const name = $("#f-gname", $layer)?.value ?? s.name ?? "";
+      const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
+      const rows = pool.map((x) => `<button type="button" class="cell pickrow" role="checkbox" aria-checked="${s.pick.has(x.id)}" data-act="gpick" data-id="${esc(x.id)}">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span><span class="csub one">${esc(x.place || "No location")}</span></span><span class="tickbox" aria-hidden="true">${I.check}</span></button>`).join("");
+      const n = s.pick.size + (g ? g.members.length : 1);
+      $layer.innerHTML = sheetHtml(g ? "Add People" : "New Group", `<form id="group-form" data-form="${g ? "groupadd" : "newgroup"}" novalidate>
+          ${g ? "" : `<div class="group mt-s"><label class="fcell"><input id="f-gname" name="name" placeholder="Group name" maxlength="40" autocomplete="off" aria-label="Group name"></label></div>`}
+          ${pool.length ? `<div class="ghead">${g ? "Your friends" : "Who’s in it"}</div><div class="group">${rows}</div>
+            <div class="gfoot">${n > GROUP_MAX ? `Groups can have up to ${GROUP_MAX} people.` : `${n} ${n === 1 ? "person" : "people"}, including you. Everyone gets their own pigeon, flying the real distance to them. People in a group see each other’s names, but only friends see where each other are.`}</div>`
+            : `<p class="empty"><b>${g ? "Everyone’s already here" : "No friends yet"}</b>${g ? "All your friends are in this group." : "Add a friend first."}</p>`}
+          ${ferr}</form>`,
+        { left: g ? { label: "Back", act: "groupinfo" } : { label: "Cancel", act: "close" }, right: s.pick.size && n <= GROUP_MAX ? { label: g ? "Add" : "Create", form: "group-form" } : null });
+      if ($("#f-gname", $layer)) $("#f-gname", $layer).value = name;
+      if (top) $(".sheet .body", $layer).scrollTop = top;
+      return;
+    }
+    case "groupinfo": {
+      const g = group(s.id); if (!g) { S.sheet = null; return renderSheet(); }
+      const me = { ...S.me, id: S.me.id };
+      const row = (p) => {
+        const you = p.id === S.me.id, km = you ? null : memberKm(p);
+        const sub = you ? "You" : p.friend ? `${esc(p.place || "No location")}${km != null ? ` · ${fmtDur(flightMs(km))} by pigeon` : ""}` : `Friend of ${esc(first(member(g, p.addedBy)?.name || "a member"))} · ${fmtDur(flightMs(km))} by pigeon`;
+        return `<div class="cell">${avatar(you ? me : p, "s", !you && p.friend)}<span class="ctext"><span class="one">${esc(first(p.name))}</span><span class="csub one">${sub}</span></span></div>`;
+      };
+      const list = [S.me.id, ...others(g).sort((a, b) => memberKm(a) - memberKm(b)).map((p) => p.id)].map((id) => id === S.me.id ? { id, name: S.me.name } : member(g, id));
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head">${gavatar(g, "xl")}<span class="name">${esc(g.name)}</span><span class="sub">${g.members.length} people</span></div>
+        <div class="ghead">People</div><div class="group">${list.map(row).join("")}
+          ${g.members.length < GROUP_MAX ? cell({ act: "groupadd", id: g.id, icon: I.addp, tile: "green", label: "Add People", cls: "action" }) : ""}</div>
+        <div class="gfoot">Only friends see where each other are. Anyone in the group can add their own friends.</div>
+        <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`);
+      return;
+    }
     case "addfriend":
       if (!$("#add-h", $layer)) {
         $layer.innerHTML = sheetHtml("Add Friend", `<form id="add-form" data-form="add" novalidate>
@@ -1506,7 +1688,8 @@ function tickMap() {
   const s = S.sheet; if (!s || s.type !== "map") return;
   const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
-  if (!m || !card || !m.route) return;
+  if (!m || !card || !(m.route || m.flock)) return;
+  if (m.flock) return tickFlockMap(m, card, cv);
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
   const speed = m.lost || f.phase === "landed" ? "" : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pg(kindOf(m))}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
@@ -1516,6 +1699,20 @@ function tickMap() {
   $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
+}
+// Your message to a group: how far each pigeon has got.
+function tickFlockMap(m, card, cv) {
+  const g = group(S.chat), c = flockCount(m), end = Math.max(...m.flock.map((x) => x.deliverAt));
+  const frac = Math.min(1, Math.max(0, (now() - m.sentAt) / Math.max(1, end - m.sentAt)));
+  const rows = [...m.flock].sort((a, b) => a.deliverAt - b.deliverAt).map((x) => {
+    const p = member(g, x.to), state = x.lost ? `<span class="lostp">${I.skull} Lost</span>` : x.flying ? `<span data-eta="${esc(x.deliverAt)}">${fmtDur(x.deliverAt - now())}</span>` : "Landed";
+    return `<span class="frow${x.flying ? " flying" : ""}">${avatar(p || { name: "?" }, "xs")}<span class="one">${esc(first(p?.name || "Someone"))}${x.route ? "" : ` <span class="hid">· not on map</span>`}</span><b>${state}</b></span>`;
+  }).join("");
+  card.innerHTML = `<span class="big">${pg(kindOf(m))}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
+    ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}
+    <span class="prog"><i></i></span><span class="frows">${rows}</span>`;
+  $(".prog i", card).style.width = (frac * 100).toFixed(2) + "%";
+  if (routesOf(m).length) drawMap(cv, m, card.offsetHeight + 14);
 }
 // The once-a-second tick is plenty for a slow pigeon, but taking off, landing
 // or a fast short hop would judder, so then the map redraws ~30 times a second.
@@ -1611,6 +1808,30 @@ async function onClick(e) {
     case "to": return go(id);
     case "open": return go("chat", id);
     case "newmsg": S.sheet = { type: "newmsg" }; return renderSheet();
+    case "newgroup": S.sheet = { type: "newgroup", pick: new Set() }; renderSheet(); setTimeout(() => $("#f-gname", $layer)?.focus(), 300); return;
+    case "groupadd": S.sheet = { type: "groupadd", id: id || S.sheet?.id, pick: new Set() }; return renderSheet();
+    case "gpick": {
+      const s = S.sheet; if (!s?.pick) return;
+      s.name = $("#f-gname", $layer)?.value; s.pick.has(id) ? s.pick.delete(id) : s.pick.add(id); return renderSheet();
+    }
+    case "groupinfo": S.sheet = { type: "groupinfo", id: id || S.sheet?.id || S.chat }; return renderSheet();
+    case "groupmenu": {
+      const g = group(S.chat); if (!g) return;
+      return openMenu(t, [
+        { label: "Group Info", icon: I.info, act: "groupinfo", id: g.id },
+        { label: "Add People", icon: I.addp, act: "groupadd", id: g.id },
+        { label: "Leave Group", icon: I.minusp, act: "groupleaveask", id: g.id, destructive: true },
+      ]);
+    }
+    case "groupleaveask": {
+      const g = group(id); if (!g) return;
+      return openActions({ title: `Leave ${g.name}?`, message: "You’ll stop getting its pigeons, and won’t see anything sent after you leave.", actions: [{ label: "Leave Group", act: "groupleave", id, destructive: true }] });
+    }
+    case "groupleave":
+      try { await api("group-leave", { method: "POST", body: { id } }); S.sheet = null; renderSheet(); await sync(); go("messages"); toast("You left the group."); }
+      catch (err) { toast(esc(err.message)); }
+      return;
+    case "trustm": return trustNewKey(id);
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
@@ -1809,6 +2030,19 @@ async function onSubmit(e) {
   const form = e.target, kind = form.dataset.form;
   const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${esc(form.id)}"]`, $layer);
   if (kind === "compose") return send();
+  if (kind === "newgroup" || kind === "groupadd") {
+    const s = S.sheet, name = String($("#f-gname", $layer)?.value || "").trim();
+    if (kind === "newgroup" && !name) return showErr("Give the group a name.", "gname");
+    try {
+      const r = await busyBtn(btn, "…", () => kind === "newgroup"
+        ? api("groups", { method: "POST", body: { name, members: [...s.pick] } })
+        : api("group-add", { method: "POST", body: { id: s.id, members: [...s.pick] } }));
+      await sync();
+      if (kind === "newgroup") { S.sheet = null; renderSheet(); go("chat", r.group.id); }
+      else { S.sheet = { type: "groupinfo", id: s.id }; renderSheet(); toast(`Added to ${esc(group(s.id)?.name || "the group")}.`); }
+    } catch (err) { showErr(err.message); }
+    return;
+  }
   if (kind === "add") {
     const h = form.h.value.trim(); if (!h) return;
     const msg = $(".add-msg", $layer);
@@ -1992,17 +2226,26 @@ async function send() {
       payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h };
       blob = sealed.data;
     }
-    const ct = await E2E.seal(await base(to), { id, from: S.me.id, to }, payload);
+    const g = group(to);
+    let meta;
+    if (g) {
+      // sealed once; its key sealed for each member (and for me, so my other phones can read it)
+      const { body, key } = await E2E.sealGroup({ id, from: S.me.id, group: g.id }, payload);
+      const keys = {};
+      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id, from: S.me.id, to: p.id }, { k: key });
+      meta = { id, group: g.id, body, keys, pigeon: S.sendKind };
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to }, payload), pigeon: S.sendKind };
+    const path = g ? "group-messages" : "messages";
     let r;
     if (blob) {
       const form = new FormData();
-      form.append("meta", JSON.stringify({ id, to, ct, pigeon: S.sendKind }));
+      form.append("meta", JSON.stringify(meta));
       form.append("photo", new Blob([blob], { type: "application/octet-stream" }), "photo.bin");
       showUpload("send", 0);
-      r = await api("messages", { method: "POST", form, onProgress: (f) => showUpload("send", f) });
+      r = await api(path, { method: "POST", form, onProgress: (f) => showUpload("send", f) });
       showUpload("send", 1); await new Promise((res) => setTimeout(res, 300));   // let the bar finish its glide
       upAnim?.stop(); upAnim = null;
-    } else r = await api("messages", { method: "POST", body: { id, to, ct, pigeon: S.sendKind } });
+    } else r = await api(path, { method: "POST", body: meta });
     S.pick = null;                    // next time, back to the default
     S.plain.set(id, payload);
     if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
@@ -2134,7 +2377,7 @@ function openLink(hash) {
   if (!S.me) { S.pendingLink = hash; return true; }
   closePop(); S.sheet = null; renderSheet();
   if (acc) go("account");
-  else if (o && friend(o[1])) go("chat", o[1]);
+  else if (o && (friend(o[1]) || group(o[1]))) go("chat", o[1]);
   else { go("friends"); if (S.incoming.length) { S.sheet = { type: "requests" }; renderSheet(); } }
   return true;
 }
