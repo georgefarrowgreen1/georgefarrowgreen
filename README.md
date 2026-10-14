@@ -253,6 +253,15 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**App lock.** Privacy & Security → Lock InFlight (per phone; needs a
+passkey). InFlight then locks when you leave it, straight away or after 1, 15
+or 60 minutes, and opens with Face ID, Touch ID or the passkey: a
+user-verified passkey check made on the phone itself, so it works offline.
+Turning it on checks it's you first, so you can't lock yourself out by
+accident; "Sign Out Instead" on the lock screen is the way out if you're stuck.
+While locked nothing from your chats is drawn, and with the lock on the app is
+blurred in the app switcher.
+
 **Voice pigeons.** With nothing typed, the send button is a microphone: tap
 to record (up to 30 seconds, with a live waveform; the bin cancels), then send.
 The recording is sealed like a photo, with its own random key labelled "voice"

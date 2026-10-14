@@ -1342,7 +1342,7 @@ async function forget() {
   clearTimeout(cacheTimer);
   if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {}); }
   S.outbox = [];
-  S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false;
+  S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
   clearAttach();
@@ -1891,6 +1891,8 @@ function render() {
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     return;
   }
+  if (S.locked) { $view.innerHTML = ""; $compose.hidden = true; $tabbar.hidden = true; $layer.innerHTML = ""; drawLock(); return; }
+  drawLock();
   const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
   if (tabsBack) { $tabbar.classList.remove("rise"); void $tabbar.offsetWidth; $tabbar.classList.add("rise"); }
@@ -2879,6 +2881,13 @@ function drawSheet(refresh) {
           ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
         </div>
+        ${passkeysSupported() ? `<div class="ghead">This Phone</div>
+        <div class="group">
+          ${toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: "Face ID, Touch ID or your passkey", on: !!lockPrefs() })}
+          ${lockPrefs() ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
+            <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
+        </div>
+        <div class="gfoot">${lockPrefs() ? "InFlight locks when you leave it, and hides your chats in the app switcher." : "Lock InFlight when you leave it. Unlocking happens on this phone, so it works with no signal too."}</div>` : ""}
         <div class="ghead">Privacy</div>
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
@@ -3639,6 +3648,14 @@ async function onClick(e) {
       el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
       el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return;
     }
+    case "applock": {
+      if (lockPrefs()) { setLockPrefs(null); haptic("tick"); toast("InFlight won’t lock."); return renderSheet(); }
+      if (!S.passkeys?.length) { toast("Add a passkey first: it’s what unlocks InFlight."); S.sheet = { type: "passkeys" }; return renderSheet(); }
+      try { await lockCheck(); } catch (_) { return toast("Couldn’t check it’s you, so InFlight won’t lock yet."); }
+      setLockPrefs({ on: true, after: 0 }); haptic("success"); toast("InFlight locks when you leave it."); return renderSheet();
+    }
+    case "unlock": return unlock();
+    case "lockout": return openActions({ message: "Sign out of InFlight on this phone? You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     case "recstart": return recStart();
     case "reccancel": return recStop(false);
     case "recsend": return recStop(true);
@@ -3826,6 +3843,7 @@ async function onChange(e) {
   if (el.id === "av-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
   if (el.id === "file-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
   if (el.dataset.act === "quiethour") return setNotify({ [el.dataset.id]: Number(el.value) });
+  if (el.dataset.act === "lockafter") { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(el.value) || 0 }); return renderSheet(); }
   if (el.dataset.act === "city" && el.value) {
     const p = PLACES.find((x) => x[0] === el.value);
     if (p) await savePlace(p[1], p[2], p[0]);
@@ -4228,6 +4246,48 @@ function showUpload(stage, f = 0) {
   });
   upAnim.set(f);
 }
+/* ---------- the app lock ----------
+   Optional, per phone: InFlight locks when you leave it (straight away, or
+   after a minute, 15 minutes or an hour), and opens with Face ID, Touch ID
+   or the phone's passkey. The check is the phone's own (a user-verified
+   passkey assertion), so it works with no signal too. While locked nothing
+   from your chats is drawn, and it's blurred in the app switcher. */
+const LOCK_KEY = "inflight-lock", LOCK_AFTER = [[0, "Immediately"], [60e3, "After 1 Minute"], [15 * 60e3, "After 15 Minutes"], [HOUR, "After 1 Hour"]];
+function lockPrefs() { try { const v = JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); return v && S.me && v.uid === S.me.id && v.on ? v : null; } catch (_) { return null; } }
+function setLockPrefs(v) { try { if (v) localStorage.setItem(LOCK_KEY, JSON.stringify({ ...v, uid: S.me.id })); else localStorage.removeItem(LOCK_KEY); } catch (_) {} }
+// a user-verified passkey check, on this phone
+async function lockCheck() {
+  const ids = (S.passkeys || []).map((p) => p.id).filter(Boolean);
+  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 60000,
+    allowCredentials: ids.map((id) => ({ type: "public-key", id: fromB64url(id) })) } });
+  const ad = a && new Uint8Array(a.response.authenticatorData);
+  if (!ad || !(ad[32] & 0x04)) throw new Error("not verified");           // the UV flag: Face ID, Touch ID or the passcode was used
+  return true;
+}
+function drawLock() {
+  let el = $(".lockscreen", root());
+  if (!S.locked) { el?.remove(); return; }
+  if (!el) {
+    el = document.createElement("div"); el.className = "lockscreen"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "InFlight is locked");
+    el.innerHTML = `<div class="lockin"><div class="appicon">${I.bird}</div><h2>InFlight is locked</h2><p>Unlock with Face ID, Touch ID or your passkey.</p>
+      <button type="button" class="btn wide" data-act="unlock">${I.face}Unlock</button><button type="button" class="link" data-act="lockout">Sign Out Instead</button></div>`;
+    root().appendChild(el);
+  }
+}
+async function unlock() {
+  if (S.unlocking) return; S.unlocking = true;
+  try { await lockCheck(); S.locked = false; haptic("success"); drawLock(); render(); sync(); }
+  catch (_) { toast("Couldn’t unlock. Try again."); }
+  finally { S.unlocking = false; }
+}
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  const lp = lockPrefs(); if (!lp) return;
+  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); root()?.classList.add("veiled"); return; }
+  root()?.classList.remove("veiled");
+  if (!S.locked && hiddenAt && Date.now() - hiddenAt >= (lp.after || 0)) { S.locked = true; closePop(); S.sheet = null; render(); }
+});
+
 /* ---------- voice pigeons ----------
    Tap the microphone (when there's nothing typed) to record, up to 30
    seconds. The recording is sealed like a photo, with its own random key
@@ -4629,6 +4689,7 @@ async function start() {
     S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
     S.view = S.pendingAdd ? "friends" : "messages";
+    if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once
     await outboxLoad();
     render();

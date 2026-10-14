@@ -1137,3 +1137,15 @@ svg.fillico{fill:currentColor;stroke:none}
 .vthumb .ico{font-size:22px}
 @media (prefers-reduced-motion: reduce){.recdot,.recbar{animation:none}}
 .vwave i.on{opacity:1}
+/* the app lock */
+.lockscreen{position:absolute;inset:0;z-index:39;display:grid;place-items:center;padding:24px;background:var(--bg);animation:lockin .35s ease}
+@keyframes lockin{from{opacity:0}}
+.lockin{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;max-width:300px}
+.lockin .appicon{margin-bottom:6px}
+.lockin h2{margin:0;font-size:24px;font-weight:700}
+.lockin p{margin:0 0 10px;color:var(--label-2);font-size:15px;line-height:1.4}
+.lockin .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.lockin .btn .ico{font-size:20px}
+.lockin .link{border:0;background:none;color:var(--tint);font:inherit;font-size:15px;padding:8px;cursor:pointer}
+/* leaving the app with the lock on: blurred for the app switcher's snapshot */
+.veiled .view,.veiled .compose,.veiled .layer{filter:blur(18px);transition:none}
