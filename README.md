@@ -539,7 +539,12 @@ show a friendly "backend not set up" message).
   holds that key (an HMAC under the secret it shares with a one-off server key),
   so a stolen link can't quietly swap in a key without friends being warned.
 - **Friend requests** show the person you asked nothing of them (name or
-  picture) until they say yes.
+  picture) until they say yes. Declining isn't told to the asker: their
+  request just keeps looking like it's waiting, and asking again reaches no one
+  for 30 days. **Blocking** (from a request, a chat's menu or contact info)
+  ends the friendship and stops their requests, pigeons, and access to your
+  picture and place; they aren't told, and Privacy & Security → Blocked lists
+  them to unblock.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
   only friends see it. Photos are re-encoded, which strips EXIF and GPS.
 - **Limits:** no forward secrecy (each pair of friends shares one long-term

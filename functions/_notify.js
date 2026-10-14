@@ -316,7 +316,7 @@ export async function tick(env, origin) {
   // old rate-limit windows and ended sessions
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
-    D.prepare("DELETE FROM pg_links WHERE status = 'pending' AND created_at < ?").bind(t - 30 * DAY)]).catch(() => {});
+    D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY)]).catch(() => {});
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
   const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient

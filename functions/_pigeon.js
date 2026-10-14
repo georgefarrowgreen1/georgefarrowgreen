@@ -198,6 +198,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
   "ALTER TABLE pg_sessions ADD COLUMN auth_at INTEGER",      // when this sign-in last showed it's you (password or passkey)
   "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // a one-off key a reset that keeps the old key proves it against
+  // declined and blocked links: a = who said no, b = who asked; asked_at = b still sees their request as waiting
+  "ALTER TABLE pg_links ADD COLUMN asked_at INTEGER",
 ];
 let schemaReady = false;
 export async function db(env) {

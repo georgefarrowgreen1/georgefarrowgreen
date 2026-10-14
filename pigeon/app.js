@@ -35,7 +35,7 @@ const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "
 /* ---------------- state ---------------- */
 const S = {
   token: null, me: null, priv: null, secretJwk: null, fp: "",
-  friends: [], groups: [], incoming: [], outgoing: [], passkeys: [], skew: 0,
+  friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [], skew: 0,
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
@@ -248,6 +248,7 @@ const I = {
   dot: ico(`<circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/>`),
   warn: ico(`<path d="M12 4 2.8 19.5h18.4Z"/><path d="M12 10v4.5M12 17.2v.3"/>`),
   mail: ico(`<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 6.5 8.5 7 8.5-7"/>`),
+  block: ico(`<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>`),
 };
 
 /* ---------------- photos ---------------- */
@@ -1344,7 +1345,7 @@ async function forget() {
   if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {}); }
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.locked = false;
-  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], passkeys: [],
+  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
   clearAttach();
   await idb.del("session");
@@ -1476,7 +1477,7 @@ let syncing = null;
 // What the server says (fresh, or the copy kept on this phone): friends,
 // groups and each chat's last message, opened with the key on this phone.
 async function applySync(d) {
-  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn;
+  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.blocked = d.blocked || []; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn;
   syncTheme();
   for (const f of S.friends) {
     checkPin(f);
@@ -2872,6 +2873,7 @@ function addLookup() {
       sent: row("Request sent · waiting for them", `<button type="button" class="btn small gray" data-act="cancelreq" data-id="${esc(r.id)}">Cancel</button>`),
       incoming: row("Wants to be your friend", `<button type="button" class="btn small" data-act="accept" data-id="${esc(r.id)}">Accept</button>`),
       friends: row("Already friends", `<button type="button" class="btn small gray" data-act="addchat" data-id="${esc(r.id)}">Message</button>`),
+      blocked: row("You blocked them", `<button type="button" class="btn small gray" data-act="unblock" data-id="${esc(r.id)}">Unblock</button>`),
     }[r.state] || "";
   }, 300);
 }
@@ -3016,8 +3018,9 @@ function drawSheet(refresh) {
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
+          ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
-        <div class="gfoot">These work both ways: turn one off and you won’t see other people’s either.</div>
+        <div class="gfoot">Online and read receipts work both ways: turn one off and you won’t see other people’s either.</div>
         <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "profile" } });
       return;
     }
@@ -3242,9 +3245,14 @@ function drawSheet(refresh) {
           ${km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
-        <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}</div>`);
+        <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`);
       return;
     }
+    case "blocked":
+      $layer.innerHTML = sheetHtml("Blocked", S.blocked.length ? `<div class="group mt-s">${S.blocked.map((p) => `<div class="cell has-icon">${avatar({ name: p.name || p.handle }, "s", false, true)}<span class="ctext"><span>${esc(p.name || "@" + p.handle)}</span><span class="csub">@${esc(p.handle)}</span></span><button class="link" data-act="unblock" data-id="${esc(p.id)}" aria-label="Unblock @${esc(p.handle)}">Unblock</button></div>`).join("")}</div>
+        <div class="gfoot">They can’t send you friend requests or pigeons, or see your picture or where you are. They aren’t told.</div>`
+        : `<p class="empty"><b>No one blocked</b>Block someone from their friend request or their contact info. They aren’t told.</p>`, { left: { label: "Back", act: "securitysheet" } });
+      return;
     case "view":
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
@@ -3868,6 +3876,7 @@ async function onClick(e) {
         { label: "Contact Info", icon: I.info, act: "friendinfo", id: f.id },
         { label: "Safety Number", icon: I.shield, act: "safety", id: f.id },
         { label: "Remove Friend", icon: I.minusp, act: "unfriendask", id: f.id, destructive: true },
+        { label: "Block", icon: I.block, act: "blockask", id: f.id, destructive: true },
       ]);
     }
     // The phone's own picker already offers Photo Library, Take Photo and Choose File,
@@ -3878,9 +3887,34 @@ async function onClick(e) {
       return openMenu(t, [{ label: "Change Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }]);
     case "pick": return $("#" + id)?.click();
     case "trust": return trustNewKey(id);
-    case "accept": case "decline":
+    case "decline": {
+      const p = S.incoming.find((x) => x.id === id);
+      return openActions({ message: `Decline ${p ? "@" + p.handle + "’s" : "this"} request? They aren’t told, and can’t ask again for 30 days.`,
+        actions: [{ label: "Decline", act: "declinego", id }, { label: "Decline and Block", act: "blockgo", id, destructive: true }] });
+    }
+    case "accept": case "declinego":
       await api("friends-respond", { method: "POST", body: { id, accept: t.dataset.act === "accept" } }).catch((err) => toast(esc(err.message)));
       await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
+    case "blockask": {
+      const p = personById(id) || S.incoming.find((x) => x.id === id); if (!p) return;
+      const shared = S.groups.some((g) => g.members?.some((m) => m.id === id));
+      return openActions({ title: `Block @${p.handle}?`, message: `They won’t be able to send you pigeons or friend requests, or see your picture or where you are. They aren’t told.${shared ? " You’ll both still be in the groups you share." : ""}`,
+        actions: [{ label: "Block", act: "blockgo", id, destructive: true }] });
+    }
+    case "blockgo": {
+      const p = personById(id) || S.incoming.find((x) => x.id === id);
+      try { await api("block", { method: "POST", body: { id } }); haptic("success"); toast(`Blocked${p ? " @" + esc(p.handle) : ""}.`); }
+      catch (err) { return toast(esc(err.message)); }
+      if (S.chat === id) { S.sheet = null; await sync(); renderSheet(); return go("messages"); }
+      if (S.sheet?.type === "friendinfo") S.sheet = null;
+      await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
+    }
+    case "unblock": {
+      const p = S.blocked.find((x) => x.id === id);
+      await api("block", { method: "DELETE", body: { id } }).then(() => toast(`Unblocked${p ? " @" + esc(p.handle) : ""}.`), (err) => toast(esc(err.message)));
+      await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
+    }
+    case "blockedsheet": S.sheet = { type: "blocked" }; return renderSheet();
     case "cancelreq":
       await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
       await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;

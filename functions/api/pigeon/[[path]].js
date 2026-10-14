@@ -240,7 +240,7 @@ async function getAvatar({ request, env }, id) {
   id = String(id || "");
   if (id !== u.id) {
     // or someone in a group with you
-    const l = await (await db(env)).prepare(`SELECT 1 FROM pg_links WHERE (a = ?2 AND b = ?1) OR (a = ?1 AND b = ?2 AND status = 'ok')
+    const l = await (await db(env)).prepare(`SELECT 1 FROM pg_links WHERE (a = ?2 AND b = ?1 AND status IN ('ok', 'pending')) OR (a = ?1 AND b = ?2 AND status = 'ok')
       UNION ALL SELECT 1 FROM pg_group_members x JOIN pg_group_members y ON y.group_id = x.group_id WHERE x.user_id = ?1 AND y.user_id = ?2 LIMIT 1`).bind(u.id, id).first();
     if (!l) throw new HttpError(404, "No picture.");
   }
@@ -367,7 +367,16 @@ async function friendStatus({ request, env }) {
   if (!t) return json({ state: "none", handle: h });
   if (t.id === u.id) return json({ state: "self", handle: h });
   const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, t.id).first();
-  return json({ handle: t.handle, id: t.id, state: !l ? "new" : l.status === "ok" ? "friends" : l.a === u.id ? "sent" : "incoming" });
+  return json({ handle: t.handle, id: t.id, state: linkState(l, u.id) });
+}
+// Where you stand with someone. A "no" (declined or blocked) never shows to the one
+// told it: their request just looks like it's still waiting, or there's none.
+const NO = new Set(["declined", "blocked"]);
+function linkState(l, me) {
+  if (!l) return "new";
+  if (l.status === "ok") return "friends";
+  if (NO.has(l.status)) return l.a === me ? (l.status === "blocked" ? "blocked" : "new") : l.asked_at ? "sent" : "new";
+  return l.a === me ? "sent" : "incoming";
 }
 const PENDING_MAX = 50;                  // friend requests waiting for one person (older than 30 days go)
 async function addFriend({ request, env, waitUntil }) {
@@ -380,6 +389,25 @@ async function addFriend({ request, env, waitUntil }) {
   if (t.id === u.id) return json({ message: "That’s you." });
   const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, t.id).first();
   if (l?.status === "ok") return json({ message: `@${t.handle} is already in your flock.` });
+  if (l && NO.has(l.status)) {
+    if (l.a === u.id) {
+      if (l.status === "blocked") return json({ message: `You blocked @${t.handle}. Unblock them in Privacy & Security first.` });
+      // you said no, then changed your mind: if they still want to, you're friends; if not, it's your request now
+      if (l.asked_at) {
+        await D.prepare("UPDATE pg_links SET status = 'ok', asked_at = NULL WHERE a = ? AND b = ?").bind(u.id, t.id).run();
+        waitUntil(friendAccepted(env, u, t.id).catch(() => {}));
+        return json({ message: `@${t.handle} joined your flock.` });
+      }
+      await D.batch([D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ?").bind(u.id, t.id),
+        D.prepare("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'pending', ?)").bind(u.id, t.id, Date.now())]);
+      waitUntil(friendRequested(env, linkOrigin(request), u, t.id).catch(() => {}));
+      return json({ message: `Request sent to @${t.handle}.` });
+    }
+    // they said no: it looks like any request still waiting, and they hear nothing more
+    if (l.asked_at) return json({ message: `Your request to @${t.handle} is still waiting.` });
+    await D.prepare("UPDATE pg_links SET asked_at = ? WHERE a = ? AND b = ?").bind(Date.now(), t.id, u.id).run();
+    return json({ message: `Request sent to @${t.handle}.` });
+  }
   if (l && l.a === u.id) return json({ message: `Your request to @${t.handle} is still waiting.` });
   if (l) {
     await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ?").bind(t.id, u.id).run();
@@ -400,13 +428,43 @@ async function respondFriend({ request, env, waitUntil }) {
     const r = await D.prepare("UPDATE pg_links SET status = 'ok' WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
     if (r.meta.changes) waitUntil(friendAccepted(env, u, String(b.id)).catch(() => {}));
   }
-  else await D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id).run();
+  // Declining: they aren't told, and can't ask again for 30 days (their request just keeps waiting)
+  else await D.batch([
+    D.prepare("INSERT OR IGNORE INTO pg_links (a, b, status, created_at, asked_at) SELECT b, a, 'declined', ?3, ?3 FROM pg_links WHERE a = ?1 AND b = ?2 AND status = 'pending'").bind(String(b.id), u.id, Date.now()),
+    D.prepare("DELETE FROM pg_links WHERE a = ? AND b = ? AND status = 'pending'").bind(String(b.id), u.id),
+  ]);
   return json({ ok: true });
 }
 async function removeFriend({ request, env }) {
   const u = await requireUser(request, env);
-  const id = String((await body(request)).id);
-  await (await db(env)).prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).run();
+  const id = String((await body(request)).id), D = await db(env);
+  await D.batch([
+    D.prepare("DELETE FROM pg_links WHERE ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)) AND status IN ('ok', 'pending')").bind(u.id, id),
+    // cancelling a request they said no to: it goes from your list, but their no stands
+    D.prepare("UPDATE pg_links SET asked_at = NULL WHERE a = ?2 AND b = ?1 AND status IN ('declined', 'blocked')").bind(u.id, id),
+  ]);
+  return json({ ok: true });
+}
+// Blocking: no friendship, no requests (theirs look like they're still waiting), no
+// picture or place. They aren't told. Unblocking just lifts it.
+async function block({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "block:" + u.id, 60, 60 * 60e3);
+  const id = String((await body(request)).id || ""), D = await db(env);
+  if (id === u.id || !(await D.prepare("SELECT 1 FROM pg_users WHERE id = ?").bind(id).first())) throw new HttpError(404, "There’s no one like that to block.");
+  const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).first();
+  if (l?.status === "blocked" && l.a === id) return json({ ok: true });        // they blocked you first: already apart
+  await D.batch([
+    D.prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id),
+    D.prepare("INSERT INTO pg_links (a, b, status, created_at, asked_at) VALUES (?, ?, 'blocked', ?, ?)")
+      .bind(u.id, id, Date.now(), l && l.status === "pending" && l.a === id ? Date.now() : null),
+  ]);
+  return json({ ok: true });
+}
+async function unblock({ request, env }) {
+  const u = await requireUser(request, env);
+  const id = String((await body(request)).id || "");
+  await (await db(env)).prepare("DELETE FROM pg_links WHERE a = ? AND b = ? AND status = 'blocked'").bind(u.id, id).run();
   return json({ ok: true });
 }
 // Signing up: is this handle free? If not, a few close ones that are.
@@ -448,7 +506,7 @@ async function sync({ request, env, waitUntil }) {
   waitUntil(sweepPhotos(env).catch(() => {}));
   // an open app syncs every 15 s; note it at most once a minute for Last Online
   if (!(t - (u.seen_at || 0) < SEEN_EVERY)) await D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id).run();
-  const { results: links } = await D.prepare("SELECT a, b, status FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();
+  const { results: links } = await D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();
   const other = (l) => (l.a === u.id ? l.b : l.a);
   // everyone linked to you, in one query whatever their number (an IN list would
   // overflow D1's 100 parameters, and others can add rows here by asking)
@@ -467,9 +525,14 @@ async function sync({ request, env, waitUntil }) {
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
   const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null });
-  const friends = [], incoming = [], outgoing = [];
+  const friends = [], incoming = [], outgoing = [], blocked = [];
   for (const l of links) {
     const p = people.get(other(l)); if (!p) continue;
+    if (NO.has(l.status)) {
+      if (l.b === u.id) { if (l.asked_at) outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null }); }   // looks like it's still waiting
+      else if (l.status === "blocked") blocked.push({ id: p.id, handle: p.handle, name: p.name });
+      continue;
+    }
     if (l.status === "ok") {
       const last = lastBy.get(p.id);
       friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
@@ -479,7 +542,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, emailOn: emailReady(env), gifsOn: gifsReady(env),
+  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -996,6 +1059,7 @@ const ROUTES = {
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
+  "POST block": block, "DELETE block": unblock,
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
