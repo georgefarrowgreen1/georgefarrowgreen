@@ -2153,6 +2153,19 @@ function lockPage() {
     setTimeout(() => { meta.content = was; }, 300);
   });
 }
+// What you press shows it at once (a little smaller and a shade deeper, .down),
+// and long enough to see on a quick tap: the phone's own pressed look comes late,
+// or not at all, for a tap that's over in a moment.
+function pressFeedback(el) {
+  let held = null, at = 0;
+  const release = () => { const b = held; if (!b) return; held = null; setTimeout(() => b.classList.remove("down"), Math.max(0, 120 - (performance.now() - at))); };
+  el.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest("button"); if (!b || b.disabled || !el.contains(b)) return;
+    release(); held = b; at = performance.now(); b.classList.add("down");
+  }, { passive: true });
+  for (const n of ["pointerup", "pointercancel"]) el.addEventListener(n, release, { passive: true });
+  window.addEventListener("blur", release);
+}
 function mount() {
   lockPage();
   setTimeout(() => { pullToRefresh(); tabSwipe(); holdRows(); navGestures(); });
@@ -2188,6 +2201,7 @@ function mount() {
     <div class="poplayer"></div>
     <div class="toasts"></div>`;
   $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
+  pressFeedback($compose);
   $view.addEventListener("scroll", () => {
     const y = $view.scrollTop;
     const root = !!$view.querySelector(".navbar.root");      // its title shares the bar's row
@@ -4835,7 +4849,7 @@ async function onClick(e) {
     // The phone's own picker already offers Photo Library, Take Photo and Choose File,
     // so go straight to it rather than putting a menu of ours in front of it.
     case "attachmenu":
-      if (!S.gifsOn) return $("#file-lib")?.click();
+      if (!S.gifsOn) { haptic("tick"); return $("#file-lib")?.click(); }
       return openMenu(t, [{ label: "Photo", icon: I.photo, act: "pick", id: "file-lib" }, { label: "GIF", icon: `<span class="gifico" aria-hidden="true">GIF</span>`, act: "gifs" }]);
     case "avmenu":
       if (!S.me.avatarAt && !S.avatarDraft) return $("#av-lib")?.click();
@@ -4932,7 +4946,7 @@ async function onClick(e) {
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
-    case "flysheet": S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
+    case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();

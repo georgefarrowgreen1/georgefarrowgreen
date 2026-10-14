@@ -1398,3 +1398,37 @@ svg.fillico{fill:currentColor;stroke:none}
 .sysline.stamps{display:block;border:0;font-family:inherit;color:var(--label-2);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .sysline.stamps .ico{font-size:14px;margin-right:5px;vertical-align:-3px}
 .sysline.stamps:active{background:var(--fill)}
+
+/* ---------- the composer, to the touch ----------
+   Every control shows the press the moment a finger lands (.down, from
+   pressFeedback: a little smaller and a shade deeper, held long enough to see on
+   a quick tap) and settles back smoothly; nothing grows or bounces. Send and the
+   microphone share one spot at the end of the field, so the words never shift
+   when one turns into the other. */
+.compose button{-webkit-tap-highlight-color:transparent;transition:transform .3s var(--ease-out),box-shadow .2s,background-color .2s,filter .2s,opacity .18s,color .2s}
+.compose button.down{transition-duration:.05s}
+.compose .plus:active{transform:none;filter:none;box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
+.compose .plus.down{transform:scale(.9);box-shadow:inset 0 0 0 99px var(--fill-2),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
+.compose .kind:active{transform:none}
+.compose .kind.down{transform:scale(.95);background:var(--fill-2)}
+.compose .send:active{transform:none}
+.compose .send.down{transform:scale(.88);filter:brightness(.88)}
+.field-wrap .mic:active{transform:none;color:var(--label-2)}
+.field-wrap .mic.down{transform:scale(.88);background:var(--fill-2);color:var(--label)}
+.compose .replybar button.down,.compose .attach button.down,.compose .wxplan .btn.down{transform:scale(.92);filter:brightness(.9)}
+/* the field: a ring while you're writing in it */
+.field-wrap{position:relative;transition:box-shadow .2s}
+.field-wrap:focus-within{box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1.5px color-mix(in srgb,var(--tint) 55%,transparent),var(--glass-shadow)}
+/* send and the microphone: the same spot, a quick crossfade between them */
+.field-wrap textarea{padding-right:42px}
+.field-wrap .send{position:absolute;right:4px;bottom:4px;width:36px;height:36px;margin:0;animation:none}
+.field-wrap .send:disabled{width:36px;opacity:0}
+.field-wrap .send:not([hidden]):not(:disabled),.field-wrap .mic:not([hidden]){animation:spot-in .18s var(--ease-out)}
+@keyframes spot-in{from{opacity:0;transform:scale(.7)}}
+@media (prefers-reduced-motion:reduce){.field-wrap .send,.field-wrap .mic{animation:none!important}}
+/* writing: the pigeon steps back to its badge, so the words have the room (still a tap to change it) */
+.compose .kind{transition:transform .3s var(--ease-out),background-color .2s,gap .25s var(--ease-out),padding .25s var(--ease-out)}
+.compose .kind .kl{max-width:9em;transition:max-width .25s var(--ease-out),opacity .2s}
+.field-wrap:focus-within .kind{gap:1px;padding-right:5px}
+.field-wrap:focus-within .kind .kl{max-width:0;opacity:0}
+@media (prefers-reduced-motion:reduce){.compose .kind,.compose .kind .kl{transition:none}}
