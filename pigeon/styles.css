@@ -84,15 +84,27 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 
 /* ---------- shell ---------- */
 .page{height:100%;display:flex;flex-direction:column;align-items:center}
-.desk-note{display:none}
 .app{position:relative;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);padding-top:env(safe-area-inset-top,0px)}
 @media (min-width:600px){
   html,body{background:var(--fill)}
-  .page{justify-content:center;gap:14px;padding:16px}
-  .desk-note{display:block;margin:0;font-size:13px;color:var(--label-2);text-align:center}
+  .page{justify-content:center;padding:16px}
   .app{flex:none;width:402px;height:min(874px,calc(100% - 40px));border-radius:52px;box-shadow:0 30px 80px -30px rgba(0,0,0,.45),0 0 0 1px var(--sep)}
 }
 .rotate{display:none}
+/* a computer: no app, just a page saying so (with a code to open it on a phone) */
+.notavail{display:none}
+html[data-device="computer"] .page,html[data-device="computer"] .rotate{display:none!important}
+html[data-device="computer"],html[data-device="computer"] body{background:var(--bg)}
+html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:center;justify-content:center;padding:40px 24px;-webkit-user-select:text;user-select:text}
+.na{max-width:440px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.na-icon{width:96px;height:96px;margin-bottom:8px;border-radius:22px;box-shadow:0 14px 34px -10px rgba(0,85,212,.45)}
+.na h1{margin:0;font-size:30px;line-height:1.15;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
+.na p{margin:0;font-size:17px;line-height:1.45;color:var(--label-2);text-wrap:pretty}
+.na p b{color:var(--label);font-weight:600}
+.na-qr{margin-top:18px;padding:18px 18px 14px;border-radius:26px;background:var(--cell);box-shadow:0 0 0 .5px var(--sep),0 10px 30px -14px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;gap:10px}
+.na-qr[hidden]{display:none}
+.na-qr svg{display:block;width:176px;height:176px;border-radius:8px}
+.na-qr small{font-size:13px;color:var(--label-2)}
 @media (orientation:landscape) and (max-height:520px){
   .page{display:none}
   .rotate{display:flex;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}

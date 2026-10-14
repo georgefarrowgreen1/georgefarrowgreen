@@ -5517,7 +5517,18 @@ function textSize() {
   const ts = px > 0 && CSS.supports?.("font", "-apple-system-body") ? Math.min(1.6, Math.max(0.85, px / 17)) : 1;
   document.documentElement.style.setProperty("--ts", ts.toFixed(3));
 }
+// A computer: the page says InFlight isn't available (theme.js decided, before
+// anything was drawn), with a code to scan that opens this same link on a phone.
+// Nothing else runs: no session, no sync, nothing stored.
+function notAvailable() {
+  const site = $(".na-site"); if (site) site.textContent = `${location.host}/pigeon`;
+  const box = $(".na-qr"); if (!box) return;
+  const link = /#(add|reset|verify|open)=/.test(location.hash);
+  box.innerHTML = `${qrSvg(location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
+  box.hidden = false;
+}
 async function start() {
+  if (document.documentElement.dataset.device === "computer") return notAvailable();
   mount();
   textSize(); window.addEventListener("focus", textSize);
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }

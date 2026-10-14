@@ -150,8 +150,17 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 
 A pigeon-post messenger at **/pigeon**: every message ("scroll") flies the real
 distance between two people at 80 km/h (5 minutes to 3 days), and photos are
-deleted 24 hours after they land. It is end-to-end encrypted and built for
-phones, held upright.
+deleted 24 hours after they land. It is end-to-end encrypted and works on
+phones and iPads only, held upright.
+
+**Phones and iPads only.** On a computer, /pigeon shows a page saying InFlight
+isn't available there, with a QR code that opens the same link (an add-a-friend
+or reset link included) on a phone; the app itself never starts, so nothing is
+signed in, synced or stored. `pigeon/theme.js` decides before anything is
+drawn: an iPhone, iPad or Android device counts, and so does a "Mac" with a
+touchscreen, which is how an iPad's Safari introduces itself (it can't be told
+apart on the server, so this is decided on the device). The owner's admin page
+(/pigeon/admin) still opens on a computer.
 
 | Part | Where |
 | --- | --- |
@@ -162,8 +171,7 @@ phones, held upright.
 | Photos | R2 (`BIO_R2`) under `pigeon/`, encrypted blobs only |
 
 **Notifications.** Account → Notifications has Push (Web Push, works on
-Android and desktop browsers, and on iPhone once InFlight is added to the Home
-Screen) and Email (via Resend). Push is per phone; the rest is per account:
+Android, and on iPhone and iPad once InFlight is added to the Home Screen) and Email (via Resend). Push is per phone; the rest is per account:
 which events notify (a pigeon lands, takes off, friend requests, accepted
 requests), whether names show on the lock screen, and quiet hours in the
 phone's own time zone (pigeons that land then are announced when they end). They say who sent a pigeon, never what it says.
@@ -260,7 +268,7 @@ postcard (4:5), with the route round the globe for a long flight or on a flat
 map for a short one, a perforated stamp in the pigeon's colour and a postmark
 in the local time where it landed; and a dark story (9:16) styled like the
 landed card in the app. Both use the app's own map. Pick one and Share opens
-the phone's share sheet (on a computer it saves the picture instead). Only
+the phone's share sheet (where there isn't one, it saves the picture instead). Only
 the two places, the day and the flight go on it: never the message, never
 your friend's name, and your own first name only while Show My Name is on.
 
