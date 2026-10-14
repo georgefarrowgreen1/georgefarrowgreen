@@ -1270,6 +1270,9 @@ function mapGestures(cv) {
   const state = () => { const a = [...pts.values()]; if (a.length === 1) return { x: a[0][0], y: a[0][1], d: 0 };
     return { x: (a[0][0] + a[1][0]) / 2, y: (a[0][1] + a[1][1]) / 2, d: Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) }; };
   let down = null;
+  // the map moves itself (pointer events): a finger on it never scrolls or zooms the page
+  // (iPhone ignores touch-action: none, so say it with the touches themselves)
+  cv.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
   cv.addEventListener("pointerdown", (e) => {
     cancelAnimationFrame(mapGlide);                                // a finger stops a glide or a flick
     for (const el of $layer.querySelectorAll(".windtip, .birdtip")) el.hidden = true;
@@ -1818,7 +1821,7 @@ function lockPage() {
   document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
   const stop = (e) => e.preventDefault();
   ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, stop, { passive: false }));
-  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1 && !e.target.closest?.(".map")) e.preventDefault(); }, { passive: false });
+  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });   // two fingers never zoom the page (the map pinches itself)
   // a quick second tap zooms on iOS; let taps through, but not the zoom
   let lastTouch = 0;
   document.addEventListener("touchend", (e) => {
@@ -1827,6 +1830,14 @@ function lockPage() {
     lastTouch = now;
   }, { passive: false });
   for (const n of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(n, (e) => { if (!inField(e.target)) e.preventDefault(); });
+  // if the page ends up zoomed anyway (an older copy allowed it), put it back: text size comes from the phone's own setting instead
+  const vv = window.visualViewport, meta = document.querySelector('meta[name="viewport"]');
+  if (vv && meta) vv.addEventListener("resize", () => {
+    if (vv.scale <= 1.01 || inField(document.activeElement)) return;
+    const was = meta.content;
+    meta.content = was + ", maximum-scale=1";
+    setTimeout(() => { meta.content = was; }, 300);
+  });
 }
 function mount() {
   lockPage();

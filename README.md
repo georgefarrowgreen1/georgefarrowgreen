@@ -258,8 +258,9 @@ friend is listed but not mapped, and a scheduled pigeon appears once it takes of
 light and dark: no violations. Words meet 4.5:1 contrast (secondary grey is a
 little darker than iOS's, the blue a touch deeper, and green, orange and red
 words use darker versions of those colours, while switches, dots and badges
-keep the bright ones). Pinch zoom works (no double-tap zoom), every icon
-button has a spoken name, sheets are labelled dialogs with their own heading,
+keep the bright ones). The page itself doesn't zoom, so it always fits the
+screen (pinching zooms the map; text size follows the iPhone's own setting,
+below), every icon button has a spoken name, sheets are labelled dialogs with their own heading,
 chats have a heading for screen readers, and the app's content is the page's
 main landmark. Message text, chat rows and the message box follow the
 iPhone's text size (Dynamic Type), from 85% to 160%. Reduce Motion stills
