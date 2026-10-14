@@ -1246,3 +1246,9 @@ svg.fillico{fill:currentColor;stroke:none}
 .sysline.moment:active{background:var(--sep)}
 .mapcard .moment{display:block;font-size:13px;font-weight:600;color:var(--orange-t,var(--orange));text-align:center;text-wrap:balance}
 .mapcard .moment .ico{font-size:13px;margin-right:4px;vertical-align:-2px}
+/* cheer it on: the button on a flying pigeon's card, and what the cheers did */
+.mapcard .cheerbtn{margin-top:12px;min-height:46px}
+.mapcard .cheerbtn .ico{color:var(--orange-t,var(--orange))}
+.mapcard .cheerbtn:disabled{opacity:.55}
+.mapcard .cheers{display:block;font-size:13px;font-weight:600;color:var(--orange-t,var(--orange));text-align:center}
+.mapcard .cheers .ico{font-size:13px;margin-right:4px;vertical-align:-2px}

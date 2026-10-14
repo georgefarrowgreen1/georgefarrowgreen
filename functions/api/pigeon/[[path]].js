@@ -14,6 +14,7 @@ import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
 import { WINDMAP_ROUTES } from "../../_windmap.js";
 import { findNear, dropNear, renear, nearViews } from "../../_moments.js";
+import { CHEER_ROUTES } from "../../_cheers.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -188,7 +189,8 @@ async function reroute(env, u, p, t, waitUntil) {
       waitUntil(renear(D, m.id, -Infinity).catch(() => {}));
       continue;
     }
-    if (legs.length && t - legs[legs.length - 1][2] < TURN_EVERY) continue;
+    const turned = legs.filter((l) => l[3] !== "c").at(-1);         // (being cheered on isn't turning)
+    if (turned && t - turned[2] < TURN_EVERY) continue;
     const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [m.from_lat, m.from_lon, m.sent_at];
     const f = Math.min(1, Math.max(0, (t - sAt) / (m.deliver_at - sAt)));
     const [pLat, pLon] = gcPoint(sLat, sLon, m.to_lat, m.to_lon, f);           // where it is right now
@@ -1142,7 +1144,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES,
 };
 
 export async function onRequest(ctx) {

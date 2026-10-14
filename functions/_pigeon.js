@@ -218,6 +218,11 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_sessions ADD COLUMN label TEXT",           // what it's signed in on ("iPhone · Safari"), for the list of signed-in phones
+  // cheers (functions/_cheers.js): who cheered it on, how many times each (JSON), and the time it saved
+  "ALTER TABLE pg_msgs ADD COLUMN cheer_by TEXT",
+  "ALTER TABLE pg_msgs ADD COLUMN cheer_ms INTEGER",
+  "ALTER TABLE pg_gdeliv ADD COLUMN cheer_by TEXT",
+  "ALTER TABLE pg_gdeliv ADD COLUMN cheer_ms INTEGER",
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -390,6 +395,12 @@ export function wxOf(ws, calm, flight, legs = [[0, flight]]) {
   return { wx: JSON.stringify(wx), ms: Math.round(flight - calm), reach: Math.round(start + (at ?? 0.5) * len) };
 }
 
+// Cheers on a pigeon: how many in all, how many were mine, and the time they saved.
+export function cheerView(row, me) {
+  let by = {}; try { by = JSON.parse(row.cheer_by || "{}") || {}; } catch (_) {}
+  const n = Object.values(by).reduce((a, x) => a + x, 0);
+  return n ? { cheers: n, cheered: by[me] || 0, cheerMs: row.cheer_ms || 0 } : {};
+}
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
 export function msgView(me, m, t) {
@@ -410,7 +421,8 @@ export function msgView(me, m, t) {
     wind: m.wind ?? null,                        // tailwind at take-off (km/h; negative: headwind)
     ...wxView(m),
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
-    legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at]
+    legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"])
+    ...cheerView(m, me),
     fromPlace: m.from_place, toPlace: m.to_place,
     ct: (flying || lost) && m.recipient === me ? null : m.ct,
   };

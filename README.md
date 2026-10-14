@@ -274,6 +274,17 @@ and names the spot with the map's own country and sea names
 Moments, in Notifications), the chat gets a line (tap it for the map), and
 the map marks the spot. Only pigeons you could already see count.
 
+**Cheer it on.** While a pigeon flies, both ends of the chat can cheer it on
+(the map card's Cheer It On button, or the menu on your own pigeon). Each
+cheer takes 4% off the time it has left, 15 minutes at most: a little
+tailwind, not a shortcut. Each person gets three cheers per pigeon, and a
+pigeon takes twelve in all. The server marks where it was at that moment as a
+point on its path (`functions/_cheers.js`), so on the map it flies on faster
+rather than jumping ahead, and it isn't drawn as a change of course. The near
+misses ahead are worked out again at its new pace. The other person gets a
+push ("A little tailwind", under Mid-air Moments). In a group, the sender
+cheers on every pigeon still flying, and each member the one flying to them.
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat

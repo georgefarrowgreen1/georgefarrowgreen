@@ -210,6 +210,14 @@ export async function groupSent(env, from, g, dels, kind = "standard") {
       tag: "group-" + g.id, url: `/pigeon/#open=${g.id}` });
   }
 }
+// Someone cheered on a pigeon you're in on: it lands a little sooner.
+export async function cheeredNote(env, toId, by, x) {
+  const r = await userPrefs(env, toId); if (!r || !r.p.moments || isQuiet(r.p)) return;
+  if (x.group && (await isMuted(env, x.group, toId))) return;
+  const who = r.p.names ? firstName(by.name) : "Someone";
+  await pushTo(env, toId, { title: "A little tailwind",
+    body: `${who} cheered on ${x.mine ? "their pigeon to you" : "your pigeon"}. It lands ${etaText(x.cut)} sooner.`, tag: x.tag, url: `/pigeon/#open=${x.chat}` });
+}
 export async function groupRerouted(env, senderId, to, gid, deliverAt) {
   const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",

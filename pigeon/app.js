@@ -348,7 +348,7 @@ function routePts(m) {
       if (prev != null) { while (p.lon - prev > 180) p.lon -= 360; while (p.lon - prev < -180) p.lon += 360; }   // never jump the date line
       prev = p.lon; pts.push({ x: p.lon, y: mercY(p.lat), t: aT + (bT - aT) * j / n });
     }
-    if (i < stops.length - 2) pts[pts.length - 1].turn = true;
+    if (i < stops.length - 2) pts[pts.length - 1].turn = stops[i + 1][3] !== "c";     // (cheered on: faster from here, not a turn)
   }
   return pts;
 }
@@ -1006,6 +1006,7 @@ const birdAt = (w) => {
   return new Path2D(`M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L${a[0]} ${y(a[1])}C${b[0]} ${y(b[1])} ${c[0]} ${y(c[1])} ${d[0]} ${y(d[1])}L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z`);
 };
 const STILL = matchMedia("(prefers-reduced-motion: reduce)");
+let cheerFx = null;                          // { id, at }: a pigeon just cheered on, for its gust on the map
 // Draw the pigeons over the saved map: flapping in cruise, faster taking off
 // and landing, folded once landed; tilted the way they're heading.
 function drawBirds(cv, ts, xf) {
@@ -1034,6 +1035,18 @@ function drawBirds(cv, ts, xf) {
     const bird = birdAt(w);
     g.lineWidth = r.skin && SKINS[r.skin] ? 4 : 3; g.strokeStyle = SKINS[r.skin]?.ring || "#fff"; g.stroke(bird); g.fillStyle = color; g.fill(bird);   // the pigeon in its colour (grey where it was lost)
     g.restore();
+    // just cheered on: a gust of tailwind streams past it
+    const fx = cheerFx && cheerFx.id === S.sheet?.id ? (ts - cheerFx.at) / 1600 : 1;
+    if (flying && fx >= 0 && fx < 1 && !STILL.matches) {
+      const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
+      g.save(); g.lineCap = "round"; g.lineWidth = 2.5;
+      for (let k = -1; k <= 1; k++) {
+        const o = ((fx * 3 + (k + 1) * 0.33) % 1), back = 16 + o * 34, side = k * 9;
+        g.strokeStyle = `rgba(255,159,10,${(0.85 * (1 - fx) * (1 - o)).toFixed(3)})`;
+        g.beginPath(); g.moveTo(px - ux * back - uy * side, py - uy * back + ux * side); g.lineTo(px - ux * (back + 16) - uy * side, py - uy * (back + 16) + ux * side); g.stroke();
+      }
+      g.restore();
+    }
   }
 }
 // A near miss on the map: a little four-pointed spark
@@ -2610,7 +2623,7 @@ function bubble(f, m, isLastMine, gapTop, g) {
   else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
   // scheduled: waiting in your loft (they can't see it yet)
   else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
-  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${m.legs?.length > (m.via ? 2 : 0) ? " · changed course" : ""}${wxSay(m, true) ? ` · ${wxSay(m, true)}` : windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
+  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${(m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0) ? " · changed course" : ""}${m.cheers ? ` · cheered on ×${m.cheers}` : ""}${wxSay(m, true) ? ` · ${wxSay(m, true)}` : windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
   if (!m.flying && !m.lost && m.km != null && !(g && mine)) meta[mine ? "push" : "unshift"](stampHtml(m));
@@ -3998,15 +4011,15 @@ function tickMap() {
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
   const flew = m.deliverAt - m.sentAt;
   const speed = m.lost ? "" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
-  // its words are redrawn every tick; the share button stays put (one redrawn under a finger never gets its tap)
-  if (!$(".mcb", card)) card.innerHTML = `<div class="mcb"></div><button type="button" class="btn wide shareflight" data-act="shareflight" hidden>${I.share}Share Flight</button>`;
-  const share = $(".shareflight", card), canShare = shareable(m);
+  const { share, cheer } = cardShell(card), canShare = shareable(m);
   if (share.hidden === canShare) share.hidden = !canShare;
   share.dataset.id = m.id;
+  cheerState(cheer, m);
   $(".mcb", card).innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
+    ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}
     ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
     ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
@@ -4254,6 +4267,29 @@ function tickSkies(card, cv) {
 }
 
 // Your message to a group: how far each pigeon has got.
+// A map's card: its words (redrawn every tick) and its buttons, kept (one
+// redrawn under a finger never gets its tap): cheer it on while it flies, share it once it lands.
+function cardShell(card) {
+  if (!$(".mcb", card)) card.innerHTML = `<div class="mcb"></div><button type="button" class="btn wide plain cheerbtn" data-act="cheer" hidden>${I.wind}<span></span></button><button type="button" class="btn wide shareflight" data-act="shareflight" hidden>${I.share}Share Flight</button>`;
+  return { share: $(".shareflight", card), cheer: $(".cheerbtn", card) };
+}
+// Cheer it on: each cheer takes a little off the time it has left, up to three
+// from each of you (twelve in all). Yours in the air, or the one flying to you.
+const CHEER_EACH = 3, CHEER_MAX = 12;
+function cheerable(m) {
+  const t = now();
+  if (m.flock) { const up = m.flock.filter((x) => x.flying && x.deliverAt - t > 60e3 && (x.cheers || 0) < CHEER_MAX); return { flying: m.flying, can: up.length > 0 && (m.cheered || 0) < CHEER_EACH, left: CHEER_EACH - (m.cheered || 0), them: true }; }
+  const flying = m.flying && !m.waiting && !m.lost && !m.stopover && !(m.via && t < m.viaOff);
+  return { flying, can: flying && m.deliverAt - t > 60e3 && (m.cheered || 0) < CHEER_EACH && (m.cheers || 0) < CHEER_MAX, left: CHEER_EACH - (m.cheered || 0) };
+}
+function cheerState(btn, m) {
+  const c = cheerable(m), label = c.can ? `Cheer ${c.them ? "Them" : "It"} On${c.left < CHEER_EACH ? ` · ${c.left} left` : ""}` : (m.cheered || 0) >= CHEER_EACH ? "Cheered On" : "Nearly There";
+  const key = `${c.flying}|${c.can}|${label}|${m.id}`;
+  if (btn.dataset.k === key) return;
+  btn.dataset.k = key; btn.dataset.id = m.id; btn.hidden = !c.flying; btn.disabled = !c.can; $("span", btn).textContent = label;
+}
+// "12 minutes", "1h 4m", "a few seconds"
+const soonerText = (ms) => (ms < MIN ? "a few seconds" : ms < HOUR ? `${Math.round(ms / MIN)} minute${Math.round(ms / MIN) === 1 ? "" : "s"}` : fmtDur(ms));
 function tickFlockMap(m, card, cv) {
   const g = group(S.chat), c = flockCount(m), end = Math.max(...m.flock.map((x) => x.deliverAt));
   const frac = Math.min(1, Math.max(0, (now() - m.sentAt) / Math.max(1, end - m.sentAt)));
@@ -4261,7 +4297,8 @@ function tickFlockMap(m, card, cv) {
     const p = member(g, x.to), state = x.lost ? `<span class="lostp">${I.skull} Lost</span>` : x.flying ? `<span data-eta="${esc(x.deliverAt)}">${fmtDur(x.deliverAt - now())}</span>` : "Landed";
     return `<span class="frow${x.flying ? " flying" : ""}">${avatar(p || { name: "?" }, "xs")}<span class="one">${esc(first(p?.name || "Someone"))}${x.route ? "" : ` <span class="hid">· not on map</span>`}</span><b>${state}</b></span>`;
   }).join("");
-  card.innerHTML = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
+  const { share, cheer } = cardShell(card); share.hidden = true; cheerState(cheer, m);
+  $(".mcb", card).innerHTML = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
     ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}
     <span class="prog"><i></i></span><span class="frows">${rows}</span>`;
   $(".prog i", card).style.width = (frac * 100).toFixed(2) + "%";
@@ -4370,6 +4407,17 @@ async function onClick(e) {
       if (holding() && Date.now() - heldAt < 800 && !inPop) return;   // the end of a hold, not a tap
       return go("chat", id);
     case "shareflight": return openShare(id || t.dataset.id);
+    case "cheer": {
+      const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m || !cheerable(m).can) return;
+      if (t.classList.contains("cheerbtn")) t.disabled = true;
+      try {
+        const r = await api(group(chat) ? "group-cheer" : "cheer", { method: "POST", body: { id } });
+        haptic("success"); cheerFx = { id, at: performance.now() };
+        toast(`A little tailwind: it lands ${esc(soonerText(r.cut))} sooner.`);
+        await loadChat(chat); if (S.chat === chat) { render(); tickMap(); }
+      } catch (err) { toast(esc(err.message)); if (t.classList.contains("cheerbtn")) { t.dataset.k = ""; tickMap(); } }
+      return;
+    }
     case "sharefmt": {
       const s = S.sheet; if (s?.type !== "shareflight") return;
       s.fmt = id; $layer.querySelectorAll(".shopt").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.id === id)));
@@ -4497,8 +4545,9 @@ async function onClick(e) {
     case "flymenu": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
       if (m.waiting) return openMenu(t, [{ label: "Cancel Pigeon", icon: I.x, act: "recallask", id, destructive: true }]);
-      const onMap = m.route || m.flock?.some((x) => x.route);
-      return openMenu(t, [...(onMap ? [{ label: "Watch on Map", icon: I.map, act: "map", id }] : []), { label: "Call It Back", icon: I.homing, act: "recallask", id, destructive: true }]);
+      const onMap = m.route || m.flock?.some((x) => x.route), c = cheerable(m);
+      return openMenu(t, [...(onMap ? [{ label: "Watch on Map", icon: I.map, act: "map", id }] : []), ...(c.can ? [{ label: `Cheer ${c.them ? "Them" : "It"} On`, icon: I.wind, act: "cheer", id }] : []),
+        { label: "Call It Back", icon: I.homing, act: "recallask", id, destructive: true }]);
     }
     case "recallask": {
       const g = group(S.chat), n = S.me.swift || 0, w = (S.msgs.get(S.chat) || []).find((x) => x.id === id);

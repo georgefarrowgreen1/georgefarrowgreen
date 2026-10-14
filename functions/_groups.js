@@ -9,7 +9,7 @@
 
 import {
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken,
+  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
@@ -57,19 +57,19 @@ const wxFor = (d, friend) => { const w = wxView(d); return friend || !w.delay ? 
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
-    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at,
+    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
       legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null };
   });
   const live = flock.filter((x) => !x.lost);
-  return { ...baseView(m), flock, deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
+  return { ...baseView(m), flock, cheered: Math.max(0, ...flock.filter((x) => x.flying).map((x) => x.cheered || 0)), deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
     lost: flock.length > 0 && flock.every((x) => x.lost), recalled: flock.some((x) => x.recalled), fromPlace: m.from_place, body: m.body, key: m.sender_key, expiresAt: m.expires_at };
 }
 // Someone else's: your pigeon only. Its contents and key once it has landed;
 // where it came from only if the sender is your friend.
 function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
-  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at,
+  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, d.user_id),
     legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
@@ -395,7 +395,8 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     const nf = !friends.has(d0.sender), d = nf ? { ...d0, from_lat: coarse(d0.from_lat), from_lon: coarse(d0.from_lon) } : d0;
     const pp = nf ? { ...p, lat: coarse(p.lat), lon: coarse(p.lon) } : p;
     if (haversineKm(d.to_lat, d.to_lon, pp.lat, pp.lon) <= REROUTE_KM) continue;
-    if (legs.length && t - legs[legs.length - 1][2] < TURN_EVERY) continue;
+    const turned = legs.filter((l) => l[3] !== "c").at(-1);
+    if (turned && t - turned[2] < TURN_EVERY) continue;
     const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [d.from_lat, d.from_lon, d.sent_at];
     const f = Math.min(1, Math.max(0, (t - sAt) / (d.deliver_at - sAt)));
     const [pLat, pLon] = gcPoint(sLat, sLon, d.to_lat, d.to_lon, f);
