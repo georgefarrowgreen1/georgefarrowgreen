@@ -516,8 +516,11 @@ show a friendly "backend not set up" message).
 
 - The password is **never** stored in the repo — it lives only as a Cloudflare
   secret. Don't commit it.
-- Sessions are signed with HMAC-SHA256 using a key derived from the password and
-  carried in an `HttpOnly; Secure; SameSite=Strict` cookie.
+- Sessions are random tokens in an `HttpOnly; Secure; SameSite=Strict` cookie,
+  kept (hashed) in D1 for 7 days, so signing out ends one for good. Each is
+  tagged with a keyed hash of the password (the key is a server secret, so a
+  cookie gives nothing to guess the password from); changing the password
+  ends them all.
 - Reads are public (it's a bio); only authenticated requests can write.
 - Every page runs only its own scripts (a strict Content-Security-Policy, plus
   HSTS), because the bio shares its origin with InFlight, whose keys live in

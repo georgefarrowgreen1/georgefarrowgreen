@@ -890,7 +890,7 @@ async function resetComplete({ request, env, waitUntil }) {
   if (fresh) steps.push(D.prepare("UPDATE pg_passkeys SET vault = NULL WHERE user_id = ?").bind(u.id));
   await D.batch(steps);
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
-  waitUntil(notifyPasswordChanged(env, u, "With a reset link", linkOrigin(request)));
+  waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ token: await issueSession(env, u.id), me: meView(updated, t) });
 }
