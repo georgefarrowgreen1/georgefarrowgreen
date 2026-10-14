@@ -1201,3 +1201,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .pick.snap button,.pick.snap button span:not(.pg){transition:none}
 /* a chat sliding in: nothing of the screen it covers shows through the composer's fade */
 .compose.nav-push{background:var(--bg-plain)}
+/* swiping between tabs: the next one waits beside this one, and the highlight follows the finger */
+.view.tabpeek{position:absolute;left:0;right:0;z-index:1;overflow:hidden;pointer-events:none;background:var(--bg);transition:none}
+.view.tabpeek.plain{background:var(--bg-plain)}
+.tabs.paging::before{transition:none}

@@ -1784,6 +1784,82 @@ function swipeRows() {
   };
   v.addEventListener("touchend", end); v.addEventListener("touchcancel", end);
 }
+/* ---------- swiping between the tabs ----------
+   Drag Messages, Friends or Account sideways and the next tab comes in beside
+   it under your finger, the tab bar's highlight sliding along. A chat row
+   keeps its own swipe (its quick actions), and anything that scrolls sideways
+   (the In the air strip) scrolls instead. */
+function tabSwipe() {
+  const r = root(), v = $view; let st = null;
+  const tabs = () => $(".tabs", $tabbar);
+  const sideways = (el) => { for (let n = el; n && n !== v; n = n.parentElement) if (n.scrollWidth > n.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(n).overflowX)) return true; return false; };
+  const place = (s) => {
+    const side = s.dx < 0 ? 1 : s.dx > 0 ? -1 : 0, j = s.i + side, has = !!side && j >= 0 && j < s.ids.length;
+    if (side !== s.side) { s.peek?.remove(); s.peek = has ? tabPeek(s.ids[j], side) : null; s.side = side; }
+    const x = s.peek ? s.dx : s.dx * 0.25;                       // no tab that way: just a little give
+    v.style.transform = `translateX(${x}px)`;
+    if (s.peek) s.peek.style.transform = `translateX(${side * s.w + x}px)`;
+    tabs()?.style.setProperty("--tab", String(Math.max(0, Math.min(s.ids.length - 1, s.i - x / s.w))));
+  };
+  v.addEventListener("touchstart", (e) => {
+    st = null;
+    const ids = TABS.map(([id]) => id), i = ids.indexOf(S.view), t = e.target;
+    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || swOpen || $pop.firstElementChild || v.style.transform) return;
+    if (t.closest?.(".swrow, input:focus, textarea, select") || sideways(t)) return;   // (a search box you aren't typing in swipes too)
+    const p = e.touches[0];
+    st = { ids, i, x: p.clientX, y: p.clientY, lx: p.clientX, ly: p.clientY, lt: performance.now(), vx: 0, vy: 0, dx: 0, w: r.clientWidth, dir: null, side: 0, peek: null };
+  }, { passive: true });
+  v.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const p = e.touches[0], dx = p.clientX - st.x, dy = p.clientY - st.y;
+    if (!st.dir) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) <= Math.abs(dy)) { st = null; return; }    // up and down: it scrolls
+      st.dir = "x"; r.classList.add("swiping"); v.style.transition = "none"; tabs()?.classList.add("paging");
+    }
+    e.preventDefault(); speed(st, p.clientX, p.clientY);
+    st.dx = dx; place(st);
+  }, { passive: false });
+  const end = (cancel) => {
+    if (!st) return; const s = st; st = null;
+    if (!s.dir) return;
+    const side = s.side, j = s.i + side;
+    const commit = !cancel && !!s.peek && (Math.abs(s.dx) > s.w * 0.35 || (Math.abs(s.vx) > 0.35 && Math.sign(s.vx) === Math.sign(s.dx) && Math.abs(s.dx) > 20));
+    const t = tabs();
+    if (t) {                                                       // the highlight glides the rest of the way, its tab lighting up now
+      t.classList.remove("paging"); t.style.setProperty("--tab", String(commit ? j : s.i));
+      if (commit) { t.dataset.tab = String(j); t.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-current", String(b.dataset.id === s.ids[j]))); }
+    }
+    settle([[v, commit ? `translateX(${-side * 100}%)` : "translateX(0)"], [s.peek, commit ? "translateX(0)" : `translateX(${side * 100}%)`]], null, commit ? 280 : 220, () => {
+      if (commit) { S.navQuiet = true; go(s.ids[j]); }           // the tab drawn for real, just where its preview was
+      v.style.transition = "none"; v.style.transform = "";
+      s.peek?.remove(); r.classList.remove("swiping");
+      void v.offsetWidth; v.style.transition = "";
+    });
+  };
+  v.addEventListener("touchend", () => end(false)); v.addEventListener("touchcancel", () => end(true));
+}
+// The tab beside this one, drawn as it will be (a lifeless copy) to slide in with the swipe.
+function tabPeek(id, side) {
+  const p = document.createElement("main");
+  p.className = `view tabs-pad tabpeek${id === "messages" ? " plain" : ""}`; p.setAttribute("aria-hidden", "true"); p.inert = true;
+  p.innerHTML = id === "friends" ? vFriends() : id === "account" ? vAccount() : vMessages();
+  const slot = $(".airslot", p);
+  if (slot) {
+    if (airEl?.classList.contains("has")) { const a = airEl.cloneNode(true); a.querySelectorAll(".enter").forEach((c) => c.classList.remove("enter")); slot.replaceWith(a); }
+    else slot.remove();
+  }
+  p.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+  p.querySelectorAll("[data-eta]").forEach((e) => { e.textContent = fmtDur(+e.dataset.eta - now()); });
+  for (const [list, q] of [["m", S.q], ["f", S.fq]]) {
+    const term = q.trim().toLowerCase();
+    if (term) p.querySelectorAll(`[data-list="${list}"] [data-find]`).forEach((row) => { row.hidden = !row.dataset.find.includes(term); });
+  }
+  p.style.top = `${$view.offsetTop}px`; p.style.height = `${$view.offsetHeight}px`; p.style.transform = `translateX(${side * 100}%)`;
+  $view.after(p);
+  setProgress(p);
+  return p;
+}
 /* ---------- pull to refresh (Messages and Friends) ----------
    Pull down from the top: a pigeon drops in, its wings opening as you pull.
    Let go past the line and it flaps while everything syncs. */
@@ -1804,7 +1880,7 @@ function haptic(kind = "tick") {
 }
 function pullToRefresh() {
   const v = $view, ind = $(".ptr", root()), bird = $(".ptrb", ind);
-  let y0 = null, pull = 0, ready = false, busy = false;
+  let y0 = null, x0 = 0, down = false, pull = 0, ready = false, busy = false;
   const can = () => (S.view === "messages" || S.view === "friends") && !S.sheet && !busy;
   const show = (px, anim) => {
     for (const el of [v, ind]) el.classList.toggle("ptr-anim", !!anim);
@@ -1814,10 +1890,15 @@ function pullToRefresh() {
     bird.style.setProperty("--w", String(0.35 + 0.65 * Math.min(1, px / PTR_AT)));
     bird.style.setProperty("--r", `${Math.min(1, px / PTR_AT) * -14}deg`);
   };
-  v.addEventListener("touchstart", (e) => { y0 = e.touches.length === 1 && v.scrollTop <= 0 && can() ? e.touches[0].clientY : null; pull = 0; ready = false; }, { passive: true });
+  v.addEventListener("touchstart", (e) => { y0 = e.touches.length === 1 && v.scrollTop <= 0 && can() ? e.touches[0].clientY : null; x0 = e.touches[0]?.clientX || 0; down = false; pull = 0; ready = false; }, { passive: true });
   v.addEventListener("touchmove", (e) => {
     if (y0 == null) return;
-    const dy = e.touches[0].clientY - y0;
+    const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!down) {                                          // sideways is a swipe to the next tab, not a pull
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) >= Math.abs(dy)) { y0 = null; return; }
+      down = true;
+    }
     if (dy <= 0 || v.scrollTop > 0) { if (pull) { pull = 0; show(0); } return; }
     e.preventDefault();                                   // ours, not the page's own bounce
     pull = Math.min(130, dy * 0.5);
@@ -2035,7 +2116,7 @@ function lockPage() {
 }
 function mount() {
   lockPage();
-  setTimeout(() => { pullToRefresh(); swipeRows(); navGestures(); });
+  setTimeout(() => { pullToRefresh(); tabSwipe(); swipeRows(); navGestures(); });
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
