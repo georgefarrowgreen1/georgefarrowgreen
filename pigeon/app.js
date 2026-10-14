@@ -3632,8 +3632,7 @@ function vAuth() {
     case "welcome": return `<div class="auth welcome night">
         <canvas class="sky" aria-hidden="true"></canvas>
         <div class="wtop">
-          <h1 class="wtitle" aria-label="InFlight">${[..."InFlight"].map((c) => `<span aria-hidden="true">${c}</span>`).join("")}</h1>
-          <p class="whisper">Some words take their time.</p>
+          <h1 class="wlogo" aria-label="InFlight"><span class="wring" aria-hidden="true"></span><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
         </div>
         ${inviteHtml()}</div>`;
     case "signup": return `<div class="auth">${back("welcome")}
