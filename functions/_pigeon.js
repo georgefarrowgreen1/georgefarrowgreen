@@ -114,6 +114,9 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS pg_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS pg_wxcache (cell TEXT PRIMARY KEY, at INTEGER NOT NULL, w TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS pg_owner_sessions (hash TEXT PRIMARY KEY, tag TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  // who joined, left or renamed a group, shown in its chat, so no one is added without everyone seeing
+  `CREATE TABLE IF NOT EXISTS pg_gevents (group_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, actor_name TEXT NOT NULL, target TEXT, target_name TEXT)`,
+  `CREATE INDEX IF NOT EXISTS pg_gevents_group ON pg_gevents(group_id, at)`,
   `CREATE TABLE IF NOT EXISTS pg_resets (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_by TEXT NOT NULL,
      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS pg_resets_user ON pg_resets(user_id)`,

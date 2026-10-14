@@ -1173,3 +1173,6 @@ svg.fillico{fill:currentColor;stroke:none}
 .sheetwarn{margin:14px 16px 0}
 .csub .warnc{color:var(--orange-t)}
 .gfoot .link.inl{font:inherit;cursor:pointer;display:inline}
+/* group changes: who joined, left or renamed it */
+.sysline{align-self:center;max-width:86%;margin:10px 0 4px;padding:4px 12px;border-radius:12px;background:var(--fill);font-size:calc(12px * var(--ts, 1));line-height:1.35;color:var(--label-2);text-align:center;text-wrap:balance}
+.sysline .t{white-space:nowrap}

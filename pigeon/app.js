@@ -41,7 +41,7 @@ const S = {
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
-  reacts: new Map(), replyTo: null,
+  reacts: new Map(), gevents: new Map(), replyTo: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -1648,6 +1648,7 @@ async function applyChat(fid, d, live) {
   }
   if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
   S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []);
+  if (g) S.gevents.set(fid, d.events || []);
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
     if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
@@ -2422,18 +2423,44 @@ async function sendReact(id, e) {
     render();
   } catch (err) { toast(esc(err.message)); }
 }
+// Who joined, left or renamed the group: a quiet line in the chat. Adds by one
+// person at one moment read as one line ("George added Mira and Theo").
+function geventLines(list) {
+  const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
+  const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+  let out = "";
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i], by = cap(nm(e.by));
+    let text;
+    if (e.kind === "add" || e.kind === "create") {
+      const made = e.kind === "create", whos = [];
+      let j = made ? i + 1 : i;
+      while (j < list.length && list[j].kind === "add" && list[j].by.id === e.by.id && Math.abs(list[j].at - e.at) < 60e3) whos.push(nm(list[j++].who || {}));
+      i = Math.max(i, j - 1);
+      text = made ? `${by} made the group${whos.length ? ` with ${and(whos)}` : ""}` : `${by} added ${and(whos)}`;
+    } else if (e.kind === "leave") text = `${by} left`;
+    else if (e.kind === "rename") text = `${by} named the group “${e.name}”`;
+    else continue;
+    out += `<div class="sysline" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
+  }
+  return out;
+}
 function vGroupChat(g) {
   const msgs = S.msgs.get(g.id);
   const t = S.turns.get(g.id) || g.turn;
-  let body = "", lastStamp = 0, prevFrom = null;
+  const evs = S.gevents.get(g.id) || [];
+  let body = "", lastStamp = 0, prevFrom = null, ev = 0;
+  // the group's changes up to a moment, as lines
+  const evsTo = (at) => { const k = ev; while (ev < evs.length && evs[ev].at <= at) ev++; return ev > k ? geventLines(evs.slice(k, ev)) : ""; };
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && S.outbox.some((o) => o.to === g.id)) body = "";
-  else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
+  else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
     lastStamp = at;
+    const lines = evsTo(at); if (lines) { body += lines; prevFrom = null; }
     // pigeons still flying to you, one after another: one card between them
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
@@ -2442,6 +2469,7 @@ function vGroupChat(g) {
     body += bubble(who, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
     prevFrom = m.from;
   }
+  if (msgs?.length) body += evsTo(Infinity);
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && (m.route || m.flock?.some((x) => x.route)));
   const changed = others(g).filter((p) => p.keyChanged);
   const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "";

@@ -447,7 +447,8 @@ messages, reactions, stopover copies and notes, and group keys all go through
 one rule, and a changed key is used only after "They Match: Trust New Key" on
 the safety number screen (the warning's Check button opens it). Everyone in a
 group has a safety number, friends of friends too: tap them in the group's
-info.
+info. Every change to who's in a group (made, added, left, renamed) shows as a
+line in its chat, so no one can be slipped in without everyone seeing.
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the

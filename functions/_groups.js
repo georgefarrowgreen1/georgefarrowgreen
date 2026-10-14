@@ -154,6 +154,14 @@ export async function groupsForSync(env, u, t) {
   return out;
 }
 
+// A line in the group's chat for each change to who's in it (and its name).
+// The server can't add anyone without it showing to everyone.
+function event(D, gid, t, kind, actor, target = null) {
+  return D.prepare(`INSERT INTO pg_gevents (group_id, at, kind, actor, actor_name, target, target_name)
+    SELECT ?1, ?2, ?3, ?4, a.name, ?5, ${kind === "rename" ? "?6" : "(SELECT name FROM pg_users WHERE id = ?5)"} FROM pg_users a WHERE a.id = ?4`)
+    .bind(...[gid, t, kind, actor.id || actor, kind === "rename" ? null : target].concat(kind === "rename" ? [target] : []));
+}
+
 /* ---------------- routes ---------------- */
 async function cleanMembers(D, u, ids, current) {
   const have = new Set(current.map((m) => m.user_id));
@@ -177,6 +185,7 @@ async function createGroup({ request, env, waitUntil }) {
   await D.batch([
     D.prepare("INSERT INTO pg_groups (id, name, created_by, created_at) VALUES (?, ?, ?, ?)").bind(id, name, u.id, t),
     ...[u.id, ...ids].map((m) => D.prepare("INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES (?, ?, ?, ?)").bind(id, m, u.id, t)),
+    event(D, id, t, "create", u), ...ids.map((m) => event(D, id, t, "add", u, m)),
   ]);
   waitUntil(groupAdded(env, u, ids, { id, name }).catch(() => {}));
   return json({ group: await groupView(env, u, id) });
@@ -186,15 +195,19 @@ async function addMembers({ request, env, waitUntil }) {
   await limit(env, "groupadd:" + u.id, 60, 24 * 3600e3);
   const b = await body(request), D = await db(env), g = await groupFor(D, u, b.id), t = Date.now();
   const ids = await cleanMembers(D, u, b.members, await membersOf(D, g.id));
-  await D.batch(ids.map((m) => D.prepare("INSERT OR IGNORE INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES (?, ?, ?, ?)").bind(g.id, m, u.id, t)));
+  await D.batch(ids.flatMap((m) => [D.prepare("INSERT OR IGNORE INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES (?, ?, ?, ?)").bind(g.id, m, u.id, t),
+    event(D, g.id, t, "add", u, m)]));
   waitUntil(groupAdded(env, u, ids, g).catch(() => {}));
   return json({ group: await groupView(env, u, g.id) });
 }
 // Leaving takes you out; the last one out takes the group, its messages and photos with them.
 export async function leaveGroup(env, uid, gid) {
   const D = await db(env);
-  await D.prepare("DELETE FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(gid, uid).run();
-  if (await D.prepare("SELECT 1 FROM pg_group_members WHERE group_id = ?").bind(gid).first()) return;
+  const out = await D.prepare("DELETE FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(gid, uid).run();
+  if (await D.prepare("SELECT 1 FROM pg_group_members WHERE group_id = ?").bind(gid).first()) {
+    if (out.meta.changes) await event(D, gid, Date.now(), "leave", uid).run();
+    return;
+  }
   const { results } = await D.prepare("SELECT id FROM pg_gmsgs WHERE group_id = ? AND photo = 1").bind(gid).all();
   if (env.BIO_R2) for (let i = 0; i < results.length; i += 900) await env.BIO_R2.delete(results.slice(i, i + 900).map((r) => groupPhotoKey(r.id)));
   await dropReacts(env, { group: gid });
@@ -202,6 +215,7 @@ export async function leaveGroup(env, uid, gid) {
     D.prepare("DELETE FROM pg_gdeliv WHERE msg_id IN (SELECT id FROM pg_gmsgs WHERE group_id = ?)").bind(gid),
     D.prepare("DELETE FROM pg_gmsgs WHERE group_id = ?").bind(gid),
     D.prepare("DELETE FROM pg_groups WHERE id = ?").bind(gid),
+    D.prepare("DELETE FROM pg_gevents WHERE group_id = ?").bind(gid),
   ]);
 }
 async function leave({ request, env }) {
@@ -220,7 +234,8 @@ async function rename({ request, env }) {
   const u = await requireUser(request, env);
   await limit(env, "grename:" + u.id, 30, 24 * 3600e3);
   const b = await body(request), D = await db(env), g = await groupFor(D, u, b.id);
-  await D.prepare("UPDATE pg_groups SET name = ? WHERE id = ?").bind(cleanGroupName(b.name), g.id).run();
+  const name = cleanGroupName(b.name);
+  if (name !== g.name) await D.batch([D.prepare("UPDATE pg_groups SET name = ? WHERE id = ?").bind(name, g.id), event(D, g.id, Date.now(), "rename", u, name)]);
   return json({ group: await groupView(env, u, g.id) });
 }
 async function listMessages({ request, env }) {
@@ -228,7 +243,12 @@ async function listMessages({ request, env }) {
   const D = await db(env), g = await groupFor(D, u, new URL(request.url).searchParams.get("id")), t = Date.now();
   const friends = await friendIds(D, u.id);
   const rows = await visible(D, u.id, g.id);
-  return json({ now: t, messages: await views(D, u.id, rows, friends, t), reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
+  // the group's changes since you joined
+  const { results: ev } = await D.prepare(`SELECT e.at, e.kind, e.actor, e.actor_name, e.target, e.target_name FROM pg_gevents e
+    JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at LIMIT 500`).bind(g.id, u.id).all();
+  const events = ev.map((e) => ({ at: e.at, kind: e.kind, by: { id: e.actor, name: e.actor_name },
+    ...(e.kind === "rename" ? { name: e.target_name } : e.target ? { who: { id: e.target, name: e.target_name } } : {}) }));
+  return json({ now: t, messages: await views(D, u.id, rows, friends, t), events, reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
 }
 
 async function send({ request, env, waitUntil }) {
