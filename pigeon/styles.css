@@ -24,7 +24,8 @@
   --glass-shadow:0 8px 28px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
   --scrim:rgba(0,0,0,.22);
   --sea:#d3e6f5; --shelf:#e4f0fa; --relief-hi:#ffffff; --relief-lo:#b9a98a; --land:#f8f6f1; --land-edge:#ddd8cc; --border:#c4bcab; --grid:rgba(0,0,0,.04);
-  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-rocket:#d9a21b; --p-rocket-text:#a87a0a; --p-ring:transparent;   /* pigeon kinds */
+  --p-standard:#34c759; --p-swift:#ff3b30; --p-turbo:#1c1c1e; --p-dumb:#a2845e; --p-rocket:#d9a21b; --p-rocket-text:#8a6408; --p-ring:transparent;   /* pigeon kinds */
+  --p-standard-t:#1d7f37; --p-swift-t:#c4271e; --p-dumb-t:#7a5f3b; --tint-on:#0052bd; --red-on:#b3261e;   /* the same, as words on light grounds */
   --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --mono:ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme:light;
@@ -39,7 +40,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
+    --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff6961; --p-dumb-t:#c4a57e; --tint-on:#7dbdff; --red-on:#ff958d; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
 }
 @media (prefers-color-scheme: dark){
@@ -51,7 +52,7 @@
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
-    --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
+    --sea:#1e2b35; --shelf:#253645; --relief-hi:#55555d; --relief-lo:#1c1c20; --land:#36363c; --land-edge:#48484f; --border:#5c5c64; --grid:rgba(255,255,255,.04); --p-standard:#30d158; --p-swift:#ff453a; --p-turbo:#000000; --p-dumb:#ac8e68; --p-rocket:#e3ad2b; --p-rocket-text:#f0c04a; --p-standard-t:#30d158; --p-swift-t:#ff6961; --p-dumb-t:#c4a57e; --tint-on:#7dbdff; --red-on:#ff958d; --p-ring:rgba(255,255,255,.32); --p-dot-ring:rgba(255,255,255,.42); --p-badge-ring:rgba(255,255,255,.2);
     color-scheme:dark;
   }
 }
@@ -183,7 +184,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .av.xl .online{box-shadow:0 0 0 4px var(--dot-bg,var(--bg))}
 .group .av,.chatwho .av{--dot-bg:var(--cell)}
 .screen.plain .mrow .av{--dot-bg:var(--bg-plain)}
-.on-now{color:var(--p-standard);font-weight:500}
+.on-now{color:var(--green-t);font-weight:500}
 .av.xs{width:28px;height:28px;font-size:11px}
 .av.s{width:36px;height:36px;font-size:14px}
 .av.m{width:54px;height:54px;font-size:20px}
@@ -346,7 +347,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .hero h1{margin:6px 0 0;font-size:28px;line-height:34px;font-weight:700}
 .hero p{margin:0;color:var(--label-2);font-size:17px;line-height:22px;text-wrap:balance}
 .steps{list-style:none;margin:28px 0 0;padding:0 28px;display:flex;flex-direction:column;gap:14px;text-align:left}
-.steps li{display:flex;gap:12px;align-items:center;font-size:17px;color:var(--label-3)}
+.steps li{display:flex;gap:12px;align-items:center;font-size:17px;color:var(--label-2)}
 .steps li.is-now,.steps li.is-ok{color:var(--label)}
 .steps li.is-ok svg{color:var(--green-t)}
 .steps svg{font-size:24px}
@@ -420,7 +421,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .menu-pop .mi{display:flex;align-items:center;gap:12px;width:100%;min-height:46px;padding:10px 14px;border:0;border-radius:18px;background:none;text-align:left;color:var(--label);font-size:17px}
 .menu-pop .mi span{flex:1;min-width:0}
 .menu-pop .mi svg{font-size:20px}
-.menu-pop .mi.destructive{color:var(--red)}
+.menu-pop .mi.destructive{color:var(--red-on)}
 .menu-pop .mi:active{background:var(--fill)}
 @keyframes pop{from{opacity:0;transform:scale(.8)}}
 
@@ -430,8 +431,8 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .asheet .msg{padding:0 8px 6px;text-align:center;font-size:13px;line-height:18px;color:var(--label-2)}
 .asheet .msg b{display:block;color:var(--label);font-size:17px;line-height:22px;font-weight:600;margin-bottom:4px}
 .asheet .ab,.asheet .cancel{display:block;width:100%;min-height:52px;border:0;border-radius:999px;font-size:17px;font-weight:600}
-.asheet .ab{background:color-mix(in srgb,var(--tint) 15%,transparent);color:var(--tint)}
-.asheet .ab.destructive{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red)}
+.asheet .ab{background:color-mix(in srgb,var(--tint) 15%,transparent);color:var(--tint-on)}
+.asheet .ab.destructive{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red-on)}
 .asheet .cancel{margin-top:8px;background:var(--glass-strong);color:var(--label);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow)}
 
 /* ---------- banner ---------- */
@@ -597,7 +598,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 
 /* ---------- polish ---------- */
 /* in-flight labels take their pigeon's colour (turbo reads as plain text) */
-.meta .fl.standard{color:var(--p-standard)}.meta .fl.swift{color:var(--p-swift)}.meta .fl.turbo{color:var(--label)}.meta .fl.dumb{color:var(--p-dumb)}.meta .fl.rocket{color:var(--p-rocket-text)}
+.meta .fl.standard{color:var(--p-standard-t)}.meta .fl.swift{color:var(--p-swift-t)}.meta .fl.turbo{color:var(--label)}.meta .fl.dumb{color:var(--p-dumb-t)}.meta .fl.rocket{color:var(--p-rocket-text)}
 /* friend requests: handle in the small grey line, like every other list */
 .reqrow .csub{font-size:13px;line-height:18px;color:var(--label-2)}
 /* menus and confirm cards: more solid glass, so what's behind doesn't show through the words */
@@ -675,7 +676,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mapcard .frow{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--label)}
 .mapcard .frow .av.xs{width:24px;height:24px;font-size:10px}
 .mapcard .frow .one{flex:1;min-width:0}
-.mapcard .frow .hid{color:var(--label-3);font-size:12px}
+.mapcard .frow .hid{color:var(--label-2);font-size:12px}
 .mapcard .frow b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--label-2)}
 .mapcard .frow.flying b{color:var(--orange-t)}
 
@@ -691,7 +692,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .giftile.busy::after{content:"";position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 45%,transparent);animation:sheen 1.1s ease-in-out infinite}
 @keyframes sheen{50%{opacity:.4}}
 .gifmore{display:flex;justify-content:center;padding:14px 16px 0}
-.giphy{margin:14px 24px calc(18px + env(safe-area-inset-bottom,0px));font-size:12px;line-height:16px;color:var(--label-3);text-align:center}
+.giphy{margin:14px 24px calc(18px + env(safe-area-inset-bottom,0px));font-size:12px;line-height:16px;color:var(--label-2);text-align:center}
 /* a GIF shows whole, at its own shape (they often have words to the edges) */
 .b.pic img.gif{aspect-ratio:auto;height:auto;max-height:380px;object-fit:contain}
 /* a pigeon called back by its sender */
@@ -759,7 +760,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .lstat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:20px;background:var(--cell);min-width:0}
 .lstat b{font-size:22px;line-height:26px;font-weight:700;font-variant-numeric:tabular-nums}
 .lstat span{font-size:13px;color:var(--label-2)}
-.lstat small{font-size:12px;color:var(--label-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lstat small{font-size:12px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kindrow .ctext{gap:6px}
 .kbar{display:block;height:5px;border-radius:3px;width:calc(var(--w,0) * 100%);min-width:6px;background:var(--p-standard)}
 .kbar.swift{background:var(--p-swift)}.kbar.turbo{background:var(--label)}.kbar.rocket{background:var(--p-rocket)}.kbar.dumb{background:var(--p-dumb)}
@@ -776,7 +777,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .badge2 small{font-size:11px;line-height:14px;color:var(--label-2)}
 .badge2 .newb{display:inline-block;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:var(--tint);color:#fff;vertical-align:1px}
 .badge2 .bprog{display:block;width:80%;height:4px;margin-top:5px;border-radius:2px;background:linear-gradient(90deg,var(--tint) calc(var(--w,0) * 100%),var(--fill) 0)}
-.badge2 .bnum{font-variant-numeric:tabular-nums;color:var(--label-3)}
+.badge2 .bnum{font-variant-numeric:tabular-nums;color:var(--label-2)}
 /* ---------- postcard stamps: a little airmail stamp on every pigeon that arrived ---------- */
 .meta{align-items:center}
 .pstamp{--ink:var(--p-standard);position:relative;display:inline-flex;align-items:center;gap:3px;height:26px;padding:0 9px 0 7px;margin:3px 1px;border:0;
@@ -806,7 +807,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .cell.on .val{color:var(--tint);font-weight:600}
 .fcell.schedat{padding-right:12px}
 .fcell.schedat .ctext{flex:none}
-.fcell.schedat input{flex:1;text-align:right;padding-left:10px;color:var(--tint);font-size:16px}
+.fcell.schedat input{flex:1;min-width:0;text-align:right;padding-left:10px;color:var(--tint);font-size:16px}
 /* rare pigeons: a ring (and a glow or tail) around the usual colour */
 .pg[class*=" sk-"]{position:relative;isolation:isolate;margin:0 .12em}
 /* small (in a line of text): a crisp ring only, so nothing blurs or gets clipped */
@@ -1090,13 +1091,13 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 /* several on their way at once */
 .flyrun{align-self:flex-start;width:min(310px,86%);margin-top:4px;padding:10px 12px 4px;border-radius:22px;background:var(--bubble-in);display:flex;flex-direction:column}
 .flyrun .frh{display:flex;align-items:center;gap:8px;padding:0 2px 6px;font-size:15px}
-.flyrun .frh b{font-weight:600}
+.flyrun .frh b{font-weight:600;white-space:nowrap}
 .flyrun .frh small{margin-left:auto;font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .flyrun .stack{display:flex}.flyrun .stack .pg{font-size:13px;margin-left:-6px;box-shadow:0 0 0 2px var(--bubble-in)}.flyrun .stack .pg:first-child{margin-left:0}
 .frr{display:flex;align-items:center;gap:8px;width:100%;padding:8px 2px;border:0;background:none;color:var(--label);font:inherit;font-size:14px;text-align:left;cursor:pointer;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
 .frr + .frr{box-shadow:inset 0 .5px 0 var(--sep)}
 .frr .pg{font-size:11px}
-.frr .n{width:56px;flex:none;font-weight:500}
+.frr .n{width:4.6em;flex:none;font-weight:500}
 @media (prefers-reduced-motion: reduce){.ctrack::before,.ctrack .cbird,.fly.chip .c1 .pg{animation:none}.ctrack i{transition:none}}
 /* the outbox: your message, waiting on the perch for signal */
 .b.me.pending{opacity:.72;animation:perch 2.4s ease-in-out infinite}
@@ -1161,7 +1162,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .stext{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .stop{display:flex;align-items:baseline;gap:8px}.stop b{flex:1;font-weight:600;font-size:15px}.stop time{font-size:12px;color:var(--label-2);flex:none}
 .sbody{font-size:calc(14px * var(--ts, 1));color:var(--label-2);line-height:calc(19px * var(--ts, 1));display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
-.sbody mark{background:color-mix(in srgb,var(--yellow) 55%,transparent);color:var(--label);border-radius:3px;padding:0 1px}
+.sbody mark{background:var(--yellow);color:#1c1c1e;border-radius:3px;padding:0 1px}
 .sby{color:var(--label)}
 .snone{margin:4px 22px 12px;font-size:14px;color:var(--label-2)}
 
@@ -1176,3 +1177,10 @@ svg.fillico{fill:currentColor;stroke:none}
 /* group changes: who joined, left or renamed it */
 .sysline{align-self:center;max-width:86%;margin:10px 0 4px;padding:4px 12px;border-radius:12px;background:var(--fill);font-size:calc(12px * var(--ts, 1));line-height:1.35;color:var(--label-2);text-align:center;text-wrap:balance}
 .sysline .t{white-space:nowrap}
+
+/* an action sheet dims whatever is under it, sheets included */
+.poplayer .scrim{z-index:40}
+/* the chosen pigeon keeps its name on narrow phones; the others are icons */
+.pick button[aria-pressed="true"]{flex-shrink:0}
+@media (max-width:340px){.flyrun .frh small .w{display:none}}
+.mprev .draft{color:var(--red-on);font-weight:500}

@@ -41,7 +41,7 @@ const S = {
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
-  reacts: new Map(), gevents: new Map(), replyTo: null,
+  reacts: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -1348,7 +1348,7 @@ async function forget() {
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
-    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null });
+    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map() });
   clearAttach();
   await idb.del("session");
 }
@@ -1892,8 +1892,11 @@ function go(view, chat) {
   if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
   const same = view === S.view && chat === S.chat;
   if (!same && $view) S.nav = navKind(S.view, view);
+  // what you'd typed stays with its chat, for when you come back
+  if (!same && $ta && S.view === "chat" && S.chat) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
   if (view !== "chat") clearAttach();
+  if (!same && $ta) { $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || ""; fitTa(); }
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
@@ -2064,7 +2067,7 @@ function vMessages() {
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext">
         <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
-        <span class="mprev">${html}</span>
+        <span class="mprev">${S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>
       </span>
     </button></div>`).join("");
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
@@ -2231,7 +2234,7 @@ function flyRun(run, g) {
       ${g ? avatar(who, "xs") : ""}${pgm(m)}<span class="n one">${name}</span>${flyTrack(m)}<b><span data-eta="${esc(m.deliverAt)}"></span></b></button>`;
   }).join("");
   return `<div class="flyrun" role="group" aria-label="${run.length} pigeons on their way">
-    <div class="frh"><span class="stack">${kinds.slice(0, 3).map((k) => pg(k)).join("")}</span><b>${run.length} on their way</b><small>next in <span data-eta="${esc(next)}"></span></small></div>${rows}</div>`;
+    <div class="frh"><span class="stack">${kinds.slice(0, 3).map((k) => pg(k)).join("")}</span><b>${run.length} on their way</b><small><span class="w">next in </span><span data-eta="${esc(next)}"></span></small></div>${rows}</div>`;
 }
 
 /* ---------- who has it: your message to a group, member by member ---------- */
@@ -2948,12 +2951,12 @@ function onInput(e) {
 
 /* ---------- sheets ---------- */
 // header: { left: {label, act}, right: {label, act} | {label, form}, strong }
-function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain } = {}) {
+function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain, name } = {}) {
   const b = (x, cls) => !x ? ""
     : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
     : `<button type="button" class="nbtn ${cls}" data-act="${x.act}" aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
-  return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title)}"><div class="grab"></div>
-    <header><span class="l">${b(left, "l")}</span><h2>${esc(title)}</h2><span class="r">${b(right, "r")}</span></header>
+  return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title || name || "")}"><div class="grab"></div>
+    <header><span class="l">${b(left, "l")}</span>${title ? `<h2>${esc(title)}</h2>` : `<h2 class="sr">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
 let sheetTimer = 0, sheetType = null;
@@ -3060,7 +3063,7 @@ function drawSheet(refresh) {
     case "encryption":
       $layer.innerHTML = sheetHtml("Encryption", `
         <div class="group mt-s">
-          ${cell({ icon: I.lock, tile: "green", label: "Your Encryption Key", sub: `<span class="mono">${S.fp}</span>` })}
+          ${cell({ icon: I.lock, tile: "green", label: "Your Encryption Key", sub: `<span class="mono">${S.fp.split(" ").slice(0, 4).join(" ")}<br>${S.fp.split(" ").slice(4).join(" ")}</span>` })}
           ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
         </div>
         <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "securitysheet" } });
@@ -3118,14 +3121,14 @@ function drawSheet(refresh) {
           ${toggleCell({ act: "gmute", id: g.id, icon: I.moon, tile: "indigo", label: "Mute Notifications", sub: g.muted ? "No notifications or emails from this group" : "", on: g.muted })}
           ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
         </div>
-        <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`);
+        <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`, { name: `${g.name}: group info` });
       return;
     }
     case "gifs": {
       // built once; searching and loading more only touch the grid
       if (!$("#gif-q", $layer)) {
         $layer.innerHTML = sheetHtml("GIFs", `<label class="search gifsearch">${I.search}<input type="search" id="gif-q" placeholder="Search GIPHY" autocomplete="off" enterkeyhint="search" aria-label="Search GIFs"></label>
-          <div class="gifgrid" role="list"></div><p class="giphy">Powered by GIPHY. Searches go through InFlight, so GIPHY doesn’t see who’s looking. What you send is end-to-end encrypted.</p>`,
+          <div class="gifgrid" role="group" aria-label="GIFs"></div><p class="giphy">Powered by GIPHY. Searches go through InFlight, so GIPHY doesn’t see who’s looking. What you send is end-to-end encrypted.</p>`,
           { left: { label: "Cancel", act: "close" }, right: null });
         $("#gif-q", $layer).value = s.q || "";
       }
@@ -3278,7 +3281,7 @@ function drawSheet(refresh) {
           ${km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
-        <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`);
+        <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`, { name: `${f.name}: contact info` });
       return;
     }
     case "sessions": {
@@ -4419,7 +4422,7 @@ async function loadGifs(more) {
 }
 function drawGifs() {
   const s = S.sheet, grid = $(".gifgrid", $layer); if (!s || !grid) return;
-  const tile = (g) => `<button type="button" class="giftile${s.picking === g.id ? " busy" : ""}" role="listitem" data-act="gifpick" data-id="${esc(g.id)}" aria-label="${esc(g.title || "GIF")}" data-ar="${(g.w / g.h).toFixed(3)}">${gifPrev.get(g.id) ? `<img src="${gifPrev.get(g.id)}" alt="">` : ""}</button>`;
+  const tile = (g) => `<button type="button" class="giftile${s.picking === g.id ? " busy" : ""}" data-act="gifpick" data-id="${esc(g.id)}" aria-label="${esc(g.title || "GIF")}" data-ar="${(g.w / g.h).toFixed(3)}">${gifPrev.get(g.id) ? `<img src="${gifPrev.get(g.id)}" alt="">` : ""}</button>`;
   // two columns, each tile into whichever is shorter, so the grid packs like a wall of photos
   const cols = [[], []], hgt = [0, 0];
   for (const g of s.list) { const c = hgt[0] <= hgt[1] ? 0 : 1; cols[c].push(g); hgt[c] += g.h / g.w; }
