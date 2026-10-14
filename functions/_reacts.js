@@ -51,7 +51,10 @@ async function react({ request, env }) {
   if (sealed.length < 20 || sealed.length > 2000) throw new HttpError(400, "That reaction was malformed.");
   // it flies to the person reacted to (in a group, everyone sees it land then)
   const to = tg.other && await D.prepare("SELECT lat, lon FROM pg_users WHERE id = ?").bind(tg.other).first();
-  const km = to?.lat != null && u.lat != null ? haversineKm(u.lat, u.lon, to.lat, to.lon) : 0;
+  // In a group everyone sees when it lands, and not everyone there is friends: its
+  // flight time comes from the half-degree places, never anyone's exact spot.
+  const c = (x) => (group ? Math.round(x * 2) / 2 : x);
+  const km = to?.lat != null && u.lat != null ? haversineKm(c(u.lat), c(u.lon), c(to.lat), c(to.lon)) : 0;
   const deliver = t + flightMs(km, SPEED);
   await D.batch([
     claimId(D, id, "r", t),

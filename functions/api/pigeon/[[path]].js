@@ -124,7 +124,8 @@ async function login({ request, env }) {
   const b = await body(request);
   const email = String(b.email || "").trim().toLowerCase();
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
-  await limit(env, "loginacct:" + email, 30, 60 * 60e3);
+  if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
+  await limit(env, "loginacct:" + hex(await sha256(email)).slice(0, 32), 30, 60 * 60e3);
   const D = await db(env);
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   const given = hex(await sha256(fromB64url(b.proof)));
@@ -370,9 +371,24 @@ async function sessionsList({ request, env }) {
   const { results } = await (await db(env)).prepare("SELECT hash, label, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all();
   return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
 }
+// The keys you've trusted, sealed on your phone to your own key (the server can't
+// read or change them): kept so a new phone still notices a key that was swapped.
+async function pinsGet({ request, env }) {
+  const u = await requireUser(request, env);
+  return json({ pins: u.pins || null });
+}
+async function pinsPut({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "pins:" + u.id, 240, 60 * 60e3);
+  const s = String((await body(request)).pins || "");
+  if (s.length < 20 || s.length > 200000) throw new HttpError(400, "That was malformed.");
+  await (await db(env)).prepare("UPDATE pg_users SET pins = ? WHERE id = ?").bind(s, u.id).run();
+  return json({ ok: true });
+}
 async function sessionsEnd({ request, env }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env);
+  requireFresh(u);                 // a stolen sign-in mustn't be able to throw the real one out
   if (b.others) await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash).run();
   else {
     const id = String(b.id || "");
@@ -520,9 +536,15 @@ async function removeFriend({ request, env }) {
     // cancelling a request they said no to: it goes from your list, but their no stands
     D.prepare("UPDATE pg_links SET asked_at = NULL WHERE a = ?2 AND b = ?1 AND status IN ('declined', 'blocked')").bind(u.id, id),
     D.prepare("DELETE FROM pg_flyover WHERE (sender = ?1 AND user_id = ?2) OR (sender = ?2 AND user_id = ?1)").bind(u.id, id),
+    ...grounded(D, u.id, id),
   ]);
   return json({ ok: true });
 }
+// No longer friends: pigeons either of you booked that haven't taken off yet stay home
+const grounded = (D, a, b) => [
+  D.prepare("UPDATE pg_birds SET busy_until = ?3 WHERE id IN (SELECT bird FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3)").bind(a, b, Date.now()),
+  D.prepare("DELETE FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3").bind(a, b, Date.now()),
+];
 // Blocking: no friendship, no requests (theirs look like they're still waiting), no
 // picture or place. They aren't told. Unblocking just lifts it.
 async function block({ request, env }) {
@@ -536,6 +558,7 @@ async function block({ request, env }) {
     D.prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id),
     D.prepare("INSERT INTO pg_links (a, b, status, created_at, asked_at) VALUES (?, ?, 'blocked', ?, ?)")
       .bind(u.id, id, Date.now(), l && l.status === "pending" && l.a === id ? Date.now() : null),
+    ...grounded(D, u.id, id),
   ]);
   return json({ ok: true });
 }
@@ -603,7 +626,7 @@ async function sync({ request, env, waitUntil }) {
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
-  const streaks = await streaksFor(D, u.id, t);
+  const streaks = await streaksFor(D, u.id, t).catch((e) => { console.error("pigeon streaks", e && e.message); return new Map(); });   // never what stops a sync
   const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null });
   const friends = [], incoming = [], outgoing = [], blocked = [];
   for (const l of links) {
@@ -970,8 +993,11 @@ async function resetComplete({ request, env, waitUntil }) {
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(u.id),
   ];
-  // A new key pair makes the passkeys' copies of the old key useless; the passkeys still sign in.
-  if (fresh) steps.push(D.prepare("UPDATE pg_passkeys SET vault = NULL WHERE user_id = ?").bind(u.id));
+  // Passkeys go too: one added by someone who had the old password would otherwise
+  // still sign in. (Add yours again afterwards; a new key pair would make their
+  // copies of the old key useless anyway.)
+  steps.push(D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(u.id));
+  if (fresh) steps.push(D.prepare("UPDATE pg_users SET pins = NULL WHERE id = ?").bind(u.id));     // sealed to the old key: no use now
   await D.batch(steps);
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
   waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
@@ -1181,7 +1207,7 @@ const ROUTES = {
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
-  "GET sessions": sessionsList, "POST sessions-end": sessionsEnd,
+  "GET sessions": sessionsList, "POST sessions-end": sessionsEnd, "GET pins": pinsGet, "POST pins": pinsPut,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "POST block": block, "DELETE block": unblock,

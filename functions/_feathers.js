@@ -29,9 +29,12 @@ let ready = false;
 export async function ensureFeathers(D) {
   if (ready) return;
   if (!(await D.prepare("SELECT 1 FROM pg_meta WHERE k = 'feathers_v1'").first())) {
+    // (each table counted once, grouped, rather than once per person)
     await D.prepare(`INSERT OR IGNORE INTO pg_feathers (user_id, ref, n, at, why)
-      SELECT u.id, 'start', ${WELCOME} + 2 * (SELECT COUNT(*) FROM pg_stamped s WHERE s.user_id = u.id) + 3 * (SELECT COUNT(*) FROM pg_passport p WHERE p.user_id = u.id)
-        + 10 * (SELECT COUNT(*) FROM pg_postmarks k WHERE k.user_id = u.id), ?1, 'start' FROM pg_users u`).bind(Date.now()).run();
+      SELECT u.id, 'start', ${WELCOME} + 2 * COALESCE(s.n, 0) + 3 * COALESCE(p.n, 0) + 10 * COALESCE(k.n, 0), ?1, 'start' FROM pg_users u
+      LEFT JOIN (SELECT user_id, COUNT(*) AS n FROM pg_stamped GROUP BY user_id) s ON s.user_id = u.id
+      LEFT JOIN (SELECT user_id, COUNT(*) AS n FROM pg_passport GROUP BY user_id) p ON p.user_id = u.id
+      LEFT JOIN (SELECT user_id, COUNT(*) AS n FROM pg_postmarks GROUP BY user_id) k ON k.user_id = u.id`).bind(Date.now()).run();
     await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('feathers_v1', '1')").run();
   }
   ready = true;
@@ -85,7 +88,7 @@ async function wear({ request, env }) {
   const u = await requireUser(request, env);
   const b = await body(request), bird = String(b.bird || ""), item = b.item == null ? null : String(b.item), D = await db(env), t = Date.now();
   if (!UUID_RE.test(bird)) throw new HttpError(404, "That pigeon wasn’t found.");
-  if (item && !(await D.prepare("SELECT 1 FROM pg_kit WHERE user_id = ? AND item = ?").bind(u.id, item).first())) throw new HttpError(403, "Buy it first.");
+  if (item && (!isItem(item) || !(await D.prepare("SELECT 1 FROM pg_kit WHERE user_id = ? AND item = ?").bind(u.id, item).first()))) throw new HttpError(403, "Buy it first.");
   const own = await D.prepare("SELECT 1 FROM pg_birds WHERE id = ? AND owner = ? AND retired_at IS NULL AND lost_at IS NULL").bind(bird, u.id).first();
   if (!own) throw new HttpError(404, "That pigeon wasn’t found.");
   await D.batch([

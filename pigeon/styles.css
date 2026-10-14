@@ -1527,3 +1527,4 @@ svg.fillico{fill:currentColor;stroke:none}
 .nkind.blue{color:var(--tint)}.nkind.red{color:#c0392b}.nkind.orange{color:var(--orange-t)}.nkind.pink{color:#e8457a}
 .nkind .nemo{font-size:17px;line-height:1}
 .ghead .gmore{float:right;font:inherit;font-weight:400;color:var(--tint);background:none;border:0;padding:0}
+.veiled .toasts{display:none}

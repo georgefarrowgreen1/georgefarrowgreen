@@ -1405,6 +1405,7 @@ async function useKeys(token, me, privJwk) {
   S.fp = await E2E.fingerprint(S.myPub);
   S.pairs = new Map(); S.plain = new Map(); S.msgs = new Map();
   S.pins = (await idb.get("pins:" + me.id)) || {};
+  await restorePins();
   checkMyKey(me);
   const saved = await idb.set("session", { token, me, priv: S.priv, pub: S.myPub });
   if (saved === null) console.warn("InFlight: couldn’t save the session on this phone; you’ll sign in again next time.");
@@ -1412,7 +1413,8 @@ async function useKeys(token, me, privJwk) {
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
   clearTimeout(cacheTimer);
-  if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {}); }
+  if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {});
+    if (await idb.get("pinsup:" + S.me.id).catch(() => null)) { await idb.del("pins:" + S.me.id).catch(() => {}); await idb.del("pinsup:" + S.me.id).catch(() => {}); } }
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
@@ -1562,6 +1564,9 @@ async function applySync(d) {
   }
   for (const g of S.groups) {
     for (const p of g.members) if (p.id !== S.me.id) checkPin(p);
+    const known = S.pins["g:" + g.id], ids = g.members.map((p) => p.id);
+    if (!known) { S.pins["g:" + g.id] = ids; savePins(); }
+    g.unseen = known ? ids.filter((id) => !known.includes(id)) : [];
     if (g.last) await decryptGroup(g, g.last);
     const l = g.last;
     if (l && l.from !== S.me.id && !l.flying && !l.lost && !S.seenLanded.has(l.id)) {
@@ -1591,7 +1596,7 @@ async function sync() {
       await applySync(d);
       skiesFollow();
       S.started = true;
-      if (S.view === "chat" && S.chat) await loadChat(S.chat);
+      if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat);     // (locked: nothing is opened, or marked read)
       if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
       S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view)) render();
@@ -1617,9 +1622,34 @@ function checkMyKey(me) {
 // server alone could have been made by the server.
 const keyId = (pub) => `${pub.x}.${pub.y}`;
 const pubFromId = (k) => { const [x, y] = k.split("."); return { kty: "EC", crv: "P-256", x, y }; };
+// The keys you've trusted also go to the server, sealed so only your own key can
+// open them: on a new phone (or after this one forgets), they come back, and a
+// key the server swapped in while you weren't looking is still caught.
+const pinsMeta = () => ({ type: "pins", id: "pins", from: S.me.id, to: S.me.id });
+let pinsTimer = 0;
+function savePins() {
+  if (!S.me) return;
+  idb.set("pins:" + S.me.id, S.pins);
+  clearTimeout(pinsTimer);
+  pinsTimer = setTimeout(async () => {
+    try {
+      const ct = await E2E.seal(await pairFor(S.myPub), pinsMeta(), { pins: S.pins, at: Date.now() });
+      await api("pins", { method: "POST", body: { pins: ct } }); await idb.set("pinsup:" + S.me.id, Date.now());
+    } catch (_) {}
+  }, 1500);
+}
+// Nothing trusted on this phone yet (a new phone, a reinstall): bring back what was saved
+async function restorePins() {
+  if (Object.keys(S.pins).length) return;
+  try {
+    const r = await api("pins"); if (!r.pins) return;
+    const p = await E2E.open(await pairFor(S.myPub), pinsMeta(), r.pins);
+    if (p?.pins && typeof p.pins === "object") { S.pins = p.pins; await idb.set("pins:" + S.me.id, S.pins); await idb.set("pinsup:" + S.me.id, Date.now()); }
+  } catch (_) {}
+}
 function checkPin(f) {
   const k = keyId(f.pub);
-  if (!S.pins[f.id]) { S.pins[f.id] = k; idb.set("pins:" + S.me.id, S.pins); }
+  if (!S.pins[f.id]) { S.pins[f.id] = k; savePins(); }
   f.keyChanged = S.pins[f.id] !== k;
 }
 // a friend, or someone in one of your groups
@@ -1628,7 +1658,7 @@ async function trustNewKey(fid) {
   const f = friend(fid) || S.groups.map((g) => member(g, fid)).find(Boolean); if (!f) return;
   const old = S.pins[fid], hist = S.pins["old:" + fid] || [];
   if (old && old !== keyId(f.pub) && !hist.includes(old)) S.pins["old:" + fid] = [...hist, old];
-  S.pins[fid] = keyId(f.pub); await idb.set("pins:" + S.me.id, S.pins);
+  S.pins[fid] = keyId(f.pub); savePins();
   f.keyChanged = false;
   for (const x of [friend(fid), ...S.groups.map((g) => member(g, fid))]) if (x) x.keyChanged = false;   // the same person, wherever they appear
   for (const [id, p] of S.plain) if (p.unchecked) S.plain.delete(id);     // now they can be opened
@@ -1727,7 +1757,7 @@ async function applyChat(fid, d, live) {
   }
   if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
   S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
-  if (g) S.gevents.set(fid, d.events || []);
+  if (g) { S.gevents.set(fid, d.events || []); if (live) (S.geventsLive ||= new Set()).add(fid); }
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
     if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
@@ -1735,7 +1765,7 @@ async function applyChat(fid, d, live) {
   }
   if (!live) return;
   const unread = (m) => (g ? m.from !== S.me.id : m.from === fid && !m.stopover) && !m.flying && !m.lost && !m.readAt;
-  if (d.messages.some(unread)) {
+  if (!S.locked && d.messages.some(unread)) {
     api(g ? "group-read" : "read", { method: "POST", body: g ? { id: fid } : { with: fid } }).catch(() => {});
     for (const m of d.messages) if ((g ? m.from !== S.me.id : m.from === fid) && !m.flying && !m.lost) m.readAt = m.readAt || now();
     const x = g || friend(fid); if (x) x.unread = 0;
@@ -2526,10 +2556,13 @@ function loadNews(force) {
 const NEWS_ICON = { country: () => I.globe, postmark: (x) => `<svg viewBox="0 0 24 24" class="ico">${PM_ICON[x.mark?.kind] || PM_ICON.monument}</svg>`, rank: () => I.bird, named: () => I.bird, streak: () => I.flame,
   item: (x) => `<span class="nemo">${x.emoji || ""}</span>`, season: (x) => `<span class="nemo">${SEASONS.find((s) => s[0] === x.skin)?.[2] || ""}</span>` };
 const NEWS_TINT = { country: "blue", postmark: "red", rank: "orange", named: "orange", streak: "orange", item: "yellow", season: "pink" };
+// news comes to the day (its noon, so it's the right day wherever you are)
+const newsDay = (at) => { const d = at + DAY / 2; return sameDay(d, now()) ? "Today" : sameDay(d, now() - DAY) ? "Yesterday" : now() - d < 6 * DAY ? DOW_LONG[new Date(d).getDay()] : fmtDate(d); };
+const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 function newsRow(x) {
   const f = friend(x.who.id) || x.who;
   return `<button type="button" class="cell nrow" data-act="open" data-id="${esc(x.who.id)}">${avatar(f, "s")}
-    <span class="ctext"><span class="ntext">${esc(x.text)}</span><span class="csub">${esc(agoText(x.at))}</span></span>
+    <span class="ctext"><span class="ntext">${esc(x.text)}</span><span class="csub">${esc(newsDay(x.at))}</span></span>
     <span class="nkind ${NEWS_TINT[x.kind] || "gray"}" aria-hidden="true">${(NEWS_ICON[x.kind] || (() => I.bird))(x)}</span></button>`;
 }
 function newsHtml() {
@@ -2726,7 +2759,7 @@ function footHtml(m, mine, g) {
 function bubble(f, m, gapTop, g) {
   if (m.stopover) return stopCard(f, m);
   const mine = m.from === S.me.id, k = kindOf(m);
-  const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
+  const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${esc(m.id)}` : "";
   if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}">${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
@@ -3319,6 +3352,12 @@ function geventLines(list) {
 function vGroupChat(g) {
   const msgs = S.msgs.get(g.id);
   const evs = S.gevents.get(g.id) || [];
+  // someone in it now whom no one was seen adding (the server alone says they're here): say so
+  const added = new Set(evs.flatMap((e) => [e.who?.id, e.kind === "create" ? e.by?.id : null]).filter(Boolean));
+  const told = msgs && S.geventsLive?.has(g.id);       // (only once its history has come from the server, not just this phone's copy)
+  const ghosts = told ? (g.unseen || []).filter((id) => !added.has(id)) : [];
+  if (told && g.unseen?.length) { S.pins["g:" + g.id] = [...new Set([...(S.pins["g:" + g.id] || []), ...g.members.map((p) => p.id)])]; g.unseen = []; savePins(); }
+  if (ghosts.length) g.ghosts = [...new Set([...(g.ghosts || []), ...ghosts])];
   let body = "", lastDay = "", prevFrom = null, ev = 0;
   const stl = stampLines(msgs).sort((a, b) => a.at - b.at); let si = 0;
   const stampsTo = (at) => { let h = ""; while (si < stl.length && stl[si].at <= at) h += stl[si++].html; return h; };
@@ -3342,7 +3381,9 @@ function vGroupChat(g) {
   if (msgs?.length) body += evsTo(Infinity) + stampsTo(Infinity);
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && (m.route || m.flock?.some((x) => x.route)));
   const changed = others(g).filter((p) => p.keyChanged);
-  const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "";
+  const gh = (g.ghosts || []).map((id) => member(g, id)).filter(Boolean);
+  const ghostWarn = gh.length ? `<div class="warn"><span>${gh.map((p) => esc(first(p.name))).join(" and ")} ${gh.length > 1 ? "are" : "is"} now in this group, but no one was seen adding them. If that’s unexpected, don’t send anything private and check with the group.</span></div>` : "";
+  const warn = ghostWarn + (changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "");
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
@@ -3590,7 +3631,7 @@ function wxPlanHtml(a, kind) {
   if (!c) text += " No clear skies in the next day.";
   else if (!c.kind) text += ` Clear by ${by(c.off)}, if you’d rather wait.`;
   else text += ` Clear by ${by(c.off)}: ${c.kind === kind ? "leave then and it lands" : `a ${KIND[c.kind].name.toLowerCase()} pigeon leaving then lands`} ${fmtLand(c.land)}.`;
-  return `<span class="wxline">${I[w ? w[1] : "wind"]}<span>${esc(text)}</span></span>${c?.kind ? `<button type="button" class="btn small wxwait" data-act="wxwait" data-id="${c.land}" data-kind="${c.kind}">${c.kind === kind ? "Leave" : esc(KIND[c.kind].name)} at ${fmtTime(c.off)}</button>` : ""}`;
+  return `<span class="wxline">${I[w ? w[1] : "wind"]}<span>${esc(text)}</span></span>${c?.kind ? `<button type="button" class="btn small wxwait" data-act="wxwait" data-id="${esc(c.land)}" data-kind="${esc(c.kind)}">${c.kind === kind ? "Leave" : esc(KIND[c.kind].name)} at ${fmtTime(c.off)}</button>` : ""}`;
 }
 // What can fly from this chat now, and which one will
 function composeState() {
@@ -3956,8 +3997,8 @@ function drawSheet(refresh) {
       const named = S.birds.length > 0;
       const item = (x) => `<div class="cell has-icon shopi${x.owned ? " owned" : ""}"><span class="tile emo" aria-hidden="true">${x.emoji}</span>
         <span class="ctext"><span>${esc(x.name)}</span><span class="csub">${x.owned ? (x.on ? `On ${esc(x.on.name)}` : "Yours") : `${x.price} feathers`}</span></span>
-        ${x.owned ? (named ? `<button type="button" class="btn small plain" data-act="wearitem" data-id="${x.id}">${x.on ? "Move" : "Put On"}</button>` : "")
-          : `<button type="button" class="btn small" data-act="buyitem" data-id="${x.id}"${w.feathers >= x.price ? "" : " disabled"}>${I.feather}${x.price}</button>`}</div>`;
+        ${x.owned ? (named ? `<button type="button" class="btn small plain" data-act="wearitem" data-id="${esc(x.id)}">${x.on ? "Move" : "Put On"}</button>` : "")
+          : `<button type="button" class="btn small" data-act="buyitem" data-id="${esc(x.id)}"${w.feathers >= x.price ? "" : " disabled"}>${I.feather}${x.price}</button>`}</div>`;
       $layer.innerHTML = sheetHtml("Feathers", `<div class="fhead"><span class="fico">${I.feather}</span><b>${w.feathers.toLocaleString("en-GB")}</b><span>feathers</span></div>
         <div class="ghead">Shop</div><div class="group">${w.items.map(item).join("")}</div>
         <div class="gfoot">${named ? "Accessories go on your named pigeons, and everyone they fly to sees them." : "Accessories go on your named pigeons. Name one in Your Pigeons first."}</div>
@@ -4778,7 +4819,7 @@ function closePop() {
 }
 let toastTimer = 0;
 function toast(html, btn, fn) {
-  if (!$toast) return;
+  if (!$toast || S.locked) return;                 // nothing shows over the lock
   $toast.innerHTML = `<div class="toast" role="status"><span class="ticon">${I.bird}</span><span>${html}</span>${btn ? `<button type="button" class="btn small" data-act="toast">${esc(btn)}</button>` : ""}</div>`;
   S.toastFn = fn;
   clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 5000);
@@ -6152,6 +6193,8 @@ async function start() {
     if (!saved.pub) idb.set("session", { ...saved, pub: S.myPub });
     S.fp = await E2E.fingerprint(S.myPub);
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
+    if (!Object.keys(S.pins).length) await restorePins();
+    else if (!(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
     S.view = S.pendingAdd ? "friends" : "messages";
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once

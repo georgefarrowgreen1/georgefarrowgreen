@@ -11,7 +11,7 @@ import { newStamps } from "./_passport.js";
 import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
 import { drawMystery, MYSTERY,
-  HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
+  HttpError, json, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
@@ -263,7 +263,11 @@ async function listMessages({ request, env }) {
   const marks = await marksFor(D, rows.filter((m) => m.sender !== u.id).map((m) => `${m.id}:${u.id}`));
   const mine = new Set(rows.filter((m) => m.sender === u.id).map((m) => m.id));
   if (mine.size) {
-    const { results } = await D.prepare("SELECT id, at, marks FROM pg_stamped WHERE user_id = ? AND marks IS NOT NULL AND id LIKE '%:%'").bind(u.id).all();
+    // (looked up by this chat's own pigeons, each delivery's id: "<message>:<member>")
+    const dids = [];
+    for (const part of chunks([...mine])) dids.push(...(await D.prepare(`SELECT msg_id || ':' || user_id AS id FROM pg_gdeliv WHERE msg_id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results.map((r) => r.id));
+    const results = [];
+    for (const part of chunks(dids)) results.push(...(await D.prepare(`SELECT id, at, marks FROM pg_stamped WHERE marks IS NOT NULL AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results);
     for (const r of results) {
       const mid = r.id.split(":")[0]; if (!mine.has(mid)) continue;
       const have = marks.get(mid) || [];

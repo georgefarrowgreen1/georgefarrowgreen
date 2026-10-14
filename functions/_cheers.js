@@ -45,6 +45,7 @@ async function cheer({ request, env, waitUntil }) {
   for (let k = 0; k < 4; k++) {
     const t = Date.now(), m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
     if (!m || (m.sender !== u.id && m.recipient !== u.id)) throw new HttpError(404, "That pigeon wasn’t found.");
+    if (!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(m.sender, m.recipient).first())) throw new HttpError(404, "That pigeon wasn’t found.");
     if (m.from_lat == null || m.to_lat == null) throw new HttpError(409, "This pigeon can’t be cheered on.");
     const by = byOf(m); check(m, by, u.id, t, m.sent_at);
     const p = plan([m.from_lat, m.from_lon, m.sent_at], m, t); by[u.id] = (by[u.id] || 0) + 1;

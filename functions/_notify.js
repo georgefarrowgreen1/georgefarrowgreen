@@ -460,6 +460,8 @@ export async function tick(env, origin) {
     for (const m of landed) { const k = m.recipient + "|" + m.sender; pairs.set(k, (pairs.get(k) || 0) + 1); }
     for (const [k, n] of pairs) {
       const [to, from] = k.split("|"), names = prefs.get(to).names;
+      // blocked or unfriended since it took off: it still lands, but no one is told who sent it
+      if (!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(to, from).first())) continue;
       pushes += await pushTo(env, to, { title: names ? firstName(name.get(from)) : "InFlight",
         body: n > 1 ? `${n} pigeons have landed.` : "A pigeon has landed.", tag: "from-" + from, url: `/pigeon/#open=${from}` });
     }

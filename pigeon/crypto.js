@@ -90,7 +90,7 @@ export const E2E = {
   // What it is, its id, sender and recipient are bound in, so the server can't
   // re-address, swap or re-label scrolls (a reaction can't pass for a message,
   // nor a group key for either). v1 (before the type was bound) still opens.
-  TYPES: ["msg", "react", "wrap", "via", "note"],
+  TYPES: ["msg", "react", "wrap", "via", "note", "pins"],
   aad: (m) => te.encode(m.type ? `inflight/v2|${m.type}|${m.id}|${m.from}|${m.to}` : `inflight/v1|${m.id}|${m.from}|${m.to}`),
   async seal(base, meta, obj) {
     if (!E2E.TYPES.includes(meta.type)) throw new Error("seal: what is it?");

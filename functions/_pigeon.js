@@ -163,7 +163,7 @@ SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT N
 // The passport (functions/_passport.js): every place each person's pigeons have flown over, and each flight stamped once
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_passport (user_id TEXT NOT NULL, place TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, first_ord INTEGER, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, place))`);
 SCHEMA.push("CREATE INDEX IF NOT EXISTS pg_passport_first ON pg_passport(first_id)");
-SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_stamped (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, places TEXT)");
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_stamped (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, places TEXT)", "CREATE INDEX IF NOT EXISTS pg_stamped_user ON pg_stamped(user_id)");
 // feathers (functions/_feathers.js): a ledger of what each person earned and spent, and what they bought
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_feathers (user_id TEXT NOT NULL, ref TEXT NOT NULL, n INTEGER NOT NULL, at INTEGER NOT NULL, why TEXT, PRIMARY KEY (user_id, ref))",
   "CREATE TABLE IF NOT EXISTS pg_kit (user_id TEXT NOT NULL, item TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, item))");
@@ -257,7 +257,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN bird_to TEXT",
   // mystery pigeons: the loft (null = full) and which messages flew as one
   "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
-  "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",   // don't share my news with friends (nor see theirs)
+  "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE pg_users ADD COLUMN pins TEXT",                // the keys this person has trusted, sealed so only their own key opens them   // don't share my news with friends (nor see theirs)
   "ALTER TABLE pg_birds ADD COLUMN wear TEXT",            // the accessory it has on (feathers)
   "ALTER TABLE pg_msgs ADD COLUMN bird_wear TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN bird_wear TEXT",   // and had on when it carried this       // the landmarks it flew past (JSON ids, in order)
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
@@ -304,7 +305,10 @@ export async function body(request, max = MAX_JSON) {
   if (text.length > max) throw new HttpError(413, "That request is too large.");
   try { return JSON.parse(text); } catch (_) { throw new HttpError(400, "That request wasn’t valid JSON."); }
 }
-export const clientIp = (request) => request.headers.get("CF-Connecting-IP") || "local";
+export const clientIp = (request) => {
+  const ip = request.headers.get("CF-Connecting-IP") || "local";
+  return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;     // IPv6: one connection usually has a whole /64
+};
 
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
 export async function limit(env, key, max, windowMs) {
