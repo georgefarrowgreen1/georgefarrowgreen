@@ -91,14 +91,15 @@ export const E2E = {
     const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(e.iv), additionalData: E2E.aad(meta) }, await E2E.msgKey(base, unb64(e.s)), unb64(e.d));
     return JSON.parse(td.decode(p));
   },
-  // each photo gets its own random key, which travels inside the encrypted scroll
-  async sealPhoto(id, bytes) {
+  // each photo (or voice pigeon) gets its own random key, which travels inside
+  // the encrypted scroll; what it is is in the label, so one can't pass for the other
+  async sealPhoto(id, bytes, kind = "photo") {
     const raw = rand(32), iv = rand(12);
-    const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode("inflight/photo/v1|" + id) }, await aesKey(raw, ["encrypt"]), bytes);
+    const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode(`inflight/${kind}/v1|` + id) }, await aesKey(raw, ["encrypt"]), bytes);
     return { k: b64(raw), iv: b64(iv), data: new Uint8Array(d) };
   },
-  async openPhoto(id, p, data) {
-    return crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(p.iv), additionalData: te.encode("inflight/photo/v1|" + id) }, await aesKey(unb64(p.k), ["decrypt"]), data);
+  async openPhoto(id, p, data, kind = "photo") {
+    return crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(p.iv), additionalData: te.encode(`inflight/${kind}/v1|` + id) }, await aesKey(unb64(p.k), ["decrypt"]), data);
   },
 
   // Groups: a message is sealed once under its own random key, and that key

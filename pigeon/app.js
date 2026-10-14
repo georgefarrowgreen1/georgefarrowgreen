@@ -205,6 +205,9 @@ const I = {
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
+  mic: ico(`<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>`),
+  play: `<svg viewBox="0 0 24 24" class="ico fillico" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>`,
+  pause: `<svg viewBox="0 0 24 24" class="ico fillico" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>`,
   storm: ico(`<path d="M7 15.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 15.5"/><path d="m13 12-2.5 4h3L11 20.5"/>`),
   rain: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="m9 17.5-1 2.5M13 17.5l-1 2.5M17 17.5l-1 2.5"/>`),
   snow: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="M9 18h.01M13 19.5h.01M17 18h.01M11 21h.01M15 21h.01"/>`),
@@ -1586,7 +1589,7 @@ async function applyChat(fid, d, live) {
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
     if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
-    if (live && m.photo === 1 && p?.p && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
+    if (live && m.photo === 1 && (p?.p || p?.v) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
   }
   if (!live) return;
   const unread = (m) => (g ? m.from !== S.me.id : m.from === fid && !m.stopover) && !m.flying && !m.lost && !m.readAt;
@@ -1631,8 +1634,8 @@ async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
   try {
     const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true });
-    const plain = await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
-    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
+    const plain = p.v ? await E2E.openPhoto(m.id, p.v, await r.arrayBuffer(), "voice") : await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
+    S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
   } catch (e) {
     S.photos.delete(m.id);
     if (e.status === 410) S.photoGone.add(m.id);
@@ -1775,7 +1778,14 @@ function mount() {
         <div class="field-wrap">
           <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="send"></textarea>
           <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
+          <button type="button" class="mic" data-act="recstart" aria-label="Record a voice pigeon" hidden>${I.mic}</button>
         </div>
+      </div>
+      <div class="recbar" hidden role="group" aria-label="Recording a voice pigeon">
+        <button type="button" class="reccancel" data-act="reccancel" aria-label="Cancel recording">${I.trash}</button>
+        <span class="recdot" aria-hidden="true"></span><span class="rectime" aria-live="off">0:00</span>
+        <span class="recwave" aria-hidden="true"></span>
+        <button type="button" class="send recsend" data-act="recsend" aria-label="Send voice pigeon">${I.up}</button>
       </div>
     </form>
     <nav class="tabbar" aria-label="Sections"></nav>
@@ -1888,6 +1898,8 @@ function render() {
   ghostView();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
+  if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
+  if (chat && S.player) voiceShow();
   if (chat && S.stick) $view.scrollTop = $view.scrollHeight; else $view.scrollTop = keepTop;
   if (chat) pinChat();
   if (switches?.size) keepGlides($view, switches);
@@ -1923,7 +1935,7 @@ const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 const pg = (kind, skin) => `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
-const picWord = (p) => (p.p?.m === "image/gif" ? "GIF" : "Photo");
+const picWord = (p) => (p.v ? "Voice pigeon" : p.p?.m === "image/gif" ? "GIF" : "Photo");
 function preview(f) {
   const out = S.outbox.filter((o) => o.to === f.id).at(-1);
   if (out) return { html: `<span class="${out.err ? "lostp" : "fl"}">${out.err ? I.warn : I.clock} ${out.err ? "Not sent" : "Waiting for signal"}</span>`, at: out.at };
@@ -1934,7 +1946,7 @@ function preview(f) {
   if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pgm(l)} In flight · <span data-eta="${esc(l.deliverAt)}"></span> to go</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pgm(l)} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.p ? (l.photo === 2 ? `${picWord(p)} (expired)` : picWord(p)) + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.v ? `Voice pigeon (${fmtClip(p.v.d)})${l.photo === 2 ? " · expired" : ""}` : p.p ? (l.photo === 2 ? `${picWord(p)} (expired)` : picWord(p)) + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
 }
 // how far a flock has got: landed for how many of how many, and how many lost
@@ -1955,7 +1967,7 @@ function gpreview(g) {
   if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pgm(l)} ${who}’s pigeon is on its way…</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
-  const body = p.bad ? "Couldn’t open this message" : p.p ? picWord(p) + (p.t ? ": " + p.t : "") : p.t;
+  const body = p.bad ? "Couldn’t open this message" : p.v ? `Voice pigeon (${fmtClip(p.v.d)})` : p.p ? picWord(p) + (p.t ? ": " + p.t : "") : p.t;
   return { html: `${who}: ${esc(body)}`, at: l.from === S.me.id ? l.sentAt : l.deliverAt };
 }
 const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
@@ -2182,7 +2194,10 @@ function bubble(f, m, isLastMine, gapTop, g) {
   const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}"` : "";
   const prog = mine && m.flying && !m.waiting ? `<div class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></div>` : "";
   let html;
-  if (p.p) {
+  if (p.v) {
+    const gone = m.photo === 2 || S.photoGone.has(m.id);
+    html = `<div class="b voicem${mine ? " me" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${prog}</div>`;
+  } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
     const ar = p.p.w > 0 && p.p.h > 0 ? ` data-ar="${Math.max(0.4, Math.min(2.5, p.p.w / p.p.h)).toFixed(4)}"` : "";
@@ -2289,7 +2304,7 @@ async function setSkin(id) {
 const REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 const chatName = (id, g) => (id === S.me.id ? "You" : first((g ? member(g, id) : friend(id))?.name || "Someone"));
 function quoteHtml(q, g) {
-  return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
+  return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? "Voice pigeon" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
 }
 // The reactions on a message: each once it has landed (yours straight away)
 function reactsHtml(m, mine) {
@@ -2623,18 +2638,24 @@ function renderCompose() {
     note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, mySpeed(kind)))}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
   }
   btn.disabled = blocked || !has || S.busy;
+  // nothing typed: the send button becomes a microphone (voice pigeons)
+  const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
+  mic.hidden = !showMic; btn.hidden = showMic && !S.busy; mic.disabled = !!S.busy;
   $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
   $(".gifbtn", $compose).hidden = !S.gifsOn;
   const rb = $(".replybar", $compose), rt = S.replyTo && S.replyTo.chat === S.chat ? S.replyTo : null;
   rb.hidden = !rt;
   if (rt && rb.dataset.for !== rt.id) {
     rb.dataset.for = rt.id;
-    rb.innerHTML = `${I.reply}<span class="rtext"><b>Replying to ${esc(chatName(rt.from, g))}</b><span>${rt.p ? (rt.p === "gif" ? "GIF" : "Photo") + (rt.t ? ": " : "") : ""}${esc(rt.t)}</span></span><button type="button" data-act="unreply" aria-label="Cancel reply">${I.x}</button>`;
+    rb.innerHTML = `${I.reply}<span class="rtext"><b>Replying to ${esc(chatName(rt.from, g))}</b><span>${rt.p ? (rt.p === "gif" ? "GIF" : rt.p === "voice" ? "Voice pigeon" : "Photo") + (rt.t ? ": " : "") : ""}${esc(rt.t)}</span></span><button type="button" data-act="unreply" aria-label="Cancel reply">${I.x}</button>`;
   }
   if (!rt && rb.dataset.for) { rb.dataset.for = ""; rb.innerHTML = ""; }
   const a = $(".attach", $compose);
   a.hidden = !S.attach;
-  if (S.attach && a.dataset.for !== S.attach.preview) {
+  if (S.attach?.voice && a.dataset.for !== S.attach.preview) {
+    a.dataset.for = S.attach.preview;
+    a.innerHTML = `<span class="vthumb">${I.mic}</span><span class="ainfo"><b>Voice · ${fmtClip(S.attach.ms)}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span>`;
+  } else if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
     a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
   }
@@ -3609,7 +3630,7 @@ async function onClick(e) {
     case "react": return sendReact(id, t.dataset.e);
     case "reply": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id), p = m && S.plain.get(id); if (!p) return;
-      S.replyTo = { chat: S.chat, id, from: m.from, t: String(p.t || "").replace(/\s+/g, " ").slice(0, 90), p: p.p ? (p.p.m === "image/gif" ? "gif" : "photo") : "" };
+      S.replyTo = { chat: S.chat, id, from: m.from, t: String(p.t || "").replace(/\s+/g, " ").slice(0, 90), p: p.v ? "voice" : p.p ? (p.p.m === "image/gif" ? "gif" : "photo") : "" };
       renderCompose(); $ta.focus(); return;
     }
     case "unreply": S.replyTo = null; return renderCompose();
@@ -3618,6 +3639,10 @@ async function onClick(e) {
       el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
       el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return;
     }
+    case "recstart": return recStart();
+    case "reccancel": return recStop(false);
+    case "recsend": return recStop(true);
+    case "vplay": return voicePlay(id);
     case "outmenu": {
       const o = S.outbox.find((x) => x.id === id); if (!o) return;
       return openMenu(t, [{ label: o.err ? "Try Again" : "Send Now", icon: I.up, act: "outretry", id }, { label: "Delete", icon: I.trash, act: "outdel", id, destructive: true }]);
@@ -4203,6 +4228,104 @@ function showUpload(stage, f = 0) {
   });
   upAnim.set(f);
 }
+/* ---------- voice pigeons ----------
+   Tap the microphone (when there's nothing typed) to record, up to 30
+   seconds. The recording is sealed like a photo, with its own random key
+   (labelled "voice", so it can't pass for a photo), and its shape travels
+   inside the sealed scroll as 40 bars for the waveform. Like photos, the
+   recording itself is deleted from the server 24 hours after it lands. */
+const VOICE_MAX = 30000, VOICE_BARS = 40;
+const voiceOK = () => !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+const voiceMime = (m) => (/^audio\/(mp4|webm|ogg|aac|mpeg)(;[\w=.,\s-]*)?$/.test(String(m || "")) ? String(m).split(";")[0] : "audio/mp4");
+const fmtClip = (ms) => { const s = Math.max(1, Math.round((ms || 0) / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
+// 40 bars, each 0–15, as 40 hex digits
+const waveOf = (w) => { const s = /^[0-9a-f]{40}$/.test(String(w || "")) ? w : "4".repeat(VOICE_BARS); return [...s].map((c) => parseInt(c, 16) / 15); };
+function voiceHtml(id, v, mine) {
+  const bars = waveOf(v.w).map((h) => `<i data-h="${(0.18 + 0.82 * h).toFixed(2)}"></i>`).join("");   // (heights set after drawing: no inline styles here)
+  const ready = !!S.photos.get(id), playing = S.player?.id === id && !S.player.paused;
+  return `<span class="voice${playing ? " playing" : ""}" data-vid="${esc(id)}">
+    <button type="button" class="vplay" data-act="vplay" data-id="${esc(id)}" aria-label="${playing ? "Pause" : "Play"} voice pigeon, ${fmtClip(v.d)}"${ready ? "" : " disabled"}>${playing ? I.pause : I.play}</button>
+    <span class="vwave" aria-hidden="true">${bars}</span><span class="vdur">${fmtClip(v.d)}</span></span>`;
+}
+// one player for every voice pigeon; the bars fill in as it plays
+function voicePlay(id) {
+  const url = S.photos.get(id); if (!url) return;
+  const pl = S.player || (S.player = new Audio());
+  if (pl.id === id && !pl.paused) { pl.pause(); return voiceShow(); }
+  if (pl.id !== id) { pl.pause(); pl.src = url; pl.id = id; }
+  pl.onended = () => { pl.currentTime = 0; voiceShow(); };
+  pl.play().then(() => { haptic("tick"); voiceShow(); requestAnimationFrame(voiceFrame); }).catch(() => toast("Couldn’t play that voice pigeon on this phone."));
+}
+function voiceShow() {
+  const pl = S.player;
+  root().querySelectorAll(".voice[data-vid]").forEach((el) => {
+    const on = pl && pl.id === el.dataset.vid, playing = on && !pl.paused, b = $(".vplay", el);
+    el.classList.toggle("playing", playing);
+    if (b && b.dataset.state !== String(playing)) { b.dataset.state = String(playing); b.innerHTML = playing ? I.pause : I.play; b.setAttribute("aria-label", b.getAttribute("aria-label").replace(/^(Play|Pause)/, playing ? "Pause" : "Play")); }
+    const f = on && pl.duration > 0 && isFinite(pl.duration) ? pl.currentTime / pl.duration : 0;
+    el.style.setProperty("--p", f.toFixed(4));
+    const bars = $(".vwave", el)?.children || [];
+    for (let i = 0; i < bars.length; i++) bars[i].classList.toggle("on", on && (i + 0.5) / bars.length <= f);
+    const d = $(".vdur", el); if (d && on && (playing || pl.currentTime > 0)) d.textContent = fmtClip(Math.max(0, (pl.duration - pl.currentTime) * 1000));
+  });
+}
+function voiceFrame() { voiceShow(); if (S.player && !S.player.paused) requestAnimationFrame(voiceFrame); }
+
+let rec = null;
+async function recStart() {
+  if (rec || S.busy) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch (e) { return toast(e?.name === "NotAllowedError" ? "InFlight needs the microphone for voice pigeons. You can allow it in Settings." : "Couldn’t use the microphone."); }
+  const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((m) => window.MediaRecorder.isTypeSupported?.(m)) || "";
+  let mr;
+  try { mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 48000 } : undefined); }
+  catch (_) { stream.getTracks().forEach((t) => t.stop()); return toast("Couldn’t record on this phone."); }
+  const AC = window.AudioContext || window.webkitAudioContext, ac = AC ? new AC() : null, an = ac ? ac.createAnalyser() : null;
+  if (ac) { an.fftSize = 1024; ac.createMediaStreamSource(stream).connect(an); }
+  rec = { stream, mr, ac, an, chunks: [], levels: [], t0: performance.now(), mime: (mr.mimeType || mime || "audio/webm").split(";")[0], buf: an ? new Float32Array(an.fftSize) : null };
+  mr.ondataavailable = (e) => { if (e.data?.size) rec?.chunks.push(e.data); };
+  mr.start(250);
+  haptic("tick");
+  $(".crow", $compose).hidden = true; $(".recbar", $compose).hidden = false; $(".recwave", $compose).innerHTML = "";
+  requestAnimationFrame(recFrame);
+}
+function recFrame() {
+  if (!rec) return;
+  const ms = performance.now() - rec.t0;
+  if (rec.an) {
+    rec.an.getFloatTimeDomainData(rec.buf);
+    let sum = 0; for (const v of rec.buf) sum += v * v;
+    rec.levels.push(Math.min(1, Math.sqrt(sum / rec.buf.length) * 4));
+  }
+  $(".rectime", $compose).textContent = fmtClip(ms);
+  // the live waveform: the last few seconds, newest on the right
+  const w = $(".recwave", $compose), n = Math.max(12, Math.floor(w.clientWidth / 5)), lv = rec.levels.slice(-n * 3);
+  const bars = Array.from({ length: n }, (_, i) => { const a = lv.slice(i * 3, i * 3 + 3); return a.length ? Math.max(...a) : 0; });
+  while (w.children.length < n) w.appendChild(document.createElement("i"));
+  while (w.children.length > n) w.lastChild.remove();
+  bars.forEach((h, i) => w.children[i].style.setProperty("--h", (0.12 + 0.88 * h).toFixed(2)));
+  if (ms >= VOICE_MAX) return recStop(true);
+  requestAnimationFrame(recFrame);
+}
+async function recStop(keep) {
+  const r = rec; if (!r) return;
+  rec = null;
+  const ms = Math.min(VOICE_MAX, performance.now() - r.t0);
+  await new Promise((res) => { r.mr.onstop = res; try { r.mr.state !== "inactive" ? r.mr.stop() : res(); } catch (_) { res(); } });
+  r.stream.getTracks().forEach((t) => t.stop()); r.ac?.close().catch(() => {});
+  $(".recbar", $compose).hidden = true; $(".crow", $compose).hidden = false;
+  if (!keep) { haptic("tick"); return renderCompose(); }
+  if (ms < 800 || !r.chunks.length) { toast("Hold on a little longer to record."); return renderCompose(); }
+  const blob = new Blob(r.chunks, { type: r.mime }), bytes = new Uint8Array(await blob.arrayBuffer());
+  // the shape: 40 bars over the whole recording, scaled to its loudest
+  const lv = r.levels.length ? r.levels : [0.3], step = lv.length / VOICE_BARS, top = Math.max(0.05, ...lv);
+  const wave = Array.from({ length: VOICE_BARS }, (_, i) => { const a = lv.slice(Math.floor(i * step), Math.max(Math.floor(i * step) + 1, Math.floor((i + 1) * step))); return Math.round(15 * Math.min(1, Math.max(...a) / top)).toString(16); }).join("");
+  S.attach = { voice: true, bytes, mime: r.mime, ms: Math.round(ms), wave, preview: URL.createObjectURL(blob) };
+  renderCompose();                                // (now there's something to send)
+  await send();
+}
+
 /* ---------- the outbox: pigeons waiting for signal ----------
    A message sent with no connection is already sealed; it waits here (in
    IndexedDB, as ciphertext, never as words) and takes off by itself once the
@@ -4226,8 +4349,11 @@ async function outboxOpen(o) {
     else if (friend(o.to)) await decrypt(o.to, { id: o.id, from: S.me.id, to: o.to, ct: o.meta.ct });
   }
   const p = S.plain.get(o.id);
-  if (o.blob && p?.p && !S.photos.has(o.id)) {
-    try { S.photos.set(o.id, URL.createObjectURL(new Blob([await E2E.openPhoto(o.id, p.p, o.blob)], { type: p.p.m === "image/gif" ? "image/gif" : "image/jpeg" }))); } catch (_) {}
+  if (o.blob && (p?.p || p?.v) && !S.photos.has(o.id)) {
+    try {
+      const plain = p.v ? await E2E.openPhoto(o.id, p.v, o.blob, "voice") : await E2E.openPhoto(o.id, p.p, o.blob);
+      S.photos.set(o.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
+    } catch (_) {}
   }
 }
 let flushing = null;
@@ -4264,7 +4390,7 @@ window.addEventListener("offline", () => { S.offline = true; renderOffline(); })
 function outboxBubbles(chat) {
   return S.outbox.filter((o) => o.to === chat).map((o) => {
     const p = S.plain.get(o.id) || { t: "" }, ph = S.photos.get(o.id);
-    const pic = p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
+    const pic = p.v ? voiceHtml(o.id, p.v, true) : p.p ? `<div class="ph"${ph ? "" : ' data-empty="1"'}>${ph ? `<img src="${esc(ph)}" alt="${p.p.m === "image/gif" ? "GIF" : "Photo"}">` : `<span>${p.p.m === "image/gif" ? "GIF" : "Photo"}</span>`}</div>` : "";
     return `<div class="b me pending${o.err ? " failed" : ""}" data-mid="${esc(o.id)}">${pic}${esc(p.t || "").replace(/\n/g, "<br>")}</div>
       <div class="meta me"><button type="button" class="fl outq${o.err ? " bad" : ""}" data-act="outmenu" data-id="${esc(o.id)}">${o.err ? `${I.warn} Not sent · ${esc(o.err)}` : `${I.clock} Waiting for signal`}</button></div>`;
   }).join("");
@@ -4281,7 +4407,12 @@ async function send() {
     const rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null;
     if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
     let blob = null;
-    if (S.attach) {
+    if (S.attach?.voice) {
+      showUpload("seal");
+      const sealed = await E2E.sealPhoto(id, S.attach.bytes, "voice");
+      payload.v = { k: sealed.k, iv: sealed.iv, m: S.attach.mime, d: S.attach.ms, w: S.attach.wave };
+      blob = sealed.data;
+    } else if (S.attach) {
       showUpload("seal");
       const sealed = await E2E.sealPhoto(id, S.attach.bytes);
       payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };

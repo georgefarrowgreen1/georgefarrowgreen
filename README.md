@@ -253,6 +253,15 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Voice pigeons.** With nothing typed, the send button is a microphone: tap
+to record (up to 30 seconds, with a live waveform; the bin cancels), then send.
+The recording is sealed like a photo, with its own random key labelled "voice"
+so it can't pass for one, and its shape (40 bars) travels inside the sealed
+message. It plays in the chat with the bars filling as it goes, and like a
+photo, the server deletes the recording 24 hours after it lands. The
+microphone is allowed for `/pigeon` only, and recordings play from `blob:`
+URLs (`media-src 'self' blob:`).
+
 **No signal.** Send with no connection and the pigeon waits on the perch:
 your message, faded, "Waiting for signal". It's kept on the phone already
 sealed (ciphertext only, opened again with your key after a reload) and takes
