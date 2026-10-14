@@ -41,7 +41,7 @@ const S = {
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
-  reacts: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
+  reacts: new Map(), fly: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -223,6 +223,7 @@ const I = {
   snow: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="M9 18h.01M13 19.5h.01M17 18h.01M11 21h.01M15 21h.01"/>`),
   fog: ico(`<path d="M7 12.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 12.5"/><path d="M4 16h16M6 19.5h12"/>`),
   pass: ico(`<path d="M3.5 8.5h13l-3.5-3.5"/><path d="M20.5 15.5h-13l3.5 3.5"/>`),
+  wave: ico(`<path d="M8.5 12.5V6a1.5 1.5 0 0 1 3 0v5.5"/><path d="M11.5 11V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14.5 11V5.8a1.5 1.5 0 0 1 3 0V12"/><path d="M17.5 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.8a6.5 6.5 0 0 1-5.3-2.7l-3.1-4.4a1.5 1.5 0 0 1 2.4-1.8l1.8 2.2"/>`),
   heart: ico(`<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>`),
   reply: ico(`<path d="M10 8 5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
@@ -1698,7 +1699,7 @@ async function applyChat(fid, d, live) {
     if (!g && m.stopover && m.mine) await openNote(m.id, S.me.id, m.finalTo, m.mine);
   }
   if (!live && S.msgs.has(fid)) return;            // the fresh copy got here first
-  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []);
+  S.msgs.set(fid, d.messages); S.turns.set(fid, d.turn); S.reacts.set(fid, d.reacts || []); if (!g) S.fly.set(fid, d.fly || []);
   if (g) S.gevents.set(fid, d.events || []);
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
@@ -2497,7 +2498,7 @@ function vNotifySheet() {
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
       ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
-      ${t("moments", I.pass, "teal", "Mid-air Moments", "When two of your pigeons pass each other in the air")}
+      ${t("moments", I.pass, "teal", "Mid-air Moments", "Near misses, cheers, and friends’ pigeons flying over you")}
       ${t("weekly", I.globe, "blue", "Your Week in Flight", "Sunday evening: miles flown and badges earned")}
     </div>
     <div class="ghead">Lock Screen</div>
@@ -3027,6 +3028,25 @@ function chatMoments(msgs, chatId) {
   }
   return out.sort((a, b) => a.at - b.at);
 }
+// Flyovers in a chat with a friend: their pigeon over you (wave while it's
+// fresh), yours over them (and whether they waved).
+const WAVE_FOR = 12 * HOUR;
+let wavedNow = null;                          // the one just waved at, for its little wave
+function flyLines(f) {
+  return (S.fly.get(f.id) || []).map((x) => {
+    const name = esc(first(f.name)), can = !x.mine && !x.waved && now() - x.at < WAVE_FOR;
+    const text = x.mine ? (x.waved ? `${name} waved at your pigeon${x.place ? ` over ${esc(x.place)}` : ""}` : `Your pigeon flew over ${name}${x.place ? ` in ${esc(x.place)}` : ""}`)
+      : `${name}’s pigeon flew over you${x.waved ? " · you waved" : ""}`;
+    return { at: x.at, html: `<div class="sysline fly${wavedNow === x.id ? " just" : ""}">${I.wave}<span>${text}<span class="t"> · ${fmtTime(x.mine && x.waved ? x.waved : x.at)}</span></span>${can ? `<button type="button" class="wavebtn" data-act="wave" data-id="${esc(x.id)}">Wave</button>` : ""}</div>` };
+  });
+}
+// On your pigeon's map: who it flew over, and who waved
+function flyText(m) {
+  const l = m.fly || []; if (!l.length) return "";
+  const nm = (x) => first(friend(x.who)?.name || "a friend"), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+  const w = l.filter((x) => x.waved);
+  return w.length === 1 ? `${nm(w[0])} waved from ${w[0].place || "below"}` : w.length ? `${and(w.map(nm))} waved from below` : l.length === 1 ? `Flew over ${nm(l[0])}${l[0].place ? ` in ${l[0].place}` : ""}` : `Flew over ${and(l.map(nm))}`;
+}
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -3090,11 +3110,11 @@ function vChat() {
   const t = S.turns.get(f.id) || f.turn;
   let body = "", lastStamp = 0, prevFrom = null;
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
-  const moms = chatMoments(msgs, f.id); let mo = 0;
+  const moms = [...chatMoments(msgs, f.id), ...flyLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
   const momsTo = (at) => { let h = ""; while (mo < moms.length && moms[mo].at <= at) h += moms[mo++].html; return h; };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && S.outbox.some((o) => o.to === f.id)) body = "";
-  else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
+  else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
@@ -4019,6 +4039,7 @@ function tickMap() {
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
+    ${flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : ""}
     ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}
     ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
@@ -4407,6 +4428,17 @@ async function onClick(e) {
       if (holding() && Date.now() - heldAt < 800 && !inPop) return;   // the end of a hold, not a tap
       return go("chat", id);
     case "shareflight": return openShare(id || t.dataset.id);
+    case "wave": {
+      const chat = S.chat, x = (S.fly.get(chat) || []).find((y) => y.id === id && !y.mine); if (!x || x.waved) return;
+      t.disabled = true;
+      try {
+        const r = await api("wave", { method: "POST", body: { id } });
+        haptic("success"); x.waved = r.waved; wavedNow = id; setTimeout(() => { if (wavedNow === id) wavedNow = null; }, 1500);
+        if (S.chat === chat) render();
+        toast(`You waved. ${esc(first(friend(chat)?.name || "They"))} will see it.`);
+      } catch (err) { toast(esc(err.message)); t.disabled = false; }
+      return;
+    }
     case "cheer": {
       const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m || !cheerable(m).can) return;
       if (t.classList.contains("cheerbtn")) t.disabled = true;

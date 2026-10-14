@@ -13,7 +13,7 @@
 // back of ordinary API traffic, and from an outside scheduler (see
 // .github/workflows/inflight-notify.yml) when nobody is using the app.
 
-import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
+import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 
 const enc = new TextEncoder();
@@ -218,6 +218,13 @@ export async function cheeredNote(env, toId, by, x) {
   await pushTo(env, toId, { title: "A little tailwind",
     body: `${who} cheered on ${x.mine ? "their pigeon to you" : "your pigeon"}. It lands ${etaText(x.cut)} sooner.`, tag: x.tag, url: `/pigeon/#open=${x.chat}` });
 }
+// Someone waved at your pigeon as it flew over them.
+export async function wavedNote(env, toId, by, x) {
+  const r = await userPrefs(env, toId); if (!r || !r.p.moments || isQuiet(r.p)) return;
+  const who = firstName(by.name);
+  await pushTo(env, toId, { title: r.p.names ? `${who} waved` : "A wave",
+    body: r.p.names ? `${who} waved at your pigeon as it flew over${x.place ? " " + x.place : " them"}.` : "A friend waved at your pigeon as it flew over them.", tag: "wave-" + x.id, url: `/pigeon/#open=${by.id}` });
+}
 export async function groupRerouted(env, senderId, to, gid, deliverAt) {
   const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",
@@ -361,6 +368,25 @@ async function nearTick(env, D, t, since) {
   return pushes;
 }
 
+// A friend's pigeon flying over you, as it does: look up! Only if you're still
+// where you were (and still friends); never who it's flying to.
+async function flyTick(env, D, t, since) {
+  let pushes = 0;
+  const { results } = await D.prepare(`SELECT f.*, s.name AS sname, u.notify_prefs, u.lat AS ulat, u.lon AS ulon FROM pg_flyover f
+    JOIN pg_users s ON s.id = f.sender JOIN pg_users u ON u.id = f.user_id
+    WHERE f.told IS NULL AND f.at <= ?1 AND f.at > ?2 LIMIT 200`).bind(t, since).all();
+  for (const r of results) {
+    const friends = await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(r.sender, r.user_id).first();
+    if (!friends || r.ulat == null || haversineKm(r.ulat, r.ulon, r.lat, r.lon) > 25) { await D.prepare("DELETE FROM pg_flyover WHERE msg_id = ? AND user_id = ? AND told IS NULL").bind(r.msg_id, r.user_id).run(); continue; }
+    const claimed = await D.prepare("UPDATE pg_flyover SET told = ? WHERE msg_id = ? AND user_id = ? AND told IS NULL").bind(t, r.msg_id, r.user_id).run();
+    if (!claimed.meta.changes) continue;
+    const p = prefsOf(r); if (!p.moments || isQuiet(p, t)) continue;
+    pushes += await pushTo(env, r.user_id, { title: "Look up!", body: p.names ? `${firstName(r.sname)}’s pigeon just flew over you. Wave hello?` : "A friend’s pigeon just flew over you. Wave hello?",
+      tag: "fly-" + r.msg_id, url: `/pigeon/#open=${r.sender}` });
+  }
+  return pushes;
+}
+
 // Where pigeons flew from and to is only kept exactly while it matters: a month
 // after landing, the ends of each route are rounded to half a degree (about
 // 50 km, still right for the map, the miles and the badges) and the points
@@ -377,6 +403,8 @@ async function blurOld(D, t) {
     D.prepare(`UPDATE pg_near SET ${["lat", "lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND at < ?`).bind(t - BLUR_AFTER),
     // and none outlives either of its pigeons
     D.prepare("DELETE FROM pg_near WHERE NOT EXISTS (SELECT 1 FROM pg_msgs WHERE id = pg_near.a) OR NOT EXISTS (SELECT 1 FROM pg_msgs WHERE id = pg_near.b)"),
+    // a flyover (and where the friend it flew over was) goes after a month, or with its pigeon
+    D.prepare(`DELETE FROM pg_flyover WHERE at < ? OR (NOT EXISTS (SELECT 1 FROM pg_msgs WHERE id = pg_flyover.msg_id) AND NOT EXISTS (SELECT 1 FROM pg_gmsgs WHERE id = pg_flyover.msg_id))`).bind(t - BLUR_AFTER),
   ]);
 }
 // Pigeons that have landed since the last tick: push now; email those who
@@ -454,6 +482,7 @@ export async function tick(env, origin) {
   }
   pushes += await wxTick(env, D, t, since);
   pushes += await nearTick(env, D, t, since);
+  pushes += await flyTick(env, D, t, since);
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

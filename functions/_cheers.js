@@ -10,6 +10,7 @@
 import { MIN, HOUR, PHOTO_TTL, HttpError, json, db, body, limit, requireUser, UUID_RE } from "./_pigeon.js";
 import { posAt, renear } from "./_moments.js";
 import { cheeredNote } from "./_notify.js";
+import { refly, reflyGroup } from "./_flyover.js";
 
 export const CHEER_CUT = 0.04, CHEER_MOST = 15 * MIN, CHEER_EACH = 3, CHEER_MAX = 12;
 const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
@@ -53,6 +54,7 @@ async function cheer({ request, env, waitUntil }) {
       .bind(p.deliver, p.legs, p.lostAt, JSON.stringify(by), p.cut, (p.lostAt ?? p.deliver) + PHOTO_TTL, id, m.deliver_at, m.cheer_by, m.legs).run();
     if (!r.meta.changes) continue;
     waitUntil(renear(D, id, t).catch(() => {}));                    // the pigeons it will pass, at its new pace
+    waitUntil(refly(D, id, t).catch(() => {}));                     // and when it's over friends
     const other = m.sender === u.id ? m.recipient : m.sender;
     waitUntil(cheeredNote(env, other, u, { mine: m.sender === u.id, chat: u.id, deliverAt: p.deliver, cut: p.cut, tag: "cheer-" + id }).catch(() => {}));
     return json({ ok: true, cut: p.cut, deliverAt: p.deliver });
@@ -91,6 +93,7 @@ async function groupCheer({ request, env, waitUntil }) {
     }
   }
   if (!done.length) throw why || new HttpError(409, "There’s nothing in the air to cheer on.");
+  waitUntil(reflyGroup(D, id, t).catch(() => {}));
   // (a group photo keeps its day after the last one lands as it was: never sooner)
   for (const x of done) if (mine) waitUntil(cheeredNote(env, x.to, u, { mine: true, chat: m.group_id, group: m.group_id, deliverAt: x.deliverAt, cut: x.cut, tag: "cheer-" + id }).catch(() => {}));
   if (!mine) waitUntil(cheeredNote(env, m.sender, u, { mine: false, chat: m.group_id, group: m.group_id, deliverAt: done[0].deliverAt, cut: done[0].cut, tag: "cheer-" + id }).catch(() => {}));

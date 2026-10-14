@@ -151,6 +151,9 @@ const SCHEMA = [
 // space: a reaction can't take a message's id, nor a group message a direct one.
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT NOT NULL, at INTEGER NOT NULL)");
 // Near misses: two pigeons that came within a few miles in mid-air (a < b, by id), where and when
+// flyovers (functions/_flyover.js): a pigeon over a friend of its sender, when, where they were, whether they were told and waved
+SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_flyover (msg_id TEXT NOT NULL, user_id TEXT NOT NULL, sender TEXT NOT NULL, at INTEGER NOT NULL, km REAL, lat REAL, lon REAL,
+  place TEXT, told INTEGER, waved INTEGER, PRIMARY KEY (msg_id, user_id))`, "CREATE INDEX IF NOT EXISTS pg_flyover_at ON pg_flyover(at)", "CREATE INDEX IF NOT EXISTS pg_flyover_pair ON pg_flyover(user_id, sender)");
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_near (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, lat REAL, lon REAL, km REAL, place TEXT,
   kind TEXT, lead TEXT, told INTEGER, coarse INTEGER, PRIMARY KEY (a, b))`, "CREATE INDEX IF NOT EXISTS pg_near_b ON pg_near(b)", "CREATE INDEX IF NOT EXISTS pg_near_at ON pg_near(at)");
 export const claimId = (D, id, kind, t) => D.prepare("INSERT INTO pg_ids (id, kind, at) VALUES (?, ?, ?)").bind(id, kind, t);

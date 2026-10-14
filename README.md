@@ -285,6 +285,18 @@ misses ahead are worked out again at its new pace. The other person gets a
 push ("A little tailwind", under Mid-air Moments). In a group, the sender
 cheers on every pigeon still flying, and each member the one flying to them.
 
+**Flyover waves.** When your pigeon passes within 40 km of a friend on its
+way to someone else (not near where it set off or where it lands), that
+friend gets a push as it flies over ("George's pigeon just flew over you.
+Wave hello?"), and their chat with you gets a line with a Wave button. A wave
+sends you a push and shows in your chat with them and on your pigeon's map.
+They're only told it was yours: never who it's flying to, or where. The server
+works out each pigeon's flyovers when it takes off, and again when it turns,
+is cheered on or is called back (`functions/_flyover.js`). Group pigeons count
+too, for friends who aren't in the group. A friend who has moved since, or is
+no longer a friend, isn't told. Flyovers are deleted after a month, and
+waving closes 12 hours after the pigeon passed.
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat

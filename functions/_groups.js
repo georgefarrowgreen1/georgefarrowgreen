@@ -13,6 +13,7 @@ import {
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
+import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
 
 export const GROUP_MAX = 12;
@@ -317,6 +318,7 @@ async function send({ request, env, waitUntil }) {
   ]);
   if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
+  waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
 }
@@ -335,6 +337,7 @@ async function recall({ request, env }) {
   await spendSwift(D, u, t);
   const r = await D.prepare(`UPDATE pg_gdeliv SET lost_at = ?1, recalled = 1, notified_at = ?1 WHERE msg_id = ?2 AND deliver_at > ?1 AND (lost_at IS NULL OR lost_at > ?1)`).bind(t, id).run();
   if (!r.meta.changes) throw new HttpError(409, "Too late: those pigeons have already landed.");
+  await dropFly(D, id, t);
   const landed = await D.prepare("SELECT 1 FROM pg_gdeliv WHERE msg_id = ? AND deliver_at <= ? AND lost_at IS NULL LIMIT 1").bind(id, t).first();
   if (!landed) {
     await D.prepare("UPDATE pg_gmsgs SET body = '', photo = CASE WHEN photo = 1 THEN 2 ELSE photo END WHERE id = ?").bind(id).run();
@@ -410,6 +413,7 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     if (!r.meta.changes) continue;
     // a photo stays until 24 hours after its last pigeon lands
     if (d.photo === 1) await D.prepare("UPDATE pg_gmsgs SET expires_at = MAX(COALESCE(expires_at, 0), ?) WHERE id = ?").bind((lostAt ?? deliver) + PHOTO_TTL, d.msg_id).run();
+    waitUntil(reflyGroup(D, d.msg_id, t).catch(() => {}));
     if (friends.has(d.sender)) waitUntil(groupRerouted(env, d.sender, { ...u, place: p.place }, d.group_id, deliver).catch(() => {}));
   }
 }

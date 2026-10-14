@@ -1252,3 +1252,14 @@ svg.fillico{fill:currentColor;stroke:none}
 .mapcard .cheerbtn:disabled{opacity:.55}
 .mapcard .cheers{display:block;font-size:13px;font-weight:600;color:var(--orange-t,var(--orange));text-align:center}
 .mapcard .cheers .ico{font-size:13px;margin-right:4px;vertical-align:-2px}
+/* flyovers: a friend's pigeon over you (wave back), yours over them */
+.sysline.fly{display:block}
+.sysline.fly > .ico{display:inline-block;font-size:14px;margin-right:5px;vertical-align:-3px;color:var(--teal);transform-origin:65% 85%}
+.sysline.fly.just > .ico{animation:wave 1.1s ease-in-out}
+@keyframes wave{0%,100%{transform:rotate(0)}15%{transform:rotate(-20deg)}35%{transform:rotate(16deg)}55%{transform:rotate(-14deg)}75%{transform:rotate(8deg)}}
+@media (prefers-reduced-motion:reduce){.sysline.fly.just > .ico{animation:none}}
+.wavebtn{display:inline-block;vertical-align:middle;margin:2px 0 2px 8px;border:0;border-radius:999px;padding:3px 12px;min-height:26px;background:var(--teal);color:#fff;font:inherit;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.wavebtn:active{opacity:.7}
+.wavebtn:disabled{opacity:.5}
+.mapcard .flyover{display:block;font-size:13px;font-weight:600;color:var(--label-2);text-align:center;text-wrap:balance}
+.mapcard .flyover .ico{font-size:13px;margin-right:4px;vertical-align:-2px;color:var(--teal)}
