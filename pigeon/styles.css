@@ -103,7 +103,7 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 .screen.plain{background:var(--bg-plain)}
 .view{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .view.tabs-pad{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
-.offline{flex:none;background:var(--orange);color:#fff;font-size:13px;font-weight:600;text-align:center;padding:5px 10px}
+.offline{flex:none;background:#b25400;color:#fff;font-size:13px;font-weight:600;text-align:center;padding:5px 10px}
 .loading{flex:1;display:grid;place-items:center;color:var(--label-2);font-size:15px;min-height:60vh}
 
 /* ---------- navigation: floating glass buttons, soft scroll edge ---------- */

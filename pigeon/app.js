@@ -1885,7 +1885,10 @@ function mount() {
     if (window.innerHeight - window.visualViewport.height < 80 && document.activeElement !== $ta) typing(false);
   });
 }
-function fitTa() { $ta.style.height = "auto"; $ta.style.height = Math.min(120, $ta.scrollHeight) + "px"; }
+function fitTa() {
+  if (!$ta.offsetParent) { $ta.style.height = ""; return; }       // hidden (not in a chat): nothing to measure yet
+  $ta.style.height = "auto"; $ta.style.height = Math.min(120, $ta.scrollHeight) + "px";
+}
 function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
 
 function go(view, chat) {
@@ -1896,10 +1899,11 @@ function go(view, chat) {
   if (!same && $ta && S.view === "chat" && S.chat) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
   if (view !== "chat") clearAttach();
-  if (!same && $ta) { $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || ""; fitTa(); }
+  if (!same && $ta) $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || "";
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
+  if (!same && $ta) fitTa();                                      // (after render: the composer is showing now)
   if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
   if (view === "chat" && chat) loadChat(chat).then(() => {
     // from the In the air strip: straight on to the map
