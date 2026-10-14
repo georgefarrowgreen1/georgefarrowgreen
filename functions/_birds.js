@@ -35,7 +35,7 @@ function birdView(b, t, flight) {
   return {
     id: b.id, name: b.name, km: Math.round(b.km), flights: b.flights, longest: Math.round(b.longest), rank, stamina: staminaOf(b.km),
     next: next ? { rank: next[0], km: next[1] } : null, state, busyUntil: flight ? null : b.busy_until ?? null, landAt: flight?.land ?? null,
-    lastAt: b.last_at ?? null, createdAt: b.created_at, retiredAt: b.retired_at ?? null, lostAt: b.lost_at ?? null, lostPlace: b.lost_place ?? null,
+    lastAt: b.last_at ?? null, wear: b.wear || null, createdAt: b.created_at, retiredAt: b.retired_at ?? null, lostAt: b.lost_at ?? null, lostPlace: b.lost_place ?? null,
   };
 }
 // Its flights not yet settled: in the air (or booked), as their pigeons fly now
@@ -65,7 +65,7 @@ export async function claimBird(D, uid, id, t, flight, land) {
   const r = await D.prepare(`UPDATE pg_birds SET busy_until = ?1, last_at = ?2 WHERE id = ?3 AND COALESCE(busy_until, 0) <= ?2
     AND NOT EXISTS (SELECT 1 FROM pg_msgs WHERE bird = ?3 AND bird_done IS NULL) AND NOT EXISTS (SELECT 1 FROM pg_gmsgs WHERE bird = ?3 AND bird_done IS NULL)`)
     .bind(land + restMs(flight, b.km), t, id).run();
-  return r.meta.changes ? { id: b.id, name: b.name, rank: rankOf(b.km) } : null;
+  return r.meta.changes ? { id: b.id, name: b.name, rank: rankOf(b.km), wear: b.wear || null } : null;
 }
 // A booked pigeon that never left: its named pigeon is free again
 export const freeBird = (D, id, t) => (id ? D.prepare("UPDATE pg_birds SET busy_until = ? WHERE id = ?").bind(t, id).run() : null);

@@ -1484,3 +1484,20 @@ svg.fillico{fill:currentColor;stroke:none}
 .pmtile.unknown .pmseal b{font-size:20px;color:var(--label-3)}
 .pmtile.unknown > b,.pmtile.unknown > small{color:var(--label-3)}
 .pmtile:active,.pmark:active{transform:scale(.96)}
+/* feathers: the balance, the shop, and accessories on named pigeons */
+.tile.yellow{background:linear-gradient(180deg,#ffd84a,#f2b600)}
+.fbal{font-variant-numeric:tabular-nums;font-weight:600;color:var(--label)}
+.fhead{display:flex;flex-direction:column;align-items:center;gap:2px;margin:6px 0 4px}
+.fhead .fico{display:grid;place-items:center;width:64px;height:64px;border-radius:20px;background:linear-gradient(180deg,#ffd84a,#f2b600);color:#fff;font-size:36px;margin-bottom:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.fhead b{font-size:34px;line-height:40px;font-weight:700;font-variant-numeric:tabular-nums}
+.fhead > span:last-child{color:var(--label-2);font-size:15px}
+.tile.emo{background:var(--fill);box-shadow:none;font-size:19px}
+.shopi .btn.small{flex:none;gap:4px}
+.shopi .btn.small .ico{font-size:14px}
+.fdelta{font-variant-numeric:tabular-nums;font-weight:600;color:var(--green-t)}
+.fdelta.spent{color:var(--label-2)}
+.wtile,.pgw{position:relative;overflow:visible}
+.pgw{display:inline-flex}
+.wear{position:absolute;right:-.35em;top:-.45em;font-style:normal;font-size:.75em;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));pointer-events:none}
+.wtile .wear{font-size:15px;right:-6px;top:-7px}
+.birdbig.wtile .wear{font-size:30px;right:-10px;top:-14px}

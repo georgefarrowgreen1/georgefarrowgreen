@@ -206,6 +206,7 @@ const flightMs = (km, speed = 1) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SP
 const BIRD = document.getElementById("bird-path").getAttribute("d");
 const ico = (d) => `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true">${d}</svg>`;
 const I = {
+  feather: ico(`<path d="M20.2 3.8C14 3.6 8.4 7.4 6.6 13.6L5 19"/><path d="M20.2 3.8c.6 6-2.6 11.3-8.4 13.2L6.6 13.6"/><path d="M11 9.6l3.3 1.2M9.4 12.4l3.3 1.3"/><path d="M5 19l-1.4 1.4"/>`),
   flame: ico(`<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-2.6 1.4-4.6 3-6.3.3 1.7 1.2 2.9 2.4 3.4-.4-3.3 1-6.1 3.4-8.4.2 2.8 1.6 4.4 2.9 6 1 1.3 1.8 2.9 1.8 4.9 0 4-2.6 6.6-6.5 6.6Z"/><path d="M12 21c-1.7 0-2.8-1.2-2.8-2.8 0-1.6 1.2-2.6 2.2-3.8.2 1 .8 1.6 1.5 1.8.1-.9.6-1.6 1.1-2.2.7 1 1 2.1 1 3.2 0 2.2-1.3 3.8-3 3.8Z"/>`),
   bird: `<svg viewBox="0 0 24 24" class="bird" aria-hidden="true"><path d="${BIRD}"/></svg>`,
   bubble: ico(`<path d="M12 4C7 4 3 7.2 3 11.2c0 2.2 1.2 4.1 3.1 5.4L5.5 20l3.9-2c.8.2 1.7.3 2.6.3 5 0 9-3.2 9-7.1S17 4 12 4Z"/>`),
@@ -1527,7 +1528,7 @@ let syncing = null;
 // What the server says (fresh, or the copy kept on this phone): friends,
 // groups and each chat's last message, opened with the key on this phone.
 async function applySync(d) {
-  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.blocked = d.blocked || []; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn; S.birds = d.birds?.birds || []; S.hall = d.birds?.hall || [];
+  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.blocked = d.blocked || []; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn; S.birds = d.birds?.birds || []; S.hall = d.birds?.hall || []; S.feathers = d.feathers ?? S.feathers ?? 0;
   syncTheme();
   for (const f of S.friends) {
     checkPin(f);
@@ -2522,6 +2523,7 @@ function vAccount() {
       ${cell({ icon: pg("mystery"), tile: "kb", label: "Mystery", sub: `Any pigeon, any time · ${(u.mystery || 0) >= 1 ? "ready" : `next in <span data-eta="${u.mysteryNextAt}"></span>`}`, val: loftVal("mystery") })}
     </div>
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
+    <div class="group mt">${cell({ act: "feathers", icon: I.feather, tile: "yellow", label: "Feathers", sub: "Earned by your pigeons · spend them in the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
     <div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
       ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles flown, records and more", chev: true })}</div>
     <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
@@ -3055,6 +3057,27 @@ function skinsHtml(list, mine) {
     <div class="badges skins">${tile(null, "Usual", true, "Every pigeon")}${list.map((k) => tile(k.id, k.name, k.open, k.open ? "Unlocked" : `Earn ${esc(SKINS[k.id]?.badge || "its badge")}`)).join("")}</div>
     <div class="gfoot">Your friends see the look on every pigeon you send. Its colour still says what kind it is.</div>`;
 }
+/* ---------- feathers ---------- */
+async function walletData() { try { const r = await api("feathers"); S.feathers = r.feathers; return r; } catch (err) { toast(esc(err.message)); return null; } }
+async function openFeathers() {
+  S.sheet = { type: "feathers", data: null }; renderSheet();
+  const r = await walletData(); if (r && S.sheet?.type === "feathers") { S.sheet.data = r; renderSheet(); render(); }
+}
+// which of your pigeons gets it
+function wearItem(item, anchor) {
+  if (!S.birds.length) return toast("Name a pigeon in Your Pigeons first.");
+  openMenu(anchor, S.birds.map((b) => ({ label: b.name, sub: b.wear === item ? "Wearing it" : b.wear && WEAR[b.wear] ? `Has the ${WEAR[b.wear][0].toLowerCase()} on` : b.rank, act: "wearon", id: `${item}|${b.id}` })));
+}
+async function putOn(bird, item) {
+  try {
+    const r = await api("bird-wear", { method: "POST", body: { bird, item } });
+    for (const b of S.birds) { if (item && b.wear === item) b.wear = null; if (b.id === bird) b.wear = item; }
+    if (S.sheet?.type === "feathers") S.sheet.data = r;
+    haptic("success"); renderSheet(); renderCompose();
+    const b = S.birds.find((x) => x.id === bird);
+    toast(item ? `${WEAR[item][1]} ${esc(b?.name || "Your pigeon")} has the ${esc(WEAR[item][0].toLowerCase())} on.` : `${esc(b?.name || "Your pigeon")} took it off.`);
+  } catch (err) { toast(esc(err.message)); }
+}
 async function setSkin(id) {
   const skin = id === "usual" ? null : id;
   try {
@@ -3193,6 +3216,10 @@ function flyText(m) {
    turns carrying what you send: the one you pick, else the one that has
    rested longest. Miles bring rank and stamina (less rest between flights). */
 const BIRDS_MAX = 5;
+// feathers buy accessories for your named pigeons: [id, name, emoji]
+const WEAR = { satchel: ["Satchel", "👜"], daisy: ["Daisy", "🌼"], ribbon: ["Ribbon", "🎀"], scarf: ["Scarf", "🧣"], goggles: ["Goggles", "🥽"], shades: ["Sunglasses", "🕶️"], tophat: ["Top Hat", "🎩"], crown: ["Crown", "👑"] };
+const wearOn = (w) => (w && WEAR[w] ? `<i class="wear" aria-hidden="true">${WEAR[w][1]}</i>` : "");
+const wearWord = (w) => (w && WEAR[w] ? ` in ${/^[aeiou]/i.test(WEAR[w][0]) ? "an" : w === "shades" ? "" : "a"} ${WEAR[w][0].toLowerCase()}`.replace("  ", " ") : "");
 const RANKS = [["Fledgling", 0], ["Courier", 500], ["Navigator", 2000], ["Veteran", 8000], ["Ace", 20000], ["Legend", 40075]];
 const RANK_TILE = { Fledgling: "gray", Courier: "green", Navigator: "blue", Veteran: "indigo", Ace: "orange", Legend: "rocket" };
 const aRank = (r) => `${/^[AEIOU]/.test(r) ? "an" : "a"} ${r}`;
@@ -3211,7 +3238,7 @@ function birdState(b) {
 function birdLine(m) {
   const b = m.bird; if (!b) return "";
   const c = m.from === S.me.id && b.id ? [...S.birds, ...S.hall].find((x) => x.id === b.id) : null;
-  return `<span class="birdline">${I.bird}Carried by ${esc(b.name)} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
+  return `<span class="birdline">${I.bird}Carried by ${esc(b.name)}${esc(wearWord(b.wear))} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
@@ -3567,10 +3594,10 @@ function renderCompose() {
   const bd = kind && kind !== "dumb" ? birdFor() : null, hint = kind && !f.keyChanged && S.me.lat != null ? landHint(c, kind) : "Message";
   pill.hidden = !!f.keyChanged || S.me.lat == null;
   pill.disabled = dumb != null;
-  const pk = JSON.stringify([kind, bd?.id, bd?.name, !!sched, !!via, S.me.skin]);
+  const pk = JSON.stringify([kind, bd?.id, bd?.name, bd?.wear, !!sched, !!via, S.me.skin]);
   if (pill.dataset.k !== pk) {
     pill.dataset.k = pk;
-    pill.innerHTML = `${kind ? pg(kind, S.me.skin) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}<span class="kl">${esc(!kind ? "None" : bd ? bd.name : KIND[kind].name)}</span>${sched ? I.clock : via ? I.people : ""}${I.chev}`;
+    pill.innerHTML = `${kind ? `<span class="pgw">${pg(kind, S.me.skin)}${wearOn(bd?.wear)}</span>` : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}<span class="kl">${esc(!kind ? "None" : bd ? bd.name : KIND[kind].name)}</span>${sched ? I.clock : via ? I.people : ""}${I.chev}`;
   }
   pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
   if ($ta.placeholder !== hint) $ta.placeholder = hint;
@@ -3862,9 +3889,28 @@ function drawSheet(refresh) {
         { left: { label: "Back to the map", act: "shareback" } });
       return;
     }
+    case "feathers": {
+      const w = s.data;
+      if (!w) { $layer.innerHTML = sheetHtml("Feathers", `<p class="empty">Counting feathers…</p>`); return; }
+      const named = S.birds.length > 0;
+      const item = (x) => `<div class="cell has-icon shopi${x.owned ? " owned" : ""}"><span class="tile emo" aria-hidden="true">${x.emoji}</span>
+        <span class="ctext"><span>${esc(x.name)}</span><span class="csub">${x.owned ? (x.on ? `On ${esc(x.on.name)}` : "Yours") : `${x.price} feathers`}</span></span>
+        ${x.owned ? (named ? `<button type="button" class="btn small plain" data-act="wearitem" data-id="${x.id}">${x.on ? "Move" : "Put On"}</button>` : "")
+          : `<button type="button" class="btn small" data-act="buyitem" data-id="${x.id}"${w.feathers >= x.price ? "" : " disabled"}>${I.feather}${x.price}</button>`}</div>`;
+      $layer.innerHTML = sheetHtml("Feathers", `<div class="fhead"><span class="fico">${I.feather}</span><b>${w.feathers.toLocaleString("en-GB")}</b><span>feathers</span></div>
+        <div class="ghead">Shop</div><div class="group">${w.items.map(item).join("")}</div>
+        <div class="gfoot">${named ? "Accessories go on your named pigeons, and everyone they fly to sees them." : "Accessories go on your named pigeons. Name one in Your Pigeons first."}</div>
+        <div class="ghead">How to Earn Them</div>
+        <div class="group">${cell({ icon: I.bird, tile: "orange", label: "A pigeon of yours lands", val: "1–6", sub: "One more for every 250 miles" })}
+          ${cell({ icon: I.globe, tile: "blue", label: "A new country or sea", val: "3", sub: "In your passport" })}
+          ${cell({ icon: I.pin, tile: "red", label: "A new postmark", val: "10", sub: "Flying past somewhere famous" })}
+          ${cell({ icon: I.flame, tile: "orange", label: "A streak reaches 7, 30 or 100 days", val: "10–100", sub: "For you both" })}</div>
+        ${w.recent.length ? `<div class="ghead">Lately</div><div class="group">${w.recent.map((r) => `<div class="cell"><span class="ctext"><span>${esc(r.why)}</span><span class="csub">${esc(agoText(r.at))}</span></span><span class="val fdelta${r.n < 0 ? " spent" : ""}">${r.n > 0 ? "+" : "−"}${Math.abs(r.n)}</span></div>`).join("")}</div>` : ""}`);
+      return;
+    }
     case "birds": {
       const sub = (b) => `${esc(b.rank)} · ${fmtMiles(b.km)} · ${birdState(b)}`;
-      const row = (b, hall) => `<button type="button" class="cell has-icon" data-act="bird" data-id="${esc(b.id)}"><span class="tile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${b.lostAt ? I.skull : I.bird}</span>
+      const row = (b, hall) => `<button type="button" class="cell has-icon" data-act="bird" data-id="${esc(b.id)}"><span class="tile wtile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${b.lostAt ? I.skull : I.bird}${hall ? "" : wearOn(b.wear)}</span>
         <span class="ctext"><span class="one">${esc(b.name)}</span><span class="csub one">${!hall ? sub(b) : b.lostAt ? `Lost${b.lostPlace ? ` over ${esc(b.lostPlace)}` : ""} · ${fmtDate(b.lostAt)}` : `${esc(b.rank)} · ${fmtMiles(b.km)} · retired ${fmtDate(b.retiredAt)}`}</span></span>${chevSm}</button>`;
       const ranks = RANKS.slice(1).map(([r, km]) => `${r} at ${fmtMiles(km)}`).join(", ");
       $layer.innerHTML = sheetHtml("Your Pigeons", (S.birds.length
@@ -3878,12 +3924,13 @@ function drawSheet(refresh) {
       const b = [...S.birds, ...S.hall].find((x) => x.id === s.id); if (!b) { S.sheet = { type: "birds" }; return renderSheet(); }
       const active = !b.lostAt && !b.retiredAt, from = RANKS.find((r) => r[0] === b.rank)[1], rest = Math.round((0.5 - (0.4 * b.stamina) / 100) * 100);
       const stat = (v, l) => `<div><b>${v}</b><span>${l}</span></div>`;
-      $layer.innerHTML = sheetHtml("", `<div class="profile-head"><span class="birdbig tile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${I.bird}</span><span class="name">${esc(b.name)}</span>
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head"><span class="birdbig tile wtile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${I.bird}${active ? wearOn(b.wear) : ""}</span><span class="name">${esc(b.name)}</span>
           <span class="sub">${esc(b.rank)}${active ? ` · ${birdState(b)}` : b.lostAt ? " · Lost" : " · Retired"}</span></div>
         <div class="bstats">${stat(fmtMiles(b.km), "Flown")}${stat(b.flights, b.flights === 1 ? "Flight" : "Flights")}${stat(fmtMiles(b.longest), "Longest")}${stat(b.stamina, "Stamina")}</div>
         ${active && b.next ? `<div class="group"><div class="cell brank"><span class="ctext"><span>Next: ${esc(b.next.rank)}</span><span class="csub">${fmtMiles(b.next.km - b.km)} to go</span><i class="bbar" aria-hidden="true"><b></b></i></span></div></div>` : ""}
         <div class="gfoot">${b.lostAt ? `Lost${b.lostPlace ? ` over ${esc(b.lostPlace)}` : ""} on ${fmtDate(b.lostAt)}, to Pigeon Death.` : b.retiredAt ? `Retired to your Hall of Fame on ${fmtDate(b.retiredAt)}.`
           : `Stamina ${b.stamina}: after a flight it rests about ${rest}% as long as it flew. Stamina grows with every mile.`}</div>
+        ${active ? `<div class="group mt">${cell({ act: "wearpick", id: b.id, icon: I.feather, tile: "yellow", label: "Wearing", val: b.wear && WEAR[b.wear] ? `${WEAR[b.wear][1]} ${esc(WEAR[b.wear][0])}` : "Nothing", chev: true })}</div>` : ""}
         ${active ? `<div class="group mt">${cell({ act: "birdrename", id: b.id, label: "Rename", cls: "action" })}${b.rank === "Legend" ? cell({ act: "birdretire", id: b.id, label: "Retire to the Hall of Fame", cls: "action" }) : ""}</div>
           ${b.rank === "Legend" ? `<div class="gfoot">${esc(b.name)} has flown once around the world. Retire it to your Hall of Fame to make room for a new pigeon.</div>` : ""}` : ""}`,
         { left: { label: "Back", act: "birds" }, name: b.name });
@@ -4710,6 +4757,23 @@ async function onClick(e) {
       return go("chat", id);
     case "shareflight": return openShare(id || t.dataset.id);
     case "birds": S.sheet = { type: "birds" }; return renderSheet();
+    case "feathers": return openFeathers();
+    case "buyitem": {
+      const it = S.sheet?.data?.items.find((x) => x.id === id); if (!it) return;
+      try { const r = await api("feathers-buy", { method: "POST", body: { item: id } }); S.sheet.data = r; S.feathers = r.feathers; haptic("success"); renderSheet(); render();
+        toast(`${it.emoji} The ${esc(it.name.toLowerCase())} is yours.`, S.birds.length ? "Put It On" : null, S.birds.length ? () => wearItem(id, $(`[data-act=wearitem][data-id="${id}"]`, $layer) || $layer) : null); }
+      catch (err) { toast(esc(err.message)); }
+      return;
+    }
+    case "wearitem": return wearItem(id, t);
+    case "wearon": { const [item, bird] = String(id).split("|"); closePop(); return putOn(bird, item === "none" ? null : item); }
+    case "wearpick": {
+      const w = await walletData(); if (!w) return;
+      const b = S.birds.find((x) => x.id === id), owned = w.items.filter((x) => x.owned);
+      if (!owned.length) { S.sheet = { type: "feathers", data: w, back: id }; renderSheet(); return toast("Buy something in the shop first."); }
+      return openMenu(t, [...owned.map((x) => ({ label: `${x.emoji} ${x.name}`, sub: x.on && x.on.id !== id ? `On ${x.on.name}` : x.on?.id === id ? "Wearing" : "", act: "wearon", id: `${x.id}|${id}` })),
+        ...(b?.wear ? [{ label: "Take It Off", act: "wearon", id: `none|${id}`, destructive: true }] : [])]);
+    }
     case "bird": S.sheet = { type: "bird", id }; return renderSheet();
     case "birdnew": S.sheet = { type: "birdname" }; return renderSheet();
     case "birdrename": S.sheet = { type: "birdname", id }; return renderSheet();

@@ -164,6 +164,9 @@ SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT N
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_passport (user_id TEXT NOT NULL, place TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, first_ord INTEGER, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, place))`);
 SCHEMA.push("CREATE INDEX IF NOT EXISTS pg_passport_first ON pg_passport(first_id)");
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_stamped (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, places TEXT)");
+// feathers (functions/_feathers.js): a ledger of what each person earned and spent, and what they bought
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_feathers (user_id TEXT NOT NULL, ref TEXT NOT NULL, n INTEGER NOT NULL, at INTEGER NOT NULL, why TEXT, PRIMARY KEY (user_id, ref))",
+  "CREATE TABLE IF NOT EXISTS pg_kit (user_id TEXT NOT NULL, item TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, item))");
 // landmark postmarks (functions/_landmarks.js): each person's collection (pg_stamped.marks: each flight's)
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_postmarks (user_id TEXT NOT NULL, mark TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, mark))");
 // Near misses: two pigeons that came within a few miles in mid-air (a < b, by id), where and when
@@ -253,7 +256,9 @@ const MIGRATIONS = [
   ...["pg_msgs", "pg_gmsgs"].flatMap((t) => ["bird TEXT", "bird_name TEXT", "bird_rank TEXT", "bird_up TEXT", "bird_done INTEGER"].map((c) => `ALTER TABLE ${t} ADD COLUMN ${c}`)),
   "ALTER TABLE pg_gmsgs ADD COLUMN bird_to TEXT",
   // mystery pigeons: the loft (null = full) and which messages flew as one
-  "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",       // the landmarks it flew past (JSON ids, in order)
+  "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
+  "ALTER TABLE pg_birds ADD COLUMN wear TEXT",            // the accessory it has on (feathers)
+  "ALTER TABLE pg_msgs ADD COLUMN bird_wear TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN bird_wear TEXT",   // and had on when it carried this       // the landmarks it flew past (JSON ids, in order)
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",
@@ -437,7 +442,7 @@ export function cheerView(row, me) {
 }
 // On a message: its named pigeon and rank (as it took off); to its sender also
 // which of theirs it is, and the rank it reached if it went up on landing.
-export const birdOn = (m, me) => (m.bird_name ? { bird: { name: m.bird_name, rank: m.bird_rank, ...(me === m.sender ? { id: m.bird, up: m.bird_up || null } : {}) } } : {});
+export const birdOn = (m, me) => (m.bird_name ? { bird: { name: m.bird_name, rank: m.bird_rank, wear: m.bird_wear || null, ...(me === m.sender ? { id: m.bird, up: m.bird_up || null } : {}) } } : {});
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
 export function msgView(me, m, t) {

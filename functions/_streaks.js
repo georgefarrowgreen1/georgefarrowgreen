@@ -7,6 +7,7 @@
 
 import { DAY, HOUR } from "./_pigeon.js";
 import { pushTo, prefsOf, isQuiet } from "./_notify.js";
+import { ensureFeathers, earn, STREAK_FEATHERS } from "./_feathers.js";
 
 export const STREAK_MIN = 3;            // a flame from three days in a row
 const WARN = 3 * HOUR;                  // the reminder: this long before it ends
@@ -40,6 +41,12 @@ export async function bumpStreak(D, x, y, t) {
       start = CASE WHEN last >= ?3 - 1 THEN start ELSE ?3 END,
       best = MAX(best, CASE WHEN last >= ?3 - 1 THEN MAX(last, ?3) - start + 1 ELSE 1 END),
       last = MAX(last, ?3)`).bind(a, b, d).run();
+  // a week, a month, a hundred days: feathers for you both
+  const r = await D.prepare("SELECT start, last FROM pg_streaks WHERE a = ? AND b = ?").bind(a, b).first(), n = r ? r.last - r.start + 1 : 0;
+  if (STREAK_FEATHERS[n] && r.last === d) {
+    await ensureFeathers(D);
+    await D.batch([a, b].map((x) => earn(D, x, `s:${a}:${b}:${r.start}:${n}`, STREAK_FEATHERS[n], "streak:" + n, t)));
+  }
 }
 
 // What the app shows: the run (0 once it's over), whether today is done, when it ends, the best

@@ -340,7 +340,7 @@ async function send({ request, env, waitUntil }) {
   // one of your named pigeons leads: it flies the longest route
   const lead = dels.filter((d) => d.r.lat != null).sort((a, b) => b.km - a.km)[0];
   const bird = lead && kind !== "dumb" ? await claimBird(D, u.id, meta.bird, t, lead.at - t, lead.at) : null;
-  if (bird) await D.prepare("UPDATE pg_gmsgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_to = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, lead.to, id).run();
+  if (bird) await D.prepare("UPDATE pg_gmsgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_to = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, lead.to, bird.wear, id).run();
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
   waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
   if (mystery) await D.prepare("UPDATE pg_gmsgs SET mystery = 1 WHERE id = ?").bind(id).run();

@@ -20,6 +20,7 @@ import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
 import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
 import { bumpStreak, streaksFor, streakBetween } from "../../_streaks.js";
 import { marksFor } from "../../_landmarks.js";
+import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -618,7 +619,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, birds: await birdsFor(D, u.id, t), emailOn: emailReady(env), gifsOn: gifsReady(env),
+  return json({ now: t, me: meView(u, t), feathers: await balanceOf(D, u.id), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, birds: await birdsFor(D, u.id, t), emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -743,7 +744,7 @@ async function sendMessage({ request, env, waitUntil }) {
   }
   // one of your named pigeons carries it, if it's free
   const bird = kind === "dumb" ? null : await claimBird(D, u.id, meta.bird, t, flight, deliver);
-  if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, id).run();
+  if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, bird.wear, id).run();
   if (mystery) await D.prepare("UPDATE pg_msgs SET mystery = 1 WHERE id = ?").bind(id).run();
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
@@ -1189,7 +1190,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES,
 };
 
 export async function onRequest(ctx) {
