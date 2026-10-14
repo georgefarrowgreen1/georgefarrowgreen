@@ -1557,3 +1557,27 @@ svg.fillico{fill:currentColor;stroke:none}
 .welcome .invonly{display:flex;flex-direction:column;gap:4px;margin:26px 0 16px;text-align:center}
 .welcome .invonly b{font-size:17px}
 .welcome .invonly span{color:var(--label-2);font-size:15px;line-height:20px;text-wrap:balance}
+/* the welcome: night, a pigeon crossing, very few words */
+html.night,html.night body{background:#03050c}
+html.night #screen,html.night .view{background:transparent}
+.welcome.night{position:relative;isolation:isolate;justify-content:space-between;align-items:center;padding:0 0 calc(26px + env(safe-area-inset-bottom,0px));color:#e9eeff;
+  background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%);overflow:hidden}
+.welcome.night .sky{position:absolute;inset:0;width:100%;height:100%;z-index:-1}
+.welcome .wtop{margin-top:max(22vh,120px);display:flex;flex-direction:column;align-items:center;gap:14px}
+.welcome .wtitle{margin:0;display:flex;gap:0;font-size:40px;line-height:1;font-weight:200;letter-spacing:.16em;padding-left:.16em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.45)}
+.welcome .wtitle span{display:inline-block;opacity:0;filter:blur(10px);transform:translateY(8px);animation:wletter 1.4s cubic-bezier(.2,.7,.2,1) forwards}
+.welcome .wtitle span:nth-child(1){animation-delay:.35s}.welcome .wtitle span:nth-child(2){animation-delay:.47s}.welcome .wtitle span:nth-child(3){animation-delay:.59s}.welcome .wtitle span:nth-child(4){animation-delay:.71s}
+.welcome .wtitle span:nth-child(5){animation-delay:.83s}.welcome .wtitle span:nth-child(6){animation-delay:.95s}.welcome .wtitle span:nth-child(7){animation-delay:1.07s}.welcome .wtitle span:nth-child(8){animation-delay:1.19s}
+@keyframes wletter{to{opacity:1;filter:blur(0);transform:none}}
+.welcome .whisper{margin:0;font-size:15px;letter-spacing:.06em;color:rgba(214,224,255,.62);font-style:italic;opacity:0;animation:wfade 2s ease 1.9s forwards}
+@keyframes wfade{to{opacity:1}}
+.welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 1.4s ease 2.6s forwards}
+.welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
+.welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:#cfe0ff;text-shadow:0 0 18px rgba(120,170,255,.6)}
+.welcome .invonly{margin:0 0 14px;font-size:14px;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55)}
+.welcome .wglow{position:relative;background:rgba(120,160,255,.14);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);letter-spacing:.12em;font-weight:500;animation:wpulse 3.2s ease-in-out infinite}
+@keyframes wpulse{50%{box-shadow:0 0 38px rgba(110,160,255,.6),inset 0 0 22px rgba(130,170,255,.28)}}
+.welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:rgba(214,224,255,.75);font:inherit;font-size:15px;letter-spacing:.08em}
+.welcome .wquiet:active{color:#fff}
+@media (prefers-reduced-motion:reduce){.welcome .wtitle span,.welcome .whisper,.welcome .wcta{animation:none;opacity:1;filter:none;transform:none}.welcome .wglow{animation:none}}
