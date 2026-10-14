@@ -17,6 +17,7 @@ import { stampPassports } from "./_passport.js";
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
+import { streakTick } from "./_streaks.js";
 
 const enc = new TextEncoder();
 const EMAIL_EVERY = 30 * MIN;     // at most one email per person per half hour
@@ -25,7 +26,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, streaks: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -34,7 +35,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "streaks", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -485,6 +486,7 @@ export async function tick(env, origin) {
   pushes += await wxTick(env, D, t, since);
   pushes += await nearTick(env, D, t, since);
   pushes += await flyTick(env, D, t, since);
+  pushes += await streakTick(env, D, t).catch((e) => { console.error("pigeon streaks", e && e.message); return 0; });
   await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
   await stampPassports(D, t).catch((e) => console.error("pigeon passport", e && e.message));  // the places flights that landed flew over
   const gt = await groupTick(env, D, t, since);

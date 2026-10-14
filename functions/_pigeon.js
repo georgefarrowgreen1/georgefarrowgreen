@@ -164,6 +164,9 @@ SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_flyover (msg_id TEXT NOT NULL, user_i
   place TEXT, told INTEGER, waved INTEGER, PRIMARY KEY (msg_id, user_id))`, "CREATE INDEX IF NOT EXISTS pg_flyover_at ON pg_flyover(at)", "CREATE INDEX IF NOT EXISTS pg_flyover_pair ON pg_flyover(user_id, sender)");
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_near (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, lat REAL, lon REAL, km REAL, place TEXT,
   kind TEXT, lead TEXT, told INTEGER, coarse INTEGER, PRIMARY KEY (a, b))`, "CREATE INDEX IF NOT EXISTS pg_near_b ON pg_near(b)", "CREATE INDEX IF NOT EXISTS pg_near_at ON pg_near(at)");
+// flight streaks (functions/_streaks.js): per pair (a < b), the run of UTC days with a take-off, its best, and the day it was last warned about
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_streaks (a TEXT NOT NULL, b TEXT NOT NULL, start INTEGER NOT NULL, last INTEGER NOT NULL, best INTEGER NOT NULL DEFAULT 1, warned INTEGER, PRIMARY KEY (a, b))",
+  "CREATE INDEX IF NOT EXISTS pg_streaks_b ON pg_streaks(b)", "CREATE INDEX IF NOT EXISTS pg_streaks_last ON pg_streaks(last)");
 export const claimId = (D, id, kind, t) => D.prepare("INSERT INTO pg_ids (id, kind, at) VALUES (?, ?, ?)").bind(id, kind, t);
 export const idTaken = async (D, id) => !!(await D.prepare("SELECT 1 FROM pg_ids WHERE id = ?").bind(id).first());
 const MIGRATIONS = [

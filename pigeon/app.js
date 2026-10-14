@@ -204,6 +204,7 @@ const flightMs = (km, speed = 1) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SP
 const BIRD = document.getElementById("bird-path").getAttribute("d");
 const ico = (d) => `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true">${d}</svg>`;
 const I = {
+  flame: ico(`<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-2.6 1.4-4.6 3-6.3.3 1.7 1.2 2.9 2.4 3.4-.4-3.3 1-6.1 3.4-8.4.2 2.8 1.6 4.4 2.9 6 1 1.3 1.8 2.9 1.8 4.9 0 4-2.6 6.6-6.5 6.6Z"/><path d="M12 21c-1.7 0-2.8-1.2-2.8-2.8 0-1.6 1.2-2.6 2.2-3.8.2 1 .8 1.6 1.5 1.8.1-.9.6-1.6 1.1-2.2.7 1 1 2.1 1 3.2 0 2.2-1.3 3.8-3 3.8Z"/>`),
   bird: `<svg viewBox="0 0 24 24" class="bird" aria-hidden="true"><path d="${BIRD}"/></svg>`,
   bubble: ico(`<path d="M12 4C7 4 3 7.2 3 11.2c0 2.2 1.2 4.1 3.1 5.4L5.5 20l3.9-2c.8.2 1.7.3 2.6.3 5 0 9-3.2 9-7.1S17 4 12 4Z"/>`),
   people: ico(`<circle cx="9" cy="8.5" r="3.3"/><path d="M3.2 19c.6-3.3 3-5.2 5.8-5.2s5.2 1.9 5.8 5.2"/><circle cx="16.8" cy="9.5" r="2.6"/><path d="M15.6 13.9c2.6-.4 4.7 1.2 5.2 4.2"/>`),
@@ -2440,6 +2441,14 @@ function gpreview(g) {
 }
 const fmtListTime = (ts) => { if (!ts) return ""; if (sameDay(ts, now())) return fmtTime(ts); if (sameDay(ts, now() - DAY)) return "Yesterday"; const d = new Date(ts); return now() - ts < 6 * DAY ? DOW[d.getDay()] : `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`; };
 
+/* ---------- flight streaks: days in a row with a pigeon between you ---------- */
+const STREAK_MIN = 3;
+const streakOf = (f) => (f?.streak && f.streak.n >= STREAK_MIN ? f.streak : null);
+// alive but nothing sent today, and under six hours to go
+const streakRisk = (s) => s && !s.today && s.endsAt - now() < 6 * HOUR;
+const streakLeft = (s) => fmtDur(Math.max(MIN, s.endsAt - now()));
+const streakBadge = (f) => { const s = streakOf(f); return s ? `<span class="streak${streakRisk(s) ? " risk" : ""}" aria-label="${s.n}-day flight streak${streakRisk(s) ? `, ends in ${esc(streakLeft(s))}` : ""}">${I.flame}${s.n}</span>` : ""; };
+
 /* ---------- Messages ---------- */
 function vMessages() {
   const fr = [
@@ -2450,7 +2459,7 @@ function vMessages() {
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext">
-        <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
+        <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span>${g ? "" : streakBadge(f)}<time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>
       </span>
     </button>`).join("");
@@ -2559,6 +2568,7 @@ function vNotifySheet() {
       ${t("accepted", I.people, "indigo", "Request Accepted")}
       ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
       ${t("moments", I.pass, "teal", "Mid-air Moments", "Near misses, cheers, and friends’ pigeons flying over you")}
+      ${t("streaks", I.flame, "orange", "Flight Streaks", "A few hours before a streak with a friend runs out")}
       ${t("weekly", I.globe, "blue", "Your Week in Flight", "Sunday evening: miles flown and badges earned")}
     </div>
     <div class="ghead">Lock Screen</div>
@@ -2608,7 +2618,8 @@ function chatSub(f) {
   }
   if (!bits.length && f.place) bits.push(esc(f.place));
   if (milesAway(f)) bits.push(milesAway(f));
-  return bits.length ? `<small class="sub">${icon}<span class="one">${bits.join(" · ")}</span></small>` : "";
+  const s = streakOf(f), st = s ? `<span class="streak${streakRisk(s) ? " risk" : ""}">${I.flame}${s.n}${streakRisk(s) ? ` · ends in ${esc(streakLeft(s))}` : ""}</span>` : "";
+  return bits.length || st ? `<small class="sub">${st}${bits.length ? `${icon}<span class="one">${bits.join(" · ")}</span>` : ""}</small>` : "";
 }
 const gchatSub = (g) => { const n = others(g).map((p) => esc(first(p.name))); return n.length ? `<small class="sub"><span class="one">${n.join(", ")}</span></small>` : ""; };
 /* ---------- pigeons on their way to you, kept small ---------- */
@@ -4137,6 +4148,8 @@ function drawSheet(refresh) {
         <div class="group mt">
           ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set"), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
+          ${f.streak && (f.streak.n || f.streak.best >= 2) ? cell({ icon: I.flame, tile: "orange", label: "Flight Streak", val: f.streak.n ? `${f.streak.n} day${f.streak.n === 1 ? "" : "s"}` : "None now",
+            sub: [f.streak.n && !f.streak.today ? `Send a pigeon in the next ${esc(streakLeft(f.streak))} to keep it` : "", f.streak.best >= 2 ? `Best: ${f.streak.best} days` : ""].filter(Boolean).join(" · ") }) : ""}
           ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
           ${km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
@@ -5734,6 +5747,8 @@ async function send() {
     } else r = await api(path, { method: "POST", body: meta });
     } catch (e) { if (!e.offline) throw e; upAnim?.stop(); upAnim = null; await queue(); S.busy = false; renderCompose(); return; }
     S.pick = null;                    // next time, back to the default
+    { const f = friend(to), was = f?.streak, s = r.streak;
+      if (f && s) { f.streak = s; if (s.n >= STREAK_MIN && (!was || !was.today || was.n < s.n)) toast(`${I.flame} ${s.n}-day streak with ${esc(first(f.name))}`); } }
     S.birdPick = null; const flew = r.message.bird?.id && S.birds.find((b) => b.id === r.message.bird.id); if (flew) flew.state = "flying";
     haptic("success");
     if (rt) S.replyTo = null;

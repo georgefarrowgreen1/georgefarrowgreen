@@ -18,6 +18,7 @@ import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
 import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
+import { bumpStreak, streaksFor, streakBetween } from "../../_streaks.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -597,6 +598,7 @@ async function sync({ request, env, waitUntil }) {
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
+  const streaks = await streaksFor(D, u.id, t);
   const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null });
   const friends = [], incoming = [], outgoing = [], blocked = [];
   for (const l of links) {
@@ -611,7 +613,7 @@ async function sync({ request, env, waitUntil }) {
       friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
         seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
         tz: ((z) => (z && z !== "UTC" ? z : null))(prefsOf(p).tz),                    // their phone's time zone: "lands 08:12 their time"
-        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t) });
+        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t), streak: streaks.get(p.id) || null });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
@@ -737,11 +739,12 @@ async function sendMessage({ request, env, waitUntil }) {
   const bird = kind === "dumb" ? null : await claimBird(D, u.id, meta.bird, t, flight, deliver);
   if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, id).run();
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
+  await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
   if (landAt == null) waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));       // scheduled: told when it takes off
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
   const me = landAt == null ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ message: msgView(u.id, m, t), ...(me ? { me: meView(me, t) } : {}) });
+  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: meView(me, t) } : {}) });
 }
 
 // Before sending: the weather along the way now, and for the next day hour by
