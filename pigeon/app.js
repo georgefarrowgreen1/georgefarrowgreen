@@ -1514,6 +1514,8 @@ function checkPin(f) {
   if (!S.pins[f.id]) { S.pins[f.id] = k; idb.set("pins:" + S.me.id, S.pins); }
   f.keyChanged = S.pins[f.id] !== k;
 }
+// a friend, or someone in one of your groups
+const personById = (id) => friend(id) || S.groups.map((g) => member(g, id)).find((p) => p && p.id !== S.me.id) || null;
 async function trustNewKey(fid) {
   const f = friend(fid) || S.groups.map((g) => member(g, fid)).find(Boolean); if (!f) return;
   const old = S.pins[fid], hist = S.pins["old:" + fid] || [];
@@ -1532,7 +1534,15 @@ function pairFor(pub) {
   if (!S.pairs.has(k)) S.pairs.set(k, E2E.pair(S.priv, pub));
   return S.pairs.get(k);
 }
-const base = (fid) => pairFor(friend(fid).pub);
+// Sealing to someone uses their key only if it hasn't changed since you last
+// checked: everything that's sealed (messages, reactions, stopover copies and
+// notes, group keys) goes through here, so nothing slips out to a new key.
+function trustedPub(p) {
+  if (!p?.pub) throw new Error("They’re not in your friends any more.");
+  if (p.keyChanged) throw new Error(`${first(p.name || "Their")}’s security key changed. Check their safety number first.`);
+  return p.pub;
+}
+const base = (fid) => pairFor(trustedPub(friend(fid)));
 // Keys to try for someone's messages: theirs now (once checked), then ones this phone pinned before.
 // A key the server says changed isn't used until you've checked it.
 const keysOf = (p) => [p.keyChanged ? null : keyId(p.pub), S.pins[p.id], ...(S.pins["old:" + p.id] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
@@ -1651,7 +1661,10 @@ async function cacheLoad() {
 async function openNote(id, from, to, ct) {
   if (S.notes.has(id)) return;
   const other = friend(from === S.me.id ? to : from); if (!other) return;
-  try { const o = await E2E.open(await pairFor(other.pub), { id: id + ":via", from, to, type: "note" }, ct); if (typeof o?.t === "string") S.notes.set(id, o.t); } catch (_) {}
+  // with keys you've trusted (as for messages), never a changed one unchecked
+  for (const k of keysOf(other)) {
+    try { const o = await E2E.open(await pairFor(pubFromId(k)), { id: id + ":via", from, to, type: "note" }, ct); if (typeof o?.t === "string") S.notes.set(id, o.t); return; } catch (_) {}
+  }
 }
 async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
@@ -2366,7 +2379,7 @@ async function sendReact(id, e) {
     if (g) {
       const { body: sealed, key, h } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id, type: "react" }, payload);
       const keys = {};
-      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id: rid, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
+      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id: rid, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
       body = { id: rid, msg: id, group: true, body: sealed, keys };
     } else {
       const to = m.from === S.me.id ? m.to : m.from;
@@ -2400,7 +2413,7 @@ function vGroupChat(g) {
   }
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && (m.route || m.flock?.some((x) => x.route)));
   const changed = others(g).filter((p) => p.keyChanged);
-  const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="trustm" data-id="${esc(changed[0].id)}">I’ve Checked</button></div>` : "";
+  const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="nm"><span>${esc(g.name)}</span>${I.chev}</span></button>
@@ -2430,7 +2443,7 @@ function vChat() {
   }
   // a pigeon in the air either way: the map button sits beside the menu
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && !m.waiting && m.route);
-  const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="trust" data-id="${esc(f.id)}">I’ve Checked</button></div>` : "";
+  const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", "messages")}</div>
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
@@ -2938,7 +2951,9 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml("Safety Number", `
         <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span></div>
         <div class="group mt-s"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
-        <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>`,
+        <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>
+        ${f?.keyChanged ? `<div class="warn sheetwarn"><span>${esc(first(f.name))}’s key changed. Only trust it once these digits match on both phones.</span></div>
+          <div class="group mt">${cell({ act: "trustsafe", id: f.id, label: "They Match: Trust New Key", cls: "center action" })}</div>` : ""}`,
         { left: s.from ? { label: "Back", act: s.from } : null });
       return;
     case "security": {
@@ -3013,13 +3028,15 @@ function drawSheet(refresh) {
       const row = (p) => {
         const you = p.id === S.me.id, km = you ? null : memberKm(p);
         const sub = you ? "You" : p.friend ? `${esc(p.place || "No location")}${km != null ? ` · ${fmtDur(flightMs(km))} by pigeon` : ""}` : `Friend of ${esc(first(member(g, p.addedBy)?.name || "a member"))} · ${fmtDur(flightMs(km))} by pigeon`;
-        return `<div class="cell">${avatar(you ? me : p, "s", !you && p.friend)}<span class="ctext"><span class="one">${esc(first(p.name))}</span><span class="csub one">${sub}</span></span></div>`;
+        // tap anyone for their safety number (friends of friends too)
+        return you ? `<div class="cell">${avatar(me, "s")}<span class="ctext"><span class="one">${esc(first(p.name))}</span><span class="csub one">${sub}</span></span></div>`
+          : `<button type="button" class="cell" data-act="safety" data-id="${esc(p.id)}" data-from="groupinfo" aria-label="${esc(first(p.name))}: safety number">${avatar(p, "s", p.friend)}<span class="ctext"><span class="one">${esc(first(p.name))}</span><span class="csub one">${p.keyChanged ? `<span class="keyw">${I.warn} Security key changed</span>` : sub}</span></span>${chevSm}</button>`;
       };
       const list = [S.me.id, ...others(g).sort((a, b) => memberKm(a) - memberKm(b)).map((p) => p.id)].map((id) => id === S.me.id ? { id, name: S.me.name } : member(g, id));
       $layer.innerHTML = sheetHtml("", `<div class="profile-head">${gavatar(g, "xl")}<span class="name">${esc(g.name)}</span><span class="sub">${g.members.length} people</span></div>
         <div class="ghead">People</div><div class="group">${list.map(row).join("")}
           ${g.members.length < GROUP_MAX ? cell({ act: "groupadd", id: g.id, icon: I.addp, tile: "green", label: "Add People", cls: "action" }) : ""}</div>
-        <div class="gfoot">Only friends see where each other are. Anyone in the group can add their own friends.</div>
+        <div class="gfoot">Only friends see where each other are. Anyone in the group can add their own friends. Tap someone for their safety number.</div>
         <div class="group mt">
           ${toggleCell({ act: "gmute", id: g.id, icon: I.moon, tile: "indigo", label: "Mute Notifications", sub: g.muted ? "No notifications or emails from this group" : "", on: g.muted })}
           ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
@@ -3787,10 +3804,11 @@ async function onClick(e) {
     }
     case "mapglobe": { const cv = $(".map", $layer); if (!cv?._m) return; S.sheet.globe = !globeOn(cv._m); S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap(); }
     case "safety": {
-      const f = friend(id); if (!f) return;
-      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : null), digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
+      const f = personById(id); if (!f) return;
+      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : S.sheet?.type === "groupinfo" ? "groupinfo" : null), digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
       return renderSheet();
     }
+    case "trustsafe": { await trustNewKey(id); haptic("success"); toast("Trusted. Messages can go to them again."); S.sheet = null; return renderSheet(); }
     case "chatmenu": {
       const f = friend(S.chat); if (!f) return;
       return openMenu(t, [
@@ -4027,7 +4045,7 @@ async function onSubmit(e) {
     if (!m || !to) return showErr("You’re not friends with who it’s going to any more.");
     try {
       await busyBtn(btn, "…", async () => {
-        const ct = await E2E.seal(await pairFor(to.pub), { id: m.id + ":via", from: S.me.id, to: to.id, type: "note" }, { t: text });
+        const ct = await E2E.seal(await pairFor(trustedPub(to)), { id: m.id + ":via", from: S.me.id, to: to.id, type: "note" }, { t: text });
         await api("stopover-note", { method: "POST", body: { id: m.id, ct } });
       });
       S.notes.set(m.id, text); m.mine = "sent"; S.sheet = null; renderSheet(); render(); toast(`Added. ${esc(first(to.name))} will see it when it lands.`);
@@ -4558,7 +4576,7 @@ async function send() {
       // sealed once; its key sealed for each member (and for me, so my other phones can read it)
       const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, payload);
       const keys = {};
-      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
+      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
       meta = { id, group: g.id, body, keys, pigeon: S.sendKind };
     } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)

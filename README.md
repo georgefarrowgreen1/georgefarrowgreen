@@ -439,6 +439,13 @@ The server keeps message, group message and reaction ids in one table
 (`pg_ids`), so no id can be two things. A reply's quote shows the original's
 real sender and words whenever the original is on the phone.
 
+Nothing is ever sealed to a key that changed without your checking it:
+messages, reactions, stopover copies and notes, and group keys all go through
+one rule, and a changed key is used only after "They Match: Trust New Key" on
+the safety number screen (the warning's Check button opens it). Everyone in a
+group has a safety number, friends of friends too: tap them in the group's
+info.
+
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
 private key before it is uploaded, the other half is the sign-in proof, which
