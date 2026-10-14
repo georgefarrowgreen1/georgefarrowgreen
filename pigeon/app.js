@@ -1831,8 +1831,25 @@ const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
    it under your finger, the tab bar's highlight sliding along, from anywhere
    on the screen. Anything that scrolls sideways (the In the air strip, once
    it has more cards than fit) scrolls instead. */
+// A swipe between tabs that never finished (the touch was taken away mid-way: a
+// screenshot, the app going to the background, a second finger) mustn't leave
+// the next tab's preview, or the screen part-way across, behind.
+let swipeLive = false;
+function clearSwipes() {
+  const left = document.querySelectorAll("main.tabpeek");
+  if (swipeLive || !left.length) return;                 // (only ever a tab swipe's leftovers: a back swipe in a chat is left alone)
+  left.forEach((p) => p.remove());
+  root()?.classList.remove("swiping"); $(".tabs", $tabbar)?.classList.remove("paging");
+  if ($view?.style.transform && !$view.classList.contains("nav-push") && !$view.classList.contains("nav-pop")) { $view.style.transition = "none"; $view.style.transform = ""; void $view.offsetWidth; $view.style.transition = ""; }
+}
+let swipeReset = () => {};
+const swipeGone = () => { if (!swipeLive) return; swipeLive = false; swipeReset(); clearSwipes(); };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") swipeGone(); });
+// a new touch anywhere while one is still "swiping" means that one was taken away
+document.addEventListener("touchstart", (e) => { if (swipeLive && e.touches.length === 1) swipeGone(); }, { capture: true, passive: true });
 function tabSwipe() {
   const r = root(), v = $view; let st = null;
+  swipeReset = () => { st = null; };
   const tabs = () => $(".tabs", $tabbar);
   const sideways = (el) => { for (let n = el; n && n !== v; n = n.parentElement) if (n.scrollWidth > n.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(n).overflowX)) return true; return false; };
   const place = (s) => {
@@ -1858,7 +1875,7 @@ function tabSwipe() {
     if (!st.dir) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       if (Math.abs(dx) <= Math.abs(dy)) { st = null; return; }    // up and down: it scrolls
-      st.dir = "x"; r.classList.add("swiping"); v.style.transition = "none"; tabs()?.classList.add("paging");
+      st.dir = "x"; swipeLive = true; r.classList.add("swiping"); v.style.transition = "none"; tabs()?.classList.add("paging");
     }
     e.preventDefault(); speed(st, p.clientX, p.clientY);
     st.dx = dx; place(st);
@@ -1876,7 +1893,7 @@ function tabSwipe() {
     settle([[v, commit ? `translateX(${-side * 100}%)` : "translateX(0)"], [s.peek, commit ? "translateX(0)" : `translateX(${side * 100}%)`]], null, commit ? 280 : 220, () => {
       if (commit) { S.navQuiet = true; go(s.ids[j]); }           // the tab drawn for real, just where its preview was
       v.style.transition = "none"; v.style.transform = "";
-      s.peek?.remove(); r.classList.remove("swiping");
+      s.peek?.remove(); r.classList.remove("swiping"); swipeLive = false;     // (still "live" while it glides home, so nothing tidies it early)
       void v.offsetWidth; v.style.transition = "";
     });
   };
@@ -2395,6 +2412,7 @@ function playFresh() {
 }
 function render() {
   if (!$view) return;
+  clearSwipes();
   const auth = AUTH_VIEWS.has(S.view) || !S.me;
   const chat = !auth && S.view === "chat";
   root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
