@@ -1438,3 +1438,5 @@ svg.fillico{fill:currentColor;stroke:none}
 .compose .kind{margin:6px 0}
 .compose{touch-action:none}
 .compose textarea{touch-action:pan-y}
+/* iPhones zoom the page into any box whose words are under 16px: the message box never is, whatever the text size */
+.field-wrap textarea{font-size:max(16px,calc(17px * var(--ts, 1)));line-height:max(21px,calc(22px * var(--ts, 1)))}
