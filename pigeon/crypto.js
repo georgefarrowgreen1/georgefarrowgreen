@@ -148,7 +148,7 @@ export const E2E = {
   },
   async fingerprint(pub) {
     const h = new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(`${pub.x}.${pub.y}`)));
-    return [...h.slice(0, 6)].map((b) => b.toString(16).padStart(2, "0")).join("").match(/.{4}/g).join(" ");
+    return [...h.slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("").match(/.{4}/g).join(" ");     // 128 bits
   },
   async prfSalt() { return new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode("inflight/prf/v1"))); },
 };

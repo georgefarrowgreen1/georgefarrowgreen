@@ -341,7 +341,8 @@ export async function tick(env, origin) {
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
-    D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR)]).catch(() => {});
+    D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR),
+    D.prepare("DELETE FROM pg_handles_held WHERE until < ?").bind(t)]).catch(() => {});
   await blurOld(D, t).catch((e) => console.error("pigeon blur", e && e.message));
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);

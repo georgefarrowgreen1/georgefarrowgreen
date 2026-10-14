@@ -3,7 +3,7 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -50,7 +50,7 @@ async function signup({ request, env, waitUntil }) {
   if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
   const pub = cleanPub(b.pub);
   const D = await db(env);
-  if (await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(handle).first()) throw new HttpError(409, `@${handle} is taken.`, "handle");
+  if (await handleTaken(D, handle)) throw new HttpError(409, `@${handle} is taken.`, "handle");
   if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "There’s already an account with that email. Sign in instead.", "email");
   const id = crypto.randomUUID(), t = Date.now();
   // new accounts start with names hidden on the lock screen (they can turn them on)
@@ -211,8 +211,10 @@ async function updateMe({ request, env, waitUntil }) {
     if (!HANDLE_RE.test(handle)) throw new HttpError(400, "Use 3 to 20 letters, numbers or underscores.", "handle");
     if (handle !== u.handle) {
       if (u.handle_at && t - u.handle_at < HANDLE_EVERY) throw new HttpError(429, `You can change your handle once a day. Try again in ${waitText(u.handle_at + HANDLE_EVERY - t)}.`, "handle");
-      if (await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(handle).first()) throw new HttpError(409, `@${handle} is taken.`, "handle");
-      try { await D.prepare("UPDATE pg_users SET handle = ?, handle_at = ? WHERE id = ?").bind(handle, t, u.id).run(); }
+      if (await handleTaken(D, handle, u.id)) throw new HttpError(409, `@${handle} is taken.`, "handle");
+      // the old one stays yours for 30 days: no one else can take it and get your friends' requests
+      try { await D.batch([D.prepare("UPDATE pg_users SET handle = ?, handle_at = ? WHERE id = ?").bind(handle, t, u.id), holdHandle(D, u.handle, u.id),
+        D.prepare("DELETE FROM pg_handles_held WHERE handle = ? AND user_id = ?").bind(handle, u.id)]); }
       catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, `@${handle} is taken.`, "handle"); throw e; }
     }
   }
@@ -303,6 +305,9 @@ async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_push WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
+    // their handle is held for 30 days, for no one, so no one can pose as them to their friends
+    D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
+    D.prepare("DELETE FROM pg_handles_held WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
 }
@@ -512,10 +517,11 @@ async function handleFree({ request, env }) {
   const h = String(new URL(request.url).searchParams.get("h") || "").trim().replace(/^@/, "").toLowerCase();
   if (!HANDLE_RE.test(h)) return json({ free: false, reason: "Handles use 3 to 20 letters, numbers or underscores." });
   const D = await db(env);
-  if (!(await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(h).first())) return json({ free: true });
+  if (!(await handleTaken(D, h))) return json({ free: true });
   const base = h.slice(0, 17), cands = [2, 3, 4, 5, 7, 8, 9, 11, 22, 99].map((n) => base + n).concat(["_", "_x", "_hq"].map((x) => (base + x).slice(0, 20)));
   const { results } = await D.prepare(`SELECT handle FROM pg_users WHERE handle IN (${cands.map(() => "?").join(",")})`).bind(...cands).all();
-  const taken = new Set(results.map((r) => r.handle));
+  const { results: held } = await D.prepare(`SELECT handle FROM pg_handles_held WHERE until > ? AND handle IN (${cands.map(() => "?").join(",")})`).bind(Date.now(), ...cands).all();
+  const taken = new Set([...results, ...held].map((r) => r.handle));
   return json({ free: false, reason: `@${h} is taken.`, try: cands.filter((c) => HANDLE_RE.test(c) && !taken.has(c)).slice(0, 3) });
 }
 // Friends you share with someone: where a pigeon to them could stop over.

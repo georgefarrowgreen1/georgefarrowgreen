@@ -550,6 +550,10 @@ show a friendly "backend not set up" message).
   nothing but that link and password resets, so no one can sign up with
   someone else's address and have notifications sent to it. Accounts from
   before this count as confirmed; an emailed reset link confirms too.
+- **Handles** given up (changed, or the account deleted) are held for 30 days,
+  so no one can step into one and receive requests meant for its owner. Place
+  names are plain words (no web addresses or hidden direction characters),
+  email addresses ordinary ones, and request bodies are capped at 512 KB.
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and
   keeping the old key ("Keep Messages with Passkey") needs the phone to prove it

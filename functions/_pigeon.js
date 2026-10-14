@@ -117,6 +117,8 @@ const SCHEMA = [
   // who joined, left or renamed a group, shown in its chat, so no one is added without everyone seeing
   `CREATE TABLE IF NOT EXISTS pg_gevents (group_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL, actor_name TEXT NOT NULL, target TEXT, target_name TEXT)`,
   `CREATE INDEX IF NOT EXISTS pg_gevents_group ON pg_gevents(group_id, at)`,
+  // handles given up (changed, or the account deleted) stay held for 30 days, so no one can step into them
+  `CREATE TABLE IF NOT EXISTS pg_handles_held (handle TEXT PRIMARY KEY, user_id TEXT, until INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS pg_resets (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_by TEXT NOT NULL,
      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS pg_resets_user ON pg_resets(user_id)`,
@@ -244,8 +246,14 @@ export async function db(env) {
 }
 
 /* ---------------- request helpers ---------------- */
-export async function body(request) {
-  try { return await request.json(); } catch (_) { throw new HttpError(400, "That request wasn’t valid JSON."); }
+// JSON bodies are small (the biggest, a group message with a key for each of
+// up to 50 people, is well under this); anything bigger is refused unread.
+export const MAX_JSON = 512 * 1024;
+export async function body(request, max = MAX_JSON) {
+  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "That request is too large.");
+  const text = await request.text();
+  if (text.length > max) throw new HttpError(413, "That request is too large.");
+  try { return JSON.parse(text); } catch (_) { throw new HttpError(400, "That request wasn’t valid JSON."); }
 }
 export const clientIp = (request) => request.headers.get("CF-Connecting-IP") || "local";
 
@@ -481,7 +489,17 @@ export async function verifyAssertion(cred, request, b) {
 
 /* ---------------- validation ---------------- */
 export const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
-export const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+// an ordinary address: no spaces, quotes, commas or angle brackets (nothing that
+// could read as a second recipient), and a real-looking domain
+export const EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9]$/;
+// Is this handle free for this person? (Not anyone's, and not held for someone else.)
+export async function handleTaken(D, handle, me = null) {
+  if (await D.prepare("SELECT 1 FROM pg_users WHERE handle = ?").bind(handle).first()) return true;
+  const held = await D.prepare("SELECT user_id FROM pg_handles_held WHERE handle = ? AND until > ?").bind(handle, Date.now()).first();
+  return !!held && (held.user_id == null || held.user_id !== me);     // a deleted account's is held for no one
+}
+export const holdHandle = (D, handle, userId) =>
+  D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) VALUES (?, ?, ?)").bind(handle, userId, Date.now() + 30 * DAY);
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function cleanPub(p) {
   const ok = p && p.kty === "EC" && p.crv === "P-256" && /^[A-Za-z0-9_-]{43}$/.test(p.x || "") && /^[A-Za-z0-9_-]{43}$/.test(p.y || "");
@@ -500,7 +518,9 @@ export function snapToMile(lat, lon) {
 export function cleanPlace(b) {
   const lat = Number(b.lat), lon = Number(b.lon);
   if (b.lat == null || b.lon == null || b.lat === "" || b.lon === "" || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "That location isn’t valid.");
-  return { ...snapToMile(lat, lon), place: String(b.place || "").trim().slice(0, 60) || null };
+  // the place name goes into friends' notifications: plain words only
+  const place = String(b.place || "").normalize("NFC").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  return { ...snapToMile(lat, lon), place: place && !/[@\\<>]|:\/\/|www\./i.test(place) ? place : null };
 }
 
 /* ---------------- email (Resend) ----------------
