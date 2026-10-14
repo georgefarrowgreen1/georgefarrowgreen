@@ -253,6 +253,17 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Accessibility.** Checked with axe-core on every main screen and sheet, in
+light and dark: no violations. Words meet 4.5:1 contrast (secondary grey is a
+little darker than iOS's, the blue a touch deeper, and green, orange and red
+words use darker versions of those colours, while switches, dots and badges
+keep the bright ones). Pinch zoom works (no double-tap zoom), every icon
+button has a spoken name, sheets are labelled dialogs with their own heading,
+chats have a heading for screen readers, and the app's content is the page's
+main landmark. Message text, chat rows and the message box follow the
+iPhone's text size (Dynamic Type), from 85% to 160%. Reduce Motion stills
+every animation.
+
 **Search.** The search field on Messages finds chats by name, as before, and
 now messages too: every message the phone can open (chats you've opened, and
 the ones kept from before), ignoring case and accents, newest first, with the

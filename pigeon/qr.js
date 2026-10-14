@@ -105,9 +105,9 @@ export function qr(text) {
 }
 
 // As an SVG (dark squares on a light square, with the quiet margin a scanner needs)
-export function qrSvg(text, { dark = "#000", light = "#fff" } = {}) {
+export function qrSvg(text, { dark = "#000", light = "#fff", title = "QR code" } = {}) {
   const m = qr(text), n = m.length, q = 4;
   let d = "";
   m.forEach((row, y) => row.forEach((on, x) => { if (on) d += `M${x + q} ${y + q}h1v1h-1z`; }));
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + 2 * q} ${n + 2 * q}" shape-rendering="crispEdges" role="img"><rect width="100%" height="100%" fill="${light}"/><path d="${d}" fill="${dark}"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + 2 * q} ${n + 2 * q}" shape-rendering="crispEdges" role="img" aria-label="${title.replace(/[<>&"]/g, "")}"><title>${title.replace(/[<>&"]/g, "")}</title><rect width="100%" height="100%" fill="${light}"/><path d="${d}" fill="${dark}"/></svg>`;
 }

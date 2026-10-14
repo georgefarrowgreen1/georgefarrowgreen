@@ -1766,7 +1766,7 @@ function mount() {
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
-    <div class="view"></div>
+    <main class="view"></main>
     <form class="compose" hidden data-form="compose">
       <div class="pick" hidden role="group" aria-label="Which pigeon"></div>
       <div class="note" hidden></div>
@@ -2321,7 +2321,7 @@ function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
   const cur = mineNow && S.plain.get(mineNow.id)?.r;
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id }]);
-  $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="group" aria-label="React">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
+  $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="none">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" role="menuitem" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
 }
 async function sendReact(id, e) {
   haptic("tick");
@@ -2378,7 +2378,7 @@ function vGroupChat(g) {
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="nm"><span>${esc(g.name)}</span>${I.chev}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
-    ${warn}<div class="msgs">${gstatus(g, t)}${body}${outboxBubbles(g.id)}</div>`;
+    <h1 class="sr">${esc(g.name)}</h1>${warn}<div class="msgs">${gstatus(g, t)}${body}${outboxBubbles(g.id)}</div>`;
 }
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
@@ -2408,7 +2408,7 @@ function vChat() {
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    ${warn}<div class="msgs">${status(f, t)}${body}${outboxBubbles(f.id)}</div>`;
+    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${warn}<div class="msgs">${status(f, t)}${body}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -2417,7 +2417,7 @@ function field(name, placeholder, type, ac, prefix) {
 }
 const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
 // Sign-up's three steps: account, location, passkey (the last only where passkeys work)
-const stepDots = (n) => { const of = passkeysSupported() ? 3 : 2; return `<p class="stepn" aria-label="Step ${n} of ${of}">${Array.from({ length: of }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</p>`; };
+const stepDots = (n) => { const of = passkeysSupported() ? 3 : 2; return `<p class="stepn" role="img" aria-label="Step ${n} of ${of}">${Array.from({ length: of }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</p>`; };
 function vAuth() {
   const back = (to) => navbar("", { left: backBtn("to", to) });
   switch (S.view) {
@@ -2838,7 +2838,7 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
     : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
     : `<button type="button" class="nbtn ${cls}" data-act="${x.act}" aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
   return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title)}"><div class="grab"></div>
-    <header><span class="l">${b(left, "l")}</span><h3>${esc(title)}</h3><span class="r">${b(right, "r")}</span></header>
+    <header><span class="l">${b(left, "l")}</span><h2>${esc(title)}</h2><span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
 let sheetTimer = 0, sheetType = null;
@@ -3103,7 +3103,7 @@ function drawSheet(refresh) {
             <p class="gfoot add-msg" role="status">Type a friend’s handle, or let them scan your code.</p></form>
             <div class="addreqs"></div>
             <div class="ghead">Your code</div>
-            <div class="mycode"><div class="qrbox" aria-label="QR code for your add-a-friend link">${qrSvg(myLink())}</div>
+            <div class="mycode"><div class="qrbox">${qrSvg(myLink(), { title: "QR code for your add-a-friend link" })}</div>
               <b>@${esc(S.me.handle)}</b><span>A friend can scan this with their phone’s camera to add you.</span>
               <div class="row2"><button type="button" class="btn small" data-act="share">${I.up}Share Link</button><button type="button" class="btn small gray" data-act="copylink">Copy Link</button></div></div>`,
           { left: { label: "Cancel", act: "close" }, right: { label: "Send", form: "add-form" } });
@@ -3275,7 +3275,7 @@ function airMount() {
   if (!airEl) {
     airEl = document.createElement("section");
     airEl.className = "air"; airEl.setAttribute("aria-label", "Pigeons in the air");
-    airEl.innerHTML = `<div class="airin"><div class="airhead"><b>In the air<span class="airn"></span></b><span class="airnext"></span></div><div class="rail" role="list"></div></div>`;
+    airEl.innerHTML = `<div class="airin"><div class="airhead"><b>In the air<span class="airn"></span></b><span class="airnext"></span></div><div class="rail" role="group" aria-label="Pigeons in the air"></div></div>`;
   }
   const rail = $(".rail", airEl), x = rail.scrollLeft;
   slot.replaceWith(airEl);
@@ -3285,7 +3285,7 @@ function airMount() {
 }
 function airCard(r) {
   const el = document.createElement("button");
-  el.type = "button"; el.className = "acard"; el.setAttribute("role", "listitem");
+  el.type = "button"; el.className = "acard";
   el.dataset.act = "airopen"; el.dataset.id = r.chat; el.dataset.m = String(r.id).split(":")[0]; el.dataset.k = airKey(r);
   el.innerHTML = `<span class="awho">${pgm(r)}<span class="one"></span></span>
     <span class="aeta"><span class="acd">${airTime(r.deliverAt - now())}</span><span class="aok">${I.check}Landed</span></span>
@@ -3325,7 +3325,7 @@ function airModels() {
 const airNext = (pts, t) => { const up = pts.filter((p) => p.at > t).map((p) => p.at); return up.length ? Math.min(...up) : Math.max(...pts.map((p) => p.at)); };
 function airGroupCard(m) {
   const el = document.createElement("button");
-  el.type = "button"; el.className = "acard grp"; el.setAttribute("role", "listitem");
+  el.type = "button"; el.className = "acard grp";
   el.dataset.act = "airopen"; el.dataset.id = m.g.id; el.dataset.m = ""; el.dataset.k = m.k;
   el.innerHTML = `<span class="awho">${gavatar(m.g, "xs")}<span class="one"></span></span>
     <span class="aeta"><span class="acd"></span><span class="aok">${I.check}Landed</span></span>
@@ -4713,8 +4713,17 @@ function openLink(hash) {
 /* ============================================================
    Start
    ============================================================ */
+// Dynamic Type: iPhones set the reading size in Settings; message text, chat
+// rows and the message box follow it (the rest stays put, so nothing breaks)
+function textSize() {
+  const probe = document.createElement("span"); probe.className = "tsprobe"; probe.textContent = "x"; document.body.appendChild(probe);
+  const px = parseFloat(getComputedStyle(probe).fontSize); probe.remove();
+  const ts = px > 0 && CSS.supports?.("font", "-apple-system-body") ? Math.min(1.6, Math.max(0.85, px / 17)) : 1;
+  document.documentElement.style.setProperty("--ts", ts.toFixed(3));
+}
 async function start() {
   mount();
+  textSize(); window.addEventListener("focus", textSize);
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
