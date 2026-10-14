@@ -1559,10 +1559,11 @@ svg.fillico{fill:currentColor;stroke:none}
 .welcome .invonly span{color:var(--label-2);font-size:15px;line-height:20px;text-wrap:balance}
 /* the welcome: night, a pigeon crossing, very few words */
 html.night,html.night body{background:#03050c}
-html.night #screen,html.night .view{background:transparent}
-.welcome.night{position:relative;isolation:isolate;justify-content:space-between;align-items:center;padding:0 0 calc(26px + env(safe-area-inset-bottom,0px));color:#e9eeff;
-  background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%);overflow:hidden}
-.welcome.night .sky{position:absolute;inset:0;width:100%;height:100%;z-index:-1}
+html.night #screen{isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
+html.night .view{background:transparent}
+.nightsky{display:none;position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none}
+html.night .nightsky{display:block}
+.welcome.night{position:relative;justify-content:space-between;align-items:center;padding:0 0 calc(26px + env(safe-area-inset-bottom,0px));color:#e9eeff;overflow:hidden}
 .welcome .wtop{margin-top:max(22vh,120px);display:flex;flex-direction:column;align-items:center;gap:14px}
 .welcome .wtitle{margin:0;display:flex;gap:0;font-size:40px;line-height:1;font-weight:200;letter-spacing:.16em;padding-left:.16em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.45)}
 .welcome .wtitle span{display:inline-block;opacity:0;filter:blur(10px);transform:translateY(8px);animation:wletter 1.4s cubic-bezier(.2,.7,.2,1) forwards}
@@ -1595,3 +1596,30 @@ html.night #screen,html.night .view{background:transparent}
 @media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wring{animation:none;opacity:1;filter:none;transform:none}}
 /* "You've been invited" in the same quiet capitals as "By invitation only" */
 .welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55);text-shadow:none}
+/* every screen before you're in, under the same night: the sky carries on behind,
+   and one screen gives way to the next in a slow dissolve rather than a slide */
+.auth.night{--label:#eef2ff;--label-2:rgba(214,224,255,.66);--label-3:rgba(214,224,255,.34);--cell:rgba(110,140,255,.08);--cell-2:rgba(110,140,255,.12);
+  --fill:rgba(160,190,255,.12);--fill-2:rgba(160,190,255,.2);--sep:rgba(160,190,255,.16);--tint:#a9c6ff;--tint-fill:rgba(120,160,255,.16);--red:#ff8278;--green:#5fe08a;
+  --glass:rgba(120,150,255,.1);--glass-strong:rgba(20,28,60,.9);--glass-hi:rgba(160,190,255,.2);--glass-edge:rgba(160,190,255,.2);--bg:#03050c;color-scheme:dark;color:var(--label)}
+.auth.night .navbar::before{display:none}
+.auth.night .large,.auth.night .hero h1{font-weight:300;letter-spacing:.06em;color:#f2f5ff;text-shadow:0 0 22px rgba(130,170,255,.4)}
+.auth.night .group{border:1px solid rgba(160,190,255,.14);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.auth.night .fcell input{caret-color:#cfe0ff}
+.auth.night .fcell input:-webkit-autofill{-webkit-text-fill-color:#eef2ff;transition:background-color 99999s}
+.auth.night .btn:not(.plain){background:rgba(120,160,255,.14);color:#fff;border:1px solid rgba(160,190,255,.45);letter-spacing:.08em;font-weight:500;
+  box-shadow:0 0 24px rgba(110,160,255,.3),inset 0 0 18px rgba(130,170,255,.16);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.auth.night .btn.plain{color:var(--label-2);letter-spacing:.06em}
+.auth.night .stepn i{background:rgba(160,190,255,.22)}.auth.night .stepn i.on{background:#cfe0ff;box-shadow:0 0 8px rgba(150,190,255,.8)}
+.auth.night .hero .appicon{box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 0 40px rgba(70,140,255,.45)}
+html.night .view.nav-push,html.night .view.nav-pop{background:transparent;animation:ndawn .7s cubic-bezier(.2,.7,.2,1)}
+@keyframes ndawn{from{opacity:0;transform:translateY(12px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+html.night .nav-ghost{background:transparent;box-shadow:none;animation:ndusk .4s ease forwards}
+@keyframes ndusk{to{opacity:0;filter:blur(8px)}}
+.nav-ghost .night{background:#03050c}          /* a night screen left for the day: it goes as it was */
+html.night .nav-ghost .night{background:none}
+/* back on the welcome: the logo and words are already there */
+.welcome.again .wlogo .appicon{animation:none;opacity:1;filter:none;transform:none}
+.welcome.again .wring{animation:wspin 60s linear infinite;opacity:1}
+.welcome.again .wlogo::before{animation:wbreathe 5s ease-in-out infinite;opacity:1}
+.welcome.again .wcta{animation:wfade .5s ease forwards}
+@media (prefers-reduced-motion:reduce){html.night .view.nav-push,html.night .view.nav-pop,html.night .nav-ghost{animation:none}html.night .nav-ghost{display:none}}

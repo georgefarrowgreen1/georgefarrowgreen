@@ -49,6 +49,8 @@ const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null
 const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
 const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
+// before you're in: all under the welcome's night sky, which carries on from one to the next
+const NIGHT_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "forgot", "reset"]);
 
 /* ---------------- state ---------------- */
 const S = {
@@ -1442,8 +1444,10 @@ async function checkInvite() {
   if ((S.invite || null) !== t) return;                 // the invite changed while this was asked: it's being checked anew
   S.inviteState = st;
   const box = $(".welcome .wcta", $view);
-  if (box) box.outerHTML = inviteHtml(); else if (S.view === "welcome") render();
+  if (box) box.outerHTML = inviteHtml(); else if (S.view === "welcome" || S.view === "signin") render();
 }
+// the sky: one canvas behind the screen, under every screen before you're in
+const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
 function inviteHtml() {
   const st = S.inviteState, enter = (label) => `<button class="btn wide wglow" data-act="to" data-id="signup">${label}</button>`;
   const signin = `<button class="wquiet" data-act="to" data-id="signin">Sign in</button>`;
@@ -1456,10 +1460,10 @@ function inviteHtml() {
    Night: stars that breathe, now and then a shooting star, a planet's rim of
    light far below, and one pigeon crossing in its own glow, leaving a dashed
    trail that fades behind it. (Still, for anyone who asks for less motion.) */
-let skyLoop = 0;
+let skyLoop = 0, skyOn = null;
 function nightSky(cv) {
-  if (!cv) return;
-  cancelAnimationFrame(skyLoop);
+  if (!cv || skyOn === cv) return;            // already flying: it carries on
+  cancelAnimationFrame(skyLoop); skyOn = cv;
   const g = cv.getContext("2d"), still = STILL.matches, t0 = performance.now();
   const bird = new Path2D(BIRD);
   let W = 0, H = 0, dpr = 1, stars = [], shoot = null, nextShoot = t0 + 2500;
@@ -1475,7 +1479,7 @@ function nightSky(cv) {
   const at = (u) => { const ax = -0.06 * W, ay = H * 0.86, cx = W * 0.5, cy = H * 0.26, bx = W * 1.08, by = H * 0.62;     // up off the horizon, across the open sky
     const a = (1 - u) ** 2, b = 2 * (1 - u) * u, c = u * u; return [a * ax + b * cx + c * bx, a * ay + b * cy + c * by]; };
   const frame = (now) => {
-    if (!cv.isConnected) return;
+    if (!cv.isConnected || !document.documentElement.classList.contains("night")) { skyOn = null; return; }
     size();
     const t = now - t0;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2578,11 +2582,13 @@ function render() {
   root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
   $view.classList.toggle("tabs-pad", !auth && !chat);
   if (auth) {
-    const night = S.view === "welcome";
+    const night = NIGHT_VIEWS.has(S.view);
     if (document.documentElement.classList.contains("night") !== night) { document.documentElement.classList.toggle("night", night); applyTheme(); }
-    if (night && $(".welcome .sky", $view)) { const box = $(".welcome .wcta", $view); if (box) box.outerHTML = inviteHtml(); return; }   // already up: the sky keeps going
+    if (night) nightSky(skyCanvas());
+    const box = S.view === "welcome" && !S.nav && $(".welcome .wcta", $view);
+    if (box) { box.outerHTML = inviteHtml(); return; }   // already up: just the words change
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
-    if (night) nightSky($(".welcome .sky", $view));
+    if (S.view === "welcome") S.welcomed = true;
     return;
   }
   if (document.documentElement.classList.contains("night")) { document.documentElement.classList.remove("night"); applyTheme(); }
@@ -3629,13 +3635,12 @@ function vAuth() {
   const back = (to) => navbar("", { left: backBtn("to", to) });
   switch (S.view) {
     case "loading": return `<div class="loading">Opening InFlight…</div>`;
-    case "welcome": return `<div class="auth welcome night">
-        <canvas class="sky" aria-hidden="true"></canvas>
+    case "welcome": return `<div class="auth welcome night${S.welcomed ? " again" : ""}">
         <div class="wtop">
           <h1 class="wlogo" aria-label="InFlight"><span class="wring" aria-hidden="true"></span><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
         </div>
         ${inviteHtml()}</div>`;
-    case "signup": return `<div class="auth">${back("welcome")}
+    case "signup": return `<div class="auth night">${back("welcome")}
         ${stepDots(1)}
         <h1 class="large">Create Account</h1>
         <form data-form="signup" novalidate>
@@ -3648,10 +3653,10 @@ function vAuth() {
         </form></div>`;
     case "making": {
       const step = (n, label) => `<li class="${S.making >= n ? "is-ok" : S.making === n - 1 ? "is-now" : ""}">${S.making >= n ? I.ok : S.making === n - 1 ? `<span class="spin"></span>` : I.dot}<span>${label}</span></li>`;
-      return `<div class="auth"><div class="hero"><div class="appicon">${I.bird}</div><h1>Setting Up Your Account</h1><p>Your key is made and locked on this phone.</p></div>
+      return `<div class="auth night"><div class="hero"><div class="appicon">${I.bird}</div><h1>Setting Up Your Account</h1><p>Your key is made and locked on this phone.</p></div>
         <ul class="steps">${step(1, "Making your key pair")}${step(2, "Locking it with your password")}${step(3, "Creating your account")}</ul></div>`;
     }
-    case "signin": return `<div class="auth">${back("welcome")}
+    case "signin": return `<div class="auth night">${back("welcome")}
         <h1 class="large">Sign In</h1>
         <form data-form="signin" novalidate>
           <div class="group">${field("email", "Email", "email", "username webauthn")}${field("password", "Password", "password", "current-password")}</div>
@@ -3659,9 +3664,9 @@ function vAuth() {
           <div class="pad"><button class="btn wide">Sign In</button></div>
         </form>
         <div class="group">${passkeysSupported() ? cell({ act: "pkget", icon: I.key, tile: "indigo", label: "Sign In with a Passkey", cls: "action" }) : ""}${cell({ act: "to", id: "forgot", label: "Forgot Password?", cls: "action" })}</div>
-        <div class="stack"><button class="btn wide plain" data-act="to" data-id="signup">Create Account</button></div>
+        ${S.inviteState?.open || S.inviteState?.ok ? `<div class="stack"><button class="btn wide plain" data-act="to" data-id="signup">Create Account</button></div>` : ""}
       </div>`;
-    case "unlock": return `<div class="auth">${navbar("", { left: backBtn("cancelunlock") })}
+    case "unlock": return `<div class="auth night">${navbar("", { left: backBtn("cancelunlock") })}
         <h1 class="large">Unlock Messages</h1>
         <p class="sub">Your passkey signed you in. Enter your password once so this phone can unlock your encryption key.</p>
         <form data-form="unlock" novalidate>
@@ -3669,7 +3674,7 @@ function vAuth() {
           <div class="pad"><button class="btn wide">Unlock</button></div>
         </form>
         <div class="group">${cell({ act: "to", id: "forgot", label: "Forgot Password?", cls: "action" })}</div></div>`;
-    case "forgot": return `<div class="auth">${back("signin")}
+    case "forgot": return `<div class="auth night">${back("signin")}
         <h1 class="large">Reset Password</h1>
         <p class="sub">We’ll email you a link to choose a new password. It works once, for one hour.</p>
         <form data-form="forgot" novalidate>
