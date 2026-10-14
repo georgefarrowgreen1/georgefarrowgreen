@@ -33,6 +33,9 @@ async function windGrid({ request, env }) {
   const cache = typeof caches !== "undefined" ? caches.default : null;
   const hit = cache && await cache.match(key).catch(() => null);
   if (hit) return new Response(hit.body, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  // a square of sky not asked for this hour: Open-Meteo is asked, within a share for each person and for everyone
+  try { await limit(env, "windmiss:" + u.id, 60, 60 * 60e3); await limit(env, "windmiss:all", 600, 60 * 60e3); }
+  catch (_) { throw new HttpError(503, "The wind map isn’t available right now."); }
   const lats = [], lons = [];
   for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) { lats.push(+(s0 + i * step).toFixed(2)); lons.push(+((((w0 + j * step) + 540) % 360) - 180).toFixed(2)); }
   let list;

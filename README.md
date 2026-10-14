@@ -556,6 +556,10 @@ show a friendly "backend not set up" message).
   email addresses ordinary ones, and request bodies are capped at 512 KB.
 - **Signed-In Phones** (Privacy & Security) lists every sign-in, as "iPhone ·
   Safari" with when it was last used, to sign out one or all the others.
+- **One address.** InFlight's pages on Cloudflare's preview addresses
+  (`*.pages.dev`) redirect to georgefarrowgreen.com, so there's never a second
+  origin holding sign-ins or keys. The wind map asks Open-Meteo only within a
+  share per person and per hour.
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and
   keeping the old key ("Keep Messages with Passkey") needs the phone to prove it

@@ -40,8 +40,12 @@ async function stampImports(ctx, path, js) {
   return js.replace(/\bfrom\s+"(\.\/[\w./-]+\.js)"/g, (m, rel) => (seen.get(rel) ? `from "${rel}?v=${seen.get(rel)}"` : m));
 }
 
+// InFlight lives at one address. Cloudflare's preview addresses (*.pages.dev)
+// would be a second origin, with its own sign-ins and keys: send them home.
+const HOME = "https://georgefarrowgreen.com";
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
+  if (url.hostname.endsWith(".pages.dev")) return Response.redirect(HOME + url.pathname + url.search, 301);
   const res = await ctx.next();
   if (res.status !== 200 || !["GET", "HEAD"].includes(ctx.request.method)) return withSecurity(res);
   const type = res.headers.get("content-type") || "";
