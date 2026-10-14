@@ -2348,6 +2348,9 @@ const pg = (kind, skin) => `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
 const picWord = (p) => (p.v ? "Voice pigeon" : p.p?.m === "image/gif" ? "GIF" : "Photo");
+// A pigeon in the air, in a list: yours with its pigeon and when it lands, theirs sealed
+const riderIcon = (m) => `<span class="rider k-${kindOf(m)}">${I.bird}</span>`;
+const sealedIcon = (m) => `<span class="sealedi k-${kindOf(m)}">${I.lock}</span>`;
 function preview(f) {
   const out = S.outbox.filter((o) => o.to === f.id).at(-1);
   if (out) return { html: `<span class="${out.err ? "lostp" : "fl"}">${out.err ? I.warn : I.clock} ${out.err ? "Not sent" : "Waiting for signal"}</span>`, at: out.at };
@@ -2355,8 +2358,8 @@ function preview(f) {
   if (!l) return { html: "No messages yet", at: 0 };
   if (l.recalled) return { html: `<span class="homing">${I.homing} ${l.from === S.me.id ? "You called your pigeon back" : `${esc(first(f.name))} called their pigeon back`}</span>`, at: l.lostAt };
   if (l.lost) return { html: `<span class="lostp">${I.skull} ${l.from === S.me.id ? "Your pigeon was lost on the way" : "A pigeon was lost on its way"}</span>`, at: l.lostAt };
-  if (l.from === S.me.id && l.flying) return { html: `<span class="fl">${pgm(l)} In flight · <span data-eta="${esc(l.deliverAt)}"></span> to go</span>`, at: l.sentAt };
-  if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pgm(l)} ${kindOf(l) === "standard" ? "A pigeon" : `A ${kindOf(l)} pigeon`} is on its way…</span>`, at: l.sentAt };
+  if (l.from === S.me.id && l.flying) return { html: `<span class="upp">${riderIcon(l)}In the air · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
+  if (l.from !== S.me.id && l.flying) return { html: `<span class="upp">${sealedIcon(l)}Sealed · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
   const body = p.bad ? (p.unchecked ? "Check their new safety number to read this" : "Couldn’t open this message") : p.v ? `Voice pigeon (${fmtClip(p.v.d)})${l.photo === 2 ? " · expired" : ""}` : p.p ? (l.photo === 2 ? `${picWord(p)} (expired)` : picWord(p)) + (p.t ? ": " + p.t : "") : p.t;
   return { html: (l.from === S.me.id ? "You: " : "") + esc(body), at: l.deliverAt };
@@ -2375,9 +2378,9 @@ function gpreview(g) {
   const who = l.from === S.me.id ? "You" : esc(first(member(g, l.from)?.name || "Someone"));
   if (l.from === S.me.id && l.recalled && !flockCount(l).landed) return { html: `<span class="homing">${I.homing} You called your pigeons back</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.recalled) return { html: `<span class="homing">${I.homing} ${who} called their pigeon back</span>`, at: l.lostAt };
-  if (l.from === S.me.id && l.flying) { const c = flockCount(l); return { html: `<span class="fl">${pgm(l)} In flight · ${c.landed} of ${c.n} landed</span>`, at: l.sentAt }; }
+  if (l.from === S.me.id && l.flying) { const c = flockCount(l); return { html: `<span class="upp">${riderIcon(l)}In the air · ${c.landed} of ${c.n} landed</span>`, at: l.sentAt }; }
   if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
-  if (l.from !== S.me.id && l.flying) return { html: `<span class="fl">${pgm(l)} ${who}’s pigeon is on its way…</span>`, at: l.sentAt };
+  if (l.from !== S.me.id && l.flying) return { html: `<span class="upp">${sealedIcon(l)}${who}: sealed · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
   const p = S.plain.get(l.id) || { t: "" };
   const body = p.bad ? "Couldn’t open this message" : p.v ? `Voice pigeon (${fmtClip(p.v.d)})` : p.p ? picWord(p) + (p.t ? ": " + p.t : "") : p.t;
   return { html: `${who}: ${esc(body)}`, at: l.from === S.me.id ? l.sentAt : l.deliverAt };
@@ -2423,7 +2426,7 @@ function vFriends() {
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
   const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
-      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}</span></span>${chevSm}</button>`).join("");
+      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}${milesAway(f) ? ` · ${milesAway(f)}` : ""}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
@@ -2448,10 +2451,10 @@ function vAccount() {
       <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)} · My Profile</span></span>${chevSm}</button></div>
     <div class="ghead">Pigeons</div>
     <div class="group">
-      ${cell({ icon: I.bird, tile: "rocket", label: "Rocket", sub: `9× faster · ${hatch("rocket")}`, val: loftVal("rocket") })}
-      ${cell({ icon: I.bird, tile: "turbo", label: "Turbo", sub: `3× faster · ${hatch("turbo")}`, val: loftVal("turbo") })}
-      ${cell({ icon: I.bird, tile: "swift", label: "Swift", sub: `2× faster · ${hatch("swift")}`, val: loftVal("swift") })}
-      ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free on your turn" })}
+      ${cell({ icon: pg("rocket", u.skin), tile: "kb", label: "Rocket", sub: `9× faster · ${hatch("rocket")}`, val: loftVal("rocket") })}
+      ${cell({ icon: pg("turbo", u.skin), tile: "kb", label: "Turbo", sub: `3× faster · ${hatch("turbo")}`, val: loftVal("turbo") })}
+      ${cell({ icon: pg("swift", u.skin), tile: "kb", label: "Swift", sub: `2× faster · ${hatch("swift")}`, val: loftVal("swift") })}
+      ${cell({ icon: pg("standard", u.skin), tile: "kb", label: "Standard", sub: "Free on your turn" })}
     </div>
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
     <div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
@@ -2537,9 +2540,11 @@ function cityOptions() {
 }
 
 /* ---------- Chat ---------- */
+// How far away a friend is, once it's a mile or more ("" when you don't know, or they're near)
+const milesAway = (f) => { const km = S.me?.lat != null && f?.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 0; return km >= 1.61 ? fmtMiles(km) : ""; };
 // Under a friend's name: the time where they are (when it isn't yours), where, and how far
 function chatSub(f) {
-  const bits = [], km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
+  const bits = [];
   let icon = "";
   if (f.tz && f.tz !== MY_TZ) {
     try {
@@ -2549,7 +2554,7 @@ function chatSub(f) {
     } catch (_) {}
   }
   if (!bits.length && f.place) bits.push(esc(f.place));
-  if (km != null && km >= 1) bits.push(fmtMiles(km));
+  if (milesAway(f)) bits.push(milesAway(f));
   return bits.length ? `<small class="sub">${icon}<span class="one">${bits.join(" · ")}</span></small>` : "";
 }
 const gchatSub = (g) => { const n = others(g).map((p) => esc(first(p.name))); return n.length ? `<small class="sub"><span class="one">${n.join(", ")}</span></small>` : ""; };
@@ -4176,7 +4181,7 @@ function tickMap() {
     ${flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : ""}
     ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}
     ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
-    <span class="prog"><i></i></span>
+    <span class="prog k-${kindOf(m)}${m.lost ? " lost" : ""}"><i>${I.bird}</i></span>
     ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
     <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;
   $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";
@@ -4215,9 +4220,9 @@ function airMount() {
 }
 function airCard(r) {
   const el = document.createElement("button");
-  el.type = "button"; el.className = "acard";
+  el.type = "button"; el.className = `acard k-${kindOf(r)}${r.out ? " mine" : ""}`;
   el.dataset.act = "airopen"; el.dataset.id = r.chat; el.dataset.m = String(r.id).split(":")[0]; el.dataset.k = airKey(r);
-  el.innerHTML = `<span class="awho">${pgm(r)}<span class="one"></span></span>
+  el.innerHTML = `<span class="awho">${r.g && !r.who ? gavatar(r.g, "xs") : avatar(r.who || { name: "?" }, "xs")}<span class="one"></span></span>
     <span class="aeta"><span class="acd">${airTime(r.deliverAt - now())}</span><span class="aok">${I.check}Landed</span></span>
     <span class="atrack"><i></i><span class="abird">${I.bird}</span></span>
     <span class="asub"></span>`;
@@ -4231,7 +4236,8 @@ function airFill(el, r) {
   $(".awho .one", el).textContent = who;
   const sub = $(".asub", el);
   sub.className = `asub${wx ? (r.delay > 0 ? " late" : " early") : ""}`;
-  sub.textContent = wx || (r.g ? r.g.name : r.fromPlace && r.toPlace ? `${r.fromPlace} → ${r.toPlace}` : fmtMiles(r.km || 0));
+  // yours: when it lands (and where, in a group); theirs: sealed till then
+  sub.innerHTML = wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atTime(r.deliverAt))}`;
   return el;
 }
 // One card per chat: a group's pigeons, coming and going, share one card.
@@ -4241,6 +4247,7 @@ function airModels() {
     if (!r.g) { out.push({ k: airKey(r), r, at: r.deliverAt }); continue; }
     let m = groups.get(r.g.id);
     if (!m) { m = { k: "g:" + r.g.id, g: r.g, pts: [] }; groups.set(r.g.id, m); out.push(m); }
+    if (r.out) m.out = true;
     m.pts.push({ id: airKey(r), at: r.deliverAt, from: r.sentAt, kind: kindOf(r) });
   }
   // your own pigeons to the group that have already landed still count
@@ -4255,7 +4262,7 @@ function airModels() {
 const airNext = (pts, t) => { const up = pts.filter((p) => p.at > t).map((p) => p.at); return up.length ? Math.min(...up) : Math.max(...pts.map((p) => p.at)); };
 function airGroupCard(m) {
   const el = document.createElement("button");
-  el.type = "button"; el.className = "acard grp";
+  el.type = "button"; el.className = `acard grp${m.out ? " mine" : ""}`;
   el.dataset.act = "airopen"; el.dataset.id = m.g.id; el.dataset.m = ""; el.dataset.k = m.k;
   el.innerHTML = `<span class="awho">${gavatar(m.g, "xs")}<span class="one"></span></span>
     <span class="aeta"><span class="acd"></span><span class="aok">${I.check}Landed</span></span>
@@ -4455,7 +4462,7 @@ function tickFlockMap(m, card, cv) {
   const { share, cheer } = cardShell(card); share.hidden = true; cheerState(cheer, m);
   $(".mcb", card).innerHTML = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
     ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}${birdLine(m)}
-    <span class="prog"><i></i></span><span class="frows">${rows}</span>`;
+    <span class="prog k-${kindOf(m)}"><i>${I.bird}</i></span><span class="frows">${rows}</span>`;
   $(".prog i", card).style.width = (frac * 100).toFixed(2) + "%";
   if (routesOf(m).length) { drawMap(cv, m, card.offsetHeight + 14); smoothMap({ ...m, lost: true }); }
 }

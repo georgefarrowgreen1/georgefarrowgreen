@@ -1321,3 +1321,53 @@ svg.fillico{fill:currentColor;stroke:none}
 .cc[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--tint)}
 .cc[aria-checked="true"] b{color:var(--tint)}
 .cc:disabled{opacity:.45;cursor:default}
+
+/* ---------- the rest of the app, in keeping with the chat ----------
+   Plain tint buttons and, once you scroll, the same frosted bar; a pigeon in
+   the air drawn the same way everywhere (an outline, the airmail line with
+   its pigeon on it, theirs sealed); grey for everything that isn't news. */
+.navbar.root .nb-right{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;gap:2px}
+.navbar.root .nbtn{color:var(--tint);background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.navbar.root .nbtn svg{font-size:22px}
+.navbar:not(.chatnav)::before{inset:0;background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
+.plain .navbar:not(.chatnav)::before{background:color-mix(in srgb,var(--bg-plain) 84%,transparent)}
+
+/* in the air, at the top of Messages: outlined like the pigeon in the chat */
+.acard{background:none;box-shadow:inset 0 0 0 1.5px var(--label-3);gap:6px;padding:12px 14px 11px;border-radius:20px}
+.acard.mine{box-shadow:inset 0 0 0 1.5px var(--tint)}
+.acard .awho{gap:7px;font-size:14px}
+.acard .awho .av.xs{flex:none;width:22px;height:22px;font-size:9px}
+.acard .acd{color:var(--label);font-weight:650}
+.acard.soon .acd{color:var(--tint)}
+.acard.soon{animation:none}
+.acard .atrack::before{background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);background-size:auto;opacity:.42;animation:none}
+.acard .atrack i{background:var(--k,var(--tint))}
+.acard .abird{color:var(--k,var(--tint))}
+.acard .abird svg{filter:none}
+.acard .asub{display:flex;align-items:center;gap:4px}
+.acard .asub .ico{flex:none;font-size:12px;color:var(--k,var(--label-2))}
+.acard .asub.late,.acard .asub.early{font-weight:500}
+.acard.landed{background:none;box-shadow:inset 0 0 0 1.5px var(--green)}
+.acard.landed::after{display:none}
+
+/* the list: a pigeon in the air says so in grey, its colour only on the pigeon */
+.mrow .mprev .upp{display:inline-flex;align-items:center;gap:5px;max-width:100%;color:var(--label-2)}
+.mrow .mprev .upp > span:not(.rider):not(.sealedi){overflow:hidden;text-overflow:ellipsis}
+.mprev .rider,.mprev .sealedi{flex:none;display:inline-grid;place-items:center;color:var(--k)}
+.mprev .rider .bird{width:15px;height:15px;transform:scaleX(-1)}
+.mprev .sealedi .ico{font-size:13px;margin:0}
+.mrow .mprev svg.bird,.mrow .mprev .sealedi svg{vertical-align:0;margin-right:0}
+.mrow .mprev .fl{color:var(--label-2)}
+
+/* Account: each kind wears the round badge it wears in the chat */
+.tile.kb{background:none;box-shadow:none;width:30px;height:30px}
+.tile.kb .pg{font-size:20px;vertical-align:0}
+
+/* the map card: the airmail line, flown in its colour, its pigeon on it */
+.mapcard .prog{position:relative;height:2px;margin:12px 6px 8px;border-radius:1px;background:none;overflow:visible}
+.mapcard .prog::before{content:"";position:absolute;inset:0;border-radius:1px;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42}
+.mapcard .prog i{position:relative;display:block;height:2px;border-radius:1px;background:var(--k,var(--tint))}
+.mapcard .prog i .bird{position:absolute;right:-9px;top:-7px;width:16px;height:16px;color:var(--k,var(--tint));transform:scaleX(-1)}
+.mapcard .prog.lost i .bird{display:none}
+.mapcard .frow.flying b{color:var(--label)}
+.mapcard .skyrow b{color:var(--label)}
