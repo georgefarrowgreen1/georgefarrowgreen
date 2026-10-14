@@ -47,11 +47,17 @@ async function groupFor(D, u, gid) {
 }
 
 /* ---------------- what each member sees ---------------- */
+// People in a group who aren't friends never learn where each other are: no
+// distances, no weather spot (a point on the line between you), and the times
+// their pigeons take come from coarse places (half-degree cells, ~50 km), so
+// even those give away only roughly where.
+export const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
+const wxFor = (d, friend) => { const w = wxView(d); return friend || !w.delay ? w : { delay: w.delay }; };
 // Your own message: how each pigeon is getting on (friends' routes only).
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
-    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxView(d), km: d.km, readAt: d.read_at,
+    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at,
       legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null };
   });
@@ -63,7 +69,7 @@ function ownView(m, dels, friends, t) {
 // where it came from only if the sender is your friend.
 function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
-  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxView(d), km: d.km, readAt: d.read_at,
+  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at,
     legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
@@ -137,7 +143,7 @@ export async function groupsForSync(env, u, t) {
       const friend = p.user_id === u.id || friends.has(p.user_id);
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
         ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
-          : { km: u.lat != null && p.lat != null ? Math.round(haversineKm(u.lat, u.lon, p.lat, p.lon) / 10) * 10 : null }) };   // rough distance, no spot
+          : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
     const last = (await visible(D, u.id, g.id, 1))[0];
     const unread = await D.prepare(`SELECT COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
@@ -261,14 +267,16 @@ async function send({ request, env, waitUntil }) {
     if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   }
   const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1);
-  const others = want.filter((m) => m !== u.id);
-  const { results: to } = others.length ? await D.prepare(`SELECT id, lat, lon, place FROM pg_users WHERE id IN (${others.map(() => "?").join(",")})`).bind(...others).all() : { results: [] };
+  const others = want.filter((m) => m !== u.id), mine = await friendIds(D, u.id);
+  const { results: rows } = others.length ? await D.prepare(`SELECT id, lat, lon, place FROM pg_users WHERE id IN (${others.map(() => "?").join(",")})`).bind(...others).all() : { results: [] };
+  // between people who aren't friends: coarse places at both ends (the stored destination too)
+  const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }));
   // the weather along each route, all in one look
-  const placed = to.filter((r) => r.lat != null), winds = await windsFor(env, placed.map((r) => [u.lat, u.lon, r.lat, r.lon]));
+  const placed = to.filter((r) => r.lat != null), winds = await windsFor(env, placed.map((r) => [r.from[0], r.from[1], r.lat, r.lon]));
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));
   const dels = to.map((r) => {
     const w = windOf.get(r.id) || { wind: null, f: 1 };
-    const km = r.lat != null ? haversineKm(u.lat, u.lon, r.lat, r.lon) : 500, at = t + flightMs(km / w.f, speed), wx = wxOf([w], flightMs(km, speed), at - t);
+    const km = r.lat != null ? haversineKm(r.from[0], r.from[1], r.lat, r.lon) : 500, at = t + flightMs(km / w.f, speed), wx = wxOf([w], flightMs(km, speed), at - t);
     // Pigeon Death: each pigeon takes its own chance
     const roll = crypto.getRandomValues(new Uint32Array(2));
     const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
@@ -357,20 +365,23 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     WHERE d.user_id = ?1 AND d.deliver_at > ?2 AND d.to_lat IS NOT NULL AND (d.lost_at IS NULL OR d.lost_at > ?2)`).bind(u.id, t).all();
   if (!results.length) return;
   const friends = await friendIds(D, u.id);
-  for (const d of results) {
-    const legs = d.legs ? JSON.parse(d.legs) : [];
-    if (haversineKm(d.to_lat, d.to_lon, p.lat, p.lon) <= REROUTE_KM) continue;
+  for (const d0 of results) {
+    const legs = d0.legs ? JSON.parse(d0.legs) : [];
+    // a sender who isn't your friend only ever knew your coarse place
+    const nf = !friends.has(d0.sender), d = nf ? { ...d0, from_lat: coarse(d0.from_lat), from_lon: coarse(d0.from_lon) } : d0;
+    const pp = nf ? { ...p, lat: coarse(p.lat), lon: coarse(p.lon) } : p;
+    if (haversineKm(d.to_lat, d.to_lon, pp.lat, pp.lon) <= REROUTE_KM) continue;
     if (legs.length && t - legs[legs.length - 1][2] < TURN_EVERY) continue;
     const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [d.from_lat, d.from_lon, d.sent_at];
     const f = Math.min(1, Math.max(0, (t - sAt) / (d.deliver_at - sAt)));
     const [pLat, pLon] = gcPoint(sLat, sLon, d.to_lat, d.to_lon, f);
-    const ahead = haversineKm(pLat, pLon, p.lat, p.lon), speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
+    const ahead = haversineKm(pLat, pLon, pp.lat, pp.lon), speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
     const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed, t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed));
     const km = Math.max(0, d.km - haversineKm(pLat, pLon, d.to_lat, d.to_lon)) + ahead;
     legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
     const lostAt = d.lost_at == null ? null : d.lost_at < deliver ? d.lost_at : t + (deliver - t) / 2;
     const r = await D.prepare(`UPDATE pg_gdeliv SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ? WHERE msg_id = ? AND user_id = ? AND deliver_at > ?`)
-      .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, d.msg_id, u.id, t).run();
+      .bind(pp.lat, pp.lon, pp.place, deliver, km, JSON.stringify(legs), lostAt, d.msg_id, u.id, t).run();
     if (!r.meta.changes) continue;
     // a photo stays until 24 hours after its last pigeon lands
     if (d.photo === 1) await D.prepare("UPDATE pg_gmsgs SET expires_at = MAX(COALESCE(expires_at, 0), ?) WHERE id = ?").bind((lostAt ?? deliver) + PHOTO_TTL, d.msg_id).run();

@@ -395,8 +395,11 @@ last; one swift, turbo or rocket covers the whole group. Each pigeon takes its
 own Pigeon Death chance and follows its person if they move. Anyone in a group
 can add their own friends, rename it, mute it or leave; the last one out takes
 its messages and photos with them. People in a group who aren't friends see each
-other's names and pictures, never each other's locations (their routes stay off
-the map). Encryption: each message is sealed once under its own random key, and
+other's names and pictures, never each other's locations: their routes stay off
+the map, they see no distances or weather spots for each other, and the times
+their pigeons take are worked out between coarse places (half-degree cells,
+about 50 km), so even those say only roughly where; the Messages list gives
+them a distance to the nearest 50 km. Encryption: each message is sealed once under its own random key, and
 that key is sealed for each member with the pair key the sender shares with
 them, so the server stores one sealed body plus a sealed key per member and can
 read none of it. Code: `functions/_groups.js`; tables `pg_groups`,
@@ -413,7 +416,8 @@ their turn back and a notification, and the recipient sees it was lost.
 pigeon flying to them turns in mid-air and heads from where it is to the new
 spot, at its own speed (still within its 3-day limit); the turn is stored in
 `pg_msgs.legs` and drawn on the map, and the sender is told (a notification
-setting). Location changes are limited to 4 per 15 minutes. *Update
+setting). Location changes are limited to 30 per 15 minutes (automatic
+updates check about once a minute). *Update
 Automatically* (off by default) refreshes your location each time you open
 InFlight, only if location permission was already given.
 
