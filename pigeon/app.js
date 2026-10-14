@@ -1767,6 +1767,7 @@ function tabSwipe() {
   }, { passive: true });
   v.addEventListener("touchmove", (e) => {
     if (!st) return;
+    if (holding() && !st.dir) { st = null; return; }               // a hold opened a menu: this touch is spent
     const p = e.touches[0], dx = p.clientX - st.x, dy = p.clientY - st.y;
     if (!st.dir) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
@@ -1794,6 +1795,54 @@ function tabSwipe() {
     });
   };
   v.addEventListener("touchend", () => end(false)); v.addEventListener("touchcancel", () => end(true));
+}
+/* ---------- hold a chat for its menu ----------
+   Hold a chat in Messages (or right-click it): the row sinks a little, then
+   lifts above the blurred screen with a menu of what you'd do to it without
+   opening it. The touch that opened the menu isn't also a tap, swipe or pull. */
+let heldAt = 0;
+const holding = () => Date.now() - heldAt < 30e3 && heldAt > 0;
+function holdRows() {
+  const v = $view; let sink = 0, timer = 0, row = null, x = 0, y = 0;
+  const cancel = () => { clearTimeout(sink); clearTimeout(timer); row?.classList.remove("pressing"); row = null; };
+  v.addEventListener("touchstart", (e) => {
+    cancel(); heldAt = 0;
+    const r = e.target.closest?.(".mlist .mrow");
+    if (!r || e.touches.length !== 1 || S.view !== "messages" || S.sheet) return;
+    row = r; x = e.touches[0].clientX; y = e.touches[0].clientY;
+    sink = setTimeout(() => row?.classList.add("pressing"), 140);
+    timer = setTimeout(() => { const r2 = row; cancel(); heldAt = Date.now(); rowMenu(r2); }, 480);
+  }, { passive: true });
+  v.addEventListener("touchmove", (e) => {
+    if (holding()) { if (e.cancelable) e.preventDefault(); return; }   // the list stays put under the menu
+    if (row && Math.hypot(e.touches[0].clientX - x, e.touches[0].clientY - y) > 8) cancel();
+  }, { passive: false });
+  v.addEventListener("touchend", (e) => { if (holding() && e.cancelable) e.preventDefault(); cancel(); }, { passive: false });   // (no tap after a hold)
+  v.addEventListener("touchcancel", cancel);
+  // a right-click, or the menu key on a chat that has focus
+  v.addEventListener("contextmenu", (e) => {
+    const r = e.target.closest?.(".mlist .mrow"); if (!r) return;
+    e.preventDefault();
+    if (!$(".menu-pop:not(.closing)", $pop)) rowMenu(r);
+  });
+}
+function rowMenu(r) {
+  const id = r.dataset.id, g = group(id), f = g ? null : friend(id);
+  if (!g && !f) return;
+  haptic("tick");
+  openMenu(r, [
+    (g || f).unread ? { label: "Mark as Read", icon: I.check, act: "rowread", id } : null,
+    g ? { label: g.muted ? "Unmute" : "Mute", icon: I.bell, act: "rowmute", id } : null,
+    g ? { label: "Group Info", icon: I.info, act: "groupinfo", id } : { label: "Info", icon: I.info, act: "friendinfo", id },
+    g ? { label: "Leave Group", icon: I.minusp, act: "groupleaveask", id, destructive: true } : { label: "Remove Friend", icon: I.minusp, act: "unfriendask", id, destructive: true },
+  ].filter(Boolean));
+  // the chat itself, lifted clear of the blur (tap it to open the chat)
+  const box = root().getBoundingClientRect(), a = r.getBoundingClientRect(), c = r.cloneNode(true);
+  c.classList.remove("pressing"); c.classList.add("lifted");
+  c.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+  c.style.top = `${a.top - box.top}px`; c.style.left = `${a.left - box.left}px`; c.style.width = `${a.width}px`; c.style.height = `${a.height}px`;
+  $(".menu-scrim", $pop)?.classList.add("blur");
+  $pop.insertBefore(c, $(".menu-pop", $pop));
 }
 // The tab beside this one, drawn as it will be (a lifeless copy) to slide in with the swipe.
 function tabPeek(id, side) {
@@ -1849,6 +1898,7 @@ function pullToRefresh() {
   v.addEventListener("touchstart", (e) => { y0 = e.touches.length === 1 && v.scrollTop <= 0 && can() ? e.touches[0].clientY : null; x0 = e.touches[0]?.clientX || 0; down = false; pull = 0; ready = false; }, { passive: true });
   v.addEventListener("touchmove", (e) => {
     if (y0 == null) return;
+    if (holding() && !pull) { y0 = null; return; }
     const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
     if (!down) {                                          // sideways is a swipe to the next tab, not a pull
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
@@ -2072,7 +2122,7 @@ function lockPage() {
 }
 function mount() {
   lockPage();
-  setTimeout(() => { pullToRefresh(); tabSwipe(); navGestures(); });
+  setTimeout(() => { pullToRefresh(); tabSwipe(); holdRows(); navGestures(); });
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
@@ -3964,7 +4014,7 @@ function closePop() {
   if (!$pop || !$pop.firstElementChild) return;
   const live = $pop.querySelectorAll(".menu-pop:not(.closing), .asheet:not(.closing)");
   if (!live.length) return;
-  $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim").forEach((e) => e.classList.add("closing"));
+  $pop.querySelectorAll(".menu-pop, .asheet, .scrim, .menu-scrim, .lifted").forEach((e) => e.classList.add("closing"));
   clearTimeout(popTimer); popTimer = setTimeout(() => { $pop.innerHTML = ""; }, 260);
 }
 let toastTimer = 0;
@@ -4005,7 +4055,22 @@ async function onClick(e) {
   switch (t.dataset.act) {
     case "tab": return go(id);
     case "to": return go(id);
-    case "open": return go("chat", id);
+    case "open":
+      if (holding() && Date.now() - heldAt < 800 && !inPop) return;   // the end of a hold, not a tap
+      return go("chat", id);
+    case "rowread": {
+      const g = group(id), f = friend(id);
+      if (g) { g.unread = 0; api("group-read", { method: "POST", body: { id } }).catch(() => {}); }
+      else if (f) { f.unread = 0; api("read", { method: "POST", body: { with: id } }).catch(() => {}); }
+      return render();
+    }
+    case "rowmute": {
+      const g = group(id); if (!g) return;
+      const on = !g.muted; g.muted = on; toast(on ? `${esc(g.name)} is muted.` : `${esc(g.name)} is unmuted.`);
+      try { await api("group-mute", { method: "POST", body: { id, muted: on } }); }
+      catch (err) { g.muted = !on; toast(esc(err.message)); }
+      return;
+    }
     case "newmsg": S.sheet = { type: "newmsg" }; return renderSheet();
     case "newgroup": S.sheet = { type: "newgroup", pick: new Set() }; renderSheet(); setTimeout(() => $("#f-gname", $layer)?.focus(), 300); return;
     case "groupadd": S.sheet = { type: "groupadd", id: id || S.sheet?.id, pick: new Set() }; return renderSheet();

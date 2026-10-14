@@ -1194,3 +1194,14 @@ svg.fillico{fill:currentColor;stroke:none}
 .view.tabpeek{position:absolute;left:0;right:0;z-index:1;overflow:hidden;pointer-events:none;background:var(--bg);transition:none}
 .view.tabpeek.plain{background:var(--bg-plain)}
 .tabs.paging::before{transition:none}
+/* holding a chat: it sinks a little, then lifts above the blurred screen with its menu */
+.mlist .mrow{transition:background-color .45s var(--ease-out),transform .3s var(--snappy)}
+.mlist .mrow:active{transition:background-color 0s,transform .3s var(--snappy)}
+.mlist .mrow.pressing{transform:scale(.97);transition:background-color 0s,transform .34s var(--smooth)}
+.menu-scrim.blur{background:rgba(0,0,0,.14);-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);animation:fade .25s ease}
+.menu-scrim.blur.closing{animation:fade-out .22s ease forwards}
+.mrow.lifted{position:absolute;z-index:41;background:var(--cell);box-shadow:0 14px 44px rgba(0,0,0,.2);animation:lift .42s var(--bouncy)}
+.mrow.lifted .av{--dot-bg:var(--cell)}
+.mrow.lifted.closing{animation:fade-out .22s ease forwards}
+@keyframes lift{from{transform:scale(.97)}}
+@media (prefers-reduced-motion:reduce){.mrow.lifted,.menu-scrim.blur{animation:none}}
