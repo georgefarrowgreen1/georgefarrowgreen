@@ -201,6 +201,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // a one-off key a reset that keeps the old key proves it against
   // declined and blocked links: a = who said no, b = who asked; asked_at = b still sees their request as waiting
   "ALTER TABLE pg_links ADD COLUMN asked_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN email_ok INTEGER",        // when the email address was confirmed (a link sent to it)
+  "ALTER TABLE pg_users ADD COLUMN email_code TEXT",         // hash of the confirm link's token
+  "ALTER TABLE pg_users ADD COLUMN email_sent INTEGER",
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -218,6 +221,13 @@ export async function db(env) {
         env.DB.prepare("INSERT OR IGNORE INTO pg_ids (id, kind, at) SELECT id, 'g', sent_at FROM pg_gmsgs"),
         env.DB.prepare("INSERT OR IGNORE INTO pg_ids (id, kind, at) SELECT id, 'r', sent_at FROM pg_reacts"),
         env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('ids_v1', '1')"),
+      ]);
+    }
+    // accounts from before addresses were confirmed count as confirmed
+    if (!(await env.DB.prepare("SELECT 1 FROM pg_meta WHERE k = 'emailok_v1'").first())) {
+      await env.DB.batch([
+        env.DB.prepare("UPDATE pg_users SET email_ok = created_at WHERE email_ok IS NULL"),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('emailok_v1', '1')"),
       ]);
     }
     schemaReady = true;

@@ -144,6 +144,8 @@ export async function unsubToken(env, userId) {
 }
 async function notifyEmail(env, origin, u, subject, mail) {
   if (!emailReady(env)) return false;
+  // only to an address its owner has confirmed (anyone can type anyone's at sign-up)
+  if (!(await (await db(env)).prepare("SELECT email_ok FROM pg_users WHERE id = ?").bind(u.id).first())?.email_ok) return false;
   const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
   const { text, html } = emailBody({ ...mail, origin, footer: "You get these because you turned on email notifications in InFlight.", unsub });
   await sendEmail(env, { to: u.email, subject, text, html,
@@ -401,7 +403,7 @@ export async function tick(env, origin) {
           JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0)
       SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
       FROM pg_users u JOIN inbox m ON m.to_id = u.id JOIN pg_users s ON s.id = m.sender
-      WHERE u.notify_email = 1 AND COALESCE(u.email_at, 0) < ?1
+      WHERE u.notify_email = 1 AND u.email_ok IS NOT NULL AND COALESCE(u.email_at, 0) < ?1
         AND m.read_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?2 AND m.deliver_at > MAX(COALESCE(u.email_at, 0), ?3)
       GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, Math.max(since, t - DAY)).all();
     for (const u of waiting) {
@@ -463,11 +465,10 @@ async function weeklyTick(env, D, t, origin) {
     out.pushes += await pushTo(env, u.id, { title: "Your week in flight", body: w.line, tag: "weekly", url: "/pigeon/#flightlog" });
     if (u.notify_email && emailReady(env)) {
       try {
-        await notifyEmail(env, origin, u, "Your week in flight", { icon: "bird", title: "Your week in flight", preheader: w.line,
+        if (await notifyEmail(env, origin, u, "Your week in flight", { icon: "bird", title: "Your week in flight", preheader: w.line,
           rows: [...(w.mi ? [["Miles flown", `${w.mi.toLocaleString("en-GB")} mi`]] : []), ["Pigeons sent", String(w.sent)], ["Pigeons received", String(w.got)],
             ...(w.fresh.length ? [["New badges", w.fresh.join(", ")]] : w.next && w.next.progress > 0 ? [["Next badge", `${w.next.name}, ${Math.round(w.next.progress * 100)}% there`]] : [])],
-          button: { label: "Open Your Flight Log", url: `${origin}/pigeon/#flightlog` } });
-        out.emails++;
+          button: { label: "Open Your Flight Log", url: `${origin}/pigeon/#flightlog` } })) out.emails++;
       } catch (e) { console.error("pigeon weekly email", e && e.message); }
     }
   }

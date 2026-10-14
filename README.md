@@ -536,6 +536,11 @@ show a friendly "backend not set up" message).
   person (Face ID, fingerprint or passcode), each passkey request can be used
   once, and adding a passkey emails the account. Only a sign-in that has ended
   signs a phone out; a wrong password never does.
+- **Email addresses are confirmed** with a link sent at sign-up (good for 7
+  days; Privacy & Security can send another). Until then the address gets
+  nothing but that link and password resets, so no one can sign up with
+  someone else's address and have notifications sent to it. Accounts from
+  before this count as confirmed; an emailed reset link confirms too.
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and
   keeping the old key ("Keep Messages with Passkey") needs the phone to prove it

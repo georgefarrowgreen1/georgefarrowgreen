@@ -2154,7 +2154,8 @@ function vNotifySheet() {
     <div class="gfoot">${pushFoot}</div>
     ${S.emailOn ? `<div class="ghead">Email</div>
     <div class="group">${toggleCell({ act: "emailtoggle", icon: I.mail, tile: "blue", label: "Email Me", sub: esc(u.email), on: u.notifyEmail })}</div>
-    <div class="gfoot">Only when a pigeon has waited 10 minutes unread, and at most every half hour. Every email has a link to turn them off.</div>` : ""}
+    <div class="gfoot">${u.emailOk === false ? `Emails start once you confirm your address: tap the link we sent to ${esc(u.email)}. <button type="button" class="link inl" data-act="confirmsend">Send it again</button>`
+      : "Only when a pigeon has waited 10 minutes unread, and at most every half hour. Every email has a link to turn them off."}</div>` : ""}
     <div class="${anyOn ? "" : "dim"}">
     <div class="ghead">Notify Me When</div>
     <div class="group">
@@ -3002,7 +3003,8 @@ function drawSheet(refresh) {
     case "security": {
       const u = S.me;
       $layer.innerHTML = sheetHtml("Privacy & Security", `<div class="group mt-s">
-          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email) })}
+          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed yet</span>' : "" })}
+          ${u.emailOk === false && S.emailOn ? cell({ act: "confirmsend", label: "Send Confirm Link Again", cls: "action" }) : ""}
           ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption", val: "On", chev: true })}
           ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
@@ -3915,6 +3917,10 @@ async function onClick(e) {
       await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
     }
     case "blockedsheet": S.sheet = { type: "blocked" }; return renderSheet();
+    case "confirmsend":
+      try { const r = await api("confirm-resend", { method: "POST" }); toast(r.already ? "Your email is already confirmed." : `Sent. Tap the link in the email to ${esc(S.me.email)}.`); if (r.already) { await sync(); renderSheet(); } }
+      catch (err) { toast(esc(err.message)); }
+      return;
     case "cancelreq":
       await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
       await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
@@ -4818,8 +4824,15 @@ async function refreshPush() {
   if (S.view === "account") render();
   if (S.sheet?.type === "notifications") renderSheet();
 }
+async function confirmEmail(token) {
+  try {
+    const r = await api("confirm-email", { method: "POST", body: { token } });
+    haptic("success"); toast(`Email confirmed for @${esc(r.handle)}.`);
+    if (S.me && S.me.handle === r.handle) { S.me.emailOk = true; if (S.sheet) renderSheet(); }
+  } catch (err) { toast(esc(err.message)); }
+}
 async function setEmailNotify(on) {
-  try { const r = await api("me", { method: "PATCH", body: { notifyEmail: on } }); S.me = r.me; render(); if (S.sheet?.type === "notifications") renderSheet(); toast(on ? `We’ll email ${esc(S.me.email)} when a pigeon has been waiting a while.` : "Emails are off."); }
+  try { const r = await api("me", { method: "PATCH", body: { notifyEmail: on } }); S.me = r.me; render(); if (S.sheet?.type === "notifications") renderSheet(); toast(!on ? "Emails are off." : S.me.emailOk === false ? `Confirm ${esc(S.me.email)} first: tap the link we emailed you.` : `We’ll email ${esc(S.me.email)} when a pigeon has been waiting a while.`); }
   catch (err) { toast(esc(err.message)); }
 }
 // After someone's first pigeon: offer to tell them when the reply lands. Asked once per phone.
@@ -4872,6 +4885,9 @@ async function start() {
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { S.pendingAdd = m[1].toLowerCase(); history.replaceState(null, "", location.pathname); }
+  // a confirm-your-email link: works signed in or not, on any phone
+  const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+  if (cf) { history.replaceState(null, "", location.pathname); confirmEmail(cf[1]); }
   // a reset link: take the token out of the address bar straight away
   const rs = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (rs) { S.resetToken = rs[1]; history.replaceState(null, "", location.pathname); }
@@ -4902,6 +4918,8 @@ async function start() {
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
+    const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+    if (cf) { history.replaceState(null, "", location.pathname); return confirmEmail(cf[1]); }
     const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
     if (!r && !a) return;
     if (r && S.token) return location.reload();     // starts over on the reset screen, still signed in underneath

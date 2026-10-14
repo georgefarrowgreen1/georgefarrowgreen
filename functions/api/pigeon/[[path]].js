@@ -1,5 +1,5 @@
 import {
-  HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual,
+  HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
@@ -25,7 +25,7 @@ function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
     lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, skin: u.skin || null,
-    handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null };
+    handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
 /* ---------------- accounts ---------------- */
@@ -37,7 +37,7 @@ function cleanName(v, empty) {
   if (/[@/\\:<>]|\.\S|www\./i.test(name)) throw new HttpError(400, "Names can’t include web addresses or symbols like @ / :", "name");
   return name;
 }
-async function signup({ request, env }) {
+async function signup({ request, env, waitUntil }) {
   await limit(env, "signup:" + clientIp(request), 10, 60 * 60e3);
   const b = await body(request);
   const name = cleanName(b.name, "Tell us your name.");
@@ -58,7 +58,45 @@ async function signup({ request, env }) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, handle, name, email, pub, b.salt, hex(await sha256(fromB64url(b.proof))), vault, SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
+  waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
   return json({ token: await issueSession(env, id), me: meView(u, t) });
+}
+
+// Confirming the email address: a link to it, good for 7 days. Until then it gets
+// nothing but this (and password resets, which prove the same thing).
+const CONFIRM_TTL = 7 * DAY;
+async function sendConfirm(env, u, origin) {
+  if (!emailReady(env)) return false;
+  const token = randomToken(32);
+  await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
+  const { text, html } = emailBody({
+    origin, icon: "bird", title: "Confirm your email",
+    preheader: `Confirm the email address for @${u.handle} on InFlight.`,
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, tap the button to confirm this is your email address for InFlight. It’s where password resets and any notifications you turn on will go.`,
+      "If you didn’t sign up for InFlight, ignore this email: nothing more will be sent."],
+    rows: [["Account", `@${u.handle}`]],
+    button: { label: "Confirm Email", url: `${origin}/pigeon/#verify=${token}` },
+  });
+  await sendEmail(env, { to: u.email, subject: "Confirm your email for InFlight", text, html });
+  return true;
+}
+async function confirmEmail({ request, env }) {
+  await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
+  const token = String((await body(request)).token || "");
+  if (!/^[A-Za-z0-9_-]{40,50}$/.test(token)) throw new HttpError(400, "This confirm link isn’t valid.");
+  const D = await db(env), u = await D.prepare("SELECT * FROM pg_users WHERE email_code = ?").bind(hex(await sha256(token))).first();
+  if (!u) throw new HttpError(400, "This confirm link has already been used, or a newer one was sent.");
+  if (Date.now() - (u.email_sent || 0) > CONFIRM_TTL) throw new HttpError(410, "This confirm link has expired. Send a new one from Privacy & Security.");
+  await D.prepare("UPDATE pg_users SET email_ok = ?, email_code = NULL WHERE id = ?").bind(Date.now(), u.id).run();
+  return json({ ok: true, handle: u.handle });
+}
+async function confirmResend({ request, env }) {
+  const u = await requireUser(request, env);
+  if (u.email_ok) return json({ ok: true, already: true });
+  if (!emailReady(env)) throw new HttpError(503, "Email isn’t switched on yet.");
+  await limit(env, "confirmsend:" + u.id, 3, DAY);
+  await sendConfirm(env, u, linkOrigin(request));
+  return json({ ok: true });
 }
 
 // The salt is public input to the phone's password stretching. Unknown emails
@@ -756,7 +794,7 @@ function checkNewSecret(b) {
   return vault;
 }
 async function notifyPasskeyAdded(env, u, label, origin) {
-  if (!emailReady(env)) return;
+  if (!emailReady(env) || !u.email_ok) return;
   const { text, html } = emailBody({
     origin, icon: "shield", title: "A passkey was added",
     preheader: `A new passkey can now sign in to @${u.handle}.`,
@@ -768,7 +806,7 @@ async function notifyPasskeyAdded(env, u, label, origin) {
   await sendEmail(env, { to: u.email, subject: "A passkey was added to your InFlight account", text, html }).catch(() => {});
 }
 async function notifyPasswordChanged(env, u, how, origin) {
-  if (!emailReady(env)) return;
+  if (!emailReady(env) || !u.email_ok) return;
   const { text, html } = emailBody({
     origin, icon: "shield", title: "Your password was changed",
     preheader: `The password for @${u.handle} was just changed.`,
@@ -843,6 +881,8 @@ async function resetComplete({ request, env, waitUntil }) {
   if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
   const steps = [
     D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ? WHERE id = ?").bind(b.salt, hex(await sha256(fromB64url(b.proof))), vault, pub, u.id),
+    // a link that came by email shows the address is theirs too
+    ...(reset.created_by !== "admin-link" ? [D.prepare("UPDATE pg_users SET email_ok = COALESCE(email_ok, ?) WHERE id = ?").bind(t, u.id)] : []),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(u.id),
   ];
@@ -1053,7 +1093,7 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": signup, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": signup, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,

@@ -1171,3 +1171,5 @@ svg.fillico{fill:currentColor;stroke:none}
 .tsprobe{position:absolute;visibility:hidden;font:-apple-system-body}
 .keyw{color:var(--orange-t);font-weight:600;display:inline-flex;align-items:center;gap:4px}
 .sheetwarn{margin:14px 16px 0}
+.csub .warnc{color:var(--orange-t)}
+.gfoot .link.inl{font:inherit;cursor:pointer;display:inline}
