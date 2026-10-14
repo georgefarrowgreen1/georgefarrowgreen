@@ -153,6 +153,19 @@ distance between two people at 80 km/h (5 minutes to 3 days), and photos are
 deleted 24 hours after they land. It is end-to-end encrypted and works on
 phones and iPads only, held upright.
 
+**Other ways in.** georgefarrowgreen.com/chat sends you to /pigeon
+(`functions/chat/[[path]].js`), and so can chat.georgefarrowgreen.com. The app
+keeps one address, so sign-ins, keys, notifications and the Home Screen icon
+stay put. For the subdomain, in Cloudflare (the georgefarrowgreen.com zone):
+1. DNS → Records → Add record: type **CNAME**, name **chat**, target
+   **georgefarrowgreen.com**, Proxied on.
+2. Rules → Redirect Rules → Create rule: when **Hostname** equals
+   **chat.georgefarrowgreen.com**, redirect (static) to
+   **https://georgefarrowgreen.com/pigeon/**, 301, preserve query string on.
+
+(If chat.georgefarrowgreen.com is added to the Pages project as a custom domain
+instead, its /pigeon pages still send you to the main address.)
+
 **Phones and iPads only.** On a computer, /pigeon shows a page saying InFlight
 isn't available there, with a QR code that opens the same link (an add-a-friend
 or reset link included) on a phone; the app itself never starts, so nothing is
