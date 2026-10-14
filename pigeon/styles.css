@@ -76,7 +76,7 @@ svg.bird{width:1em;height:1em;fill:currentColor;flex:none}
 .mt{margin-top:22px!important}.mt-s{margin-top:14px!important}.mt-xs{margin-top:10px!important}
 
 /* Liquid Glass: blur + saturation, a bright top edge, a hairline rim, a soft lift */
-.glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho,.status{
+.glass,.nbtn,.nb-right,.tabs,.plus,.field-wrap,.menu-pop,.toast,.mapcard,.asheet .grp,.chatwho{
   background:var(--glass);
   -webkit-backdrop-filter:blur(24px) saturate(190%);backdrop-filter:blur(24px) saturate(190%);
   box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),var(--glass-shadow);
@@ -245,10 +245,6 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .msgs{display:flex;flex-direction:column;padding:4px 14px 18px}
 .stamp{align-self:center;margin:16px 0 6px;font-size:11px;font-weight:500;color:var(--label-2);text-align:center}
 .stamp b{font-weight:600}
-.status{align-self:center;display:flex;align-items:center;gap:6px;max-width:92%;margin:6px 0 4px;padding:7px 14px;border-radius:999px;color:var(--label-2);font-size:13px;line-height:17px;text-align:center}
-.status svg{font-size:15px}
-.status.sill{color:var(--green-t)}
-.status.inbound{color:var(--orange-t)}
 .b{position:relative;max-width:76%;margin-top:2px;padding:8px 13px 9px;border-radius:21px;background:var(--bubble-in);color:var(--label);font-size:calc(17px * var(--ts, 1));line-height:calc(22px * var(--ts, 1));align-self:flex-start;overflow-wrap:anywhere}
 .b.me{align-self:flex-end;background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint));color:#fff}
 .b.gap-top{margin-top:10px}
@@ -266,11 +262,6 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .prog i{display:block;height:100%;width:0;background:var(--orange);border-radius:2px}
 .b.me .prog{background:rgba(255,255,255,.35)}
 .b.me .prog i{background:#fff}
-.fly{align-self:flex-start;width:72%;margin-top:4px;padding:11px 14px;border:0;border-radius:22px;background:var(--bubble-in);color:var(--label);text-align:left;display:flex;flex-direction:column;gap:2px}
-.fly .t1{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
-.fly .t1 svg{font-size:20px;color:var(--orange-t);animation:bob 1.6s ease-in-out infinite}
-.fly .t2{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--label-2)}
-.fly .t2 b{color:var(--orange-t);font-weight:600}
 @keyframes bob{50%{transform:translateY(-2px)}}
 .warn{margin:8px 14px 0;padding:14px 16px;border-radius:24px;background:color-mix(in srgb,var(--yellow) 20%,var(--cell));font-size:15px;line-height:20px;display:flex;flex-direction:column;gap:10px}
 .warn .btn{align-self:flex-start}
@@ -477,7 +468,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 }
 
 /* ---- touch: glass swells and brightens, solid things dip, rows light up ---- */
-.nbtn,.chatwho,.plus,.send,.mapctl button,.avedit,.fly,.b.pic img,.status{transition:transform .5s var(--snappy),background-color .3s,box-shadow .3s,filter .3s,opacity .25s}
+.nbtn,.chatwho,.plus,.send,.mapctl button,.avedit,.fly,.b.pic img{transition:transform .5s var(--snappy),background-color .3s,box-shadow .3s,filter .3s,opacity .25s}
 .nbtn:active,.plus:active,.mapctl button:active{transform:scale(1.14);filter:brightness(1.08) saturate(1.1);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge),0 12px 30px rgba(0,0,0,.18)}
 .nb-right .nbtn:active{transform:scale(1.18);background:var(--fill)}
 .nb-right{transition:transform .5s var(--snappy)}
@@ -587,26 +578,10 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pg.turbo{box-shadow:inset 0 0 0 1px var(--p-badge-ring,var(--p-ring)),inset 0 -.06em .12em rgba(0,0,0,.2)}   /* black needs a rim in dark mode; inside, so it never clips */
 .pg.standard{--pg:var(--p-standard)}.pg.swift{--pg:var(--p-swift)}.pg.turbo{--pg:var(--p-turbo)}.pg.dumb{--pg:var(--p-dumb)}.pg.rocket{--pg:var(--p-rocket)}
 /* gold: a brighter sheen than the others */
-.pg.rocket,.tile.rocket,.pick button.rocket[aria-pressed="true"]{background:linear-gradient(160deg,#fbe38a,var(--p-rocket) 55%,#b9850d)}
+.pg.rocket,.tile.rocket{background:linear-gradient(160deg,#fbe38a,var(--p-rocket) 55%,#b9850d)}
 .tile.standard{background:var(--p-standard)}.tile.swift{background:var(--p-swift)}.tile.turbo{background:var(--p-turbo);box-shadow:0 0 0 1px var(--p-ring)}.tile.rocket{background:var(--p-rocket)}
 .dots.swift i:not(.e){background:var(--p-swift)}.dots.rocket i:not(.e){background:linear-gradient(160deg,#fbe38a,var(--p-rocket) 60%)}.dots.turbo i:not(.e){background:var(--p-turbo);box-shadow:inset 0 0 0 1px var(--p-dot-ring,var(--p-ring))}   /* rim inside the dot, so neighbours never touch */
-/* the picker above the message box */
-.pick{display:flex;gap:8px;justify-content:center}
-.pick button{flex:1;max-width:120px;display:flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 10px;border:0;border-radius:999px;font-size:14px;font-weight:600;color:var(--label);
-  background:var(--glass);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge);
-  transition:background-color .3s,color .3s,transform .45s var(--snappy),opacity .3s}
-.pick button b{font-weight:600;opacity:.7;font-variant-numeric:tabular-nums}
-.pick button:active{transform:scale(.94)}
-.pick button[aria-pressed="true"]{background:color-mix(in srgb,var(--pg) 82%,#000);color:#fff;box-shadow:0 0 0 1px var(--p-ring),0 6px 16px color-mix(in srgb,var(--pg) 35%,transparent)}
-.pick button.standard[aria-pressed="true"]{background:color-mix(in srgb,var(--pg) 58%,#000)}   /* (green needs more to carry white words) */
-.pick button[aria-pressed="true"] .pg{background:rgba(255,255,255,.22);box-shadow:none}
-.pick button[aria-pressed="true"] b{opacity:.85}
-.pick button:disabled{opacity:.4}
-.pick .standard{--pg:var(--p-standard)}.pick .swift{--pg:var(--p-swift)}.pick .turbo{--pg:var(--p-turbo)}.pick .rocket{--pg:var(--p-rocket)}
-.note .pg{font-size:12px}
-.note.go{color:var(--label-2)}
-.fly .t1 .pg{font-size:15px;animation:bob 1.6s ease-in-out infinite}
-.fly .t1 .pg svg,.mapcard .big .pg svg,.mrow .mprev .pg svg{color:#fff;font-size:1.1em;animation:none;margin:0;vertical-align:0}
+.mapcard .big .pg svg,.mrow .mprev .pg svg{color:#fff;font-size:1.1em;animation:none;margin:0;vertical-align:0}
 .mrow .mprev .pg{font-size:12px;vertical-align:0}
 .meta .fl .pg{font-size:10px;margin-right:1px}
 .mapcard .big .pg{font-size:16px}
@@ -618,22 +593,11 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .reqrow .csub{font-size:13px;line-height:18px;color:var(--label-2)}
 /* menus and confirm cards: more solid glass, so what's behind doesn't show through the words */
 .menu-pop,.asheet .grp,.asheet .cancel{-webkit-backdrop-filter:blur(30px) saturate(1.8);backdrop-filter:blur(30px) saturate(1.8)}
-/* the turn message stays on one line */
-.status span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* four pigeons share one row: only the chosen one spells out its name, the
-   rest shrink to their badge and count, and the name slides open on choosing */
-.pick button{flex:0 1 auto;max-width:none;min-width:0;gap:0;overflow:hidden;white-space:nowrap;transition:background-color .3s,color .3s,transform .45s var(--snappy),opacity .3s,padding .45s var(--snappy)}
-.pick button span:not(.pg){display:inline-block;max-width:0;opacity:0;visibility:hidden;margin-left:0;overflow:hidden;transition:max-width .45s var(--snappy),opacity .3s,margin .45s var(--snappy),visibility .3s}
-.pick button[aria-pressed="true"]{padding:0 14px 0 10px}
-.pick button[aria-pressed="true"] span:not(.pg){max-width:6em;opacity:1;visibility:visible;margin-left:6px}
-.pick button b{margin-left:5px}.pick button b:empty{display:none}
 .note{text-wrap:balance}
 /* long labels stay on one line beside a value */
 .cell.has-icon:has(> .val) .ctext > span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell .csub .mono{font-family:var(--mono);font-size:13px;letter-spacing:.3px}
 @media (max-width:360px){
-  .pick{gap:6px}
-  .pick button{font-size:13px;padding:0 9px;height:34px}
   .cell .val .mono,.cell .val.mono{font-size:13px;letter-spacing:-.3px}
   .me-cell .name{font-size:19px}
 }
@@ -650,7 +614,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .e2e svg{font-size:15px;color:var(--green-t);stroke-width:2.2}
 
 /* ---------- Pigeon Death: a pigeon lost on the way ---------- */
-.note .risk{color:var(--red)}
 .lostp{display:inline-flex;align-items:center;gap:4px;color:var(--red)}
 .lostp .ico{font-size:1.05em;flex:none}
 .mapcard .big .lostp .ico{font-size:22px}
@@ -696,7 +659,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mapcard .frow.flying b{color:var(--orange-t)}
 
 /* ---------- GIFs ---------- */
-.gifbtn{font:700 13px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:.3px}
 .gifsearch{margin:6px 16px 12px}
 .gifgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 12px;align-items:start}
 .gifgrid .empty{grid-column:1/-1}
@@ -780,7 +742,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .kbar{display:block;height:5px;border-radius:3px;width:calc(var(--w,0) * 100%);min-width:6px;background:var(--p-standard)}
 .kbar.swift{background:var(--p-swift)}.kbar.turbo{background:var(--label)}.kbar.rocket{background:var(--p-rocket)}.kbar.dumb{background:var(--p-dumb)}
 .tile.pink{background:linear-gradient(180deg,#ff7aa2,#e8457a)}
-.meta .readr{color:var(--label-2)}
 /* achievements */
 .ghead .gcount{float:right;font-weight:500;color:var(--label-2);font-size:13px}
 .badges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 16px}
@@ -793,27 +754,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .badge2 .newb{display:inline-block;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;padding:1px 5px;border-radius:999px;background:var(--tint);color:#fff;vertical-align:1px}
 .badge2 .bprog{display:block;width:80%;height:4px;margin-top:5px;border-radius:2px;background:linear-gradient(90deg,var(--tint) calc(var(--w,0) * 100%),var(--fill) 0)}
 .badge2 .bnum{font-variant-numeric:tabular-nums;color:var(--label-2)}
-/* ---------- postcard stamps: a little airmail stamp on every pigeon that arrived ---------- */
 .meta{align-items:center}
-.pstamp{--ink:var(--p-standard);position:relative;display:inline-flex;align-items:center;gap:3px;height:26px;padding:0 9px 0 7px;margin:3px 1px;border:0;
-  background:var(--cell);color:color-mix(in srgb,var(--ink) 62%,var(--label));font:700 11px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;letter-spacing:.2px;font-variant-numeric:tabular-nums;
-  transform:rotate(-2.5deg);filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.18));
-  /* a frame set in from the paper's edge, like a real stamp */
-  box-shadow:inset 0 0 0 3.5px var(--cell),inset 0 0 0 5px color-mix(in srgb,var(--ink) 60%,transparent);
-  /* perforated edges: holes punched round the outside */
-  -webkit-mask:radial-gradient(circle,transparent 1.7px,#000 2px) -3px -3px/6px 6px,linear-gradient(#000,#000) 3px 3px/calc(100% - 6px) calc(100% - 6px) no-repeat;
-  mask:radial-gradient(circle,transparent 1.7px,#000 2px) -3px -3px/6px 6px,linear-gradient(#000,#000) 3px 3px/calc(100% - 6px) calc(100% - 6px) no-repeat;
-  transition:transform .3s var(--bouncy)}
-.meta.me .pstamp{transform:rotate(2.5deg)}
-.pstamp span{display:grid;place-items:center;font-size:12px}
-.pstamp b{font-weight:700}
-.pstamp:not([disabled]):active{transform:rotate(0) scale(1.15)}
-.pstamp[disabled]{cursor:default}
-.pstamp.swift{--ink:var(--p-swift)}.pstamp.turbo{--ink:var(--label)}.pstamp.rocket{--ink:var(--p-rocket-text,var(--p-rocket))}.pstamp.dumb{--ink:var(--p-dumb)}
-/* scheduled pigeons: the clock in the picker, waiting bubbles, the landing-time sheet */
-.pick .when{--pg:var(--tint)}
-.pick .when .ico{font-size:17px}
-.pick .when[aria-pressed="true"] span{max-width:8em}
+/* scheduled pigeons: waiting in your loft */
 .b.me.waiting{background:none;color:var(--tint);border:1.5px dashed color-mix(in srgb,var(--tint) 60%,transparent)}
 .b.pic.waiting{opacity:.6}
 .meta .fl.flock.sched{color:var(--tint)}
@@ -833,10 +775,10 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .pg.sk-comet{box-shadow:0 0 0 .09em #7ad7ff,inset 0 -.06em .12em rgba(0,0,0,.12)}
 .pg.sk-rainbow::before{content:"";position:absolute;inset:-.13em;border-radius:50%;background:conic-gradient(#ff3b30,#ff9500,#ffcc00,#34c759,#5ac8fa,#007aff,#af52de,#ff3b30);-webkit-mask:radial-gradient(closest-side,transparent 85%,#000 87%);mask:radial-gradient(closest-side,transparent 85%,#000 87%)}
 /* big (the Flight Log, a pigeon on its way, the map card): the full look, glow, tail and star */
-:is(.sbig,.fly .t1,.mapcard .big) .pg.sk-golden{box-shadow:0 0 0 .1em #f5c542,0 0 .4em .06em rgba(245,197,66,.75),inset 0 -.06em .12em rgba(0,0,0,.12)}
-:is(.sbig,.fly .t1,.mapcard .big) .pg.sk-midnight::after{content:"";position:absolute;top:-.12em;right:-.1em;width:.32em;height:.32em;border-radius:50%;background:radial-gradient(circle,#fff 30%,rgba(143,162,255,0) 70%)}
-:is(.sbig,.fly .t1,.mapcard .big) .pg.sk-ember{box-shadow:0 0 0 .09em #ff8a00,0 0 .45em .1em rgba(255,90,0,.6),inset 0 -.06em .12em rgba(0,0,0,.12)}
-:is(.sbig,.fly .t1,.mapcard .big) .pg.sk-comet{box-shadow:0 0 0 .09em #7ad7ff,.45em .08em .4em -.06em rgba(122,215,255,.85),inset 0 -.06em .12em rgba(0,0,0,.12)}
+:is(.sbig,.mapcard .big) .pg.sk-golden{box-shadow:0 0 0 .1em #f5c542,0 0 .4em .06em rgba(245,197,66,.75),inset 0 -.06em .12em rgba(0,0,0,.12)}
+:is(.sbig,.mapcard .big) .pg.sk-midnight::after{content:"";position:absolute;top:-.12em;right:-.1em;width:.32em;height:.32em;border-radius:50%;background:radial-gradient(circle,#fff 30%,rgba(143,162,255,0) 70%)}
+:is(.sbig,.mapcard .big) .pg.sk-ember{box-shadow:0 0 0 .09em #ff8a00,0 0 .45em .1em rgba(255,90,0,.6),inset 0 -.06em .12em rgba(0,0,0,.12)}
+:is(.sbig,.mapcard .big) .pg.sk-comet{box-shadow:0 0 0 .09em #7ad7ff,.45em .08em .4em -.06em rgba(122,215,255,.85),inset 0 -.06em .12em rgba(0,0,0,.12)}
 /* a ring needs a little room where lines clip */
 .mprev .pg[class*=" sk-"]{margin:.1em .2em .1em .12em}
 .skin2{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:12px 8px;border:0;border-radius:20px;background:var(--cell);min-width:0;color:var(--label);font:inherit;box-shadow:inset 0 0 0 2px transparent;transition:box-shadow .2s}
@@ -854,7 +796,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mapcard .skyrow .pg svg{color:#fff;margin:0;vertical-align:0}
 .mapcard .big > .ico{color:var(--tint)}
 /* stopovers: the card for the friend it rests with, and their line under the message */
-.pick .viab[aria-pressed="true"] span{max-width:7em}
 .stopcard{align-self:stretch;margin:8px 4px;padding:12px 14px;border-radius:20px;background:var(--cell);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--tint) 35%,transparent);display:flex;flex-direction:column;gap:8px;font-size:15px}
 .stopcard .st1{display:flex;align-items:center;gap:8px;color:var(--label-2);font-size:13px;font-weight:500}
 .stopcard .stext{margin:0;font-size:16px;line-height:1.35;color:var(--label)}
@@ -864,11 +805,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .stopcard .btn{align-self:flex-start;gap:6px}
 .vianote{align-self:flex-start;max-width:78%;margin:-2px 0 4px 12px;padding:6px 12px;border-left:3px solid var(--tint);font-size:14px;color:var(--label);display:flex;flex-direction:column}
 .vianote b{font-size:12px;color:var(--tint);font-weight:600}
-/* six in a row on a phone: tighter, and the clock and stopover stay round until set */
-.pick{gap:5px}
-.pick button:not([aria-pressed="true"]){padding:0 8px}
-.pick .when{padding:0 9px;min-width:36px}
-.pick .when[aria-pressed="true"]{padding:0 12px 0 9px}
 .skin2.on .sbig{animation:pop .4s var(--bouncy)}
 /* the globe / flat map switch */
 .mapctl .globebtn[aria-pressed="true"]{color:var(--tint)}
@@ -1080,14 +1016,8 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .ws .ico{font-size:15px;stroke-width:2.4}
 .ws.w-read{color:var(--tint)}.ws.w-landed{color:var(--green-t)}.ws.w-fly{color:var(--orange-t)}.ws.w-lost{color:var(--red)}.ws.w-back{color:var(--label-2)}
 /* a pigeon on its way to you: one slim line, not a big card */
-.fly.chip{width:auto;min-width:min(260px,78%);max-width:86%;padding:9px 14px 9px 10px;border-radius:20px;gap:3px;transition:transform .25s cubic-bezier(.3,1.5,.5,1)}
-.fly.chip:active,.frr:active{transform:scale(.97)}
-.fly.chip .c1{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;min-width:0}
-.fly.chip .c1 .pg{font-size:14px;animation:bob 1.6s ease-in-out infinite}
-.fly.chip .cl{flex:none;white-space:nowrap}
-.fly.chip b,.frr b{flex:none;color:var(--orange-t);font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
-.fly.chip .wxs{margin:1px 0 0 28px;font-size:12px}
-.fly.chip .wxs .ico{font-size:13px}
+.frr:active{transform:scale(.97)}
+.frr b{flex:none;color:var(--orange-t);font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
 .ctrack{position:relative;flex:1;min-width:36px;height:12px}
 .ctrack::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;background-image:linear-gradient(90deg,var(--label-3) 55%,transparent 0);background-size:6px 2px;animation:air-march .9s linear infinite}
 .ctrack i{position:absolute;left:0;top:5px;height:2px;border-radius:1px;background:var(--tint);width:0;transition:width 1s linear}
@@ -1102,7 +1032,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .frr + .frr{box-shadow:inset 0 .5px 0 var(--sep)}
 .frr .pg{font-size:11px}
 .frr .n{width:4.6em;flex:none;font-weight:500}
-@media (prefers-reduced-motion: reduce){.ctrack::before,.ctrack .cbird,.fly.chip .c1 .pg{animation:none}.ctrack i{transition:none}}
+@media (prefers-reduced-motion: reduce){.ctrack::before,.ctrack .cbird{animation:none}.ctrack i{transition:none}}
 /* the outbox: your message, waiting on the perch for signal */
 .b.me.pending{opacity:.72;animation:perch 2.4s ease-in-out infinite}
 .b.me.pending.failed{opacity:1;animation:none;background:var(--fill-2);color:var(--label)}
@@ -1185,7 +1115,6 @@ svg.fillico{fill:currentColor;stroke:none}
 /* an action sheet dims whatever is under it, sheets included */
 .poplayer .scrim{z-index:40}
 /* the chosen pigeon keeps its name on narrow phones; the others are icons */
-.pick button[aria-pressed="true"]{flex-shrink:0}
 @media (max-width:340px){.flyrun .frh small .w{display:none}}
 .mprev .draft{color:var(--red-on);font-weight:500}
 /* swiping back: the screen you came from waits underneath */
@@ -1199,7 +1128,6 @@ svg.fillico{fill:currentColor;stroke:none}
 /* already ticked before a redraw: no second pop */
 .cell.kept .tickbox,.cell.kept .val.tick svg,.skin2.kept .sbig{animation:none}
 /* opening another chat: its pigeon choice is just there */
-.pick.snap button,.pick.snap button span:not(.pg){transition:none}
 /* a chat sliding in: nothing of the screen it covers shows through the composer's fade */
 .compose.nav-push{background:var(--bg-plain)}
 /* swiping between tabs: the next one waits beside this one, and the highlight follows the finger */
@@ -1269,9 +1197,6 @@ svg.fillico{fill:currentColor;stroke:none}
 .wxplan.early{color:var(--green-t)}
 .wxplan .wxwait{min-height:30px;padding:0 14px;font-size:13px}
 /* named pigeons: who carries it, their careers, the Hall of Fame */
-.note .birdchip{display:inline-flex;align-items:center;gap:1px;flex:none;border:0;border-radius:999px;padding:2px 6px 2px 9px;margin-right:2px;background:var(--fill);color:var(--label);font:inherit;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.note .birdchip .ico{font-size:11px;transform:rotate(90deg);opacity:.55}
-.note .birdchip:active{opacity:.6}
 .mapcard .birdline{display:block;font-size:13px;font-weight:600;color:var(--label-2);text-align:center;text-wrap:balance}
 .mapcard .birdline svg{width:15px;height:15px;margin-right:4px;vertical-align:-3px;fill:var(--orange)}
 .sysline.rankup{display:block;border:0;font-family:inherit;color:var(--label-2);cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -1291,3 +1216,108 @@ svg.fillico{fill:currentColor;stroke:none}
 .brank .ctext{width:100%}
 .bbar{display:block;height:6px;margin-top:8px;border-radius:3px;background:var(--fill);overflow:hidden}
 .bbar b{display:block;width:0;height:100%;border-radius:3px;background:var(--orange)}
+
+/* ---------- the chat, cleaner ----------
+   A plain bar with who, their time and how far; each message with its own
+   time inside it; colour only on what's in the air; one row to write in. */
+.navbar.chatnav{grid-template-columns:auto minmax(0,1fr) auto;gap:0;min-height:58px;padding:4px 6px 4px 2px}
+.navbar.chatnav::before{inset:0;opacity:1;background:color-mix(in srgb,var(--bg-plain) 84%,transparent);-webkit-backdrop-filter:saturate(1.8) blur(24px);backdrop-filter:saturate(1.8) blur(24px);-webkit-mask-image:none;mask-image:none;box-shadow:inset 0 -.5px 0 var(--sep)}
+.chatnav .nbtn,.chatnav .nb-right{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.chatnav .nbtn{color:var(--tint)}
+.chatnav .chatwho{justify-self:stretch;max-width:none;gap:10px;padding:4px 8px 4px 0;border-radius:14px;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;text-align:left}
+.chatnav .chatwho:active{transform:none;filter:none;opacity:.6}
+.chatwho .wt{flex:1;min-width:0;display:flex;flex-direction:column}
+.chatwho .nm{font-size:16.5px;line-height:20px}
+.chatwho .sub{display:flex;align-items:center;gap:4px;min-width:0;font-size:12.5px;line-height:16px;font-weight:400;color:var(--label-2);letter-spacing:-.1px;font-variant-numeric:tabular-nums}
+.chatwho .sub .ico{flex:none;font-size:12px}
+.msgs{padding-top:6px}
+.msgs .stamp{margin:20px 0 8px;font-size:12px;line-height:16px;font-weight:600;color:var(--label-2)}
+.msgs .stamp:first-child{margin-top:8px}
+
+/* its time, tucked into the last line (or under it, when the line is full) */
+.b .ft{float:right;display:inline-flex;align-items:center;gap:2px;margin:8px -4px -5px 10px;font-size:11px;line-height:15px;font-weight:500;letter-spacing:0;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--label-2)}
+.b.me .ft{color:rgba(255,255,255,.78)}
+.b .ft .ico{font-size:12px;stroke-width:2.2}
+.b .ft .rd{display:inline-flex}
+.b .ft .rd .ico{font-size:14px}
+.b.voicem .ft{float:none;display:flex;justify-content:flex-end;margin:2px -2px -3px 0}
+.b.pic .ft.over{position:absolute;right:9px;bottom:8px;float:none;margin:0;padding:2px 7px;border-radius:10px;background:rgba(0,0,0,.45);color:#fff}
+.b.me.lost{opacity:.75}
+.b.me.lost .ft.lostft,.b .ft.lostft{color:var(--red)}
+.b.me.lost .ft.lostft .ico{font-size:11px}
+
+/* in the air: an outline, and its pigeon on a hairline of the way */
+.k-standard{--k:var(--p-standard)}.k-swift{--k:var(--p-swift)}.k-turbo{--k:var(--label)}.k-rocket{--k:var(--p-rocket)}.k-dumb{--k:var(--p-dumb)}
+.b.up{background:none!important;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint);min-width:min(224px,76%);cursor:pointer}
+.b.up .ft{color:var(--label-2)}
+.b.up .quote{background:var(--fill);border-left-color:var(--tint)}
+.b.up .quote b{color:var(--tint)}
+.b.up.waiting{border:0;box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--tint) 55%,transparent);color:var(--label)}
+.b.up .frow{clear:both;display:flex;align-items:center;gap:10px;margin:7px -4px -4px 0}
+.b.up .frow .ft{float:none;margin:0 0 0 auto}
+.trk{position:relative;flex:1;min-width:48px;height:12px}
+.trk::before{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:1px;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42}
+.trk i{position:absolute;left:0;top:5px;height:2px;width:0;border-radius:1px;background:var(--k);transition:width 1s linear}
+.trk i .bird{position:absolute;right:-8px;top:-6px;width:14px;height:14px;color:var(--k);transform:scaleX(-1)}
+.b.pic.up{box-shadow:none}
+.b.pic.up .ptxt{background:none;color:var(--label);box-shadow:inset 0 0 0 1.5px var(--tint)}
+.b.voicem.up .vplay{background:var(--tint-fill);color:#fff}
+/* theirs, sealed until it lands */
+.b.up.sealed{display:flex;flex-direction:column;gap:6px;width:auto;margin-top:2px;padding:9px 14px 10px;border:0;font:inherit;text-align:left;color:var(--label-2);box-shadow:inset 0 0 0 1.5px var(--label-3)}
+.b.up.sealed.gap-top{margin-top:10px}
+.b.up.sealed .sl{display:flex;align-items:center;gap:6px;font-size:15px;line-height:20px}
+.b.up.sealed .sl .ico{flex:none;font-size:15px;color:var(--k)}
+.b.up.sealed .trk{flex:none;width:100%}
+.b.up.sealed:active{transform:scale(.98)}
+/* several at once: one quiet card */
+.flyrun{background:none;box-shadow:inset 0 0 0 1.5px var(--label-3)}
+.flyrun .stack .pg{box-shadow:0 0 0 2px var(--bg-plain)}
+.flyrun .frh small,.frr b{color:var(--label-2)}
+.ctrack::before{background-image:none;background:repeating-linear-gradient(90deg,#e1352b 0 6px,transparent 6px 9px,#2f6fe0 9px 15px,transparent 15px 18px);opacity:.42;animation:none}
+.ctrack i{background:var(--label-2)}
+.ctrack .cbird{fill:var(--label-2);animation:none}
+
+/* what happened, as one small grey line */
+.sysline,.lostnote{background:none;margin:12px auto 6px;padding:2px 12px;font-size:calc(12px * var(--ts, 1));line-height:16px;color:var(--label-2);border-radius:10px}
+.lostnote .ico{font-size:13px}
+.sysline.moment .ico,.sysline.fly > .ico{color:var(--label-2)}
+.sysline.rankup svg{fill:var(--label-2)}
+.sysline.moment:active,.sysline.rankup:active{background:var(--fill)}
+.meta .fl.flock[class],.meta .fl.exp{color:var(--label-2)}
+
+/* a menu choice with a line under it */
+.menu-pop .mi.two{padding-block:8px}
+.menu-pop .mi small{display:block;margin-top:1px;font-size:13px;line-height:17px;color:var(--label-2);text-wrap:pretty}
+.menu-pop{max-width:min(320px,calc(100vw - 16px))}
+.menu-pop .mi .gifico{flex:none;display:grid;place-items:center;width:24px;height:20px;border-radius:5px;box-shadow:inset 0 0 0 1.6px currentColor;font-size:10px;font-weight:800;letter-spacing:.2px}
+
+/* one row: +, the message with its pigeon at the start, send */
+.crow{gap:8px}
+.field-wrap{padding:4px 4px 4px 4px}
+.field-wrap textarea{padding:7px 6px}
+.compose .kind{flex:none;align-self:flex-end;display:inline-flex;align-items:center;gap:4px;max-width:44%;height:32px;margin:2px 0;padding:0 7px 0 3px;border:0;border-radius:999px;background:var(--fill);color:var(--label);font-size:14px;font-weight:600;letter-spacing:-.2px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .2s var(--snappy),opacity .2s}
+.compose .kind .pg{font-size:17px}
+.compose .kind .kl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.compose .kind > .ico{flex:none;font-size:13px;color:var(--label-2)}
+.compose .kind > .ico:last-child{font-size:10px;stroke-width:3;transform:rotate(90deg)}
+.compose .kind:active{transform:scale(.94)}
+.compose .kind:disabled{opacity:.5;cursor:default}
+.pg.none{background:var(--gray)}
+.compose .note{padding:0 12px}
+
+/* How it flies */
+.flyto{margin:0 24px 14px;font-size:14px;line-height:19px;color:var(--label-2);text-align:center;text-wrap:balance}
+.kinds .kc{min-height:60px;gap:12px}
+.kinds .kc .pg{font-size:18px}
+.kinds .kc .val{color:var(--label);font-weight:600;font-variant-numeric:tabular-nums}
+.kinds .kc .ck{flex:none;display:grid;place-items:center;width:20px;color:var(--tint);visibility:hidden}
+.kinds .kc .ck .ico{font-size:18px;stroke-width:2.4}
+.kinds .kc[aria-checked="true"] .ck{visibility:visible}
+.kinds .kc:disabled{opacity:.45;cursor:default}
+.carriers{display:flex;flex-wrap:wrap;gap:8px;margin:0 16px}
+.cc{display:flex;flex-direction:column;align-items:flex-start;min-height:46px;padding:6px 14px;border:0;border-radius:16px;background:var(--cell);color:var(--label);text-align:left;box-shadow:inset 0 0 0 1.5px transparent;cursor:pointer;transition:box-shadow .2s}
+.cc b{font-size:15px;line-height:19px;font-weight:600}
+.cc small{font-size:12px;line-height:16px;color:var(--label-2)}
+.cc[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--tint)}
+.cc[aria-checked="true"] b{color:var(--tint)}
+.cc:disabled{opacity:.45;cursor:default}

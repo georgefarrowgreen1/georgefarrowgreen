@@ -219,11 +219,27 @@ objects with prefix `pigeon/` after 5 days.
 **Pigeons.** *Standard* (green) flies at 80 km/h and is free, but only when
 it's your turn (the pigeon is on your windowsill). *Swift* (red, 2×, up to 9,
 one hatching every 2h 40m), *Turbo* (black, 3×, up to 3, one every 8 hours) and
-*Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks in the message
-box; the server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
+*Rocket* (gold, 9×, one a day) fly any time and each send uses one. The phone picks the slowest
+that can fly; tap the pigeon at the start of the message box for How It Flies to choose another.
+The server enforces the rules (`PIGEONS` and `loft()` in `functions/_pigeon.js`).
 
-**Scheduled pigeons.** Tap the clock beside the pigeons in a one-to-one chat
-and pick when it should *land* (this evening, tomorrow morning, or any time in
+**The chat.** A plain bar at the top: who, the time where they are (with a moon
+at night) when it isn't yours, where they are and how far. Each message carries
+its own time, tucked into its last line, with two ticks once they've read yours;
+the day goes above when it changes. Your pigeon in the air is an outline with
+its pigeon on a hairline of the way and when it lands; tap it for the map (and
+who carries it, how far it has to go, cheers, weather), Cheer It On or Call It
+Back. Tap anything that has landed to react, reply or Show the Flight. Mid-air
+moments, flyovers and rank-ups are small grey lines. Writing is one row: +
+(a photo, or a GIF), the message with its pigeon at the start and when it would
+land as the hint, and send (a microphone while it's empty). A line appears
+above it only when something stops a pigeon flying. How It Flies (tap the
+pigeon) has the kinds, with how many you have, how long each takes and why one
+can't fly; which named pigeon carries it; When It Lands; Stop Over; the weather;
+and whether Pigeon Death is on.
+
+**Scheduled pigeons.** In a one-to-one chat, How It Flies → When It Lands:
+pick when it should *land* (this evening, tomorrow morning, or any time in
 the next 30 days). The pigeon waits in your loft and takes off just in time:
 `sent_at` is its take-off, `deliver_at` the time you picked, `sched` 1 until it
 leaves. Until then only you can see it, and it doesn't take anyone's turn.
@@ -312,9 +328,9 @@ composer just says when the skies clear. One to one only, since group
 pigeons can't be booked.
 
 **Named pigeons with careers.** Account → Your Pigeons: name up to five of
-your pigeons. They take turns carrying what you send: the composer shows
-which one (the one that has rested longest; tap the name to pick another, or
-send unnamed). A pigeon is credited with the miles when its flight lands,
+your pigeons. They take turns carrying what you send: the pigeon at the start
+of the message box shows which one (the one that has rested longest; pick
+another in How It Flies, or Any Pigeon to send it unnamed). A pigeon is credited with the miles when its flight lands,
 and miles bring rank (Fledgling, then Courier at 311 mi, Navigator, Veteran,
 Ace, and Legend at 24,901 mi: once around the world) and stamina, which
 shortens the rest it needs between flights (from about two fifths of the
@@ -422,8 +438,8 @@ Notifications → Your Week in Flight. A quiet week sends nothing. It's worked
 out by `weekOf` in `functions/_notify.js` from two Flight Logs a week apart. For
 testing, `PIGEON_WEEKLY_ANYTIME=1` makes any time count.
 
-**Stopovers.** Tap the two-people button beside the pigeons in a one-to-one
-chat and pick a friend you and they both have. The pigeon flies to that friend,
+**Stopovers.** In a one-to-one chat, How It Flies → Stop Over: pick a friend
+you and they both have. The pigeon flies to that friend,
 rests with them for an hour, then flies on. The friend gets their own sealed
 copy (words only; photos stay between you two) and can add one line for the
 recipient, sealed between the two of them, which shows under the message when
@@ -434,7 +450,7 @@ deletes the friend's copy too. A scheduled pigeon can't make a stopover. Code:
 the `via_*` columns on `pg_msgs`.
 
 **Replies and reactions.** Tap a message that has landed: react (❤️ 👍 😂 😮 😢
-🙏) or Reply. A reply carries a quote of the original, sealed inside it; tap the
+🙏), Reply, or Show the Flight (its map, with its miles and pigeon). A reply carries a quote of the original, sealed inside it; tap the
 quote to jump to it. A reaction flies back on a tiny pigeon at rocket speed:
 free, and it never uses anyone's turn. Reactions are sealed too (one to one with
 the pair key; in a group sealed once with a key for each member), so the server
@@ -451,10 +467,10 @@ after it. Storms slow it too: it sits out thunder (0.7×), picks its way
 through heavy rain, snow and fog, and fights gusts over 60 km/h. The server
 keeps how much later (or earlier) that makes it, and the spot where the weather
 did most of it (what and where, never who). When it's 5 minutes or more, the
-map card and the incoming pigeon say "Delayed 3h 4m · storms over the Alps" or
+map card says "Delayed 3h 4m · storms over the Alps" or
 "52m early · a tailwind over France", naming a mountain range when it's right
-over one, and once it lands, "Landed 3h 4m late"; the sender's message says
-"delayed 3h 4m by storms". Rerouting a pigeon clears it. Smaller changes keep
+over one, and once it lands, "Landed 3h 4m late"; the menu on the sender's
+pigeon says "delayed 3h 4m by storms". Rerouting a pigeon clears it. Smaller changes keep
 the plain "Tailwind 13 mph · faster than usual". Only points along the route are sent, never
 who's flying; if the forecast doesn't answer within 2.5 s, the pigeon flies at
 its usual speed. The demo uses a steady westerly instead.
@@ -467,19 +483,19 @@ turn back; anyone who already has it keeps it.
 
 **GIFs.** A GIF from your phone is sent as a GIF (frames, timing and looping
 kept; comments and other extra blocks stripped), end-to-end encrypted like any
-photo, up to 7 MB. The GIF button beside + searches GIPHY: searches and the
+photo, up to 7 MB. + → GIF searches GIPHY: searches and the
 GIFs themselves go through this server (`functions/_gifs.js`), so GIPHY never
 sees who's looking, and the one picked is sealed on the phone like any other.
 GIFs stream through the server (never held whole in memory), with GIPHY's
 ~60 KB downsampled previews in the picker.
 Needs the secret **`GIPHY_API_KEY`** (free from developers.giphy.com: create an
-API app); without it the GIF button stays hidden.
+API app); without it + goes straight to your photos.
 
-**On its way.** A pigeon flying to you is one slim line in the chat: its
-colour, a little route with it flapping along, and the time to go (and the
-weather's delay, if any). Several on their way at once, from a group or a run
-of swifts, share one "3 on their way" card with a row each; tap one for its
-map. Each leaves the card as it lands and becomes the message.
+**On its way.** A pigeon flying to you is sealed until it lands: an outline
+saying "Sealed · lands tomorrow 06:08", with its pigeon on a hairline of the
+way; tap it for its map (and the weather's delay, if any). Several on their way
+at once, from a group or a run of swifts, share one "3 on their way" card with a
+row each. Each leaves the card as it lands and becomes the message.
 
 **Groups.** New Message → New Group: a name and up to 11 friends (12 people in
 all). A message flies to everyone at once, one pigeon each over the real

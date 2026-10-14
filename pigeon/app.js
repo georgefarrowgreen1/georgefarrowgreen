@@ -213,6 +213,7 @@ const I = {
   minus: ico(`<path d="M5 12h14"/>`),
   contrast: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/>`),
   moon: ico(`<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>`),
+  sun: ico(`<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>`),
   bell: ico(`<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>`),
   back: ico(`<path d="M15 4.5 7.5 12l7.5 7.5"/>`),
   wind: ico(`<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h7"/>`),
@@ -242,6 +243,7 @@ const I = {
   trash: ico(`<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/>`),
   up: ico(`<path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/>`),
   check: ico(`<path d="m5 12.5 4.5 4.5L19 7.5"/>`),
+  ticks: ico(`<path d="m2.5 12.5 4 4 8-9"/><path d="m11 15.5 1 1 8-9"/>`),
   x: ico(`<path d="M6 6l12 12M18 6 6 18"/>`),
   pin: ico(`<path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0c0 5.4 6.5 11 6.5 11Z"/><circle cx="12" cy="10" r="2.3"/>`),
   gone: ico(`<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 4l16 16"/>`),
@@ -2158,15 +2160,14 @@ function mount() {
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
     <main class="view"></main>
     <form class="compose" hidden data-form="compose">
-      <div class="pick" hidden role="group" aria-label="Which pigeon"></div>
       <div class="note" hidden></div>
       <div class="wxplan" hidden></div>
       <div class="attach" hidden></div>
       <div class="replybar" hidden></div>
       <div class="crow">
         <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
-        <button type="button" class="plus gifbtn" data-act="gifs" aria-label="Find a GIF" hidden>GIF</button>
         <div class="field-wrap">
+          <button type="button" class="kind" data-act="flysheet" aria-haspopup="dialog" hidden></button>
           <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="send"></textarea>
           <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
           <button type="button" class="mic" data-act="recstart" aria-label="Record a voice pigeon" hidden>${I.mic}</button>
@@ -2536,20 +2537,22 @@ function cityOptions() {
 }
 
 /* ---------- Chat ---------- */
-function status(f, t) {
-  const n = esc(first(f.name));
-  const B = (cls, text) => `<div class="status ${cls}">${I.bird}<span>${text}</span></div>`;
-  switch (t?.state) {
-    case "fresh": return B("sill", "Your pigeon is ready. Say hello.");
-    case "sill": return B("sill", "Your turn to send.");
-    case "lost": return B("sill", "Your pigeon was lost. Your turn to send.");
-    case "recalled": return B("sill", "You called your pigeon back. Your turn to send.");
-    case "inbound": return B("inbound", `${n}’s pigeon is on its way.`);
-    case "outbound": return B("", `Your pigeon is flying to ${n}.`);
-    case "theirs": return B("", `${n} has the pigeon.`);
-    default: return "";
+// Under a friend's name: the time where they are (when it isn't yours), where, and how far
+function chatSub(f) {
+  const bits = [], km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
+  let icon = "";
+  if (f.tz && f.tz !== MY_TZ) {
+    try {
+      const h = +new Intl.DateTimeFormat("en-GB", { timeZone: f.tz, hour: "2-digit", hourCycle: "h23" }).format(now());
+      icon = h >= 19 || h < 6 ? I.moon : I.sun;
+      bits.push(`<span data-clock="${esc(f.tz)}">${esc(clockIn(now(), f.tz))}</span>${f.place ? ` in ${esc(f.place)}` : " there"}`);
+    } catch (_) {}
   }
+  if (!bits.length && f.place) bits.push(esc(f.place));
+  if (km != null && km >= 1) bits.push(fmtMiles(km));
+  return bits.length ? `<small class="sub">${icon}<span class="one">${bits.join(" · ")}</span></small>` : "";
 }
+const gchatSub = (g) => { const n = others(g).map((p) => esc(first(p.name))); return n.length ? `<small class="sub"><span class="one">${n.join(", ")}</span></small>` : ""; };
 /* ---------- pigeons on their way to you, kept small ---------- */
 const flyTrack = (m) => `<span class="ctrack" aria-hidden="true"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"><svg viewBox="0 0 24 24" class="cbird"><path d="${BIRD}" transform="matrix(-1 0 0 1 24 0)"/></svg></i></span>`;
 const inbound = (m) => m.from !== S.me.id && m.flying && !m.lost && !m.stopover;
@@ -2579,29 +2582,44 @@ function whoHasLabel(m) {
   return `Who has it: ${n("read")} read, ${n("landed")} landed, ${n("fly")} still flying${n("lost") ? `, ${n("lost")} lost` : ""}${n("back") ? `, ${n("back")} called back` : ""}. Show who.`;
 }
 
-function bubble(f, m, isLastMine, gapTop, g) {
+/* ---------- a message ----------
+   Its time sits inside it, with two ticks once they've read yours. Yours in
+   the air is an outline with its pigeon on a hairline of the way; theirs is
+   sealed until it lands. Tap yours in the air for the flight; anything that
+   has landed to react, reply or see the flight. */
+const atTime = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}`);
+const airTrack = (m) => `<span class="trk" aria-hidden="true"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}">${I.bird}</i></span>`;
+function footHtml(m, mine, g) {
+  if (mine && m.lost && !g) return `<span class="ft lostft">${I.skull}${m.bird ? `${esc(m.bird.name)} was lost` : "Lost on the way"} · Pigeon Death</span>`;
+  if (mine && m.flying && !g) return `<span class="ft">${m.waiting ? I.clock : ""}lands ${atTime(m.deliverAt)}</span>`;
+  const ts = mine ? m.sentAt : m.deliverAt, read = mine && !g && !!m.readAt;     // (the day above it goes by the same time)
+  return `<span class="ft">${fmtTime(ts)}${read ? `<span class="rd" role="img" aria-label="Read">${I.ticks}</span>` : ""}</span>`;
+}
+function bubble(f, m, gapTop, g) {
   if (m.stopover) return stopCard(f, m);
-  const mine = m.from === S.me.id;
+  const mine = m.from === S.me.id, k = kindOf(m);
   const fresh = S.fresh.has(m.id) ? ` fresh" data-fresh="${m.id}` : "";
   if (m.recalled && (!mine || !g || !flockCount(m).landed)) return `<div class="lostnote homing${fresh}">${I.homing}<span>${mine ? `You called ${g ? "these pigeons" : "this pigeon"} back.` : `${esc(first(f.name))} called their pigeon back.`}</span></div>`;
   if (!mine && m.lost) return `<div class="lostnote${fresh}">${I.skull}<span>${esc(first(f.name))}’s pigeon was lost on the way.</span></div>`;
   if (!mine && m.flying) {
-    // one slim line: the pigeon, a little route with it on it, and the time to go
-    const label = `${kindOf(m) === "standard" ? "On its way" : `${KIND[kindOf(m)].name} pigeon`}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""}`, wx = wxSay(m);
-    return `<button class="fly chip${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="${label}, lands in ${esc(fmtDur(m.deliverAt - now()))}. Watch it on the map.">
-      <span class="c1">${pgm(m)}<span class="cl">${label}</span>${flyTrack(m)}<b><span data-eta="${esc(m.deliverAt)}"></span></b></span>
-      ${wx ? `<span class="wxs ${wx.cls}">${wx.icon}<span>${esc(wx.text)}</span></span>` : ""}</button>`;
+    // sealed until it lands: when, and its pigeon on the way
+    const via = m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : "";
+    return `<button type="button" class="b up sealed fly k-${k}${gapTop ? " gap-top" : ""}${fresh}" data-act="map" data-id="${esc(m.id)}" aria-label="${k === "standard" ? "A pigeon" : `A ${KIND[k].name.toLowerCase()} pigeon`} from ${esc(first(f.name))}${via}, sealed until it lands ${esc(atTime(m.deliverAt))}. Watch it on the map.">
+      <span class="sl">${I.lock}<span>Sealed${via} · lands ${atTime(m.deliverAt)}</span></span>${airTrack(m)}</button>`;
   }
   const p = S.plain.get(m.id) || { t: "" };
   const quote = p.q ? quoteHtml(p.q, g) : "";
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
-  // tap: your pigeon in the air → map or call it back; anything that's arrived → react or reply
+  // tap: your pigeon in the air → its flight; anything that's arrived → react, reply or its flight
   const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}"` : "";
-  const prog = mine && m.flying && !m.waiting ? `<div class="prog"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}"></i></div>` : "";
+  const up = mine && m.flying, foot = footHtml(m, mine, g);
+  // in the air (one to one): the way so far, then when it lands
+  const tail = up && !g ? `<span class="frow">${m.waiting ? "" : airTrack(m)}${foot}</span>` : foot;
+  const cls = `${mine ? " me" : ""}${up ? ` up k-${k}` : ""}${m.waiting ? " waiting" : ""}${m.lost ? " lost" : ""}${gapTop ? " gap-top" : ""}${fresh}`;
   let html;
   if (p.v) {
     const gone = m.photo === 2 || S.photoGone.has(m.id);
-    html = `<div class="b voicem${mine ? " me" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${prog}</div>`;
+    html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
   } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
@@ -2609,8 +2627,9 @@ function bubble(f, m, isLastMine, gapTop, g) {
     if (m.photo === 2 || S.photoGone.has(m.id)) photo = `<div class="ph">${I.gone}<span>${picWord(p)} expired</span></div>`;
     else if (S.photos.get(m.id)) photo = `<img${p.p.m === "image/gif" ? ' class="gif"' : ""}${ar} src="${S.photos.get(m.id)}" alt="${picWord(p)} from ${esc(first(mine ? S.me.name : f.name))}" data-act="view" data-id="${esc(m.id)}">`;
     else photo = `<div class="ph"${ar}>Opening photo…</div>`;
-    html = `<div class="b pic${mine ? " me" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || prog || quote ? `<span class="ptxt">${quote}${text}${prog}</span>` : ""}</div>`;
-  } else html = `<div class="b${mine ? " me" : ""}${m.lost ? " lost" : ""}${m.waiting ? " waiting" : ""}${gapTop ? " gap-top" : ""}${fresh}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${prog}</div>`;
+    // the time goes under its words, or over the picture when there are none
+    html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
+  } else html = `<div class="b${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
   // a line added by the friend it stopped with on the way
   if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
@@ -2618,20 +2637,13 @@ function bubble(f, m, isLastMine, gapTop, g) {
   if (g && mine) {
     // a dot for each of them, filling in as their pigeons land (and turning blue once they've read it); tap for who
     const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="whohas" data-id="${esc(m.id)}" aria-label="${esc(whoHasLabel(m))}">${whoDots(m)}${inner}</button>`;
-    if (m.flying) meta.push(tap(`${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, kindOf(m)));
+    if (m.flying) meta.push(tap(`${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, k));
     else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>`, "done"));
     else if (c.lost === c.n) meta.push(`<button class="fl lostm" data-act="whohas" data-id="${esc(m.id)}">${I.skull} Lost on the way · Pigeon Death</button>`);
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
     else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
-  else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} ${m.bird ? `${esc(m.bird.name)} was lost` : "Lost on the way"} · Pigeon Death</span>`);
-  // scheduled: waiting in your loft (they can't see it yet)
-  else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} ${m.bird ? `${esc(m.bird.name)} · ` : ""}Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
-  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${m.bird ? `${esc(m.bird.name)} · ` : ""}${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${(m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0) ? " · changed course" : ""}${m.cheers ? ` · cheered on ×${m.cheers}` : ""}${wxSay(m, true) ? ` · ${wxSay(m, true)}` : windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
-  else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
-  // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
-  if (!m.flying && !m.lost && m.km != null && !(g && mine)) meta[mine ? "push" : "unshift"](stampHtml(m));
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
+  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl exp">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 // A friend's pigeon to someone else, stopping with you on the way: read it, and add a line.
@@ -2646,27 +2658,6 @@ function stopCard(f, m) {
   const add = line != null ? `<p class="smine"><b>You added</b>${esc(line)}</p>` : m.resting && to ? `<button type="button" class="btn small" data-act="vianote" data-id="${esc(m.id)}">${I.compose}Add a Line for ${toName}</button>` : "";
   return `<div class="stopcard${fresh}" data-mid="${esc(m.id)}"><span class="st1">${pgm(m)}<span>${state}</span></span>${text}${add}</div>`;
 }
-function gstatus(g, t) {
-  const B = (cls, text) => `<div class="status ${cls}">${I.bird}<span>${text}</span></div>`;
-  const msgs = S.msgs.get(g.id) || [];
-  const inbound = [...msgs].reverse().find((m) => m.from !== S.me.id && m.flying);
-  switch (t?.state) {
-    case "fresh": return B("sill", "Your pigeons are ready. Say hello.");
-    case "sill": return B("sill", "Your turn to send.");
-    case "lost": return B("sill", "Your pigeons were lost. Your turn to send.");
-    case "recalled": return B("sill", "You called your pigeons back. Your turn to send.");
-    case "inbound": return B("inbound", `${esc(first(member(g, inbound?.from)?.name || "Someone"))}’s pigeon is on its way.`);
-    case "outbound": return B("", "Your pigeons are flying.");
-    case "theirs": return B("", "Waiting for someone else to write.");
-    default: return "";
-  }
-}
-/* ---------- postcard stamps ---------- */
-function stampHtml(m) {
-  const k = kindOf(m), canMap = !!(m.route || m.flock?.some((x) => x.route));
-  return `<button type="button" class="pstamp ${k}"${canMap ? ` data-act="map" data-id="${esc(m.id)}"` : " disabled"} aria-label="${esc(`${KIND[k].name} airmail, ${fmtMiles(m.km)}${canMap ? ". Show the flight" : ""}`)}"><span>${I.bird}</span><b>${fmtMiles(m.km)}</b></button>`;
-}
-
 /* ---------- share a flight ----------
    A landed pigeon as a picture to post: an airmail postcard (4:5) or a dark
    story (9:16), drawn here on the phone with the app's own map. Only the two
@@ -2944,7 +2935,7 @@ async function setSkin(id) {
   try {
     const r = await api("me", { method: "PATCH", body: { skin } });
     S.me = r.me || { ...S.me, skin };
-    $(".pick", $compose).innerHTML = "";          // redrawn with the new look
+    $(".kind", $compose).dataset.k = "";          // redrawn with the new look
     $layer.querySelectorAll(".skin2").forEach((b) => { const on = (b.dataset.id || "") === (skin || "usual"); b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
     renderCompose();                              // the chosen tile lights up; no banner over the sheet
   } catch (err) { toast(esc(err.message)); }
@@ -2971,8 +2962,10 @@ function reactsHtml(m, mine) {
 }
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
-  const cur = mineNow && S.plain.get(mineNow.id)?.r;
-  openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id }]);
+  const cur = mineNow && S.plain.get(mineNow.id)?.r, m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
+  const flight = m && !m.flying && !m.lost && (m.route || m.flock?.some((x) => x.route));
+  openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
+    ...(flight ? [{ label: "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: I.map, act: "map", id }] : [])]);
   $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="none">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" role="menuitem" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
 }
 async function sendReact(id, e) {
@@ -3045,6 +3038,17 @@ function flyLines(f) {
     return { at: x.at, html: `<div class="sysline fly${wavedNow === x.id ? " just" : ""}">${I.wave}<span>${text}<span class="t"> · ${fmtTime(x.mine && x.waved ? x.waved : x.at)}</span></span>${can ? `<button type="button" class="wavebtn" data-act="wave" data-id="${esc(x.id)}">Wave</button>` : ""}</div>` };
   });
 }
+// Your pigeon in the air, in a line: who carries it, when it lands, and what's happened on the way
+function flySub(m) {
+  const k = kindOf(m), c = m.flock ? flockCount(m) : null, bits = [m.bird ? m.bird.name : "", KIND[k].name];
+  bits.push(c ? `${c.landed} of ${c.n} landed` : `lands ${atTime(m.deliverAt)}`);
+  if (m.via) bits.push(`via ${first(friend(m.via)?.name || "a friend")}`);
+  if ((m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0)) bits.push("changed course");
+  if (m.cheers) bits.push(`cheered on ×${m.cheers}`);
+  const w = wxSay(m, true) || (windWord(m.wind) && windWord(m.wind) !== "calm" ? windWord(m.wind) : "");
+  if (w) bits.push(w);
+  return bits.filter(Boolean).join(" · ");
+}
 // On your pigeon's map: who it flew over, and who waved
 function flyText(m) {
   const l = m.fly || []; if (!l.length) return "";
@@ -3099,26 +3103,23 @@ function geventLines(list) {
 }
 function vGroupChat(g) {
   const msgs = S.msgs.get(g.id);
-  const t = S.turns.get(g.id) || g.turn;
   const evs = S.gevents.get(g.id) || [];
-  let body = "", lastStamp = 0, prevFrom = null, ev = 0;
+  let body = "", lastDay = "", prevFrom = null, ev = 0;
   // the group's changes up to a moment, as lines
   const evsTo = (at) => { const k = ev; while (ev < evs.length && evs[ev].at <= at) ev++; return ev > k ? geventLines(evs.slice(k, ev)) : ""; };
-  const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && S.outbox.some((o) => o.to === g.id)) body = "";
   else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
-    if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
-    lastStamp = at;
+    if (dayLabel(at) !== lastDay) { lastDay = dayLabel(at); body += `<div class="stamp">${lastDay}</div>`; prevFrom = null; }
     const lines = evsTo(at); if (lines) { body += lines; prevFrom = null; }
     // pigeons still flying to you, one after another: one card between them
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
     const who = member(g, m.from) || { id: m.from, name: "Former member" };
     if (!mine && prevFrom !== m.from && !m.lost) body += `<div class="who">${avatar(who, "xs")}<span>${esc(first(who.name))}</span></div>`;
-    body += bubble(who, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
+    body += bubble(who, m, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
     prevFrom = m.from;
   }
   if (msgs?.length) body += evsTo(Infinity);
@@ -3127,19 +3128,17 @@ function vGroupChat(g) {
   const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
-      <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="nm"><span>${esc(g.name)}</span>${I.chev}</span></button>
+      <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">${esc(g.name)}</h1>${warn}<div class="msgs">${gstatus(g, t)}${body}${outboxBubbles(g.id)}</div>`;
+    <h1 class="sr">${esc(g.name)}</h1>${warn}<div class="msgs">${body}${outboxBubbles(g.id)}</div>`;
 }
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
   const f = friend(S.chat);
   if (!f) return `${navbar("", { left: backBtn("tab", S.backTo || "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
-  const t = S.turns.get(f.id) || f.turn;
-  let body = "", lastStamp = 0, prevFrom = null;
-  const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
+  let body = "", lastDay = "", prevFrom = null;
   const moms = [...chatMoments(msgs, f.id), ...flyLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
   const momsTo = (at) => { let h = ""; while (mo < moms.length && moms[mo].at <= at) h += moms[mo++].html; return h; };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
@@ -3147,12 +3146,11 @@ function vChat() {
   else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
-    if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
-    lastStamp = at;
+    if (dayLabel(at) !== lastDay) { lastDay = dayLabel(at); body += `<div class="stamp">${lastDay}</div>`; prevFrom = null; }
     const ml = momsTo(at); if (ml) { body += ml; prevFrom = null; }
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), null); i = j - 1; prevFrom = null; continue; }
-    body += bubble(f, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from);
+    body += bubble(f, m, prevFrom !== null && prevFrom !== m.from);
     prevFrom = m.from;
   }
   if (msgs?.length) body += momsTo(Infinity);
@@ -3161,10 +3159,10 @@ function vChat() {
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
-      <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
+      <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${warn}<div class="msgs">${status(f, t)}${body}${outboxBubbles(f.id)}</div>`;
+    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${warn}<div class="msgs">${body}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -3377,90 +3375,80 @@ function wxPlanHtml(a, kind) {
   else text += ` Clear by ${by(c.off)}: ${c.kind === kind ? "leave then and it lands" : `a ${KIND[c.kind].name.toLowerCase()} pigeon leaving then lands`} ${fmtLand(c.land)}.`;
   return `<span class="wxline">${I[w ? w[1] : "wind"]}<span>${esc(text)}</span></span>${c?.kind ? `<button type="button" class="btn small wxwait" data-act="wxwait" data-id="${c.land}" data-kind="${c.kind}">${c.kind === kind ? "Leave" : esc(KIND[c.kind].name)} at ${fmtTime(c.off)}</button>` : ""}`;
 }
-function renderCompose() {
+// What can fly from this chat now, and which one will
+function composeState() {
   const g = S.chat ? group(S.chat) : null;
-  const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || g) && !!S.me;
-  $compose.hidden = !show; if (!show) return;
   // a group stands in for a friend here: its turn, and any member's changed key
-  const f = g ? { id: g.id, turn: g.turn, keyChanged: others(g).some((p) => p.keyChanged) } : friend(S.chat), t = S.turns.get(f.id) || f.turn;
-  const note = $(".note", $compose), btn = $(".send", $compose), pick = $(".pick", $compose);
-  const dumb = dumbText();
-  const has = (dumb ?? $ta.value).trim() || S.attach;
-  // which pigeons can fly now: your choice if it can, else the slowest that can
+  const f = g ? { id: g.id, turn: g.turn, keyChanged: others(g).some((p) => p.keyChanged) } : friend(S.chat);
+  if (!f) return null;
+  const t = S.turns.get(f.id) || f.turn, dumb = dumbText();
   // told when to land: one to one only, and standard pigeons can't wait that long for a turn
-  const sched = schedFor(S.chat, dumb);
+  const sched = schedFor(S.chat, dumb), via = viaFor(S.chat, dumb);
   const can = { standard: !!t.free && !sched, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0 };
+  // your choice if it can fly now, else the slowest that can
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
+  return { g, f, t, dumb, sched, via, can, kind };
+}
+// How long a pigeon of this kind takes: to the furthest of a group, or by way of a stopover
+function etaMs(c, k) {
+  const sp = mySpeed(k);
+  if (c.g) return flightMs(Math.max(0, ...others(c.g).map(memberKm)), sp);
+  if (c.via) { const p = friend(c.via.id); return flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, c.f.lat ?? p.lat, c.f.lon ?? p.lon), sp); }
+  return flightMs(chatKm(c.f), sp);
+}
+// The message box's hint: "Lands 18:40", "Via Nia · lands tomorrow 06:08", a group's "Lands in 2h–6h"
+function landHint(c, k) {
+  if (c.sched) return `Lands ${atTime(c.sched.at)}`;
+  if (c.g) {
+    const kms = others(c.g).map(memberKm).sort((a, b) => a - b), ms = (x) => fmtDur(flightMs(x, mySpeed(k))), n = kms.length;
+    return n ? `Lands in ${ms(kms[0]) === ms(kms[n - 1]) ? ms(kms[0]) : `${ms(kms[0])}–${ms(kms[n - 1])}`}` : "Message";
+  }
+  return `${c.via ? `Via ${first(friend(c.via.id).name)} · lands` : "Lands"} ${atTime(now() + etaMs(c, k))}`;
+}
+/* ---------- the composer: one row ----------
+   +, then the message with its pigeon at the start (tap it for How It Flies)
+   and when it would land as the hint, then send. A line above it only when
+   something stops it flying. */
+function renderCompose() {
+  const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || group(S.chat)) && !!S.me;
+  $compose.hidden = !show; if (!show) return;
+  const c = composeState(), { g, f, dumb, sched, via, kind } = c;
+  const note = $(".note", $compose), btn = $(".send", $compose), pill = $(".kind", $compose);
+  const has = (dumb ?? $ta.value).trim() || S.attach;
   S.sendKind = kind;
-  if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${esc(k)}" aria-pressed="false">${pg(k, S.me.skin)}<span>${name}</span><b></b></button>`).join("")
-    + `<button type="button" class="when" data-act="schedule" aria-pressed="false" aria-label="Choose when it lands">${I.clock}<span></span></button>`
-    + `<button type="button" class="when viab" data-act="via" aria-pressed="false" aria-label="Stop over with a friend on the way">${I.people}<span></span></button>`;
-  // another chat: its choice is simply there, rather than the chips resizing as it slides in
-  const moved = pick.dataset.chat !== S.chat; pick.dataset.chat = S.chat; pick.classList.toggle("snap", moved);
-  const when = $(".when:not(.viab)", pick), viab = $(".viab", pick), via = viaFor(S.chat, dumb);
-  when.hidden = viab.hidden = !!g || dumb != null;
-  when.setAttribute("aria-pressed", String(!!sched));
-  when.querySelector("span").textContent = sched ? fmtTime(sched.at) : "";             // the day is in the note
-  viab.setAttribute("aria-pressed", String(!!via));
-  viab.querySelector("span").textContent = via ? first(friend(via.id).name) : "";
-  for (const b of pick.children) {
-    if (b === when || b === viab) continue;
-    const k = b.dataset.id;
-    b.disabled = !can[k]; b.setAttribute("aria-pressed", String(k === kind));
-    b.querySelector("b").textContent = k === "standard" ? "" : String(S.me[k] || 0);
-    b.setAttribute("aria-label", `${KIND[k].name} pigeon${k === "standard" ? "" : `, ${S.me[k] || 0} left`}`);
+  const hatch = () => fmtDur(Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity)) - now());
+  let stop = "", blocked = true;
+  if (f.keyChanged) stop = "Check the new safety number before sending.";
+  else if (S.me.lat == null) stop = "Set your location in Account before sending.";
+  else if (!kind && sched) stop = `Scheduled pigeons are swift or faster, and your lofts are empty. The next one hatches in ${hatch()}.`;
+  else if (!kind && dumb != null) stop = "Dumb pigeons wait their turn.";
+  else if (!kind) stop = `It isn’t your turn, and your lofts are empty. The next pigeon hatches in ${hatch()}.`;
+  else if (sched && sched.at - etaMs(c, kind) < now()) stop = `Too soon for a ${KIND[kind].name.toLowerCase()} pigeon: it takes ${fmtDur(etaMs(c, kind))} to get there. Pick a later time or a faster pigeon.`;
+  else blocked = false;
+  if (S.err) stop = S.err;
+  note.hidden = !stop; note.className = "note stop";
+  if (note.textContent !== stop) note.textContent = stop;
+  // its pigeon, at the start of the message: the named one carrying it, or its kind
+  const bd = kind && kind !== "dumb" ? birdFor() : null, hint = kind && !f.keyChanged && S.me.lat != null ? landHint(c, kind) : "Message";
+  pill.hidden = !!f.keyChanged || S.me.lat == null;
+  pill.disabled = dumb != null;
+  const pk = JSON.stringify([kind, bd?.id, bd?.name, !!sched, !!via, S.me.skin]);
+  if (pill.dataset.k !== pk) {
+    pill.dataset.k = pk;
+    pill.innerHTML = `${kind ? pg(kind, S.me.skin) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}<span class="kl">${esc(!kind ? "None" : bd ? bd.name : KIND[kind].name)}</span>${sched ? I.clock : via ? I.people : ""}${I.chev}`;
   }
-  let blocked = false;
-  pick.hidden = !!f.keyChanged || S.me.lat == null;
-  if (S.err) { note.hidden = false; note.className = "note stop"; note.textContent = S.err; }
-  else if (f.keyChanged) { note.hidden = false; note.className = "note stop"; note.textContent = "Check the new safety number before sending."; blocked = true; }
-  else if (S.me.lat == null) { note.hidden = false; note.className = "note stop"; note.textContent = "Set your location in Account before sending."; blocked = true; }
-  else if (!kind && sched) {
-    const next = Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity));
-    note.hidden = false; note.className = "note stop"; blocked = true;
-    note.textContent = `Scheduled pigeons are swift or faster, and your lofts are empty. The next one hatches in ${fmtDur(next - now())}.`;
-  } else if (!kind && dumb != null) { note.hidden = false; note.className = "note stop"; blocked = true; note.textContent = "Dumb pigeons wait their turn."; }
-  else if (!kind) {
-    const next = Math.min(...["swiftNextAt", "turboNextAt", "rocketNextAt"].map((x) => S.me[x] || Infinity));
-    note.hidden = false; note.className = "note stop"; blocked = true;
-    note.textContent = `It isn’t your turn, and your lofts are empty. The next pigeon hatches in ${fmtDur(next - now())}.`;
-  } else if (g) {
-    // one pigeon each: say when the first and the last land
-    const kms = others(g).map(memberKm).sort((a, b) => a - b), ms = (k) => fmtDur(flightMs(k, mySpeed(kind))), n = kms.length;
-    const span = !n ? "" : ms(kms[0]) === ms(kms[n - 1]) ? ms(kms[0]) : `${ms(kms[0])}–${ms(kms[n - 1])}`;
-    const what = kind === "standard" ? (n === 1 ? "pigeon" : "pigeons") : kind === "dumb" ? (n === 1 ? "dumb pigeon" : "dumb pigeons") : KIND[kind].name.toLowerCase() + (n === 1 ? "" : "s");
-    note.hidden = false; note.className = "note go";
-    note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn. "}${n} ${what} land${n === 1 ? "s" : ""} in ${span}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
-  } else if (via) {
-    const p = friend(via.id), sp = mySpeed(kind), ms = flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, f.lat ?? p.lat, f.lon ?? p.lon), sp);
-    note.hidden = false; note.className = "note go";
-    note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}Stops with ${esc(first(p.name))} for an hour, lands in ${fmtDur(ms)}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
-  } else if (sched) {
-    const ms = flightMs(chatKm(f), mySpeed(kind)), off = sched.at - ms;
-    note.hidden = false;
-    if (off < now()) { note.className = "note stop"; blocked = true; note.textContent = `Too soon for a ${KIND[kind].name.toLowerCase()} pigeon: it takes ${fmtDur(ms)} to get there. Pick a later time or a faster pigeon.`; }
-    else { note.className = "note go"; note.innerHTML = `${pg(kind, S.me.skin)}<span>${KIND[kind].name} pigeon lands ${fmtLand(sched.at)}. It takes off in ${fmtDur(off - now())}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`; }
-  } else {
-    const km = chatKm(f);
-    note.hidden = false; note.className = "note go";
-    note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, mySpeed(kind)))}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
-  }
+  pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
+  if ($ta.placeholder !== hint) $ta.placeholder = hint;
   // the weather along the way, for a pigeon about to leave now (one to one)
   const wp = $(".wxplan", $compose), plan = !g && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && f.lat != null;
   if (plan) planWx(f.id);
   const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
   if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
-  // which of your named pigeons carries it (tap to choose)
-  if (S.birds.length && kind && kind !== "dumb" && note.classList.contains("go")) {
-    const bd = birdFor();
-    note.insertAdjacentHTML("afterbegin", `<button type="button" class="birdchip" data-act="birdpick" aria-label="${bd ? `Carried by ${esc(bd.name)}` : "No named pigeon"}. Choose who carries it">${bd ? esc(bd.name) : "Any Pigeon"}${I.chev}</button>`);
-  }
   btn.disabled = blocked || !has || S.busy;
   // nothing typed: the send button becomes a microphone (voice pigeons)
   const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
   mic.hidden = !showMic; btn.hidden = showMic && !S.busy; mic.disabled = !!S.busy;
   $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
-  $(".gifbtn", $compose).hidden = !S.gifsOn;
   const rb = $(".replybar", $compose), rt = S.replyTo && S.replyTo.chat === S.chat ? S.replyTo : null;
   rb.hidden = !rt;
   if (rt && rb.dataset.for !== rt.id) {
@@ -3925,6 +3913,38 @@ function drawSheet(refresh) {
         <div class="group mt-s"><label class="fcell"><textarea id="f-vianote" rows="3" maxlength="200" placeholder="Say something to ${esc(first(to?.name || "them"))}" aria-label="Your line"></textarea></label></div>
         <div class="gfoot">It flies on with the pigeon, end-to-end encrypted: only ${esc(first(to?.name || "they"))} can read it, when it lands. You can add one line.</div>${ferr}</form>`,
         { left: { label: "Cancel", act: "close" }, right: { label: "Add", form: "vianote-form" } });
+      return;
+    }
+    case "flysheet": {
+      // How it flies: which pigeon, who carries it, when it lands and where it stops
+      const c = s.chat === S.chat ? composeState() : null;
+      if (!c) { S.sheet = null; return renderSheet(); }
+      const { g, f, t, sched, via, can, kind } = c, who = esc(first(g ? g.name : f.name));
+      const turn = g ? "Not your turn" : t.state === "outbound" ? "Yours is still on its way" : t.state === "inbound" ? `${who}’s is on its way` : `${who}’s turn first`;
+      const when = (k) => (g ? landHint(c, k).replace(/^Lands/, "lands") : `lands ${atTime(sched ? sched.at : now() + etaMs(c, k))}`);
+      const kinds = KINDS.map(([k, name]) => {
+        const left = S.me[k] || 0, next = S.me[k + "NextAt"];
+        const sub = k === "standard" ? (sched ? "Can’t be booked ahead" : t.free ? `Free · ${when(k)}` : turn)
+          : left ? `${left} left · ${when(k)}` : `None left${next ? ` · next in ${fmtDur(next - now())}` : ""}`;
+        return `<button type="button" class="cell kc" role="radio" aria-checked="${k === kind}" data-act="pigeon" data-id="${k}"${can[k] ? "" : " disabled"}>${pg(k, S.me.skin)}
+          <span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span><span class="val">${fmtDur(etaMs(c, k))}</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
+      }).join("");
+      const bd = kind ? birdFor() : null, busy = (b) => (b.state === "flying" ? "Flying" : b.state === "waiting" ? "Booked" : "Resting");
+      const carriers = S.birds.length && kind ? `<div class="ghead">Carried By</div><div class="carriers" role="radiogroup" aria-label="Carried by">${S.birds.map((b) =>
+        `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></button>`).join("")}
+        <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><b>Any Pigeon</b><small>No name</small></button></div>` : "";
+      const opts = [];
+      if (!g) {
+        opts.push(cell({ act: "schedule", icon: I.clock, tile: "blue", label: "When It Lands", val: sched ? esc(atTime(sched.at)) : "Soonest", chev: true }),
+          cell({ act: "via", icon: I.people, tile: "teal", label: "Stop Over", val: via ? esc(first(friend(via.id).name)) : "None", chev: true }));
+        const wx = S.wxPlan.get(f.id)?.d?.now, adv = kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null;
+        if (wx) opts.push(cell({ icon: I.wind, tile: "gray", label: "Weather", val: adv?.early ? `${esc(fmtDur(adv.early))} early` : adv?.late ? `${esc(fmtDur(adv.late))} late` : "Clear" }));
+      }
+      if (S.birds.length || S.hall.length) opts.push(cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true }));
+      const to = g ? `To ${esc(g.name)} · ${others(g).length + 1} people` : `To ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(chatKm(f))}` : ""}`;
+      $layer.innerHTML = sheetHtml("How It Flies", `<p class="flyto">${to}</p><div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}</div>${carriers}
+        ${opts.length ? `<div class="group mt">${opts.join("")}</div>` : ""}
+        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost on the way.</div>` : ""}`);
       return;
     }
     case "via": {
@@ -4463,6 +4483,7 @@ function setProgress(el) {
 function live() {
   const r = root();
   r.querySelectorAll("[data-eta]").forEach((e) => { e.textContent = fmtDur(+e.dataset.eta - now()); });
+  r.querySelectorAll("[data-clock]").forEach((e) => { const c = clockIn(now(), e.dataset.clock); if (e.textContent !== c) e.textContent = c; });
   setProgress(r);
   if (S.view === "messages") airTick();
   if (S.view === "chat") renderCompose();
@@ -4470,7 +4491,7 @@ function live() {
 }
 
 /* ---------- menus, action sheets and banners ---------- */
-// iOS-style context menu anchored to a button. items: {label, icon, act, id, destructive}
+// iOS-style context menu anchored to a button. items: {label, sub, icon, act, id, destructive}
 function openMenu(anchor, items) {
   haptic("tick");
   clearTimeout(popTimer);
@@ -4479,7 +4500,7 @@ function openMenu(anchor, items) {
   const right = a.left + a.width / 2 > box.left + box.width / 2;
   $pop.innerHTML = `<div class="menu-scrim" data-act="closepop"></div>
     <div class="menu-pop" role="menu">${items.map((it) =>
-      `<button class="mi${it.destructive ? " destructive" : ""}" role="menuitem" data-act="${it.act}"${it.id ? ` data-id="${esc(it.id)}"` : ""}><span>${esc(it.label)}</span>${it.icon || ""}</button>`).join("")}</div>`;
+      `<button class="mi${it.destructive ? " destructive" : ""}${it.sub ? " two" : ""}" role="menuitem" data-act="${it.act}"${it.id ? ` data-id="${esc(it.id)}"` : ""}><span>${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ""}</span>${it.icon || ""}</button>`).join("")}</div>`;
   const m = $(".menu-pop", $pop);
   if (up) m.style.bottom = `${box.bottom - a.top + 6}px`; else m.style.top = `${a.bottom - box.top + 6}px`;
   if (right) m.style.right = `${Math.max(8, box.right - a.right)}px`; else m.style.left = `${Math.max(8, a.left - box.left)}px`;
@@ -4557,13 +4578,7 @@ async function onClick(e) {
       } catch (err) { toast(esc(err.message)); }
       return;
     }
-    // which of your named pigeons carries the next one
-    case "birdpick": {
-      const cur = birdFor();
-      return openMenu(t, [...S.birds.filter(birdReady).map((b) => ({ label: `${b.name} · ${b.rank}${cur?.id === b.id ? " ✓" : ""}`, icon: I.bird, act: "birdset", id: b.id })),
-        { label: `Any Pigeon${cur ? "" : " ✓"}`, icon: I.bird, act: "birdset", id: "none" }, { label: "Your Pigeons", icon: I.people, act: "birds" }]);
-    }
-    case "birdset": S.birdPick = id; return renderCompose();
+    case "birdset": S.birdPick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "wave": {
       const chat = S.chat, x = (S.fly.get(chat) || []).find((y) => y.id === id && !y.mine); if (!x || x.waved) return;
       t.disabled = true;
@@ -4712,9 +4727,10 @@ async function onClick(e) {
     case "whohas": haptic("tick"); S.sheet = { type: "whohas", id }; return renderSheet();
     case "flymenu": {
       const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id); if (!m || !m.flying) return;
-      if (m.waiting) return openMenu(t, [{ label: "Cancel Pigeon", icon: I.x, act: "recallask", id, destructive: true }]);
+      if (m.waiting) return openMenu(t, [{ label: "Cancel Pigeon", sub: `${m.bird ? `${m.bird.name} · ` : ""}takes off in ${fmtDur(m.sentAt - now())}`, icon: I.x, act: "recallask", id, destructive: true }]);
       const onMap = m.route || m.flock?.some((x) => x.route), c = cheerable(m);
-      return openMenu(t, [...(onMap ? [{ label: "Watch on Map", icon: I.map, act: "map", id }] : []), ...(c.can ? [{ label: `Cheer ${c.them ? "Them" : "It"} On`, icon: I.wind, act: "cheer", id }] : []),
+      return openMenu(t, [...(onMap ? [{ label: "Watch on Map", sub: flySub(m), icon: I.map, act: "map", id }] : []),
+        ...(c.can ? [{ label: `Cheer ${c.them ? "Them" : "It"} On`, sub: `${c.them ? "They land" : "It lands"} a little sooner${c.left < CHEER_EACH ? ` · ${c.left} left` : ""}`, icon: I.wind, act: "cheer", id }] : []),
         { label: "Call It Back", icon: I.homing, act: "recallask", id, destructive: true }]);
     }
     case "recallask": {
@@ -4773,7 +4789,9 @@ async function onClick(e) {
     }
     // The phone's own picker already offers Photo Library, Take Photo and Choose File,
     // so go straight to it rather than putting a menu of ours in front of it.
-    case "attachmenu": return $("#file-lib")?.click();
+    case "attachmenu":
+      if (!S.gifsOn) return $("#file-lib")?.click();
+      return openMenu(t, [{ label: "Photo", icon: I.photo, act: "pick", id: "file-lib" }, { label: "GIF", icon: `<span class="gifico" aria-hidden="true">GIF</span>`, act: "gifs" }]);
     case "avmenu":
       if (!S.me.avatarAt && !S.avatarDraft) return $("#av-lib")?.click();
       return openMenu(t, [{ label: "Change Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }]);
@@ -4868,7 +4886,8 @@ async function onClick(e) {
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
-    case "pigeon": S.pick = id; return renderCompose();
+    case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
+    case "flysheet": S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
