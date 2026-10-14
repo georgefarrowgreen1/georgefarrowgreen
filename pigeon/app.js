@@ -249,6 +249,8 @@ const I = {
   warn: ico(`<path d="M12 4 2.8 19.5h18.4Z"/><path d="M12 10v4.5M12 17.2v.3"/>`),
   mail: ico(`<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 6.5 8.5 7 8.5-7"/>`),
   block: ico(`<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>`),
+  phone: ico(`<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 18.5h3"/>`),
+  laptop: ico(`<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 18.5h19"/>`),
 };
 
 /* ---------------- photos ---------------- */
@@ -3036,6 +3038,7 @@ function drawSheet(refresh) {
           ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption", val: "On", chev: true })}
           ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
+          ${cell({ act: "sessionssheet", icon: I.phone, tile: "blue", label: "Signed-In Phones", chev: true })}
         </div>
         ${passkeysSupported() ? `<div class="ghead">This Phone</div>
         <div class="group">
@@ -3276,6 +3279,16 @@ function drawSheet(refresh) {
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`);
+      return;
+    }
+    case "sessions": {
+      const list = s.list;
+      const since = (at) => { const d = new Date(at); return `${d.getDate()} ${MON[d.getMonth()]}${d.getFullYear() === new Date(now()).getFullYear() ? "" : ` ${d.getFullYear()}`}`; };
+      $layer.innerHTML = sheetHtml("Signed-In Phones", !list ? `<p class="empty">Looking…</p>` : `<div class="group mt-s">${list.map((x) => `<div class="cell has-icon"><span class="tile ${x.current ? "green" : "blue"}">${/^(Mac|Windows|Linux|Chromebook)/.test(x.label) ? I.laptop : I.phone}</span>
+          <span class="ctext"><span>${esc(x.label)}</span><span class="csub">${x.current ? "This phone" : `Active ${esc(agoText(x.seenAt))} · since ${esc(since(x.createdAt))}`}</span></span>
+          ${x.current ? "" : `<button class="link danger" data-act="sessend" data-id="${esc(x.id)}" aria-label="Sign out ${esc(x.label)}">Sign Out</button>`}</div>`).join("")}</div>
+        ${list.length > 1 ? `<div class="group mt">${cell({ act: "sessothers", label: "Sign Out All Other Phones", cls: "center destructive" })}</div>` : ""}
+        <div class="gfoot">If you don’t recognise one, sign it out and change your password.</div>`, { left: { label: "Back", act: "securitysheet" } });
       return;
     }
     case "blocked":
@@ -3945,6 +3958,14 @@ async function onClick(e) {
       await sync(); renderSheet(); if (S.sheet?.type === "addfriend") addLookup(); return;
     }
     case "blockedsheet": S.sheet = { type: "blocked" }; return renderSheet();
+    case "sessionssheet": S.sheet = { type: "sessions" }; renderSheet(); return loadSessions();
+    case "sessend":
+      try { await api("sessions-end", { method: "POST", body: { id } }); haptic("success"); toast("Signed out."); } catch (err) { toast(esc(err.message)); }
+      return loadSessions();
+    case "sessothers": return openActions({ message: "Sign out of InFlight everywhere except this phone? They’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out Other Phones", act: "sessothersgo", destructive: true }] });
+    case "sessothersgo":
+      try { await api("sessions-end", { method: "POST", body: { others: true } }); haptic("success"); toast("Your other phones were signed out."); } catch (err) { toast(esc(err.message)); }
+      return loadSessions();
     case "confirmsend":
       try { const r = await api("confirm-resend", { method: "POST" }); toast(r.already ? "Your email is already confirmed." : `Sent. Tap the link in the email to ${esc(S.me.email)}.`); if (r.already) { await sync(); renderSheet(); } }
       catch (err) { toast(esc(err.message)); }
@@ -4851,6 +4872,10 @@ async function refreshPush() {
   try { S.pushOn = !!(await pushSub(false)); } catch (_) { S.pushOn = false; }
   if (S.view === "account") render();
   if (S.sheet?.type === "notifications") renderSheet();
+}
+async function loadSessions() {
+  try { const { sessions } = await api("sessions"); if (S.sheet?.type === "sessions") { S.sheet.list = sessions; renderSheet(); } }
+  catch (err) { toast(esc(err.message)); }
 }
 async function confirmEmail(token) {
   try {

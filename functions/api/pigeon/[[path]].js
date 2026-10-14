@@ -59,7 +59,7 @@ async function signup({ request, env, waitUntil }) {
     .bind(id, handle, name, email, pub, b.salt, hex(await sha256(fromB64url(b.proof))), vault, SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
   waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
-  return json({ token: await issueSession(env, id), me: meView(u, t) });
+  return json({ token: await issueSession(env, id, request), me: meView(u, t) });
 }
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
@@ -119,7 +119,7 @@ async function login({ request, env }) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   const given = hex(await sha256(fromB64url(b.proof)));
   if (!u || !safeEqual(given, u.proof_hash)) throw new HttpError(401, "That email and password don’t match an account.");
-  return json({ token: await issueSession(env, u.id), me: meView(u, Date.now()), vault: u.vault });
+  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), vault: u.vault });
 }
 
 async function logout({ request, env }) {
@@ -347,6 +347,23 @@ async function passkeyRegister({ request, env, waitUntil }) {
   waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), linkOrigin(request)).catch(() => {}));
   return json({ ok: true });
 }
+// Where you're signed in, and signing the others out.
+async function sessionsList({ request, env }) {
+  const u = await requireUser(request, env);
+  const { results } = await (await db(env)).prepare("SELECT hash, label, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all();
+  return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
+}
+async function sessionsEnd({ request, env }) {
+  const u = await requireUser(request, env);
+  const b = await body(request), D = await db(env);
+  if (b.others) await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash).run();
+  else {
+    const id = String(b.id || "");
+    if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(400, "That sign-in wasn’t found.");
+    await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).run();
+  }
+  return json({ ok: true });
+}
 // Showing it's you again (password proof, or a passkey) for the few things that need it.
 async function reauth({ request, env }) {
   const u = await requireUser(request, env);
@@ -387,7 +404,7 @@ async function passkeyLogin({ request, env }) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();
   if (!u) throw new HttpError(401, "This account no longer exists.");
   await D.prepare("UPDATE pg_passkeys SET used_at = ? WHERE id = ?").bind(Date.now(), cred.id).run();
-  return json({ token: await issueSession(env, u.id), me: meView(u, Date.now()), pkVault: cred.vault, vault: u.vault, salt: u.salt });
+  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), pkVault: cred.vault, vault: u.vault, salt: u.salt });
 }
 
 async function passkeyDelete({ request, env }) {
@@ -898,7 +915,7 @@ async function resetComplete({ request, env, waitUntil }) {
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
   waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ token: await issueSession(env, u.id), me: meView(updated, t) });
+  return json({ token: await issueSession(env, u.id, request), me: meView(updated, t) });
 }
 
 /* ---------------- admin ----------------
@@ -1103,6 +1120,7 @@ const ROUTES = {
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
+  "GET sessions": sessionsList, "POST sessions-end": sessionsEnd,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "POST block": block, "DELETE block": unblock,

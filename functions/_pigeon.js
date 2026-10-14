@@ -214,6 +214,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_gmsgs ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN coarse INTEGER",
+  "ALTER TABLE pg_sessions ADD COLUMN label TEXT",           // what it's signed in on ("iPhone · Safari"), for the list of signed-in phones
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -279,10 +280,18 @@ export async function serverSecret(env) {
 }
 
 /* ---------------- sessions ---------------- */
-export async function issueSession(env, userId) {
+// "iPhone · Safari": enough to tell your phones apart, from the browser's own description
+export function deviceOf(request) {
+  const ua = request?.headers.get("User-Agent") || "";
+  const dev = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Macintosh/.test(ua) ? "Mac"
+    : /Windows/.test(ua) ? "Windows" : /CrOS/.test(ua) ? "Chromebook" : /Linux/.test(ua) ? "Linux" : "Browser";
+  const app = /Edg\//.test(ua) ? "Edge" : /Firefox\/|FxiOS/.test(ua) ? "Firefox" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  return app ? `${dev} · ${app}` : dev;
+}
+export async function issueSession(env, userId, request) {
   const token = randomToken(32), t = Date.now();
-  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t).run();
+  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request)).run();
   return token;
 }
 // The few things a stolen sign-in mustn't be enough for (adding a passkey,

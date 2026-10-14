@@ -554,6 +554,8 @@ show a friendly "backend not set up" message).
   so no one can step into one and receive requests meant for its owner. Place
   names are plain words (no web addresses or hidden direction characters),
   email addresses ordinary ones, and request bodies are capped at 512 KB.
+- **Signed-In Phones** (Privacy & Security) lists every sign-in, as "iPhone ·
+  Safari" with when it was last used, to sign out one or all the others.
 - **Reset links** don't sign anyone out until a new password is actually set,
   say so when the link is for a different account than the one signed in, and
   keeping the old key ("Keep Messages with Passkey") needs the phone to prove it
