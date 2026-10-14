@@ -1,4 +1,4 @@
-import {
+import { drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
@@ -28,9 +28,9 @@ const MAX_CT = 70000;                 // an encrypted scroll (2,000 characters o
 const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 
 function meView(u, t) {
-  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t);
+  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, skin: u.skin || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
@@ -153,7 +153,7 @@ async function vaultByProof({ request, env }) {
 }
 
 function waitText(ms) {
-  const h = Math.floor(ms / 3600e3), m = Math.ceil((ms % 3600e3) / 60e3);
+  const all = Math.max(1, Math.ceil(ms / 60e3)), h = Math.floor(all / 60), m = all % 60;      // (whole minutes first, so never "23h 60m")
   return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
 }
 // The recipient has moved: every pigeon flying to them turns in mid-air and
@@ -673,9 +673,11 @@ async function sendMessage({ request, env, waitUntil }) {
   // Standard pigeons can't wait for a turn that far ahead, so it's swift or faster.
   const landAt = meta.landAt == null ? null : Number(meta.landAt);
   if (landAt != null && !(Number.isFinite(landAt) && landAt > t && landAt <= t + MAX_SCHEDULE)) throw new HttpError(400, "Pick a time in the next 30 days for it to land.");
-  const kind = Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free && landAt == null ? "standard" : "swift";
+  const mystery = meta.pigeon === "mystery";
+  if (mystery && landAt != null) throw new HttpError(409, "A mystery pigeon can’t be told when to land.");
+  const kind = mystery ? drawMystery() : Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free && landAt == null ? "standard" : "swift";
   if (landAt != null && PIGEONS[kind].waits) throw new HttpError(409, "Scheduled pigeons are swift, turbo or rocket pigeons.");
-  if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
+  if (!mystery && PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
   const swift = PIGEONS[kind].waits ? 0 : 1;
   const hasTo = r && r.lat != null;
   const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1);
@@ -705,9 +707,10 @@ async function sendMessage({ request, env, waitUntil }) {
   const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off
   if (off < t) throw new HttpError(409, `That’s too soon: a ${kind} pigeon takes ${waitText(flight)} to get there.`);
   const deliver = off + flight;
-  if (PIGEONS[kind].max) {
-    const p = PIGEONS[kind], l = loft(u, kind, t);
-    if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
+  const from = mystery ? "mystery" : PIGEONS[kind].max ? kind : null;      // the loft it leaves: a mystery one comes from its own
+  if (from) {
+    const p = mystery ? MYSTERY : PIGEONS[kind], l = loft(u, from, t);
+    if (l.count <= 0) throw new HttpError(409, `No ${from} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
     const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
     // only if the loft is still as we read it, so two sends at once can't share a pigeon
     const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
@@ -738,12 +741,13 @@ async function sendMessage({ request, env, waitUntil }) {
   // one of your named pigeons carries it, if it's free
   const bird = kind === "dumb" ? null : await claimBird(D, u.id, meta.bird, t, flight, deliver);
   if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, id).run();
+  if (mystery) await D.prepare("UPDATE pg_msgs SET mystery = 1 WHERE id = ?").bind(id).run();
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
   if (landAt == null) waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));       // scheduled: told when it takes off
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
-  const me = landAt == null ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
+  const me = landAt == null && !mystery ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: meView(me, t) } : {}) });
 }
 

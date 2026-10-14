@@ -1449,3 +1449,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .chatwho .sub .streak{font-size:12.5px;margin-right:6px}
 .chatwho .sub .streak .ico{font-size:12px}
 @media (prefers-reduced-motion:reduce){.streak.risk .ico{animation:none}}
+/* the mystery pigeon: a question mark until it takes off */
+.pg.mystery{background:conic-gradient(from 200deg,#7a5cff,#c86bff,#ff6fae,#ffb347,#7a5cff);font-weight:800;font-size:inherit;line-height:1;color:#fff;text-shadow:0 .03em .06em rgba(0,0,0,.3)}
+.pg.mystery{font-size:1em}
+.dots.mystery i:not(.e){background:linear-gradient(135deg,#7a5cff,#ff6fae)}

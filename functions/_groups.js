@@ -8,7 +8,7 @@
 // see each other's names, never each other's locations.
 
 import { newStamps } from "./_passport.js";
-import {
+import { drawMystery, MYSTERY,
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
@@ -77,7 +77,7 @@ function theirView(m, d, friends, t) {
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
 }
-const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, risky: !!m.risky, sentAt: m.sent_at, photo: m.photo, photoSize: m.photo_size, skin: m.skin || null });
+const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, mystery: !!m.mystery, risky: !!m.risky, sentAt: m.sent_at, photo: m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
@@ -286,11 +286,13 @@ async function send({ request, env, waitUntil }) {
     throw new HttpError(409, "Someone joined or left the group. Try again.");
 
   const tn = await turnIn(D, u.id, g.id, t);
-  const kind = Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free ? "standard" : "swift";
-  if (PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
-  if (PIGEONS[kind].max) {                 // one special pigeon covers the whole group
-    const p = PIGEONS[kind], l = loft(u, kind, t);
-    if (l.count <= 0) throw new HttpError(409, `No ${kind} pigeons left.`);
+  const mystery = meta.pigeon === "mystery";
+  const kind = mystery ? drawMystery() : Object.hasOwn(PIGEONS, meta.pigeon) ? meta.pigeon : tn.free ? "standard" : "swift";
+  if (!mystery && PIGEONS[kind].waits && !tn.free) throw new HttpError(409, "It isn’t your turn yet. Send a swift, turbo or rocket pigeon to write now.");
+  const from = mystery ? "mystery" : PIGEONS[kind].max ? kind : null;
+  if (from) {                 // one special pigeon covers the whole group
+    const p = mystery ? MYSTERY : PIGEONS[kind], l = loft(u, from, t);
+    if (l.count <= 0) throw new HttpError(409, `No ${from} pigeons left.`);
     const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
     const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
     if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
@@ -327,6 +329,7 @@ async function send({ request, env, waitUntil }) {
   if (bird) await D.prepare("UPDATE pg_gmsgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_to = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, lead.to, id).run();
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
   waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
+  if (mystery) await D.prepare("UPDATE pg_gmsgs SET mystery = 1 WHERE id = ?").bind(id).run();
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
 }

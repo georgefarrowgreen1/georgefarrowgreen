@@ -22,7 +22,9 @@ const SKINS = {
   comet: { name: "Comet", badge: "Rocket Mail", ring: "#7ad7ff" },
   rainbow: { name: "Rainbow", badge: "Around the World", ring: "#c86bff" },
 };
-KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };        // a secret: start a message with /dumb
+KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };
+// a mystery pigeon: one a day, from no loft and on no one's turn; its kind is drawn as it takes off
+KIND.mystery = { name: "Mystery", speed: 1, max: 1 };        // a secret: start a message with /dumb
 const DUMB = /^\/dumb(?:\s+|$)/i;
 // Pigeon Death (Account → Pigeons): 1.25× faster, but 1 in 100 is lost on the way
 const RISKY_SPEED = 1.25;
@@ -2398,7 +2400,7 @@ const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => 
     ${val != null ? `<span class="val">${val}</span>` : ""}${chev ? I.chev.replace('class="ico"', 'class="ico chev"') : ""}</${t}>`;
 };
 const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
-const pg = (kind, skin) => `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
+const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
 const picWord = (p) => (p.v ? "Voice pigeon" : p.p?.m === "image/gif" ? "GIF" : "Photo");
@@ -2517,6 +2519,7 @@ function vAccount() {
       ${cell({ icon: pg("turbo", u.skin), tile: "kb", label: "Turbo", sub: `3× faster · ${hatch("turbo")}`, val: loftVal("turbo") })}
       ${cell({ icon: pg("swift", u.skin), tile: "kb", label: "Swift", sub: `2× faster · ${hatch("swift")}`, val: loftVal("swift") })}
       ${cell({ icon: pg("standard", u.skin), tile: "kb", label: "Standard", sub: "Free on your turn" })}
+      ${cell({ icon: pg("mystery"), tile: "kb", label: "Mystery", sub: `Any pigeon, any time · ${(u.mystery || 0) >= 1 ? "ready" : `next in <span data-eta="${u.mysteryNextAt}"></span>`}`, val: loftVal("mystery") })}
     </div>
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
     <div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
@@ -3134,7 +3137,7 @@ function flyLines(f) {
 }
 // Your pigeon in the air, in a line: who carries it, when it lands, and what's happened on the way
 function flySub(m) {
-  const k = kindOf(m), c = m.flock ? flockCount(m) : null, bits = [m.bird ? m.bird.name : "", KIND[k].name];
+  const k = kindOf(m), c = m.flock ? flockCount(m) : null, bits = [m.bird ? m.bird.name : "", m.mystery ? `Mystery: ${KIND[k].name.toLowerCase()}` : KIND[k].name];
   bits.push(c ? `${c.landed} of ${c.n} landed` : `lands ${atTime(m.deliverAt)}`);
   if (m.via) bits.push(`via ${first(friend(m.via)?.name || "a friend")}`);
   if ((m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0)) bits.push("changed course");
@@ -3480,7 +3483,7 @@ function composeState() {
   const t = S.turns.get(f.id) || f.turn, dumb = dumbText();
   // told when to land: one to one only, and standard pigeons can't wait that long for a turn
   const sched = schedFor(S.chat, dumb), via = viaFor(S.chat, dumb);
-  const can = { standard: !!t.free && !sched, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0 };
+  const can = { standard: !!t.free && !sched, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0, mystery: (S.me.mystery || 0) > 0 && !sched };
   // your choice if it can fly now, else the slowest that can
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
   return { g, f, t, dumb, sched, via, can, kind };
@@ -3494,6 +3497,7 @@ function etaMs(c, k) {
 }
 // The message box's hint: "Lands 18:40", "Via Nia · lands tomorrow 06:08", a group's "Lands in 2h–6h"
 function landHint(c, k) {
+  if (k === "mystery") return "Who knows when?";
   if (c.sched) return `Lands ${atTime(c.sched.at)}`;
   if (c.g) {
     const kms = others(c.g).map(memberKm).sort((a, b) => a - b), ms = (x) => fmtDur(flightMs(x, mySpeed(k))), n = kms.length;
@@ -3536,7 +3540,7 @@ function renderCompose() {
   pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
   if ($ta.placeholder !== hint) $ta.placeholder = hint;
   // the weather along the way, for a pigeon about to leave now (one to one)
-  const wp = $(".wxplan", $compose), plan = !g && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && f.lat != null;
+  const wp = $(".wxplan", $compose), plan = !g && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && kind !== "mystery" && f.lat != null;
   if (plan) planWx(f.id);
   const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
   if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
@@ -4027,6 +4031,9 @@ function drawSheet(refresh) {
         return `<button type="button" class="cell kc" role="radio" aria-checked="${k === kind}" data-act="pigeon" data-id="${k}"${can[k] ? "" : " disabled"}>${pg(k, S.me.skin)}
           <span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span><span class="val">${fmtDur(etaMs(c, k))}</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
       }).join("");
+      const myLeft = S.me.mystery || 0, myNext = S.me.mysteryNextAt;
+      const mystery = `<button type="button" class="cell kc" role="radio" aria-checked="${kind === "mystery"}" data-act="pigeon" data-id="mystery"${can.mystery ? "" : " disabled"}>${pg("mystery")}
+          <span class="ctext"><span>Mystery</span><span class="csub">${esc(sched ? "Can’t be booked ahead" : myLeft ? "1 a day · any pigeon, any time" : `Used today${myNext ? ` · next in ${fmtDur(myNext - now())}` : ""}`)}</span></span><span class="val">?</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
       const bd = kind ? birdFor() : null, busy = (b) => (b.state === "flying" ? "Flying" : b.state === "waiting" ? "Booked" : "Resting");
       const carriers = S.birds.length && kind ? `<div class="ghead">Carried By</div><div class="carriers" role="radiogroup" aria-label="Carried by">${S.birds.map((b) =>
         `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></button>`).join("")}
@@ -4040,8 +4047,9 @@ function drawSheet(refresh) {
       }
       if (S.birds.length || S.hall.length) opts.push(cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true }));
       const to = g ? `To ${esc(g.name)} · ${others(g).length + 1} people` : `To ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(chatKm(f))}` : ""}`;
-      $layer.innerHTML = sheetHtml("How It Flies", `<p class="flyto">${to}</p><div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}</div>${carriers}
+      $layer.innerHTML = sheetHtml("How It Flies", `<p class="flyto">${to}</p><div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}
         ${opts.length ? `<div class="group mt">${opts.join("")}</div>` : ""}
+        ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
         ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost on the way.</div>` : ""}`);
       return;
     }
@@ -5749,6 +5757,12 @@ async function send() {
     S.pick = null;                    // next time, back to the default
     { const f = friend(to), was = f?.streak, s = r.streak;
       if (f && s) { f.streak = s; if (s.n >= STREAK_MIN && (!was || !was.today || was.n < s.n)) toast(`${I.flame} ${s.n}-day streak with ${esc(first(f.name))}`); } }
+    if (r.message.mystery) {
+      const k = kindOf(r.message), word = { rocket: "A rocket pigeon!", turbo: "A turbo pigeon!", swift: "A swift pigeon.", standard: "A standard pigeon.", dumb: "A dumb pigeon…" }[k];
+      if (r.me) S.me = r.me;
+      setTimeout(() => toast(`${pg(k, S.me.skin)} ${word} ${r.message.flock ? "Off it goes." : `It lands ${esc(atTime(r.message.deliverAt))}.`}`), 350);
+      if (k === "rocket") haptic("success");
+    }
     S.birdPick = null; const flew = r.message.bird?.id && S.birds.find((b) => b.id === r.message.bird.id); if (flew) flew.state = "flying";
     haptic("success");
     if (rt) S.replyTo = null;

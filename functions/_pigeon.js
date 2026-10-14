@@ -38,6 +38,16 @@ export const PIGEONS = {
   // a secret: start a message with /dumb. 3× slower, waits its turn like standard
   dumb: { speed: 1 / 3, waits: true },
 };
+// Mystery pigeons: one a day, from no loft and on no one's turn, but which kind
+// turns up (and so when it lands) is drawn as it takes off: maybe a rocket, maybe a dumb one.
+export const MYSTERY = { max: 1, every: DAY, col: "mystery", atCol: "mystery_at" };
+export const MYSTERY_ODDS = [["dumb", 10], ["standard", 32], ["swift", 30], ["turbo", 19], ["rocket", 9]];   // out of 100
+export function drawMystery() {
+  const r = (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * 100;
+  let a = 0;
+  for (const [k, w] of MYSTERY_ODDS) { a += w; if (r < a) return k; }
+  return "standard";
+}
 export const DEFAULT_KM = 500;           // if the recipient hasn't set a roost
 export const HANDLE_EVERY = DAY;         // handles can change once a day
 export const MAX_AVATAR = 400 * 1024;    // the phone sends a 512px JPEG, well under this
@@ -239,7 +249,10 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gdeliv ADD COLUMN cheer_ms INTEGER",
   // named pigeons (functions/_birds.js): which of yours carried it, its name and rank then, the rank it reached, and when it was settled
   ...["pg_msgs", "pg_gmsgs"].flatMap((t) => ["bird TEXT", "bird_name TEXT", "bird_rank TEXT", "bird_up TEXT", "bird_done INTEGER"].map((c) => `ALTER TABLE ${t} ADD COLUMN ${c}`)),
-  "ALTER TABLE pg_gmsgs ADD COLUMN bird_to TEXT",            // (in a group: the member its route went to, the longest)
+  "ALTER TABLE pg_gmsgs ADD COLUMN bird_to TEXT",
+  // mystery pigeons: the loft (null = full) and which messages flew as one
+  "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
+  "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",
 ];
 let schemaReady = false;
@@ -378,7 +391,7 @@ export function turn(me, last, t) {
 // admin can give extras past full: they stay until used, and hatching picks
 // up again once the loft drops below full.
 export function loft(u, kind, t) {
-  const p = PIGEONS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
+  const p = kind === "mystery" ? MYSTERY : PIGEONS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
   const hatched = Math.max(0, Math.floor((t - at) / p.every));
   const count = have >= p.max ? have : Math.min(p.max, have + hatched);
   return { count, hatched, at, nextAt: count >= p.max ? null : at + (hatched + 1) * p.every };
@@ -432,7 +445,7 @@ export function msgView(me, m, t) {
     sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at,
     waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)
     scheduled: !!m.sched,
-    skin: m.skin || null,
+    skin: m.skin || null, mystery: !!m.mystery,
     // a stopover: who, where and when (the line they added only reaches the recipient, once it lands)
     ...(m.via ? { via: m.via, viaPlace: m.via_place, viaAt: m.via_at, viaOff: m.via_off,
       note: m.recipient === me && !flying && !lost ? m.via_note || null : null } : {}),
