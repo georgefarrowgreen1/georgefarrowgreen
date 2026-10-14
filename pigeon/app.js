@@ -1817,6 +1817,179 @@ function pullToRefresh() {
   };
   v.addEventListener("touchend", end); v.addEventListener("touchcancel", end);
 }
+/* ---------- getting around by touch ----------
+   As on iPhone: swipe in from the left edge to go back (the screen you came
+   from shows underneath as you go), swipe a sheet down to close it, swipe a
+   photo away, flick a banner up, and tap any empty space to put the keyboard
+   away. Escape closes whatever is on top, for a keyboard. */
+const EDGE = 28;                                                   // how near the left edge a back swipe starts
+const speed = (st, x, y) => { const t = performance.now(), dt = Math.max(1, t - st.lt); st.vx = (x - st.lx) / dt; st.vy = (y - st.ly) / dt; st.lx = x; st.ly = y; st.lt = t; };
+const settle = (els, css, ms, then) => {
+  const quick = STILL.matches;
+  for (const [el, tf, op] of els) { if (!el) continue; el.style.transition = quick ? "none" : `transform ${ms}ms cubic-bezier(.2,.9,.25,1), opacity ${ms}ms ease`; el.style.transform = tf; if (op != null) el.style.opacity = op; }
+  setTimeout(then, quick ? 0 : ms);
+};
+const unstyle = (...els) => { for (const el of els) if (el) { el.style.transition = el.style.transform = el.style.opacity = el.style.animation = ""; } };
+// what you'd see behind the screen you're on: the one you came from, as you left it
+function underlay() {
+  const u = S.under, box = document.createElement("div");
+  box.className = `under${u?.plain ? " plain" : ""}`; box.setAttribute("aria-hidden", "true"); box.inert = true;
+  if (u) {
+    // copies (not re-parsed HTML), so the page's own styling comes along
+    const v = u.node.cloneNode(true); v.classList.remove("nav-push", "nav-pop", "nav-fade", "swiped"); v.style.transform = "";
+    v.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); box.append(v);
+    if (u.tabs) { const t = u.tabs.cloneNode(true); t.hidden = false; box.append(t); }
+    requestAnimationFrame(() => { v.scrollTop = u.top; });
+  }
+  const dim = document.createElement("div"); dim.className = "under-dim"; box.append(dim);
+  root().prepend(box);
+  return box;
+}
+function edgeBack() {
+  const r = root(); let st = null;
+  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked || swOpen ? null : $(".nb-left .nbtn.back, .nb-left .nbtn[data-act=cancelunlock]", $view));
+  const moving = () => [$view, $compose.hidden ? null : $compose];
+  const place = (s2, dx) => {
+    const p = Math.min(1, dx / s2.w);
+    for (const el of moving()) if (el) el.style.transform = `translateX(${dx}px)`;
+    s2.box.style.transform = `translateX(${-28 * (1 - p)}%)`; s2.box.lastChild.style.opacity = String(0.14 * (1 - p));
+    const past = dx > s2.w * 0.35; if (past !== s2.past) { s2.past = past; if (past) haptic("tick"); }
+  };
+  r.addEventListener("touchstart", (e) => {
+    st = null;
+    const t = e.touches[0]; if (e.touches.length !== 1 || t.clientX - r.getBoundingClientRect().left > EDGE) return;
+    const b = backBtn(); if (b) st = { b, x: t.clientX, y: t.clientY, lx: t.clientX, ly: t.clientY, lt: performance.now(), vx: 0, dx: 0, w: r.clientWidth, dir: null };
+  }, { passive: true });
+  r.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (!st.dir) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (dx <= 0 || Math.abs(dy) > dx) { st = null; return; }
+      st.dir = "x"; st.box = underlay(); r.classList.add("swiping");
+      for (const el of moving()) if (el) { el.style.transition = "none"; el.classList.add("swiped"); }
+    }
+    e.preventDefault(); speed(st, t.clientX, t.clientY);
+    st.dx = Math.max(0, dx); place(st, st.dx);
+  }, { passive: false });
+  const end = (cancel) => {
+    if (!st) return; const s2 = st; st = null;
+    if (!s2.dir) return;
+    const go = !cancel && (s2.dx > s2.w * 0.35 || (s2.vx > 0.45 && s2.dx > 24));
+    const els = moving();
+    const done = () => {
+      if (go) { S.navQuiet = true; s2.b.click(); }
+      for (const el of els) if (el) { unstyle(el); el.classList.remove("swiped"); }
+      s2.box.remove(); r.classList.remove("swiping");
+    };
+    settle([...els.map((el) => [el, go ? "translateX(100%)" : "translateX(0)"]), [s2.box, go ? "translateX(0)" : "translateX(-28%)"], [s2.box.lastChild, null, go ? "0" : "0.14"]], null, go ? 260 : 220, done);
+  };
+  r.addEventListener("touchend", () => end(false)); r.addEventListener("touchcancel", () => end(true));
+}
+function sheetDrag() {
+  let st = null;
+  $layer.addEventListener("touchstart", (e) => {
+    st = null;
+    const sh = e.target.closest?.(".sheet"), t = e.touches[0];
+    if (!sh || sh.classList.contains("closing") || e.touches.length !== 1) return;
+    const body = $(".body", sh), head = !!e.target.closest(".grab, .sheet > header");
+    // from its top, or anywhere once it's scrolled to the top (not on the map, a field or a list that slides sideways)
+    if (!head && (!body || body.classList.contains("flush") || body.scrollTop > 0 || e.target.closest("input, textarea, select, canvas, .gifgrid, .swrow"))) return;
+    st = { sh, body, head, scrim: $(".scrim", $layer), y: t.clientY, x: t.clientX, lx: t.clientX, ly: t.clientY, lt: performance.now(), vy: 0, dy: 0, h: sh.offsetHeight, dir: null };
+  }, { passive: true });
+  $layer.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (!st.dir) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (dy <= 0 || Math.abs(dx) > dy || (!st.head && st.body.scrollTop > 0)) { st = null; return; }
+      st.dir = "y"; st.sh.style.transition = "none"; if (st.scrim) st.scrim.style.transition = "none";
+      document.activeElement?.blur?.();
+    }
+    e.preventDefault(); speed(st, t.clientX, t.clientY);
+    st.dy = Math.max(0, dy);
+    st.sh.style.transform = `translateY(${st.dy}px)`;
+    if (st.scrim) st.scrim.style.opacity = String(Math.max(0, 1 - st.dy / st.h));
+  }, { passive: false });
+  const end = (cancel) => {
+    if (!st) return; const s2 = st; st = null;
+    if (!s2.dir) return;
+    const go = !cancel && (s2.dy > s2.h * 0.25 || (s2.vy > 0.6 && s2.dy > 40));
+    settle([[s2.sh, go ? "translateY(100%)" : "translateY(0)"], [s2.scrim, "", go ? "0" : "1"]], null, go ? 240 : 260, () => {
+      if (!go) { unstyle(s2.sh, s2.scrim); return; }
+      // already out of sight: closing shouldn't play its own slide again
+      s2.sh.style.animation = "none"; if (s2.scrim) s2.scrim.style.animation = "none";
+      closeTop();
+    });
+  };
+  $layer.addEventListener("touchend", () => end(false)); $layer.addEventListener("touchcancel", () => end(true));
+}
+// the photo: swipe it away, up or down
+function viewerDrag() {
+  let st = null;
+  $layer.addEventListener("touchstart", (e) => {
+    const v = e.target.closest?.(".viewer"); st = null;
+    if (v && e.touches.length === 1) st = { v, img: $("img", v), y: e.touches[0].clientY, x: e.touches[0].clientX, ly: e.touches[0].clientY, lx: e.touches[0].clientX, lt: performance.now(), vy: 0, dy: 0, dir: null };
+  }, { passive: true });
+  $layer.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (!st.dir) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; if (Math.abs(dx) > Math.abs(dy)) { st = null; return; } st.dir = "y"; st.img.style.transition = st.v.style.transition = "none"; }
+    e.preventDefault(); speed(st, t.clientX, t.clientY); st.dy = dy;
+    st.img.style.transform = `translateY(${dy}px) scale(${1 - Math.min(0.2, Math.abs(dy) / 1500)})`;
+    st.v.style.backgroundColor = `rgba(0,0,0,${Math.max(0.35, 1 - Math.abs(dy) / 500)})`;
+  }, { passive: false });
+  $layer.addEventListener("touchend", () => {
+    if (!st) return; const s2 = st; st = null;
+    if (!s2.dir) return;
+    if (Math.abs(s2.dy) > 90 || Math.abs(s2.vy) > 0.7) {
+      settle([[s2.img, `translateY(${s2.dy > 0 ? "" : "-"}110vh)`]], null, 220, () => { s2.v.style.animation = "none"; s2.v.style.opacity = "0"; S.sheet = null; renderSheet(); });
+    } else settle([[s2.img, "translateY(0)"]], null, 220, () => { unstyle(s2.img); s2.v.style.backgroundColor = ""; });
+  });
+}
+// a banner: flick it up and it goes
+function toastSwipe() {
+  let st = null;
+  $toast.addEventListener("touchstart", (e) => {
+    const t = e.target.closest?.(".toast"); st = t && e.touches.length === 1 ? { t, y: e.touches[0].clientY, ly: e.touches[0].clientY, lx: 0, lt: performance.now(), vy: 0, dy: 0 } : null;
+    if (st) clearTimeout(toastTimer);
+  }, { passive: true });
+  $toast.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const y = e.touches[0].clientY; speed(st, 0, y); st.dy = y - st.y;
+    if (Math.abs(st.dy) < 4) return;
+    e.preventDefault(); st.t.style.animation = "none"; st.t.style.transition = "none";
+    st.t.style.transform = `translateY(${st.dy < 0 ? st.dy : st.dy * 0.2}px)`;
+  }, { passive: false });
+  $toast.addEventListener("touchend", () => {
+    if (!st) return; const s2 = st; st = null;
+    if (s2.dy < -24 || s2.vy < -0.4) settle([[s2.t, "translateY(-160%)", "0"]], null, 200, () => s2.t.remove());
+    else { settle([[s2.t, "translateY(0)"]], null, 200, () => unstyle(s2.t)); toastTimer = setTimeout(hideToast, 3000); }
+  });
+}
+// close the sheet on top the way its ✕ would (so drafts, questions and Back all behave)
+function closeTop() {
+  const sc = $(".sheet ~ .scrim, .scrim", $layer);
+  if (sc) return sc.click();
+  const b = document.createElement("button"); b.hidden = true; b.dataset.act = "close"; root().append(b); b.click(); b.remove();
+}
+function navGestures() {
+  edgeBack(); sheetDrag(); viewerDrag(); toastSwipe();
+  // tapping somewhere empty puts the keyboard away
+  document.addEventListener("click", (e) => {
+    const a = document.activeElement;
+    if (!inField(a) || e.target === a || e.target.closest?.("input, textarea, select, button, a, label, [data-act], [contenteditable], .field-wrap, .compose, .fcell, .search")) return;
+    a.blur();
+  });
+  // Escape: the menu or question first, then the sheet, then back
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    if ($pop.firstElementChild) { closePop(); return; }
+    if (S.sheet) { closeTop(); return; }
+    if (inField(document.activeElement)) { document.activeElement.blur(); return; }
+    $(".nb-left .nbtn.back", $view)?.click();
+  });
+}
 function lockPage() {
   document.addEventListener("touchstart", () => {}, { passive: true });    // lets :active press states show on iPhone
   const stop = (e) => e.preventDefault();
@@ -1841,7 +2014,7 @@ function lockPage() {
 }
 function mount() {
   lockPage();
-  setTimeout(() => { pullToRefresh(); swipeRows(); });
+  setTimeout(() => { pullToRefresh(); swipeRows(); navGestures(); });
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
@@ -1904,8 +2077,15 @@ function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline
 
 function go(view, chat) {
   if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
-  const same = view === S.view && chat === S.chat;
-  if (!same && $view) S.nav = navKind(S.view, view);
+  const same = view === S.view && chat === S.chat, kind = !same && $view ? navKind(S.view, view) : null;
+  if (!same && $view) S.nav = S.navQuiet ? null : kind;
+  S.navQuiet = false;
+  // going in: keep a still of this screen, to show under a swipe back, and remember where back goes
+  if (kind === "push" && S.view !== "chat") {
+    S.under = { from: S.view, node: $view.cloneNode(true), top: $view.scrollTop, plain: root().classList.contains("plain"), tabs: $tabbar.hidden ? null : $tabbar.cloneNode(true) };
+    if (view === "chat") S.backTo = ["messages", "friends", "account"].includes(S.view) ? S.view : "messages";
+  }
+  const backTop = !same && S.under && view === S.under.from && S.view !== view ? S.under.top : null;
   // what you'd typed stays with its chat, for when you come back
   if (!same && $ta && S.view === "chat" && S.chat) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
@@ -1915,6 +2095,7 @@ function go(view, chat) {
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
   render();
   if (!same && $ta) fitTa();                                      // (after render: the composer is showing now)
+  if (backTop != null) { $view.scrollTop = backTop; S.under = null; }   // back where you were
   if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
   if (view === "chat" && chat) loadChat(chat).then(() => {
     // from the In the air strip: straight on to the map
@@ -2494,7 +2675,7 @@ function vGroupChat(g) {
   const changed = others(g).filter((p) => p.keyChanged);
   const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
-      <div class="nb-left">${backBtn("tab", "messages")}</div>
+      <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="nm"><span>${esc(g.name)}</span>${I.chev}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
@@ -2503,7 +2684,7 @@ function vGroupChat(g) {
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
   const f = friend(S.chat);
-  if (!f) return `${navbar("", { left: backBtn("tab", "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
+  if (!f) return `${navbar("", { left: backBtn("tab", S.backTo || "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
   const t = S.turns.get(f.id) || f.turn;
   let body = "", lastStamp = 0, prevFrom = null;
@@ -2524,7 +2705,7 @@ function vChat() {
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && !m.waiting && m.route);
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
-      <div class="nb-left">${backBtn("tab", "messages")}</div>
+      <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>

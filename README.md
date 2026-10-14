@@ -254,6 +254,16 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Getting around by touch.** As on iPhone: swipe in from the left edge to go
+back (the screen you came from waits underneath, dimmed, and follows your
+finger; let go early and you stay put, draft and all), and back returns to
+where you came from (Friends, if that's where you opened the chat), at the
+same scroll position. Pull a sheet down by its top, or from anywhere once it's
+scrolled to the top, to close it (on the map, its top: dragging the map moves
+the map). Swipe a photo away, flick a banner up, tap any empty space to put
+the keyboard away, and tap outside a menu or question to close it. Escape
+closes whatever is on top, for a keyboard.
+
 **Accessibility.** Checked with axe-core on every main screen and sheet, in
 light and dark: no violations. Words meet 4.5:1 contrast (secondary grey is a
 little darker than iOS's, the blue a touch deeper, and green, orange and red

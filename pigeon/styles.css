@@ -1184,3 +1184,11 @@ svg.fillico{fill:currentColor;stroke:none}
 .pick button[aria-pressed="true"]{flex-shrink:0}
 @media (max-width:340px){.flyrun .frh small .w{display:none}}
 .mprev .draft{color:var(--red-on);font-weight:500}
+/* swiping back: the screen you came from waits underneath */
+.screen.swiping{overflow:hidden}
+.under{position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;background:var(--bg);pointer-events:none;transform:translateX(-28%)}
+.under.plain{background:var(--bg-plain)}
+.under .view{flex:1;min-height:0;overflow:hidden}
+.under-dim{position:absolute;inset:0;background:#000;opacity:.14}
+.swiped{position:relative;z-index:2;background:var(--bg);box-shadow:-14px 0 34px rgba(0,0,0,.16);clip-path:inset(0 0 0 -60px)}
+.screen.plain .swiped,.compose.swiped{background:var(--bg-plain)}
