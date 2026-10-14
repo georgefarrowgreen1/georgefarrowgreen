@@ -455,10 +455,12 @@ stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
 private key before it is uploaded, the other half is the sign-in proof, which
 the server stores only as a hash. Passkeys that support WebAuthn's PRF extension
 (iOS 18+, recent Android/Chrome) also hold their own locked copy of the key, so
-they restore messages without the password. Passwords can't be reset, because
-the password is what locks the key.
+they restore messages without the password. A forgotten password can be reset
+by email (below); because the password is what locks the key, only a passkey
+can carry the old key across a reset.
 
-**Passwords and resets.** People can change their password in Roost, or tap
+**Passwords and resets.** People can change their password in Account → My
+Profile → Privacy & Security, or tap
 "Forgot your password?" to get a one-hour, single-use reset link by email. The
 password locks the encryption key, so a reset keeps someone's scrolls only if
 they unlock their key with a passkey; otherwise the phone makes a new key,
@@ -477,26 +479,28 @@ the app says reset emails aren't on yet, and the admin page can still make
 links for you to send by hand.
 
 **Admin.** `/pigeon/admin/` uses the site owner sign-in (the key icon's password
-or passkey). It lists every account (name, handle, email, roost, last active,
+or passkey). It lists every account (name, handle, email, place, last active,
 passkeys, friends, scrolls sent) and can email a reset link, make a 24-hour
 reset link to send yourself, sign someone out everywhere, or delete an account.
 Admin changes need the owner cookie and a header only the admin page sends,
 and every action is logged on the page. Admins never see passwords, keys or
 scrolls; the server doesn't have them.
 
-**Profiles.** In Roost → Edit profile, people can change their name any time,
+**Profiles.** In Account → My Profile, people can change their name any time,
 their handle once a day (enforced by the server), and add or remove a profile
 picture. Pictures are cropped square on the phone and shrunk to 512px JPEG,
 which also strips location data. They aren't end-to-end encrypted: the server
 stores them under `pigeon-avatars/` in R2 and only serves them to the owner,
-their friends and anyone with a pending friend request either way. New columns
+their friends, people in a group with them, and people they've asked to be
+friends (never to someone they've blocked). New columns
 are added to the existing tables automatically on first use.
 
 **Safety numbers.** Tap a friend's name in a chat to compare 60 digits. The app
 also remembers each friend's key and warns if it changes.
 
-**Headers.** `_headers` gives `/pigeon/*` a strict Content-Security-Policy and
-is the only place on the site that allows location and passkeys.
+**Headers.** `_headers` (and `functions/pigeon/_middleware.js`) give every page a
+strict Content-Security-Policy; `/pigeon/*` gets the strictest one and is the
+only place on the site that allows location, the microphone and passkeys.
 
 ## Local preview
 

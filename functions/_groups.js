@@ -136,9 +136,15 @@ export async function groupsForSync(env, u, t) {
   const { results: gs } = await D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? ORDER BY g.created_at").bind(u.id).all();
   if (!gs.length) return [];
   const friends = await friendIds(D, u.id), out = [];
+  // everyone in all your groups, and what's unread in each: one query each, however many groups
+  const { results: allMem } = await D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.loc_at, u.seen_at, u.hide_online
+    FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
+    WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id).all();
+  const { results: unreads } = await D.prepare(`SELECT m.group_id, COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
+    WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL GROUP BY m.group_id`).bind(u.id, t).all();
+  const unreadIn = new Map(unreads.map((r) => [r.group_id, r.n]));
   for (const g of gs) {
-    const { results: mem } = await D.prepare(`SELECT gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.loc_at, u.seen_at, u.hide_online
-      FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id WHERE gm.group_id = ? ORDER BY gm.joined_at`).bind(g.id).all();
+    const mem = allMem.filter((p) => p.group_id === g.id);
     const members = mem.map((p) => {
       const friend = p.user_id === u.id || friends.has(p.user_id);
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
@@ -146,10 +152,8 @@ export async function groupsForSync(env, u, t) {
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
     const last = (await visible(D, u.id, g.id, 1))[0];
-    const unread = await D.prepare(`SELECT COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
-      WHERE m.group_id = ? AND d.user_id = ? AND d.read_at IS NULL AND d.deliver_at <= ? AND d.lost_at IS NULL`).bind(g.id, u.id, t).first();
     out.push({ id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, members,
-      last: last ? (await views(D, u.id, [last], friends, t))[0] : null, unread: unread.n, turn: await turnIn(D, u.id, g.id, t) });
+      last: last ? (await views(D, u.id, [last], friends, t))[0] : null, unread: unreadIn.get(g.id) || 0, turn: await turnIn(D, u.id, g.id, t) });
   }
   return out;
 }
