@@ -1432,3 +1432,9 @@ svg.fillico{fill:currentColor;stroke:none}
 .field-wrap:focus-within .kind{gap:1px;padding-right:5px}
 .field-wrap:focus-within .kind .kl{max-width:0;opacity:0}
 @media (prefers-reduced-motion:reduce){.compose .kind,.compose .kind .kl{transition:none}}
+/* the whole box is the place to tap: the words' area fills it, edge to edge */
+.field-wrap{padding:0 4px}
+.field-wrap textarea{align-self:stretch;padding:11px 42px 11px 6px}
+.compose .kind{margin:6px 0}
+.compose{touch-action:none}
+.compose textarea{touch-action:pan-y}

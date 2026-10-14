@@ -2166,6 +2166,42 @@ function pressFeedback(el) {
   for (const n of ["pointerup", "pointercancel"]) el.addEventListener(n, release, { passive: true });
   window.addEventListener("blur", release);
 }
+// The message box, to the touch: a tap anywhere on it (or just above it) puts
+// you in it, even if the finger drifts a little, and a finger that drifts on
+// it never drags the screen along. Only a long message scrolls, inside its box.
+function composeTouch() {
+  const TAP = 30;
+  let t0 = null;
+  $compose.addEventListener("touchstart", (e) => {
+    const p = e.touches[0];
+    t0 = e.touches.length === 1 ? { x: p.clientX, y: p.clientY, at: performance.now(), scrolls: e.target === $ta && $ta.scrollHeight > $ta.clientHeight + 1, far: false, moved: false, select: false } : null;
+  }, { passive: true });
+  $compose.addEventListener("touchmove", (e) => {
+    if (!t0) return;
+    const p = e.touches[0], d = Math.hypot(p.clientX - t0.x, p.clientY - t0.y);
+    // held still first, then moved in the words: that's choosing text or the caret, leave it be
+    if (!t0.moved && d > 8) { t0.moved = true; t0.select = e.target === $ta && document.activeElement === $ta && performance.now() - t0.at > 350; }
+    if (d > TAP) t0.far = true;
+    if (!t0.scrolls && !t0.select && e.cancelable) e.preventDefault();           // the screen stays where it is
+  }, { passive: false });
+  $compose.addEventListener("touchend", (e) => {
+    const s = t0; t0 = null;
+    if (!s || s.far || $ta.disabled || $compose.hidden || !$(".crow", $compose)?.offsetParent) return;
+    if (e.target.closest("button, a, input, select, label, .recbar")) return;
+    if (e.target === $ta) { if (document.activeElement !== $ta) $ta.focus(); return; }       // the box itself: the caret goes where you tapped
+    e.preventDefault();
+    $ta.focus(); const n = $ta.value.length; $ta.setSelectionRange(n, n);
+  }, { passive: false });
+  $compose.addEventListener("touchcancel", () => { t0 = null; }, { passive: true });
+  // the press that follows a tap (or a click) around the words never takes the focus out of them
+  $compose.addEventListener("mousedown", (e) => {
+    if (e.target === $ta || e.target.closest("button, a, input, select, label, .recbar")) return;
+    e.preventDefault();
+    if (document.activeElement !== $ta && !$ta.disabled && $(".crow", $compose)?.offsetParent) { $ta.focus(); const n = $ta.value.length; $ta.setSelectionRange(n, n); }
+  });
+  // iOS can leave the page nudged up once the keyboard has gone: put it back
+  $ta.addEventListener("blur", () => setTimeout(() => { if (window.scrollY && document.activeElement !== $ta) window.scrollTo(0, 0); }, 80));
+}
 function mount() {
   lockPage();
   setTimeout(() => { pullToRefresh(); tabSwipe(); holdRows(); navGestures(); });
@@ -2201,7 +2237,7 @@ function mount() {
     <div class="poplayer"></div>
     <div class="toasts"></div>`;
   $view = $(".view"); $compose = $(".compose"); $tabbar = $(".tabbar"); $layer = $(".layer"); $pop = $(".poplayer"); $toast = $(".toasts"); $ta = $("#msg");
-  pressFeedback($compose);
+  pressFeedback($compose); composeTouch();
   $view.addEventListener("scroll", () => {
     const y = $view.scrollTop;
     const root = !!$view.querySelector(".navbar.root");      // its title shares the bar's row
