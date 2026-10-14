@@ -384,7 +384,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 .sheet > header{flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:60px;padding:2px 14px 0}
 .sheet > header h2{margin:0;font-size:17px;font-weight:600;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:56vw}
 .sheet > header .l{justify-self:start}
-.sheet > header .r{justify-self:end}
+.sheet > header .r{justify-self:end;grid-column:3}      /* (its own column even when the title is hidden) */
 .sheet > header .nbtn{width:42px;height:42px}
 .sheet .body{flex:1;min-height:0;overflow:auto;position:relative;padding-bottom:calc(30px + env(safe-area-inset-bottom,0px))}
 .sheet .body.flush{padding:0;overflow:hidden}
@@ -1268,3 +1268,26 @@ svg.fillico{fill:currentColor;stroke:none}
 .wxplan .wxline .ico{font-size:14px;margin-right:4px;vertical-align:-3px}
 .wxplan.early{color:var(--green-t)}
 .wxplan .wxwait{min-height:30px;padding:0 14px;font-size:13px}
+/* named pigeons: who carries it, their careers, the Hall of Fame */
+.note .birdchip{display:inline-flex;align-items:center;gap:1px;flex:none;border:0;border-radius:999px;padding:2px 6px 2px 9px;margin-right:2px;background:var(--fill);color:var(--label);font:inherit;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.note .birdchip .ico{font-size:11px;transform:rotate(90deg);opacity:.55}
+.note .birdchip:active{opacity:.6}
+.mapcard .birdline{display:block;font-size:13px;font-weight:600;color:var(--label-2);text-align:center;text-wrap:balance}
+.mapcard .birdline svg{width:15px;height:15px;margin-right:4px;vertical-align:-3px;fill:var(--orange)}
+.sysline.rankup{display:block;border:0;font-family:inherit;color:var(--label-2);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sysline.rankup svg{width:15px;height:15px;margin-right:5px;vertical-align:-3px;fill:var(--orange)}
+.sysline.rankup:active{background:var(--sep)}
+.birdempty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px 28px 8px;text-align:center}
+.birdempty > svg{width:64px;height:64px;fill:var(--orange)}
+.birdempty b{font-size:20px;line-height:26px}
+.birdempty span{max-width:34ch;font-size:15px;line-height:1.4;color:var(--label-2);text-wrap:balance}
+.birdempty .btn{margin-top:8px}
+.profile-head .birdbig{width:84px;height:84px;border-radius:24px;display:grid;place-items:center}
+.profile-head .birdbig svg{width:50px;height:50px}
+.bstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 16px}
+.bstats div{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 4px;border-radius:18px;background:var(--cell);min-width:0}
+.bstats b{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bstats span{font-size:12px;color:var(--label-2)}
+.brank .ctext{width:100%}
+.bbar{display:block;height:6px;margin-top:8px;border-radius:3px;background:var(--fill);overflow:hidden}
+.bbar b{display:block;width:0;height:100%;border-radius:3px;background:var(--orange)}

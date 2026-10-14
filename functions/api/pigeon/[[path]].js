@@ -16,6 +16,7 @@ import { WINDMAP_ROUTES } from "../../_windmap.js";
 import { findNear, dropNear, renear, nearViews } from "../../_moments.js";
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
+import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -307,6 +308,7 @@ async function removeAccount(env, id) {
   await D.batch([
     D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(id),
     D.prepare("DELETE FROM pg_flyover WHERE sender = ?1 OR user_id = ?1").bind(id),
+    D.prepare("DELETE FROM pg_birds WHERE owner = ?").bind(id),
     D.prepare("UPDATE pg_msgs SET via_ct = '', via_note = NULL WHERE via = ?1").bind(id),     // a stopover with them: their copy goes
     D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
     D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
@@ -612,7 +614,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, emailOn: emailReady(env), gifsOn: gifsReady(env),
+  return json({ now: t, me: meView(u, t), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, birds: await birdsFor(D, u.id, t), emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -728,6 +730,9 @@ async function sendMessage({ request, env, waitUntil }) {
     try { await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } }); }
     catch (e) { await D.batch([D.prepare("DELETE FROM pg_msgs WHERE id = ?").bind(id), D.prepare("DELETE FROM pg_ids WHERE id = ?").bind(id)]); throw e; }
   }
+  // one of your named pigeons carries it, if it's free
+  const bird = kind === "dumb" ? null : await claimBird(D, u.id, meta.bird, t, flight, deliver);
+  if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, id).run();
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   if (landAt == null) waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));       // scheduled: told when it takes off
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
@@ -756,7 +761,7 @@ async function wxPlan({ request, env }) {
 async function cancelScheduled(env, D, u, m, t) {
   const r = await D.prepare("DELETE FROM pg_msgs WHERE id = ?1 AND sender = ?2 AND sent_at > ?3").bind(m.id, u.id, t).run();
   if (!r.meta.changes) throw new HttpError(409, "It’s just taken off. Try again to call it back.");
-  await dropNear(D, m.id, -Infinity); await dropFly(D, m.id, -Infinity);
+  await dropNear(D, m.id, -Infinity); await dropFly(D, m.id, -Infinity); await freeBird(D, m.bird, t);
   if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${m.id}`);
   const p = PIGEONS[m.pigeon];
   for (let i = 0; p?.max && i < 3; i++) {
@@ -1171,7 +1176,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES,
 };
 
 export async function onRequest(ctx) {

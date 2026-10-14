@@ -42,6 +42,7 @@ const S = {
   chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
+  birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -1520,7 +1521,7 @@ let syncing = null;
 // What the server says (fresh, or the copy kept on this phone): friends,
 // groups and each chat's last message, opened with the key on this phone.
 async function applySync(d) {
-  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.blocked = d.blocked || []; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn;
+  S.me = d.me; S.friends = d.friends; S.groups = d.groups || []; S.incoming = d.incoming; S.outgoing = d.outgoing; S.blocked = d.blocked || []; S.passkeys = d.passkeys; S.emailOn = !!d.emailOn; S.gifsOn = !!d.gifsOn; S.birds = d.birds?.birds || []; S.hall = d.birds?.hall || [];
   syncTheme();
   for (const f of S.friends) {
     checkPin(f);
@@ -2452,7 +2453,8 @@ function vAccount() {
       ${cell({ icon: I.bird, tile: "standard", label: "Standard", sub: "Free on your turn" })}
     </div>
     <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
-    <div class="group mt">${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles flown, records and more", chev: true })}</div>
+    <div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
+      ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles flown, records and more", chev: true })}</div>
     <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="gap"></div>`;
@@ -2622,10 +2624,10 @@ function bubble(f, m, isLastMine, gapTop, g) {
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
     else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
-  else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} Lost on the way · Pigeon Death</span>`);
+  else if (mine && m.lost) meta.push(`<span class="fl lostm">${I.skull} ${m.bird ? `${esc(m.bird.name)} was lost` : "Lost on the way"} · Pigeon Death</span>`);
   // scheduled: waiting in your loft (they can't see it yet)
-  else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
-  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${(m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0) ? " · changed course" : ""}${m.cheers ? ` · cheered on ×${m.cheers}` : ""}${wxSay(m, true) ? ` · ${wxSay(m, true)}` : windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
+  else if (mine && m.waiting) meta.push(`<button type="button" class="fl flock sched ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${I.clock} ${m.bird ? `${esc(m.bird.name)} · ` : ""}Lands ${fmtLand(m.deliverAt)} · takes off in <span data-eta="${esc(m.sentAt)}"></span></button>`);
+  else if (mine && m.flying) meta.push(`<button type="button" class="fl flock ${kindOf(m)}" data-act="flymenu" data-id="${esc(m.id)}">${pgm(m)} ${m.bird ? `${esc(m.bird.name)} · ` : ""}${kindOf(m) === "standard" ? "In flight" : KIND[kindOf(m)].name}${m.via ? ` via ${esc(first(friend(m.via)?.name || "a friend"))}` : ""} · <span data-eta="${esc(m.deliverAt)}"></span> to go${(m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0) ? " · changed course" : ""}${m.cheers ? ` · cheered on ×${m.cheers}` : ""}${wxSay(m, true) ? ` · ${wxSay(m, true)}` : windWord(m.wind) && windWord(m.wind) !== "calm" ? ` · ${windWord(m.wind)}` : ""}</button>`);
   else if (mine && isLastMine) meta.push(m.readAt ? `<span class="readr">Read ${fmtShort(m.readAt)}</span>` : `<span>Landed ${fmtShort(m.deliverAt)}</span>`);
   // an airmail stamp on every pigeon that arrived: its miles, in its colour; tap for the flight
   if (!m.flying && !m.lost && m.km != null && !(g && mine)) meta[mine ? "push" : "unshift"](stampHtml(m));
@@ -3027,6 +3029,8 @@ function chatMoments(msgs, chatId) {
     const key = [m.id, n.other.id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
     out.push({ at: n.at, html: `<button type="button" class="sysline moment" data-act="map" data-id="${esc(m.id)}">${I.pass}<span>${esc(momentText(m, n, chatId))}<span class="t"> · ${fmtTime(n.at)}</span></span></button>` });
   }
+  for (const m of msgs || []) if (m.from === S.me.id && m.bird?.up && !m.flying && !m.lost)
+    out.push({ at: m.deliverAt, html: `<button type="button" class="sysline rankup" data-act="bird" data-id="${esc(m.bird.id)}">${I.bird}<span>${esc(m.bird.name)} became ${aRank(esc(m.bird.up))} on this flight</span></button>` });
   return out.sort((a, b) => a.at - b.at);
 }
 // Flyovers in a chat with a friend: their pigeon over you (wave while it's
@@ -3047,6 +3051,31 @@ function flyText(m) {
   const nm = (x) => first(friend(x.who)?.name || "a friend"), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
   const w = l.filter((x) => x.waved);
   return w.length === 1 ? `${nm(w[0])} waved from ${w[0].place || "below"}` : w.length ? `${and(w.map(nm))} waved from below` : l.length === 1 ? `Flew over ${nm(l[0])}${l[0].place ? ` in ${l[0].place}` : ""}` : `Flew over ${and(l.map(nm))}`;
+}
+/* ---------- named pigeons ----------
+   Up to five of yours, with names and careers (functions/_birds.js). They take
+   turns carrying what you send: the one you pick, else the one that has
+   rested longest. Miles bring rank and stamina (less rest between flights). */
+const BIRDS_MAX = 5;
+const RANKS = [["Fledgling", 0], ["Courier", 500], ["Navigator", 2000], ["Veteran", 8000], ["Ace", 20000], ["Legend", 40075]];
+const RANK_TILE = { Fledgling: "gray", Courier: "green", Navigator: "blue", Veteran: "indigo", Ace: "orange", Legend: "rocket" };
+const aRank = (r) => `${/^[AEIOU]/.test(r) ? "an" : "a"} ${r}`;
+const birdReady = (b) => b.state === "ready" || (b.state === "resting" && now() >= (b.busyUntil || 0));
+function birdFor() {
+  if (S.birdPick === "none" || !S.birds.length) return null;
+  const ready = S.birds.filter(birdReady);
+  return ready.find((b) => b.id === S.birdPick) || [...ready].sort((a, b) => (a.lastAt || 0) - (b.lastAt || 0))[0] || null;
+}
+function birdState(b) {
+  if (b.state === "flying") return `In the air · lands ${fmtLand(b.landAt)}`;
+  if (b.state === "waiting") return "Booked to fly";
+  return birdReady(b) ? "Ready" : `Resting · ready in ${fmtDur(b.busyUntil - now())}`;
+}
+// On a pigeon's map: who's carrying it (and, for yours, how far it has flown in all)
+function birdLine(m) {
+  const b = m.bird; if (!b) return "";
+  const c = m.from === S.me.id && b.id ? [...S.birds, ...S.hall].find((x) => x.id === b.id) : null;
+  return `<span class="birdline">${I.bird}Carried by ${esc(b.name)} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
@@ -3421,6 +3450,11 @@ function renderCompose() {
   if (plan) planWx(f.id);
   const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
   if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
+  // which of your named pigeons carries it (tap to choose)
+  if (S.birds.length && kind && kind !== "dumb" && note.classList.contains("go")) {
+    const bd = birdFor();
+    note.insertAdjacentHTML("afterbegin", `<button type="button" class="birdchip" data-act="birdpick" aria-label="${bd ? `Carried by ${esc(bd.name)}` : "No named pigeon"}. Choose who carries it">${bd ? esc(bd.name) : "Any Pigeon"}${I.chev}</button>`);
+  }
   btn.disabled = blocked || !has || S.busy;
   // nothing typed: the send button becomes a microphone (voice pigeons)
   const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
@@ -3703,6 +3737,44 @@ function drawSheet(refresh) {
         <div class="gfoot">Only the two places, the day and the flight go on the picture: never the message, and never your friend’s name.</div>
         <div class="sharego"><button type="button" class="btn wide" data-act="shareimg"${s.urls[s.fmt] ? "" : " disabled"}>${I.share}${canShareFiles() ? "Share" : "Save Image"}</button></div>`,
         { left: { label: "Back to the map", act: "shareback" } });
+      return;
+    }
+    case "birds": {
+      const sub = (b) => `${esc(b.rank)} · ${fmtMiles(b.km)} · ${birdState(b)}`;
+      const row = (b, hall) => `<button type="button" class="cell has-icon" data-act="bird" data-id="${esc(b.id)}"><span class="tile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${b.lostAt ? I.skull : I.bird}</span>
+        <span class="ctext"><span class="one">${esc(b.name)}</span><span class="csub one">${!hall ? sub(b) : b.lostAt ? `Lost${b.lostPlace ? ` over ${esc(b.lostPlace)}` : ""} · ${fmtDate(b.lostAt)}` : `${esc(b.rank)} · ${fmtMiles(b.km)} · retired ${fmtDate(b.retiredAt)}`}</span></span>${chevSm}</button>`;
+      const ranks = RANKS.slice(1).map(([r, km]) => `${r} at ${fmtMiles(km)}`).join(", ");
+      $layer.innerHTML = sheetHtml("Your Pigeons", (S.birds.length
+        ? `<div class="group mt-s">${S.birds.map((b) => row(b)).join("")}${S.birds.length < BIRDS_MAX ? cell({ act: "birdnew", icon: I.plus, tile: "green", label: "Name a New Pigeon", cls: "action" }) : ""}</div>
+          <div class="gfoot">They take turns carrying what you send, and rest between flights. Miles bring rank: ${ranks}, once around the world.</div>`
+        : `<div class="birdempty">${I.bird}<b>Name your pigeons</b><span>Give up to ${BIRDS_MAX} of your pigeons names. They take turns carrying what you send, gain miles and stamina, rise from Fledgling to Legend, and retire to your Hall of Fame.</span><button type="button" class="btn" data-act="birdnew">Name a Pigeon</button></div>`)
+        + (S.hall.length ? `<div class="ghead">Hall of Fame</div><div class="group">${S.hall.map((b) => row(b, true)).join("")}</div>` : ""));
+      return;
+    }
+    case "bird": {
+      const b = [...S.birds, ...S.hall].find((x) => x.id === s.id); if (!b) { S.sheet = { type: "birds" }; return renderSheet(); }
+      const active = !b.lostAt && !b.retiredAt, from = RANKS.find((r) => r[0] === b.rank)[1], rest = Math.round((0.5 - (0.4 * b.stamina) / 100) * 100);
+      const stat = (v, l) => `<div><b>${v}</b><span>${l}</span></div>`;
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head"><span class="birdbig tile ${b.lostAt ? "gray" : RANK_TILE[b.rank]}">${I.bird}</span><span class="name">${esc(b.name)}</span>
+          <span class="sub">${esc(b.rank)}${active ? ` · ${birdState(b)}` : b.lostAt ? " · Lost" : " · Retired"}</span></div>
+        <div class="bstats">${stat(fmtMiles(b.km), "Flown")}${stat(b.flights, b.flights === 1 ? "Flight" : "Flights")}${stat(fmtMiles(b.longest), "Longest")}${stat(b.stamina, "Stamina")}</div>
+        ${active && b.next ? `<div class="group"><div class="cell brank"><span class="ctext"><span>Next: ${esc(b.next.rank)}</span><span class="csub">${fmtMiles(b.next.km - b.km)} to go</span><i class="bbar" aria-hidden="true"><b></b></i></span></div></div>` : ""}
+        <div class="gfoot">${b.lostAt ? `Lost${b.lostPlace ? ` over ${esc(b.lostPlace)}` : ""} on ${fmtDate(b.lostAt)}, to Pigeon Death.` : b.retiredAt ? `Retired to your Hall of Fame on ${fmtDate(b.retiredAt)}.`
+          : `Stamina ${b.stamina}: after a flight it rests about ${rest}% as long as it flew. Stamina grows with every mile.`}</div>
+        ${active ? `<div class="group mt">${cell({ act: "birdrename", id: b.id, label: "Rename", cls: "action" })}${b.rank === "Legend" ? cell({ act: "birdretire", id: b.id, label: "Retire to the Hall of Fame", cls: "action" }) : ""}</div>
+          ${b.rank === "Legend" ? `<div class="gfoot">${esc(b.name)} has flown once around the world. Retire it to your Hall of Fame to make room for a new pigeon.</div>` : ""}` : ""}`,
+        { left: { label: "Back", act: "birds" }, name: b.name });
+      const bar = $(".bbar b", $layer); if (bar && b.next) bar.style.width = `${(Math.max(0, Math.min(1, (b.km - from) / (b.next.km - from))) * 100).toFixed(1)}%`;
+      return;
+    }
+    case "birdname": {
+      if ($("#f-bname", $layer)) return;
+      const b = s.id ? S.birds.find((x) => x.id === s.id) : null;
+      $layer.innerHTML = sheetHtml(b ? "Rename" : "Name a Pigeon", `<form id="bname-form" data-form="birdname" novalidate>
+          <div class="group mt-s"><label class="fcell"><input id="f-bname" name="name" placeholder="${b ? "New name" : "Biscuit, Captain, Pip…"}" maxlength="20" autocomplete="off" autocapitalize="words" aria-label="Pigeon name"></label></div>
+          <div class="gfoot">${b ? "Its career stays as it is." : "It starts as a Fledgling."} Everyone it flies to sees its name.</div>${ferr}</form>`,
+        { left: { label: "Back", act: "birdback" }, right: { label: b ? "Save" : "Add", form: "bname-form" } });
+      if (b) $("#f-bname", $layer).value = b.name;
       return;
     }
     case "safety":
@@ -4079,6 +4151,7 @@ function tickMap() {
   $(".mcb", card).innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
+    ${birdLine(m)}
     ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
     ${flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : ""}
     ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}
@@ -4361,7 +4434,7 @@ function tickFlockMap(m, card, cv) {
   }).join("");
   const { share, cheer } = cardShell(card); share.hidden = true; cheerState(cheer, m);
   $(".mcb", card).innerHTML = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
-    ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}
+    ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}${birdLine(m)}
     <span class="prog"><i></i></span><span class="frows">${rows}</span>`;
   $(".prog i", card).style.width = (frac * 100).toFixed(2) + "%";
   if (routesOf(m).length) { drawMap(cv, m, card.offsetHeight + 14); smoothMap({ ...m, lost: true }); }
@@ -4469,6 +4542,28 @@ async function onClick(e) {
       if (holding() && Date.now() - heldAt < 800 && !inPop) return;   // the end of a hold, not a tap
       return go("chat", id);
     case "shareflight": return openShare(id || t.dataset.id);
+    case "birds": S.sheet = { type: "birds" }; return renderSheet();
+    case "bird": S.sheet = { type: "bird", id }; return renderSheet();
+    case "birdnew": S.sheet = { type: "birdname" }; return renderSheet();
+    case "birdrename": S.sheet = { type: "birdname", id }; return renderSheet();
+    case "birdback": S.sheet = S.sheet?.id ? { type: "bird", id: S.sheet.id } : { type: "birds" }; return renderSheet();
+    case "birdretire": { const b = S.birds.find((x) => x.id === id); return b && openMenu(t, [{ label: `Retire ${b.name}`, icon: I.bird, act: "birdretired", id }]); }
+    case "birdretired": {
+      const b = S.birds.find((x) => x.id === id); if (!b) return;
+      try {
+        const r = await api("bird-retire", { method: "POST", body: { id } });
+        S.birds = r.birds; S.hall = r.hall; haptic("success"); toast(`${esc(b.name)} retires a Legend.`);
+        S.sheet = { type: "bird", id }; renderSheet(); render();
+      } catch (err) { toast(esc(err.message)); }
+      return;
+    }
+    // which of your named pigeons carries the next one
+    case "birdpick": {
+      const cur = birdFor();
+      return openMenu(t, [...S.birds.filter(birdReady).map((b) => ({ label: `${b.name} · ${b.rank}${cur?.id === b.id ? " ✓" : ""}`, icon: I.bird, act: "birdset", id: b.id })),
+        { label: `Any Pigeon${cur ? "" : " ✓"}`, icon: I.bird, act: "birdset", id: "none" }, { label: "Your Pigeons", icon: I.people, act: "birds" }]);
+    }
+    case "birdset": S.birdPick = id; return renderCompose();
     case "wave": {
       const chat = S.chat, x = (S.fly.get(chat) || []).find((y) => y.id === id && !y.mine); if (!x || x.waved) return;
       t.disabled = true;
@@ -4947,6 +5042,17 @@ async function onSubmit(e) {
         await api("stopover-note", { method: "POST", body: { id: m.id, ct } });
       });
       S.notes.set(m.id, text); m.mine = "sent"; S.sheet = null; renderSheet(); render(); toast(`Added. ${esc(first(to.name))} will see it when it lands.`);
+    } catch (err) { showErr(err.message); }
+    return;
+  }
+  if (kind === "birdname") {
+    const s = S.sheet, name = String($("#f-bname", $layer)?.value || "").trim();
+    if (!name) return showErr("Give your pigeon a name.");
+    try {
+      const r = await busyBtn(btn, "…", () => api(s.id ? "bird-name" : "birds", { method: "POST", body: s.id ? { id: s.id, name } : { name } }));
+      S.birds = r.birds; S.hall = r.hall; haptic("success");
+      if (!s.id) toast(`${esc(r.birds.at(-1)?.name || name)} joins your pigeons.`);
+      S.sheet = s.id ? { type: "bird", id: s.id } : { type: "birds" }; renderSheet(); render();
     } catch (err) { showErr(err.message); }
     return;
   }
@@ -5478,15 +5584,15 @@ async function send() {
       payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };
       blob = sealed.data;
     }
-    const g = group(to);
+    const g = group(to), bd = S.sendKind === "dumb" ? null : birdFor(), carry = bd ? { bird: bd.id } : {};
     let meta;
     if (g) {
       // sealed once; its key sealed for each member (and for me, so my other phones can read it)
       const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, payload);
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
-      meta = { id, group: g.id, body, keys, pigeon: S.sendKind };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}),
+      meta = { id, group: g.id, body, keys, pigeon: S.sendKind, ...carry };
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...carry, ...(sc ? { landAt: sc.at } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
       ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
@@ -5514,6 +5620,7 @@ async function send() {
     } else r = await api(path, { method: "POST", body: meta });
     } catch (e) { if (!e.offline) throw e; upAnim?.stop(); upAnim = null; await queue(); S.busy = false; renderCompose(); return; }
     S.pick = null;                    // next time, back to the default
+    S.birdPick = null; const flew = r.message.bird?.id && S.birds.find((b) => b.id === r.message.bird.id); if (flew) flew.state = "flying";
     haptic("success");
     if (rt) S.replyTo = null;
     if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }

@@ -15,6 +15,7 @@
 
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
+import { settleBirds } from "./_birds.js";
 
 const enc = new TextEncoder();
 const EMAIL_EVERY = 30 * MIN;     // at most one email per person per half hour
@@ -483,6 +484,7 @@ export async function tick(env, origin) {
   pushes += await wxTick(env, D, t, since);
   pushes += await nearTick(env, D, t, since);
   pushes += await flyTick(env, D, t, since);
+  await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

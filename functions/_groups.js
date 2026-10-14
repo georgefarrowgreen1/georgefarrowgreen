@@ -9,11 +9,12 @@
 
 import {
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView,
+  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
+import { claimBird } from "./_birds.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
 
 export const GROUP_MAX = 12;
@@ -63,14 +64,14 @@ function ownView(m, dels, friends, t) {
       toPlace: friend ? d.to_place : null };
   });
   const live = flock.filter((x) => !x.lost);
-  return { ...baseView(m), flock, cheered: Math.max(0, ...flock.filter((x) => x.flying).map((x) => x.cheered || 0)), deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
+  return { ...baseView(m), ...birdOn(m, m.sender), flock, cheered: Math.max(0, ...flock.filter((x) => x.flying).map((x) => x.cheered || 0)), deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
     lost: flock.length > 0 && flock.every((x) => x.lost), recalled: flock.some((x) => x.recalled), fromPlace: m.from_place, body: m.body, key: m.sender_key, expiresAt: m.expires_at };
 }
 // Someone else's: your pigeon only. Its contents and key once it has landed;
 // where it came from only if the sender is your friend.
 function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
-  return { ...baseView(m), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, d.user_id),
+  return { ...baseView(m), ...birdOn(m, d.user_id), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, d.user_id),
     legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
@@ -317,6 +318,10 @@ async function send({ request, env, waitUntil }) {
       .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach)),
   ]);
   if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
+  // one of your named pigeons leads: it flies the longest route
+  const lead = dels.filter((d) => d.r.lat != null).sort((a, b) => b.km - a.km)[0];
+  const bird = lead && kind !== "dumb" ? await claimBird(D, u.id, meta.bird, t, lead.at - t, lead.at) : null;
+  if (bird) await D.prepare("UPDATE pg_gmsgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_to = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, lead.to, id).run();
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
   waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();

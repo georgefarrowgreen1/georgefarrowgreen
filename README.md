@@ -311,6 +311,20 @@ booked, so a standard pigeon is offered a swift one; with none left, the
 composer just says when the skies clear. One to one only, since group
 pigeons can't be booked.
 
+**Named pigeons with careers.** Account → Your Pigeons: name up to five of
+your pigeons. They take turns carrying what you send: the composer shows
+which one (the one that has rested longest; tap the name to pick another, or
+send unnamed). A pigeon is credited with the miles when its flight lands,
+and miles bring rank (Fledgling, then Courier at 311 mi, Navigator, Veteran,
+Ace, and Legend at 24,901 mi: once around the world) and stamina, which
+shortens the rest it needs between flights (from about two fifths of the
+flight down to a tenth). The chat marks a rank-up. A Legend can retire to
+your Hall of Fame; with Pigeon Death on, a named pigeon can be lost, and is
+remembered there with where it went down. A called-back pigeon earns no
+miles and rests for its trip home. Everyone it flies to sees its name and
+rank; only you see its career (`functions/_birds.js`). For a message to a
+group, your named pigeon flies the longest of its routes.
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat
