@@ -316,6 +316,21 @@ async function reactTick(env, D, t, since) {
   return pushes;
 }
 
+// Where pigeons flew from and to is only kept exactly while it matters: a month
+// after landing, the ends of each route are rounded to half a degree (about
+// 50 km, still right for the map, the miles and the badges) and the points
+// where it changed course (where someone moved to) are dropped. Once an hour.
+const BLUR_AFTER = 30 * DAY, half = (c) => `${c} = ROUND(${c} * 2) / 2`;
+async function blurOld(D, t) {
+  const last = await D.prepare("SELECT v FROM pg_meta WHERE k = 'blur_at'").first();
+  if (last && t - Number(last.v) < HOUR) return;
+  await D.batch([
+    D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('blur_at', ?)").bind(String(t)),
+    D.prepare(`UPDATE pg_msgs SET ${["from_lat", "from_lon", "to_lat", "to_lon"].map(half).join(", ")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
+    D.prepare(`UPDATE pg_gdeliv SET ${["to_lat", "to_lon"].map(half).join(", ")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
+    D.prepare(`UPDATE pg_gmsgs SET ${["from_lat", "from_lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND sent_at < ?`).bind(t - BLUR_AFTER - 8 * DAY),
+  ]);
+}
 // Pigeons that have landed since the last tick: push now; email those who
 // asked, once things have been waiting a little while unread. Quiet hours hold
 // both until they end. Only landings after notifications went live count.
@@ -327,6 +342,7 @@ export async function tick(env, origin) {
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
     D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR)]).catch(() => {});
+  await blurOld(D, t).catch((e) => console.error("pigeon blur", e && e.message));
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
   const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient

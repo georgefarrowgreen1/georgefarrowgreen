@@ -11,7 +11,7 @@ everyone.
 | --- | --- |
 | Page | `index.html`, `styles.css`, `app.js` — static, no build step |
 | Login / save | `functions/api/*` — Cloudflare Pages Functions (run on the edge) |
-| Auth | HMAC-signed, expiring cookie; password checked server-side |
+| Auth | Random server-side session in an HttpOnly cookie; password checked server-side |
 | Storage | Cloudflare **KV** (your edits are saved here) |
 
 The page works **immediately** as a static site. Login and editing only switch
@@ -141,8 +141,8 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
   guesses can't slip past KV's delay.
 - Passkeys are tied to the password they were added under: changing
   `EDIT_PASSWORD` retires them along with every session.
-- The password lives only as a Cloudflare secret; sessions are HMAC-signed in an
-  `HttpOnly; Secure; SameSite=Strict` cookie.
+- The password lives only as a Cloudflare secret; sessions are random tokens in
+  an `HttpOnly; Secure; SameSite=Strict` cookie, kept server-side.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
@@ -562,7 +562,9 @@ show a friendly "backend not set up" message).
   picture and place; they aren't told, and Privacy & Security → Blocked lists
   them to unblock.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
-  only friends see it. Photos are re-encoded, which strips EXIF and GPS.
+  only friends see it. A month after a pigeon lands, its route's ends are
+  rounded to half a degree (about 50 km) and the points where it changed course
+  are dropped, so old pigeons don't keep a trail of where people were. Photos are re-encoded, which strips EXIF and GPS.
 - **Limits:** no forward secrecy (each pair of friends shares one long-term
   key, so a stolen phone key or a guessed password opens past messages), and,
   like any web app, the phone runs whatever JavaScript the server serves.

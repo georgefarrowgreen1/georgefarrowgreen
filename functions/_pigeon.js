@@ -205,6 +205,10 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN email_ok INTEGER",        // when the email address was confirmed (a link sent to it)
   "ALTER TABLE pg_users ADD COLUMN email_code TEXT",         // hash of the confirm link's token
   "ALTER TABLE pg_users ADD COLUMN email_sent INTEGER",
+  // a month after landing, a route's ends are kept only to half a degree (about 50 km) and its turns go
+  "ALTER TABLE pg_msgs ADD COLUMN coarse INTEGER",
+  "ALTER TABLE pg_gmsgs ADD COLUMN coarse INTEGER",
+  "ALTER TABLE pg_gdeliv ADD COLUMN coarse INTEGER",
 ];
 let schemaReady = false;
 export async function db(env) {
