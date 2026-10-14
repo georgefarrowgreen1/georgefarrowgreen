@@ -1441,7 +1441,7 @@ async function checkInvite() {
   if (S.inviteChecking === (t || "-")) S.inviteChecking = null;
   if ((S.invite || null) !== t) return;                 // the invite changed while this was asked: it's being checked anew
   S.inviteState = st;
-  const box = $(".welcome .wcta");
+  const box = $(".welcome .wcta", $view);
   if (box) box.outerHTML = inviteHtml(); else if (S.view === "welcome") render();
 }
 function inviteHtml() {
@@ -2580,7 +2580,7 @@ function render() {
   if (auth) {
     const night = S.view === "welcome";
     if (document.documentElement.classList.contains("night") !== night) { document.documentElement.classList.toggle("night", night); applyTheme(); }
-    if (night && $(".welcome .sky", $view)) { const box = $(".welcome .wcta"); if (box) box.outerHTML = inviteHtml(); return; }   // already up: the sky keeps going
+    if (night && $(".welcome .sky", $view)) { const box = $(".welcome .wcta", $view); if (box) box.outerHTML = inviteHtml(); return; }   // already up: the sky keeps going
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     if (night) nightSky($(".welcome .sky", $view));
     return;
@@ -6407,7 +6407,7 @@ async function start() {
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
     const iv = /#invite=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
-    if (iv) { history.replaceState(null, "", location.pathname); setInvite(iv[1]); if (!S.me) { go("welcome"); render(); } else toast("You already have an account, so this invite stays unused."); return; }
+    if (iv) { history.replaceState(null, "", location.pathname); setInvite(iv[1]); if (!S.me) { if (S.view === "welcome") render(); else go("welcome"); } else toast("You already have an account, so this invite stays unused."); return; }
     const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
     if (cf) { history.replaceState(null, "", location.pathname); return confirmEmail(cf[1]); }
     const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
