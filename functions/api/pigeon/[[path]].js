@@ -17,6 +17,8 @@ import { findNear, dropNear, renear, nearViews } from "../../_moments.js";
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
+import { MOVE_ROUTES, dropMovedPush } from "../../_move.js";
+import { isAppHost } from "../../_home.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -1102,6 +1104,7 @@ async function pushSubscribe({ request, env }) {
   await D.prepare("INSERT OR REPLACE INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .bind(endpoint, u.id, u.sessionHash, p256dh, auth, Date.now()).run();
   await D.prepare("DELETE FROM pg_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM pg_push WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 10)").bind(u.id).run();
+  if (isAppHost(request.url, env)) await dropMovedPush(D, u.id);       // the old address's, on phones that have moved here
   return json({ ok: true });
 }
 async function pushUnsubscribe({ request, env }) {
@@ -1176,7 +1179,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...MOVE_ROUTES,
 };
 
 export async function onRequest(ctx) {
