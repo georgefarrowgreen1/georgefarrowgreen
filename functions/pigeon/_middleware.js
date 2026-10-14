@@ -19,12 +19,14 @@ const SECURITY = {
 };
 const FOREVER = "public, max-age=31536000, immutable";
 
-// fingerprints, kept briefly per isolate (a deploy starts fresh isolates anyway)
+// fingerprints, kept per isolate (a deploy starts fresh isolates, with the new files)
 const memo = new Map();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 async function fingerprint(ctx, path) {
-  const hit = memo.get(path);
-  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  // a deployment's files never change, so once worked out a fingerprint holds for
+  // as long as this copy runs (re-checked each minute only when testing locally)
+  const hit = memo.get(path), local = /^(localhost|127\.)/.test(new URL(ctx.request.url).hostname);
+  if (hit && (!local || Date.now() - hit.at < 60_000)) return hit.v;
   const r = await ctx.env.ASSETS.fetch(new URL(path, ctx.request.url));
   if (!r.ok) return "";
   let body = await r.text();
