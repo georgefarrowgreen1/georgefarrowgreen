@@ -332,6 +332,7 @@ function gcPoint(a, b, f) {
   return { lat: Math.atan2(z, Math.hypot(x, y)) / r, lon: Math.atan2(y, x) / r };
 }
 const cssVar = (el, n) => getComputedStyle(el).getPropertyValue(n).trim();
+let mapInk = null;                          // a share card's map: its own light or dark, whatever the app's theme
 const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // The route, as points along the great circle (longitudes unwrapped so it never jumps the date line).
 // The route as points along great circles, each with the time the pigeon is
@@ -394,7 +395,7 @@ function drawMap(cv, m, cardH) {
   if (globeOn(m)) return drawGlobe(cv, m, cardH);
   const { W, H, sy0, pts, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
   const { cx, cy, k } = view;
-  const dpr = window.devicePixelRatio || 1; cv._dpr = dpr;
+  const dpr = cv._dprFix || window.devicePixelRatio || 1; cv._dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const col = (n) => cssVar(cv, n);
@@ -579,7 +580,7 @@ function drawNight(g, W, H, ox, oy, k) {
   const off = drawNight.c || (drawNight.c = document.createElement("canvas"));
   if (off.width !== cw || off.height !== ch) { off.width = cw; off.height = ch; }
   const oc = off.getContext("2d"), img = oc.createImageData(cw, ch), px = img.data;
-  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const dark = mapInk ? mapInk === "dark" : document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   const [r, gg, b, top] = dark ? [0, 0, 0, 0.42] : [12, 26, 64, 0.26];
   const lats = Array.from({ length: ch }, (_, j) => { const y = (oy - j * NIGHT_STEP) / k; return (2 * Math.atan(Math.exp(y / R2D)) * R2D - 90) * rad; });
   for (let i = 0; i < cw; i++) {
@@ -772,7 +773,7 @@ function stepWind(cv, ts) {
   t.setTransform(1, 0, 0, 1, 0, 0);
   if (!still) { t.globalCompositeOperation = "destination-out"; t.fillStyle = `rgba(0,0,0,${Math.min(0.25, 0.045 * dt / 16)})`; t.fillRect(0, 0, tc.width, tc.height); t.globalCompositeOperation = "source-over"; }
   t.setTransform(dpr, 0, 0, dpr, 0, 0); t.lineCap = "round"; t.lineWidth = 1.1;
-  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const dark = mapInk ? mapInk === "dark" : document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   const rgb = dark ? "235,244,255" : "24,64,140", buckets = [[], [], [], []];
   for (const p of cv._parts) {
     if (p.age++ > p.max) spawn(p);
@@ -1056,7 +1057,7 @@ function moveGlobe(cv, z, dx, dy) {
 }
 function drawGlobe(cv, m, cardH, fast) {
   const { W, H, cx, cy, R, v } = globeFrame(cv, m, cardH); if (!W || !H) return;
-  const dpr = fast ? Math.min(1, window.devicePixelRatio || 1) : window.devicePixelRatio || 1;     // fewer pixels while it turns
+  const dpr = cv._dprFix || (fast ? Math.min(1, window.devicePixelRatio || 1) : window.devicePixelRatio || 1);     // fewer pixels while it turns
   cv._dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1113,7 +1114,7 @@ function drawGlobe(cv, m, cardH, fast) {
   const off = drawGlobe.c || (drawGlobe.c = document.createElement("canvas"));
   if (off.width !== cw || off.height !== cw) { off.width = cw; off.height = cw; }
   const oc = off.getContext("2d"), img = oc.createImageData(cw, cw), px = img.data;
-  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const dark = mapInk ? mapInk === "dark" : document.documentElement.getAttribute("data-theme") === "dark" || (document.documentElement.getAttribute("data-theme") === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   const [nr, ng, nb, top] = dark ? [0, 0, 0, 0.42] : [12, 26, 64, 0.26];
   for (let j = 0; j < cw; j++) for (let i = 0; i < cw; i++) {
     const x = (x0 + i * NIGHT_STEP - cx) / R, y = -(y0 + j * NIGHT_STEP - cy) / R, r2 = x * x + y * y; if (r2 > 1.02) continue;
@@ -2634,6 +2635,251 @@ function stampHtml(m) {
   return `<button type="button" class="pstamp ${k}"${canMap ? ` data-act="map" data-id="${esc(m.id)}"` : " disabled"} aria-label="${esc(`${KIND[k].name} airmail, ${fmtMiles(m.km)}${canMap ? ". Show the flight" : ""}`)}"><span>${I.bird}</span><b>${fmtMiles(m.km)}</b></button>`;
 }
 
+/* ---------- share a flight ----------
+   A landed pigeon as a picture to post: an airmail postcard (4:5) or a dark
+   story (9:16), drawn here on the phone with the app's own map. Only the two
+   places, the day and the flight go on it: never the message, and never your
+   friend's name (yours only if you leave it on). */
+const CARD_FONT = '-apple-system, "SF Pro Display", system-ui, Inter, "Helvetica Neue", Arial, sans-serif';
+const STAMP_INK = { rocket: ["#fbe38a", "#d9a21b", "#a87808"], swift: ["#ff8a80", "#ff3b30", "#b8241b"], turbo: ["#5a5a60", "#1c1c1e", "#000000"],
+  standard: ["#8ee39f", "#34c759", "#1d7f37"], dumb: ["#d8bf9a", "#a2845e", "#6f5636"] };
+const STORY_INK = { rocket: "#f0c04a", swift: "#ff6961", turbo: "#f5f5f7", standard: "#30d158", dumb: "#c4a57e" };
+const shareable = (m) => !!(m?.route && !m.flock && !m.lost && !m.recalled && m.km != null && m.deliverAt <= now());
+// what goes on the card, in the time where it landed
+function flightFacts(m, withName) {
+  const mine = m.from === S.me.id, other = friend(mine ? m.to : m.from), flew = Math.max(1, m.deliverAt - m.sentAt), k = kindOf(m), w = m.wind;
+  const tz = mine ? other?.tz : MY_TZ;
+  const at = (o) => { try { return new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, ...o }).format(m.deliverAt); } catch (_) { return new Intl.DateTimeFormat("en-GB", o).format(m.deliverAt); } };
+  let zone = "";
+  try { zone = new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, timeZoneName: "short" }).formatToParts(m.deliverAt).find((x) => x.type === "timeZoneName")?.value || ""; } catch (_) {}
+  const mph = (kmh) => Math.round(Math.abs(kmh) * 0.621371);
+  return {
+    k, from: m.fromPlace || "Somewhere", to: m.toPlace || "Somewhere", miles: fmtMiles(m.km), longMiles: `${Math.round(m.km * 0.621371).toLocaleString("en-GB")} mile${Math.round(m.km * 0.621371) === 1 ? "" : "s"}`,
+    dur: fmtDur(flew), mph: fmtMph(m.km / (flew / HOUR)),
+    sky: w == null ? [KIND[k].name, "Pigeon"] : Math.abs(w) < 3 ? ["Calm", "Skies"] : [`${mph(w)} mph`, w > 0 ? "Tailwind" : "Headwind"],
+    skyLine: w == null ? "" : Math.abs(w) < 3 ? "calm skies" : `${w > 0 ? "tailwind" : "headwind"} ${mph(w)} mph`,
+    time: at({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), zone,
+    day: at({ day: "numeric", month: "long", year: "numeric" }), dayShort: at({ day: "numeric", month: "short", year: "numeric" }),
+    stampDay: at({ day: "2-digit", month: "short", year: "numeric" }).toUpperCase(),
+    name: withName ? first(S.me.name) : "", by: withName ? `${mine ? "Sent" : "Received"} by ${first(S.me.name)}` : "",
+    site: `${location.host}${location.pathname.replace(/\/+$/, "")}`,
+  };
+}
+// The flight on the app's own map, drawn off screen in fixed colours (the
+// globe, or flat), cssW × cssH at dpr pixels to each.
+async function cardMap(m, ink, globe, cssW, cssH, dpr = 3) {
+  const want = globe ? ["50m"] : m.km < 900 ? ["50m", "10m"] : ["50m"];
+  for (const res of want) await new Promise((ok) => {               // the coast in the detail the map will want
+    const t0 = Date.now();
+    (function wait() { world(res); if (typeof WORLD[res] === "object" || WORLD[res] === "failed" || Date.now() - t0 > 5000) ok(); else setTimeout(wait, 60); })();
+  });
+  const cv = document.createElement("canvas");
+  cv.className = `cardmap ink-${ink}`; cv.style.width = `${cssW}px`; cv.style.height = `${cssH}px`; cv._dprFix = dpr; cv._spin = -1;
+  document.body.append(cv);
+  const keep = S.sheet;
+  S.sheet = { type: "cardmap", globe, view: null, gview: null }; mapInk = ink;
+  try { drawMap(cv, m, 0); return { cv, frame: globe ? globeFrame(cv, m, 0) : null }; }
+  finally { S.sheet = keep; mapInk = null; cv.remove(); }
+}
+function rrect(g, x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+// one line as big as it can be (up to size) in maxW
+function fitFont(g, s, weight, size, maxW, min = 22) {
+  let z = size;
+  for (; z > min; z -= 2) { g.font = `${weight} ${z}px ${CARD_FONT}`; if (g.measureText(s).width <= maxW) break; }
+  g.font = `${weight} ${z}px ${CARD_FONT}`; return z;
+}
+// letter-spaced capitals
+function spaced(g, s, x, y, gap, align = "left") {
+  const ch = [...s], w = ch.reduce((a, c) => a + g.measureText(c).width, 0) + gap * (ch.length - 1);
+  let cx = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
+  const keep = g.textAlign; g.textAlign = "left";
+  for (const c of ch) { g.fillText(c, cx, y); cx += g.measureText(c).width + gap; }
+  g.textAlign = keep; return w;
+}
+function appIcon(g, x, y, sz) {
+  const gr = g.createLinearGradient(x, y, x + sz * 0.6, y + sz); gr.addColorStop(0, "#4aa3ff"); gr.addColorStop(1, "#0055d4");
+  g.fillStyle = gr; rrect(g, x, y, sz, sz, sz * 0.22); g.fill();
+  g.save(); g.translate(x + sz * 0.125, y + sz * 0.137); g.scale(sz / 32, sz / 32); g.fillStyle = "#fff"; g.fill(new Path2D(BIRD)); g.restore();
+}
+// the airmail stamp, perforated, in the pigeon's colour (as on every pigeon that lands)
+function cardStamp(g, x, y, F) {
+  const s = document.createElement("canvas"); s.width = 198; s.height = 242; const o = s.getContext("2d");
+  o.fillStyle = "#fffdf7"; o.fillRect(0, 0, 198, 242);
+  o.globalCompositeOperation = "destination-out";
+  const hole = (px, py) => { o.beginPath(); o.arc(px, py, 7, 0, 7); o.fill(); };
+  for (let i = 0; i <= 9; i++) { hole(i * 22, 0); hole(i * 22, 242); }
+  for (let j = 0; j <= 11; j++) { hole(0, j * 22); hole(198, j * 22); }
+  o.globalCompositeOperation = "source-over";
+  const [c1, c2, c3] = STAMP_INK[F.k] || STAMP_INK.standard, gr = o.createLinearGradient(60, 20, 140, 222);
+  gr.addColorStop(0, c1); gr.addColorStop(0.55, c2); gr.addColorStop(1, c3);
+  o.fillStyle = gr; rrect(o, 20, 20, 158, 202, 5); o.fill();
+  o.strokeStyle = "rgba(255,255,255,.35)"; o.lineWidth = 2; rrect(o, 21, 21, 156, 200, 5); o.stroke();
+  o.save(); o.translate(57, 44); o.scale(3.5, 3.5); o.shadowColor = "rgba(0,0,0,.28)"; o.shadowBlur = 3; o.shadowOffsetY = 1; o.fillStyle = "#fff"; o.fill(new Path2D(BIRD)); o.restore();
+  o.fillStyle = "#fff"; o.textAlign = "center"; o.textBaseline = "alphabetic";
+  o.shadowColor = "rgba(0,0,0,.25)"; o.shadowBlur = 3; o.shadowOffsetY = 1;
+  fitFont(o, F.miles, 800, 30, 140, 18); o.fillText(F.miles, 99, 170);
+  o.shadowColor = "transparent"; o.font = `700 13px ${CARD_FONT}`; spaced(o, KIND[F.k].name.toUpperCase(), 99, 196, 3, "center");
+  g.save(); g.translate(x + 99, y + 121); g.rotate(4 * Math.PI / 180);
+  g.shadowColor = "rgba(60,40,0,.24)"; g.shadowBlur = 16; g.shadowOffsetY = 8; g.drawImage(s, -99, -121); g.restore();
+}
+// struck across the stamp: where and when it landed
+function cardPostmark(g, x, y, F) {
+  g.save(); g.translate(x, y); g.rotate(-8 * Math.PI / 180); g.globalAlpha = 0.72; g.globalCompositeOperation = "multiply";
+  g.strokeStyle = g.fillStyle = "#2b2f45"; g.lineWidth = 5; g.lineCap = "round";
+  g.beginPath(); g.arc(0, 0, 100, 0, 7); g.stroke(); g.beginPath(); g.arc(0, 0, 64, 0, 7); g.stroke();
+  for (let i = 0; i < 4; i++) {
+    const yy = -46 + i * 30, x0 = i === 0 || i === 3 ? 104 : 108;
+    g.beginPath(); for (let t = 0; t <= 200; t += 4) { const px = x0 + t, py = yy - 7 * Math.sin((t / 50) * Math.PI); t ? g.lineTo(px, py) : g.moveTo(px, py); } g.stroke();
+  }
+  // round the ring, centred at the top
+  const ring = `${F.to.toUpperCase()} • ${F.stampDay} • LANDED • `, R = 82;
+  let z = 22; g.font = `800 ${z}px ${CARD_FONT}`;
+  const len = () => [...ring].reduce((a, c) => a + g.measureText(c).width + 4, 0);
+  while (len() > 2 * Math.PI * R * 0.97 && z > 12) { z -= 1; g.font = `800 ${z}px ${CARD_FONT}`; }
+  g.textAlign = "center"; g.textBaseline = "middle";
+  let a = -Math.PI / 2 - len() / R / 2;
+  for (const c of ring) {
+    const w = g.measureText(c).width + 4; a += w / 2 / R;
+    g.save(); g.rotate(a); g.translate(0, -R); g.fillText(c, 0, 0); g.restore();
+    a += w / 2 / R;
+  }
+  g.textBaseline = "alphabetic"; g.font = `800 36px ${CARD_FONT}`; g.fillText(F.time, 0, 12);
+  g.font = `700 16px ${CARD_FONT}`; spaced(g, F.zone.toUpperCase(), 0, 40, 3, "center");
+  g.restore();
+}
+async function postcardCard(m, withName) {
+  const F = flightFacts(m, withName), W = 1080, H = 1350, PAPER = "#fbf7ee", INK = "#1c1c1e", INK2 = "#6e6a62";
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
+  // the airmail edge
+  g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(20, 20, W - 40, H - 40); g.clip("evenodd");
+  g.translate(W / 2, H / 2); g.rotate(Math.PI / 4);
+  for (let x = -1500; x < 1500; x += 104) { g.fillStyle = "#d8443a"; g.fillRect(x, -1500, 38, 3000); g.fillStyle = "#1f63c9"; g.fillRect(x + 52, -1500, 38, 3000); }
+  g.restore();
+  g.save(); g.beginPath(); g.rect(20, 20, W - 40, H - 40); g.clip();
+  g.textBaseline = "alphabetic";
+  // the flight: round the globe if it was a long one (drawn on the paper's own
+  // colour, so its labels and air run out onto it), else a flat map like a photo
+  const round = m.km >= GLOBE_KM;
+  if (round) {
+    const { cv, frame } = await cardMap(m, "light", true, 420, 420), sc = 300 / (frame.R * 3);
+    g.drawImage(cv, 404 - frame.cx * 3 * sc, 470 - frame.cy * 3 * sc, cv.width * sc, cv.height * sc);
+  } else {
+    const { cv } = await cardMap(m, "light", false, 474, 158, 2);
+    const x = 66, y = 452, w = 948, h = 316;
+    g.save(); g.shadowColor = "rgba(60,50,30,.18)"; g.shadowBlur = 30; g.shadowOffsetY = 12; g.fillStyle = "#fff"; rrect(g, x - 14, y - 14, w + 28, h + 28, 28); g.fill(); g.restore();
+    g.save(); rrect(g, x, y, w, h, 16); g.clip(); g.drawImage(cv, x, y, w, h); g.restore();
+  }
+  g.font = `800 26px ${CARD_FONT}`; g.fillStyle = "#1f63c9"; spaced(g, "PAR PIGEON", 84, 104, 8);
+  g.font = `600 22px ${CARD_FONT}`; g.fillStyle = "#d8443a"; spaced(g, "AIRMAIL", 84, 140, 4.5);
+  cardStamp(g, 786, 84, F);
+  cardPostmark(g, 772, round ? 362 : 340, F);
+  // where from and to
+  const arrow = F.k === "turbo" ? "#1f63c9" : (STAMP_INK[F.k] || STAMP_INK.standard)[1], left = 84, maxW = 912;
+  let z = fitFont(g, `${F.from} → ${F.to}`, 800, 76, maxW, 56), lines = [[F.from, " → ", F.to]];
+  if (g.measureText(`${F.from} → ${F.to}`).width > maxW) { lines = [[F.from, " →", ""], ["", "", F.to]]; z = Math.min(fitFont(g, `${F.from} →`, 800, 64, maxW, 30), fitFont(g, F.to, 800, 64, maxW, 30)); g.font = `800 ${z}px ${CARD_FONT}`; }
+  let by = lines.length > 1 ? 856 : 878;
+  for (const [a, mid, b] of lines) {
+    let x = left;
+    for (const [t, col] of [[a, INK], [mid, arrow], [b, INK]]) { if (!t) continue; g.fillStyle = col; g.fillText(t, x, by); x += g.measureText(t).width; }
+    by += Math.round(z * 1.06);
+  }
+  g.fillStyle = INK2; fitFont(g, F.by ? `${F.by} · landed ${F.day}` : `Landed ${F.day}`, 500, 29, maxW);
+  g.fillText(F.by ? `${F.by} · landed ${F.day}` : `Landed ${F.day}`, left, by - Math.round(z * 1.06) + 52);
+  // the flight in four numbers
+  g.strokeStyle = "rgba(110,106,98,.35)"; g.lineWidth = 2; g.setLineDash([6, 5]); g.beginPath(); g.moveTo(left, 1021); g.lineTo(W - left, 1021); g.stroke(); g.setLineDash([]);
+  [[F.miles, "Distance"], [F.dur, "In the air"], [F.mph, "Average"], F.sky].forEach(([v, l], i) => {
+    const x = left + i * 228;
+    g.fillStyle = INK; fitFont(g, v, 800, 42, 214, 26); g.fillText(v, x, 1088);
+    g.fillStyle = INK2; g.font = `600 20px ${CARD_FONT}`; spaced(g, l.toUpperCase(), x, 1122, 2.6);
+  });
+  // whose it is
+  appIcon(g, left, 1214, 64);
+  g.fillStyle = INK; g.font = `800 30px ${CARD_FONT}`; g.fillText("InFlight", left + 84, 1243);
+  g.fillStyle = INK2; g.font = `500 22px ${CARD_FONT}`; g.fillText("Messages that fly the real distance", left + 84, 1273);
+  g.textAlign = "right"; g.font = `600 22px ${CARD_FONT}`; g.fillText(F.site, W - left, 1256); g.textAlign = "left";
+  g.restore();
+  return c;
+}
+async function storyCard(m, withName) {
+  const F = flightFacts(m, withName), W = 1080, H = 1920, BG = "#111113", ink = STORY_INK[F.k] || STORY_INK.standard;
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  g.fillStyle = BG; g.fillRect(0, 0, W, H);
+  const { cv } = await cardMap(m, "dark", false, 360, 427);
+  g.drawImage(cv, 0, 0, 1080, 1281);
+  let gr = g.createLinearGradient(0, 0, 0, 300); gr.addColorStop(0, "rgba(17,17,19,.92)"); gr.addColorStop(1, "rgba(17,17,19,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 300);
+  gr = g.createLinearGradient(0, 900, 0, 1290); gr.addColorStop(0, "rgba(17,17,19,0)"); gr.addColorStop(0.5, "rgba(17,17,19,.86)"); gr.addColorStop(1, BG); g.fillStyle = gr; g.fillRect(0, 900, W, 391);
+  g.textBaseline = "alphabetic";
+  appIcon(g, 64, 84, 76);
+  g.fillStyle = "#fff"; g.font = `800 44px ${CARD_FONT}`; g.fillText("InFlight", 162, 138);
+  g.fillStyle = ink; g.font = `800 24px ${CARD_FONT}`; spaced(g, F.name ? `FROM ${F.name.toUpperCase()}` : "AIRMAIL", W - 64, 131, 7, "right");
+  g.fillStyle = "#fff"; fitFont(g, F.longMiles, 900, 156, W - 128, 60); g.fillText(F.longMiles, 64, 1275);
+  g.fillStyle = ink; fitFont(g, `by ${KIND[F.k].name.toLowerCase()} pigeon`, 700, 52, W - 128); g.fillText(`by ${KIND[F.k].name.toLowerCase()} pigeon`, 64, 1360);
+  // the landed card, as in the app
+  g.save(); g.shadowColor = "rgba(0,0,0,.5)"; g.shadowBlur = 60; g.shadowOffsetY = 24; g.fillStyle = "#2a2a2e"; rrect(g, 56, 1470, 968, 312, 60); g.fill(); g.restore();
+  g.strokeStyle = "rgba(255,255,255,.08)"; g.lineWidth = 1.5; rrect(g, 56.75, 1470.75, 966.5, 310.5, 60); g.stroke();
+  const [c1, c2, c3] = STAMP_INK[F.k] || STAMP_INK.standard; gr = g.createLinearGradient(104, 1514, 150, 1590);
+  gr.addColorStop(0, c1); gr.addColorStop(0.55, c2); gr.addColorStop(1, c3);
+  g.fillStyle = gr; g.beginPath(); g.arc(142, 1552, 38, 0, 7); g.fill();
+  g.strokeStyle = "rgba(255,255,255,.3)"; g.lineWidth = 2; g.stroke();
+  g.save(); g.translate(119, 1528); g.scale(1.95, 1.95); g.fillStyle = "#fff"; g.fill(new Path2D(BIRD)); g.restore();
+  g.fillStyle = "#fff"; fitFont(g, `Landed in ${F.to}`, 800, 56, 776, 30); g.fillText(`Landed in ${F.to}`, 200, 1572);
+  const line = `Flew ${F.dur} · averaged ${F.mph}${F.skyLine ? ` · ${F.skyLine}` : ""}`;
+  g.fillStyle = "#a5a5ad"; fitFont(g, line, 500, 32, 872); g.fillText(line, 104, 1636);
+  gr = g.createLinearGradient(104, 0, 976, 0); gr.addColorStop(0, "#ff9f0a"); gr.addColorStop(1, "#f0c04a"); g.fillStyle = gr; rrect(g, 104, 1668, 872, 10, 5); g.fill();
+  g.fillStyle = "#a5a5ad"; g.font = `500 30px ${CARD_FONT}`; g.textAlign = "right"; g.fillText(F.dayShort, 976, 1736);
+  const dw = g.measureText(F.dayShort).width; g.textAlign = "left"; fitFont(g, `${F.from} → ${F.to}`, 500, 30, 872 - dw - 30, 18); g.fillText(`${F.from} → ${F.to}`, 104, 1736);
+  g.font = `700 27px ${CARD_FONT}`; const a = F.site, b = " · Messages that fly the real distance", aw = g.measureText(a).width;
+  g.font = `600 27px ${CARD_FONT}`; const bw = g.measureText(b).width;
+  let x = (W - aw - bw) / 2; g.fillStyle = "#d1d1d6"; g.font = `700 27px ${CARD_FONT}`; g.fillText(a, x, 1866); g.fillStyle = "#8e8e93"; g.font = `600 27px ${CARD_FONT}`; g.fillText(b, x + aw, 1866);
+  return c;
+}
+const cardBlob = (c) => new Promise((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("Couldn’t make the picture."))), "image/jpeg", 0.93));
+const SHARE_FMTS = [["postcard", "Postcard", "For posts and messages"], ["story", "Story", "For stories"]];
+const canShareFiles = () => { try { return !!navigator.canShare?.({ files: [new File([""], "flight.jpg", { type: "image/jpeg" })] }); } catch (_) { return false; } };
+const shareNamePref = () => { try { return localStorage.getItem("inflight-share-name") !== "0"; } catch (_) { return true; } };
+let shareUrls = [];
+function openShare(id) {
+  const m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
+  if (!shareable(m)) return;
+  shareUrls.forEach((u) => URL.revokeObjectURL(u)); shareUrls = [];
+  S.sheet = { type: "shareflight", id, chat: S.chat, fmt: "postcard", name: shareNamePref(), urls: {}, blobs: {} };
+  renderSheet(); shareRender(S.sheet);
+}
+// both pictures, drawn one after the other, each shown as soon as it's ready
+async function shareRender(s) {
+  const gen = (s.gen = (s.gen || 0) + 1), m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id);
+  if (!m) return;
+  $layer.querySelectorAll(".shimg").forEach((e) => e.classList.add("stale"));
+  for (const [fmt, make] of [["postcard", postcardCard], ["story", storyCard]]) {
+    let blob;
+    try { blob = await cardBlob(await make(m, s.name)); }
+    catch (err) { if (S.sheet === s) toast(esc(err.message || "Couldn’t make the picture.")); return; }
+    if (S.sheet !== s || s.gen !== gen) return;
+    const url = URL.createObjectURL(blob); shareUrls.push(url);
+    s.blobs[fmt] = blob; s.urls[fmt] = url;
+    const slot = $(`.shopt.${fmt} .shimg`, $layer);
+    if (slot) { slot.classList.remove("stale"); slot.innerHTML = `<img src="${url}" alt="">`; }
+    const go = $("[data-act=shareimg]", $layer); if (go) go.disabled = !s.urls[s.fmt];
+  }
+}
+async function shareImage() {
+  const s = S.sheet, blob = s?.blobs?.[s.fmt], m = (S.msgs.get(s?.chat) || []).find((x) => x.id === s?.id);
+  if (!blob || !m) return;
+  const name = `InFlight ${m.fromPlace || ""} to ${m.toPlace || ""}`.replace(/[^\w .-]+/g, "").replace(/\s+/g, " ").trim() + ".jpg";
+  const file = new File([blob], name, { type: blob.type });
+  if (canShareFiles()) {
+    try { await navigator.share({ files: [file] }); }
+    catch (err) { if (err?.name === "NotAllowedError") toast("Tap Share again to send it."); else if (err?.name !== "AbortError") toast("Couldn’t share the picture."); }
+    return;
+  }
+  // no share sheet here (a computer): saved instead
+  const a = document.createElement("a"); a.href = s.urls[s.fmt]; a.download = name; document.body.append(a); a.click(); a.remove();
+  toast("Picture saved.");
+}
+
 /* ---------- achievements (in the Flight Log) ---------- */
 const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
   world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] };
@@ -3326,6 +3572,19 @@ function drawSheet(refresh) {
         <div class="mapcard"></div>`, { flush: true });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
       return tickMap();
+    case "shareflight": {
+      if ($(".shpick", $layer)) return;                            // already up: its pictures and switch update in place
+      const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id), mine = m?.from === S.me.id;
+      $layer.innerHTML = sheetHtml("Share Flight", `
+        <div class="shpick" role="radiogroup" aria-label="Picture">${SHARE_FMTS.map(([f, label, sub]) => `<button type="button" class="shopt ${f}" role="radio" aria-checked="${s.fmt === f}" data-act="sharefmt" data-id="${f}" aria-label="${label}: ${sub}">
+          <span class="shimg">${s.urls[f] ? `<img src="${s.urls[f]}" alt="">` : `<span class="shwait" aria-hidden="true">${I.bird}</span>`}</span>
+          <span class="shl"><b>${label}</b><small>${sub}</small></span></button>`).join("")}</div>
+        <div class="group">${toggleCell({ act: "sharename", icon: I.person, tile: "blue", label: "Show My Name", sub: esc(`“${mine ? "Sent" : "Received"} by ${first(S.me.name)}”`), on: s.name })}</div>
+        <div class="gfoot">Only the two places, the day and the flight go on the picture: never the message, and never your friend’s name.</div>
+        <div class="sharego"><button type="button" class="btn wide" data-act="shareimg"${s.urls[s.fmt] ? "" : " disabled"}>${I.share}${canShareFiles() ? "Share" : "Save Image"}</button></div>`,
+        { left: { label: "Back to the map", act: "shareback" } });
+      return;
+    }
     case "safety":
       $layer.innerHTML = sheetHtml("Safety Number", `
         <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span></div>
@@ -3693,7 +3952,12 @@ function tickMap() {
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
   const flew = m.deliverAt - m.sentAt;
   const speed = m.lost ? "" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
-  card.innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
+  // its words are redrawn every tick; the share button stays put (one redrawn under a finger never gets its tap)
+  if (!$(".mcb", card)) card.innerHTML = `<div class="mcb"></div><button type="button" class="btn wide shareflight" data-act="shareflight" hidden>${I.share}Share Flight</button>`;
+  const share = $(".shareflight", card), canShare = shareable(m);
+  if (share.hidden === canShare) share.hidden = !canShare;
+  share.dataset.id = m.id;
+  $(".mcb", card).innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
@@ -4058,6 +4322,21 @@ async function onClick(e) {
     case "open":
       if (holding() && Date.now() - heldAt < 800 && !inPop) return;   // the end of a hold, not a tap
       return go("chat", id);
+    case "shareflight": return openShare(id || t.dataset.id);
+    case "sharefmt": {
+      const s = S.sheet; if (s?.type !== "shareflight") return;
+      s.fmt = id; $layer.querySelectorAll(".shopt").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.id === id)));
+      const go = $("[data-act=shareimg]", $layer); if (go) go.disabled = !s.urls[id];
+      return;
+    }
+    case "sharename": {
+      const s = S.sheet; if (s?.type !== "shareflight") return;
+      s.name = !s.name; try { localStorage.setItem("inflight-share-name", s.name ? "1" : "0"); } catch (_) {}
+      t.setAttribute("aria-checked", String(s.name)); $(".switch", t)?.classList.toggle("on", s.name);
+      return shareRender(s);
+    }
+    case "shareimg": return shareImage();
+    case "shareback": { const s = S.sheet; S.sheet = s?.id ? { type: "map", id: s.id } : null; return renderSheet(); }
     case "rowread": {
       const g = group(id), f = friend(id);
       if (g) { g.unread = 0; api("group-read", { method: "POST", body: { id } }).catch(() => {}); }

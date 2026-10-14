@@ -254,6 +254,16 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Share a flight.** A landed pigeon's map has a Share Flight button. It makes
+two pictures on the phone (nothing is sent anywhere to make them): an airmail
+postcard (4:5), with the route round the globe for a long flight or on a flat
+map for a short one, a perforated stamp in the pigeon's colour and a postmark
+in the local time where it landed; and a dark story (9:16) styled like the
+landed card in the app. Both use the app's own map. Pick one and Share opens
+the phone's share sheet (on a computer it saves the picture instead). Only
+the two places, the day and the flight go on it: never the message, never
+your friend's name, and your own first name only while Show My Name is on.
+
 **Getting around by touch.** As on iPhone: swipe in from the left edge to go
 back (the screen you came from waits underneath, dimmed, and follows your
 finger; let go early and you stay put, draft and all), and back returns to
