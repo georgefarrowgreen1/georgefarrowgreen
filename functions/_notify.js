@@ -13,7 +13,7 @@
 // back of ordinary API traffic, and from an outside scheduler (see
 // .github/workflows/inflight-notify.yml) when nobody is using the app.
 
-import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks } from "./_pigeon.js";
+import { MIN, HOUR, DAY, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 
 const enc = new TextEncoder();
@@ -101,6 +101,13 @@ async function encryptPayload(sub, text) {
   return concat(head, asPub, ct);
 }
 
+// The Topic header (a newer notice replaces one still waiting with the same topic)
+// is read by the push service, so it's a keyed hash, per phone: the same for each
+// repeat, but no one can tell from it who it's about, or that two phones share it.
+async function topicFor(env, tag, endpoint) {
+  const k = await crypto.subtle.importKey("raw", enc.encode(await serverSecret(env)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(`push-topic|${endpoint}|${tag}`)))).slice(0, 32);
+}
 // Send one notification to every device the person has turned push on for.
 export async function pushTo(env, userId, note) {
   const D = await db(env);
@@ -114,7 +121,7 @@ export async function pushTo(env, userId, note) {
       const r = await fetch(env.PIGEON_PUSH_URL || sub.endpoint, {     // PIGEON_PUSH_URL: tests only
         method: "POST",
         headers: { Authorization: await vapidAuth(env, sub.endpoint), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-          TTL: String(note.ttl || DAY / 1000), Urgency: "normal", ...(note.tag ? { Topic: note.tag.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) } : {}),
+          TTL: String(note.ttl || DAY / 1000), Urgency: "normal", ...(note.tag ? { Topic: await topicFor(env, note.tag, sub.endpoint) } : {}),
           ...(env.PIGEON_PUSH_URL ? { "X-Endpoint": sub.endpoint } : {}) },
         body: await encryptPayload(sub, JSON.stringify({ title: note.title, body: note.body, tag: note.tag, url: note.url })),
       });
@@ -316,7 +323,8 @@ export async function tick(env, origin) {
   // old rate-limit windows and ended sessions
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
-    D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY)]).catch(() => {});
+    D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
+    D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR)]).catch(() => {});
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
   const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient

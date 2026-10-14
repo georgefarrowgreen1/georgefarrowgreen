@@ -2,7 +2,10 @@
 // no key) for the wind at a few points along each route; the part of it
 // blowing the pigeon's way speeds it up, and a headwind slows it down. Only
 // points along the route are sent, never who's flying. If the forecast doesn't
-// answer quickly, the pigeon simply flies at its usual speed.
+// answer quickly, the pigeon simply flies at its usual speed. The points are
+// snapped to a quarter-degree grid (about 28 km) first, and each square's
+// weather is kept for 10 minutes, so Open-Meteo never sees where a route
+// starts or ends, and a busy sky asks it once.
 //
 // Storms slow it too: it sits out thunder, picks its way through heavy rain,
 // snow and fog, and fights gales. The worst spot along the way is kept (what
@@ -11,11 +14,13 @@
 //
 // WEATHER_URL: tests only.
 
-import { SPEED_KMH, gcPoint } from "./_pigeon.js";
+import { SPEED_KMH, gcPoint, db, chunks } from "./_pigeon.js";
 
 const POINTS = [0.1, 0.3, 0.5, 0.7, 0.9];      // where along the route to look
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
 const GALE = 60;                                 // gusts (km/h) a pigeon has to fight
+const CELL = 0.25, WX_TTL = 10 * 60e3;           // the grid points are snapped to, and how long a square's weather is kept
+const snap = (v) => Math.round(v / CELL) * CELL;
 
 // What the sky is doing at one point (WMO weather code, gusts), and how much
 // of its speed a pigeon keeps flying through it.
@@ -48,20 +53,40 @@ export async function windsFor(env, routes) {
   routes.forEach(([aLat, aLon, bLat, bLon], i) => {
     for (const f of POINTS) {
       const [lat, lon] = gcPoint(aLat, aLon, bLat, bLon, f), [nLat, nLon] = gcPoint(aLat, aLon, bLat, bLon, Math.min(1, f + 0.02));
-      pts.push({ i, f, lat: Math.round(lat * 100) / 100, lon: Math.round(((lon + 540) % 360 - 180) * 100) / 100, head: bearing(lat, lon, nLat, nLon) });
+      const sl = Math.max(-90, Math.min(90, snap(lat))), so = snap((lon + 540) % 360 - 180);
+      pts.push({ i, f, lat: sl, lon: so === -180 ? 180 : so, head: bearing(lat, lon, nLat, nLon) });
     }
   });
-  let data;
-  try {
-    const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
-    u.searchParams.set("latitude", pts.map((p) => p.lat).join(",")); u.searchParams.set("longitude", pts.map((p) => p.lon).join(","));
-    u.searchParams.set("current", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code"); u.searchParams.set("wind_speed_unit", "kmh");
-    const res = await fetch(u, { signal: AbortSignal.timeout(2500), headers: { Accept: "application/json" } });
-    if (!res.ok) return calm;
-    data = await res.json();
-  } catch (_) { return calm; }
-  const list = Array.isArray(data) ? data : [data];
-  if (list.length !== pts.length) return calm;
+  const key = (p) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
+  const cells = [...new Map(pts.map((p) => [key(p), p])).values()], got = new Map();
+  // squares asked about lately (tests change the weather between pigeons, so they skip this)
+  const D = await db(env), t = Date.now(), ttl = env.WEATHER_URL ? 0 : WX_TTL;
+  if (ttl) for (const part of chunks(cells.map(key), 90)) {
+    const { results } = await D.prepare(`SELECT cell, w FROM pg_wxcache WHERE at > ? AND cell IN (${part.map(() => "?").join(",")})`).bind(t - ttl, ...part).all();
+    for (const row of results) try { got.set(row.cell, JSON.parse(row.w)); } catch (_) {}
+  }
+  const ask = cells.filter((p) => !got.has(key(p)));
+  if (ask.length) {
+    let data;
+    try {
+      const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
+      u.searchParams.set("latitude", ask.map((p) => p.lat).join(",")); u.searchParams.set("longitude", ask.map((p) => p.lon).join(","));
+      u.searchParams.set("current", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code"); u.searchParams.set("wind_speed_unit", "kmh");
+      const res = await fetch(u, { signal: AbortSignal.timeout(2500), headers: { Accept: "application/json" } });
+      if (!res.ok) return calm;
+      data = await res.json();
+    } catch (_) { return calm; }
+    const fresh = Array.isArray(data) ? data : [data];
+    if (fresh.length !== ask.length) return calm;
+    const keep = [];
+    ask.forEach((p, k) => {
+      const c = fresh[k]?.current; if (!c) return;
+      const w = { current: { wind_speed_10m: c.wind_speed_10m, wind_direction_10m: c.wind_direction_10m, wind_gusts_10m: c.wind_gusts_10m, weather_code: c.weather_code } };
+      got.set(key(p), w); keep.push(D.prepare("INSERT OR REPLACE INTO pg_wxcache (cell, at, w) VALUES (?, ?, ?)").bind(key(p), t, JSON.stringify(w)));
+    });
+    if (keep.length) await D.batch(keep).catch(() => {});
+  }
+  const list = pts.map((p) => got.get(key(p)));
   const sum = routes.map(() => ({ tail: 0, slow: 0, n: 0, lo: null, hi: null }));
   list.forEach((w, k) => {
     const speed = Number(w?.current?.wind_speed_10m), from = Number(w?.current?.wind_direction_10m);

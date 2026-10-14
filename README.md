@@ -167,8 +167,9 @@ Screen) and Email (via Resend). Push is per phone; the rest is per account:
 which events notify (a pigeon lands, takes off, friend requests, accepted
 requests), whether names show on the lock screen, and quiet hours in the
 phone's own time zone (pigeons that land then are announced when they end). They say who sent a pigeon, never what it says.
-Push payloads are encrypted to each phone; the server makes its own VAPID key
-on first use (stored in D1). Emails wait 10 minutes and go out at most every
+Push payloads are encrypted to each phone, and the Topic header push services
+read (so a newer notice replaces a waiting one) is a keyed hash per phone, so it
+names no one; the server makes its own VAPID key on first use (stored in D1). Emails wait 10 minutes and go out at most every
 half hour, with a one-click unsubscribe link. Code: `functions/_notify.js`,
 `pigeon/sw.js`.
 
@@ -345,7 +346,9 @@ can't see which one it was. One per person per message: another replaces it,
 the same again takes it back. Code: `functions/_reacts.js`, table `pg_reacts`.
 
 **Weather.** At take-off the server asks Open-Meteo (free, no key) for the wind
-at five points along each route (`functions/_weather.js`). What blows the
+at five points along each route (`functions/_weather.js`), snapped to a
+quarter-degree grid (about 28 km) so Open-Meteo can't tell where a route starts
+or ends; each square's weather is kept 10 minutes, so a busy sky asks once. What blows the
 pigeon's way changes its cruising speed (80 km/h plus the tailwind, or minus a
 headwind; between 0.6× and 1.6×), and the 5-minute and 3-day limits still apply
 after it. Storms slow it too: it sits out thunder (0.7×), picks its way
