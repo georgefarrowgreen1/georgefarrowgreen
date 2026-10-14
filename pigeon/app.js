@@ -151,7 +151,16 @@ const hue = (s) => ([...s].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) 
 function avatar(person, size = "", dot = false, one = false) {
   const name = person?.name || person?.handle || "?";
   const url = person?.avatarAt ? avatarUrl(person) : "";
-  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(one ? initials(name).slice(0, 1) : initials(name))}${dot && isOnline(person) ? '<i class="online"></i>' : ""}</span>`;
+  return `<span class="av ${size}" data-c="${hue(name)}" aria-hidden="true">${url ? `<img src="${url}" alt="">` : esc(one ? initials(name).slice(0, 1) : initials(name))}${dot ? onlineDot(person) : ""}</span>`;
+}
+// The dot pops in when someone comes online while you watch, not every time
+// the list redraws (nor at all while the app is still opening).
+const onlineSince = new Map();
+function onlineDot(person) {
+  const id = person?.id;
+  if (!isOnline(person)) { onlineSince.delete(id); return ""; }
+  let at = onlineSince.get(id); if (at == null) onlineSince.set(id, (at = S.synced ? Date.now() : 0));
+  return `<i class="online${Date.now() - at < 150 ? " new" : ""}"></i>`;
 }
 // A group's picture: two of its other members, overlapping.
 function gavatar(g, size = "") {
@@ -1349,7 +1358,7 @@ async function forget() {
   clearTimeout(cacheTimer);
   if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {}); }
   S.outbox = [];
-  S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.locked = false;
+  S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map() });
   clearAttach();
@@ -1507,6 +1516,13 @@ async function applySync(d) {
     }
   }
 }
+// something set off, landed or was called back: the In the air strip catches up now, not 20 s later
+function skiesFollow() {
+  const sig = [...S.friends, ...S.groups].map((x) => (x.last ? `${x.last.id}:${x.last.flying ? 1 : 0}${x.last.lost ? "l" : ""}` : "")).join(",");
+  if (sig === S.skySig) return;
+  const first = S.skySig == null; S.skySig = sig;
+  if (!first) loadSkies();
+}
 async function sync() {
   if (!S.token || !S.priv) return;
   if (syncing) return syncing;
@@ -1517,11 +1533,13 @@ async function sync() {
       checkMyKey(d.me);
       S.raw = d;
       await applySync(d);
+      skiesFollow();
       S.started = true;
       if (S.view === "chat" && S.chat) await loadChat(S.chat);
       if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
       S.fromCache = false;
       if (!AUTH_VIEWS.has(S.view)) render();
+      S.synced = true;                            // from here on, what changes is news
       cacheSave();
       if (S.outbox.length) outboxFlush();
     } catch (e) { if (e.status !== 401) console.warn("sync", e.message); }
@@ -1826,8 +1844,8 @@ const EDGE = 28;                                                   // how near t
 const speed = (st, x, y) => { const t = performance.now(), dt = Math.max(1, t - st.lt); st.vx = (x - st.lx) / dt; st.vy = (y - st.ly) / dt; st.lx = x; st.ly = y; st.lt = t; };
 const settle = (els, css, ms, then) => {
   const quick = STILL.matches;
-  for (const [el, tf, op] of els) { if (!el) continue; el.style.transition = quick ? "none" : `transform ${ms}ms cubic-bezier(.2,.9,.25,1), opacity ${ms}ms ease`; el.style.transform = tf; if (op != null) el.style.opacity = op; }
-  setTimeout(then, quick ? 0 : ms);
+  for (const [el, tf, op] of els) { if (!el) continue; el.style.transition = quick ? "none" : `transform ${ms}ms cubic-bezier(.25,.75,.35,1), opacity ${ms}ms ease`; el.style.transform = tf; if (op != null) el.style.opacity = op; }
+  setTimeout(then, quick ? 0 : ms + 30);                           // (a beat over, so the last frame has landed)
 };
 const unstyle = (...els) => { for (const el of els) if (el) { el.style.transition = el.style.transform = el.style.opacity = el.style.animation = ""; } };
 // what you'd see behind the screen you're on: the one you came from, as you left it
@@ -1879,8 +1897,11 @@ function edgeBack() {
     const els = moving();
     const done = () => {
       if (go) { S.navQuiet = true; s2.b.click(); }
-      for (const el of els) if (el) { unstyle(el); el.classList.remove("swiped"); }
+      // back in place in one step: the screen's own transition mustn't replay the slide
+      for (const el of els) if (el) { el.style.transition = "none"; el.style.transform = el.style.opacity = ""; el.classList.remove("swiped"); }
       s2.box.remove(); r.classList.remove("swiping");
+      void $view.offsetWidth;
+      for (const el of els) if (el) el.style.transition = "";
     };
     settle([...els.map((el) => [el, go ? "translateX(100%)" : "translateX(0)"]), [s2.box, go ? "translateX(0)" : "translateX(-28%)"], [s2.box.lastChild, null, go ? "0" : "0.14"]], null, go ? 260 : 220, done);
   };
@@ -2079,7 +2100,8 @@ function go(view, chat) {
   if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
   const same = view === S.view && chat === S.chat, kind = !same && $view ? navKind(S.view, view) : null;
   if (!same && $view) S.nav = S.navQuiet ? null : kind;
-  S.navQuiet = false;
+  S.noRise = S.navQuiet; S.navQuiet = false;
+  if (!S.locked) ghostView();   // copy the old screen now, before anything about it changes
   // going in: keep a still of this screen, to show under a swipe back, and remember where back goes
   if (kind === "push" && S.view !== "chat") {
     S.under = { from: S.view, node: $view.cloneNode(true), top: $view.scrollTop, plain: root().classList.contains("plain"), tabs: $tabbar.hidden ? null : $tabbar.cloneNode(true) };
@@ -2119,20 +2141,21 @@ function navKind(from, to) {
 function ghostView() {
   if (S.nav !== "push" && S.nav !== "pop") return;
   $(".nav-ghost", root())?.remove();
-  const g = $view.cloneNode(true), top = $view.scrollTop;
-  g.className = `nav-ghost nav-ghost-${S.nav}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
+  // the whole old screen: its list or chat, and the tab bar or composer that belongs to it
+  const g = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
+  g.className = `nav-ghost nav-ghost-${S.nav}${root().classList.contains("plain") ? " plain" : ""}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
+  v.classList.remove("nav-push", "nav-pop", "nav-fade"); g.append(v);
+  if (!$compose.hidden) { const c = $compose.cloneNode(true), t = $("textarea", c); if (t && $ta) t.value = $ta.value; g.append(c); }
+  if (!$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise"); g.append(t); }
   g.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
-  g.style.top = `${$view.offsetTop}px`; g.style.height = `${$view.offsetHeight}px`;
-  $view.before(g); g.scrollTop = top;
+  g.style.top = `${$view.offsetTop}px`;
+  $view.before(g); v.scrollTop = top;
   g.addEventListener("animationend", (e) => { if (e.target === g) g.remove(); });
   setTimeout(() => g.remove(), 900);
 }
 function animateNav() {
   const kind = S.nav; S.nav = null;
   if (!kind) return;
-  // the old screen's copy ends where the new one does, so it never shows behind the composer
-  const g = $(".nav-ghost", root());
-  if (g) g.style.height = `${Math.min(g.offsetHeight, $view.offsetHeight)}px`;
   const els = kind === "push" && S.view === "chat" ? [$view, $compose] : [$view];
   for (const el of els) {
     el.classList.remove("nav-push", "nav-pop", "nav-fade"); void el.offsetWidth;
@@ -2154,7 +2177,6 @@ function render() {
   root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
   $view.classList.toggle("tabs-pad", !auth && !chat);
   if (auth) {
-    ghostView();
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     return;
   }
@@ -2162,9 +2184,11 @@ function render() {
   drawLock();
   const tabsBack = $tabbar.hidden && !chat;
   $tabbar.hidden = chat;
-  if (tabsBack) { $tabbar.classList.remove("rise"); void $tabbar.offsetWidth; $tabbar.classList.add("rise"); }
+  // the tab bar rises back in, unless a swipe has already shown it there (a class left
+  // on from last time would replay the rise as the bar unhides, so it always comes off)
+  if (tabsBack) { $tabbar.classList.remove("rise"); if (!S.noRise) { void $tabbar.offsetWidth; $tabbar.classList.add("rise"); } }
+  S.noRise = false;
   const keepTop = $view.scrollTop, switches = S.nav ? null : switchStates($view);
-  ghostView();
   $view.innerHTML = chat ? vChat() : S.view === "friends" ? vFriends() : S.view === "account" ? vAccount() : vMessages();
   if (chat) $view.querySelectorAll("[data-ar]").forEach((el) => { el.style.aspectRatio = el.dataset.ar; });
   if (chat) $view.querySelectorAll("[data-h]").forEach((el) => { el.style.setProperty("--h", el.dataset.h); });
@@ -2905,6 +2929,8 @@ function renderCompose() {
   if (!pick.firstChild) pick.innerHTML = KINDS.map(([k, name]) => `<button type="button" class="${k}" data-act="pigeon" data-id="${esc(k)}" aria-pressed="false">${pg(k, S.me.skin)}<span>${name}</span><b></b></button>`).join("")
     + `<button type="button" class="when" data-act="schedule" aria-pressed="false" aria-label="Choose when it lands">${I.clock}<span></span></button>`
     + `<button type="button" class="when viab" data-act="via" aria-pressed="false" aria-label="Stop over with a friend on the way">${I.people}<span></span></button>`;
+  // another chat: its choice is simply there, rather than the chips resizing as it slides in
+  const moved = pick.dataset.chat !== S.chat; pick.dataset.chat = S.chat; pick.classList.toggle("snap", moved);
   const when = $(".when:not(.viab)", pick), viab = $(".viab", pick), via = viaFor(S.chat, dumb);
   when.hidden = viab.hidden = !!g || dumb != null;
   when.setAttribute("aria-pressed", String(!!sched));
@@ -3161,6 +3187,10 @@ const switchKey = (b) => `${b.dataset.act}:${b.dataset.id || ""}`;
 // Redrawing replaces a switch, which would snap it to its end. Note where each
 // one was before a redraw, then replay any glide from where it had got to.
 const switchStates = (el) => new Map([...el.querySelectorAll("[role=switch]")].map((b) => [switchKey(b), b.getAttribute("aria-checked") === "true"]));
+// A box that was already ticked stays still when its sheet redraws: only a new tick pops in.
+const TICKED = "[aria-checked=true],[aria-pressed=true]";
+const tickedKeys = (el) => new Set([...el.querySelectorAll(TICKED)].map(switchKey));
+const keepTicks = (el, was) => { for (const b of el.querySelectorAll(TICKED)) if (was.has(switchKey(b))) b.classList.add("kept"); };
 function keepGlides(el, before) {
   for (const b of el.querySelectorAll("[role=switch]")) {
     const k = switchKey(b), was = before.get(k), is = b.getAttribute("aria-checked") === "true", sw = $(".switch", b);
@@ -3193,7 +3223,7 @@ function renderSheet(refresh) {
   }
   clearTimeout(sheetTimer);
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
-  const before = had ? switchStates($layer) : null;
+  const before = had ? switchStates($layer) : null, ticked = had ? tickedKeys($layer) : null;
   const old = $(".sheet", $layer);
   drawSheet(refresh);
   sheetType = S.sheet?.type || null;
@@ -3201,7 +3231,7 @@ function renderSheet(refresh) {
   if (had && now && now !== old) {
     $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
     if (swapped) $(".sheet .body", $layer)?.classList.add("swap");
-    keepGlides($layer, before);
+    keepGlides($layer, before); keepTicks($layer, ticked);
   }
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
 }
@@ -3603,7 +3633,7 @@ function tickMap() {
    cards keep their place, their scroll and their animations. Cards spring in,
    the pigeon on each track flaps along it, and on landing it hops onto a tick
    and the card folds away. */
-let airEl = null;
+let airEl = null, airQuiet = false;
 const airKey = (r) => String(r.id);
 // 4:29 under an hour (it ticks), then 1h 04m, then 2d 3h
 function airTime(ms) {
@@ -3618,6 +3648,9 @@ function airMount() {
     airEl = document.createElement("section");
     airEl.className = "air"; airEl.setAttribute("aria-label", "Pigeons in the air");
     airEl.innerHTML = `<div class="airin"><div class="airhead"><b>In the air<span class="airn"></span></b><span class="airnext"></span></div><div class="rail" role="group" aria-label="Pigeons in the air"></div></div>`;
+    // the pigeons already up are simply there when the list first draws: the
+    // strip doesn't grow open under it, and the cards don't fly in
+    airQuiet = true; airSync(); airQuiet = false;
   }
   const rail = $(".rail", airEl), x = rail.scrollLeft;
   slot.replaceWith(airEl);
@@ -3700,8 +3733,10 @@ function airSync() {
     if (m.g ? m.pts.every((p) => p.at <= now()) : m.at <= now()) continue;    // landed before we saw it
     const c = m.g ? airGroupCard(m) : airCard(m.r);
     c.style.setProperty("--i", i++);
-    c.classList.add("enter");
-    c.addEventListener("animationend", (e) => { if (e.animationName === "acard-in") c.classList.remove("enter"); });
+    if (!airQuiet) {
+      c.classList.add("enter");
+      c.addEventListener("animationend", (e) => { if (e.animationName === "acard-in") c.classList.remove("enter"); });
+    }
     // keep them in landing order
     const after = [...rail.children].find((x) => +x.dataset.at > m.at && !x.classList.contains("out"));
     rail.insertBefore(c, after || null);
@@ -4967,6 +5002,7 @@ async function send() {
     $ta.value = ""; fitTa(); S.stick = true;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     S.fresh.set(r.message.id, Date.now());
+    loadSkies();                      // it's in the air now: ready for the strip on Messages
     render();                         // show it now; on a slow connection the sync below can outlast the pop
     await sync();
     offerNotify();
