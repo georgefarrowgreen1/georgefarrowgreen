@@ -8,7 +8,7 @@ import {
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
-import { windsFor } from "../../_weather.js";
+import { windsFor, forecastFor, hourOf } from "../../_weather.js";
 import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
@@ -687,6 +687,12 @@ async function sendMessage({ request, env, waitUntil }) {
     km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
     [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
     flight = Math.round(flightMs(km / w.f, speed)); calm = flightMs(km, speed);
+    // booked to land later: it flies through the weather forecast for when it takes off
+    if (landAt != null && hasTo && landAt - calm > t + 30 * 60e3) {
+      const [fc] = await forecastFor(env, [[u.lat, u.lon, r.lat, r.lon]]);
+      const h1 = hourOf(fc, landAt - calm), h = h1 && (hourOf(fc, landAt - Math.round(flightMs(km / h1.f, speed))) || h1);   // (once more: the weather moves its take-off)
+      if (h) { w = h; flight = Math.round(flightMs(km / w.f, speed)); }
+    }
   }
   const wx = wxOf(w.ws || [w], calm, flight, via ? [[0, via.at - t], [via.off - t, flight - (via.off - t)]] : undefined);   // what the weather did to it
   const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off
@@ -728,6 +734,21 @@ async function sendMessage({ request, env, waitUntil }) {
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
   const me = landAt == null ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ message: msgView(u.id, m, t), ...(me ? { me: meView(me, t) } : {}) });
+}
+
+// Before sending: the weather along the way now, and for the next day hour by
+// hour (how much faster or slower a pigeon would fly, and the worst of it), so
+// the phone can say whether it's worth waiting for the skies to clear.
+async function wxPlan({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "wxplan:" + u.id, 120, 60 * 60e3);
+  const other = new URL(request.url).searchParams.get("with") || "", D = await db(env);
+  if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only plan pigeons to friends.");
+  const r = await D.prepare("SELECT lat, lon FROM pg_users WHERE id = ?").bind(other).first();
+  if (u.lat == null || r?.lat == null) return json({ now: null, hours: [] });
+  const route = [u.lat, u.lon, r.lat, r.lon], [[now], [fc]] = await Promise.all([windsFor(env, [route]), forecastFor(env, [route])]);
+  const view = (x) => ({ f: Math.round(x.f * 1000) / 1000, wx: x.wx ? { k: x.wx.k, lat: x.wx.lat, lon: x.wx.lon } : null });
+  return json({ now: view(now), hours: (fc || []).map((x) => ({ at: x.at, ...view(x) })) });
 }
 
 // A scheduled pigeon that hasn't taken off yet: it never leaves. No one was
@@ -1141,7 +1162,7 @@ const ROUTES = {
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "POST block": block, "DELETE block": unblock,
-  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals,
+  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,

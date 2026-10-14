@@ -297,6 +297,20 @@ too, for friends who aren't in the group. A friend who has moved since, or is
 no longer a friend, isn't told. Flyovers are deleted after a month, and
 waving closes 12 hours after the pigeon passed.
 
+**Plan around the weather.** Before you send, the composer checks the next
+day's forecast along the way (`forecastFor` in `functions/_weather.js`: the
+same squares of sky as the weather at take-off, never who's flying). If
+storms, heavy rain, snow, fog or headwinds would make the pigeon land well
+late (at least 20 minutes, and a tenth of its flight), it says so, and when
+the skies clear: "Storms over the Alps: it would land 3h 4m late. Clear by
+18:00: a swift pigeon leaving then lands tomorrow at 03:12." One tap books it
+to land then. A booked pigeon now flies through the forecast for the hour it
+takes off, not the weather when it was booked. A strong tailwind gets a word
+too. Waiting means booking the pigeon, and only swift or faster pigeons can be
+booked, so a standard pigeon is offered a swift one; with none left, the
+composer just says when the skies clear. One to one only, since group
+pigeons can't be booked.
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat

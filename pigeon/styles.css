@@ -1263,3 +1263,8 @@ svg.fillico{fill:currentColor;stroke:none}
 .wavebtn:disabled{opacity:.5}
 .mapcard .flyover{display:block;font-size:13px;font-weight:600;color:var(--label-2);text-align:center;text-wrap:balance}
 .mapcard .flyover .ico{font-size:13px;margin-right:4px;vertical-align:-2px;color:var(--teal)}
+/* plan around the weather: under the composer's note, what the skies are doing and when they clear */
+.wxplan{display:flex;flex-direction:column;align-items:center;gap:6px;margin:2px 16px 0;font-size:12px;line-height:16px;color:var(--orange-t);text-align:center;text-wrap:balance}
+.wxplan .wxline .ico{font-size:14px;margin-right:4px;vertical-align:-3px}
+.wxplan.early{color:var(--green-t)}
+.wxplan .wxwait{min-height:30px;padding:0 14px;font-size:13px}

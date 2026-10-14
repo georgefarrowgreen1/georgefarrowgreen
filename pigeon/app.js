@@ -41,7 +41,7 @@ const S = {
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
   chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
-  reacts: new Map(), fly: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
+  reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -2159,6 +2159,7 @@ function mount() {
     <form class="compose" hidden data-form="compose">
       <div class="pick" hidden role="group" aria-label="Which pigeon"></div>
       <div class="note" hidden></div>
+      <div class="wxplan" hidden></div>
       <div class="attach" hidden></div>
       <div class="replybar" hidden></div>
       <div class="crow">
@@ -3312,6 +3313,41 @@ function schedPresets() {
   return out;
 }
 const localInput = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+/* ---------- plan around the weather ----------
+   Before you send: the forecast along the way, now and over the next day. If
+   the weather would make it land well late, the composer says so, and when
+   the skies clear: a pigeon booked to leave then flies through that hour's
+   forecast instead. A strong tailwind gets a word too. */
+const planBusy = new Set();
+async function planWx(id) {
+  const have = S.wxPlan.get(id);
+  if (planBusy.has(id) || (have && now() - have.at < 20 * MIN)) return;
+  planBusy.add(id);
+  try { const d = await api("wx-plan?with=" + encodeURIComponent(id)); S.wxPlan.set(id, { at: now(), d }); if (S.chat === id) renderCompose(); }
+  catch (_) { S.wxPlan.set(id, { at: now(), d: null }); }
+  finally { planBusy.delete(id); }
+}
+const PAID = ["swift", "turbo", "rocket"];
+function wxAdvice(f, kind) {
+  const p = S.wxPlan.get(f.id)?.d; if (!p?.now || f.lat == null) return null;
+  const km = chatKm(f), calm = (k) => flightMs(km, mySpeed(k)), late = (x, k) => calm(k) / x.f - calm(k), t = now();
+  const d0 = late(p.now, kind);
+  if (-d0 >= Math.max(10 * MIN, calm(kind) * 0.08)) return { early: Math.round(-d0 / MIN) * MIN, eta: Math.round(calm(kind) / p.now.f / MIN) * MIN };
+  if (d0 < Math.max(20 * MIN, calm(kind) * 0.1)) return null;
+  // waiting means booking it to land later, and that takes a swift pigeon or faster
+  const sk = PAID.includes(kind) ? kind : schedKind(), k = sk || kind;
+  const clear = (p.hours || []).find((h) => h.at >= t + HOUR && h.at <= t + 20 * HOUR && late(h, k) <= Math.max(5 * MIN, late(p.now, k) * 0.25));
+  return { late: Math.round(d0 / MIN) * MIN, wx: p.now.wx, clear: clear && { off: clear.at, land: Math.ceil((clear.at + calm(k) / clear.f) / MIN) * MIN, kind: sk } };
+}
+function wxPlanHtml(a, kind) {
+  if (a.early) return `<span class="wxline">${I.wind}<span>A tailwind today: it lands in ${esc(fmtDur(a.eta))}, ${esc(fmtDur(a.early))} early.</span></span>`;
+  const w = a.wx && WX[a.wx.k], c = a.clear, by = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : `${fmtTime(ts)} tomorrow`);
+  let text = `${w ? `${w[0][0].toUpperCase()}${w[0].slice(1)} over ${wxWhere(a.wx.lon, a.wx.lat)}` : "Rough weather on the way"}: it would land ${fmtDur(a.late)} late.`;
+  if (!c) text += " No clear skies in the next day.";
+  else if (!c.kind) text += ` Clear by ${by(c.off)}, if you’d rather wait.`;
+  else text += ` Clear by ${by(c.off)}: ${c.kind === kind ? "leave then and it lands" : `a ${KIND[c.kind].name.toLowerCase()} pigeon leaving then lands`} ${fmtLand(c.land)}.`;
+  return `<span class="wxline">${I[w ? w[1] : "wind"]}<span>${esc(text)}</span></span>${c?.kind ? `<button type="button" class="btn small wxwait" data-act="wxwait" data-id="${c.land}" data-kind="${c.kind}">${c.kind === kind ? "Leave" : esc(KIND[c.kind].name)} at ${fmtTime(c.off)}</button>` : ""}`;
+}
 function renderCompose() {
   const g = S.chat ? group(S.chat) : null;
   const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || g) && !!S.me;
@@ -3380,6 +3416,11 @@ function renderCompose() {
     note.hidden = false; note.className = "note go";
     note.innerHTML = `${pg(kind, S.me.skin)}<span>${t.free || kind === "dumb" ? "" : "Not your turn for Standard. "}${KIND[kind].name}${kind === "dumb" ? " pigeon" : ""} lands in ${fmtDur(flightMs(km, mySpeed(kind)))}.${S.me.risky ? ' <span class="risk">1 in 100 is lost.</span>' : ""}</span>`;
   }
+  // the weather along the way, for a pigeon about to leave now (one to one)
+  const wp = $(".wxplan", $compose), plan = !g && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && f.lat != null;
+  if (plan) planWx(f.id);
+  const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
+  if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
   btn.disabled = blocked || !has || S.busy;
   // nothing typed: the send button becomes a microphone (voice pigeons)
   const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
@@ -4742,6 +4783,7 @@ async function onClick(e) {
     case "viapick": S.via = { chat: S.sheet?.chat || S.chat, id }; S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "unvia": S.via = null; S.sheet = null; renderSheet(); return renderCompose();
     case "schedule": S.sheet = { type: "schedule", chat: S.chat }; return renderSheet();
+    case "wxwait": S.sched = { chat: S.chat, at: +id }; S.pick = t.dataset.kind; S.via = null; haptic("tick"); return renderCompose();
     case "schedpick": S.sched = { chat: S.sheet?.chat || S.chat, at: +id }; S.via = null; S.sheet = null; renderSheet(); return renderCompose();
     case "unschedule": S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
