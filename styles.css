@@ -40,10 +40,11 @@ body {
 }
 
 /* Hide text content until JS has loaded the real values, so no placeholder
-   text flashes through on load. Revealed by body.loaded (set in app.js, with
-   an inline failsafe timeout). */
-.brand, .hero-content { opacity: 0; transition: opacity 0.4s var(--ease); }
+   text flashes through on load. Revealed by body.loaded (set in app.js), or
+   after 2.5s whatever happens (no inline script: the CSP allows none). */
+.brand, .hero-content { opacity: 0; transition: opacity 0.4s var(--ease); animation: failsafe-reveal 0.4s var(--ease) 2.5s forwards; }
 body.loaded .brand, body.loaded .hero-content { opacity: 1; }
+@keyframes failsafe-reveal { to { opacity: 1; } }
 
 /* ---------------- Hero ---------------- */
 .hero {

@@ -67,6 +67,14 @@ async function admitted(request, env) {
   return Number.isFinite(exp) && Date.now() < exp;
 }
 
+// The site shares its origin with InFlight, whose keys live in this origin's
+// storage. The demo runs a lot of inline script, so it's served sandboxed: an
+// opaque origin of its own, with no way to reach the site's storage or cookies,
+// and nothing to talk to. The gate runs no script at all.
+const DEMO_CSP = "sandbox allow-scripts allow-forms; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const GATE_CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+const HARDEN = { "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Strict-Transport-Security": "max-age=31536000" };
+
 export function notFound() {
   return new Response("Not found", {
     status: 404,
@@ -113,6 +121,8 @@ const gate = (wrong) => new Response(`<!doctype html>
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Robots-Tag": "noindex",
+    "Content-Security-Policy": GATE_CSP,
+    ...HARDEN,
   },
 });
 
@@ -146,6 +156,8 @@ export async function serveDemo(ctx) {
   headers.set("Cache-Control", "no-store");
   headers.set("Vary", "Cookie");
   headers.set("X-Robots-Tag", "noindex");
+  headers.set("Content-Security-Policy", DEMO_CSP);
+  for (const [k, v] of Object.entries(HARDEN)) headers.set(k, v);
   return new Response(asset.body, { status: 200, headers });
 }
 

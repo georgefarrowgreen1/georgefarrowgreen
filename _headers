@@ -1,9 +1,13 @@
 # Cloudflare Pages headers (https://developers.cloudflare.com/pages/configuration/headers/)
+# The whole site shares an origin with InFlight (/pigeon), whose keys live in
+# this origin's storage, so every page here runs only its own scripts too.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
+  Strict-Transport-Security: max-age=31536000
 
 /index.html
   Cache-Control: no-cache
@@ -19,11 +23,13 @@
 /pigeon/*
   ! Permissions-Policy
   Permissions-Policy: geolocation=(self), microphone=(self), camera=(), publickey-credentials-get=(self), publickey-credentials-create=(self)
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
   ! Referrer-Policy
   Referrer-Policy: no-referrer
   X-Robots-Tag: noindex
   Cross-Origin-Opener-Policy: same-origin
+  ! Strict-Transport-Security
   Strict-Transport-Security: max-age=31536000
   Cache-Control: no-cache
 
