@@ -2782,29 +2782,33 @@ function vFriends() {
 /* ---------- Account ---------- */
 function vAccount() {
   const u = S.me;
-  const dots = (kind) => Array.from({ length: KIND[kind].max }, (_, i) => `<i class="${i < (u[kind] || 0) ? "" : "e"}"></i>`).join("");
-  // extras (given by the admin) past a full loft show as +N after the dots
-  const loftVal = (kind) => { const n = u[kind] || 0, extra = n - KIND[kind].max;
-    return `<span class="dots ${kind}" role="img" aria-label="${n} of ${KIND[kind].max}">${dots(kind)}${extra > 0 ? `<b class="extra">+${extra}</b>` : ""}</span>`; };
-  const hatch = (kind) => (u[kind] || 0) >= KIND[kind].max ? "full" : `next in <span data-eta="${u[kind + "NextAt"]}"></span>`;
+  // today's pigeons: how many of each are in your loft, and when the next hatches
+  const tile = (kind, name, what) => {
+    const n = u[kind] || 0, full = n >= KIND[kind].max, next = full ? (kind === "mystery" ? "Ready" : "Full") : n ? `Next in <span data-eta="${u[kind + "NextAt"]}"></span>` : `In <span data-eta="${u[kind + "NextAt"]}"></span>`;
+    return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" ? null : u.skin)}<b>${n}</b></span>
+      <span class="lname">${name}</span><small>${what}</small><small class="lnext">${next}</small></div>`;
+  };
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
-      <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)} · My Profile</span></span>${chevSm}</button></div>
-    <div class="ghead">Pigeons</div>
-    <div class="group">
-      ${cell({ icon: pg("rocket", u.skin), tile: "kb", label: "Rocket", sub: `9× faster · ${hatch("rocket")}`, val: loftVal("rocket") })}
-      ${cell({ icon: pg("turbo", u.skin), tile: "kb", label: "Turbo", sub: `3× faster · ${hatch("turbo")}`, val: loftVal("turbo") })}
-      ${cell({ icon: pg("swift", u.skin), tile: "kb", label: "Swift", sub: `2× faster · ${hatch("swift")}`, val: loftVal("swift") })}
-      ${cell({ icon: pg("standard", u.skin), tile: "kb", label: "Standard", sub: "Free on your turn" })}
-      ${cell({ icon: pg("mystery"), tile: "kb", label: "Mystery", sub: `Any pigeon, any time · ${(u.mystery || 0) >= 1 ? "ready" : `next in <span data-eta="${u.mysteryNextAt}"></span>`}`, val: loftVal("mystery") })}
-    </div>
-    <div class="gfoot">You get 1 rocket, 3 turbo and 9 swift pigeons a day, and they fly any time. Standard pigeons are free but wait for your turn.</div>
-    <div class="group mt">${cell({ act: "feathers", icon: I.feather, tile: "yellow", label: "Feathers", sub: "Earned by your pigeons · spend them in the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
-    <div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
-      ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles flown, records and more", chev: true })}</div>
-    <div class="group mt">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
+      <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)}${u.place ? ` · ${esc(u.place)}` : ""}</span><span class="csub one">Edit Profile</span></span>${chevSm}</button></div>
+    <div class="ghead">Today’s Pigeons</div>
+    <div class="lgrid">${tile("rocket", "Rocket", "9× faster")}${tile("turbo", "Turbo", "3× faster")}${tile("swift", "Swift", "2× faster")}${tile("mystery", "Mystery", "Any pigeon")}</div>
+    <div class="gfoot">Every day: 1 rocket, 3 turbo, 9 swift and a mystery pigeon. They fly any time. Standard pigeons are free and fly on your turn.</div>
+    <div class="ghead">Your Loft</div>
+    <div class="group">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
+      ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles, passport, badges and looks", chev: true })}
+      ${cell({ act: "feathers", icon: I.feather, tile: "yellow", label: "Feathers", sub: "Spend them in the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
+    <div class="ghead">Flying</div>
+    <div class="group">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
+    <div class="ghead">Settings</div>
+    <div class="group">
+      ${notifyCell(u)}
+      ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
+      ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
+    </div>
+    <p class="aver">InFlight ${APP_VERSION}</p>
     <div class="gap"></div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
@@ -4283,7 +4287,7 @@ function drawSheet(refresh) {
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
-        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "profile" } });
+        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
       return;
     }
     case "encryption":
@@ -4601,11 +4605,11 @@ function drawSheet(refresh) {
         </div>
         <div class="gfoot">${theme() === "auto" ? "Matches your phone’s Light or Dark setting. " : ""}Saved to your account, so it’s the same on every phone you sign in on.</div>
         <div class="group mt">${toggleCell({ act: "haptics", icon: I.bird, tile: "indigo", label: "Haptics", sub: "A tap of feedback when you send, react and switch", on: hapticsOn() })}</div>
-        <div class="gfoot">On this phone. iPhone needs iOS 18 or later.</div>`, { left: { label: "Back", act: "profile" } });
+        <div class="gfoot">On this phone. iPhone needs iOS 18 or later.</div>`);
       return;
     case "notifications": {
       const old = $(".sheet .body", $layer), top = old ? old.scrollTop : 0;
-      $layer.innerHTML = sheetHtml("Notifications", vNotifySheet(), { left: { label: "Back", act: "profile" } });
+      $layer.innerHTML = sheetHtml("Notifications", vNotifySheet());
       if (top) $(".sheet .body", $layer).scrollTop = top;    // toggling shouldn't jump the list
       return;
     }
@@ -4649,12 +4653,6 @@ function drawSheet(refresh) {
           ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Every minute while InFlight is open", on: u.autoLocation })}
         </div>
         <div class="gfoot">Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile.</div>
-        <div class="group mt">
-          ${notifyCell(u)}
-          ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
-          ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
-        </div>
-        <div class="group mt">${cell({ icon: I.info, tile: "gray", label: "InFlight", val: `Version ${APP_VERSION}` })}</div>
         <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
         <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>`,
         { left: { label: "Close", act: "close" }, right: { label: "Done", form: "profile-form" } });
