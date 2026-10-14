@@ -269,11 +269,32 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",
+  // the once-a-minute tick finds what's due by these, not by reading every message
+  "CREATE INDEX IF NOT EXISTS pg_msgs_due ON pg_msgs(deliver_at) WHERE notified_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_lostdue ON pg_msgs(lost_at) WHERE lost_at IS NOT NULL AND notified_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_sched ON pg_msgs(sent_at) WHERE sched = 1",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_viaat ON pg_msgs(via_at) WHERE via IS NOT NULL AND via_told IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_wx ON pg_msgs(wx_at) WHERE wx_at IS NOT NULL AND wx_told IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_via ON pg_msgs(via, sender, sent_at) WHERE via IS NOT NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_due ON pg_gdeliv(deliver_at) WHERE notified_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_lostdue ON pg_gdeliv(lost_at) WHERE lost_at IS NOT NULL AND notified_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_wx ON pg_gdeliv(wx_at) WHERE wx_at IS NOT NULL AND wx_told IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_reacts_due ON pg_reacts(deliver_at) WHERE notified_at IS NULL",
 ];
-let schemaReady = false;
+// The schema's own fingerprint: when the database already has this one, a new
+// copy of the server starts without re-running ~150 statements (any change to
+// SCHEMA or MIGRATIONS changes it, so nothing needs bumping by hand).
+const SCHEMA_FP = (() => { let h = 2166136261; for (const c of [...SCHEMA, ...MIGRATIONS].join("\n")) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "s" + h.toString(36); })();
+let schemaReady = null;
 export async function db(env) {
   if (!env.DB) throw new HttpError(503, "InFlight isn’t set up on this server yet (no database).");
-  if (!schemaReady) {
+  // one setup per copy of the server, shared by every request that arrives while it runs
+  await (schemaReady ||= setUp(env).catch((e) => { schemaReady = null; throw e; }));
+  return env.DB;
+}
+async function setUp(env) {
+  if ((await env.DB.prepare("SELECT v FROM pg_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;
+  {
     await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
     for (const m of MIGRATIONS) {
       try { await env.DB.prepare(m).run(); }
@@ -295,9 +316,8 @@ export async function db(env) {
         env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('emailok_v1', '1')"),
       ]);
     }
-    schemaReady = true;
+    await env.DB.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();
   }
-  return env.DB;
 }
 
 /* ---------------- request helpers ---------------- */
@@ -363,12 +383,11 @@ export async function requireUser(request, env) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
   if (!m) throw new HttpError(401, "Please sign in.", "session");
   const D = await db(env), h = hex(await sha256(m[1])), t = Date.now();
-  const s = await D.prepare("SELECT user_id, seen_at, auth_at FROM pg_sessions WHERE hash = ?").bind(h).first();
-  if (!s || t - s.seen_at > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
-  if (t - s.seen_at > HOUR) await D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h).run();
-  const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(s.user_id).first();
-  if (!u) throw new HttpError(401, "This account no longer exists.", "session");
-  u.sessionHash = h; u.authAt = s.auth_at || 0;
+  // the session and its account in one look (every request starts here)
+  const u = await D.prepare("SELECT u.*, s.seen_at AS s_seen, s.auth_at AS s_auth FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.hash = ?").bind(h).first();
+  if (!u || t - u.s_seen > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
+  if (t - u.s_seen > HOUR) await D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h).run();
+  u.sessionHash = h; u.authAt = u.s_auth || 0; delete u.s_seen; delete u.s_auth;
   return u;
 }
 

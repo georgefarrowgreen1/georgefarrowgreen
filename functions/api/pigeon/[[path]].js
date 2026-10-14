@@ -81,7 +81,11 @@ async function signup({ request, env, waitUntil }) {
   const pub = cleanPub(b.pub);
   const D = await db(env);
   if (await handleTaken(D, handle)) throw new HttpError(409, `@${handle} is taken.`, "handle");
-  if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "There’s already an account with that email. Sign in instead.", "email");
+  // (said only to someone with a working invite, and at most a few times an hour: it can't be used to look emails up)
+  if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) {
+    if (!inviteOpen(env)) await limit(env, "signup-email:" + hex(await sha256(String(b.invite))), 3, 3600e3);
+    throw new HttpError(409, "There’s already an account with that email. Sign in instead.", "email");
+  }
   const id = crypto.randomUUID(), t = Date.now();
   // the invite is used up first (so one link can't make two accounts at once), and handed back if the account can't be made
   let claimed = null;
@@ -203,7 +207,11 @@ const TURN_EVERY = 10 * 60e3;
 async function reroute(env, u, p, t, waitUntil) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ?1 AND deliver_at > ?2 AND to_lat IS NOT NULL AND (lost_at IS NULL OR lost_at > ?2)").bind(u.id, t).all();
+  // only a friend's pigeon follows you: one from someone you've blocked or
+  // unfriended lands where it was going, and says nothing of where you went
+  const pals = new Map(), pal = async (id) => { if (!pals.has(id)) pals.set(id, await areFriends(D, u.id, id)); return pals.get(id); };
   for (const m of results) {
+    if (!(await pal(m.sender))) continue;
     const legs = m.legs ? JSON.parse(m.legs) : [];
     if (haversineKm(m.to_lat, m.to_lon, p.lat, p.lon) <= REROUTE_KM) continue;
     // resting with a friend (or on its way to them): it flies on at the same time, to the new spot
@@ -216,7 +224,7 @@ async function reroute(env, u, p, t, waitUntil) {
         expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND via_off > ?`)
         .bind(p.lat, p.lon, p.place, deliver, km, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
       if (r.meta.changes) { waitUntil(renear(D, m.id, t).catch(() => {})); waitUntil(refly(D, m.id, t).catch(() => {})); }
-      if (r.meta.changes && (await areFriends(D, u.id, m.sender))) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
+      if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
       continue;
     }
     // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
@@ -247,7 +255,7 @@ async function reroute(env, u, p, t, waitUntil) {
       expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ?`)
       .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
     if (r.meta.changes) { waitUntil(renear(D, m.id, t).catch(() => {})); waitUntil(refly(D, m.id, t).catch(() => {})); }
-    if (r.meta.changes && (await areFriends(D, u.id, m.sender))) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
+    if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
   }
 }
 async function updateMe({ request, env, waitUntil }) {
@@ -291,7 +299,8 @@ async function updateMe({ request, env, waitUntil }) {
     const p = cleanPlace(b);
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
     if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
-    await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = ? WHERE id = ?").bind(p.lat, p.lon, p.place, t, u.id).run();
+    // (the time it was last updated moves only when you do: "still here" every few minutes would say when the app was open)
+    await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = CASE WHEN ?4 THEN ?5 ELSE COALESCE(loc_at, ?5) END WHERE id = ?6").bind(p.lat, p.lon, p.place, moved > REROUTE_KM ? 1 : 0, t, u.id).run();
     if (u.lat != null) { await reroute(env, u, p, t, waitUntil); await rerouteGroups(env, u, p, t, waitUntil); }   // also catches up a turn held back by TURN_EVERY
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
@@ -329,7 +338,8 @@ async function getAvatar({ request, env }, id) {
   if (id !== u.id) {
     // or someone in a group with you
     const l = await (await db(env)).prepare(`SELECT 1 FROM pg_links WHERE (a = ?2 AND b = ?1 AND status IN ('ok', 'pending')) OR (a = ?1 AND b = ?2 AND status = 'ok')
-      UNION ALL SELECT 1 FROM pg_group_members x JOIN pg_group_members y ON y.group_id = x.group_id WHERE x.user_id = ?1 AND y.user_id = ?2 LIMIT 1`).bind(u.id, id).first();
+      UNION ALL SELECT 1 FROM pg_group_members x JOIN pg_group_members y ON y.group_id = x.group_id WHERE x.user_id = ?1 AND y.user_id = ?2
+        AND NOT EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'blocked' AND ((k.a = ?1 AND k.b = ?2) OR (k.a = ?2 AND k.b = ?1))) LIMIT 1`).bind(u.id, id).first();   // (never across a block)
     if (!l) throw new HttpError(404, "No picture.");
   }
   const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(id)));
@@ -349,7 +359,16 @@ async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(id),
     D.prepare("DELETE FROM pg_flyover WHERE sender = ?1 OR user_id = ?1").bind(id),
     D.prepare("DELETE FROM pg_birds WHERE owner = ?").bind(id),
-    D.prepare("UPDATE pg_msgs SET via_ct = '', via_note = NULL WHERE via = ?1").bind(id),     // a stopover with them: their copy goes
+    D.prepare("UPDATE pg_msgs SET via_ct = '', via_note = NULL, via_place = NULL, legs = NULL WHERE via = ?1").bind(id),     // a stopover with them: their copy, and where they were, go
+    D.prepare("DELETE FROM pg_passport WHERE user_id = ?1").bind(id),
+    D.prepare("DELETE FROM pg_postmarks WHERE user_id = ?1").bind(id),
+    D.prepare("DELETE FROM pg_stamped WHERE user_id = ?1").bind(id),
+    D.prepare("DELETE FROM pg_feathers WHERE user_id = ?1").bind(id),
+    D.prepare("DELETE FROM pg_kit WHERE user_id = ?1").bind(id),
+    D.prepare("DELETE FROM pg_streaks WHERE a = ?1 OR b = ?1").bind(id),
+    D.prepare("UPDATE pg_invites SET used_by = NULL WHERE used_by = ?1").bind(id),
+    D.prepare("UPDATE pg_gevents SET actor_name = 'A deleted account' WHERE actor = ?1").bind(id),
+    D.prepare("UPDATE pg_gevents SET target_name = 'A deleted account' WHERE target = ?1").bind(id),
     D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
     D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
@@ -630,14 +649,16 @@ const lastBetween = (D, a, b, t) => D.prepare(
   "SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 1").bind(a, b, t).first();
 
 // Read receipts go both ways: if either of you has them off, neither sees them.
-const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other?.no_receipts) ? { ...v, readAt: null } : v);
+// read receipts (and a view-once photo's "Opened") go both ways: either of you with them off shows none
+const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other?.no_receipts) ? { ...v, readAt: null, viewedAt: null } : v);
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
+let lastSweep = 0;
 async function sync({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  waitUntil(sweepPhotos(env).catch(() => {}));
+  if (t - lastSweep > 60e3) { lastSweep = t; waitUntil(sweepPhotos(env).catch(() => {})); }       // (once a minute is plenty)
   // an open app syncs every 15 s; note it at most once a minute for Last Online
   if (!(t - (u.seen_at || 0) < SEEN_EVERY)) await D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id).run();
   const { results: links } = await D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();
@@ -650,11 +671,14 @@ async function sync({ request, env, waitUntil }) {
       FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id).all();
     for (const p of results) people.set(p.id, p);
   }
+  // the last pigeon each way with each person you're linked to: two index look-ups each, not a read of your whole history
   const { results: lasts } = await D.prepare(`
-    SELECT * FROM (
-      SELECT m.*, ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender = ?1 THEN recipient ELSE sender END ORDER BY sent_at DESC) AS rn
-      FROM pg_msgs m WHERE (sender = ?1 OR recipient = ?1) AND sent_at <= ?2) WHERE rn = 1`).bind(u.id, t).all();
-  const lastBy = new Map(lasts.map((m) => [m.sender === u.id ? m.recipient : m.sender, m]));
+    WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
+    SELECT * FROM pg_msgs WHERE id IN (
+      SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
+      UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t).all();
+  const lastBy = new Map();
+  for (const m of lasts) { const k = m.sender === u.id ? m.recipient : m.sender, had = lastBy.get(k); if (!had || m.sent_at > had.sent_at) lastBy.set(k, m); }
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
@@ -670,7 +694,7 @@ async function sync({ request, env, waitUntil }) {
     }
     if (l.status === "ok") {
       const last = lastBy.get(p.id);
-      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null,
+      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: u.hide_online || p.hide_online ? null : p.loc_at || null,
         seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
         tz: ((z) => (z && z !== "UTC" ? z : null))(prefsOf(p).tz),                    // their phone's time zone: "lands 08:12 their time"
         last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t), streak: streaks.get(p.id) || null });
@@ -900,7 +924,9 @@ async function recallMessage({ request, env }) {
   if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${id}`);
   const fresh = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ message: msgView(u.id, fresh, t), me: meView(me, t) });
+  const view = msgView(u.id, fresh, t);
+  if (!(await areFriends(D, u.id, m.recipient))) for (const k of ["route", "legs", "toPlace", "viaPlace"]) delete view[k];
+  return json({ message: view, me: meView(me, t) });
 }
 
 async function markRead({ request, env }) {
@@ -1065,7 +1091,7 @@ async function adminUsers({ request, env }) {
   await requireAdmin(request, env);
   const D = await db(env), t = Date.now();
   const { results } = await D.prepare(`
-    SELECT u.id, u.name, u.handle, u.email, u.place, u.created_at, u.avatar_at, u.swift, u.swift_at, u.turbo, u.turbo_at, u.rocket, u.rocket_at,
+    SELECT u.id, u.name, u.handle, u.email, u.created_at, u.avatar_at, u.swift, u.swift_at, u.turbo, u.turbo_at, u.rocket, u.rocket_at,
       MAX(COALESCE(u.seen_at, 0), COALESCE((SELECT MAX(seen_at) FROM pg_sessions s WHERE s.user_id = u.id), 0)) AS last_seen,
       (SELECT COUNT(*) FROM pg_sessions s WHERE s.user_id = u.id) AS sessions,
       (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys,

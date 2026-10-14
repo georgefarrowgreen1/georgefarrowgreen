@@ -111,7 +111,7 @@ async function views(D, uid, rows, friends, t) {
   return rows.map((m) => {
     if (m.sender !== uid) return theirView(m, m, friends, t);
     const v = ownView(m, dels.get(m.id), friends, t);
-    for (const x of v.flock) if (off.has(uid) || off.has(x.to)) x.readAt = null;
+    for (const x of v.flock) if (off.has(uid) || off.has(x.to)) { x.readAt = null; x.viewedAt = null; }
     return v;
   });
 }
@@ -141,6 +141,8 @@ export async function groupsForSync(env, u, t) {
   const { results: gs } = await D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? ORDER BY g.created_at").bind(u.id).all();
   if (!gs.length) return [];
   const friends = await friendIds(D, u.id), out = [];
+  // anyone either of you has blocked, in a group you share: their name stays (so you know who wrote), nothing else of them
+  const blocked = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
   // everyone in all your groups, and what's unread in each: one query each, however many groups
   const { results: allMem } = await D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.loc_at, u.seen_at, u.hide_online
     FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
@@ -152,6 +154,7 @@ export async function groupsForSync(env, u, t) {
     const mem = allMem.filter((p) => p.group_id === g.id);
     const members = mem.map((p) => {
       const friend = p.user_id === u.id || friends.has(p.user_id);
+      if (blocked.has(p.user_id)) return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: null, pub: JSON.parse(p.pub), friend: false, addedBy: p.added_by, km: null };
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
         ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
@@ -178,6 +181,10 @@ async function cleanMembers(D, u, ids, current) {
   if (!out.length) throw new HttpError(400, "Choose at least one friend.");
   const friends = await friendIds(D, u.id);
   if (out.some((id) => !friends.has(id))) throw new HttpError(403, "You can only add your own friends.");
+  // never into a group with someone who has blocked them, or whom they've blocked (nor two new members who have)
+  const all = [...new Set([...have, ...out])], ph = (a) => a.map(() => "?").join(",");
+  if (all.length > 1 && await D.prepare(`SELECT 1 FROM pg_links WHERE status = 'blocked' AND a IN (${ph(all)}) AND b IN (${ph(all)}) AND (a IN (${ph(out)}) OR b IN (${ph(out)})) LIMIT 1`)
+    .bind(...all, ...all, ...out, ...out).first()) throw new HttpError(403, "Someone you chose can’t be added to this group.");
   if ((current.length || 1) + out.length > GROUP_MAX) throw new HttpError(400, `Groups can have up to ${GROUP_MAX} people.`);
   return out;
 }

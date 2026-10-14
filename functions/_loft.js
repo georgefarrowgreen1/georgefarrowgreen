@@ -50,6 +50,7 @@ async function loft({ request, env }) {
     WHERE l.status = 'ok' AND ((l.a = ?1 AND l.b = ?2) OR (l.a = ?2 AND l.b = ?1))`).bind(u.id, id).first();
   if (!f) throw new HttpError(404, "That loft wasn’t found.");      // friends only (and never someone who's blocked you)
   if (f.hide_news) return json({ private: true });
+  if (u.hide_news) return json({ private: true, self: true });          // like news, it works both ways
   return json({ loft: await loftFor(D, id, t) });
 }
 export const LOFT_ROUTES = { "GET loft": loft };
