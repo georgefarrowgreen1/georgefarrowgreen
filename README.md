@@ -153,33 +153,18 @@ distance between two people at 80 km/h (5 minutes to 3 days), and photos are
 deleted 24 hours after they land. It is end-to-end encrypted and works on
 phones and iPads only, held upright.
 
-**Its own address: chat.georgefarrowgreen.com.** InFlight is moving there,
-served at the root, so it no longer shares an origin (and storage) with the
-rest of the site. Everything on the server (accounts, friends, messages,
-pigeons, Flight Logs) stays as it is: only the address changes. The switch is
-`MOVED` in `functions/_home.js`.
+**Other ways in.** georgefarrowgreen.com/chat sends you to /pigeon
+(`functions/chat/[[path]].js`), and so can chat.georgefarrowgreen.com. The app
+keeps one address, so sign-ins, keys, notifications and the Home Screen icon
+stay put. For the subdomain, in Cloudflare (the georgefarrowgreen.com zone):
+1. DNS → Records → Add record: type **CNAME**, name **chat**, target
+   **georgefarrowgreen.com**, Proxied on.
+2. Rules → Redirect Rules → Create rule: when **Hostname** equals
+   **chat.georgefarrowgreen.com**, redirect (static) to
+   **https://georgefarrowgreen.com/pigeon/**, 301, preserve query string on.
 
-- Until it's on, the new address already works (`functions/_middleware.js`
-  serves the app at its root and keeps the rest of the site off it), and
-  passkeys belong to georgefarrowgreen.com so the same ones work at either.
-- Once it's on, emails link there, and the old address hands each phone across
-  (`functions/_move.js`, `moveNow` in `pigeon/app.js`). Anyone not signed in
-  there goes straight to the new address, links and all. Anyone signed in
-  gets "InFlight Has a New Home": anything still waiting to send goes first;
-  then their password or a passkey unlocks their key (a phone can't copy its
-  key out otherwise), and the key, the sign-in and the phone's own settings
-  and pinned chats are sealed under a fresh key that travels only in the new
-  address's # (the server holds the ciphertext for 30 minutes, opens it once,
-  and keeps only the record that it did). Once the new address has opened it,
-  the old one forgets the phone; notifications turned on at the new address
-  replace the old address's ones for that phone. Someone who can't unlock
-  their key (or taps Not Now) carries on at the old address, with nothing lost.
-- georgefarrowgreen.com/chat sends you to the app (`functions/chat/[[path]].js`).
-
-To set up the address: Cloudflare → Workers & Pages → georgefarrowgreen →
-Custom domains → Set up a custom domain → **chat.georgefarrowgreen.com**
-(Cloudflare adds the DNS record). If you made a redirect rule for it earlier,
-delete it. Then turn `MOVED` on.
+(If chat.georgefarrowgreen.com is added to the Pages project as a custom domain
+instead, its /pigeon pages still send you to the main address.)
 
 **Phones and iPads only.** On a computer, /pigeon shows a page saying InFlight
 isn't available there, with a QR code that opens the same link (an add-a-friend

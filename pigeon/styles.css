@@ -1380,12 +1380,3 @@ svg.fillico{fill:currentColor;stroke:none}
 .brand .bword{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.2px}
 .large.brandh .brand{gap:10px}
 .nb-title .brand{gap:7px;justify-content:center;font-size:17px}
-
-/* InFlight has moved: the screen at the old address that takes a phone across */
-.movehead{display:flex;flex-direction:column;align-items:center;gap:6px;margin:6px 24px 20px;text-align:center}
-.movehead .appicon{width:72px;height:72px;border-radius:19px;font-size:44px;margin-bottom:6px}
-.movehead h2{margin:0;font-size:24px;line-height:30px;font-weight:700;text-wrap:balance}
-.movehead p{margin:0;font-size:16px;font-weight:600;color:var(--tint)}
-#move-form .btn .ico{font-size:20px}
-#move-form .stack{display:flex;flex-direction:column;gap:6px;margin:18px 16px 4px}
-#move-form .ferr{margin-top:10px}

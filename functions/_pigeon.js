@@ -7,7 +7,6 @@
 //
 // Storage: D1 (env.DB) for everything structured, R2 (env.BIO_R2) for the
 // encrypted photo blobs under pigeon/. Tables are created on first use.
-import { MOVED, OLD_HOST, APP_HOST, rpIdOf } from "./_home.js";
 
 export const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const SPEED_KMH = 80;             // a homing pigeon's cruising speed
@@ -123,11 +122,6 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS pg_resets (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_by TEXT NOT NULL,
      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS pg_resets_user ON pg_resets(user_id)`,
-  // moving a phone to InFlight's new address: its keys, sign-in and settings, sealed on the phone
-  // with a key that only travels in the link's #; opened once, within 30 minutes (functions/_move.js)
-  `CREATE TABLE IF NOT EXISTS pg_moves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kh TEXT NOT NULL, ct TEXT, iv TEXT, push TEXT,
-     created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, redeemed_at INTEGER)`,
-  `CREATE INDEX IF NOT EXISTS pg_moves_user ON pg_moves(user_id)`,
   `CREATE TABLE IF NOT EXISTS pg_push (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS pg_push_user ON pg_push(user_id)`,
   `CREATE TABLE IF NOT EXISTS pg_admin_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT)`,
@@ -483,7 +477,7 @@ function derToRawEcdsa(der) {
   const out = new Uint8Array(64); out.set(pad(readInt()), 0); out.set(pad(readInt()), 32);
   return out;
 }
-export function rpIdFor(request) { return rpIdOf(new URL(request.url).hostname); }
+export function rpIdFor(request) { return new URL(request.url).hostname; }
 function originOk(origin, request) {
   try {
     const o = new URL(origin), here = new URL(request.url);
@@ -593,7 +587,7 @@ const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
 // title, a details box and a full-width button), built from tables and inline
 // styles so it holds up in Gmail and Outlook, with a dark version for mail
 // apps that support it. Icons are PNGs (mail apps block SVG) in /pigeon/mail/.
-export const SITE = MOVED ? `https://${APP_HOST}` : `https://${OLD_HOST}`;
+export const SITE = "https://georgefarrowgreen.com";
 // Where links in emails point: this site, or a local test server. Never a
 // *.pages.dev or preview host (the notification tick runs through one).
 export function linkOrigin(request) {

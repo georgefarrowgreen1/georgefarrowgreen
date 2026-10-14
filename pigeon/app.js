@@ -28,12 +28,6 @@ const DUMB = /^\/dumb(?:\s+|$)/i;
 const RISKY_SPEED = 1.25;
 const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
-// Where the app is: the root of its own address (chat.georgefarrowgreen.com), else /pigeon/
-const APP_ROOT = location.pathname.startsWith("/pigeon") ? "/pigeon/" : "/";
-// passkeys belong to georgefarrowgreen.com, so the same ones work at either address (functions/_home.js)
-const RP_ID = /(^|\.)georgefarrowgreen\.com$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
-// at the old address once InFlight has moved: where it went (functions/_inflight.js)
-const MOVED_TO = document.querySelector('meta[name="inflight-home"]')?.content || null;
 const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
 const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
@@ -3294,7 +3288,7 @@ async function resetWith(mode, btn) {
     let ecdh, pub;
     if (mode === "keep") {
       const a = await navigator.credentials.get({ publicKey: {
-        challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 120000,
+        challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 120000,
         allowCredentials: S.resetInfo.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })),
         extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
       const secret = a && prfResult(a), pk = a && S.resetInfo.passkeys.find((p) => p.id === a.id);
@@ -3585,7 +3579,7 @@ function onbInput(e) {
   }
 }
 /* ---------- Add Friend: look them up as you type ---------- */
-const myLink = () => `${location.origin}${APP_ROOT}#add=${S.me.handle}`;
+const myLink = () => `${location.origin}/pigeon/#add=${S.me.handle}`;
 let addTimer = 0;
 function addLookup() {
   clearTimeout(addTimer);
@@ -3926,29 +3920,6 @@ function drawSheet(refresh) {
         <div class="group mt-s"><label class="fcell"><textarea id="f-vianote" rows="3" maxlength="200" placeholder="Say something to ${esc(first(to?.name || "them"))}" aria-label="Your line"></textarea></label></div>
         <div class="gfoot">It flies on with the pigeon, end-to-end encrypted: only ${esc(first(to?.name || "they"))} can read it, when it lands. You can add one line.</div>${ferr}</form>`,
         { left: { label: "Cancel", act: "close" }, right: { label: "Add", form: "vianote-form" } });
-      return;
-    }
-    case "moving": {
-      // InFlight has moved: this phone goes across (moveNow), or stays for now
-      const host = new URL(MOVED_TO).host, n = S.outbox.length, home = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
-      const go = $("#move-form .btn:not(.plain)", $layer);
-      if (go && $("#f-movepw", $layer) && s.pw) { go.disabled = !!n; return; }       // drawn once with the field, so what's typed stays
-      $layer.innerHTML = sheetHtml("", `<div class="movehead"><div class="appicon">${I.bird}</div><h2>InFlight Has a New Home</h2><p>${esc(host)}</p></div>
-        <div class="group">
-          ${cell({ icon: I.bubble, tile: "blue", label: "Everything’s already there", sub: "Your messages, friends, pigeons and Flight Log" })}
-          ${cell({ icon: I.lock, tile: "green", label: "This phone moves signed in", sub: "With its settings and pinned chats, its key sealed on the way" })}
-          ${home ? cell({ icon: I.up, tile: "gray", label: "Then put it on your Home Screen", sub: `Open ${esc(host)} in Safari, tap Share → Add to Home Screen, and remove this one` }) : ""}
-        </div>
-        <form id="move-form" data-form="move" novalidate>
-          ${S.outbox.some((o) => o.err) ? `<div class="gfoot bad">${n === 1 ? "A message" : `${n} messages`} couldn’t be sent. Open ${n === 1 ? "its chat" : "their chats"} to send ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then move.</div>`
-            : n ? `<div class="gfoot">${n === 1 ? "A message is" : `${n} messages are`} still waiting to send, and ${n === 1 ? "goes" : "go"} first. ${navigator.onLine ? "Sending now…" : "As soon as there’s signal."}</div>` : ""}
-          ${s.pw ? `<div class="group mt">${field("movepw", "Your InFlight password", "password", "current-password")}</div>
-            <div class="gfoot">It unlocks your key on this phone so the key can come too. Your password stays on the phone.</div>` : ""}
-          ${ferr}
-          <div class="stack">${s.pw ? `<button type="submit" class="btn wide"${n ? " disabled" : ""}>Move to ${esc(host)}</button>`
-            : `<button type="button" class="btn wide" data-act="movepk"${n ? " disabled" : ""}>${I.face}Move With a Passkey</button><button type="button" class="btn wide plain" data-act="movepw">Use My Password Instead</button>`}
-            <button type="button" class="btn wide plain" data-act="close">Not Now</button></div>
-        </form>`, { right: null, name: "InFlight has a new home" });
       return;
     }
     case "flysheet": {
@@ -4926,8 +4897,6 @@ async function onClick(e) {
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
-    case "movepk": return moveNow({ passkey: true }, t);
-    case "movepw": S.sheet = { type: "moving", pw: true }; renderSheet(); setTimeout(() => $("#f-movepw", $layer)?.focus(), 300); return;
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
@@ -5084,7 +5053,6 @@ async function onSubmit(e) {
   const form = e.target, kind = form.dataset.form;
   const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${esc(form.id)}"]`, $layer);
   if (kind === "compose") return send();
-  if (kind === "move") return moveNow({ password: $("#f-movepw", $layer)?.value || "" }, btn);
   if (kind === "schedule") {
     const v = $("#f-landat", $layer)?.value, at = v ? +new Date(v) : NaN;
     if (!Number.isFinite(at) || at <= now()) return showErr("Pick a time that’s still to come.");
@@ -5424,7 +5392,7 @@ function setLockPrefs(v) { try { if (v) localStorage.setItem(LOCK_KEY, JSON.stri
 // a user-verified passkey check, on this phone
 async function lockCheck() {
   const ids = (S.passkeys || []).map((p) => p.id).filter(Boolean);
-  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 60000,
+  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 60000,
     allowCredentials: ids.map((id) => ({ type: "public-key", id: fromB64url(id) })) } });
   const ad = a && new Uint8Array(a.response.authenticatorData);
   if (!ad || !(ad[32] & 0x04)) throw new Error("not verified");           // the UV flag: Face ID, Touch ID or the passcode was used
@@ -5607,7 +5575,6 @@ async function outboxFlush(force) {
     }
     if (sent) { haptic("success"); toast(sent === 1 ? "Your pigeon took off." : `${sent} pigeons took off.`); }
     if (sent || S.outbox.some((o) => o.err)) { for (const id of new Set([S.chat])) if (id && S.view === "chat") await loadChat(id).catch(() => {}); render(); }
-    if (S.sheet?.type === "moving") renderSheet();          // the move waits for these
   })();
   try { await flushing; } finally { flushing = null; }
 }
@@ -5756,7 +5723,7 @@ function pushState() {
 }
 const sameKey = (sub, key) => { const k = sub.options?.applicationServerKey; return !!k && b64url(new Uint8Array(k)) === key; };
 async function pushSub(ask) {
-  const reg = await navigator.serviceWorker.register("/pigeon/sw.js", { scope: APP_ROOT });
+  const reg = await navigator.serviceWorker.register("/pigeon/sw.js", { scope: "/pigeon/" });
   await navigator.serviceWorker.ready;
   const { key } = await api("push-key");
   let sub = await reg.pushManager.getSubscription();
@@ -5780,7 +5747,7 @@ async function pushEnable() {
 async function pushDisable(quiet) {
   if (!pushSupported()) return;
   try {
-    const reg = await navigator.serviceWorker.getRegistration(APP_ROOT);
+    const reg = await navigator.serviceWorker.getRegistration("/pigeon/");
     const sub = reg && await reg.pushManager.getSubscription();
     if (sub) { await api("push-sub", { method: "DELETE", body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
   } catch (_) { /* nothing to undo */ }
@@ -5865,95 +5832,10 @@ function notAvailable() {
   box.innerHTML = `${qrSvg(location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
   box.hidden = false;
 }
-/* ---------- moving to InFlight's own address ----------
-   Once InFlight has moved (MOVED_TO is set at the old address), a phone that
-   isn't signed in here goes straight to the new address, links and all. One
-   that is gets the move screen: anything still waiting is sent first, then
-   the key is unlocked with the password or a passkey (a phone can't copy its
-   key out otherwise) and travels with the sign-in, the phone's settings and
-   pinned chats, sealed with a key that only goes in the new address's # (the
-   server holds only ciphertext: functions/_move.js). Once the new address
-   has opened it, the old one forgets the phone. Someone who can't unlock
-   their key just stays here, with nothing lost. */
-const MOVE_PREFS = ["inflight-theme", "inflight-haptics", "inflight-share-name", "inflight-windmap", "inflight-badges", "inflight-lock"];
-const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
-const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) {} };
-// At the old address: true when it has sent you on (nothing of yours is kept here, or this phone has arrived there)
-async function moveFirst() {
-  const there = () => { location.replace(MOVED_TO + location.hash); return true; };
-  const saved = await idb.get("session").catch(() => null);
-  if (!saved?.token) return there();
-  let was = null; try { was = JSON.parse(lsGet("inflight-moving") || "null"); } catch (_) {}
-  if (was?.uid === saved.me?.id) {
-    try {
-      const r = await (await fetch("/api/pigeon/move?id=" + encodeURIComponent(was.id), { headers: { Authorization: "Bearer " + saved.token } })).json();
-      const waiting = ((await idb.get("outbox:" + saved.me.id).catch(() => null)) || []).length;
-      // it has arrived (and nothing was written here since): forget it here. Not signed out: the
-      // sign-in went with it, so the server keeps it, and so do its notifications until the new address has its own.
-      if (r.arrived && !waiting) {
-        await Promise.all(["session", "cache:" + saved.me.id, "outbox:" + saved.me.id, "pins:" + saved.me.id].map((k) => idb.del(k).catch(() => {})));
-        for (const k of [...MOVE_PREFS, "inflight-moving"]) lsSet(k, null);
-        return there();
-      }
-    } catch (_) {}
-  }
-  S.moving = true;
-  return false;
-}
-// The move itself: unlock the key, seal it all up, and go
-async function moveNow(how, btn) {
-  if (S.outbox.length) return showErr(`${S.outbox.length === 1 ? "A message is" : `${S.outbox.length} messages are`} still waiting to send. Once ${S.outbox.length === 1 ? "it’s" : "they’re"} away, you can move.`);
-  await busyBtn(btn, how.passkey ? "Waiting for your passkey…" : "Unlocking your key…", async () => {
-    let ecdh;
-    if (how.passkey) {
-      const v = await api("move-vaults");
-      const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 120000,
-        allowCredentials: v.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
-      const secret = a && prfResult(a), pk = a && v.passkeys.find((p) => p.id === a.id);
-      if (!secret || !pk) throw new Error("That passkey couldn’t unlock your key on this phone. Use your password instead.");
-      ({ ecdh } = await E2E.unlock(await E2E.fromSecret(secret), pk.vault));
-    } else {
-      if (!how.password) throw Object.assign(new Error("Type your InFlight password."), { field: "movepw" });
-      let v;
-      try { v = await vaultWith(how.password); } catch (_) { throw Object.assign(new Error("That password isn’t right."), { field: "movepw" }); }
-      ({ ecdh } = await E2E.unlock(v.lockKey, v.vault));
-    }
-    // the key this phone already uses, or nothing moves
-    if (ecdh.x !== S.myPub?.x || ecdh.y !== S.myPub?.y) throw new Error("That key doesn’t match this phone’s, so nothing was moved.");
-    const prefs = Object.fromEntries(MOVE_PREFS.map((k) => [k, lsGet(k)]).filter(([, v]) => v != null));
-    const K = rand(32), iv = rand(12), key = await crypto.subtle.importKey("raw", K, "AES-GCM", false, ["encrypt"]);
-    const plain = new TextEncoder().encode(JSON.stringify({ v: 1, token: S.token, me: S.me, ecdh, pins: S.pins || {}, prefs }));
-    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain));
-    let push = null;
-    try { push = (await (await navigator.serviceWorker?.getRegistration(APP_ROOT))?.pushManager.getSubscription())?.endpoint || null; } catch (_) {}
-    const { id } = await api("move", { method: "POST", body: { kh: b64url(await crypto.subtle.digest("SHA-256", K)), ct: b64url(ct), iv: b64url(iv), push } });
-    lsSet("inflight-moving", JSON.stringify({ id, uid: S.me.id }));
-    location.href = `${MOVED_TO}#move=${id}.${b64url(K)}`;
-  }).catch((e) => { if (e.name !== "NotAllowedError" && e.name !== "AbortError") showErr(e.message, e.field); });
-}
-// At the new address: open what the old one sealed, and carry on signed in
-async function arrive(id, k) {
-  try {
-    const K = fromB64url(k);
-    const r = await api("move-open", { method: "POST", body: { id, kh: b64url(await crypto.subtle.digest("SHA-256", K)) } });
-    const key = await crypto.subtle.importKey("raw", K, "AES-GCM", false, ["decrypt"]);
-    const b = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: fromB64url(r.iv) }, key, fromB64url(r.ct))));
-    for (const [n, v] of Object.entries(b.prefs || {})) if (MOVE_PREFS.includes(n)) lsSet(n, v);
-    if (b.pins) await idb.set("pins:" + b.me.id, b.pins);
-    const here = await idb.get("session").catch(() => null);
-    if (here?.me?.id !== b.me.id || !here?.token) await useKeys(b.token, b.me, b.ecdh);
-    applyTheme();
-    S.arrived = true;
-  } catch (e) { S.arriveErr = e.message || "That move didn’t work. Open InFlight at the old address and try again."; }
-}
-const moveScreen = () => { S.sheet = { type: "moving", pw: !((S.passkeys || []).some((p) => p.unlocks) && passkeysSupported()) }; renderSheet(); };
 async function start() {
   if (document.documentElement.dataset.device === "computer") return notAvailable();
-  if (MOVED_TO && await moveFirst()) return;          // gone to the new address
   mount();
   textSize(); window.addEventListener("focus", textSize);
-  const mv = /#move=([A-Za-z0-9_-]{16,40})\.([A-Za-z0-9_-]{43})/.exec(location.hash);
-  if (mv) { history.replaceState(null, "", location.pathname); await arrive(mv[1], mv[2]); }
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
   navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
@@ -5987,9 +5869,7 @@ async function start() {
     else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
     else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
     refreshPush(); autoLocate();
-    if (S.moving) moveScreen();
-    else if (S.arrived) toast("You’re in InFlight’s new home. Everything came with you.", pushSupported() && Notification.permission !== "granted" ? "Notifications" : null, () => { S.sheet = { type: "notifications" }; renderSheet(); });
-  } else { go("welcome"); if (S.arriveErr) toast(esc(S.arriveErr)); }
+  } else go("welcome");
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
@@ -6017,7 +5897,7 @@ const UPDATE_MS = 5 * 60 * 1000;
 async function checkUpdate() {
   if (!VERSION || document.visibilityState !== "visible") return;
   let live = "";
-  try { live = /name="inflight-version" content="([\w-]+)"/.exec(await (await fetch(APP_ROOT, { cache: "no-store" })).text())?.[1] || ""; } catch { return; }
+  try { live = /name="inflight-version" content="([\w-]+)"/.exec(await (await fetch("/pigeon/", { cache: "no-store" })).text())?.[1] || ""; } catch { return; }
   if (!live || live === VERSION) return;
   const busy = S.sheet || S.attach || ($ta && $ta.value.trim()) || (AUTH_VIEWS.has(S.view) && S.view !== "welcome") || $(".asheet, .menu-pop");
   if (!busy) return location.reload();
