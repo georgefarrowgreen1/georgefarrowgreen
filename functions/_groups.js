@@ -9,6 +9,7 @@
 
 import { newStamps } from "./_passport.js";
 import { marksFor, markView } from "./_landmarks.js";
+import { noteSeason, skinNow } from "./_seasons.js";
 import { drawMystery, MYSTERY,
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
@@ -332,7 +333,7 @@ async function send({ request, env, waitUntil }) {
     claimId(D, id, "g", t),
     D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
-      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, u.skin || null),
+      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t)),
     ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach)),
   ]);
@@ -344,6 +345,7 @@ async function send({ request, env, waitUntil }) {
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
   waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
   if (mystery) await D.prepare("UPDATE pg_gmsgs SET mystery = 1 WHERE id = ?").bind(id).run();
+  await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
 }

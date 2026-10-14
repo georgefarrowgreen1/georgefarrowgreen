@@ -21,6 +21,7 @@ import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
 import { bumpStreak, streaksFor, streakBetween } from "../../_streaks.js";
 import { marksFor } from "../../_landmarks.js";
 import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
+import { noteSeason, skinNow } from "../../_seasons.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -619,7 +620,7 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: meView(u, t), feathers: await balanceOf(D, u.id), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, birds: await birdsFor(D, u.id, t), emailOn: emailReady(env), gifsOn: gifsReady(env),
+  return json({ now: t, me: { ...meView(u, t), skin: await skinNow(D, u, t) }, feathers: await balanceOf(D, u.id), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, birds: await birdsFor(D, u.id, t), emailOn: emailReady(env), gifsOn: gifsReady(env),
     passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
 }
 
@@ -729,7 +730,7 @@ async function sendMessage({ request, env, waitUntil }) {
       from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin, via, via_ct, via_at, via_off, via_place, legs, wx, wx_ms, wx_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, off, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
-        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, u.skin || null,
+        u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, await skinNow(D, u, t),
         via?.id ?? null, via?.ct ?? null, via?.at ?? null, via?.off ?? null, via?.place ?? null,
         // the map draws it resting there: two stops at the same spot
         via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : null, wx.wx, wx.ms, wx.reach == null ? null : off + wx.reach)]);
@@ -748,6 +749,7 @@ async function sendMessage({ request, env, waitUntil }) {
   if (mystery) await D.prepare("UPDATE pg_msgs SET mystery = 1 WHERE id = ?").bind(id).run();
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
+  await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));       // ten in a season keeps its look
   if (landAt == null) waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));       // scheduled: told when it takes off
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over

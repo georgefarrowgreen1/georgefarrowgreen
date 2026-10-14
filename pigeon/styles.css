@@ -1501,3 +1501,22 @@ svg.fillico{fill:currentColor;stroke:none}
 .wear{position:absolute;right:-.35em;top:-.45em;font-style:normal;font-size:.75em;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));pointer-events:none}
 .wtile .wear{font-size:15px;right:-6px;top:-7px}
 .birdbig.wtile .wear{font-size:30px;right:-10px;top:-14px}
+/* seasonal pigeons: the look, small and big, and the card that says a season's here */
+.pg.sk-spring{box-shadow:0 0 0 .1em #ff8fb4,inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-summer{box-shadow:0 0 0 .1em #ffc233,inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-autumn{box-shadow:0 0 0 .1em #c8622a,inset 0 -.06em .12em rgba(0,0,0,.12)}
+.pg.sk-winter{box-shadow:0 0 0 .1em #9fd8ff,0 0 0 .16em #fff,inset 0 -.06em .12em rgba(0,0,0,.12)}
+:is(.sbig,.mapcard .big) .pg:is(.sk-spring,.sk-summer,.sk-autumn,.sk-winter)::after{position:absolute;right:-.42em;top:-.38em;font-size:.6em;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.2))}
+:is(.sbig,.mapcard .big) .pg.sk-spring::after{content:"🌸"}
+:is(.sbig,.mapcard .big) .pg.sk-summer::after{content:"☀️"}
+:is(.sbig,.mapcard .big) .pg.sk-autumn::after{content:"🍂"}
+:is(.sbig,.mapcard .big) .pg.sk-winter::after{content:"❄️"}
+.seasoncard{display:flex;gap:12px;margin:4px 16px 12px;padding:14px 16px;border-radius:20px;background:var(--cell);box-shadow:inset 0 0 0 1px var(--sep)}
+.seasoncard .semoji{font-size:30px;line-height:1;flex:none}
+.seasoncard .stext{display:flex;flex-direction:column;gap:3px;min-width:0}
+.seasoncard b{font-size:16px;line-height:21px}
+.seasoncard .stext > span:not(.sbtns){font-size:14px;line-height:19px;color:var(--label-2)}
+.seasoncard .sbtns{display:flex;gap:8px;margin-top:8px}
+/* the hint in an empty message box stays on one line (cut short with … if it must) */
+.field-wrap textarea:placeholder-shown{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field-wrap textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

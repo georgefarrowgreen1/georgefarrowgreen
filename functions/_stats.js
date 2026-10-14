@@ -4,6 +4,7 @@
 
 import { stampPassports, passportFor } from "./_passport.js";
 import { postmarksFor } from "./_landmarks.js";
+import { SEASONS, SEASON_GOAL, seasonAt, seasonCounts, seasonOpen, nextStart } from "./_seasons.js";
 import { json, db, requireUser } from "./_pigeon.js";
 
 // Rare pigeons: a look for your pigeons, each unlocked by an achievement.
@@ -15,6 +16,8 @@ export const SKINS = {
   ember: { name: "Ember", badge: "daredevil" },
   comet: { name: "Comet", badge: "rocket" },
   rainbow: { name: "Rainbow", badge: "world" },
+  // seasonal: anyone's while the season lasts, yours to keep after ten pigeons in it
+  ...Object.fromEntries(SEASONS.map((s) => [s[0], { name: s[1], badge: s[2], season: true }])),
 };
 async function flightLog({ request, env }) {
   const u = await requireUser(request, env);
@@ -22,12 +25,20 @@ async function flightLog({ request, env }) {
   await stampPassports(D, t, u.id, 20);                     // any of yours that landed since: stamped first
   const log = await logFor(D, u.id, t);
   const earned = new Set(log.badges.filter((b) => b.earned).map((b) => b.id));
-  return json({ ...log, passport: await passportFor(D, u.id, t), postmarks: await postmarksFor(D, u.id), skin: u.skin || null,
-    skins: Object.entries(SKINS).map(([id, k]) => ({ id, name: k.name, badge: k.badge, open: earned.has(k.badge) })) });
+  const now = seasonAt(t), skins = [];
+  for (const [id, k] of Object.entries(SKINS)) {
+    if (!k.season) { skins.push({ id, name: k.name, badge: k.badge, open: earned.has(k.badge) }); continue; }
+    const on = now?.id === id, kept = earned.has(k.badge), b = log.badges.find((x) => x.id === k.badge);
+    if (!on && !kept) continue;                 // out of season and not kept: back next year
+    skins.push({ id, name: k.name, badge: k.badge, open: await seasonOpen(D, u.id, id, t), season: { on, kept, until: on ? now.to : null, n: b?.n ?? 0, of: SEASON_GOAL } });
+  }
+  return json({ ...log, passport: await passportFor(D, u.id, t), postmarks: await postmarksFor(D, u.id), skin: u.skin || null, skins,
+    season: now ? { id: now.id, look: now.look, badge: now.badgeName, from: now.from, until: now.to } : null });
 }
 // Is this look yours to use?
 export async function skinOpen(env, uid, skin) {
   if (!Object.hasOwn(SKINS, skin)) return false;
+  if (SKINS[skin].season) return seasonOpen(await db(env), uid, skin, Date.now());
   const log = await logFor(await db(env), uid, Date.now());
   return log.badges.some((b) => b.id === SKINS[skin].badge && b.earned);
 }
@@ -72,6 +83,13 @@ export async function logFor(D, uid, t) {
     badge("fleet", "Fleet", "Fly every kind: standard, swift, turbo and rocket", ["standard", "swift", "turbo", "rocket"].filter(has).length, 4),
     badge("globetrotter", "Globetrotter", "Your pigeons fly over 25 countries", (await passportFor(D, uid, t)).countries, 25),
   ];
+  // seasonal: ten pigeons in one season (while it's on, how many so far this time)
+  const sc = seasonCounts(sent.map((p) => p.sent_at)), now = seasonAt(t);
+  for (const [id, , bid, bname] of SEASONS) {
+    const cur = now?.id === id ? sc.per[now.key] || 0 : 0, best = sc.best[id] || 0, done = best >= SEASON_GOAL;
+    if (!done && now?.id !== id) continue;          // shown while it's on, and once earned
+    badges.push(badge(bid, bname, `Send ${SEASON_GOAL} pigeons in ${id === "spring" ? "spring migration season" : id}`, done ? best : cur, SEASON_GOAL));
+  }
   return {
     badges,
     sent: sent.length, landed: landed.length, received: received.n,

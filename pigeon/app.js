@@ -21,7 +21,23 @@ const SKINS = {
   ember: { name: "Ember", badge: "Daredevil", ring: "#ff8a00" },
   comet: { name: "Comet", badge: "Rocket Mail", ring: "#7ad7ff" },
   rainbow: { name: "Rainbow", badge: "Around the World", ring: "#c86bff" },
+  // seasonal: anyone's while the season lasts; ten pigeons in it and it's yours to keep
+  spring: { name: "Blossom", badge: "Spring Migration", ring: "#ff8fb4", season: true },
+  summer: { name: "Sunny", badge: "Summer Flyer", ring: "#ffc233", season: true },
+  autumn: { name: "Russet", badge: "Autumn Leaves", ring: "#c8622a", season: true },
+  winter: { name: "Frosty", badge: "Winter Wings", ring: "#9fd8ff", season: true },
 };
+// the seasons, as the server has them: [id, look, emoji, words, from [m, d], to [m, d]] (UTC days)
+const SEASONS = [["spring", "Blossom", "🌸", "Spring migration", [3, 20], [4, 30]], ["summer", "Sunny", "☀️", "Summer", [6, 21], [8, 31]],
+  ["autumn", "Russet", "🍂", "Autumn", [10, 1], [11, 15]], ["winter", "Frosty", "❄️", "Winter", [12, 1], [1, 6]]];
+function seasonNow(t = now()) {
+  const y = new Date(t).getUTCFullYear();
+  for (const s of SEASONS) for (const sy of [y - 1, y]) {
+    const from = Date.UTC(sy, s[4][0] - 1, s[4][1]), to = Date.UTC(s[5][0] < s[4][0] ? sy + 1 : sy, s[5][0] - 1, s[5][1]) + DAY;
+    if (t >= from && t < to) return { id: s[0], look: s[1], emoji: s[2], words: s[3], from, to, key: `${s[0]}-${sy}` };
+  }
+  return null;
+}
 KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };
 // a mystery pigeon: one a day, from no loft and on no one's turn; its kind is drawn as it takes off
 KIND.mystery = { name: "Mystery", speed: 1, max: 1 };        // a secret: start a message with /dumb
@@ -206,6 +222,9 @@ const flightMs = (km, speed = 1) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SP
 const BIRD = document.getElementById("bird-path").getAttribute("d");
 const ico = (d) => `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true">${d}</svg>`;
 const I = {
+  leaf: ico(`<path d="M5 19c0-8 5-14 15-14 0 9-5 14-13 14"/><path d="M5 19 13 11"/>`),
+  snow: ico(`<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>`),
+  blossom: ico(`<circle cx="12" cy="12" r="2.2"/><path d="M12 9.8C10 6 13.5 3.5 14.6 6.3c1 2.6-1.2 3.6-2.6 3.5ZM14.1 11.3c3.7-1.8 6 1.8 3.2 2.8-2.6.9-3.5-1.3-3.2-2.8ZM13.3 14c1.6 3.8-2.2 5.8-3 2.9-.7-2.7 1.6-3.4 3-2.9ZM10.6 13.9c-3.9 1.4-5.6-2.5-2.7-3.1 2.8-.6 3.4 1.7 2.7 3.1Z"/>`),
   feather: ico(`<path d="M20.2 3.8C14 3.6 8.4 7.4 6.6 13.6L5 19"/><path d="M20.2 3.8c.6 6-2.6 11.3-8.4 13.2L6.6 13.6"/><path d="M11 9.6l3.3 1.2M9.4 12.4l3.3 1.3"/><path d="M5 19l-1.4 1.4"/>`),
   flame: ico(`<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-2.6 1.4-4.6 3-6.3.3 1.7 1.2 2.9 2.4 3.4-.4-3.3 1-6.1 3.4-8.4.2 2.8 1.6 4.4 2.9 6 1 1.3 1.8 2.9 1.8 4.9 0 4-2.6 6.6-6.5 6.6Z"/><path d="M12 21c-1.7 0-2.8-1.2-2.8-2.8 0-1.6 1.2-2.6 2.2-3.8.2 1 .8 1.6 1.5 1.8.1-.9.6-1.6 1.1-2.2.7 1 1 2.1 1 3.2 0 2.2-1.3 3.8-3 3.8Z"/>`),
   bird: `<svg viewBox="0 0 24 24" class="bird" aria-hidden="true"><path d="${BIRD}"/></svg>`,
@@ -2266,7 +2285,8 @@ function mount() {
 }
 function fitTa() {
   if (!$ta.offsetParent) { $ta.style.height = ""; return; }       // hidden (not in a chat): nothing to measure yet
-  $ta.style.height = "auto"; $ta.style.height = Math.min(120, $ta.scrollHeight) + "px";
+  // empty: one line, however long the hint ("Lands tomorrow 01:15" mustn't make the box two lines tall)
+  $ta.style.height = "auto"; $ta.style.height = $ta.value ? Math.min(120, $ta.scrollHeight) + "px" : "";
 }
 function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
 
@@ -2452,6 +2472,15 @@ const streakRisk = (s) => s && !s.today && s.endsAt - now() < 6 * HOUR;
 const streakLeft = (s) => fmtDur(Math.max(MIN, s.endsAt - now()));
 const streakBadge = (f) => { const s = streakOf(f); return s ? `<span class="streak${streakRisk(s) ? " risk" : ""}" aria-label="${s.n}-day flight streak${streakRisk(s) ? `, ends in ${esc(streakLeft(s))}` : ""}">${I.flame}${s.n}</span>` : ""; };
 
+// A new season: its look, for anyone, until it ends
+function seasonCard() {
+  const s = seasonNow(); if (!s || !S.me) return "";
+  try { if (localStorage.getItem("inflight-season") === s.key) return ""; } catch (_) { return ""; }
+  return `<div class="seasoncard" role="note"><span class="semoji" aria-hidden="true">${s.emoji}</span><span class="stext"><b>${esc(s.words)} pigeons are here</b>
+    <span>Give yours the ${esc(s.look)} look until ${esc(fmtDate(s.to - 1))}. Send 10 pigeons by then and it’s yours to keep.</span>
+    <span class="sbtns"><button type="button" class="btn small" data-act="seasontry">Try It</button><button type="button" class="btn small plain" data-act="seasonhide">Not Now</button></span></span></div>`;
+}
+
 /* ---------- Messages ---------- */
 function vMessages() {
   const fr = [
@@ -2481,7 +2510,7 @@ function vMessages() {
   return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
-    <div class="airslot"></div>
+    ${seasonCard()}<div class="airslot"></div>
     <div class="sres" aria-live="polite"></div>
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
 }
@@ -2980,7 +3009,7 @@ async function shareImage() {
 
 /* ---------- achievements (in the Flight Log) ---------- */
 const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
-  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] };
+  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] , migration: ["blossom", "pink"], summer: ["sun", "yellow"], autumn: ["leaf", "orange"], winter: ["snow", "blue"]};
 /* ---------- the passport ----------
    Every country and sea your pigeons have flown over (functions/_passport.js),
    newest first: a stamp each, in postal ink, with the day it was first
@@ -3053,8 +3082,10 @@ function skinsHtml(list, mine) {
   if (!list.length) return "";
   const tile = (id, name, open, sub) => `<button type="button" class="skin2${open ? "" : " locked"}${(mine || null) === id ? " on" : ""}" ${open ? `data-act="skin" data-id="${id || "usual"}"` : "disabled"} aria-pressed="${(mine || null) === id}">
       <span class="sbig">${pg("standard", id)}</span><b>${esc(name)}</b><small>${sub}</small></button>`;
-  return `<div class="ghead">Rare Pigeons <span class="gcount">${list.filter((k) => k.open).length} of ${list.length}</span></div>
-    <div class="badges skins">${tile(null, "Usual", true, "Every pigeon")}${list.map((k) => tile(k.id, k.name, k.open, k.open ? "Unlocked" : `Earn ${esc(SKINS[k.id]?.badge || "its badge")}`)).join("")}</div>
+  const seas = list.filter((k) => k.season), rare = list.filter((k) => !k.season);
+  const ssub = (k) => (k.season.kept ? "Yours to keep" : `Until ${esc(fmtDate(k.season.until - 1))} · ${k.season.n} of ${k.season.of} sent to keep it`);
+  return `<div class="ghead">Rare Pigeons <span class="gcount">${rare.filter((k) => k.open).length} of ${rare.length}</span></div>
+    <div class="badges skins">${tile(null, "Usual", true, "Every pigeon")}${seas.map((k) => tile(k.id, k.name, k.open, ssub(k))).join("")}${rare.map((k) => tile(k.id, k.name, k.open, k.open ? "Unlocked" : `Earn ${esc(SKINS[k.id]?.badge || "its badge")}`)).join("")}</div>
     <div class="gfoot">Your friends see the look on every pigeon you send. Its colour still says what kind it is.</div>`;
 }
 /* ---------- feathers ---------- */
@@ -3600,7 +3631,7 @@ function renderCompose() {
     pill.innerHTML = `${kind ? `<span class="pgw">${pg(kind, S.me.skin)}${wearOn(bd?.wear)}</span>` : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}<span class="kl">${esc(!kind ? "None" : bd ? bd.name : KIND[kind].name)}</span>${sched ? I.clock : via ? I.people : ""}${I.chev}`;
   }
   pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
-  if ($ta.placeholder !== hint) $ta.placeholder = hint;
+  if ($ta.placeholder !== hint) { $ta.placeholder = hint; if (!$ta.value) fitTa(); }
   // the weather along the way, for a pigeon about to leave now (one to one)
   const wp = $(".wxplan", $compose), plan = !g && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && kind !== "mystery" && f.lat != null;
   if (plan) planWx(f.id);
@@ -4084,7 +4115,7 @@ function drawSheet(refresh) {
         ${kinds.length ? `<div class="ghead">By pigeon</div><div class="group">${kinds.map((k) => `<div class="cell has-icon kindrow"><span class="tile ${k === "dumb" ? "gray" : k}">${I.bird}</span><span class="ctext"><span>${KIND[k].name}</span><i class="kbar ${k}" data-w="${(d.kinds[k] / most).toFixed(3)}"></i></span><span class="val">${n(d.kinds[k])}</span></div>`).join("")}</div>` : ""}
         <div class="group mt">${cell({ icon: I.skull, tile: "red", label: "Lost to Pigeon Death", val: n(d.lost) })}${cell({ icon: I.homing, tile: "blue", label: "Called back", val: n(d.recalled) })}</div>
         <div class="gfoot">Since ${fmtDate(d.since)}. Worked out from distances and times only: what you wrote stays between you and your friends.</div>`
-        : `<p class="empty"><b>No flights yet</b>Send your first pigeon and its miles start here.</p>`);
+        : `<p class="empty"><b>No flights yet</b>Send your first pigeon and its miles start here.</p>${(d.skins || []).some((k) => k.season) ? skinsHtml(d.skins, S.me.skin) : ""}`);
       // sizes set from code (inline style attributes are blocked)
       $layer.querySelectorAll("[data-lap]").forEach((el) => el.style.setProperty("--lap", el.dataset.lap));
       $layer.querySelectorAll(".kbar[data-w], .bprog[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
@@ -4758,6 +4789,7 @@ async function onClick(e) {
     case "shareflight": return openShare(id || t.dataset.id);
     case "birds": S.sheet = { type: "birds" }; return renderSheet();
     case "feathers": return openFeathers();
+    case "seasonhide": case "seasontry": { const s = seasonNow(); try { if (s) localStorage.setItem("inflight-season", s.key); } catch (_) {} render(); if (t.dataset.act === "seasontry") { haptic("tick"); return openFlightLog("skins"); } return; }
     case "buyitem": {
       const it = S.sheet?.data?.items.find((x) => x.id === id); if (!it) return;
       try { const r = await api("feathers-buy", { method: "POST", body: { item: id } }); S.sheet.data = r; S.feathers = r.feathers; haptic("success"); renderSheet(); render();
@@ -6016,9 +6048,13 @@ async function offerNotify() {
   else if (S.emailOn) toast("Want an email when the reply lands?", "Email Me", () => setEmailNotify(true));
   else if (ps === "homescreen") toast("Add InFlight to your Home Screen to get notified when the reply lands.", "How", () => go("account"));
 }
-async function openFlightLog() {
+async function openFlightLog(at) {
   const sh = S.sheet = { type: "flightlog", data: null }; renderSheet();
-  try { sh.data = await api("flight-log"); if (S.sheet === sh) renderSheet(); }
+  try {
+    sh.data = await api("flight-log"); if (S.sheet !== sh) return;
+    renderSheet();
+    if (at === "skins") setTimeout(() => $(".badges.skins", $layer)?.previousElementSibling?.scrollIntoView({ block: "start", behavior: "smooth" }), 350);     // straight to the looks
+  }
   catch (err) { if (S.sheet === sh) { S.sheet = null; renderSheet(); } toast(esc(err.message)); }
 }
 // Links from notifications and emails: #open=<friend> opens that chat,
