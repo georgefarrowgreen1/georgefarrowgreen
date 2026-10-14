@@ -1593,3 +1593,5 @@ html.night #screen,html.night .view{background:transparent}
 @keyframes wspin{to{transform:rotate(360deg)}}
 .welcome .wtop{margin-top:max(16vh,80px)}
 @media (prefers-reduced-motion:reduce){.welcome .wlogo .appicon,.welcome .wring{animation:none;opacity:1;filter:none;transform:none}}
+/* "You've been invited" in the same quiet capitals as "By invitation only" */
+.welcome .invited{margin:0 0 14px;font-size:14px;font-weight:400;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55);text-shadow:none}
