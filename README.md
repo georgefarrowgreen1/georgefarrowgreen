@@ -262,6 +262,18 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Near misses.** When two pigeons someone can see both of come within 50 km
+of each other in mid-air, it's a moment: a pigeon each way in a chat passing
+("Your pigeon and Reuben's passed each other over Tajikistan"), or a quicker
+pigeon overtaking a slower one. The server works it out when a pigeon takes
+off, and again when its course changes or it's called back
+(`functions/_moments.js`: each pigeon flies its great circles at an even pace;
+it must be a crossing in mid-air, not two setting off or arriving together),
+and names the spot with the map's own country and sea names
+(`functions/_where.js`). As it happens, both people get a push (Mid-air
+Moments, in Notifications), the chat gets a line (tap it for the map), and
+the map marks the spot. Only pigeons you could already see count.
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat

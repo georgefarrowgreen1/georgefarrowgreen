@@ -23,7 +23,7 @@ const LOOKBACK = 3 * DAY;         // a pigeon held by quiet hours is still annou
 
 /* ---------------- preferences ----------------
    Account-wide (every phone follows them); whether push is on is per phone. */
-export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
+export const NOTIFY_DEFAULTS = { landed: true, takeoff: false, rerouted: true, lost: true, requests: true, accepted: true, reactions: true, weekly: true, delays: true, moments: true, names: true, quiet: false, quietFrom: 22, quietTo: 7, tz: "UTC" };
 export function prefsOf(u) {
   let p = {}; try { p = JSON.parse(u.notify_prefs || "{}") || {}; } catch (_) { /* defaults */ }
   return { ...NOTIFY_DEFAULTS, ...p };
@@ -32,7 +32,7 @@ const validTz = (tz) => { try { new Intl.DateTimeFormat("en-GB", { timeZone: tz 
 // Merge a partial update from the app, keeping only known keys and sane values.
 export function cleanPrefs(cur, b) {
   const out = { ...cur };
-  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
+  for (const k of ["landed", "takeoff", "rerouted", "lost", "requests", "accepted", "reactions", "weekly", "delays", "moments", "names", "quiet"]) if (b[k] !== undefined) out[k] = !!b[k];
   for (const k of ["quietFrom", "quietTo"]) if (b[k] !== undefined) { const h = Number(b[k]); if (Number.isInteger(h) && h >= 0 && h < 24) out[k] = h; }
   if (b.tz !== undefined && typeof b.tz === "string" && b.tz.length < 60 && validTz(b.tz)) out.tz = b.tz;
   return out;
@@ -316,6 +316,43 @@ async function reactTick(env, D, t, since) {
   return pushes;
 }
 
+// Near misses as they happen: told to each person who could see both pigeons.
+const kindName = (k) => ({ rocket: "rocket", turbo: "turbo", swift: "swift", dumb: "dumb", standard: "standard" }[k] || "standard");
+async function nearTick(env, D, t, since) {
+  let pushes = 0;
+  const { results } = await D.prepare(`SELECT n.*, ma.sender AS a_from, ma.recipient AS a_to, ma.pigeon AS a_kind, mb.sender AS b_from, mb.recipient AS b_to, mb.pigeon AS b_kind
+    FROM pg_near n JOIN pg_msgs ma ON ma.id = n.a JOIN pg_msgs mb ON mb.id = n.b
+    WHERE n.told IS NULL AND n.at <= ?1 AND n.at > ?2 LIMIT 100`).bind(t, since).all();
+  for (const r of results) {
+    const claimed = await D.prepare("UPDATE pg_near SET told = ? WHERE a = ? AND b = ? AND told IS NULL").bind(t, r.a, r.b).run();
+    if (!claimed.meta.changes) continue;
+    for (const v of new Set([r.a_from, r.a_to].filter((x) => x === r.b_from || x === r.b_to))) {
+      const u = await D.prepare("SELECT id, notify_prefs FROM pg_users WHERE id = ?").bind(v).first(); if (!u) continue;
+      const p = prefsOf(u); if (!p.moments || isQuiet(p, t)) continue;
+      // the leader first, if one overtook the other
+      const [x, y] = r.lead === r.b ? ["b", "a"] : ["a", "b"];
+      const mine = (s) => r[s + "_from"] === v, them = (s) => (mine(s) ? r[s + "_to"] : r[s + "_from"]);
+      const names = new Map();
+      for (const id of new Set([them(x), them(y)])) names.set(id, firstName((await D.prepare("SELECT name FROM pg_users WHERE id = ?").bind(id).first())?.name));
+      const over = r.place && r.place !== "land" ? ` over ${r.place}` : "";
+      let body;
+      if (!p.names) body = r.kind === "overtake" ? "One of your pigeons just overtook another in mid-air." : "Two of your pigeons just passed each other in mid-air.";
+      else if (them(x) === them(y)) {
+        const n = names.get(them(x));
+        body = r.kind !== "overtake" ? (mine(x) === mine(y) ? `Your pigeons just passed each other${over}.` : `Your pigeon and ${n}’s just passed each other${over}.`)
+          : mine(x) && mine(y) ? `Your ${kindName(r[x + "_kind"])} pigeon just overtook your ${kindName(r[y + "_kind"])} one${over}.`
+          : !mine(x) && !mine(y) ? `${n}’s ${kindName(r[x + "_kind"])} pigeon just overtook their ${kindName(r[y + "_kind"])} one${over}.`
+          : `${mine(x) ? "Your" : n + "’s"} pigeon just overtook ${mine(y) ? "yours" : n + "’s"}${over}.`;
+      } else {
+        const say = (s) => (mine(s) ? `your pigeon to ${names.get(them(s))}` : `${names.get(them(s))}’s pigeon`);
+        const lead = say(x); body = `${lead[0].toUpperCase() + lead.slice(1)} just ${r.kind === "overtake" ? "overtook" : "passed"} ${say(y)}${over}.`;
+      }
+      pushes += await pushTo(env, v, { title: "Near miss", body, tag: `near-${r.a}-${r.b}`, url: `/pigeon/#open=${them(x)}` });
+    }
+  }
+  return pushes;
+}
+
 // Where pigeons flew from and to is only kept exactly while it matters: a month
 // after landing, the ends of each route are rounded to half a degree (about
 // 50 km, still right for the map, the miles and the badges) and the points
@@ -329,6 +366,9 @@ async function blurOld(D, t) {
     D.prepare(`UPDATE pg_msgs SET ${["from_lat", "from_lon", "to_lat", "to_lon"].map(half).join(", ")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
     D.prepare(`UPDATE pg_gdeliv SET ${["to_lat", "to_lon"].map(half).join(", ")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
     D.prepare(`UPDATE pg_gmsgs SET ${["from_lat", "from_lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND sent_at < ?`).bind(t - BLUR_AFTER - 8 * DAY),
+    D.prepare(`UPDATE pg_near SET ${["lat", "lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND at < ?`).bind(t - BLUR_AFTER),
+    // and none outlives either of its pigeons
+    D.prepare("DELETE FROM pg_near WHERE NOT EXISTS (SELECT 1 FROM pg_msgs WHERE id = pg_near.a) OR NOT EXISTS (SELECT 1 FROM pg_msgs WHERE id = pg_near.b)"),
   ]);
 }
 // Pigeons that have landed since the last tick: push now; email those who
@@ -405,6 +445,7 @@ export async function tick(env, origin) {
       tag: "via-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
   pushes += await wxTick(env, D, t, since);
+  pushes += await nearTick(env, D, t, since);
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

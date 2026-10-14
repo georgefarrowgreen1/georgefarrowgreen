@@ -150,6 +150,9 @@ const SCHEMA = [
 // Ids the phones choose (messages, group messages, reactions) share one
 // space: a reaction can't take a message's id, nor a group message a direct one.
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT NOT NULL, at INTEGER NOT NULL)");
+// Near misses: two pigeons that came within a few miles in mid-air (a < b, by id), where and when
+SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_near (a TEXT NOT NULL, b TEXT NOT NULL, at INTEGER NOT NULL, lat REAL, lon REAL, km REAL, place TEXT,
+  kind TEXT, lead TEXT, told INTEGER, coarse INTEGER, PRIMARY KEY (a, b))`, "CREATE INDEX IF NOT EXISTS pg_near_b ON pg_near(b)", "CREATE INDEX IF NOT EXISTS pg_near_at ON pg_near(at)");
 export const claimId = (D, id, kind, t) => D.prepare("INSERT INTO pg_ids (id, kind, at) VALUES (?, ?, ?)").bind(id, kind, t);
 export const idTaken = async (D, id) => !!(await D.prepare("SELECT 1 FROM pg_ids WHERE id = ?").bind(id).first());
 const MIGRATIONS = [

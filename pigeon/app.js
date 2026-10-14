@@ -222,6 +222,7 @@ const I = {
   rain: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="m9 17.5-1 2.5M13 17.5l-1 2.5M17 17.5l-1 2.5"/>`),
   snow: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="M9 18h.01M13 19.5h.01M17 18h.01M11 21h.01M15 21h.01"/>`),
   fog: ico(`<path d="M7 12.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 12.5"/><path d="M4 16h16M6 19.5h12"/>`),
+  pass: ico(`<path d="M3.5 8.5h13l-3.5-3.5"/><path d="M20.5 15.5h-13l3.5 3.5"/>`),
   heart: ico(`<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>`),
   reply: ico(`<path d="M10 8 5 12.5l5 4.5"/><path d="M5.5 12.5H14a5 5 0 0 1 5 5v1"/>`),
   homing: ico(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>`),
@@ -460,6 +461,11 @@ function drawMap(cv, m, cardH) {
   }
   g.globalAlpha = 1; g.setLineDash([]);
   for (const { rp, P } of tracks) rp.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
+  for (const { r, rp } of tracks) for (const n of r.near || []) {        // where it passed another pigeon
+    const near = rp.reduce((a, p) => (Math.abs(p.t - n.at) < Math.abs(a.t - n.at) ? p : a), rp[0]);
+    let lon = n.lon; while (lon - near.x > 180) lon -= 360; while (lon - near.x < -180) lon += 360;
+    sparkAt(g, X(lon), Y(mercY(n.lat)), col("--cell"), col("--orange"));
+  }
   const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P }) => ({ r, ...pigeonOn(P, rp, flightAt(r, r.lost ? r.lostAt : now()).t) }));
   // labels claim space in priority order; anything that would overlap is left out
   const taken = [...birds.map(({ at: [px, py] }) => [px - 24, py - 20, px + 24, py + 20]), [0, H - cardH, W, H], ...suns];
@@ -1030,6 +1036,13 @@ function drawBirds(cv, ts, xf) {
     g.restore();
   }
 }
+// A near miss on the map: a little four-pointed spark
+function sparkAt(g, x, y, edge, fill) {
+  g.save(); g.translate(x, y);
+  const star = (r) => { g.beginPath(); for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 - Math.PI / 2, rr = i % 2 ? r * 0.38 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } g.closePath(); };
+  g.lineJoin = "round"; g.lineWidth = 4; g.strokeStyle = edge; star(9); g.stroke(); g.fillStyle = fill; star(9); g.fill();
+  g.restore();
+}
 /* ---------- the globe: long flights curve round the Earth ---------- */
 const GLOBE_KM = 3000;
 const globeOn = (m) => S.sheet?.globe ?? Math.max(0, ...routesOf(m).filter((r) => !r.here).map((r) => r.km || 0)) >= GLOBE_KM;
@@ -1152,6 +1165,7 @@ function drawGlobe(cv, m, cardH, fast) {
     if (cut > 0) { g.lineWidth = lw + 1.5; g.strokeStyle = col("--cell"); seg(P, up, 0, cut); g.lineWidth = lw; g.strokeStyle = tint; seg(P, up, 0, cut); }
   }
   g.globalAlpha = 1;
+  for (const { r } of tracks) for (const n of r.near || []) { const p = proj(n.lon, n.lat); if (p[2]) sparkAt(g, p[0], p[1], col("--cell"), col("--orange")); }
   g.restore();                                                         // (out of the globe's clip)
   // ends and labels
   const birds = tracks.filter(({ r }) => !r.here).map(({ r, rp, P, up }) => { const ft = flightAt(r, r.lost ? r.lostAt : now()).t, i = rp.findIndex((p) => p.t >= ft); return { r, vis: up[i < 0 ? up.length - 1 : i], ...pigeonOn(P, rp, ft) }; }).filter((b) => b.vis);
@@ -2470,6 +2484,7 @@ function vNotifySheet() {
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
       ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
+      ${t("moments", I.pass, "teal", "Mid-air Moments", "When two of your pigeons pass each other in the air")}
       ${t("weekly", I.globe, "blue", "Your Week in Flight", "Sunday evening: miles flown and badges earned")}
     </div>
     <div class="ghead">Lock Screen</div>
@@ -2972,6 +2987,33 @@ async function sendReact(id, e) {
 }
 // Who joined, left or renamed the group: a quiet line in the chat. Adds by one
 // person at one moment read as one line ("George added Mira and Theo").
+/* ---------- mid-air moments ----------
+   Near misses: two pigeons you can see that passed each other (or one
+   overtook the other) in mid-air. Said from this chat's side; tap for the map. */
+function momentText(m, n, chatId) {
+  const me = S.me.id, nm = (id) => first(personById(id)?.name || "a friend"), o = n.other;
+  const mineThis = m.from === me, mineOther = o.from === me, kind = (k) => (KIND[k]?.name || "Standard").toLowerCase();
+  const over = n.place && n.place !== "land" ? ` over ${n.place}` : "";
+  if ((mineOther ? o.to : o.from) === chatId) {                        // both in this chat
+    if (n.kind !== "overtake") return mineThis === mineOther ? `Your pigeons passed each other${over}` : `Your pigeon and ${nm(chatId)}’s passed each other${over}`;
+    const [lead, back] = n.lead === "other" ? [[mineOther, o.pigeon], [mineThis, m.pigeon]] : [[mineThis, m.pigeon], [mineOther, o.pigeon]];
+    if (lead[0] && back[0]) return `Your ${kind(lead[1])} pigeon overtook your ${kind(back[1])} one${over}`;
+    if (!lead[0] && !back[0]) return `${nm(chatId)}’s ${kind(lead[1])} pigeon overtook their ${kind(back[1])} one${over}`;
+    return `${lead[0] ? "Your" : nm(chatId) + "’s"} pigeon overtook ${back[0] ? "yours" : nm(chatId) + "’s"}${over}`;
+  }
+  const here = mineThis ? "your pigeon" : `${nm(chatId)}’s pigeon`, there = mineOther ? `your pigeon to ${nm(o.to)}` : `${nm(o.from)}’s pigeon`;
+  const [a, b] = n.lead === "other" ? [there, here] : [here, there];
+  return `${a[0].toUpperCase() + a.slice(1)} ${n.kind === "overtake" ? "overtook" : "passed"} ${b}${over}`;
+}
+// this chat's moments, each once (both pigeons may be here), in time order
+function chatMoments(msgs, chatId) {
+  const seen = new Set(), out = [];
+  for (const m of msgs || []) for (const n of m.near || []) {
+    const key = [m.id, n.other.id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
+    out.push({ at: n.at, html: `<button type="button" class="sysline moment" data-act="map" data-id="${esc(m.id)}">${I.pass}<span>${esc(momentText(m, n, chatId))}<span class="t"> · ${fmtTime(n.at)}</span></span></button>` });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -3035,6 +3077,8 @@ function vChat() {
   const t = S.turns.get(f.id) || f.turn;
   let body = "", lastStamp = 0, prevFrom = null;
   const lastMine = msgs && [...msgs].reverse().find((m) => m.from === S.me.id);
+  const moms = chatMoments(msgs, f.id); let mo = 0;
+  const momsTo = (at) => { let h = ""; while (mo < moms.length && moms[mo].at <= at) h += moms[mo++].html; return h; };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && S.outbox.some((o) => o.to === f.id)) body = "";
   else if (!msgs.length) body = `<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
@@ -3042,11 +3086,13 @@ function vChat() {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (at - lastStamp > HOUR) { body += `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`; prevFrom = null; }
     lastStamp = at;
+    const ml = momsTo(at); if (ml) { body += ml; prevFrom = null; }
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), null); i = j - 1; prevFrom = null; continue; }
     body += bubble(f, m, lastMine && m.id === lastMine.id, prevFrom !== null && prevFrom !== m.from);
     prevFrom = m.from;
   }
+  if (msgs?.length) body += momsTo(Infinity);
   // a pigeon in the air either way: the map button sits beside the menu
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && !m.waiting && m.route);
   const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
@@ -3960,6 +4006,7 @@ function tickMap() {
   $(".mcb", card).innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
+    ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
     ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog"><i></i></span>
     ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
