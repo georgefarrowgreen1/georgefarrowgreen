@@ -943,17 +943,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .ptr.busy .ptrb svg{animation:flap .16s ease-in-out infinite alternate}
 .ptr-anim{transition:transform .38s var(--snappy),opacity .3s}
 @media (prefers-reduced-motion: reduce){.ptr.busy .ptrb svg{animation:none}}
-/* swipe a chat row: actions slide out from behind it */
-.swrow{position:relative;border-radius:22px;overflow:hidden}
-.swrow + .swrow .mrow::before{content:"";position:absolute;top:0;right:14px;left:88px;height:.5px;background:var(--sep)}
-.swrow .mrow{background:var(--bg);touch-action:pan-y}
-.swrow .mrow.swanim{transition:transform .32s var(--snappy)}
-.swacts{position:absolute;top:0;right:0;bottom:0;display:flex;visibility:hidden}
-.swrow.open .swacts{visibility:visible}
-.swa{width:76px;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#fff;font-size:12px;font-weight:600;font-family:inherit}
-.swa .ico{font-size:21px}
-.swa:active{filter:brightness(.92)}
-.swa.read{background:var(--tint-fill)}.swa.mute{background:var(--indigo)}.swa.info{background:var(--gray)}.swa.del{background:var(--red)}
 /* the hidden switch flipped for iPhone haptics */
 .hapt{position:fixed;left:-200px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
 /* In the air: every pigeon flying to or from you, as cards at the top of Messages */

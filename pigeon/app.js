@@ -1740,55 +1740,11 @@ let $view, $compose, $tabbar, $layer, $pop, $toast, $ta;
 // No zooming the page (only the map zooms, and it handles its own pinches),
 // and no copying. iOS ignores user-scalable=no, so stop its gestures here too.
 const inField = (t) => !!t?.closest?.("input, textarea, [contenteditable]");
-/* ---------- swipe a chat row for quick actions ----------
-   Drag a row in Messages to the left: Read, Mute or Info, and Leave or
-   Remove slide out from behind it. One row open at a time; a tap anywhere
-   else (or on the row) closes it. */
-let swOpen = null, swPending = false;
-function closeSwipe(anim = true) {
-  if (!swOpen) return;
-  const r = swOpen; swOpen = null;
-  r.classList.toggle("swanim", anim); r.style.transform = ""; r.parentElement?.classList.remove("open");
-  if (swPending) { swPending = false; setTimeout(render, anim ? 330 : 0); }
-}
-function swipeRows() {
-  const v = $view; let st = null;
-  v.addEventListener("touchstart", (e) => {
-    const row = e.target.closest?.(".swrow .mrow");
-    if (swOpen && row !== swOpen && !e.target.closest(".swacts")) closeSwipe();
-    if (!row || e.touches.length !== 1) { st = null; return; }
-    const w = row.parentElement.querySelector(".swacts").offsetWidth;
-    st = { row, x: e.touches[0].clientX, y: e.touches[0].clientY, w, base: swOpen === row ? -w : 0, dir: null, dx: 0 };
-    row.classList.remove("swanim");
-  }, { passive: true });
-  v.addEventListener("touchmove", (e) => {
-    if (!st) return;
-    const dx = e.touches[0].clientX - st.x, dy = e.touches[0].clientY - st.y;
-    if (!st.dir) { if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; st.dir = Math.abs(dx) > Math.abs(dy) ? "x" : "y"; }
-    if (st.dir !== "x") return;
-    e.preventDefault();
-    let x = st.base + dx;
-    if (x > 0) x = x * 0.25;                                       // a little give past closed
-    if (x < -st.w) x = -st.w + (x + st.w) * 0.3;                   // and past open
-    st.dx = dx; st.row.style.transform = `translateX(${x}px)`;
-    st.row.parentElement.classList.add("open");
-  }, { passive: false });
-  const end = () => {
-    if (!st) return; const s2 = st; st = null;
-    if (s2.dir !== "x") return;
-    s2.row.dataset.swiped = "1"; setTimeout(() => { delete s2.row.dataset.swiped; }, 350);   // a swipe isn't a tap
-    const x = s2.base + s2.dx, open = x < -s2.w * 0.4;
-    s2.row.classList.add("swanim");
-    if (open) { swOpen = s2.row; s2.row.style.transform = `translateX(${-s2.w}px)`; haptic("tick"); }
-    else { if (swOpen === s2.row) swOpen = null; s2.row.style.transform = ""; setTimeout(() => { if (swOpen !== s2.row) s2.row.parentElement?.classList.remove("open"); }, 320); }
-  };
-  v.addEventListener("touchend", end); v.addEventListener("touchcancel", end);
-}
 /* ---------- swiping between the tabs ----------
    Drag Messages, Friends or Account sideways and the next tab comes in beside
-   it under your finger, the tab bar's highlight sliding along. A chat row
-   keeps its own swipe (its quick actions), and anything that scrolls sideways
-   (the In the air strip) scrolls instead. */
+   it under your finger, the tab bar's highlight sliding along, from anywhere
+   on the screen. Anything that scrolls sideways (the In the air strip, once
+   it has more cards than fit) scrolls instead. */
 function tabSwipe() {
   const r = root(), v = $view; let st = null;
   const tabs = () => $(".tabs", $tabbar);
@@ -1804,8 +1760,8 @@ function tabSwipe() {
   v.addEventListener("touchstart", (e) => {
     st = null;
     const ids = TABS.map(([id]) => id), i = ids.indexOf(S.view), t = e.target;
-    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || swOpen || $pop.firstElementChild || v.style.transform) return;
-    if (t.closest?.(".swrow, input:focus, textarea, select") || sideways(t)) return;   // (a search box you aren't typing in swipes too)
+    if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || $pop.firstElementChild || v.style.transform) return;
+    if (t.closest?.("input:focus, textarea, select") || sideways(t)) return;   // (a search box you aren't typing in swipes too)
     const p = e.touches[0];
     st = { ids, i, x: p.clientX, y: p.clientY, lx: p.clientX, ly: p.clientY, lt: performance.now(), vx: 0, vy: 0, dx: 0, w: r.clientWidth, dir: null, side: 0, peek: null };
   }, { passive: true });
@@ -1946,7 +1902,7 @@ function underlay() {
 }
 function edgeBack() {
   const r = root(); let st = null;
-  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked || swOpen ? null : $(".nb-left .nbtn.back, .nb-left .nbtn[data-act=cancelunlock]", $view));
+  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked ? null : $(".nb-left .nbtn.back, .nb-left .nbtn[data-act=cancelunlock]", $view));
   const moving = () => [$view, $compose.hidden ? null : $compose];
   const place = (s2, dx) => {
     const p = Math.min(1, dx / s2.w);
@@ -1996,7 +1952,7 @@ function sheetDrag() {
     if (!sh || sh.classList.contains("closing") || e.touches.length !== 1) return;
     const body = $(".body", sh), head = !!e.target.closest(".grab, .sheet > header");
     // from its top, or anywhere once it's scrolled to the top (not on the map, a field or a list that slides sideways)
-    if (!head && (!body || body.classList.contains("flush") || body.scrollTop > 0 || e.target.closest("input, textarea, select, canvas, .gifgrid, .swrow"))) return;
+    if (!head && (!body || body.classList.contains("flush") || body.scrollTop > 0 || e.target.closest("input, textarea, select, canvas, .gifgrid"))) return;
     st = { sh, body, head, scrim: $(".scrim", $layer), y: t.clientY, x: t.clientX, lx: t.clientX, ly: t.clientY, lt: performance.now(), vy: 0, dy: 0, h: sh.offsetHeight, dir: null };
   }, { passive: true });
   $layer.addEventListener("touchmove", (e) => {
@@ -2116,7 +2072,7 @@ function lockPage() {
 }
 function mount() {
   lockPage();
-  setTimeout(() => { pullToRefresh(); tabSwipe(); swipeRows(); navGestures(); });
+  setTimeout(() => { pullToRefresh(); tabSwipe(); navGestures(); });
   root().innerHTML = `
     <div class="offline" hidden>You’re offline. Pigeons will wait.</div>
     <div class="ptr" aria-hidden="true"><span class="ptrb">${I.bird}</span></div>
@@ -2252,7 +2208,6 @@ function playFresh() {
 }
 function render() {
   if (!$view) return;
-  if (swOpen?.isConnected && S.view === "messages") { swPending = true; return; }   // a row is swiped open: redraw once it closes
   const auth = AUTH_VIEWS.has(S.view) || !S.me;
   const chat = !auth && S.view === "chat";
   root().classList.toggle("plain", chat || (!auth && S.view === "messages"));
@@ -2353,24 +2308,14 @@ function vMessages() {
     ...S.friends.map((f) => ({ f, ...preview(f) })).filter((x) => x.f.last || S.outbox.some((o) => o.to === x.f.id)),
     ...S.groups.map((g) => ({ f: g, g, ...gpreview(g) })),
   ].sort((a, b) => b.at - a.at);
-  // swipe a row left for quick actions
-  const acts = (f, g) => [
-    f.unread ? `<button type="button" class="swa read" data-act="swread" data-id="${esc(f.id)}">${I.check}<span>Read</span></button>` : "",
-    g ? `<button type="button" class="swa mute" data-act="swmute" data-id="${esc(g.id)}">${I.bell}<span>${g.muted ? "Unmute" : "Mute"}</span></button>`
-      : `<button type="button" class="swa info" data-act="swinfo" data-id="${esc(f.id)}">${I.info}<span>Info</span></button>`,
-    g ? `<button type="button" class="swa del" data-act="groupleaveask" data-id="${esc(g.id)}">${I.minusp}<span>Leave</span></button>`
-      : `<button type="button" class="swa del" data-act="unfriendask" data-id="${esc(f.id)}">${I.minusp}<span>Remove</span></button>`,
-  ].join("");
-  const rows = fr.map(({ f, g, html, at }) => `<div class="swrow" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
-    <div class="swacts">${acts(f, g)}</div>
-    <button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}">
+  const rows = fr.map(({ f, g, html, at }) => `<button class="mrow${g ? " grow" : ""}" data-act="open" data-id="${esc(f.id)}" data-find="${esc((g ? g.name + " " + g.members.map((p) => p.name).join(" ") : f.name + " " + f.handle).toLowerCase())}">
       ${f.unread ? `<span class="dot" aria-label="Unread"></span>` : ""}
       ${g ? gavatar(g, "m") : avatar(f, "m", true)}
       <span class="mtext">
         <span class="mtop"><span class="mname one">${esc(g ? g.name : first(f.name))}</span><time>${fmtListTime(at)}</time>${chevSm}</span>
         <span class="mprev">${S.drafts.get(f.id)?.trim() ? `<span class="draft">Draft:</span> ${esc(S.drafts.get(f.id).trim().replace(/\s+/g, " "))}` : html}</span>
       </span>
-    </button></div>`).join("");
+    </button>`).join("");
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
   if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
     <h1 class="large">Messages</h1><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
@@ -4057,29 +4002,10 @@ async function onClick(e) {
   const inPop = !!t.closest(".poplayer") && t.dataset.act !== "closepop";
   if (inPop) closePop();
   if (t.getAttribute("role") === "switch" || t.dataset.act === "pigeon" || t.dataset.act === "schedpick" || t.dataset.act === "viapick") haptic("tick");
-  if (swOpen && !t.closest(".swrow")) closeSwipe();                 // any other tap closes an open row
-  else if (swOpen && t.closest(".swacts")) closeSwipe();
   switch (t.dataset.act) {
     case "tab": return go(id);
     case "to": return go(id);
-    case "open":
-      if (t.dataset.swiped) return;
-      if (swOpen) { const was = swOpen === t; closeSwipe(); if (was) return; }
-      return go("chat", id);
-    case "swread": {
-      closeSwipe();
-      const g = group(id), f = friend(id);
-      if (g) { g.unread = 0; api("group-read", { method: "POST", body: { id } }).catch(() => {}); }
-      else if (f) { f.unread = 0; api("read", { method: "POST", body: { with: id } }).catch(() => {}); }
-      return render();
-    }
-    case "swmute": {
-      closeSwipe(); const g = group(id); if (!g) return;
-      const on = !g.muted; g.muted = on; render(); toast(on ? `${esc(g.name)} is muted.` : `${esc(g.name)} is unmuted.`);
-      try { await api("group-mute", { method: "POST", body: { id, muted: on } }); } catch (err) { g.muted = !on; render(); toast(esc(err.message)); }
-      return;
-    }
-    case "swinfo": closeSwipe(false); S.sheet = { type: "friendinfo", id }; return renderSheet();
+    case "open": return go("chat", id);
     case "newmsg": S.sheet = { type: "newmsg" }; return renderSheet();
     case "newgroup": S.sheet = { type: "newgroup", pick: new Set() }; renderSheet(); setTimeout(() => $("#f-gname", $layer)?.focus(), 300); return;
     case "groupadd": S.sheet = { type: "groupadd", id: id || S.sheet?.id, pick: new Set() }; return renderSheet();

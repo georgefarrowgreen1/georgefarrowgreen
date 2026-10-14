@@ -258,7 +258,9 @@ friend is listed but not mapped, and a scheduled pigeon appears once it takes of
 back (the screen you came from waits underneath, dimmed, and follows your
 finger; let go early and you stay put, draft and all), and back returns to
 where you came from (Friends, if that's where you opened the chat), at the
-same scroll position. Pull a sheet down by its top, or from anywhere once it's
+same scroll position. Swipe sideways anywhere on Messages, Friends or Account
+to move to the tab beside it (it slides in under your finger, and the tab
+bar's highlight follows). Pull a sheet down by its top, or from anywhere once it's
 scrolled to the top, to close it (on the map, its top: dragging the map moves
 the map). Swipe a photo away, flick a banner up, tap any empty space to put
 the keyboard away, and tap outside a menu or question to close it. Escape
