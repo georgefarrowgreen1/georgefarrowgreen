@@ -36,8 +36,10 @@ export function placesAlong(stops) {
 
 // Stamp flights that have landed and aren't stamped yet: one person's (as
 // they open their passport), or anyone's (from the tick). Oldest first, a few
-// at a time; a flight is only ever stamped once, even if two of these run together.
-export async function stampPassports(D, t, uid = null, max = 40) {
+// at a time (a long flight takes up to a millisecond, and a request has only
+// so much time), so older flights fill in over a few runs; a flight is only
+// ever stamped once, even if two of these run together.
+export async function stampPassports(D, t, uid = null, max = 12) {
   const mine = uid ? "AND m.sender = ?2" : "", args = uid ? [t, uid] : [t];
   const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.from_lat, m.from_lon, m.to_lat, m.to_lon, m.sent_at, m.deliver_at, m.legs FROM pg_msgs m
     WHERE m.deliver_at <= ?1 AND m.lost_at IS NULL AND m.from_lat IS NOT NULL AND m.to_lat IS NOT NULL ${mine}
@@ -80,7 +82,7 @@ export async function newStamps(D, uid, ids) {
 
 async function passport({ request, env }) {
   const u = await requireUser(request, env), D = await db(env), t = Date.now();
-  await stampPassports(D, t, u.id, 60);
+  await stampPassports(D, t, u.id, 20);
   return json(await passportFor(D, u.id, t));
 }
 export const PASSPORT_ROUTES = { "GET passport": passport };

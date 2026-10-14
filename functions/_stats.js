@@ -18,7 +18,7 @@ export const SKINS = {
 async function flightLog({ request, env }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  await stampPassports(D, t, u.id, 60);                     // any of yours that landed since: stamped first
+  await stampPassports(D, t, u.id, 20);                     // any of yours that landed since: stamped first
   const log = await logFor(D, u.id, t);
   const earned = new Set(log.badges.filter((b) => b.earned).map((b) => b.id));
   return json({ ...log, passport: await passportFor(D, u.id, t), skin: u.skin || null,
