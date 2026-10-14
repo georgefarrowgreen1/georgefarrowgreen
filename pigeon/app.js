@@ -1423,6 +1423,35 @@ async function forget() {
   clearAttach();
   await idb.del("session");
 }
+/* ---------- invites: InFlight is invite only ----------
+   An account needs a one-time link from the site owner (…/pigeon/#invite=…).
+   It's kept for this visit only, checked before the form shows, and used up
+   by the account it makes. */
+function setInvite(t) {
+  S.invite = t || null; S.inviteState = null; S.inviteChecking = null;
+  try { if (t) sessionStorage.setItem("inflight-invite", t); else sessionStorage.removeItem("inflight-invite"); } catch (_) {}
+}
+async function checkInvite() {
+  const t = S.invite || null;
+  if (S.inviteState || S.inviteChecking === (t || "-")) return;
+  S.inviteChecking = t || "-";
+  let st;
+  try { st = await api("invite-check" + (t ? "?t=" + encodeURIComponent(t) : "")); }
+  catch (_) { st = { ok: !!t, open: false }; }          // can't tell: let the server decide at sign-up
+  if (S.inviteChecking === (t || "-")) S.inviteChecking = null;
+  if ((S.invite || null) !== t) return;                 // the invite changed while this was asked: it's being checked anew
+  S.inviteState = st;
+  if (S.view === "welcome") render();
+}
+function inviteHtml() {
+  const st = S.inviteState;
+  if (!st) { checkInvite(); return `<div class="stack"><button class="btn wide" disabled>Create Account</button><button class="btn wide plain" data-act="to" data-id="signin">Sign In</button></div>`; }
+  if (st.open || st.ok) return `${S.invite && !st.open ? `<p class="invited">${I.mail}<span>You’ve been invited to InFlight.</span></p>` : ""}
+    <div class="stack"><button class="btn wide" data-act="to" data-id="signup">Create Account</button><button class="btn wide plain" data-act="to" data-id="signin">Sign In</button></div>`;
+  return `<p class="invonly"><b>${S.invite ? esc(st.error || "That invite doesn’t work.") : "InFlight is invite only."}</b>
+      <span>${S.invite ? "Ask whoever invited you for a new link." : "To join, you need an invite link. Already have an account? Sign in."}</span></p>
+    <div class="stack"><button class="btn wide" data-act="to" data-id="signin">Sign In</button></div>`;
+}
 async function createAccount(v) {
   const { privJwk, pub } = await (onb.id || E2E.newIdentity());
   S.making = 1; if (S.view === "making") render();
@@ -1430,7 +1459,8 @@ async function createAccount(v) {
   const { lockKey, proof } = await (ready ? ready.p : E2E.fromPassword(v.password, salt));
   const vault = await E2E.lock(lockKey, { ecdh: privJwk });
   S.making = 2; if (S.view === "making") render();
-  const r = await api("signup", { method: "POST", body: { name: v.name, handle: v.handle, email: v.email, salt: b64url(salt), proof, vault, pub } });
+  const r = await api("signup", { method: "POST", body: { name: v.name, handle: v.handle, email: v.email, salt: b64url(salt), proof, vault, pub, invite: S.invite || undefined } });
+  setInvite(null);
   S.making = 3; if (S.view === "making") render();
   await useKeys(r.token, r.me, privJwk);
   onb.id = onb.pw = null; onb.handleTouched = false;
@@ -3522,12 +3552,9 @@ function vAuth() {
         <ul class="feats">
           <li>${I.dist}<div><b>Real distance</b><span>Each message flies the real miles between you, at pigeon speed.</span></div></li>
           <li>${I.lock}<div><b>End-to-end encrypted</b><span>Only you and your friend can read your messages and photos.</span></div></li>
-          <li>${I.hourglass}<div><b>Photos that vanish</b><span>Photos are deleted 24 hours after they land.</span></div></li>
+          <li>${I.hourglass}<div><b>Photos that vanish</b><span>Each photo can be opened once, for 15 seconds.</span></div></li>
         </ul>
-        <div class="stack">
-          <button class="btn wide" data-act="to" data-id="signup">Create Account</button>
-          <button class="btn wide plain" data-act="to" data-id="signin">Sign In</button>
-        </div></div>`;
+        ${inviteHtml()}</div>`;
     case "signup": return `<div class="auth">${back("welcome")}
         ${stepDots(1)}
         <h1 class="large">Create Account</h1>
@@ -5532,6 +5559,7 @@ async function onSubmit(e) {
       for (const k of ["name", "handle", "email", "password"]) { const i = $(`#f-${k}`); if (i) i.value = keep[k] || ""; }
       const b2 = $("[data-form=signup] .btn"); if (b2) { b2.disabled = false; b2.textContent = "Create Account"; }
       onb.handleTouched = true;
+      if (err.field === "invite") { S.inviteState = { ok: false, open: false, error: err.message }; go("welcome"); return toast(esc(err.message)); }
       showErr(err.message, err.field);
     }
   } else if (kind === "signin") {
@@ -6262,6 +6290,10 @@ async function start() {
   // a confirm-your-email link: works signed in or not, on any phone
   const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (cf) { history.replaceState(null, "", location.pathname); confirmEmail(cf[1]); }
+  // an invite: kept for this visit (a reload keeps it too), out of the address bar
+  const iv = /#invite=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+  if (iv) { setInvite(iv[1]); history.replaceState(null, "", location.pathname); }
+  else { try { S.invite = sessionStorage.getItem("inflight-invite") || null; } catch (_) {} }
   // a reset link: take the token out of the address bar straight away
   const rs = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (rs) { S.resetToken = rs[1]; history.replaceState(null, "", location.pathname); }
@@ -6294,6 +6326,8 @@ async function start() {
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
+    const iv = /#invite=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+    if (iv) { history.replaceState(null, "", location.pathname); setInvite(iv[1]); if (!S.me) { go("welcome"); render(); } else toast("You already have an account, so this invite stays unused."); return; }
     const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
     if (cf) { history.replaceState(null, "", location.pathname); return confirmEmail(cf[1]); }
     const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);

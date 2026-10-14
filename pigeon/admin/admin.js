@@ -66,7 +66,7 @@ async function call(path, { method = "GET", body } = {}) {
   return data;
 }
 
-const A = { users: [], totals: {}, log: [], q: "", email: false, from: "", testTo: "", sheet: null, link: null, busy: null };
+const A = { users: [], totals: {}, log: [], invites: [], newInvite: null, q: "", email: false, from: "", testTo: "", sheet: null, link: null, busy: null };
 const root = () => $("#adm");
 const user = (id) => A.users.find((u) => u.id === id);
 
@@ -135,6 +135,21 @@ function vList() {
   return list.length ? `<div class="group">${list.map(urow).join("")}</div>`
     : `<p class="empty">${A.users.length ? "No accounts match." : "No one has signed up yet."}</p>`;
 }
+// Invites: sign-up is by one-time link. The link is only shown when it's made (only its fingerprint is kept).
+function vInvites() {
+  const open = A.invites.filter((i) => !i.usedAt && !i.revokedAt), done = A.invites.filter((i) => i.usedAt || i.revokedAt);
+  const row = (i) => `<div class="cell has-icon inv"><span class="tile ${i.usedAt ? "green" : i.revokedAt ? "gray" : "blue"}">${i.usedAt ? I.people : I.link}</span>
+    <span class="ctext"><span class="one">${esc(i.note || "Invite")}</span><span class="csub one">${i.usedAt ? `Used by ${i.by?.handle ? "@" + esc(i.by.handle) : "an account since deleted"} · ${fmtDate(i.usedAt)}` : i.revokedAt ? `Cancelled · ${fmtDate(i.revokedAt)}` : `Unused · made ${fmtDate(i.createdAt)}`}</span></span>
+    ${!i.usedAt && !i.revokedAt ? `<button type="button" class="btn small plain${A.busy === "revoke-" + i.id ? " busy" : ""}" data-a="revoke" data-id="${esc(i.id)}">Cancel</button>` : ""}</div>`;
+  return `<div class="ghead">Invites <span class="gcount">${open.length} unused</span></div>
+    <form class="group" data-f="invite" novalidate>
+      <label class="fcell"><input name="note" placeholder="Who it’s for (optional)" maxlength="60" autocomplete="off" aria-label="Who the invite is for"></label>
+      <button type="submit" class="cell blue${A.busy === "invite" ? " busy" : ""}"><span class="ctext"><span>Make an Invite Link</span></span></button>
+    </form>
+    ${A.newInvite ? `<div class="group mt-s linkcell"><div class="cell"><code class="sel">${esc(A.newInvite)}</code></div>${cell({ a: "copyinvite", label: "Copy Link", cls: "blue center" })}</div>
+      <div class="gfoot">Copy it now: it isn’t shown again. It makes one account, then stops working.</div>` : `<div class="gfoot">Sign-up is invite only. Each link makes one account, then stops working.</div>`}
+    ${open.length || done.length ? `<div class="group mt-s">${[...open, ...done.slice(0, 20)].map(row).join("")}</div>` : ""}`;
+}
 function render() {
   const onlineN = A.users.filter(online).length, testSender = /@resend\.dev>?$/.test(A.from);
   const stat = (n, label, icon, tile) => `<div class="kpi"><span class="tile ${tile}">${icon}</span><b>${Number(n || 0).toLocaleString("en-GB")}</b><span>${label}</span></div>`;
@@ -149,6 +164,7 @@ function render() {
     <label class="search">${I.search}<input type="search" id="q" placeholder="Search accounts" value="${esc(A.q)}" autocomplete="off" aria-label="Search accounts"></label>
     <div class="ghead">${A.users.length} Account${A.users.length === 1 ? "" : "s"}</div>
     <div id="ulist">${vList()}</div>
+    ${vInvites()}
     <div class="ghead">Email</div>
     <div class="group">
       ${cell({ icon: I.mail, tile: A.email ? "green" : "gray", label: "Reset Emails", val: A.email ? "On" : "Off" })}
@@ -258,8 +274,8 @@ function onScroll() {
 addEventListener("scroll", onScroll, { passive: true });
 
 async function load() {
-  const [u, l] = await Promise.all([call("/api/pigeon/admin-users"), call("/api/pigeon/admin-log")]);
-  A.users = u.users; A.totals = u.totals || {}; A.log = l.log;
+  const [u, l, iv] = await Promise.all([call("/api/pigeon/admin-users"), call("/api/pigeon/admin-log"), call("/api/pigeon/admin-invites")]);
+  A.users = u.users; A.totals = u.totals || {}; A.log = l.log; A.invites = iv.invites || [];
 }
 async function refresh() { try { await load(); render(); } catch (err) { if (err.status === 401) vSignIn("Your admin session ended. Sign in again."); } }
 async function boot() {
@@ -287,6 +303,17 @@ document.addEventListener("click", async (e) => {
   if (act === "delask") return openSheet({ type: "delete", id });
   if (act === "deleteback") return openSheet({ type: "user", id });
   if (act === "signout") { await fetch("/api/logout", { method: "POST" }); return vSignIn(); }
+  if (act === "copyinvite") {
+    try { await navigator.clipboard.writeText(A.newInvite); toast("Invite link copied."); }
+    catch (_) { const c = $(".linkcell code"); const r = document.createRange(); r.selectNodeContents(c); getSelection().removeAllRanges(); getSelection().addRange(r); }
+    return;
+  }
+  if (act === "revoke") {
+    A.busy = "revoke-" + b.dataset.id; render();
+    try { const r = await call("/api/pigeon/admin-invite-revoke", { method: "POST", body: { id: b.dataset.id } }); toast(r.message); await load(); }
+    catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); toast(err.message, true); }
+    A.busy = null; return render();
+  }
   if (act === "copy") {
     try { await navigator.clipboard.writeText(A.link.url); toast("Link copied."); }
     catch (_) { const c = $(".linkcell code"); const r = document.createRange(); r.selectNodeContents(c); getSelection().removeAllRanges(); getSelection().addRange(r); }
@@ -312,6 +339,14 @@ document.addEventListener("click", async (e) => {
   render();
 });
 document.addEventListener("submit", async (e) => {
+  const fi = e.target.closest("[data-f=invite]");
+  if (fi) {
+    e.preventDefault(); if (A.busy) return;
+    A.busy = "invite"; render();
+    try { const r = await call("/api/pigeon/admin-invite", { method: "POST", body: { note: fi.note.value } }); A.newInvite = r.url; toast(r.message); await load(); }
+    catch (err) { if (err.status === 401) { A.busy = null; return vSignIn("Your admin session ended. Sign in again."); } toast(err.message, true); }
+    A.busy = null; return render();
+  }
   const f = e.target.closest("[data-f=delete]"); if (!f) return;
   e.preventDefault();
   const id = A.sheet?.id, err = $(".gfoot.bad", f);

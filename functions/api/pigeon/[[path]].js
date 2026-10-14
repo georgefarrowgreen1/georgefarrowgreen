@@ -47,9 +47,28 @@ function cleanName(v, empty) {
   if (/[@/\\:<>]|\.\S|www\./i.test(name)) throw new HttpError(400, "Names can’t include web addresses or symbols like @ / :", "name");
   return name;
 }
+// Invite only: an account needs a one-time invite link from the site owner (a
+// server with PIGEON_OPEN_SIGNUP=1, for testing, lets anyone in).
+const INVITE_RE = /^[A-Za-z0-9_-]{40,50}$/;
+const inviteOpen = (env) => env.PIGEON_OPEN_SIGNUP === "1";
+async function inviteRow(D, token) {
+  if (!INVITE_RE.test(String(token || ""))) return null;
+  return D.prepare("SELECT * FROM pg_invites WHERE hash = ?").bind(hex(await sha256(String(token)))).first();
+}
+const inviteWhy = (r) => (!r ? "That invite link isn’t right. Check you have the whole link." : r.revoked_at ? "That invite has been cancelled." : r.used_at ? "That invite has already been used." : null);
+// Before showing the sign-up form: is this invite good? (and does this server need one at all)
+async function inviteCheck({ request, env }) {
+  await limit(env, "invitecheck:" + clientIp(request), 30, 15 * 60e3);
+  const t = new URL(request.url).searchParams.get("t");
+  if (inviteOpen(env)) return json({ open: true, ok: true });
+  if (!t) return json({ open: false, ok: false });
+  const why = inviteWhy(await inviteRow(await db(env), t));
+  return json({ open: false, ok: !why, ...(why ? { error: why } : {}) });
+}
 async function signup({ request, env, waitUntil }) {
   await limit(env, "signup:" + clientIp(request), 10, 60 * 60e3);
   const b = await body(request);
+  if (!inviteOpen(env)) { const why = inviteWhy(await inviteRow(await db(env), b.invite)); if (why) throw new HttpError(403, why, "invite"); }
   const name = cleanName(b.name, "Tell us your name.");
   const handle = String(b.handle || "").trim().replace(/^@/, "").toLowerCase();
   const email = String(b.email || "").trim().toLowerCase();
@@ -63,10 +82,22 @@ async function signup({ request, env, waitUntil }) {
   if (await handleTaken(D, handle)) throw new HttpError(409, `@${handle} is taken.`, "handle");
   if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "There’s already an account with that email. Sign in instead.", "email");
   const id = crypto.randomUUID(), t = Date.now();
+  // the invite is used up first (so one link can't make two accounts at once), and handed back if the account can't be made
+  let claimed = null;
+  if (!inviteOpen(env)) {
+    claimed = hex(await sha256(String(b.invite)));
+    const c = await D.prepare("UPDATE pg_invites SET used_at = ?, used_by = ? WHERE hash = ? AND used_at IS NULL AND revoked_at IS NULL").bind(t, id, claimed).run();
+    if (!c.meta.changes) throw new HttpError(403, "That invite has already been used.", "invite");
+  }
   // new accounts start with names hidden on the lock screen (they can turn them on)
-  await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, notify_prefs)
+  try {
+    await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, notify_prefs)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, handle, name, email, pub, b.salt, hex(await sha256(fromB64url(b.proof))), vault, SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
+  } catch (e) {
+    if (claimed) await D.prepare("UPDATE pg_invites SET used_at = NULL, used_by = NULL WHERE hash = ? AND used_by = ?").bind(claimed, id).run();
+    throw e;
+  }
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
   waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
   return json({ token: await issueSession(env, id, request), me: meView(u, t) });
@@ -1134,6 +1165,28 @@ async function adminTestEmail({ request, env }) {
   await adminLog(env, "test-email", null, to);
   return json({ message: `Test email sent to ${to} from ${emailFrom(env)}. Check your inbox.` });
 }
+async function adminInvite({ request, env }) {
+  await requireAdmin(request, env, true);
+  const note = String((await body(request)).note || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 60) || null;
+  const token = randomToken(32), D = await db(env), t = Date.now(), hash = hex(await sha256(token));
+  await D.prepare("INSERT INTO pg_invites (hash, id, note, created_at) VALUES (?, ?, ?, ?)").bind(hash, hash.slice(0, 16), note, t).run();
+  await adminLog(env, "invite-made", null, note || "");
+  return json({ url: `${linkOrigin(request)}/pigeon/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
+}
+async function adminInvites({ request, env }) {
+  await requireAdmin(request, env, false);
+  const { results } = await (await db(env)).prepare(`SELECT i.id, i.note, i.created_at, i.used_at, i.revoked_at, u.handle, u.name FROM pg_invites i
+    LEFT JOIN pg_users u ON u.id = i.used_by ORDER BY (i.used_at IS NULL AND i.revoked_at IS NULL) DESC, i.created_at DESC LIMIT 200`).all();
+  return json({ invites: results.map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, usedAt: r.used_at, revokedAt: r.revoked_at, by: r.used_at ? { handle: r.handle || null, name: r.name || null } : null })) });
+}
+async function adminInviteRevoke({ request, env }) {
+  await requireAdmin(request, env, true);
+  const id = String((await body(request)).id || "");
+  const r = await (await db(env)).prepare("UPDATE pg_invites SET revoked_at = ? WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL").bind(Date.now(), id).run();
+  if (!r.meta.changes) throw new HttpError(409, "That invite was already used or cancelled.");
+  await adminLog(env, "invite-cancelled", null, id);
+  return json({ message: "Invite cancelled. Its link no longer works." });
+}
 async function adminLogList({ request, env }) {
   await requireAdmin(request, env);
   const { results } = await (await db(env)).prepare("SELECT * FROM pg_admin_log ORDER BY id DESC LIMIT 100").all();
@@ -1213,7 +1266,7 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": signup, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": signup, "GET invite-check": inviteCheck, "POST admin-invite": adminInvite, "GET admin-invites": adminInvites, "POST admin-invite-revoke": adminInviteRevoke, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,

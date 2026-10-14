@@ -1552,3 +1552,8 @@ svg.fillico{fill:currentColor;stroke:none}
 @keyframes oring{to{stroke-dashoffset:94.25}}
 @keyframes ofade{to{opacity:1}}
 @keyframes ofadeout{from{opacity:1}to{opacity:0}}
+/* invite only */
+.welcome .invited{display:flex;align-items:center;justify-content:center;gap:8px;margin:22px 0 12px;color:var(--tint);font-weight:600;font-size:15px}
+.welcome .invonly{display:flex;flex-direction:column;gap:4px;margin:26px 0 16px;text-align:center}
+.welcome .invonly b{font-size:17px}
+.welcome .invonly span{color:var(--label-2);font-size:15px;line-height:20px;text-wrap:balance}

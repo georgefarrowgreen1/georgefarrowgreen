@@ -164,6 +164,8 @@ SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT N
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_passport (user_id TEXT NOT NULL, place TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, first_ord INTEGER, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, place))`);
 SCHEMA.push("CREATE INDEX IF NOT EXISTS pg_passport_first ON pg_passport(first_id)");
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_stamped (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, places TEXT)", "CREATE INDEX IF NOT EXISTS pg_stamped_user ON pg_stamped(user_id)");
+// invites: sign-up is by one-time link (only its hash is kept), made by the site owner
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_invites (hash TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, note TEXT, created_at INTEGER NOT NULL, used_at INTEGER, used_by TEXT, revoked_at INTEGER)");
 // feathers (functions/_feathers.js): a ledger of what each person earned and spent, and what they bought
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_feathers (user_id TEXT NOT NULL, ref TEXT NOT NULL, n INTEGER NOT NULL, at INTEGER NOT NULL, why TEXT, PRIMARY KEY (user_id, ref))",
   "CREATE TABLE IF NOT EXISTS pg_kit (user_id TEXT NOT NULL, item TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user_id, item))");
