@@ -2331,8 +2331,10 @@ function pinChat() {
 
 /* ---------- shared bits ---------- */
 // root: a tab's top screen, whose large title shares the row with the buttons
-const navbar = (title, { left = "", right = "", solid = false, root = false } = {}) =>
-  `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${esc(title)}</div><div class="nb-right">${right}</div></div>`;
+const navbar = (title, { left = "", right = "", solid = false, root = false, titleHtml = null } = {}) =>
+  `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${titleHtml ?? esc(title)}</div><div class="nb-right">${right}</div></div>`;
+// The app's own name where Messages' title would be: its icon and InFlight
+const brandMark = () => `<span class="brand"><span class="bicon" aria-hidden="true">${I.bird}</span><span class="bword">InFlight</span></span>`;
 const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
 const hexOf = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
@@ -2402,8 +2404,8 @@ function vMessages() {
       </span>
     </button>`).join("");
   // nothing on this phone yet and the first sync still on its way: placeholder rows, not "No messages"
-  if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large">Messages</h1><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
+  if (!rows && !S.started && !S.fromCache) return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
+    <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1><div class="mlist skel" aria-busy="true" aria-label="Loading your messages">${'<div class="mrow"><span class="sk av"></span><span class="mtext"><span class="sk l1"></span><span class="sk l2"></span></span></div>'.repeat(4)}</div>`;
   const empty = S.friends.length
     ? `<p class="empty"><b>No messages yet</b>Tap the pencil to send your first pigeon.</p>`
     : S.outgoing.length || S.incoming.length
@@ -2413,8 +2415,8 @@ function vMessages() {
         <p>Pigeons fly between friends. Send your link to someone, or add them by their handle.</p>
         <div class="stack"><button class="btn wide" data-act="share">${I.up}Share My Link</button><button class="btn wide plain" data-act="addfriend">Add a Friend by Handle</button></div>
         <p class="me">You’re <b>@${esc(S.me.handle)}</b></p></div>`;
-  return `${navbar("Messages", { root: true, right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
-    <h1 class="large">Messages</h1>
+  return `${navbar("Messages", { root: true, titleHtml: brandMark(), right: nbtn("skies", I.globe, "The Skies: every pigeon in the air") + nbtn("newmsg", I.compose, "New message") })}
+    <h1 class="large brandh" aria-label="InFlight: Messages">${brandMark()}</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     <div class="airslot"></div>
     <div class="sres" aria-live="polite"></div>
