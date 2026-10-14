@@ -2028,7 +2028,7 @@ function tabSwipe() {
     st = null;
     const ids = TABS.map(([id]) => id), i = ids.indexOf(S.view), t = e.target;
     if (i < 0 || e.touches.length !== 1 || S.sheet || S.locked || $pop.firstElementChild || v.style.transform) return;
-    if (t.closest?.("input:focus, textarea, select") || sideways(t)) return;   // (a search box you aren't typing in swipes too)
+    if (t.closest?.("input:focus, textarea, select, .rail") || sideways(t)) return;   // (a search box you aren't typing in swipes too; the cards in the air never do, even when they all fit)
     const p = e.touches[0];
     st = { ids, i, x: p.clientX, y: p.clientY, lx: p.clientX, ly: p.clientY, lt: performance.now(), vx: 0, vy: 0, dx: 0, w: r.clientWidth, dir: null, side: 0, peek: null };
   }, { passive: true });
@@ -2063,10 +2063,11 @@ function tabSwipe() {
   };
   v.addEventListener("touchend", () => end(false)); v.addEventListener("touchcancel", () => end(true));
 }
-/* ---------- hold a chat for its menu ----------
+/* ---------- hold a chat (or a message) for its menu ----------
    Hold a chat in Messages (or right-click it): the row sinks a little, then
    lifts above the blurred screen with a menu of what you'd do to it without
-   opening it. The touch that opened the menu isn't also a tap, swipe or pull. */
+   opening it. Hold a message in a chat: its menu, as a tap gives (as on
+   iPhone). The touch that opened the menu isn't also a tap, swipe or pull. */
 let heldAt = 0;
 const holding = () => Date.now() - heldAt < 30e3 && heldAt > 0;
 function holdRows() {
@@ -2074,11 +2075,12 @@ function holdRows() {
   const cancel = () => { clearTimeout(sink); clearTimeout(timer); row?.classList.remove("pressing"); row = null; };
   v.addEventListener("touchstart", (e) => {
     cancel(); heldAt = 0;
-    const r = e.target.closest?.(".mlist .mrow");
-    if (!r || e.touches.length !== 1 || S.view !== "messages" || S.sheet) return;
+    const r = e.target.closest?.(".mlist .mrow, .msgs .b[data-act]"), msg = !!r?.classList.contains("b");
+    if (!r || e.touches.length !== 1 || S.view !== (msg ? "chat" : "messages") || S.sheet || $pop.firstElementChild) return;
+    if (msg && e.target.closest("button, a, audio, input") !== null && e.target.closest("button") !== r) return;    // a play button or link in it has its own
     row = r; x = e.touches[0].clientX; y = e.touches[0].clientY;
     sink = setTimeout(() => row?.classList.add("pressing"), 140);
-    timer = setTimeout(() => { const r2 = row; cancel(); heldAt = Date.now(); rowMenu(r2); }, 480);
+    timer = setTimeout(() => { const r2 = row; cancel(); heldAt = Date.now(); if (msg) { haptic("tick"); r2.click(); } else rowMenu(r2); }, msg ? 420 : 480);
   }, { passive: true });
   v.addEventListener("touchmove", (e) => {
     if (holding()) { if (e.cancelable) e.preventDefault(); return; }   // the list stays put under the menu
@@ -2088,9 +2090,9 @@ function holdRows() {
   v.addEventListener("touchcancel", cancel);
   // a right-click, or the menu key on a chat that has focus
   v.addEventListener("contextmenu", (e) => {
-    const r = e.target.closest?.(".mlist .mrow"); if (!r) return;
+    const r = e.target.closest?.(".mlist .mrow, .msgs .b[data-act]"); if (!r) return;
     e.preventDefault();
-    if (!$(".menu-pop:not(.closing)", $pop)) rowMenu(r);
+    if (!$(".menu-pop:not(.closing)", $pop)) { if (r.classList.contains("b")) r.click(); else rowMenu(r); }
   });
 }
 function rowMenu(r) {
@@ -2370,12 +2372,16 @@ function lockPage() {
   const stop = (e) => e.preventDefault();
   ["gesturestart", "gesturechange", "gestureend"].forEach((n) => document.addEventListener(n, stop, { passive: false }));
   document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });   // two fingers never zoom the page (the map pinches itself)
-  // a quick second tap zooms on iOS; let taps through, but not the zoom
-  let lastTouch = 0;
+  // a quick second tap in the same spot zooms on older iOS: stop that, and only that.
+  // (Not after a scroll or a tap somewhere else, and never on anything you can
+  // tap: those taps are meant, and touch-action already keeps them from zooming.)
+  let last = null, start = null;
+  document.addEventListener("touchstart", (e) => { const t = e.touches[0]; start = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null; }, { passive: true, capture: true });
   document.addEventListener("touchend", (e) => {
-    const now = Date.now();
-    if (now - lastTouch < 300 && !e.target.closest?.(".map, input, textarea, select, button, label, a")) e.preventDefault();
-    lastTouch = now;
+    const t = e.changedTouches[0], now = Date.now(), tap = !!start && !!t && Math.hypot(t.clientX - start.x, t.clientY - start.y) < 10;
+    if (tap && last && now - last.at < 300 && Math.hypot(t.clientX - last.x, t.clientY - last.y) < 30
+      && !e.target.closest?.(".map, input, textarea, select, button, label, a, [data-act], [role=button]")) e.preventDefault();
+    last = tap && t ? { at: now, x: t.clientX, y: t.clientY } : null;
   }, { passive: false });
   for (const n of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(n, (e) => { if (!inField(e.target)) e.preventDefault(); });
   // if the page ends up zoomed anyway (an older copy allowed it), put it back: text size comes from the phone's own setting instead

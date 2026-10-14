@@ -1647,3 +1647,5 @@ html.night .nav-ghost .night{background:none}
 @media (max-width:360px){.compose .kind.named .kl{display:none}.bstats{gap:6px;margin-inline:12px}.bstats b{font-size:15px}}
 :root[data-theme="dark"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}
 @media (prefers-color-scheme: dark){:root[data-theme="auto"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}}
+/* a message held for its menu sinks a little first, as a chat in the list does */
+.msgs .b.pressing{transform:scale(.96);transition:transform .34s var(--smooth)}
