@@ -33,14 +33,17 @@ export function onLand(lat, lon) {
   }
   return inside;
 }
-// the nearest country's middle (bigger countries reach further), or the sea it's in
+// the nearest country's middle (bigger countries reach further): "land" when none is near
+export function countryNear(lat, lon) {
+  lon = ((lon + 540) % 360) - 180;
+  let best = null, bd = Infinity;
+  for (const [name, la, lo, tier] of COUNTRIES) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
+  return best && bd < 1500 ? (/^(United|Netherlands|Philippines|Central|Dominican|UAE)/.test(best) ? "the " + best : best) : "land";
+}
+// that, or the sea it's in
 export function placeName(lat, lon) {
   lon = ((lon + 540) % 360) - 180;
-  if (onLand(lat, lon)) {
-    let best = null, bd = Infinity;
-    for (const [name, la, lo, tier] of COUNTRIES) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
-    return best && bd < 1500 ? (/^(United|Netherlands|Philippines|Central|Dominican|UAE)/.test(best) ? "the " + best : best) : "land";
-  }
+  if (onLand(lat, lon)) return countryNear(lat, lon);
   const sea = SEAS.find(([, s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e); if (sea) return sea[0];
   if (lat > 66) return "the Arctic Ocean";
   if (lat < -60) return "the Southern Ocean";

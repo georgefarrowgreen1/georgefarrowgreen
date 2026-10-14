@@ -233,6 +233,7 @@ const I = {
   more: `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="7.9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.1" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg>`,
   search: ico(`<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/>`),
   loc: ico(`<path d="M20 4 4 10.8l6.9 2.3L13.2 20Z"/>`),
+  waves: ico(`<path d="M3 9.5c1.5-1.4 3-1.4 4.5 0s3 1.4 4.5 0 3-1.4 4.5 0 3 1.4 4.5 0"/><path d="M3 14.5c1.5-1.4 3-1.4 4.5 0s3 1.4 4.5 0 3-1.4 4.5 0 3 1.4 4.5 0"/>`),
   globe: ico(`<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.5 3.6 5.3 3.6 8.5s-1.2 6-3.6 8.5c-2.4-2.5-3.6-5.3-3.6-8.5s1.2-6 3.6-8.5Z"/>`),
   map: ico(`<path d="M3 6.5 8.5 4l7 3L21 4.5v13L15.5 20l-7-3L3 19.5Z"/><path d="M8.5 4v13M15.5 7v13"/>`),
   addp: ico(`<circle cx="10" cy="8" r="3.5"/><path d="M3.5 19.5c.8-3.4 3.4-5.3 6.5-5.3 1.4 0 2.6.3 3.7 1"/><path d="M18 14v6M15 17h6"/>`),
@@ -2912,7 +2913,25 @@ async function shareImage() {
 
 /* ---------- achievements (in the Flight Log) ---------- */
 const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
-  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] };
+  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] };
+/* ---------- the passport ----------
+   Every country and sea your pigeons have flown over (functions/_passport.js),
+   newest first: a stamp each, in postal ink, with the day it was first
+   stamped. Tap one for how often since. */
+const PASSPORT_INK = ["#c8322b", "#2457b8", "#1f7a46", "#a8740f", "#6b3fa0", "#b04a7a", "#127a86"];
+const inkOf = (name, sea) => (sea ? "#1d63b0" : PASSPORT_INK[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PASSPORT_INK.length]);
+const tiltOf = (name) => (([...name].reduce((h, c) => (h * 17 + c.charCodeAt(0)) >>> 0, 3) % 7) - 3) * 0.8;
+function passportHtml(pp, all) {
+  if (!pp) return "";
+  const list = pp.places || [], shown = all ? list : list.slice(0, 12);
+  const stampDay = (t) => { const d = new Date(t); return `${d.getDate()} ${MON[d.getMonth()].toUpperCase()} ${String(d.getFullYear()).slice(2)}`; };
+  const stamp = (p) => `<button type="button" class="pstamp2${p.sea ? " sea" : ""}" data-act="stampinfo" data-id="${esc(p.name)}" data-ink="${inkOf(p.name, p.sea)}" data-tilt="${tiltOf(p.name)}"
+      aria-label="${esc(p.name)}: first flown over ${esc(fmtDate(p.at))}${p.n > 1 ? `, ${p.n} flights` : ""}"><b>${esc(p.name.replace(/^the /, ""))}</b><small>${stampDay(p.at)}</small>${p.sea ? I.waves : I.bird}</button>`;
+  return `<div class="ghead">Passport <span class="gcount">${pp.countries} countr${pp.countries === 1 ? "y" : "ies"} · ${pp.seas} sea${pp.seas === 1 ? "" : "s"}</span></div>
+    ${list.length ? `<div class="passport">${shown.map(stamp).join("")}</div>
+      ${list.length > shown.length ? `<div class="stack"><button type="button" class="btn small plain" data-act="stampsall">See All ${list.length}</button></div>` : ""}`
+    : `<div class="gfoot">Each country and sea your pigeons fly over gets a stamp here once they’ve landed.</div>`}`;
+}
 function badgesHtml(list) {
   if (!list.length) return "";
   // badges earned since this phone last looked get a "New" tag (remembered on this phone only)
@@ -3022,6 +3041,12 @@ function momentText(m, n, chatId) {
   const [a, b] = n.lead === "other" ? [there, here] : [here, there];
   return `${a[0].toUpperCase() + a.slice(1)} ${n.kind === "overtake" ? "overtook" : "passed"} ${b}${over}`;
 }
+// "New in your passport: Kazakhstan, Mongolia and 2 more" on the flight that collected them (tap for the passport)
+function stampLines(msgs) {
+  const and = (a) => (a.length > 3 ? `${a.slice(0, 2).join(", ")} and ${a.length - 2} more` : a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+  return (msgs || []).filter((m) => m.from === S.me.id && m.stamps?.length && !m.flying).map((m) => ({ at: m.deliverAt + 1,
+    html: `<button type="button" class="sysline stamps" data-act="flightlog">${I.globe}<span>New in your passport: ${esc(and(m.stamps))}</span></button>` }));
+}
 // this chat's moments, each once (both pigeons may be here), in time order
 function chatMoments(msgs, chatId) {
   const seen = new Set(), out = [];
@@ -3029,6 +3054,7 @@ function chatMoments(msgs, chatId) {
     const key = [m.id, n.other.id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
     out.push({ at: n.at, html: `<button type="button" class="sysline moment" data-act="map" data-id="${esc(m.id)}">${I.pass}<span>${esc(momentText(m, n, chatId))}<span class="t"> · ${fmtTime(n.at)}</span></span></button>` });
   }
+  out.push(...stampLines(msgs));
   for (const m of msgs || []) if (m.from === S.me.id && m.bird?.up && !m.flying && !m.lost)
     out.push({ at: m.deliverAt, html: `<button type="button" class="sysline rankup" data-act="bird" data-id="${esc(m.bird.id)}">${I.bird}<span>${esc(m.bird.name)} became ${aRank(esc(m.bird.up))} on this flight</span></button>` });
   return out.sort((a, b) => a.at - b.at);
@@ -3112,6 +3138,8 @@ function vGroupChat(g) {
   const msgs = S.msgs.get(g.id);
   const evs = S.gevents.get(g.id) || [];
   let body = "", lastDay = "", prevFrom = null, ev = 0;
+  const stl = stampLines(msgs).sort((a, b) => a.at - b.at); let si = 0;
+  const stampsTo = (at) => { let h = ""; while (si < stl.length && stl[si].at <= at) h += stl[si++].html; return h; };
   // the group's changes up to a moment, as lines
   const evsTo = (at) => { const k = ev; while (ev < evs.length && evs[ev].at <= at) ev++; return ev > k ? geventLines(evs.slice(k, ev)) : ""; };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
@@ -3120,7 +3148,7 @@ function vGroupChat(g) {
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (dayLabel(at) !== lastDay) { lastDay = dayLabel(at); body += `<div class="stamp">${lastDay}</div>`; prevFrom = null; }
-    const lines = evsTo(at); if (lines) { body += lines; prevFrom = null; }
+    const lines = evsTo(at) + stampsTo(at); if (lines) { body += lines; prevFrom = null; }
     // pigeons still flying to you, one after another: one card between them
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), g); i = j - 1; prevFrom = null; continue; }
@@ -3129,7 +3157,7 @@ function vGroupChat(g) {
     body += bubble(who, m, prevFrom !== null && prevFrom !== m.from && (mine || m.lost), g);
     prevFrom = m.from;
   }
-  if (msgs?.length) body += evsTo(Infinity);
+  if (msgs?.length) body += evsTo(Infinity) + stampsTo(Infinity);
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && (m.route || m.flock?.some((x) => x.route)));
   const changed = others(g).filter((p) => p.keyChanged);
   const warn = changed.length ? `<div class="warn"><span>${changed.map((p) => esc(first(p.name))).join(" and ")}’s security key changed. This happens when someone makes a new account or resets their password. Check before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(changed[0].id)}">Check</button></div>` : "";
@@ -3902,6 +3930,7 @@ function drawSheet(refresh) {
           ${tile(d.fastest ? `${n(d.fastest.kmh * 0.621371)} mph` : "–", "Fastest pigeon", d.fastest ? `a ${esc(KIND[d.fastest.kind]?.name.toLowerCase() || "")} pigeon` : "")}
           ${tile(d.tailwind ? `${n(d.tailwind * 0.621371)} mph` : "–", "Best tailwind")}
         </div>
+        ${passportHtml(d.passport, s.allStamps)}
         ${badgesHtml(d.badges || [])}
         ${skinsHtml(d.skins || [], S.me.skin)}
         ${kinds.length ? `<div class="ghead">By pigeon</div><div class="group">${kinds.map((k) => `<div class="cell has-icon kindrow"><span class="tile ${k === "dumb" ? "gray" : k}">${I.bird}</span><span class="ctext"><span>${KIND[k].name}</span><i class="kbar ${k}" data-w="${(d.kinds[k] / most).toFixed(3)}"></i></span><span class="val">${n(d.kinds[k])}</span></div>`).join("")}</div>` : ""}
@@ -3911,6 +3940,7 @@ function drawSheet(refresh) {
       // sizes set from code (inline style attributes are blocked)
       $layer.querySelectorAll("[data-lap]").forEach((el) => el.style.setProperty("--lap", el.dataset.lap));
       $layer.querySelectorAll(".kbar[data-w], .bprog[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
+      $layer.querySelectorAll(".pstamp2").forEach((el) => { el.style.setProperty("--ink", el.dataset.ink); el.style.setProperty("--tilt", el.dataset.tilt + "deg"); });
       return;
     }
     case "vianote": {
@@ -4664,6 +4694,12 @@ async function onClick(e) {
     case "trustm": return trustNewKey(id);
     case "grouprename": S.sheet = { type: "grouprename", id }; return renderSheet();
     case "flightlog": return openFlightLog();
+    case "stampsall": if (S.sheet?.type === "flightlog") { const top = $(".sheet .body", $layer)?.scrollTop || 0; S.sheet.allStamps = true; renderSheet(); const b = $(".sheet .body", $layer); if (b) b.scrollTop = top; } return;
+    case "stampinfo": {
+      const p = S.sheet?.data?.passport?.places.find((x) => x.name === id); if (!p) return;
+      haptic("tick");
+      return toast(`${esc(p.name[0].toUpperCase() + p.name.slice(1))}: first flown over ${esc(fmtDate(p.at))}${p.n > 1 ? `, and ${p.n - 1} flight${p.n === 2 ? "" : "s"} since` : ""}.`);
+    }
     case "gifs": S.sheet = { type: "gifs", q: "", list: [], next: 0, busy: false }; renderSheet(); return loadGifs();
     case "gifmore": return loadGifs(true);
     case "gifpick": return pickGif(id, t);

@@ -2,6 +2,7 @@
 // already keeps (distances, times, kinds, fates), never what anyone wrote.
 // Every pigeon counts once: a message to a group of four is three pigeons.
 
+import { stampPassports, passportFor } from "./_passport.js";
 import { json, db, requireUser } from "./_pigeon.js";
 
 // Rare pigeons: a look for your pigeons, each unlocked by an achievement.
@@ -16,9 +17,11 @@ export const SKINS = {
 };
 async function flightLog({ request, env }) {
   const u = await requireUser(request, env);
-  const D = await db(env), t = Date.now(), log = await logFor(D, u.id, t);
+  const D = await db(env), t = Date.now();
+  await stampPassports(D, t, u.id, 60);                     // any of yours that landed since: stamped first
+  const log = await logFor(D, u.id, t);
   const earned = new Set(log.badges.filter((b) => b.earned).map((b) => b.id));
-  return json({ ...log, skin: u.skin || null,
+  return json({ ...log, passport: await passportFor(D, u.id, t), skin: u.skin || null,
     skins: Object.entries(SKINS).map(([id, k]) => ({ id, name: k.name, badge: k.badge, open: earned.has(k.badge) })) });
 }
 // Is this look yours to use?
@@ -66,6 +69,7 @@ export async function logFor(D, uid, t) {
     badge("homing", "Second Thoughts", "Call a pigeon back", sent.some((p) => p.recalled && p.lost_at <= t) ? 1 : 0),
     badge("flock", "Flock Leader", "Send a pigeon to a group", sent.some((p) => p.grp) ? 1 : 0),
     badge("fleet", "Fleet", "Fly every kind: standard, swift, turbo and rocket", ["standard", "swift", "turbo", "rocket"].filter(has).length, 4),
+    badge("globetrotter", "Globetrotter", "Your pigeons fly over 25 countries", (await passportFor(D, uid, t)).countries, 25),
   ];
   return {
     badges,

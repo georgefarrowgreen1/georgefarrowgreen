@@ -7,6 +7,7 @@
 // landing time, Pigeon Death roll and read receipt. Members who aren't friends
 // see each other's names, never each other's locations.
 
+import { newStamps } from "./_passport.js";
 import {
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
@@ -254,7 +255,9 @@ async function listMessages({ request, env }) {
     JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at LIMIT 500`).bind(g.id, u.id).all();
   const events = ev.map((e) => ({ at: e.at, kind: e.kind, by: { id: e.actor, name: e.actor_name },
     ...(e.kind === "rename" ? { name: e.target_name } : e.target ? { who: { id: e.target, name: e.target_name } } : {}) }));
-  return json({ now: t, messages: await views(D, u.id, rows, friends, t), events, reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
+  const vs = await views(D, u.id, rows, friends, t), stamps = await newStamps(D, u.id, rows.filter((m) => m.sender === u.id).map((m) => m.id));
+  for (const v of vs) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);      // the passport's new stamps (yours only)
+  return json({ now: t, messages: vs, events, reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
 }
 
 async function send({ request, env, waitUntil }) {

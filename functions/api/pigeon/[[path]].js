@@ -17,6 +17,7 @@ import { findNear, dropNear, renear, nearViews } from "../../_moments.js";
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
+import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -634,6 +635,8 @@ async function listMessages({ request, env }) {
   for (const v of views) if (near.has(v.id)) v.near = near.get(v.id);
   const over = await flyOnMine(D, u.id, results.filter((m) => m.sender === u.id).map((m) => m.id));     // who yours flew over (yours only)
   for (const v of views) if (over.has(v.id)) v.fly = over.get(v.id);
+  const stamps = await newStamps(D, u.id, results.filter((m) => m.sender === u.id && m.deliver_at <= t).map((m) => m.id));   // the passport's new stamps (yours only)
+  for (const v of views) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
   return json({ now: t, messages: views, fly: await flyViews(D, u.id, other), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results.filter((m) => m.sent_at <= t).at(-1), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
@@ -1176,7 +1179,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES,
 };
 
 export async function onRequest(ctx) {

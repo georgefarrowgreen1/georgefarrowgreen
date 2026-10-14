@@ -13,6 +13,7 @@
 // back of ordinary API traffic, and from an outside scheduler (see
 // .github/workflows/inflight-notify.yml) when nobody is using the app.
 
+import { stampPassports } from "./_passport.js";
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -485,6 +486,7 @@ export async function tick(env, origin) {
   pushes += await nearTick(env, D, t, since);
   pushes += await flyTick(env, D, t, since);
   await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
+  await stampPassports(D, t).catch((e) => console.error("pigeon passport", e && e.message));  // the places flights that landed flew over
   const gt = await groupTick(env, D, t, since);
   pushes += gt.pushes;
   pushes += await reactTick(env, D, t, since);

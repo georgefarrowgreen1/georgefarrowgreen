@@ -150,6 +150,10 @@ const SCHEMA = [
 // Ids the phones choose (messages, group messages, reactions) share one
 // space: a reaction can't take a message's id, nor a group message a direct one.
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT NOT NULL, at INTEGER NOT NULL)");
+// The passport (functions/_passport.js): every place each person's pigeons have flown over, and each flight stamped once
+SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_passport (user_id TEXT NOT NULL, place TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, first_ord INTEGER, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, place))`);
+SCHEMA.push("CREATE INDEX IF NOT EXISTS pg_passport_first ON pg_passport(first_id)");
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_stamped (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, places TEXT)");
 // Near misses: two pigeons that came within a few miles in mid-air (a < b, by id), where and when
 // named pigeons (functions/_birds.js): yours, their careers, and your Hall of Fame
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_birds (id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL, km REAL NOT NULL DEFAULT 0,

@@ -354,6 +354,19 @@ miles and rests for its trip home. Everyone it flies to sees its name and
 rank; only you see its career (`functions/_birds.js`). For a message to a
 group, your named pigeon flies the longest of its routes.
 
+**Passport.** Every country and sea your pigeons have flown over, as a page
+of stamps in your Flight Log: each in its own postal ink, perforated, with the
+day it was first stamped (tap one for how often since), newest first. A flight
+is stamped once it has landed, along the way it really flew (great circles,
+turns and stopovers), with a point named every 20 km; where it set off and
+landed count as the nearest country. The names are the map's own, looked up
+in a quarter-degree grid made from them (`functions/_placegrid.js`, 70 KB), so
+stamping a flight costs well under a millisecond. The chat marks the flight
+that collected new stamps ("New in your passport: Kazakhstan, Mongolia and 3
+more"), and Globetrotter is earned at 25 countries. Only your own pigeons that
+landed count, and in a group only those to your friends; nobody else sees your
+passport (`functions/_passport.js`).
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat
