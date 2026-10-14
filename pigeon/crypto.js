@@ -79,18 +79,25 @@ export const E2E = {
     return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: te.encode("inflight/msg/v1") },
       base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   },
-  // id, sender and recipient are bound in, so the server can't re-address or swap scrolls
-  aad: (m) => te.encode(`inflight/v1|${m.id}|${m.from}|${m.to}`),
+  // What it is, its id, sender and recipient are bound in, so the server can't
+  // re-address, swap or re-label scrolls (a reaction can't pass for a message,
+  // nor a group key for either). v1 (before the type was bound) still opens.
+  TYPES: ["msg", "react", "wrap", "via", "note"],
+  aad: (m) => te.encode(m.type ? `inflight/v2|${m.type}|${m.id}|${m.from}|${m.to}` : `inflight/v1|${m.id}|${m.from}|${m.to}`),
   async seal(base, meta, obj) {
+    if (!E2E.TYPES.includes(meta.type)) throw new Error("seal: what is it?");
     const salt = rand(16), iv = rand(12);
     const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: E2E.aad(meta) }, await E2E.msgKey(base, salt), te.encode(JSON.stringify(obj)));
-    return JSON.stringify({ v: 1, s: b64(salt), iv: b64(iv), d: b64(d) });
+    return JSON.stringify({ v: 2, s: b64(salt), iv: b64(iv), d: b64(d) });
   },
   async open(base, meta, ct) {
     const e = JSON.parse(ct);
-    const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(e.iv), additionalData: E2E.aad(meta) }, await E2E.msgKey(base, unb64(e.s)), unb64(e.d));
+    if (e.v === 2 && !E2E.TYPES.includes(meta.type)) throw new Error("open: what is it?");
+    const m = e.v === 2 ? meta : { id: meta.id, from: meta.from, to: meta.to };
+    const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(e.iv), additionalData: E2E.aad(m) }, await E2E.msgKey(base, unb64(e.s)), unb64(e.d));
     return JSON.parse(td.decode(p));
   },
+  hash: async (s) => b64(new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(s)))),
   // each photo (or voice pigeon) gets its own random key, which travels inside
   // the encrypted scroll; what it is is in the label, so one can't pass for the other
   async sealPhoto(id, bytes, kind = "photo") {
@@ -106,14 +113,20 @@ export const E2E = {
   // travels to each member sealed with the pair key the sender shares with
   // them (seal above, so it's bound to the message id, sender and member).
   // A new member can't open what came before; someone who left, what comes after.
+  // v2: what it is is bound in too, and each member's sealed key carries a hash
+  // of the body (h), so no member can swap in a different body for someone
+  // else's message: the body is the sender's, not just the group's.
   async sealGroup(meta, obj) {
+    if (!["msg", "react"].includes(meta.type)) throw new Error("sealGroup: what is it?");
     const raw = rand(32), iv = rand(12);
-    const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode(`inflight/group/v1|${meta.id}|${meta.from}|${meta.group}`) }, await aesKey(raw, ["encrypt"]), te.encode(JSON.stringify(obj)));
-    return { body: JSON.stringify({ v: 1, iv: b64(iv), d: b64(d) }), key: b64(raw) };
+    const d = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode(`inflight/group/v2|${meta.type}|${meta.id}|${meta.from}|${meta.group}`) }, await aesKey(raw, ["encrypt"]), te.encode(JSON.stringify(obj)));
+    const body = JSON.stringify({ v: 2, iv: b64(iv), d: b64(d) });
+    return { body, key: b64(raw), h: await E2E.hash(body) };
   },
   async openGroup(meta, key, body) {
     const e = JSON.parse(body);
-    const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(e.iv), additionalData: te.encode(`inflight/group/v1|${meta.id}|${meta.from}|${meta.group}`) }, await aesKey(unb64(key), ["decrypt"]), unb64(e.d));
+    const aad = e.v === 2 ? `inflight/group/v2|${meta.type}|${meta.id}|${meta.from}|${meta.group}` : `inflight/group/v1|${meta.id}|${meta.from}|${meta.group}`;
+    const p = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(e.iv), additionalData: te.encode(aad) }, await aesKey(unb64(key), ["decrypt"]), unb64(e.d));
     return JSON.parse(td.decode(p));
   },
 

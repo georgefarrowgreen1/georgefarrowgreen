@@ -4,7 +4,7 @@
 // its key sealed for each member), so the server can't see which one it was.
 // One reaction per person per message; sending another replaces it.
 
-import { HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, UUID_RE } from "./_pigeon.js";
+import { HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, UUID_RE, claimId, idTaken } from "./_pigeon.js";
 
 const SPEED = 9;                     // as fast as a rocket pigeon
 const lostBy = (x, t) => x.lost_at != null && t >= x.lost_at;
@@ -38,6 +38,7 @@ async function react({ request, env }) {
   const b = await body(request), D = await db(env), t = Date.now();
   const id = String(b.id || ""), msgId = String(b.msg || ""), group = !!b.group;
   if (!UUID_RE.test(id) || !UUID_RE.test(msgId)) throw new HttpError(400, "That reaction was malformed.");
+  if (await idTaken(D, id)) throw new HttpError(409, "That reaction was already sent.");
   const tg = await target(D, u, msgId, group);
   let sealed, keys = null;
   if (group) {
@@ -53,6 +54,7 @@ async function react({ request, env }) {
   const km = to?.lat != null && u.lat != null ? haversineKm(u.lat, u.lon, to.lat, to.lon) : 0;
   const deliver = t + flightMs(km, SPEED);
   await D.batch([
+    claimId(D, id, "r", t),
     D.prepare("DELETE FROM pg_reacts WHERE msg_id = ? AND sender = ?").bind(msgId, u.id),
     D.prepare("INSERT INTO pg_reacts (id, msg_id, group_id, sender, recipient, ct, keys, sent_at, deliver_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, msgId, tg.group || null, u.id, tg.other, sealed, keys, t, deliver),

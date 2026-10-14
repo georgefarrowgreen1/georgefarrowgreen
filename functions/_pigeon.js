@@ -140,6 +140,11 @@ const SCHEMA = [
 ];
 // Columns added after launch. SQLite has no "ADD COLUMN IF NOT EXISTS", so a
 // duplicate-column error just means the column is already there.
+// Ids the phones choose (messages, group messages, reactions) share one
+// space: a reaction can't take a message's id, nor a group message a direct one.
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT NOT NULL, at INTEGER NOT NULL)");
+export const claimId = (D, id, kind, t) => D.prepare("INSERT INTO pg_ids (id, kind, at) VALUES (?, ?, ?)").bind(id, kind, t);
+export const idTaken = async (D, id) => !!(await D.prepare("SELECT 1 FROM pg_ids WHERE id = ?").bind(id).first());
 const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN handle_at INTEGER",   // last handle change (one a day)
   "ALTER TABLE pg_users ADD COLUMN avatar_at INTEGER",   // profile picture version, null if none
@@ -200,6 +205,15 @@ export async function db(env) {
     for (const m of MIGRATIONS) {
       try { await env.DB.prepare(m).run(); }
       catch (e) { if (!/duplicate column/i.test(String(e && (e.cause?.message || e.message)))) throw e; }
+    }
+    // every message, group message and reaction id, once: an id is only ever one thing
+    if (!(await env.DB.prepare("SELECT 1 FROM pg_meta WHERE k = 'ids_v1'").first())) {
+      await env.DB.batch([
+        env.DB.prepare("INSERT OR IGNORE INTO pg_ids (id, kind, at) SELECT id, 'm', sent_at FROM pg_msgs"),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_ids (id, kind, at) SELECT id, 'g', sent_at FROM pg_gmsgs"),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_ids (id, kind, at) SELECT id, 'r', sent_at FROM pg_reacts"),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('ids_v1', '1')"),
+      ]);
     }
     schemaReady = true;
   }

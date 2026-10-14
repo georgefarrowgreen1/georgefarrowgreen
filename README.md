@@ -423,6 +423,18 @@ derived from it. Photos get a random key that travels inside the sealed scroll.
 The server stores ciphertext, public keys, who is friends with whom and flight
 times, never message text, photos or private keys.
 
+What each ciphertext is (a message, a reaction, a group key, a stopover's copy
+or note) is bound into it along with its id, sender and recipient (format v2;
+v1 from before still opens), so the server can't re-address, swap or
+re-label one. In a group, each member's sealed key also carries a hash of the
+body, so the body is provably the sender's, not just the group's. The phone
+checks each decrypted thing looks like what it should (a reaction is one of
+the six; a message has words), and remembers which conversation each id
+belongs to: if the same id turns up elsewhere, neither is shown as the other.
+The server keeps message, group message and reaction ids in one table
+(`pg_ids`), so no id can be two things. A reply's quote shows the original's
+real sender and words whenever the original is on the phone.
+
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the
 private key before it is uploaded, the other half is the sign-in proof, which

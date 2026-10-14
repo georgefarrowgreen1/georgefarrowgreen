@@ -39,7 +39,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
-  chatRaw: new Map(), outbox: [], pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
+  chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), replyTo: null,
 };
@@ -1536,14 +1536,33 @@ const base = (fid) => pairFor(friend(fid).pub);
 // Keys to try for someone's messages: theirs now (once checked), then ones this phone pinned before.
 // A key the server says changed isn't used until you've checked it.
 const keysOf = (p) => [p.keyChanged ? null : keyId(p.pub), S.pins[p.id], ...(S.pins["old:" + p.id] || [])].filter((k, i, a) => k && a.indexOf(k) === i);
-async function decrypt(fid, m) {
-  if (!m.ct || S.plain.has(m.id)) return;
+// What a decrypted thing must look like, by what it is: a reaction is one of
+// the reactions and nothing else; a message (or a stopover's copy) has words.
+// Anything else is treated as unreadable, whatever the server sent.
+const shapeOK = (kind, o) => !!o && typeof o === "object" && !Array.isArray(o) && (kind === "react"
+  ? Object.keys(o).length === 1 && REACTIONS.includes(o.r)
+  : typeof o.t === "string" && !("r" in o) && !("k" in o));
+// Each id belongs to one conversation (and one kind of thing): if the same id
+// turns up somewhere else, neither is shown as the other.
+const ctxOf = (kind, m, scope) => `${kind}|${scope}|${m.from}|${m.to || ""}`;
+function keepPlain(id, ctx, o) {
+  const had = S.pctx.get(id);
+  if (had && had !== ctx) { S.plain.set(id, { t: "", bad: true }); return; }
+  S.pctx.set(id, ctx); S.plain.set(id, o);
+}
+const seenPlain = (id, ctx) => S.plain.has(id) && (!S.pctx.has(id) || S.pctx.get(id) === ctx);
+async function decrypt(fid, m, kind = m.stopover ? "via" : "msg") {
+  const ctx = ctxOf(kind, m, fid);
+  if (!m.ct || seenPlain(m.id, ctx)) return;
   const f = friend(fid);
   const tries = keysOf(f);
   for (const k of tries) {
-    try { S.plain.set(m.id, await E2E.open(await pairFor(pubFromId(k)), m, m.ct)); return; } catch (_) {}
+    try {
+      const o = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: m.to, type: kind }, m.ct);
+      return keepPlain(m.id, ctx, shapeOK(kind, o) ? o : { t: "", bad: true });
+    } catch (_) {}
   }
-  S.plain.set(m.id, { t: "", bad: true, unchecked: !!f.keyChanged });
+  keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!f.keyChanged });
 }
 /* ---------- groups ----------
    Everyone in a group gets their own pigeon, flying their own distance, so a
@@ -1553,17 +1572,21 @@ const GROUP_MAX = 12;
 const memberKm = (p) => p.lat != null && S.me.lat != null ? haversineKm(S.me.lat, S.me.lon, p.lat, p.lon) : p.km ?? 500;
 const member = (g, id) => g?.members.find((p) => p.id === id);
 const others = (g) => g.members.filter((p) => p.id !== S.me.id);
-async function decryptGroup(g, m) {
-  if (!m.body || !m.key || S.plain.has(m.id)) return;
+async function decryptGroup(g, m, kind = "msg") {
+  const ctx = ctxOf(kind, m, g.id);
+  if (!m.body || !m.key || seenPlain(m.id, ctx)) return;
   const from = m.from === S.me.id ? { id: S.me.id, pub: S.myPub || S.me.pub } : member(g, m.from);
   const tries = !from ? [] : from.id === S.me.id ? [keyId(from.pub)] : keysOf(from);
   for (const k of tries) {
     try {
-      const { k: key } = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: S.me.id }, m.key);
-      S.plain.set(m.id, await E2E.openGroup({ id: m.id, from: m.from, group: g.id }, key, m.body)); return;
+      const w = await E2E.open(await pairFor(pubFromId(k)), { id: m.id, from: m.from, to: S.me.id, type: "wrap" }, m.key);
+      // the sender's sealed key vouches for the body (v2); an older body has no hash to check
+      if (w.h ? (await E2E.hash(m.body)) !== w.h : JSON.parse(m.body).v !== 1) throw new Error("not the sender’s body");
+      const o = await E2E.openGroup({ id: m.id, from: m.from, group: g.id, type: kind }, w.k, m.body);
+      return keepPlain(m.id, ctx, shapeOK(kind, o) ? o : { t: "", bad: true });
     } catch (_) {}
   }
-  S.plain.set(m.id, { t: "", bad: true, unchecked: !!from?.keyChanged });
+  keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!from?.keyChanged });
 }
 async function loadGroup(gid) { return loadChat(gid); }
 async function loadChat(fid) {
@@ -1576,9 +1599,9 @@ async function loadChat(fid) {
 // One chat's messages, opened. A copy from this phone (live = false) only
 // fills in until the fresh one arrives, and never tells the server anything.
 async function applyChat(fid, d, live) {
-  const g = group(fid), open = (m) => (g ? decryptGroup(g, m) : decrypt(fid, m));
+  const g = group(fid), open = (m, kind) => (g ? decryptGroup(g, m, kind) : decrypt(fid, m, kind));
   if (!g && !friend(fid)) return;
-  for (const r of d.reacts || []) await open(r);
+  for (const r of d.reacts || []) await open(r, "react");
   for (const m of d.messages) {
     await open(m);
     if (!g && m.note && m.via) await openNote(m.id, m.via, S.me.id, m.note);
@@ -1628,7 +1651,7 @@ async function cacheLoad() {
 async function openNote(id, from, to, ct) {
   if (S.notes.has(id)) return;
   const other = friend(from === S.me.id ? to : from); if (!other) return;
-  try { S.notes.set(id, (await E2E.open(await pairFor(other.pub), { id: id + ":via", from, to }, ct)).t || ""); } catch (_) {}
+  try { const o = await E2E.open(await pairFor(other.pub), { id: id + ":via", from, to, type: "note" }, ct); if (typeof o?.t === "string") S.notes.set(id, o.t); } catch (_) {}
 }
 async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
@@ -2306,7 +2329,12 @@ async function setSkin(id) {
 /* ---------- replies and reactions ---------- */
 const REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 const chatName = (id, g) => (id === S.me.id ? "You" : first((g ? member(g, id) : friend(id))?.name || "Someone"));
+// A quote shows what was really said: the original, when it's on this phone
+// (its sender and words, not what the reply claims), else the reply's copy.
 function quoteHtml(q, g) {
+  const o = (S.msgs.get(S.chat) || []).find((x) => x.id === q.id), op = o && S.plain.get(o.id);
+  if (o && op && !op.bad) q = { id: q.id, from: o.from, t: String(op.t || "").replace(/\s+/g, " ").slice(0, 90), p: op.v ? "voice" : op.p ? (op.p.m === "image/gif" ? "gif" : "photo") : "" };
+  else q = { id: String(q.id || ""), from: String(q.from || ""), t: String(q.t || "").slice(0, 90), p: ["gif", "voice", "photo"].includes(q.p) ? q.p : "" };
   return `<button type="button" class="quote" data-act="jumpto" data-id="${esc(q.id)}"><b>${esc(chatName(q.from, g))}</b><span>${q.p ? `${q.p === "gif" ? "GIF" : q.p === "voice" ? "Voice pigeon" : "Photo"}${q.t ? ": " : ""}` : ""}${esc(q.t || "")}</span></button>`;
 }
 // The reactions on a message: each once it has landed (yours straight away)
@@ -2336,13 +2364,13 @@ async function sendReact(id, e) {
     const rid = uuid(), payload = { r: e };
     let body;
     if (g) {
-      const { body: sealed, key } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id }, payload);
+      const { body: sealed, key, h } = await E2E.sealGroup({ id: rid, from: S.me.id, group: g.id, type: "react" }, payload);
       const keys = {};
-      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id: rid, from: S.me.id, to: p.id }, { k: key });
+      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id: rid, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
       body = { id: rid, msg: id, group: true, body: sealed, keys };
     } else {
       const to = m.from === S.me.id ? m.to : m.from;
-      body = { id: rid, msg: id, ct: await E2E.seal(await base(chat), { id: rid, from: S.me.id, to }, payload) };
+      body = { id: rid, msg: id, ct: await E2E.seal(await base(chat), { id: rid, from: S.me.id, to, type: "react" }, payload) };
     }
     const r = await api("react", { method: "POST", body });
     S.plain.set(rid, payload);
@@ -3999,7 +4027,7 @@ async function onSubmit(e) {
     if (!m || !to) return showErr("You’re not friends with who it’s going to any more.");
     try {
       await busyBtn(btn, "…", async () => {
-        const ct = await E2E.seal(await pairFor(to.pub), { id: m.id + ":via", from: S.me.id, to: to.id }, { t: text });
+        const ct = await E2E.seal(await pairFor(to.pub), { id: m.id + ":via", from: S.me.id, to: to.id, type: "note" }, { t: text });
         await api("stopover-note", { method: "POST", body: { id: m.id, ct } });
       });
       S.notes.set(m.id, text); m.mine = "sent"; S.sheet = null; renderSheet(); render(); toast(`Added. ${esc(first(to.name))} will see it when it lands.`);
@@ -4528,13 +4556,13 @@ async function send() {
     let meta;
     if (g) {
       // sealed once; its key sealed for each member (and for me, so my other phones can read it)
-      const { body, key } = await E2E.sealGroup({ id, from: S.me.id, group: g.id }, payload);
+      const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, payload);
       const keys = {};
-      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id, from: S.me.id, to: p.id }, { k: key });
+      for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.pub), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
       meta = { id, group: g.id, body, keys, pigeon: S.sendKind };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}),
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...(sc ? { landAt: sc.at } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
-      ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
+      ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
     // no signal: it waits on the perch (sealed already) and takes off once there is
     const queue = async () => {

@@ -9,7 +9,7 @@
 
 import {
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf,
+  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
@@ -243,7 +243,7 @@ async function send({ request, env, waitUntil }) {
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   const D = await db(env), t = Date.now(), g = await groupFor(D, u, meta.group);
   if (u.lat == null) throw new HttpError(409, "Set your location in Account before sending pigeons.");
-  if (await D.prepare("SELECT 1 FROM pg_gmsgs WHERE id = ?").bind(id).first()) throw new HttpError(409, "That message was already sent.");
+  if (await idTaken(D, id)) throw new HttpError(409, "That message was already sent.");
   // everyone in the group right now, you included, needs their own sealed copy of the key
   const members = await membersOf(D, g.id);
   const want = members.map((m) => m.user_id);
@@ -276,6 +276,7 @@ async function send({ request, env, waitUntil }) {
   });
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));
   await D.batch([
+    claimId(D, id, "g", t),
     D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
       photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, u.skin || null),
