@@ -258,7 +258,10 @@ const MIGRATIONS = [
   // mystery pigeons: the loft (null = full) and which messages flew as one
   "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
   "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE pg_users ADD COLUMN pins TEXT",                // the keys this person has trusted, sealed so only their own key opens them   // don't share my news with friends (nor see theirs)
+  "ALTER TABLE pg_users ADD COLUMN pins TEXT",
+  // view-once photos: once = 1 (or null, sent before) means each recipient may download it once; viewed_at = when they did
+  "ALTER TABLE pg_msgs ADD COLUMN once INTEGER", "ALTER TABLE pg_msgs ADD COLUMN viewed_at INTEGER",
+  "ALTER TABLE pg_gmsgs ADD COLUMN once INTEGER", "ALTER TABLE pg_gdeliv ADD COLUMN viewed_at INTEGER",                // the keys this person has trusted, sealed so only their own key opens them   // don't share my news with friends (nor see theirs)
   "ALTER TABLE pg_birds ADD COLUMN wear TEXT",            // the accessory it has on (feathers)
   "ALTER TABLE pg_msgs ADD COLUMN bird_wear TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN bird_wear TEXT",   // and had on when it carried this       // the landmarks it flew past (JSON ids, in order)
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
@@ -447,6 +450,16 @@ export function cheerView(row, me) {
 }
 // On a message: its named pigeon and rank (as it took off); to its sender also
 // which of theirs it is, and the rank it reached if it went up on landing.
+// View-once photos: the one download, then gone. Read whole (so it can go from
+// storage before it's even sent), then deleted from R2 unless anyone may still view it.
+export const isOnce = (m) => m.photo && m.once !== 0;
+export async function serveOnce(env, key, keep) {
+  const obj = env.BIO_R2 && (await env.BIO_R2.get(key));
+  if (!obj) throw new HttpError(410, "This photo has flown away.");
+  const buf = await obj.arrayBuffer();
+  if (!keep) await env.BIO_R2.delete(key).catch(() => {});
+  return new Response(buf, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+}
 export const birdOn = (m, me) => (m.bird_name ? { bird: { name: m.bird_name, rank: m.bird_rank, wear: m.bird_wear || null, ...(me === m.sender ? { id: m.bird, up: m.bird_up || null } : {}) } } : {});
 // What one phone may see of a message. An inbound scroll's ciphertext stays
 // on the server until it lands.
@@ -459,6 +472,7 @@ export function msgView(me, m, t) {
     waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)
     scheduled: !!m.sched,
     skin: m.skin || null, mystery: !!m.mystery,
+    ...(m.photo ? { once: m.once !== 0, viewedAt: m.viewed_at || null } : {}),
     // a stopover: who, where and when (the line they added only reaches the recipient, once it lands)
     ...(m.via ? { via: m.via, viaPlace: m.via_place, viaAt: m.via_at, viaOff: m.via_off,
       note: m.recipient === me && !flying && !lost ? m.via_note || null : null } : {}),

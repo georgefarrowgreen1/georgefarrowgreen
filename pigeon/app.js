@@ -57,7 +57,7 @@ const S = {
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
-  chatRaw: new Map(), outbox: [], pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
+  chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
   resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
@@ -222,6 +222,7 @@ const flightMs = (km, speed = 1) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SP
 const BIRD = document.getElementById("bird-path").getAttribute("d");
 const ico = (d) => `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true">${d}</svg>`;
 const I = {
+  once: `<svg viewBox="0 0 24 24" class="ico oico" aria-hidden="true"><path d="M12 3.2a8.8 8.8 0 1 1-6.6 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="7.6" cy="4.6" r="1.2" fill="currentColor"/><circle cx="4.4" cy="8.2" r="1.2" fill="currentColor"/><path d="M9.6 8.2v7.6l6.2-3.8z" fill="currentColor"/></svg>`,
   leaf: ico(`<path d="M5 19c0-8 5-14 15-14 0 9-5 14-13 14"/><path d="M5 19 13 11"/>`),
   snow: ico(`<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>`),
   blossom: ico(`<circle cx="12" cy="12" r="2.2"/><path d="M12 9.8C10 6 13.5 3.5 14.6 6.3c1 2.6-1.2 3.6-2.6 3.5ZM14.1 11.3c3.7-1.8 6 1.8 3.2 2.8-2.6.9-3.5-1.3-3.2-2.8ZM13.3 14c1.6 3.8-2.2 5.8-3 2.9-.7-2.7 1.6-3.4 3-2.9ZM10.6 13.9c-3.9 1.4-5.6-2.5-2.7-3.1 2.8-.6 3.4 1.7 2.7 3.1Z"/>`),
@@ -1761,7 +1762,7 @@ async function applyChat(fid, d, live) {
   for (const m of d.messages) {
     const p = S.plain.get(m.id), theirs = g ? m.from !== S.me.id : m.to === S.me.id;
     if (m.photo === 2 && S.photos.has(m.id)) { URL.revokeObjectURL(S.photos.get(m.id)); S.photos.delete(m.id); }
-    if (live && m.photo === 1 && (p?.p || p?.v) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
+    if (live && m.photo === 1 && (p?.p || p?.v) && !onceP(p) && !S.photos.has(m.id) && !S.photoGone.has(m.id) && !(theirs && (m.flying || m.lost))) loadPhoto(fid, m, p);
   }
   if (!live) return;
   const unread = (m) => (g ? m.from !== S.me.id : m.from === fid && !m.stopover) && !m.flying && !m.lost && !m.readAt;
@@ -1804,6 +1805,57 @@ async function openNote(id, from, to, ct) {
   for (const k of keysOf(other)) {
     try { const o = await E2E.open(await pairFor(pubFromId(k)), { id: id + ":via", from, to, type: "note" }, ct); if (typeof o?.t === "string") S.notes.set(id, o.t); return; } catch (_) {}
   }
+}
+/* ---------- view-once photos ----------
+   Downloaded only when tapped, and only once (the server hands it over a
+   single time, then deletes it). Shown full screen for at most 15 seconds,
+   drawn on a canvas (nothing to save or share), and wiped the moment it
+   closes, or the moment you leave the app. */
+const ONCE_MS = 15000;
+let onceOpen = null;
+async function viewOnce(id) {
+  const fid = S.chat, g = group(fid), m = (S.msgs.get(fid) || []).find((x) => x.id === id), p = S.plain.get(id);
+  if (!m || !onceP(p) || onceOpen) return;
+  haptic("tick");
+  const el = document.createElement("div");
+  el.className = "oview"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Photo, view once");
+  el.innerHTML = `<canvas aria-hidden="true"></canvas><div class="obar"><span class="oring" aria-hidden="true"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/></svg></span><span class="otext">Opening…</span><button type="button" class="oclose" aria-label="Close">${I.x}</button></div>`;
+  root().append(el);
+  const state = onceOpen = { el, timer: 0, bmp: null };
+  const close = () => {
+    if (onceOpen !== state) return; onceOpen = null;
+    clearTimeout(state.timer); document.removeEventListener("visibilitychange", hide);
+    const cv = $("canvas", el); if (cv) { cv.width = cv.height = 0; }
+    state.bmp?.close?.(); state.bmp = null;
+    el.classList.add("out"); setTimeout(() => el.remove(), 220);
+  };
+  const hide = () => { if (document.visibilityState !== "visible") close(); };
+  document.addEventListener("visibilitychange", hide);
+  el.addEventListener("click", close);
+  // counted as opened now, whatever happens next: there's no second go
+  m.viewedAt = m.viewedAt || now(); S.viewedOnce.add(id); render();
+  let plain;
+  try {
+    const r = await api((g ? "group-photo/" : "photo/") + id, { raw: true });
+    plain = await E2E.openPhoto(id, p.p, await r.arrayBuffer());
+  } catch (e) {
+    close();
+    if (e.status === 410) toast(esc(e.message || "This photo has already been opened."));
+    else toast(esc(e.message || "Couldn’t open this photo."));
+    return;
+  }
+  if (onceOpen !== state) { plain.fill?.(0); return; }           // closed while it was coming
+  try { state.bmp = await createImageBitmap(new Blob([plain], { type: "image/jpeg" })); } catch (_) {}
+  if (plain.fill) plain.fill(0);                                // the decrypted bytes go straight away
+  if (!state.bmp || onceOpen !== state) return close();
+  const cv = $("canvas", el), dpr = Math.min(3, devicePixelRatio || 1), W = el.clientWidth, H = el.clientHeight;
+  const k = Math.min(W / state.bmp.width, H / state.bmp.height), w = Math.round(state.bmp.width * k), h = Math.round(state.bmp.height * k);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+  cv.getContext("2d").drawImage(state.bmp, 0, 0, cv.width, cv.height);
+  state.bmp.close?.(); state.bmp = null;
+  el.classList.add("on"); $(".otext", el).textContent = "View once";
+  $(".oring circle", el).style.animationDuration = `${ONCE_MS}ms`;
+  state.timer = setTimeout(close, ONCE_MS);
 }
 async function loadPhoto(fid, m, p) {
   S.photos.set(m.id, "");                         // loading
@@ -2472,6 +2524,7 @@ const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
+const onceP = (p) => !!p?.p && p.p.m !== "image/gif";
 const picWord = (p) => (p.v ? "Voice pigeon" : p.p?.m === "image/gif" ? "GIF" : "Photo");
 // A pigeon in the air, in a list: yours with its pigeon and when it lands, theirs sealed
 const riderIcon = (m) => `<span class="rider k-${kindOf(m)}">${I.bird}</span>`;
@@ -2799,6 +2852,16 @@ function bubble(f, m, gapTop, g) {
   if (p.v) {
     const gone = m.photo === 2 || S.photoGone.has(m.id);
     html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
+  } else if (onceP(p)) {
+    // view once: a pill to tap (theirs), what became of it (yours), the words below
+    const gone = m.photo === 2 || S.photoGone.has(m.id), seen = (m.flock || []).filter((x) => x.viewedAt).length;
+    const opened = mine ? (g ? seen > 0 : !!m.viewedAt) : !!(m.viewedAt || S.viewedOnce.has(m.id));
+    const label = mine ? (g && seen ? `Opened by ${seen}` : opened ? "Opened" : gone ? "Photo expired" : "Photo") : opened ? "Opened" : gone ? "Photo expired" : "View photo";
+    const can = !mine && !opened && !gone && !m.flying && !m.lost;
+    const words = p.t || quote;
+    html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}" data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
+      : `<div class="b once${opened || gone ? " done" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
+    if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
   } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear
@@ -2823,7 +2886,8 @@ function bubble(f, m, gapTop, g) {
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
     else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id)) meta.push(`<span class="fl exp">${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
+  const onceDone = onceP(p) && (m.viewedAt || S.viewedOnce.has(m.id) || (m.flock || []).some((x) => x.viewedAt));
+  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id) && !(onceDone && !mine)) meta.push(`<span class="fl exp">${onceP(p) ? (mine ? "View once · " : "Opens once · ") : ""}${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 // A friend's pigeon to someone else, stopping with you on the way: read it, and add a line.
@@ -5115,6 +5179,7 @@ async function onClick(e) {
       return zoomMapBy(cv, id === "in" ? 2 : 0.5, cv.clientWidth / 2, mapFrame(cv, cv._m, cv._cardH).sy0);
     }
     case "view": S.sheet = { type: "view", id }; return renderSheet();
+    case "viewonce": return viewOnce(id);
     case "maplayers": {
       const on = !windOn(); try { localStorage.setItem("inflight-windmap", on ? "1" : "0"); } catch (_) {}
       t.setAttribute("aria-pressed", String(on)); const k = $(".windkey", $layer); if (k) k.hidden = !on;
@@ -5953,7 +6018,8 @@ async function send() {
       payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };
       blob = sealed.data;
     }
-    const g = group(to), bd = S.sendKind === "dumb" ? null : birdFor(), carry = bd ? { bird: bd.id } : {};
+    const once = !!blob && !S.attach?.voice && !S.attach?.gif;            // photos are view-once; GIFs and voice pigeons aren't
+    const g = group(to), bd = S.sendKind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
     let meta;
     if (g) {
       // sealed once; its key sealed for each member (and for me, so my other phones can read it)
@@ -5969,7 +6035,7 @@ async function send() {
     const queue = async () => {
       await outboxAdd({ id, to, path, meta, blob, kind: S.sendKind, at: Date.now() });
       S.plain.set(id, payload);
-      if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }
+      if (S.attach) { if (once) URL.revokeObjectURL(S.attach.preview); else S.photos.set(id, S.attach.preview); S.attach = null; }
       if (rt) S.replyTo = null;
       if (sc) S.sched = null; if (vi) S.via = null;
       S.pick = null; $ta.value = ""; fitTa(); S.stick = true; showUpload(null);
@@ -6003,7 +6069,7 @@ async function send() {
     if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
     if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }
     S.plain.set(id, payload);
-    if (S.attach) { S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy
+    if (S.attach) { if (once) URL.revokeObjectURL(S.attach.preview); else S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy (not of a view-once photo)
     $ta.value = ""; fitTa(); S.stick = true;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     S.fresh.set(r.message.id, Date.now());

@@ -1,4 +1,4 @@
-import { drawMystery, MYSTERY,
+import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
@@ -772,6 +772,8 @@ async function sendMessage({ request, env, waitUntil }) {
   const bird = kind === "dumb" ? null : await claimBird(D, u.id, meta.bird, t, flight, deliver);
   if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, bird.wear, id).run();
   if (mystery) await D.prepare("UPDATE pg_msgs SET mystery = 1 WHERE id = ?").bind(id).run();
+  // a photo is view-once unless the phone says it isn't (a GIF or a voice pigeon)
+  if (photo) await D.prepare("UPDATE pg_msgs SET once = ? WHERE id = ?").bind(meta.once === false ? 0 : 1, id).run();
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));       // ten in a season keeps its look
@@ -879,12 +881,20 @@ async function markRead({ request, env }) {
 async function getPhoto({ request, env }, id) {
   const u = await requireUser(request, env);
   if (!UUID_RE.test(id || "")) throw new HttpError(404, "No such photo.");
-  const m = await (await db(env)).prepare("SELECT sender, recipient, photo, deliver_at, expires_at, lost_at FROM pg_msgs WHERE id = ?").bind(id).first();
+  const D = await db(env);
+  const m = await D.prepare("SELECT sender, recipient, photo, once, viewed_at, deliver_at, expires_at, lost_at FROM pg_msgs WHERE id = ?").bind(id).first();
   const t = Date.now();
   if (!m || (m.sender !== u.id && m.recipient !== u.id)) throw new HttpError(404, "No such photo.");
   if (m.photo !== 1 || t >= m.expires_at) throw new HttpError(410, "This photo has flown away.");
   if (m.recipient === u.id && m.lost_at != null && t >= m.lost_at) throw new HttpError(410, "This photo was lost with its pigeon.");
   if (m.recipient === u.id && t < m.deliver_at) throw new HttpError(425, "This photo is still in flight.");
+  // view once: its sender never downloads it again, its recipient exactly once (claimed first, so two at once can't both)
+  if (isOnce(m) && !(m.once == null && m.sender === u.id)) {     // (one sent before view-once, which might be a GIF or a voice pigeon: its sender still has it)
+    if (m.recipient !== u.id) throw new HttpError(403, "A view-once photo can only be opened by who it was sent to.");
+    const c = await D.prepare("UPDATE pg_msgs SET viewed_at = ? WHERE id = ? AND viewed_at IS NULL").bind(t, id).run();
+    if (!c.meta.changes) throw new HttpError(410, "You’ve already opened this photo.");
+    return serveOnce(env, `pigeon/${id}`, false);
+  }
   const obj = env.BIO_R2 && (await env.BIO_R2.get(`pigeon/${id}`));
   if (!obj) throw new HttpError(410, "This photo has flown away.");
   return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });

@@ -1528,3 +1528,27 @@ svg.fillico{fill:currentColor;stroke:none}
 .nkind .nemo{font-size:17px;line-height:1}
 .ghead .gmore{float:right;font:inherit;font-weight:400;color:var(--tint);background:none;border:0;padding:0}
 .veiled .toasts{display:none}
+/* view-once photos: a pill to tap, and a viewer that closes itself */
+.b.once{display:inline-flex;align-items:center;gap:8px;padding:11px 18px 11px 14px;font:inherit;font-weight:600;color:var(--label);border:0;text-align:left}
+.b.once .oico{font-size:22px;color:#7b5cff;flex:none}
+.b.once.me .oico{color:#fff}
+.b.once.done{font-weight:500;color:var(--label-2)}
+.b.once.done .oico{color:var(--label-3)}
+.b.once.me.done{color:rgba(255,255,255,.8)}
+.b.once.me.done .oico{color:rgba(255,255,255,.6)}
+.b.once.live:active{transform:scale(.97)}
+.b.once + .b.ocap{margin-top:3px}
+.oview{position:absolute;inset:0;z-index:60;display:grid;place-items:center;background:#000;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none}
+.oview.out{animation:ofadeout .2s ease forwards}
+.oview canvas{max-width:100%;max-height:100%;pointer-events:none;opacity:0;transition:opacity .18s}
+.oview.on canvas{opacity:1}
+.oview .obar{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top,0px)) 14px 12px;color:#fff;background:linear-gradient(rgba(0,0,0,.55),transparent)}
+.oview .otext{flex:1;font-weight:600;font-size:15px}
+.oview .oclose{width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;display:grid;place-items:center}
+.oview .oring{width:26px;height:26px}
+.oview .oring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.oview .oring circle{fill:none;stroke:#fff;stroke-width:3.5;stroke-dasharray:94.25;stroke-dashoffset:0;stroke-linecap:round}
+.oview.on .oring circle{animation:oring linear forwards}
+@keyframes oring{to{stroke-dashoffset:94.25}}
+@keyframes ofade{to{opacity:1}}
+@keyframes ofadeout{from{opacity:1}to{opacity:0}}

@@ -10,7 +10,7 @@
 import { newStamps } from "./_passport.js";
 import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
-import { drawMystery, MYSTERY,
+import { isOnce, serveOnce, drawMystery, MYSTERY,
   HttpError, json, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
@@ -62,7 +62,7 @@ const wxFor = (d, friend) => { const w = wxView(d); return friend || !w.delay ? 
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
-    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
+    return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, viewedAt: d.viewed_at || null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
       legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null };
   });
@@ -77,9 +77,9 @@ function theirView(m, d, friends, t) {
   return { ...baseView(m), ...birdOn(m, d.user_id), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, d.user_id),
     legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
-    body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null };
+    body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null, viewedAt: d.viewed_at || null };
 }
-const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, mystery: !!m.mystery, risky: !!m.risky, sentAt: m.sent_at, photo: m.photo, photoSize: m.photo_size, skin: m.skin || null });
+const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, mystery: !!m.mystery, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
@@ -349,6 +349,7 @@ async function send({ request, env, waitUntil }) {
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));
   waitUntil(findGroupFly(D, id).catch((e) => console.error("pigeon flyover", e && e.message)));     // the sender's friends it flies over
   if (mystery) await D.prepare("UPDATE pg_gmsgs SET mystery = 1 WHERE id = ?").bind(id).run();
+  if (photo) await D.prepare("UPDATE pg_gmsgs SET once = ? WHERE id = ?").bind(meta.once === false ? 0 : 1, id).run();
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
   const m = await D.prepare("SELECT * FROM pg_gmsgs WHERE id = ?").bind(id).first();
   return json({ message: (await views(D, u.id, [m], await friendIds(D, u.id), t))[0] });
@@ -397,6 +398,14 @@ async function getPhoto({ request, env }, id) {
   if (m.photo !== 1 || t >= m.expires_at) throw new HttpError(410, "This photo has flown away.");
   if (d && lostBy(d, t)) throw new HttpError(410, "This photo was lost with its pigeon.");
   if (d && t < d.deliver_at) throw new HttpError(425, "This photo is still in flight.");
+  // view once: each member downloads it once, its sender never again; gone once no one else still may
+  if (isOnce(m) && !(m.once == null && !d)) {
+    if (!d) throw new HttpError(403, "A view-once photo can only be opened by who it was sent to.");
+    const c = await D.prepare("UPDATE pg_gdeliv SET viewed_at = ? WHERE msg_id = ? AND user_id = ? AND viewed_at IS NULL").bind(t, id, u.id).run();
+    if (!c.meta.changes) throw new HttpError(410, "You’ve already opened this photo.");
+    const left = await D.prepare("SELECT COUNT(*) AS n FROM pg_gdeliv WHERE msg_id = ? AND viewed_at IS NULL AND (lost_at IS NULL OR lost_at > ?)").bind(id, t).first();
+    return serveOnce(env, groupPhotoKey(id), left.n > 0);
+  }
   const obj = env.BIO_R2 && (await env.BIO_R2.get(groupPhotoKey(id)));
   if (!obj) throw new HttpError(410, "This photo has flown away.");
   return new Response(obj.body, { headers: { "Content-Type": "application/octet-stream", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
