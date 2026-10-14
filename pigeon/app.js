@@ -2515,8 +2515,32 @@ function vMessages() {
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
 }
 
+/* ---------- friends' news: what their pigeons have been up to ---------- */
+let newsLoading = null;
+function loadNews(force) {
+  if (newsLoading || (!force && S.newsAt && now() - S.newsAt < 60e3)) return newsLoading;
+  newsLoading = api("news").then((r) => { S.news = r.news || []; S.newsAt = now(); if (S.view === "friends" || S.sheet?.type === "news") { render(); if (S.sheet?.type === "news") renderSheet(); } })
+    .catch(() => {}).finally(() => { newsLoading = null; });
+  return newsLoading;
+}
+const NEWS_ICON = { country: () => I.globe, postmark: (x) => `<svg viewBox="0 0 24 24" class="ico">${PM_ICON[x.mark?.kind] || PM_ICON.monument}</svg>`, rank: () => I.bird, named: () => I.bird, streak: () => I.flame,
+  item: (x) => `<span class="nemo">${x.emoji || ""}</span>`, season: (x) => `<span class="nemo">${SEASONS.find((s) => s[0] === x.skin)?.[2] || ""}</span>` };
+const NEWS_TINT = { country: "blue", postmark: "red", rank: "orange", named: "orange", streak: "orange", item: "yellow", season: "pink" };
+function newsRow(x) {
+  const f = friend(x.who.id) || x.who;
+  return `<button type="button" class="cell nrow" data-act="open" data-id="${esc(x.who.id)}">${avatar(f, "s")}
+    <span class="ctext"><span class="ntext">${esc(x.text)}</span><span class="csub">${esc(agoText(x.at))}</span></span>
+    <span class="nkind ${NEWS_TINT[x.kind] || "gray"}" aria-hidden="true">${(NEWS_ICON[x.kind] || (() => I.bird))(x)}</span></button>`;
+}
+function newsHtml() {
+  if (S.me?.shareNews === false || !S.news?.length) return "";
+  return `<div class="ghead">News${S.news.length > 3 ? ` <button type="button" class="link gmore" data-act="newsall">See All</button>` : ""}</div>
+    <div class="group news">${S.news.slice(0, 3).map(newsRow).join("")}</div>`;
+}
+
 /* ---------- Friends ---------- */
 function vFriends() {
+  if (S.me) loadNews();
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
   const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
@@ -2525,6 +2549,7 @@ function vFriends() {
     <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
     ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? `${inc} waiting for you` : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
+    ${newsHtml()}
     ${fr.length ? `<div class="ghead">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-list="f">${rows}</div>
       <div class="gfoot">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
       : `<p class="empty"><b>No friends yet</b>Add someone by their handle, or share yours: @${esc(S.me.handle)}.<br><button class="btn" data-act="addfriend">Add a Friend</button></p>`}
@@ -3920,6 +3945,11 @@ function drawSheet(refresh) {
         { left: { label: "Back to the map", act: "shareback" } });
       return;
     }
+    case "news":
+      $layer.innerHTML = sheetHtml("Friends’ News", S.news?.length ? `<div class="group mt-s news">${S.news.map(newsRow).join("")}</div>
+        <div class="gfoot">The last two weeks of your friends’ pigeons: new countries, postmarks, ranks, streaks and more. Never what anyone wrote, or where anyone is.</div>`
+        : `<p class="empty"><b>No news yet</b>When your friends’ pigeons reach somewhere new, rise a rank or keep a streak going, it’ll show here.</p>`);
+      return;
     case "feathers": {
       const w = s.data;
       if (!w) { $layer.innerHTML = sheetHtml("Feathers", `<p class="empty">Counting feathers…</p>`); return; }
@@ -4008,9 +4038,10 @@ function drawSheet(refresh) {
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
+          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, postmarks, ranks and streaks, with your friends", on: u.shareNews !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
-        <div class="gfoot">Online and read receipts work both ways: turn one off and you won’t see other people’s either.</div>
+        <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
         <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "profile" } });
       return;
     }
@@ -4789,6 +4820,7 @@ async function onClick(e) {
     case "shareflight": return openShare(id || t.dataset.id);
     case "birds": S.sheet = { type: "birds" }; return renderSheet();
     case "feathers": return openFeathers();
+    case "newsall": S.sheet = { type: "news" }; renderSheet(); return loadNews(true);
     case "seasonhide": case "seasontry": { const s = seasonNow(); try { if (s) localStorage.setItem("inflight-season", s.key); } catch (_) {} render(); if (t.dataset.act === "seasontry") { haptic("tick"); return openFlightLog("skins"); } return; }
     case "buyitem": {
       const it = S.sheet?.data?.items.find((x) => x.id === id); if (!it) return;

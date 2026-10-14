@@ -257,6 +257,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN bird_to TEXT",
   // mystery pigeons: the loft (null = full) and which messages flew as one
   "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
+  "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",   // don't share my news with friends (nor see theirs)
   "ALTER TABLE pg_birds ADD COLUMN wear TEXT",            // the accessory it has on (feathers)
   "ALTER TABLE pg_msgs ADD COLUMN bird_wear TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN bird_wear TEXT",   // and had on when it carried this       // the landmarks it flew past (JSON ids, in order)
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",

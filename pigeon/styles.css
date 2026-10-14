@@ -1520,3 +1520,10 @@ svg.fillico{fill:currentColor;stroke:none}
 /* the hint in an empty message box stays on one line (cut short with … if it must) */
 .field-wrap textarea:placeholder-shown{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .field-wrap textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* friends' news */
+.nrow{align-items:center}
+.nrow .ntext{white-space:normal;line-height:20px;text-wrap:pretty}
+.nkind{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--fill);color:var(--label-2);font-size:16px}
+.nkind.blue{color:var(--tint)}.nkind.red{color:#c0392b}.nkind.orange{color:var(--orange-t)}.nkind.pink{color:#e8457a}
+.nkind .nemo{font-size:17px;line-height:1}
+.ghead .gmore{float:right;font:inherit;font-weight:400;color:var(--tint);background:none;border:0;padding:0}
