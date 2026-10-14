@@ -2014,6 +2014,7 @@ function vMessages() {
     <h1 class="large">Messages</h1>
     ${rows ? `<label class="search">${I.search}<input type="search" id="msearch" placeholder="Search" value="${esc(S.q)}" autocomplete="off" aria-label="Search messages"></label>` : ""}
     <div class="airslot"></div>
+    <div class="sres" aria-live="polite"></div>
     <div class="mlist" data-list="m">${rows}</div>${rows ? "" : empty}`;
 }
 
@@ -2695,6 +2696,45 @@ function filterLists() {
   const run = (list, q) => { const el = $(`[data-list="${list}"]`); if (!el) return; q = q.trim().toLowerCase(); el.querySelectorAll("[data-find]").forEach((r) => { r.hidden = !!q && !r.dataset.find.includes(q); }); };
   run("m", S.q); run("f", S.fq);
   if (airEl) airEl.classList.toggle("q", !!S.q.trim());
+  if (S.view === "messages") searchMessages(S.q);
+}
+/* ---------- search inside chats ----------
+   On the phone only: every message it can open (the chats you've opened,
+   and the last ones kept from before), matched without minding case or
+   accents. The server never sees what you look for. */
+const fold = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+let searchSeq = 0;
+async function searchMessages(q) {
+  const box = $(".sres", $view); if (!box) return;
+  const term = fold(q.trim()), seq = ++searchSeq;
+  if (term.length < 2) { box.innerHTML = ""; return; }
+  // open the kept chats first (once), so they can be searched too
+  for (const [fid, d] of S.chatRaw) if (!S.msgs.has(fid) && (friend(fid) || group(fid))) await applyChat(fid, d, false).catch(() => {});
+  if (seq !== searchSeq) return;
+  const hits = [], seen = new Set();
+  const look = (chat, m) => {
+    if (!m || seen.has(m.id)) return; seen.add(m.id);
+    const p = S.plain.get(m.id); if (!p || p.bad || typeof p.t !== "string" || !p.t) return;
+    const at = fold(p.t).indexOf(term); if (at < 0) return;
+    hits.push({ chat, m, p, at, when: m.from === S.me.id ? m.sentAt : m.deliverAt });
+  };
+  for (const [chat, list] of S.msgs) for (const m of list) look(chat, m);
+  for (const f of S.friends) look(f.id, f.last);
+  for (const g of S.groups) look(g.id, g.last);
+  hits.sort((a, b) => b.when - a.when);
+  const snip = (t, at) => {
+    const a = Math.max(0, at - 28), b2 = Math.min(t.length, at + term.length + 60);
+    return `${a ? "…" : ""}${esc(t.slice(a, at))}<mark>${esc(t.slice(at, at + term.length))}</mark>${esc(t.slice(at + term.length, b2))}${b2 < t.length ? "…" : ""}`;
+  };
+  const rows = hits.slice(0, 40).map(({ chat, m, p, at }) => {
+    const g = group(chat), f = friend(chat), who = g ? gavatar(g, "s") : avatar(f || { name: "?" }, "s");
+    const by = m.from === S.me.id ? "You" : g ? first(member(g, m.from)?.name || "Someone") : "";
+    return `<button type="button" class="srow" data-act="searchopen" data-id="${esc(chat)}" data-m="${esc(m.id)}">${who}
+      <span class="stext"><span class="stop"><b class="one">${esc(g ? g.name : first(f?.name || "Someone"))}</b><time>${fmtListTime(m.from === S.me.id ? m.sentAt : m.deliverAt)}</time></span>
+      <span class="sbody">${by ? `<span class="sby">${esc(by)}: </span>` : ""}${snip(p.t.replace(/\s+/g, " "), fold(p.t.replace(/\s+/g, " ")).indexOf(term))}</span></span></button>`;
+  }).join("");
+  box.innerHTML = hits.length ? `<div class="ghead">Messages${hits.length > 40 ? " · newest 40" : ""}</div><div class="group">${rows}</div>`
+    : `<p class="snone">No messages on this phone match “${esc(q.trim())}”.</p>`;
 }
 let gifTimer = 0;
 /* ---------- sign-up, made quick ----------
@@ -3643,6 +3683,12 @@ async function onClick(e) {
       renderCompose(); $ta.focus(); return;
     }
     case "unreply": S.replyTo = null; return renderCompose();
+    case "searchopen": {
+      const mid = t.dataset.m; S.q = ""; go("chat", id);
+      const jump = () => { const el = $(`[data-mid="${CSS.escape(mid)}"]`, $view); if (!el) return false; S.stick = false; el.scrollIntoView({ block: "center" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return true; };
+      if (!jump()) { let n = 0; const iv = setInterval(() => { if (jump() || ++n > 30) clearInterval(iv); }, 150); }
+      return;
+    }
     case "jumpto": {
       const el = $(`[data-mid="${CSS.escape(id)}"]`, $view); if (!el) return;
       el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });

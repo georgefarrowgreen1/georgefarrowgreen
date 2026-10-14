@@ -253,6 +253,12 @@ each. Tap a row to open that chat. It shows exactly what those chats already
 show you (`functions/_skies.js`): a group pigeon from someone who isn't your
 friend is listed but not mapped, and a scheduled pigeon appears once it takes off.
 
+**Search.** The search field on Messages finds chats by name, as before, and
+now messages too: every message the phone can open (chats you've opened, and
+the ones kept from before), ignoring case and accents, newest first, with the
+word highlighted. Tap one to open the chat at that message. It all happens on
+the phone; what you search for is never sent anywhere.
+
 **App lock.** Privacy & Security → Lock InFlight (per phone; needs a
 passkey). InFlight then locks when you leave it, straight away or after 1, 15
 or 60 minutes, and opens with Face ID, Touch ID or the passkey: a
