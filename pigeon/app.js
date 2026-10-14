@@ -3349,6 +3349,12 @@ function skinsHtml(list, mine) {
 }
 /* ---------- feathers ---------- */
 async function walletData() { try { const r = await api("feathers"); S.feathers = r.feathers; return r; } catch (err) { toast(esc(err.message)); return null; } }
+// A friend's loft: their pigeons, badges and kit (fetched each time: it changes as they fly)
+async function openLoft(id) {
+  S.sheet = { type: "loft", id, data: null }; renderSheet();
+  let r; try { r = await api("loft?id=" + encodeURIComponent(id)); } catch (e) { r = { error: e.message || "Try again in a moment." }; }
+  if (S.sheet?.type === "loft" && S.sheet.id === id) { S.sheet.data = r; renderSheet(); }
+}
 async function openFeathers() {
   S.sheet = { type: "feathers", data: null }; renderSheet();
   const r = await walletData(); if (r && S.sheet?.type === "feathers") { S.sheet.data = r; renderSheet(); render(); }
@@ -4273,7 +4279,7 @@ function drawSheet(refresh) {
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
-          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, postmarks, ranks and streaks, with your friends", on: u.shareNews !== false })}
+          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, ranks and streaks, and your loft, with your friends", on: u.shareNews !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
@@ -4533,6 +4539,7 @@ function drawSheet(refresh) {
       if (!f) { S.sheet = null; return renderSheet(); }
       const km = S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : null;
       $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${esc(first(f.name))}</span><span class="sub">@${esc(f.handle)}</span></div>
+        <div class="group mt">${cell({ act: "loft", id: f.id, icon: I.bird, tile: "indigo", label: `Visit ${esc(first(f.name))}’s Loft`, sub: "Their pigeons, badges and kit", chev: true })}</div>
         <div class="group mt">
           ${cell({ icon: I.pin, tile: "blue", label: "Location", val: esc(f.place || "Not set"), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
@@ -4543,6 +4550,31 @@ function drawSheet(refresh) {
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`, { name: `${f.name}: contact info` });
+      return;
+    }
+    case "loft": {
+      if (!f) { S.sheet = null; return renderSheet(); }
+      const L = s.data, who = esc(first(f.name)), back = { left: { label: "Back", act: "loftback" }, name: `${f.name}’s loft` };
+      if (!L) { $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${who}’s Loft</span></div><p class="empty">Opening the loft…</p>`, back); return; }
+      if (L.error || L.private) { $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${who}’s Loft</span></div>
+        <p class="empty"><b>${L.private ? "The loft is closed" : "Couldn’t open the loft"}</b>${L.private ? `${who} doesn’t share their news, so their loft stays private.` : esc(L.error)}</p>`, back); return; }
+      const l = L.loft, mon = (t) => `${MON[new Date(t).getMonth()]} ${new Date(t).getFullYear()}`;
+      const stat = (v, label) => `<div><b>${v}</b><span>${label}</span></div>`;
+      const bird = (b) => `<div class="cell has-icon"><span class="tile wtile ${RANK_TILE[b.rank]}">${I.bird}${wearOn(b.wear)}</span>
+        <span class="ctext"><span class="one">${esc(b.name)}</span><span class="csub one">${esc(b.rank)}${b.wear && WEAR[b.wear] ? ` · wearing the ${esc(WEAR[b.wear][0].toLowerCase())}` : ""} · since ${mon(b.since)}</span></span></div>`;
+      const hall = (b) => `<div class="cell has-icon"><span class="tile wtile ${b.lost ? "gray" : RANK_TILE[b.rank]}">${b.lost ? I.skull : I.bird}</span>
+        <span class="ctext"><span class="one">${esc(b.name)}</span><span class="csub one">${esc(b.rank)} · ${b.lost ? `lost ${fmtDate(b.lost)}` : `retired ${fmtDate(b.retired)}`}</span></span></div>`;
+      const badge = (b) => { const [icon, tint] = BADGE_LOOK[b.id] || ["bird", "gray"]; return `<div class="badge2 earned"><span class="bico tile ${tint}">${I[icon] || I.bird}</span><b>${esc(b.name)}</b><small>${esc(b.desc)}</small></div>`; };
+      const kit = [...l.kit.map((k) => `<span class="loftkit"><i aria-hidden="true">${k.emoji}</i>${esc(k.name)}</span>`), ...l.looks.map((k) => `<span class="loftkit">${pg("standard", k.id)}${esc(k.name)} look</span>`)];
+      $layer.innerHTML = sheetHtml("", `<div class="profile-head lofthead">${avatar(f, "xl", true)}<span class="name">${who}’s Loft</span>
+          <span class="sub">${l.skin && SKINS[l.skin] ? `${pg("standard", l.skin)} Flies ${esc(SKINS[l.skin].name)} pigeons · ` : ""}${l.since ? `Keeping pigeons since ${mon(l.since)}` : ""}</span></div>
+        <div class="bstats">${stat(fmtMiles(l.km), "Flown")}${stat(l.landed.toLocaleString("en-GB"), l.landed === 1 ? "Landing" : "Landings")}${stat(l.countries, l.countries === 1 ? "Country" : "Countries")}${stat(l.postmarks, l.postmarks === 1 ? "Postmark" : "Postmarks")}</div>
+        <div class="ghead">Pigeons${l.birds.length ? ` <span class="gcount">${l.birds.length}</span>` : ""}</div>
+        ${l.birds.length ? `<div class="group">${l.birds.map(bird).join("")}</div>` : `<div class="gfoot">${who} hasn’t named any pigeons yet.</div>`}
+        ${l.hall.length ? `<div class="ghead">Hall of Fame</div><div class="group">${l.hall.map(hall).join("")}</div>` : ""}
+        ${l.badges.length ? `<div class="ghead">Achievements <span class="gcount">${l.badges.length}</span></div><div class="badges">${l.badges.map(badge).join("")}</div>` : ""}
+        ${kit.length ? `<div class="ghead">Kit</div><div class="loftkits">${kit.join("")}</div>` : ""}
+        <div class="gfoot mt">Where ${who}’s pigeons have been stays theirs: countries and postmarks are counted here, never named.</div>`, back);
       return;
     }
     case "sessions": {
@@ -5056,6 +5088,8 @@ async function onClick(e) {
     case "birds": S.sheet = { type: "birds" }; return renderSheet();
     case "feathers": return openFeathers();
     case "newsall": S.sheet = { type: "news" }; renderSheet(); return loadNews(true);
+    case "loft": return openLoft(id);
+    case "loftback": S.sheet = { type: "friendinfo", id: S.sheet?.id }; return renderSheet();
     case "seasonhide": case "seasontry": { const s = seasonNow(); try { if (s) localStorage.setItem("inflight-season", s.key); } catch (_) {} render(); if (t.dataset.act === "seasontry") { haptic("tick"); return openFlightLog("skins"); } return; }
     case "buyitem": {
       const it = S.sheet?.data?.items.find((x) => x.id === id); if (!it) return;

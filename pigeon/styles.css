@@ -1623,3 +1623,10 @@ html.night .nav-ghost .night{background:none}
 .welcome.again .wlogo::before{animation:wbreathe 5s ease-in-out infinite;opacity:1}
 .welcome.again .wcta{animation:wfade .5s ease forwards}
 @media (prefers-reduced-motion:reduce){html.night .view.nav-push,html.night .view.nav-pop,html.night .nav-ghost{animation:none}html.night .nav-ghost{display:none}}
+/* a friend's loft */
+.lofthead .sub{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;text-align:center}
+.lofthead .sub .pg{font-size:13px}
+.loftkits{display:flex;flex-wrap:wrap;gap:8px;margin:0 16px}
+.loftkit{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;background:var(--cell);font-size:15px}
+.loftkit i{font-style:normal;font-size:18px;line-height:1}
+.loftkit .pg{font-size:14px}

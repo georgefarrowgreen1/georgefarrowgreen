@@ -23,6 +23,7 @@ import { marksFor } from "../../_landmarks.js";
 import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
+import { LOFT_ROUTES } from "../../_loft.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -1283,7 +1284,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
 };
 
 export async function onRequest(ctx) {
