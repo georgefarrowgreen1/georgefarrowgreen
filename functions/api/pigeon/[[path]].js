@@ -3,7 +3,7 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -94,6 +94,17 @@ async function logout({ request, env }) {
 // (after a passkey sign-in on a phone without PRF support).
 async function vault({ request, env }) {
   const u = await requireUser(request, env);
+  requireFresh(u);
+  return json({ vault: u.vault, salt: u.salt });
+}
+// The same, for a phone that has just been given the password (change
+// password, linking a passkey): the password's proof is the check.
+async function vaultByProof({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
+  const b = await body(request);
+  if (!safeEqual(hex(await sha256(fromB64url(String(b.proof || "")))), u.proof_hash)) throw new HttpError(401, "That password isn’t right.", "password");
+  await (await db(env)).prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
   return json({ vault: u.vault, salt: u.salt });
 }
 
@@ -259,6 +270,7 @@ async function removeAccount(env, id) {
 }
 async function deleteMe({ request, env }) {
   const u = await requireUser(request, env);
+  requireFresh(u);
   await removeAccount(env, u.id);
   return json({ ok: true });
 }
@@ -268,6 +280,7 @@ async function passkeyOptions({ request, env }) {
   const b = await body(request), rpId = rpIdFor(request);
   if (b.mode === "register") {
     const u = await requireUser(request, env);
+    requireFresh(u);
     const { results } = await (await db(env)).prepare("SELECT id FROM pg_passkeys WHERE user_id = ?").bind(u.id).all();
     return json({ challenge: await newChallenge(env, "register", u.id), rpId,
       user: { id: b64url(new TextEncoder().encode(u.id)), name: u.email, displayName: u.name },
@@ -277,8 +290,9 @@ async function passkeyOptions({ request, env }) {
   return json({ challenge: await newChallenge(env, "login"), rpId });
 }
 
-async function passkeyRegister({ request, env }) {
+async function passkeyRegister({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
+  requireFresh(u);
   const b = await body(request);
   await checkClientData(env, request, b, "webauthn.create", "register", u.id);
   if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type InFlight doesn’t support.");
@@ -287,12 +301,30 @@ async function passkeyRegister({ request, env }) {
   if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
   await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), Date.now()).run();
+  waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), linkOrigin(request)).catch(() => {}));
+  return json({ ok: true });
+}
+// Showing it's you again (password proof, or a passkey) for the few things that need it.
+async function reauth({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
+  const b = await body(request), D = await db(env);
+  let ok = false;
+  if (b.proof) ok = safeEqual(hex(await sha256(fromB64url(String(b.proof)))), u.proof_hash);
+  else if (b.authenticatorData) {
+    await checkClientData(env, request, b, "webauthn.get", "login");
+    const cred = await D.prepare("SELECT * FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id || ""), u.id).first();
+    ok = !!cred && await verifyAssertion(cred, request, b);
+  }
+  if (!ok) throw new HttpError(401, b.proof ? "That password isn’t right." : "That passkey didn’t check out.", "password");
+  await D.prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
   return json({ ok: true });
 }
 
 // A passkey's own copy of the private key, locked with that passkey's PRF secret.
 async function passkeyVault({ request, env }) {
   const u = await requireUser(request, env);
+  requireFresh(u);
   const b = await body(request);
   const v = String(b.vault || "");
   if (v.length < 20 || v.length > 4000) throw new HttpError(400, "That key copy wasn’t valid.");
@@ -317,6 +349,7 @@ async function passkeyLogin({ request, env }) {
 
 async function passkeyDelete({ request, env }) {
   const u = await requireUser(request, env);
+  requireFresh(u);
   const b = await body(request);
   await (await db(env)).prepare("DELETE FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id), u.id).run();
   return json({ ok: true });
@@ -659,6 +692,18 @@ function checkNewSecret(b) {
   if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
   return vault;
 }
+async function notifyPasskeyAdded(env, u, label, origin) {
+  if (!emailReady(env)) return;
+  const { text, html } = emailBody({
+    origin, icon: "shield", title: "A passkey was added",
+    preheader: `A new passkey can now sign in to @${u.handle}.`,
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, a new passkey (“${label}”) was just added to your InFlight account. It can sign you in.`,
+      "If this wasn’t you, remove it in Privacy & Security → Passkeys and change your password straight away."],
+    rows: [["Account", `@${u.handle}`], ["Passkey", label], ["When", ukTime(Date.now())]],
+    button: { label: "Review Your Passkeys", url: `${origin}/pigeon/#account` },
+  });
+  await sendEmail(env, { to: u.email, subject: "A passkey was added to your InFlight account", text, html }).catch(() => {});
+}
 async function notifyPasswordChanged(env, u, how, origin) {
   if (!emailReady(env)) return;
   const { text, html } = emailBody({
@@ -943,10 +988,10 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": signup, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault,
+  "POST signup": signup, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
-  "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete,
+  "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals,

@@ -100,7 +100,8 @@ async function api(path, { method = "GET", body, form, raw, blob, onProgress } =
   if (raw && r.ok) return r;
   let data = {};
   try { data = await r.json(); } catch (_) {}
-  if (r.status === 401 && S.token && !/^(login|passkey-login)/.test(path)) { await forget(); go("welcome"); }
+  // only a sign-in that has ended signs you out (not a wrong password on a "confirm it's you")
+  if (r.status === 401 && S.token && data.field === "session") { await forget(); go("welcome"); }
   // a reply with no message of ours came from somewhere in between: say which, so it can be traced
   if (!r.ok) throw Object.assign(new Error(data.error || `Something went wrong (error ${r.status}). Try again.`), { status: r.status, field: data.field });
   return data;
@@ -1368,6 +1369,33 @@ async function signInPassword(email, password) {
   try { ({ ecdh } = await E2E.unlock(lockKey, r.vault)); }
   catch (_) { throw new Error("Signed in, but your password couldn’t unlock your key. Try again."); }
   await useKeys(r.token, r.me, ecdh);
+}
+// The password-locked key, fetched with the password itself (its proof is the check)
+async function vaultWith(password) {
+  const { salt } = await api("salt", { method: "POST", body: { email: S.me.email } });
+  const { lockKey, proof } = await E2E.fromPassword(password || "", fromB64url(salt));
+  const { vault } = await api("vault", { method: "POST", body: { proof } });
+  return { vault, salt, lockKey, proof };
+}
+// "Confirm it's you": the few things a stolen sign-in mustn't be enough for ask
+// for your password (or a passkey) if you haven't shown it in 10 minutes.
+function confirmIt() {
+  return new Promise((resolve) => { S.sheet = { type: "reauth", resolve, back: S.sheet }; renderSheet(); });
+}
+async function withFresh(fn) {
+  try { return await fn(); }
+  catch (e) {
+    if (e.field !== "reauth") throw e;
+    if (!(await confirmIt())) throw Object.assign(new Error("Cancelled."), { cancelled: true });
+    return fn();
+  }
+}
+async function reauthPasskey() {
+  const o = await api("passkey-options", { method: "POST", body: { mode: "login" } });
+  const a = await navigator.credentials.get({ publicKey: { challenge: fromB64url(o.challenge), rpId: o.rpId, userVerification: "required", timeout: 120000,
+    allowCredentials: (S.passkeys || []).map((p) => ({ type: "public-key", id: fromB64url(p.id) })) } });
+  await api("reauth", { method: "POST", body: { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
+    authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) } });
 }
 const passkeysSupported = () => !!(window.PublicKeyCredential && navigator.credentials?.create);
 function deviceLabel() {
@@ -3228,6 +3256,12 @@ function drawSheet(refresh) {
           <div class="gfoot">Passkeys let you sign in with Face ID or your fingerprint. On newer phones they also unlock your messages, so a password reset can keep them.</div>`
           : `<p class="empty"><b>Not available</b>This browser can’t save passkeys.</p>`}`, { left: { label: "Back", act: "securitysheet" } });
       return;
+    case "reauth":
+      if (!$("#reauth-form", $layer)) $layer.innerHTML = sheetHtml("Confirm It’s You", `<p class="gfoot mt-s">For your safety, enter your password to carry on.</p>
+        <form id="reauth-form" data-form="reauth" novalidate><div class="group mt-xs">${field("password", "Password", "password", "current-password")}</div>${ferr}</form>
+        ${S.passkeys?.length && passkeysSupported() ? `<div class="group mt">${cell({ act: "reauthpk", icon: I.face, tile: "green", label: "Use a Passkey Instead", cls: "action" })}</div>` : ""}`,
+        { left: { label: "Cancel", act: "close" }, right: { label: "Confirm", form: "reauth-form" } });
+      return;
     case "askpw":
       if (!$("#f-password", $layer)) $layer.innerHTML = sheetHtml("Link Passkey", `<p class="gfoot mt-s">Enter your password once so this passkey can also unlock your messages on a new phone.</p>
         <form id="askpw-form" data-form="askpw" novalidate><div class="group mt-xs">${field("password", "Password", "password", "current-password")}</div>${ferr}</form>`,
@@ -3713,6 +3747,7 @@ async function onClick(e) {
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();
     case "close":
       if (S.sheet?.type === "askpw") S.sheet.resolve(null);
+      if (S.sheet?.type === "reauth") { const r = S.sheet.resolve; S.sheet = S.sheet.back || null; renderSheet(); return r(false); }
       S.sheet = null; S.profileDraft = null; dropAvatarDraft(); return renderSheet();
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
@@ -3747,6 +3782,11 @@ async function onClick(e) {
     }
     case "unlock": return unlock();
     case "lockout": return openActions({ message: "Sign out of InFlight on this phone? You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "reauthpk": {
+      try { await busyBtn(t, "Waiting for your passkey…", reauthPasskey); const s = S.sheet; S.sheet = s.back || null; renderSheet(); haptic("success"); s.resolve(true); }
+      catch (err) { if (err?.name !== "NotAllowedError") toast(esc(err.message || "That passkey didn’t work.")); }
+      return;
+    }
     case "recstart": return recStart();
     case "reccancel": return recStop(false);
     case "recsend": return recStop(true);
@@ -3859,19 +3899,19 @@ async function onClick(e) {
     case "usehandle": { const i = $("#f-handle"); if (i) { i.value = id; onb.handleTouched = true; onbCheckHandle(); } return; }
     case "pkadd":
       try {
-        const unlocks = await busyBtn(t, "Waiting for your passkey…", addPasskey);
+        const unlocks = await busyBtn(t, "Waiting for your passkey…", () => withFresh(addPasskey));
         await sync();
         if (t.dataset.next === "done") finishOnboarding(); else if (t.dataset.next) go(t.dataset.next); else renderSheet();
         toast(unlocks ? "Passkey saved. It can sign you in and unlock your messages." : "Passkey saved. On a new phone you’ll also need your password once.");
-      } catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
+      } catch (err) { if (!err.cancelled && err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
       return;
     case "pkget":
       try { await busyBtn(t, "Waiting for your passkey…", signInPasskey); if (S.priv) afterSignIn(); }
       catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(passkeyError(err)); }
       return;
     case "pkdel":
-      await api("passkey", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
-      toast("Passkey removed. You can also delete it from your phone’s Passwords app.");
+      try { await withFresh(() => api("passkey", { method: "DELETE", body: { id } })); toast("Passkey removed. You can also delete it from your phone’s Passwords app."); }
+      catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
     case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
@@ -3912,8 +3952,8 @@ async function onClick(e) {
       await forget(); return go("welcome");
     case "delask": return openActions({ title: "Delete your account?", message: "This deletes your account, friends, and every message and photo you’ve sent or received. It can’t be undone.", actions: [{ label: "Delete Account", act: "delgo", destructive: true }] });
     case "delgo":
-      try { await api("me", { method: "DELETE" }); await forget(); go("welcome"); toast("Your account was deleted."); }
-      catch (err) { toast(esc(err.message)); }
+      try { await withFresh(() => api("me", { method: "DELETE" })); await forget(); go("welcome"); toast("Your account was deleted."); }
+      catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       return;
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; renderSheet(); S.profileDraft = null; return;
@@ -4136,8 +4176,9 @@ async function onSubmit(e) {
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
     try {
       await busyBtn(btn, "Changing…", async () => {
-        const { vault, salt } = await api("vault");
-        const old = await E2E.fromPassword(v.current, fromB64url(salt));
+        let got;
+        try { got = await vaultWith(v.current); } catch (e) { throw e.status === 401 ? Object.assign(new Error("Your current password isn’t right."), { field: "current" }) : e; }
+        const { vault } = got, old = { lockKey: got.lockKey, proof: got.proof };
         let ecdh;
         try { ({ ecdh } = await E2E.unlock(old.lockKey, vault)); }
         catch (_) { throw Object.assign(new Error("Your current password isn’t right."), { field: "current" }); }
@@ -4148,11 +4189,20 @@ async function onSubmit(e) {
       S.sheet = null; renderSheet();
       toast("Password changed. Any other phones were signed out.");
     } catch (err) { showErr(err.message, err.field); }
+  } else if (kind === "reauth") {
+    if (!v.password) return showErr("Enter your password.", "password");
+    try {
+      await busyBtn(btn, "Checking…", async () => {
+        const { salt } = await api("salt", { method: "POST", body: { email: S.me.email } });
+        const { proof } = await E2E.fromPassword(v.password, fromB64url(salt));
+        await api("reauth", { method: "POST", body: { proof } });
+      });
+      const s = S.sheet; S.sheet = s.back || null; renderSheet(); haptic("success"); s.resolve(true);
+    } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "askpw") {
     try {
       const jwk = await busyBtn(btn, "Unlocking…", async () => {
-        const { vault, salt } = await api("vault");
-        const { lockKey } = await E2E.fromPassword(v.password || "", fromB64url(salt));
+        const { vault, lockKey } = await vaultWith(v.password);
         try { return (await E2E.unlock(lockKey, vault)).ecdh; } catch (_) { throw Object.assign(new Error("That password didn’t unlock your key."), { field: "password" }); }
       });
       S.secretJwk = jwk;

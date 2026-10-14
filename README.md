@@ -527,6 +527,12 @@ show a friendly "backend not set up" message).
   the server's copy, and the phone warns if the server ever shows a different
   key for you. A friend's changed key is flagged, blocks sending, and isn't used
   to open their messages until you've checked it.
+- **Confirm it's you.** Adding or removing a passkey, deleting the account and
+  fetching the password-locked key need the password or a passkey in the last
+  10 minutes, so a stolen sign-in alone isn't enough. Passkeys must verify the
+  person (Face ID, fingerprint or passcode), each passkey request can be used
+  once, and adding a passkey emails the account. Only a sign-in that has ended
+  signs a phone out; a wrong password never does.
 - **Friend requests** show the person you asked nothing of them (name or
   picture) until they say yes.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and

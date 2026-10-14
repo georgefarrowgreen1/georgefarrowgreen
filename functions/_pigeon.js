@@ -196,6 +196,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN wx_told INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_at INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
+  "ALTER TABLE pg_sessions ADD COLUMN auth_at INTEGER",      // when this sign-in last showed it's you (password or passkey)
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -250,21 +251,28 @@ export async function serverSecret(env) {
 /* ---------------- sessions ---------------- */
 export async function issueSession(env, userId) {
   const token = randomToken(32), t = Date.now();
-  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at) VALUES (?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t).run();
+  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(hex(await sha256(token)), userId, t, t, t).run();
   return token;
+}
+// The few things a stolen sign-in mustn't be enough for (adding a passkey,
+// deleting the account, fetching the password-locked key) need you to have
+// shown it's you (password or passkey) in the last 10 minutes.
+export const FRESH = 10 * MIN;
+export function requireFresh(u) {
+  if (!(Date.now() - (u.authAt || 0) < FRESH)) throw new HttpError(403, "Confirm it’s you first.", "reauth");
 }
 // Bearer tokens (not cookies), so there is no cross-site request forgery to defend against.
 export async function requireUser(request, env) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
-  if (!m) throw new HttpError(401, "Please sign in.");
+  if (!m) throw new HttpError(401, "Please sign in.", "session");
   const D = await db(env), h = hex(await sha256(m[1])), t = Date.now();
-  const s = await D.prepare("SELECT user_id, seen_at FROM pg_sessions WHERE hash = ?").bind(h).first();
-  if (!s || t - s.seen_at > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.");
+  const s = await D.prepare("SELECT user_id, seen_at, auth_at FROM pg_sessions WHERE hash = ?").bind(h).first();
+  if (!s || t - s.seen_at > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
   if (t - s.seen_at > HOUR) await D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h).run();
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(s.user_id).first();
-  if (!u) throw new HttpError(401, "This account no longer exists.");
-  u.sessionHash = h;
+  if (!u) throw new HttpError(401, "This account no longer exists.", "session");
+  u.sessionHash = h; u.authAt = s.auth_at || 0;
   return u;
 }
 
@@ -417,9 +425,9 @@ export async function newChallenge(env, mode, userId) {
 }
 async function takeChallenge(env, c, mode, userId) {
   const D = await db(env);
-  const row = await D.prepare("SELECT * FROM pg_challenges WHERE challenge = ?").bind(String(c || "")).first();
+  // claimed and deleted in one statement, so two requests can't both use it
+  const row = await D.prepare("DELETE FROM pg_challenges WHERE challenge = ? RETURNING *").bind(String(c || "")).first();
   if (!row) throw new HttpError(400, "That passkey request expired. Try again.");
-  await D.prepare("DELETE FROM pg_challenges WHERE challenge = ?").bind(row.challenge).run();
   if (row.mode !== mode || row.expires_at < Date.now() || (userId && row.user_id !== userId)) throw new HttpError(400, "That passkey request expired. Try again.");
 }
 export async function checkClientData(env, request, b, type, mode, userId) {
@@ -433,6 +441,7 @@ export async function verifyAssertion(cred, request, b) {
   const rpHash = await sha256(rpIdFor(request));
   for (let i = 0; i < 32; i++) if (authData[i] !== rpHash[i]) return false;
   if (!(authData[32] & 0x01)) return false;                     // user present
+  if (!(authData[32] & 0x04)) return false;                     // and verified (Face ID, Touch ID or the phone's passcode)
   const clientHash = await sha256(fromB64url(b.clientDataJSON));
   const signed = new Uint8Array(authData.length + 32);
   signed.set(authData, 0); signed.set(clientHash, authData.length);
