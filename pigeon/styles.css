@@ -105,9 +105,10 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .na-qr[hidden]{display:none}
 .na-qr svg{display:block;width:176px;height:176px;border-radius:8px}
 .na-qr small{font-size:13px;color:var(--label-2)}
+/* (not while typing: on some Android browsers the keyboard makes an upright phone look sideways) */
 @media (orientation:landscape) and (max-height:520px){
-  .page{display:none}
-  .rotate{display:flex;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
+  html:not(:has(input:focus, textarea:focus)) .page{display:none}
+  html:not(:has(input:focus, textarea:focus)) .rotate{display:flex;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
   .rotate svg{font-size:44px;color:var(--tint)}
   .rotate p{margin:0}
 }
@@ -1649,3 +1650,9 @@ html.night .nav-ghost .night{background:none}
 @media (prefers-color-scheme: dark){:root[data-theme="auto"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}}
 /* a message held for its menu sinks a little first, as a chat in the list does */
 .msgs .b.pressing{transform:scale(.96);transition:transform .34s var(--smooth)}
+/* if InFlight can't start: what happened, and a way out */
+.bootfail{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px 28px calc(32px + env(safe-area-inset-bottom,0px));text-align:center}
+.bootfail h1{margin:8px 0 0;font-size:22px}
+.bootfail p{margin:0 0 12px;color:var(--label-2);font-size:16px;line-height:21px;max-width:34ch}
+.bootfail .btn{max-width:360px}
+.sheet header h2:focus{outline:none}

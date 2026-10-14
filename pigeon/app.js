@@ -10,7 +10,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.1";            // shown in Account
+const APP_VERSION = "1.0.2";            // shown in Account
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -76,18 +76,30 @@ const idb = {
   open() {
     if (this.db) return Promise.resolve(this.db);
     return new Promise((res, rej) => {
+      // (iOS can leave an open hanging after a resume: give up after a few seconds rather than never start)
+      const late = setTimeout(() => rej(new Error("This phone’s storage didn’t answer.")), 6000);
       const r = indexedDB.open("inflight", 1);
       r.onupgradeneeded = () => r.result.createObjectStore("kv");
-      r.onsuccess = () => res((this.db = r.result));
-      r.onerror = () => rej(r.error);
+      r.onsuccess = () => {
+        clearTimeout(late); const db = r.result;
+        db.onclose = db.onversionchange = () => { if (this.db === db) this.db = null; };   // dropped in the background: open it again next time
+        res((this.db = db));
+      };
+      r.onerror = () => { clearTimeout(late); rej(r.error); };
     });
   },
-  async run(mode, fn) {
+  async run(mode, fn, again = true) {
     const db = await this.open();
-    return new Promise((res, rej) => {
-      const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv"));
-      tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error);
-    });
+    try {
+      return await new Promise((res, rej) => {
+        const tx = db.transaction("kv", mode), req = fn(tx.objectStore("kv"));
+        tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error);
+        tx.onabort = () => rej(tx.error || new Error("Storage write was cancelled."));       // a full phone aborts, it doesn't error
+      });
+    } catch (e) {
+      if (again && e?.name === "InvalidStateError") { this.db = null; return this.run(mode, fn, false); }   // the connection was lost: once more, fresh
+      throw e;
+    }
   },
   get(k) { return this.run("readonly", (s) => s.get(k)).catch(() => null); },
   set(k, v) { return this.run("readwrite", (s) => s.put(v, k)).catch(() => null); },
@@ -103,7 +115,8 @@ function xhrFetch(url, { method, headers, body, onProgress }) {
     for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     x.onload = () => resolve(new Response(x.responseText, { status: x.status, headers: { "Content-Type": x.getResponseHeader("Content-Type") || "application/json" } }));
-    x.onerror = x.onabort = () => reject(new TypeError("Network error"));
+    x.onerror = x.onabort = x.ontimeout = () => reject(new TypeError("Network error"));
+    x.timeout = 120000 + (body?.size || 0) / 20;          // a stalled upload gives up (a big one gets longer: ~20 KB/s at worst)
     x.send(body);
   });
 }
@@ -115,10 +128,14 @@ async function api(path, { method = "GET", body, form, raw, blob, onProgress } =
   else if (blob) { headers["Content-Type"] = blob.type; payload = blob; }
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
   let r;
-  try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload }); }
+  // nothing waits forever on a weak signal: a reply that hasn't come in 25 s (a minute for anything carrying a file) is treated as no signal
+  const quit = !onProgress && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(payload instanceof Blob || payload instanceof FormData ? 90000 : 25000) : undefined;
+  try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload, signal: quit }); }
   catch (_) { S.offline = true; renderOffline(); throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); }
   if (S.offline) { S.offline = false; renderOffline(); }
   if (raw && r.ok) return r;
+  // a page that isn't ours (a café's sign-in screen, a proxy) answering in our place isn't success
+  if (r.ok && !/json/.test(r.headers.get("Content-Type") || "")) { S.offline = true; renderOffline(); throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); }
   let data = {};
   try { data = await r.json(); } catch (_) {}
   // only a sign-in that has ended signs you out (not a wrong password on a "confirm it's you")
@@ -226,7 +243,7 @@ const ico = (d) => `<svg viewBox="0 0 24 24" class="ico" aria-hidden="true">${d}
 const I = {
   once: `<svg viewBox="0 0 24 24" class="ico oico" aria-hidden="true"><path d="M12 3.2a8.8 8.8 0 1 1-6.6 3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="7.6" cy="4.6" r="1.2" fill="currentColor"/><circle cx="4.4" cy="8.2" r="1.2" fill="currentColor"/><path d="M9.6 8.2v7.6l6.2-3.8z" fill="currentColor"/></svg>`,
   leaf: ico(`<path d="M5 19c0-8 5-14 15-14 0 9-5 14-13 14"/><path d="M5 19 13 11"/>`),
-  snow: ico(`<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>`),
+  snowflake: ico(`<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>`),
   blossom: ico(`<circle cx="12" cy="12" r="2.2"/><path d="M12 9.8C10 6 13.5 3.5 14.6 6.3c1 2.6-1.2 3.6-2.6 3.5ZM14.1 11.3c3.7-1.8 6 1.8 3.2 2.8-2.6.9-3.5-1.3-3.2-2.8ZM13.3 14c1.6 3.8-2.2 5.8-3 2.9-.7-2.7 1.6-3.4 3-2.9ZM10.6 13.9c-3.9 1.4-5.6-2.5-2.7-3.1 2.8-.6 3.4 1.7 2.7 3.1Z"/>`),
   feather: ico(`<path d="M20.2 3.8C14 3.6 8.4 7.4 6.6 13.6L5 19"/><path d="M20.2 3.8c.6 6-2.6 11.3-8.4 13.2L6.6 13.6"/><path d="M11 9.6l3.3 1.2M9.4 12.4l3.3 1.3"/><path d="M5 19l-1.4 1.4"/>`),
   flame: ico(`<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-2.6 1.4-4.6 3-6.3.3 1.7 1.2 2.9 2.4 3.4-.4-3.3 1-6.1 3.4-8.4.2 2.8 1.6 4.4 2.9 6 1 1.3 1.8 2.9 1.8 4.9 0 4-2.6 6.6-6.5 6.6Z"/><path d="M12 21c-1.7 0-2.8-1.2-2.8-2.8 0-1.6 1.2-2.6 2.2-3.8.2 1 .8 1.6 1.5 1.8.1-.9.6-1.6 1.1-2.2.7 1 1 2.1 1 3.2 0 2.2-1.3 3.8-3 3.8Z"/>`),
@@ -1415,13 +1432,21 @@ async function useKeys(token, me, privJwk) {
 }
 async function forget() {
   S.photos.forEach((u) => URL.revokeObjectURL(u));
+  S.avatars?.forEach((u) => { if (u) URL.revokeObjectURL(u); });
   clearTimeout(cacheTimer);
+  // nothing of this account carries on into the next one: sound, the mic, location, drafts, searches, news
+  try { S.player?.pause(); } catch (_) {}
+  if (rec) recStop(false);
+  stopLocWatch(); dropAvatarDraft(); airEl = null;
+  try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem("inflight-badges"); localStorage.removeItem("inflight-pushsub"); } catch (_) {}
   if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {});
     if (await idb.get("pinsup:" + S.me.id).catch(() => null)) { await idb.del("pins:" + S.me.id).catch(() => {}); await idb.del("pinsup:" + S.me.id).catch(() => {}); } }
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
-    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map() });
+    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map(),
+    avatars: new Map(), viewedOnce: new Set(), q: "", fq: "", news: null, newsAt: 0, replyTo: null, sched: null, via: null, pick: null, birdPick: null, player: null,
+    syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0 });
   clearAttach();
   await idb.del("session");
 }
@@ -1565,8 +1590,10 @@ async function vaultWith(password) {
 }
 // "Confirm it's you": the few things a stolen sign-in mustn't be enough for ask
 // for your password (or a passkey) if you haven't shown it in 10 minutes.
+// (answered once: if something else takes its place first, it answers "no" so nothing waits for ever)
+const asking = (sheet, resolve) => { sheet.resolve = (v) => { if (sheet.done) return; sheet.done = true; resolve(v); }; return sheet; };
 function confirmIt() {
-  return new Promise((resolve) => { S.sheet = { type: "reauth", resolve, back: S.sheet }; renderSheet(); });
+  return new Promise((resolve) => { S.sheet = asking({ type: "reauth", back: S.sheet }, resolve); renderSheet(); });
 }
 async function withFresh(fn) {
   try { return await fn(); }
@@ -1652,7 +1679,7 @@ async function addPasskey() {
 // After a reload the key is on the phone but not exportable, so linking a new
 // passkey needs the password once to open the stored copy.
 function askPasswordForKey() {
-  return new Promise((resolve) => { S.sheet = { type: "askpw", resolve }; renderSheet(); });
+  return new Promise((resolve) => { S.sheet = asking({ type: "askpw" }, resolve); renderSheet(); });
 }
 
 /* ============================================================
@@ -1702,21 +1729,26 @@ async function sync() {
   if (syncing) return syncing;
   syncing = (async () => {
     try {
-      const d = await api("sync");
+      const tok = S.token, d = await api("sync");
+      if (S.token !== tok) return;                // signed out (or in as someone else) meanwhile: not theirs to show
+      if (!Number.isFinite(d.now) || !d.me || !Array.isArray(d.friends)) throw new Error("A sync came back incomplete.");
       S.skew = d.now - Date.now();
       checkMyKey(d.me);
-      S.raw = d;
-      await applySync(d);
-      skiesFollow();
+      // nothing new since last time: no redraw, no re-saving (an open app asks every 15 s)
+      const sig = JSON.stringify({ ...d, now: 0 }), same = sig === S.syncSig && S.synced;
+      S.syncSig = sig; S.syncFails = 0; S.lastSync = Date.now();
+      if (!same) { S.raw = d; await applySync(d); skiesFollow(); }
       S.started = true;
       if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat);     // (locked: nothing is opened, or marked read)
+      if (S.token !== tok) return;
       if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
-      S.fromCache = false;
-      if (!AUTH_VIEWS.has(S.view)) render();
+      const wasCache = S.fromCache; S.fromCache = false;
+      if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged)) render();
+      S.chatChanged = false;
       S.synced = true;                            // from here on, what changes is news
-      cacheSave();
+      if (!same) cacheSave();
       if (S.outbox.length) outboxFlush();
-    } catch (e) { if (e.status !== 401) console.warn("sync", e.message); }
+    } catch (e) { if (e.status !== 401) { console.warn("sync", e.message); S.syncFails = (S.syncFails || 0) + 1; } }
     finally { syncing = null; }
   })();
   return syncing;
@@ -1851,9 +1883,14 @@ async function decryptGroup(g, m, kind = "msg") {
 }
 async function loadGroup(gid) { return loadChat(gid); }
 async function loadChat(fid) {
-  const g = group(fid);
+  const g = group(fid), tok = S.token;
   const d = await api(g ? "group-messages?id=" + encodeURIComponent(fid) : "messages?with=" + encodeURIComponent(fid));
+  if (S.token !== tok) return;                     // signed out meanwhile
   S.skew = d.now - Date.now();
+  // the same as last time: nothing to open, draw or save again
+  const sig = JSON.stringify({ ...d, now: 0 }), sigs = (S.chatSigs ||= new Map());
+  if (sigs.get(fid) === sig && S.msgs.has(fid)) return;
+  sigs.set(fid, sig); S.chatChanged = true;
   S.chatRaw.delete(fid); S.chatRaw.set(fid, d); cacheSave();
   await applyChat(fid, d, true);
 }
@@ -1878,7 +1915,7 @@ async function applyChat(fid, d, live) {
   }
   if (!live) return;
   const unread = (m) => (g ? m.from !== S.me.id : m.from === fid && !m.stopover) && !m.flying && !m.lost && !m.readAt;
-  if (!S.locked && d.messages.some(unread)) {
+  if (!S.locked && S.view === "chat" && S.chat === fid && document.visibilityState === "visible" && d.messages.some(unread)) {     // (only a chat you're looking at is read)
     api(g ? "group-read" : "read", { method: "POST", body: g ? { id: fid } : { with: fid } }).catch(() => {});
     for (const m of d.messages) if ((g ? m.from !== S.me.id : m.from === fid) && !m.flying && !m.lost) m.readAt = m.readAt || now();
     const x = g || friend(fid); if (x) x.unread = 0;
@@ -1899,13 +1936,21 @@ function cacheSave() {
   }, 600);
 }
 async function cacheLoad() {
-  let c = null;
+  let c = null; const me = S.me;                   // (who's signed in, from the session: a bad copy mustn't change it)
   try { c = await idb.get("cache:" + S.me.id); } catch (_) {}
   if (!c || c.v !== CACHE_V || !c.sync) return false;
-  S.chatRaw = new Map(c.chats || []);
-  if (c.skies) S.skies = c.skies;
-  S.raw = c.sync;
-  await applySync(c.sync);
+  try {
+    S.chatRaw = new Map(Array.isArray(c.chats) ? c.chats : []);
+    if (c.skies) S.skies = c.skies;
+    S.raw = c.sync;
+    await applySync(c.sync);
+  }
+  catch (e) {
+    // a saved copy this version can't read: start from the server instead of not at all
+    console.warn("cache", e?.message); S.me = me; idb.del("cache:" + me.id);
+    Object.assign(S, { raw: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [], birds: [], hall: [], chatRaw: new Map(), msgs: new Map() });
+    return false;
+  }
   S.fromCache = true;
   return true;
 }
@@ -1944,14 +1989,17 @@ async function viewOnce(id) {
   const hide = () => { if (document.visibilityState !== "visible") close(); };
   document.addEventListener("visibilitychange", hide);
   el.addEventListener("click", close);
-  // counted as opened now, whatever happens next: there's no second go
-  m.viewedAt = m.viewedAt || now(); S.viewedOnce.add(id); render();
-  let plain;
+  // counted as opened now (no second go), unless it never arrives
+  m.viewedAtServer = !!m.viewedAt; m.viewedAt = m.viewedAt || now(); S.viewedOnce.add(id); render();
+  let plain, got = false;
   try {
-    const r = await api((g ? "group-photo/" : "photo/") + id, { raw: true });
-    plain = await E2E.openPhoto(id, p.p, await r.arrayBuffer());
+    const r = await api((g ? "group-photo/" : "photo/") + id, { raw: true }), bytes = await r.arrayBuffer();
+    got = true;                                  // handed over: from here it's spent, whatever happens
+    plain = await E2E.openPhoto(id, p.p, bytes);
   } catch (e) {
     close();
+    // no signal, or the server never answered: it wasn't handed over, so it can still be opened later
+    if (!got && (e.offline || !e.status || e.status >= 500)) { S.viewedOnce.delete(id); if (m.viewedAt && !m.viewedAtServer) delete m.viewedAt; render(); return toast(esc(e.offline ? "You’re offline. The photo is still there to open once you’re back." : "Couldn’t open the photo just now. Try again in a moment.")); }
     if (e.status === 410) toast(esc(e.message || "This photo has already been opened."));
     else toast(esc(e.message || "Couldn’t open this photo."));
     return;
@@ -1975,11 +2023,23 @@ async function loadPhoto(fid, m, p) {
     const r = await api((group(fid) ? "group-photo/" : "photo/") + m.id, { raw: true });
     const plain = p.v ? await E2E.openPhoto(m.id, p.v, await r.arrayBuffer(), "voice") : await E2E.openPhoto(m.id, p.p, await r.arrayBuffer());
     S.photos.set(m.id, URL.createObjectURL(new Blob([plain], { type: p.v ? voiceMime(p.v.m) : p.p.m === "image/gif" ? "image/gif" : "image/jpeg" })));
+    trimPhotos(fid);
   } catch (e) {
     S.photos.delete(m.id);
-    if (e.status === 410) S.photoGone.add(m.id);
+    // gone, or it can't be opened on this phone: don't fetch it again every time (no signal: it will be)
+    if (e.status === 410 || (!e.offline && !(e.status >= 500))) S.photoGone.add(m.id);
   }
   if (S.view === "chat" && S.chat === fid) render();
+}
+// opened photos and voice notes are kept for the chats you've been in, up to a point: the oldest from other chats go first
+function trimPhotos(fid) {
+  const MAX = 80; if (S.photos.size <= MAX) return;
+  const here = new Set((S.msgs.get(fid) || []).map((m) => m.id));
+  for (const [id, url] of S.photos) {
+    if (S.photos.size <= MAX) break;
+    if (here.has(id) || !url || S.player?.id === id) continue;
+    URL.revokeObjectURL(url); S.photos.delete(id);
+  }
 }
 
 /* ============================================================
@@ -2221,7 +2281,7 @@ function underlay() {
 }
 function edgeBack() {
   const r = root(); let st = null;
-  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked ? null : $(".nb-left .nbtn.back, .nb-left .nbtn[data-act=cancelunlock]", $view));
+  const backBtn = () => (S.sheet || $pop.firstElementChild || S.locked || onceOpen ? null : $(".nb-left .nbtn.back, .nb-left .nbtn[data-act=cancelunlock]", $view));
   const moving = () => [$view, $compose.hidden ? null : $compose];
   const place = (s2, dx) => {
     const p = Math.min(1, dx / s2.w);
@@ -2361,6 +2421,7 @@ function navGestures() {
   // Escape: the menu or question first, then the sheet, then back
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
+    if (onceOpen) { onceOpen.el.click(); return; }   // a view-once photo closes first
     if ($pop.firstElementChild) { closePop(); return; }
     if (S.sheet) { closeTop(); return; }
     if (inField(document.activeElement)) { document.activeElement.blur(); return; }
@@ -2458,7 +2519,7 @@ function mount() {
         <button type="button" class="plus" data-act="attachmenu" aria-label="Add a photo">${I.plus}</button>
         <div class="field-wrap">
           <button type="button" class="kind" data-act="flysheet" aria-haspopup="dialog" hidden></button>
-          <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="send"></textarea>
+          <textarea rows="1" placeholder="Message" aria-label="Message" id="msg" maxlength="2000" enterkeyhint="enter"></textarea>
           <button type="submit" class="send" aria-label="Release the pigeon">${I.up}</button>
           <button type="button" class="mic" data-act="recstart" aria-label="Record a voice pigeon" hidden>${I.mic}</button>
         </div>
@@ -2520,8 +2581,10 @@ function go(view, chat) {
   }
   const backTop = !same && S.under && view === S.under.from && S.view !== view ? S.under.top : null;
   // what you'd typed stays with its chat, for when you come back
-  if (!same && $ta && S.view === "chat" && S.chat) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
+  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
+  if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
+  if (!same && TABS.some(([id]) => id === view) && S.token && Date.now() - (S.lastSync || 0) > 2000) setTimeout(sync, 0);   // a tab you switch to is up to date
   if (view !== "chat") clearAttach();
   if (!same && $ta) $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || "";
   closePop();
@@ -2551,6 +2614,7 @@ function navKind(from, to) {
 // slides aside under a new chat, or slides away to reveal the screen behind.
 function ghostView() {
   if (S.nav !== "push" && S.nav !== "pop") return;
+  if (STILL.matches) return;                       // less motion: no copy left sliding (it would only sit there, frozen)
   $(".nav-ghost", root())?.remove();
   // the whole old screen: its list or chat, and the tab bar or composer that belongs to it
   const g = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
@@ -3282,7 +3346,7 @@ async function shareImage() {
 
 /* ---------- achievements (in the Flight Log) ---------- */
 const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
-  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] , migration: ["blossom", "pink"], summer: ["sun", "yellow"], autumn: ["leaf", "orange"], winter: ["snow", "blue"]};
+  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] , migration: ["blossom", "pink"], summer: ["sun", "yellow"], autumn: ["leaf", "orange"], winter: ["snowflake", "blue"]};
 /* ---------- the passport ----------
    Every country and sea your pigeons have flown over (functions/_passport.js),
    newest first: a stamp each, in postal ink, with the day it was first
@@ -3362,7 +3426,9 @@ function skinsHtml(list, mine) {
     <div class="gfoot">Your friends see the look on every pigeon you send. Its colour still says what kind it is.</div>`;
 }
 /* ---------- feathers ---------- */
-async function walletData() { try { const r = await api("feathers"); S.feathers = r.feathers; return r; } catch (err) { toast(esc(err.message)); return null; } }
+async function walletData() { try { const r = await api("feathers"); S.feathers = r.feathers; return r; } catch (err) { if (S.sheet?.type === "feathers") S.sheet.err = err.message; else toast(esc(err.message)); return null; } }
+// what a sheet shows when what it needed didn't come (no signal, a hiccup): why, and a way to try again
+const loadFail = (msg, act, id) => `<p class="empty"><b>Couldn’t load this</b>${esc(msg || "Try again in a moment.")}</p><div class="stack"><button type="button" class="btn small plain" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}>Try Again</button></div>`;
 // A friend's loft: their pigeons, badges and kit (fetched each time: it changes as they fly)
 async function openLoft(id) {
   S.sheet = { type: "loft", id, data: null }; renderSheet();
@@ -3371,7 +3437,8 @@ async function openLoft(id) {
 }
 async function openFeathers() {
   S.sheet = { type: "feathers", data: null }; renderSheet();
-  const r = await walletData(); if (r && S.sheet?.type === "feathers") { S.sheet.data = r; renderSheet(); render(); }
+  const r = await walletData(); if (S.sheet?.type !== "feathers") return;
+  if (r) { S.sheet.data = r; S.sheet.err = null; renderSheet(); render(); } else renderSheet();
 }
 // which of your pigeons gets it
 function wearItem(item, anchor) {
@@ -4114,8 +4181,8 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
   const b = (x, cls) => !x ? ""
     : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
     : `<button type="button" class="nbtn ${cls}" data-act="${x.act}" aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
-  return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-label="${esc(title || name || "")}"><div class="grab"></div>
-    <header><span class="l">${b(left, "l")}</span>${title ? `<h2>${esc(title)}</h2>` : `<h2 class="sr">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
+  return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-modal="true" aria-label="${esc(title || name || "")}"><div class="grab"></div>
+    <header><span class="l">${b(left, "l")}</span>${title ? `<h2 tabindex="-1">${esc(title)}</h2>` : `<h2 class="sr" tabindex="-1">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
 let sheetTimer = 0, sheetType = null;
@@ -4148,7 +4215,10 @@ function keepGlides(el, before) {
 // Opening springs the sheet up and settles the screen back behind it; closing
 // slides it away. Redrawing an open sheet doesn't replay its entrance, and a
 // switch that changed still glides across.
+let shownSheet = null;
 function renderSheet(refresh) {
+  // a question sheet replaced by anything else (a link, the lock, Back): it's answered "no" once this settles
+  if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
   if (!S.sheet) {
     root().classList.remove("sheeted"); sheetType = null;
@@ -4162,6 +4232,10 @@ function renderSheet(refresh) {
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
   const before = had ? switchStates($layer) : null, ticked = had ? tickedKeys($layer) : null;
   const old = $(".sheet", $layer);
+  // the same sheet drawn again (fresh data): it stays where you'd scrolled it, and a field you're typing in keeps its focus and caret
+  const same = had && !swapped, top = same ? $(".sheet .body", $layer)?.scrollTop || 0 : 0;
+  const fe = same && document.activeElement && $layer.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+  const caret = fe && typeof fe.selectionStart === "number" ? [fe.selectionStart, fe.selectionEnd] : null;
   drawSheet(refresh);
   sheetType = S.sheet?.type || null;
   const now = $(".sheet", $layer);
@@ -4169,8 +4243,15 @@ function renderSheet(refresh) {
     $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
     if (swapped) $(".sheet .body", $layer)?.classList.add("swap");
     keepGlides($layer, before); keepTicks($layer, ticked);
+    if (same) {
+      const body = $(".sheet .body", $layer); if (top && body && !body.scrollTop) body.scrollTop = top;
+      const back = fe && document.getElementById(fe.id);
+      if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
+    }
   }
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
+  // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
+  if (!had && now && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true });
 }
 function drawSheet(refresh) {
   const s = S.sheet;
@@ -4207,7 +4288,7 @@ function drawSheet(refresh) {
       return;
     case "feathers": {
       const w = s.data;
-      if (!w) { $layer.innerHTML = sheetHtml("Feathers", `<p class="empty">Counting feathers…</p>`); return; }
+      if (!w) { $layer.innerHTML = sheetHtml("Feathers", s.err ? loadFail(s.err, "feathers") : `<p class="empty">Counting feathers…</p>`); return; }
       const named = S.birds.length > 0;
       const item = (x) => `<div class="cell has-icon shopi${x.owned ? " owned" : ""}"><span class="tile emo" aria-hidden="true">${x.emoji}</span>
         <span class="ctext"><span>${esc(x.name)}</span><span class="csub">${x.owned ? (x.on ? `On ${esc(x.on.name)}` : "Yours") : `${x.price} feathers`}</span></span>
@@ -4462,7 +4543,7 @@ function drawSheet(refresh) {
         return `<button type="button" class="cell${cur === p.id ? " on" : ""}${ms == null ? " dim" : ""}" ${ms == null ? "disabled" : `data-act="viapick" data-id="${esc(p.id)}"`}>${avatar(p, "s")}
           <span class="ctext"><span>${esc(p.name)}</span><span class="csub">${ms == null ? "No location set" : `${esc(p.place || "")}${p.place ? " · " : ""}lands in ${fmtDur(ms)} (+${fmtDur(Math.max(0, ms - direct))})`}</span></span>${cur === p.id ? I.check : ""}</button>`;
       }).join("");
-      $layer.innerHTML = sheetHtml("Stop Over", s.ids == null ? `<p class="empty">Finding friends you share…</p>`
+      $layer.innerHTML = sheetHtml("Stop Over", s.ids == null ? (s.err ? loadFail(s.err, "via") : `<p class="empty">Finding friends you share…</p>`)
         : rows ? `<div class="group mt-s">${rows}</div><div class="gfoot">Your pigeon rests with them for an hour on the way. They can read it and add a line for ${esc(first(f.name))}, then it flies on.</div>
           ${cur ? `<div class="stack"><button type="button" class="btn wide plain" data-act="unvia">Fly Straight There</button></div>` : ""}`
         : `<p class="empty"><b>No friends in common</b>A stopover needs a friend you and ${esc(first(f.name))} both have.</p>`,
@@ -4571,7 +4652,7 @@ function drawSheet(refresh) {
       const L = s.data, who = esc(first(f.name)), back = { left: { label: "Back", act: "loftback" }, name: `${f.name}’s loft` };
       if (!L) { $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${who}’s Loft</span></div><p class="empty">Opening the loft…</p>`, back); return; }
       if (L.error || L.private) { $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${who}’s Loft</span></div>
-        <p class="empty"><b>${L.private ? "The loft is closed" : "Couldn’t open the loft"}</b>${L.private ? `${who} doesn’t share their news, so their loft stays private.` : esc(L.error)}</p>`, back); return; }
+        ${L.private ? `<p class="empty"><b>The loft is closed</b>${L.self ? "You don’t share your news, so lofts stay closed to you too. Turn on Share My News in Privacy &amp; Security to visit." : `${who} doesn’t share their news, so their loft stays private.`}</p>` : loadFail(L.error, "loft", s.id)}`, back); return; }
       const l = L.loft, mon = (t) => `${MON[new Date(t).getMonth()]} ${new Date(t).getFullYear()}`;
       const stat = (v, label) => `<div><b>${v}</b><span>${label}</span></div>`;
       const bird = (b) => `<div class="cell has-icon"><span class="tile wtile ${RANK_TILE[b.rank]}">${I.bird}${wearOn(b.wear)}</span>
@@ -4594,7 +4675,7 @@ function drawSheet(refresh) {
     case "sessions": {
       const list = s.list;
       const since = (at) => { const d = new Date(at); return `${d.getDate()} ${MON[d.getMonth()]}${d.getFullYear() === new Date(now()).getFullYear() ? "" : ` ${d.getFullYear()}`}`; };
-      $layer.innerHTML = sheetHtml("Signed-In Phones", !list ? `<p class="empty">Looking…</p>` : `<div class="group mt-s">${list.map((x) => `<div class="cell has-icon"><span class="tile ${x.current ? "green" : "blue"}">${/^(Mac|Windows|Linux|Chromebook)/.test(x.label) ? I.laptop : I.phone}</span>
+      $layer.innerHTML = sheetHtml("Signed-In Phones", !list ? (s.err ? loadFail(s.err, "sessionssheet") : `<p class="empty">Looking…</p>`) : `<div class="group mt-s">${list.map((x) => `<div class="cell has-icon"><span class="tile ${x.current ? "green" : "blue"}">${/^(Mac|Windows|Linux|Chromebook)/.test(x.label) ? I.laptop : I.phone}</span>
           <span class="ctext"><span>${esc(x.label)}</span><span class="csub">${x.current ? "This phone" : `Active ${esc(agoText(x.seenAt))} · since ${esc(since(x.createdAt))}`}</span></span>
           ${x.current ? "" : `<button class="link danger" data-act="sessend" data-id="${esc(x.id)}" aria-label="Sign out ${esc(x.label)}">Sign Out</button>`}</div>`).join("")}</div>
         ${list.length > 1 ? `<div class="group mt">${cell({ act: "sessothers", label: "Sign Out All Other Phones", cls: "center destructive" })}</div>` : ""}
@@ -4911,9 +4992,11 @@ function airTick() {
 }
 
 // The Skies: every pigeon in the air to or from you, from every chat.
-async function loadSkies() {
+let skiesLoading = null;
+function loadSkies() { return (skiesLoading ||= loadSkies1().finally(() => { skiesLoading = null; })); }
+async function loadSkies1() {
   try { S.skies = await api("skies"); S.skiesAt = Date.now(); if (S.sheet?.id === "skies") tickMap(); airSync(); }
-  catch (err) { if (!S.skies) toast(esc(err.message)); }
+  catch (err) { if (!S.skies && !err.offline) toast(esc(err.message)); S.skiesAt = Date.now(); }        // (tried: not again at once, and no banner on every redraw)
 }
 function skyRoutes(all) {
   const d = S.skies; if (!d) return null;
@@ -5011,8 +5094,9 @@ function setProgress(el) {
   el.querySelectorAll("i[data-from]").forEach((e) => { const a = +e.dataset.from, b = +e.dataset.to; e.style.width = (Math.min(1, Math.max(0, (now() - a) / (b - a))) * 100).toFixed(1) + "%"; });
 }
 function live() {
+  if (document.hidden) return;                       // nothing to see: nothing to redraw
   const r = root();
-  r.querySelectorAll("[data-eta]").forEach((e) => { e.textContent = fmtDur(+e.dataset.eta - now()); });
+  r.querySelectorAll("[data-eta]").forEach((e) => { const v = fmtDur(+e.dataset.eta - now()); if (e.textContent !== v) e.textContent = v; });
   r.querySelectorAll("[data-clock]").forEach((e) => { const c = clockIn(now(), e.dataset.clock); if (e.textContent !== c) e.textContent = c; });
   setProgress(r);
   if (S.view === "messages") airTick();
@@ -5079,9 +5163,22 @@ async function busyBtn(btn, label, fn) {
   if (btn) { btn.disabled = true; btn.textContent = label; }
   try { return await fn(); } finally { if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
 }
+// Buttons that ask the server for something only go once until it has answered
+// (a double tap can't accept twice, buy twice or send two emails).
+const ONCE_ACTS = new Set(["accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer"]);
+const acting = new Set();
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
   if (!t) return;
+  if (ONCE_ACTS.has(t.dataset.act)) {
+    const key = `${t.dataset.act}:${t.dataset.id || ""}`;
+    if (acting.has(key)) return;
+    acting.add(key);
+    try { return await onClick1(e, t); } finally { acting.delete(key); }
+  }
+  return onClick1(e, t);
+}
+async function onClick1(e, t) {
   const id = t.dataset.id;
   const inPop = !!t.closest(".poplayer") && t.dataset.act !== "closepop";
   if (inPop) closePop();
@@ -5452,7 +5549,10 @@ async function onClick(e) {
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
-    case "signout": return openActions({ message: "You’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    case "signout": {
+      const waiting = S.outbox.filter((o) => !o.err).length;
+      return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
+    }
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
@@ -5461,7 +5561,7 @@ async function onClick(e) {
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
     case "via": S.sheet = { type: "via", chat: S.chat, ids: null }; renderSheet();
-      try { const r = await api("mutuals?with=" + encodeURIComponent(S.chat)); if (S.sheet?.type === "via") { S.sheet.ids = r.ids; renderSheet(); } } catch (err) { toast(esc(err.message)); }
+      try { const r = await api("mutuals?with=" + encodeURIComponent(S.chat)); if (S.sheet?.type === "via") { S.sheet.ids = r.ids; renderSheet(); } } catch (err) { if (S.sheet?.type === "via") { S.sheet.err = err.message; renderSheet(); } }
       return;
     case "viapick": S.via = { chat: S.sheet?.chat || S.chat, id }; S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "unvia": S.via = null; S.sheet = null; renderSheet(); return renderCompose();
@@ -5611,6 +5711,14 @@ async function shareHandle() {
 async function onSubmit(e) {
   e.preventDefault();
   const form = e.target, kind = form.dataset.form;
+  if (kind !== "compose") {
+    if (form.dataset.busy) return;                // already on its way (a second Go on the keyboard, a double tap)
+    form.dataset.busy = "1";
+    try { return await submitForm(e, form, kind); } finally { delete form.dataset.busy; }
+  }
+  return submitForm(e, form, kind);
+}
+async function submitForm(e, form, kind) {
   const btn = form.querySelector(".btn") || $(`[data-act=submit][data-id="${esc(form.id)}"]`, $layer);
   if (kind === "compose") return send();
   if (kind === "schedule") {
@@ -6038,7 +6146,7 @@ async function recStart() {
   catch (_) { stream.getTracks().forEach((t) => t.stop()); return toast("Couldn’t record on this phone."); }
   const AC = window.AudioContext || window.webkitAudioContext, ac = AC ? new AC() : null, an = ac ? ac.createAnalyser() : null;
   if (ac) { an.fftSize = 1024; ac.createMediaStreamSource(stream).connect(an); }
-  rec = { stream, mr, ac, an, chunks: [], levels: [], t0: performance.now(), mime: (mr.mimeType || mime || "audio/webm").split(";")[0], buf: an ? new Float32Array(an.fftSize) : null };
+  rec = { chat: S.chat, stream, mr, ac, an, chunks: [], levels: [], t0: performance.now(), mime: (mr.mimeType || mime || "audio/webm").split(";")[0], buf: an ? new Float32Array(an.fftSize) : null };
   mr.ondataavailable = (e) => { if (e.data?.size) rec?.chunks.push(e.data); };
   mr.start(250);
   haptic("tick");
@@ -6070,6 +6178,7 @@ async function recStop(keep) {
   await new Promise((res) => { r.mr.onstop = res; try { r.mr.state !== "inactive" ? r.mr.stop() : res(); } catch (_) { res(); } });
   r.stream.getTracks().forEach((t) => t.stop()); r.ac?.close().catch(() => {});
   $(".recbar", $compose).hidden = true; $(".crow", $compose).hidden = false;
+  if (keep && (S.view !== "chat" || S.chat !== r.chat)) keep = false;      // its chat isn't open any more: it goes nowhere
   if (!keep) { haptic("tick"); return renderCompose(); }
   if (ms < 800 || !r.chunks.length) { toast("Hold on a little longer to record."); return renderCompose(); }
   const blob = new Blob(r.chunks, { type: r.mime }), bytes = new Uint8Array(await blob.arrayBuffer());
@@ -6093,8 +6202,8 @@ async function outboxAdd(o) { S.outbox.push(o); await outboxSave(); }
 async function outboxLoad() {
   let list = [];
   try { list = (await idb.get(outKey())) || []; } catch (_) {}
-  S.outbox = list;
-  for (const o of list) await outboxOpen(o);
+  S.outbox = list.filter((o) => o && o.id);
+  for (const o of S.outbox) { try { await outboxOpen(o); } catch (e) { console.warn("outbox", e?.message); o.err = o.err || "This pigeon couldn’t be opened on this phone."; } }
 }
 // what one says, opened again with this phone's key (after a reload)
 async function outboxOpen(o) {
@@ -6129,6 +6238,8 @@ async function outboxFlush(force) {
         sent++;
       } catch (e) {
         if (e.offline) break;                                   // still no signal: try again later
+        // a hiccup (the server busy, too many at once): it stays waiting and goes next time; only a real "no" stops it
+        if (!e.status || e.status >= 500 || e.status === 408 || e.status === 429) break;
         if (e.status !== 409 || !/already sent/.test(e.message)) { o.err = e.message; await outboxSave(); continue; }
       }
       S.outbox = S.outbox.filter((x) => x.id !== o.id); await outboxSave();
@@ -6156,24 +6267,31 @@ async function send() {
   if ((!text && !S.attach) || S.busy || $(".send", $compose).disabled) return;
   if (S.sendKind === "standard" && S.outbox.some((o) => o.to === S.chat && o.kind === "standard" && !o.err)) { S.err = "Your pigeon is still waiting for signal. A swift, turbo or rocket can go too."; renderCompose(); return; }
   S.busy = true; S.err = ""; renderCompose();
+  // what's being sent belongs to this chat, even if you leave it before it's gone
+  const to = S.chat, att = S.attach, here = () => S.view === "chat" && S.chat === to;
+  S.sendingTo = to;
+  const tidy = () => {
+    if (att) { if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null; }
+    if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
+  };
   try {
-    const id = uuid(), to = S.chat, sc = schedFor(to), vi = !sc && viaFor(to);
+    const id = uuid(), sc = schedFor(to), vi = !sc && viaFor(to);
     const payload = { t: text };
     const rt = S.replyTo && S.replyTo.chat === to ? S.replyTo : null;
     if (rt) payload.q = { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) };      // sealed with the rest
     let blob = null;
-    if (S.attach?.voice) {
+    if (att?.voice) {
       showUpload("seal");
-      const sealed = await E2E.sealPhoto(id, S.attach.bytes, "voice");
-      payload.v = { k: sealed.k, iv: sealed.iv, m: S.attach.mime, d: S.attach.ms, w: S.attach.wave };
+      const sealed = await E2E.sealPhoto(id, att.bytes, "voice");
+      payload.v = { k: sealed.k, iv: sealed.iv, m: att.mime, d: att.ms, w: att.wave };
       blob = sealed.data;
-    } else if (S.attach) {
+    } else if (att) {
       showUpload("seal");
-      const sealed = await E2E.sealPhoto(id, S.attach.bytes);
-      payload.p = { k: sealed.k, iv: sealed.iv, w: S.attach.w, h: S.attach.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };
+      const sealed = await E2E.sealPhoto(id, att.bytes);
+      payload.p = { k: sealed.k, iv: sealed.iv, w: att.w, h: att.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };
       blob = sealed.data;
     }
-    const once = !!blob && !S.attach?.voice && !S.attach?.gif;            // photos are view-once; GIFs and voice pigeons aren't
+    const once = !!blob && !att?.voice && !att?.gif;            // photos are view-once; GIFs and voice pigeons aren't
     const g = group(to), bd = S.sendKind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
     let meta;
     if (g) {
@@ -6190,10 +6308,11 @@ async function send() {
     const queue = async () => {
       await outboxAdd({ id, to, path, meta, blob, kind: S.sendKind, at: Date.now() });
       S.plain.set(id, payload);
-      if (S.attach) { if (once) URL.revokeObjectURL(S.attach.preview); else S.photos.set(id, S.attach.preview); S.attach = null; }
+      if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }
+      tidy();
       if (rt) S.replyTo = null;
       if (sc) S.sched = null; if (vi) S.via = null;
-      S.pick = null; $ta.value = ""; fitTa(); S.stick = true; showUpload(null);
+      S.pick = null; S.stick = true; showUpload(null);
       haptic("tick"); render();
     };
     if (navigator.onLine === false) { await queue(); S.busy = false; renderCompose(); return; }
@@ -6224,16 +6343,16 @@ async function send() {
     if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
     if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }
     S.plain.set(id, payload);
-    if (S.attach) { if (once) URL.revokeObjectURL(S.attach.preview); else S.photos.set(id, S.attach.preview); S.attach = null; }   // keep the preview as our own copy (not of a view-once photo)
-    $ta.value = ""; fitTa(); S.stick = true;
+    if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)
+    tidy(); S.stick = true;
     const list = S.msgs.get(to) || []; list.push(r.message); S.msgs.set(to, list);
     S.fresh.set(r.message.id, Date.now());
     loadSkies();                      // it's in the air now: ready for the strip on Messages
     render();                         // show it now; on a slow connection the sync below can outlast the pop
     await sync();
     offerNotify();
-  } catch (err) { S.err = err.message; showUpload(null); }
-  S.busy = false; renderCompose();
+  } catch (err) { if (here()) S.err = err.message; else toast(esc(err.message)); showUpload(null); }
+  S.busy = false; S.sendingTo = null; renderCompose();
 }
 $(".page").addEventListener("keydown", (e) => {
   const f = e.target.closest?.("form[data-form=signup], form[data-form=signin]");
@@ -6300,7 +6419,13 @@ async function pushSub(ask) {
   if (sub && !sameKey(sub, key)) { await sub.unsubscribe(); sub = null; }
   if (!sub && !ask) return null;
   sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromB64url(key) });
-  await api("push-sub", { method: "POST", body: sub.toJSON() });
+  // told the server about this one lately (same account, same phone): no need again on every launch
+  const mark = `${S.me?.id}|${sub.endpoint}`;
+  let last = null; try { last = JSON.parse(localStorage.getItem("inflight-pushsub") || "null"); } catch (_) {}
+  if (ask || !last || last.k !== mark || Date.now() - last.at > DAY) {
+    await api("push-sub", { method: "POST", body: sub.toJSON() });
+    try { localStorage.setItem("inflight-pushsub", JSON.stringify({ k: mark, at: Date.now() })); } catch (_) {}
+  }
   return sub;
 }
 async function pushEnable() {
@@ -6335,8 +6460,8 @@ async function refreshPush() {
   if (S.sheet?.type === "notifications") renderSheet();
 }
 async function loadSessions() {
-  try { const { sessions } = await api("sessions"); if (S.sheet?.type === "sessions") { S.sheet.list = sessions; renderSheet(); } }
-  catch (err) { toast(esc(err.message)); }
+  try { const { sessions } = await api("sessions"); if (S.sheet?.type === "sessions") { S.sheet.list = sessions; S.sheet.err = null; renderSheet(); } }
+  catch (err) { if (S.sheet?.type === "sessions") { S.sheet.err = err.message; renderSheet(); } else toast(esc(err.message)); }
 }
 async function confirmEmail(token) {
   try {
@@ -6443,12 +6568,20 @@ async function start() {
     await cacheLoad();                             // what you saw last time, at once
     await outboxLoad();
     render();
-    await sync();
-    outboxFlush();
-    if (S.me && S.me.lat == null) go("locpick");
-    else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
-    else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
-    refreshPush(); autoLocate();
+    // (the app is up by now: anything below going wrong mustn't stop the polling and the rest)
+    try {
+      // back from an update: the chat you were in (if it was moments ago)
+      try { const here = JSON.parse(sessionStorage.getItem("inflight-here") || "null"); sessionStorage.removeItem("inflight-here");
+        if (here && Date.now() - here.at < 60e3 && !S.pendingLink && (friend(here.chat) || group(here.chat))) S.pendingLink = "#open=" + here.chat; } catch (_) {}
+      // a chat to open (a notification, or the one you were in) that's already on this phone: at once, not after the network
+      if (S.pendingLink && !S.locked) { const id = /#open=([\w-]+)/.exec(S.pendingLink)?.[1]; if (id && (friend(id) || group(id))) { const h = S.pendingLink; S.pendingLink = null; openLink(h); } }
+      await sync();
+      outboxFlush();
+      if (S.me && S.me.lat == null) go("locpick");
+      else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
+      else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
+      refreshPush(); autoLocate();
+    } catch (e) { console.error("start", e); }
   } else go("welcome");
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
@@ -6465,9 +6598,17 @@ async function start() {
     else { S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); } }
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
-  setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);
+  // every 15 s while open; after failures, less often (up to every 2 minutes) until one works
+  let skipped = 0;
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    const every = Math.min(8, 2 ** Math.max(0, (S.syncFails || 0) - 1));
+    if (++skipped < every) return;
+    skipped = 0; sync();
+  }, POLL_MS);
+  window.addEventListener("online", () => { S.syncFails = 0; sync(); });
   setInterval(() => { if (document.visibilityState === "visible") autoLocate(); }, AUTO_EVERY);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); autoLocate(); } else stopLocWatch(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkUpdate(); autoLocate(); } else { stopLocWatch(); if (rec) recStop(false); } });     // (a recording stops when you leave the app)
   setInterval(checkUpdate, UPDATE_MS);
 }
 
@@ -6475,15 +6616,21 @@ async function start() {
    The page carries a fingerprint of the app. When a newer one is live, an open
    copy reloads itself, unless you're in the middle of something, when it asks. */
 const VERSION = document.querySelector('meta[name="inflight-version"]')?.content || "";
+// a reload for a new version comes back to the chat you were in, where you were in it
+function reloadHere() {
+  try { if (S.me && S.view === "chat" && S.chat) sessionStorage.setItem("inflight-here", JSON.stringify({ chat: S.chat, at: Date.now() })); } catch (_) {}
+  location.reload();
+}
 const UPDATE_MS = 5 * 60 * 1000;
 async function checkUpdate() {
   if (!VERSION || document.visibilityState !== "visible") return;
   let live = "";
   try { live = /name="inflight-version" content="([\w-]+)"/.exec(await (await fetch("/pigeon/", { cache: "no-store" })).text())?.[1] || ""; } catch { return; }
   if (!live || live === VERSION) return;
-  const busy = S.sheet || S.attach || ($ta && $ta.value.trim()) || (AUTH_VIEWS.has(S.view) && S.view !== "welcome") || $(".asheet, .menu-pop");
-  if (!busy) return location.reload();
-  toast("A new version of InFlight is ready.", "Update", () => location.reload());
+  const busy = S.sheet || S.attach || ($ta && $ta.value.trim()) || (AUTH_VIEWS.has(S.view) && S.view !== "welcome") || $(".asheet, .menu-pop")
+    || rec || onceOpen || (S.player && !S.player.paused) || S.busy;       // (never mid-recording, mid-photo, mid-voice-note or mid-send)
+  if (!busy) return reloadHere();
+  toast("A new version of InFlight is ready.", "Update", reloadHere);
 }
 // When a pigeon you can see lands, fetch it straight away instead of waiting for the next poll.
 let nextLanding = 0;
@@ -6496,4 +6643,18 @@ function flightCheck() {
   const due = lands.filter((x) => x <= t);
   if (due.length && Date.now() > nextLanding) { nextLanding = Date.now() + 5000; setTimeout(sync, 1500); }
 }
-start();
+// if starting goes wrong, say so and offer a way out, rather than "Opening InFlight…" for ever
+function bootFail(err) {
+  console.error("start", err);
+  if (S.view !== "loading" && $view?.firstElementChild && !$(".loading", root())) return;
+  try { if (S.me?.id) idb.del("cache:" + S.me.id); } catch (_) {}
+  const scr = root(); if (!scr) return;
+  scr.innerHTML = `<div class="bootfail" role="alert"><div class="appicon">${I.bird}</div><h1>InFlight couldn’t open</h1>
+    <p>Something on this phone got in the way. Your messages are safe: they’re on the server, and your key is still here.</p>
+    <button type="button" class="btn wide" id="bootretry">Try Again</button></div>`;
+  $("#bootretry")?.addEventListener("click", () => location.reload());
+}
+window.addEventListener("unhandledrejection", (e) => { if (S.view === "loading") bootFail(e.reason); });
+// the copy of the app kept for opening with no signal (and notifications) live in the service worker
+if ("serviceWorker" in navigator && document.documentElement.dataset.device !== "computer") navigator.serviceWorker.register("/pigeon/sw.js", { scope: "/pigeon/" }).catch(() => {});
+start().catch(bootFail);

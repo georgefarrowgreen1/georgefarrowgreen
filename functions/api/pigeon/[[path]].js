@@ -151,9 +151,8 @@ async function salt({ request, env }) {
   await limit(env, "salt:" + clientIp(request), 60, 15 * 60e3);
   const email = String((await body(request)).email || "").trim().toLowerCase();
   const u = await (await db(env)).prepare("SELECT salt FROM pg_users WHERE email = ?").bind(email).first();
-  if (u) return json({ salt: u.salt });
-  const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);
-  return json({ salt: b64url(fake.slice(0, 16)) });
+  const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);       // (worked out either way, so the time taken says nothing)
+  return json({ salt: u ? u.salt : b64url(fake.slice(0, 16)) });
 }
 
 async function login({ request, env }) {
@@ -161,11 +160,16 @@ async function login({ request, env }) {
   const email = String(b.email || "").trim().toLowerCase();
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
   if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
-  await limit(env, "loginacct:" + hex(await sha256(email)).slice(0, 32), 30, 60 * 60e3);
-  const D = await db(env);
+  // only wrong passwords count against an account, so no one else can lock you out by guessing at it
+  const acct = "loginacct:" + hex(await sha256(email)).slice(0, 32), D = await db(env), now0 = Date.now();
+  const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(acct).first();
+  if (held && held.reset_at > now0 && held.count >= 30) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   const given = hex(await sha256(fromB64url(b.proof)));
-  if (!u || !safeEqual(given, u.proof_hash)) throw new HttpError(401, "That email and password don’t match an account.");
+  if (!u || !safeEqual(given, u.proof_hash)) {
+    await limit(env, acct, 30, 60 * 60e3).catch(() => {});
+    throw new HttpError(401, "That email and password don’t match an account.");
+  }
   return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), vault: u.vault });
 }
 
@@ -865,6 +869,7 @@ async function cancelScheduled(env, D, u, m, t) {
   const p = PIGEONS[m.pigeon];
   for (let i = 0; p?.max && i < 3; i++) {
     const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first(), l = loft(me, m.pigeon, t);
+    if (l.count >= p.max) break;                    // a full loft: it's just home (no more than a day's worth, ever)
     // one more in the loft; a full loft stops hatching, so its clock restarts from now
     const at = l.count + 1 >= p.max ? t : l.at + l.hatched * p.every;
     const ok = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(l.count + 1, at, u.id, me[p.col], me[p.atCol]).run();
@@ -891,7 +896,7 @@ async function stopoverNote({ request, env }) {
   const b = await body(request), id = String(b.id || ""), ct = String(b.ct || ""), D = await db(env), t = Date.now();
   if (!UUID_RE.test(id) || ct.length < 20 || ct.length > 4000) throw new HttpError(400, "That line was malformed.");
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ? AND via = ?").bind(id, u.id).first();
-  if (!m) throw new HttpError(404, "That pigeon isn’t stopping with you.");
+  if (!m || !(await areFriends(D, u.id, m.recipient))) throw new HttpError(404, "That pigeon isn’t stopping with you.");
   if (t < m.via_at) throw new HttpError(409, "It hasn’t reached you yet.");
   const r = await D.prepare("UPDATE pg_msgs SET via_note = ?1 WHERE id = ?2 AND via = ?3 AND via_note IS NULL AND via_off > ?4 AND (lost_at IS NULL OR lost_at > ?4)").bind(ct, id, u.id, t).run();
   if (!r.meta.changes) throw new HttpError(409, m.via_note ? "You’ve already added a line." : "Too late: it has flown on.");
@@ -1017,7 +1022,9 @@ async function resetRequest({ request, env, waitUntil }) {
   if (!emailReady(env)) throw new HttpError(503, "Reset emails aren’t switched on yet. Ask the person who runs InFlight for a reset link.");
   const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   // limit by email, existing or not, so the timing is the same either way
-  const allowed = await limit(env, "resetmail:" + hex(await sha256(email)).slice(0, 24), 3, 60 * 60e3).then(() => !!u, () => false);
+  const eh = hex(await sha256(email)).slice(0, 24);
+  const allowed = await limit(env, "resetmail:" + eh + ":" + clientIp(request), 3, 60 * 60e3)
+    .then(() => limit(env, "resetmail:" + eh, 8, 60 * 60e3)).then(() => !!u, () => false);
   if (allowed) {
     const token = await createReset(env, u.id, "user", RESET_TTL_EMAIL);
     const { text, html } = emailBody({
@@ -1313,8 +1320,11 @@ const ROUTES = {
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
 };
 
+const HOSTS = /^(?:(?:www\.)?georgefarrowgreen\.com|localhost|127\.0\.0\.1)$/;
 export async function onRequest(ctx) {
-  const parts = new URL(ctx.request.url).pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
+  const url = new URL(ctx.request.url);
+  if (!HOSTS.test(url.hostname)) return json({ error: "Not found." }, 404);
+  const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
   if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));

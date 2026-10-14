@@ -77,8 +77,8 @@ export async function newsFor(D, u, t) {
 async function flightsOf(D, ids) {
   const out = new Map();
   const at = (id) => { if (!out.has(id)) out.set(id, { to: [], stops: [] }); return out.get(id); };
-  for (let i = 0; i < ids.length; i += 90) {
-    const part = ids.slice(i, i + 90), list = `(${part.map(() => "?").join(",")})`;
+  for (let i = 0; i < ids.length; i += 45) {                    // (each id is bound twice: 90 a query, under D1's 100)
+    const part = ids.slice(i, i + 45), list = `(${part.map(() => "?").join(",")})`;
     const { results } = await D.prepare(`SELECT id, recipient AS who, to_lat AS la, to_lon AS lo, legs, via FROM pg_msgs WHERE id IN ${list}
       UNION ALL SELECT msg_id, user_id, to_lat, to_lon, legs, NULL FROM pg_gdeliv WHERE msg_id IN ${list}`).bind(...part, ...part).all();
     for (const r of results) {

@@ -21,6 +21,7 @@ import { claimBird } from "./_birds.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
 
 export const GROUP_MAX = 12;
+const GROUPS_EACH = 50;            // groups one person can be in
 const MAX_BODY = 70000, MAX_PHOTO = 8 * 1024 * 1024;
 const TURN_EVERY = 10 * 60e3;
 
@@ -68,7 +69,7 @@ function ownView(m, dels, friends, t) {
   });
   const live = flock.filter((x) => !x.lost);
   return { ...baseView(m), ...birdOn(m, m.sender), flock, cheered: Math.max(0, ...flock.filter((x) => x.flying).map((x) => x.cheered || 0)), deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
-    lost: flock.length > 0 && flock.every((x) => x.lost), recalled: flock.some((x) => x.recalled), fromPlace: m.from_place, body: m.body, key: m.sender_key, expiresAt: m.expires_at };
+    lost: flock.length > 0 && flock.every((x) => x.lost), recalled: flock.some((x) => x.recalled), fromPlace: m.from_place, body: m.body, key: m.sender_key, expiresAt: flock.some((x) => x.flying) ? null : m.expires_at };
 }
 // Someone else's: your pigeon only. Its contents and key once it has landed;
 // where it came from only if the sender is your friend.
@@ -186,6 +187,8 @@ async function cleanMembers(D, u, ids, current) {
   if (all.length > 1 && await D.prepare(`SELECT 1 FROM pg_links WHERE status = 'blocked' AND a IN (${ph(all)}) AND b IN (${ph(all)}) AND (a IN (${ph(out)}) OR b IN (${ph(out)})) LIMIT 1`)
     .bind(...all, ...all, ...out, ...out).first()) throw new HttpError(403, "Someone you chose can’t be added to this group.");
   if ((current.length || 1) + out.length > GROUP_MAX) throw new HttpError(400, `Groups can have up to ${GROUP_MAX} people.`);
+  if (await D.prepare(`SELECT 1 FROM pg_group_members WHERE user_id IN (${ph(out)}) GROUP BY user_id HAVING COUNT(*) >= ${GROUPS_EACH} LIMIT 1`).bind(...out).first())
+    throw new HttpError(409, `Someone you chose is already in ${GROUPS_EACH} groups, the most anyone can be in.`);
   return out;
 }
 async function groupView(env, u, gid) {
@@ -324,10 +327,12 @@ async function send({ request, env, waitUntil }) {
     if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   }
   const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1);
-  const others = want.filter((m) => m !== u.id), mine = await friendIds(D, u.id);
+  // no pigeon to anyone you've blocked, or who has blocked you (from a group made before the block)
+  const cut = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
+  const others = want.filter((m) => m !== u.id && !cut.has(m)), mine = await friendIds(D, u.id);
   const { results: rows } = others.length ? await D.prepare(`SELECT id, lat, lon, place FROM pg_users WHERE id IN (${others.map(() => "?").join(",")})`).bind(...others).all() : { results: [] };
   // between people who aren't friends: coarse places at both ends (the stored destination too)
-  const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }));
+  const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, place: null, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }));
   // the weather along each route, all in one look
   const placed = to.filter((r) => r.lat != null), winds = await windsFor(env, placed.map((r) => [r.from[0], r.from[1], r.lat, r.lon]));
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));

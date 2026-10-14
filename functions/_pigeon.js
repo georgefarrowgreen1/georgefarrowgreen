@@ -332,7 +332,11 @@ export async function body(request, max = MAX_JSON) {
 }
 export const clientIp = (request) => {
   const ip = request.headers.get("CF-Connecting-IP") || "local";
-  return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") + "::/64" : ip;     // IPv6: one connection usually has a whole /64
+  if (!ip.includes(":")) return ip;
+  // IPv6: one connection usually has a whole /64 (written out in full first, so "a::b" can't dodge it)
+  const [head, tail = ""] = ip.toLowerCase().split("::"), h = head ? head.split(":") : [], tl = ip.includes("::") && tail ? tail.split(":") : [];
+  const full = ip.includes("::") ? [...h, ...Array(Math.max(0, 8 - h.length - tl.length)).fill("0"), ...tl] : h;
+  return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 };
 
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
@@ -347,7 +351,11 @@ export async function limit(env, key, max, windowMs) {
 }
 
 // A per-install random secret (used to fake salts for unknown emails).
+let secret = null;
 export async function serverSecret(env) {
+  return (secret ||= readSecret(env).catch((e) => { secret = null; throw e; }));
+}
+async function readSecret(env) {
   const D = await db(env);
   const row = await D.prepare("SELECT v FROM pg_meta WHERE k = 'secret'").first();
   if (row) return row.v;

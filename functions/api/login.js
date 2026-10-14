@@ -37,7 +37,7 @@ export async function onRequestPost({ request, env }) {
   if (env.DB) {
     try {
       await limit(env, "owner:" + ip, 20, WINDOW_SECONDS * 1000);
-      await limit(env, "owner:all", 100, 60 * 60e3);
+      await limit(env, "owner:all", 400, 60 * 60e3);   // (high enough that strangers can't lock the owner out; per-IP and the fail counter do the work)
     } catch (e) {
       if (e instanceof HttpError) return json({ error: "Too many attempts. Try again in a few minutes." }, 429);
       throw e;

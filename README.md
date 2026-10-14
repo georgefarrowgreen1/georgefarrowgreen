@@ -146,7 +146,18 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — 1.0.1
+## InFlight (/pigeon) — 1.0.2
+
+**1.0.2** (security, privacy, stability and speed): a pigeon from someone
+you've blocked or unfriended no longer follows you when you move; blocks hold
+inside groups; "Updated", "Opened" and lofts honour the privacy switches both
+ways; deleting an account deletes everything of it. The app opens with no
+signal (a copy kept by the service worker, network first), never hangs on a
+stalled request or a damaged saved copy, retries queued pigeons through
+hiccups, and only redraws or saves what changed. The server sets its schema up
+once per change, finds what the minute tick needs by index, and checks a
+session in one query. The API answers only at georgefarrowgreen.com, so old
+preview deployments can't reach the live data (delete them in Cloudflare too).
 
 A pigeon-post messenger at **/pigeon**: every message ("scroll") flies the real
 distance between two people at 80 km/h (5 minutes to 3 days), and photos are
