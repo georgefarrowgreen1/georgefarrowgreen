@@ -737,7 +737,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .lstat{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:20px;background:var(--cell);min-width:0}
 .lstat b{font-size:22px;line-height:26px;font-weight:700;font-variant-numeric:tabular-nums}
 .lstat span{font-size:13px;color:var(--label-2)}
-.lstat small{font-size:12px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lstat small{font-size:12px;line-height:15px;color:var(--label-2)}
 .kindrow .ctext{gap:6px}
 .kbar{display:block;height:5px;border-radius:3px;width:calc(var(--w,0) * 100%);min-width:6px;background:var(--p-standard)}
 .kbar.swift{background:var(--p-swift)}.kbar.turbo{background:var(--label)}.kbar.rocket{background:var(--p-rocket)}.kbar.dumb{background:var(--p-dumb)}
@@ -925,7 +925,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .acard .abird{position:absolute;top:0;left:calc(var(--f) * 100%);width:16px;height:16px;margin-left:-9px;color:var(--tint);transition:left 1s linear;transform:scaleX(-1)}   /* facing the way it flies */
 .acard .abird svg{width:16px;height:16px;fill:currentColor;transform-origin:50% 62%;animation:air-flap .5s ease-in-out infinite alternate;filter:drop-shadow(0 1px 1px rgba(0,0,0,.15))}
 .acard.final .abird svg{animation-duration:.22s}
-.acard .asub{font-size:12px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acard .asub{display:block;font-size:12px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acard .asub.late{color:var(--orange-t);font-weight:600}
 .acard .asub.early{color:var(--green-t);font-weight:600}
 @keyframes air-march{to{background-position:-7px 0}}
@@ -1522,7 +1522,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .field-wrap textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* friends' news */
 .nrow{align-items:center}
-.nrow .ntext{white-space:normal;line-height:20px;text-wrap:pretty}
+.nrow .ntext{white-space:normal;font-size:15px;line-height:20px;text-wrap:pretty}
 .nkind{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--fill);color:var(--label-2);font-size:16px}
 .nkind.blue{color:var(--tint)}.nkind.red{color:#c0392b}.nkind.orange{color:var(--orange-t)}.nkind.pink{color:#e8457a}
 .nkind .nemo{font-size:17px;line-height:1}
@@ -1576,7 +1576,7 @@ html.night .nightsky{display:block}
 .welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
 .welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:#cfe0ff;text-shadow:0 0 18px rgba(120,170,255,.6)}
 .welcome .invonly{margin:0 0 14px;font-size:14px;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55)}
-.welcome .wglow{position:relative;background:rgba(120,160,255,.14);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
+.welcome .wglow{position:relative;background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);letter-spacing:.12em;font-weight:500;animation:wpulse 3.2s ease-in-out infinite}
 @keyframes wpulse{50%{box-shadow:0 0 38px rgba(110,160,255,.6),inset 0 0 22px rgba(130,170,255,.28)}}
 .welcome .wquiet{margin-top:6px;padding:12px 24px;border:0;background:none;color:rgba(214,224,255,.75);font:inherit;font-size:15px;letter-spacing:.08em}
@@ -1606,7 +1606,7 @@ html.night .nightsky{display:block}
 .auth.night .group{border:1px solid rgba(160,190,255,.14);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .auth.night .fcell input{caret-color:#cfe0ff}
 .auth.night .fcell input:-webkit-autofill{-webkit-text-fill-color:#eef2ff;transition:background-color 99999s}
-.auth.night .btn:not(.plain){background:rgba(120,160,255,.14);color:#fff;border:1px solid rgba(160,190,255,.45);letter-spacing:.08em;font-weight:500;
+.auth.night .btn:not(.plain){background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);letter-spacing:.08em;font-weight:500;
   box-shadow:0 0 24px rgba(110,160,255,.3),inset 0 0 18px rgba(130,170,255,.16);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .auth.night .btn.plain{color:var(--label-2);letter-spacing:.06em}
 .auth.night .stepn i{background:rgba(160,190,255,.22)}.auth.night .stepn i.on{background:#cfe0ff;box-shadow:0 0 8px rgba(150,190,255,.8)}
@@ -1641,4 +1641,9 @@ html.night .nav-ghost .night{background:none}
 .ltile small{font-size:13px;line-height:17px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ltile .lnext{color:var(--tint)}
 .ltile.none .lnext{color:var(--label-2)}
-.aver{margin:22px 0 0;text-align:center;font-size:13px;color:var(--label-3)}
+.aver{margin:22px 0 0;text-align:center;font-size:13px;color:var(--label-2)}
+/* small fixes from the UI audit */
+.compose .kind{max-width:44%}
+@media (max-width:360px){.compose .kind.named .kl{display:none}.bstats{gap:6px;margin-inline:12px}.bstats b{font-size:15px}}
+:root[data-theme="dark"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}
+@media (prefers-color-scheme: dark){:root[data-theme="auto"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}}

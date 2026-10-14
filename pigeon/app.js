@@ -2943,6 +2943,10 @@ function whoHasLabel(m) {
    sealed until it lands. Tap yours in the air for the flight; anything that
    has landed to react, reply or see the flight. */
 const atTime = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : sameDay(ts, now() + DAY) ? `tomorrow ${fmtTime(ts)}` : `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}`);
+// the same, where room is short (the message box, a card): "18:40", "Thu 02:20"
+const atShort = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : ts - now() < 6 * DAY ? `${DOW[new Date(ts).getDay()]} ${fmtTime(ts)}` : `${new Date(ts).getDate()} ${MON[new Date(ts).getMonth()]} ${fmtTime(ts)}`);
+// a duration, roughly: "45m", "2h", "1d 10h"
+const durShort = (ms) => (ms < HOUR ? fmtDur(ms) : ms < DAY ? `${Math.round(ms / HOUR)}h` : fmtDur(ms));
 const airTrack = (m) => `<span class="trk" aria-hidden="true"><i data-from="${esc(m.sentAt)}" data-to="${esc(m.deliverAt)}">${I.bird}</i></span>`;
 function footHtml(m, mine, g) {
   if (mine && m.lost && !g) return `<span class="ft lostft">${I.skull}${m.bird ? `${esc(m.bird.name)} was lost` : "Lost on the way"} · Pigeon Death</span>`;
@@ -3858,15 +3862,15 @@ function etaMs(c, k) {
   if (c.via) { const p = friend(c.via.id); return flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, c.f.lat ?? p.lat, c.f.lon ?? p.lon), sp); }
   return flightMs(chatKm(c.f), sp);
 }
-// The message box's hint: "Lands 18:40", "Via Nia · lands tomorrow 06:08", a group's "Lands in 2h–6h"
+// The message box's hint: "Lands 18:40", "Via Nia · lands Thu 06:08", a group's "Lands in 2h" or "2h–1d 10h away"
 function landHint(c, k) {
   if (k === "mystery") return "Who knows when?";
-  if (c.sched) return `Lands ${atTime(c.sched.at)}`;
+  if (c.sched) return `Lands ${atShort(c.sched.at)}`;
   if (c.g) {
-    const kms = others(c.g).map(memberKm).sort((a, b) => a - b), ms = (x) => fmtDur(flightMs(x, mySpeed(k))), n = kms.length;
-    return n ? `Lands in ${ms(kms[0]) === ms(kms[n - 1]) ? ms(kms[0]) : `${ms(kms[0])}–${ms(kms[n - 1])}`}` : "Message";
+    const kms = others(c.g).map(memberKm).sort((a, b) => a - b), ms = (x) => durShort(flightMs(x, mySpeed(k))), n = kms.length;
+    return n ? (ms(kms[0]) === ms(kms[n - 1]) ? `Lands in ${ms(kms[0])}` : `${ms(kms[0])}–${ms(kms[n - 1])} away`) : "Message";
   }
-  return `${c.via ? `Via ${first(friend(c.via.id).name)} · lands` : "Lands"} ${atTime(now() + etaMs(c, k))}`;
+  return `${c.via ? `Via ${first(friend(c.via.id).name)} · lands` : "Lands"} ${atShort(now() + etaMs(c, k))}`;
 }
 /* ---------- the composer: one row ----------
    +, then the message with its pigeon at the start (tap it for How It Flies)
@@ -3897,7 +3901,7 @@ function renderCompose() {
   pill.disabled = dumb != null;
   const pk = JSON.stringify([kind, bd?.id, bd?.name, bd?.wear, !!sched, !!via, S.me.skin]);
   if (pill.dataset.k !== pk) {
-    pill.dataset.k = pk;
+    pill.dataset.k = pk; pill.classList.toggle("named", !!bd);
     pill.innerHTML = `${kind ? `<span class="pgw">${pg(kind, S.me.skin)}${wearOn(bd?.wear)}</span>` : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}<span class="kl">${esc(!kind ? "None" : bd ? bd.name : KIND[kind].name)}</span>${sched ? I.clock : via ? I.people : ""}${I.chev}`;
   }
   pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
@@ -4750,7 +4754,7 @@ function airFill(el, r) {
   const sub = $(".asub", el);
   sub.className = `asub${wx ? (r.delay > 0 ? " late" : " early") : ""}`;
   // yours: when it lands (and where, in a group); theirs: sealed till then
-  sub.innerHTML = wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atTime(r.deliverAt))}`;
+  sub.innerHTML = wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atShort(r.deliverAt))}`;
   return el;
 }
 // One card per chat: a group's pigeons, coming and going, share one card.
