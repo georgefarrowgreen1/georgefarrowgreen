@@ -3,6 +3,7 @@
 // Every pigeon counts once: a message to a group of four is three pigeons.
 
 import { stampPassports, passportFor } from "./_passport.js";
+import { postmarksFor } from "./_landmarks.js";
 import { json, db, requireUser } from "./_pigeon.js";
 
 // Rare pigeons: a look for your pigeons, each unlocked by an achievement.
@@ -21,7 +22,7 @@ async function flightLog({ request, env }) {
   await stampPassports(D, t, u.id, 20);                     // any of yours that landed since: stamped first
   const log = await logFor(D, u.id, t);
   const earned = new Set(log.badges.filter((b) => b.earned).map((b) => b.id));
-  return json({ ...log, passport: await passportFor(D, u.id, t), skin: u.skin || null,
+  return json({ ...log, passport: await passportFor(D, u.id, t), postmarks: await postmarksFor(D, u.id), skin: u.skin || null,
     skins: Object.entries(SKINS).map(([id, k]) => ({ id, name: k.name, badge: k.badge, open: earned.has(k.badge) })) });
 }
 // Is this look yours to use?

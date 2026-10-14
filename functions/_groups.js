@@ -8,6 +8,7 @@
 // see each other's names, never each other's locations.
 
 import { newStamps } from "./_passport.js";
+import { marksFor, markView } from "./_landmarks.js";
 import { drawMystery, MYSTERY,
   HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
@@ -257,6 +258,19 @@ async function listMessages({ request, env }) {
     ...(e.kind === "rename" ? { name: e.target_name } : e.target ? { who: { id: e.target, name: e.target_name } } : {}) }));
   const vs = await views(D, u.id, rows, friends, t), stamps = await newStamps(D, u.id, rows.filter((m) => m.sender === u.id).map((m) => m.id));
   for (const v of vs) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);      // the passport's new stamps (yours only)
+  // postmarks: on yours, every landmark any of its pigeons passed; on theirs, the ones the pigeon to you did
+  const marks = await marksFor(D, rows.filter((m) => m.sender !== u.id).map((m) => `${m.id}:${u.id}`));
+  const mine = new Set(rows.filter((m) => m.sender === u.id).map((m) => m.id));
+  if (mine.size) {
+    const { results } = await D.prepare("SELECT id, at, marks FROM pg_stamped WHERE user_id = ? AND marks IS NOT NULL AND id LIKE '%:%'").bind(u.id).all();
+    for (const r of results) {
+      const mid = r.id.split(":")[0]; if (!mine.has(mid)) continue;
+      const have = marks.get(mid) || [];
+      try { for (const k of JSON.parse(r.marks)) if (!have.some((x) => x.id === k)) { const v = markView(k, r.at); if (v) have.push(v); } } catch (_) {}
+      marks.set(mid, have);
+    }
+  }
+  for (const v of vs) { const k = marks.get(v.from === u.id ? v.id : `${v.id}:${u.id}`); if (k?.length) v.postmarks = k; }
   return json({ now: t, messages: vs, events, reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
 }
 

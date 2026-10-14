@@ -13,6 +13,7 @@ import { json, db, requireUser, gcPoint, haversineKm } from "./_pigeon.js";
 import { stopsOf } from "./_moments.js";
 import { countryNear } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
+import { marksAlong } from "./_landmarks.js";
 import { SEAS } from "../pigeon/countries.js";
 
 const EVERY_KM = 20;
@@ -51,10 +52,15 @@ export async function stampPassports(D, t, uid = null, max = 12) {
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id) ORDER BY d.deliver_at LIMIT ${max}`).bind(...args).all();
   const flights = [...one, ...grp].sort((a, b) => a.deliver_at - b.deliver_at).slice(0, max);
   for (const f of flights) {
-    let places = [];
-    try { places = placesAlong(stopsOf(f)); } catch (_) {}
-    const r = await D.prepare("INSERT OR IGNORE INTO pg_stamped (id, user_id, at, places) VALUES (?, ?, ?, ?)").bind(f.id, f.sender, f.deliver_at, JSON.stringify(places)).run();
-    if (!r.meta.changes || !places.length) continue;
+    let places = [], marks = [];
+    try { const st = stopsOf(f); places = placesAlong(st); marks = marksAlong(st); } catch (_) {}
+    const r = await D.prepare("INSERT OR IGNORE INTO pg_stamped (id, user_id, at, places, marks) VALUES (?, ?, ?, ?, ?)").bind(f.id, f.sender, f.deliver_at, JSON.stringify(places), marks.length ? JSON.stringify(marks) : null).run();
+    if (!r.meta.changes) continue;
+    // the landmarks it flew past: postmarks on the letter, and in its sender's collection
+    if (marks.length) await D.batch(marks.map((k) => D.prepare(`INSERT INTO pg_postmarks (user_id, mark, first_at, first_id, n) VALUES (?1, ?2, ?3, ?4, 1)
+      ON CONFLICT (user_id, mark) DO UPDATE SET n = n + 1, first_id = CASE WHEN excluded.first_at < first_at THEN excluded.first_id ELSE first_id END,
+        first_at = MIN(first_at, excluded.first_at)`).bind(f.sender, k, f.deliver_at, f.id.split(":")[0])));
+    if (!places.length) continue;
     // (first_id: the message, for a group whichever of its pigeons; first_ord: where on its way)
     await D.batch(places.map((p, i) => D.prepare(`INSERT INTO pg_passport (user_id, place, first_at, first_id, first_ord, n) VALUES (?1, ?2, ?3, ?4, ?5, 1)
       ON CONFLICT (user_id, place) DO UPDATE SET n = n + 1,

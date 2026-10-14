@@ -19,6 +19,7 @@ import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
 import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
 import { bumpStreak, streaksFor, streakBetween } from "../../_streaks.js";
+import { marksFor } from "../../_landmarks.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -639,6 +640,8 @@ async function listMessages({ request, env }) {
   for (const v of views) if (over.has(v.id)) v.fly = over.get(v.id);
   const stamps = await newStamps(D, u.id, results.filter((m) => m.sender === u.id && m.deliver_at <= t).map((m) => m.id));   // the passport's new stamps (yours only)
   for (const v of views) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
+  const marks = await marksFor(D, results.filter((m) => m.deliver_at <= t && m.lost_at == null).map((m) => m.id));   // postmarks: on the letter, for both of you
+  for (const v of views) if (marks.has(v.id)) v.postmarks = marks.get(v.id);
   return json({ now: t, messages: views, fly: await flyViews(D, u.id, other), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results.filter((m) => m.sent_at <= t).at(-1), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 

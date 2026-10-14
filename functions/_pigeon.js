@@ -164,6 +164,8 @@ SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT N
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_passport (user_id TEXT NOT NULL, place TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, first_ord INTEGER, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, place))`);
 SCHEMA.push("CREATE INDEX IF NOT EXISTS pg_passport_first ON pg_passport(first_id)");
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_stamped (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL, places TEXT)");
+// landmark postmarks (functions/_landmarks.js): each person's collection (pg_stamped.marks: each flight's)
+SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_postmarks (user_id TEXT NOT NULL, mark TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, mark))");
 // Near misses: two pigeons that came within a few miles in mid-air (a < b, by id), where and when
 // named pigeons (functions/_birds.js): yours, their careers, and your Hall of Fame
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_birds (id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL, km REAL NOT NULL DEFAULT 0,
@@ -251,6 +253,7 @@ const MIGRATIONS = [
   ...["pg_msgs", "pg_gmsgs"].flatMap((t) => ["bird TEXT", "bird_name TEXT", "bird_rank TEXT", "bird_up TEXT", "bird_done INTEGER"].map((c) => `ALTER TABLE ${t} ADD COLUMN ${c}`)),
   "ALTER TABLE pg_gmsgs ADD COLUMN bird_to TEXT",
   // mystery pigeons: the loft (null = full) and which messages flew as one
+  "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",       // the landmarks it flew past (JSON ids, in order)
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",

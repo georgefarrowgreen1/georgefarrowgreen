@@ -2705,6 +2705,7 @@ function bubble(f, m, gapTop, g) {
   // a line added by the friend it stopped with on the way
   if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
+  html += postmarkHtml(m, mine);
   const meta = [];
   if (g && mine) {
     // a dot for each of them, filling in as their pigeons land (and turning blue once they've read it); tap for who
@@ -2985,6 +2986,40 @@ const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal:
 const PASSPORT_INK = ["#c8322b", "#2457b8", "#1f7a46", "#a8740f", "#6b3fa0", "#b04a7a", "#127a86"];
 const inkOf = (name, sea) => (sea ? "#1d63b0" : PASSPORT_INK[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PASSPORT_INK.length]);
 const tiltOf = (name) => (([...name].reduce((h, c) => (h * 17 + c.charCodeAt(0)) >>> 0, 3) % 7) - 3) * 0.8;
+/* ---------- landmark postmarks: somewhere famous a pigeon flew past ---------- */
+const PM_ICON = {
+  tower: `<path d="M6.5 21c2.2-3 3.6-8.5 4.4-14h2.2c.8 5.5 2.2 11 4.4 14M8.6 16h6.8M10.2 11.5h3.6M10.4 21a1.6 1.6 0 0 1 3.2 0M12 7V3"/>`,
+  bridge: `<path d="M2 16h20M5 16V7M19 16V7M5 7c3 5 11 5 14 0M2 20h20"/>`,
+  monument: `<path d="M6 21V9l6-5 6 5v12M10 21v-6h4v6M4 21h16"/>`,
+  castle: `<path d="M4 21V9h3V6h2v3h2V6h2v3h2V6h2v3h3v12ZM10 21v-4a2 2 0 0 1 4 0v4"/>`,
+  cliff: `<path d="M3 20c2-1 3-6 5-8s4-1 5-4 3-4 5-4v16ZM2 20h20"/>`,
+  mountain: `<path d="m2 20 7-13 4 6 2-3 7 10ZM7.5 10.5l1.5 1 1.5-1"/>`,
+  dome: `<path d="M5 21v-8a7 7 0 0 1 14 0v8M3 21h18M12 3v3M9 21v-4h6v4"/>`,
+  pyramid: `<path d="M2 20 12 4l10 16ZM12 4l-3 16"/>`,
+  falls: `<path d="M4 4h16M7 4v7c0 3 2 5 2 9M12 4v16M17 4v7c0 3-2 5-2 9M3 20h18"/>`,
+  canyon: `<path d="M2 9h5l2 4h6l2-4h5M2 9v11h20V9M9 13l1 7M15 13l-1 7"/>`,
+  wall: `<path d="m2 15 4-2 4 1 4-3 4 1 4-2v5l-4 2-4-1-4 3-4-1-4 2ZM6 13v-2M14 11V9"/>`,
+  dunes: `<path d="M2 18c3-4 6-4 9 0s6 4 11-1M2 13c3-3 5-3 7-1M14 12c2-2 5-2 8 0"/>`,
+};
+const pmDay = (t) => { const d = new Date(t); return `${d.getDate()} ${MON[d.getMonth()].toUpperCase()} ${String(d.getFullYear()).slice(2)}`; };
+const pmName = (n) => n.replace(/^the /, "");
+// the round postmark itself: a double ring, the landmark, the day, and the cancellation waves
+const pmSeal = (pm) => `<span class="pmseal pm-${esc(pm.kind)}" aria-hidden="true"><svg viewBox="0 0 24 24" class="ico">${PM_ICON[pm.kind] || PM_ICON.monument}</svg></span>`;
+// under a letter that flew past somewhere famous
+function postmarkHtml(m, mine) {
+  if (!m.postmarks?.length || m.flying || m.lost) return "";
+  return `<div class="pmarks${mine ? " me" : ""}">${m.postmarks.map((pm) => `<button type="button" class="pmark pm-${esc(pm.kind)}" data-act="pmarkinfo" data-id="${esc(m.id)}:${esc(pm.id)}"
+      aria-label="Postmark: flew past ${esc(pm.name)}">${pmSeal(pm)}<span class="pmt"><b>${esc(pmName(pm.name))}</b><small>${pmDay(pm.at)}</small></span></button>`).join("")}</div>`;
+}
+// the Flight Log's collection
+function postmarksHtml(pm) {
+  if (!pm) return "";
+  const list = pm.marks || [], left = Math.max(0, pm.of - list.length);
+  const tile = (x) => `<button type="button" class="pmtile pm-${esc(x.kind)}" data-act="pmarkall" data-id="${esc(x.id)}" aria-label="${esc(x.name)}: first flown past ${esc(fmtDate(x.at))}${x.n > 1 ? `, ${x.n} flights` : ""}">${pmSeal(x)}<b>${esc(pmName(x.name))}</b><small>${pmDay(x.at)}</small></button>`;
+  return `<div class="ghead">Postmarks <span class="gcount">${list.length} of ${pm.of}</span></div>
+    <div class="pmgrid">${list.map(tile).join("")}${Array.from({ length: Math.min(left, list.length ? (3 - (list.length % 3)) % 3 : 3) }, () => `<span class="pmtile unknown" aria-hidden="true"><span class="pmseal"><b>?</b></span><b>Somewhere</b><small>to find</small></span>`).join("")}</div>
+    <div class="gfoot">${list.length ? `${left} more to find. ` : ""}A pigeon that flies past somewhere famous, like the Eiffel Tower or Mount Fuji, brings back its postmark on the letter. The ones in your own town don’t count.</div>`;
+}
 function passportHtml(pp, all) {
   if (!pp) return "";
   const list = pp.places || [], shown = all ? list : list.slice(0, 12);
@@ -3996,6 +4031,7 @@ function drawSheet(refresh) {
           ${tile(d.tailwind ? `${n(d.tailwind * 0.621371)} mph` : "–", "Best tailwind")}
         </div>
         ${passportHtml(d.passport, s.allStamps)}
+        ${postmarksHtml(d.postmarks)}
         ${badgesHtml(d.badges || [])}
         ${skinsHtml(d.skins || [], S.me.skin)}
         ${kinds.length ? `<div class="ghead">By pigeon</div><div class="group">${kinds.map((k) => `<div class="cell has-icon kindrow"><span class="tile ${k === "dumb" ? "gray" : k}">${I.bird}</span><span class="ctext"><span>${KIND[k].name}</span><i class="kbar ${k}" data-w="${(d.kinds[k] / most).toFixed(3)}"></i></span><span class="val">${n(d.kinds[k])}</span></div>`).join("")}</div>` : ""}
@@ -4766,6 +4802,17 @@ async function onClick(e) {
     case "grouprename": S.sheet = { type: "grouprename", id }; return renderSheet();
     case "flightlog": return openFlightLog();
     case "stampsall": if (S.sheet?.type === "flightlog") { const top = $(".sheet .body", $layer)?.scrollTop || 0; S.sheet.allStamps = true; renderSheet(); const b = $(".sheet .body", $layer); if (b) b.scrollTop = top; } return;
+    case "pmarkinfo": {
+      const [mid, pid] = String(id).split(":"), m = (S.msgs.get(S.chat) || []).find((x) => x.id === mid), pm = m?.postmarks?.find((x) => x.id === pid); if (!pm) return;
+      haptic("tick");
+      const mine = m.from === S.me.id, who = mine ? "Your pigeon" : `${esc(first((group(S.chat) ? member(group(S.chat), m.from) : friend(S.chat))?.name || "Their"))}’s pigeon`;
+      return toast(`${who} flew past ${esc(pm.name)} on ${esc(fmtDate(pm.at))}.`, mine ? "Postmarks" : null, mine ? () => openFlightLog() : null);
+    }
+    case "pmarkall": {
+      const x = S.sheet?.data?.postmarks?.marks.find((p) => p.id === id); if (!x) return;
+      haptic("tick");
+      return toast(`${esc(x.name[0].toUpperCase() + x.name.slice(1))}: first flown past ${esc(fmtDate(x.at))}${x.n > 1 ? `, and ${x.n - 1} flight${x.n === 2 ? "" : "s"} since` : ""}.`);
+    }
     case "stampinfo": {
       const p = S.sheet?.data?.passport?.places.find((x) => x.name === id); if (!p) return;
       haptic("tick");

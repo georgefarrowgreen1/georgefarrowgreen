@@ -1453,3 +1453,34 @@ svg.fillico{fill:currentColor;stroke:none}
 .pg.mystery{background:conic-gradient(from 200deg,#7a5cff,#c86bff,#ff6fae,#ffb347,#7a5cff);font-weight:800;font-size:inherit;line-height:1;color:#fff;text-shadow:0 .03em .06em rgba(0,0,0,.3)}
 .pg.mystery{font-size:1em}
 .dots.mystery i:not(.e){background:linear-gradient(135deg,#7a5cff,#ff6fae)}
+/* landmark postmarks: a round cancellation stamp in ink */
+.pmseal{--pm:#a3342b;position:relative;flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;color:var(--pm);
+  box-shadow:inset 0 0 0 1.5px var(--pm),inset 0 0 0 4px transparent,inset 0 0 0 5px var(--pm);transform:rotate(-8deg)}
+.pmseal .ico{font-size:19px;stroke-width:1.7}
+.pmseal .waves{position:absolute;left:78%;top:30%;width:22px;height:16px;opacity:.55;
+  background:radial-gradient(4px 2px at 25% 0,transparent 70%,var(--pm) 75% 100%,transparent 105%) 0 1px/7px 5px repeat-x}
+.pm-tower .pmseal,.pmseal.pm-tower{--pm:#a3342b}.pm-bridge .pmseal,.pmseal.pm-bridge{--pm:#1d5fa8}.pm-monument .pmseal,.pmseal.pm-monument{--pm:#6b4bb0}
+.pm-castle .pmseal,.pmseal.pm-castle{--pm:#7a5a1e}.pm-cliff .pmseal,.pmseal.pm-cliff{--pm:#22737a}.pm-mountain .pmseal,.pmseal.pm-mountain{--pm:#2f6b3a}
+.pm-dome .pmseal,.pmseal.pm-dome{--pm:#a04a7a}.pm-pyramid .pmseal,.pmseal.pm-pyramid{--pm:#a8661c}.pm-falls .pmseal,.pmseal.pm-falls{--pm:#1f7fa6}
+.pm-canyon .pmseal,.pmseal.pm-canyon{--pm:#a5481f}.pm-wall .pmseal,.pmseal.pm-wall{--pm:#8a4a2a}.pm-dunes .pmseal,.pmseal.pm-dunes{--pm:#b07a12}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pmseal{filter:brightness(1.6) saturate(.9)}}
+:root[data-theme="dark"] .pmseal{filter:brightness(1.6) saturate(.9)}
+.pmarks{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px 6px;max-width:80%}
+.pmarks.me{align-self:flex-end;justify-content:flex-end;margin:4px 6px 2px 0}
+.pmark{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border:0;border-radius:24px;background:var(--fill);color:var(--label);font:inherit;text-align:left}
+.pmark .pmseal{width:30px;height:30px}
+.pmark .pmseal .ico{font-size:15px}
+.pmark .pmseal .waves{display:none}
+.pmt{display:flex;flex-direction:column;min-width:0}
+.pmt b{font-size:13px;line-height:16px;font-weight:600}
+.pmt small{font-size:9.5px;font-weight:700;letter-spacing:.6px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.pmgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 16px}
+.pmtile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 6px 12px;border:0;border-radius:18px;background:var(--cell);color:var(--label);font:inherit;text-align:center;min-width:0}
+.pmtile .pmseal{width:52px;height:52px;margin-bottom:4px}
+.pmtile .pmseal .ico{font-size:26px}
+.pmtile > b{font-size:12.5px;line-height:15px;font-weight:600;overflow-wrap:anywhere;text-wrap:balance}
+.pmtile > small{font-size:9.5px;font-weight:700;letter-spacing:.6px;color:var(--label-2)}
+.pmtile.unknown .pmseal{--pm:var(--label-3);box-shadow:inset 0 0 0 1.5px var(--label-3);transform:none}
+.pmtile.unknown .pmseal b{font-size:20px;color:var(--label-3)}
+.pmtile.unknown > b,.pmtile.unknown > small{color:var(--label-3)}
+.pmtile:active,.pmark:active{transform:scale(.96)}
