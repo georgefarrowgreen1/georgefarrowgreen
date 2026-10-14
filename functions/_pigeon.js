@@ -197,6 +197,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_at INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
   "ALTER TABLE pg_sessions ADD COLUMN auth_at INTEGER",      // when this sign-in last showed it's you (password or passkey)
+  "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // a one-off key a reset that keeps the old key proves it against
 ];
 let schemaReady = false;
 export async function db(env) {
@@ -581,6 +582,25 @@ export async function findReset(env, token) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(r.user_id).first();
   if (!u) throw new HttpError(410, "This account no longer exists.");
   return { reset: r, user: u };
+}
+// A reset that keeps the account's key must show it holds that key: the phone
+// signs the link with the secret its key shares with a one-off server key.
+const ECDH_P256 = { name: "ECDH", namedCurve: "P-256" };
+export async function resetKx(env, hash) {
+  const kp = await crypto.subtle.generateKey(ECDH_P256, true, ["deriveBits"]);
+  const priv = await crypto.subtle.exportKey("jwk", kp.privateKey), pub = await crypto.subtle.exportKey("jwk", kp.publicKey);
+  await (await db(env)).prepare("UPDATE pg_resets SET kx = ? WHERE hash = ?").bind(JSON.stringify(priv), hash).run();
+  return { kty: "EC", crv: "P-256", x: pub.x, y: pub.y };
+}
+export async function keyProofOk(reset, pubJson, proof) {
+  if (!reset.kx || !/^[A-Za-z0-9_-]{43}$/.test(String(proof || ""))) return false;
+  try {
+    const priv = await crypto.subtle.importKey("jwk", JSON.parse(reset.kx), ECDH_P256, false, ["deriveBits"]);
+    const pub = await crypto.subtle.importKey("jwk", { ...JSON.parse(pubJson), ext: true }, ECDH_P256, false, []);
+    const bits = await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, priv, 256);
+    const k = await crypto.subtle.importKey("raw", bits, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    return await crypto.subtle.verify("HMAC", k, fromB64url(proof), new TextEncoder().encode("inflight/key-proof/v1|reset|" + reset.hash));
+  } catch (_) { return false; }
 }
 export const resetUrl = (request, token) => `${linkOrigin(request)}/pigeon/#reset=${token}`;
 export function maskEmail(e) {

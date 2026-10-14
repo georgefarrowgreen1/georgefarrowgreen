@@ -75,6 +75,14 @@ export const E2E = {
     const bits = await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, priv, 256);
     return crypto.subtle.importKey("raw", bits, "HKDF", false, ["deriveKey"]);
   },
+  // Shows the server this phone holds the private key, without giving it away:
+  // an HMAC under the secret it shares with a one-off server key, over what's proved.
+  async keyProof(priv, serverPub, what) {
+    const pub = await crypto.subtle.importKey("jwk", { ...serverPub, ext: true }, ECDH, false, []);
+    const bits = await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, priv, 256);
+    const k = await crypto.subtle.importKey("raw", bits, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    return b64url(await crypto.subtle.sign("HMAC", k, te.encode("inflight/key-proof/v1|" + what)));
+  },
   msgKey(base, salt) {
     return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: te.encode("inflight/msg/v1") },
       base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);

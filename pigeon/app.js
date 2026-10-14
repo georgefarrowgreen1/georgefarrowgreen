@@ -1989,6 +1989,7 @@ function pinChat() {
 const navbar = (title, { left = "", right = "", solid = false, root = false } = {}) =>
   `<div class="navbar${solid ? " solid" : ""}${root ? ` root b${(right.match(/class="nbtn/g) || []).length}` : ""}"><div class="nb-left">${left}</div><div class="nb-title one">${esc(title)}</div><div class="nb-right">${right}</div></div>`;
 const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
+const hexOf = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
 const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => {
   const t = tag || (act ? "button" : "div");
@@ -2565,19 +2566,22 @@ function vAuth() {
   return "";
 }
 function vReset() {
-  const info = S.resetInfo;
+  const info = S.resetInfo, from = S.resetFrom?.me;
   if (!info) return `<div class="loading">Checking your reset link…</div>`;
   if (info.error) return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.warn}</span><h1>This Link Won’t Work</h1><p>${esc(info.error)}</p></div>
-      <div class="stack"><button class="btn wide" data-act="to" data-id="forgot">Get a New Link</button><button class="btn wide plain" data-act="to" data-id="welcome">Back</button></div></div>`;
+      <div class="stack">${from ? `<button class="btn wide" data-act="resetcancel">Back to InFlight</button>` : `<button class="btn wide" data-act="to" data-id="forgot">Get a New Link</button><button class="btn wide plain" data-act="to" data-id="welcome">Back</button>`}</div></div>`;
   const canKeep = info.passkeys.length && passkeysSupported();
-  return `<div class="auth">${navbar("")}
+  const other = from && from.handle !== info.handle;
+  return `<div class="auth">${navbar("", from ? { left: nbtn("resetcancel", I.x, "Cancel and stay signed in") } : {})}
       <h1 class="large">New Password</h1>
       <p class="sub">For ${esc(first(info.name))} (@${esc(info.handle)}, ${esc(info.email)}).</p>
+      ${from ? `<div class="warn sheetwarn"><span>${other ? `You’re signed in here as @${esc(from.handle)}. This link is for a different account: only carry on if it’s yours. Setting its password signs @${esc(from.handle)} out of this phone.`
+        : "Setting a new password signs you out of your other phones."}</span></div>` : ""}
       <form data-form="reset" novalidate>
         <div class="group mt-s">${field("password", "New password", "password", "new-password")}</div>${ferr}
         <div class="gfoot">${canKeep ? "Use your passkey to keep all your messages readable. Starting fresh" : "Without a passkey, this"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed.</div>
         <div class="stack">${canKeep ? `<button type="button" class="btn wide" data-act="resetkeep">${I.key}Keep Messages with Passkey</button><button type="button" class="btn wide plain" data-act="resetfresh">Start Fresh Instead</button>`
-          : `<button type="button" class="btn wide" data-act="resetfresh">Set New Password</button>`}</div>
+          : `<button type="button" class="btn wide" data-act="resetfresh">Set New Password</button>`}${from ? `<button type="button" class="btn wide plain" data-act="resetcancel">Cancel</button>` : ""}</div>
       </form></div>`;
 }
 async function loadReset() {
@@ -2606,8 +2610,17 @@ async function resetWith(mode, btn) {
     const salt = rand(16);
     const { lockKey, proof } = await E2E.fromPassword(pw, salt);
     const vault = await E2E.lock(lockKey, { ecdh });
-    const r = await api("reset-complete", { method: "POST", body: { token: S.resetToken, salt: b64url(salt), proof, vault, ...(pub ? { pub } : {}) } });
+    const keyProof = pub ? undefined : await E2E.keyProof(await E2E.importPriv(ecdh), S.resetInfo.kx, "reset|" + hexOf(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(S.resetToken))));
+    const r = await api("reset-complete", { method: "POST", body: { token: S.resetToken, salt: b64url(salt), proof, vault, ...(pub ? { pub } : { keyProof }) } });
     S.resetToken = null; S.resetInfo = null;
+    const from = S.resetFrom; S.resetFrom = null;
+    if (from) {
+      // the sign-in that was here: ended (the reset already ended it if it's the same account)
+      if (from.me.id !== r.me.id) {
+        await fetch("/api/pigeon/logout", { method: "POST", headers: { Authorization: "Bearer " + from.token } }).catch(() => {});
+        await idb.del("cache:" + from.me.id).catch(() => {}); await idb.del("outbox:" + from.me.id).catch(() => {});
+      }
+    }
     await useKeys(r.token, r.me, ecdh);
   });
   await afterSignIn();
@@ -3962,6 +3975,7 @@ async function onClick(e) {
       try { S.me = (await api("avatar", { method: "DELETE" })).me; renderSheet(true); render(); }
       catch (err) { showErr(err.message); }
       return;
+    case "resetcancel": S.resetToken = null; S.resetInfo = null; S.resetFrom = null; return location.reload();
     case "resetkeep": case "resetfresh":
       try { await resetWith(t.dataset.act === "resetkeep" ? "keep" : "fresh", t); }
       catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
@@ -4830,8 +4844,8 @@ async function start() {
   if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
   const saved = await idb.get("session");
   if (S.resetToken) {
-    // a reset replaces whoever is signed in on this phone
-    if (saved?.token) { S.token = saved.token; await api("logout", { method: "POST" }).catch(() => {}); S.token = null; await idb.del("session"); }
+    // whoever is signed in here stays signed in until a new password is actually set
+    S.resetFrom = saved?.token ? saved : null;
     go("reset");
   } else if (saved?.token && saved.priv) {
     S.token = saved.token; S.me = saved.me; S.priv = saved.priv;
@@ -4856,11 +4870,10 @@ async function start() {
     if (openLink(location.hash)) return;
     const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
     if (!r && !a) return;
+    if (r && S.token) return location.reload();     // starts over on the reset screen, still signed in underneath
     history.replaceState(null, "", location.pathname);
-    if (r) {
-      if (S.token) { api("logout", { method: "POST" }).catch(() => {}); await forget(); }
-      S.resetToken = r[1]; S.view = "loading"; go("reset");
-    } else { S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); } }
+    if (r) { S.resetToken = r[1]; S.view = "loading"; go("reset"); }
+    else { S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); } }
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   setInterval(() => { if (document.visibilityState === "visible") sync(); }, POLL_MS);

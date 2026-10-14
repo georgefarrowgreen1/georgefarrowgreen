@@ -3,7 +3,7 @@ import {
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -759,10 +759,10 @@ async function resetRequest({ request, env, waitUntil }) {
 
 async function resetCheck({ request, env }) {
   await limit(env, "resetcheck:" + clientIp(request), 30, 15 * 60e3);
-  const { user: u } = await findReset(env, (await body(request)).token);
+  const { reset, user: u } = await findReset(env, (await body(request)).token);
   // Passkey copies of the key are sealed with each passkey's own secret, so they're safe to give the link holder.
   const { results } = await (await db(env)).prepare("SELECT id, vault FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
-  return json({ name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results });
+  return json({ name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results, kx: results.length ? await resetKx(env, reset.hash) : null });
 }
 
 async function resetComplete({ request, env, waitUntil }) {
@@ -773,6 +773,8 @@ async function resetComplete({ request, env, waitUntil }) {
   const D = await db(env), t = Date.now();
   const fresh = b.pub !== undefined;
   const pub = fresh ? cleanPub(b.pub) : u.pub;
+  // keeping the key: only a phone that has it (unlocked with a passkey) can
+  if (!fresh && !(await keyProofOk(reset, u.pub, b.keyProof))) throw new HttpError(400, "That passkey couldn’t unlock your key. You can start fresh instead.");
   // claim the link first, so two tabs can't both use it
   const used = await D.prepare("UPDATE pg_resets SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, reset.hash).run();
   if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");

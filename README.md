@@ -533,6 +533,11 @@ show a friendly "backend not set up" message).
   person (Face ID, fingerprint or passcode), each passkey request can be used
   once, and adding a passkey emails the account. Only a sign-in that has ended
   signs a phone out; a wrong password never does.
+- **Reset links** don't sign anyone out until a new password is actually set,
+  say so when the link is for a different account than the one signed in, and
+  keeping the old key ("Keep Messages with Passkey") needs the phone to prove it
+  holds that key (an HMAC under the secret it shares with a one-off server key),
+  so a stolen link can't quietly swap in a key without friends being warned.
 - **Friend requests** show the person you asked nothing of them (name or
   picture) until they say yes.
 - **Location** is snapped to a 1-mile grid on the phone before it's sent, and
