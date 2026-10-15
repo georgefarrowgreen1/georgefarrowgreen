@@ -9,13 +9,18 @@
          "p"  through a mountain pass       (name: the pass)
          "v"  past a landmark (scenic)       (name: the landmark)
          "c"  cheered on here (not a turn; see _cheers.js)
+         "o"  following the coast, rather than over open sea (name: the country)
+         "m"  over the mountains (a fast pigeon, high enough not to need a pass)
+         "b"  by ship (standard pigeons across an ocean: boarding, the lane, landing;
+              name: the port), each point after boarding reached at a ship's pace
      none     it turned here, because the person it's flying to moved
    Everything that follows a flight (the map, near misses, flyovers, the
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
 import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH, RISKY_LOSS } from "./_pigeon.js";
 import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere, altOf, JET_KMH } from "./_weather.js";
-import { placeName } from "./_where.js";
+import { placeName, countryNear } from "./_where.js";
+import { SHIP_KMH, portsNear, lane } from "./_ships.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
 import { ISLES } from "./_islands.data.js";
@@ -62,18 +67,25 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 // ms where it rests), km, w: the weather along it, as windsFor gives it }.
 export const STYLES = ["fastest", "scenic", "safe"];
 export const styleOf = (x) => (STYLES.includes(x) && x !== "fastest" ? x : null);    // as kept (fastest: null)
-export async function planRoute(env, { from, to, weather = true, hop = false, style = null, start = Date.now(), kmh = SPEED_KMH }) {
+export async function planRoute(env, { from, to, weather = true, hop = false, style = null, start = Date.now(), kmh = SPEED_KMH, ceiling = HIGH }) {
   let path = [from, to], w = { wind: null, f: 1, wx: null };
+  // a pigeon that hops (a standard one) keeps to the coast rather than cross open sea: a sea too
+  // short to need an island, or with none to rest on (an ocean: it takes a ship instead)
+  const run = hop && style !== "scenic" ? seaRun(from, to) : null;
+  const coast = !!run && run.km >= COAST_RUN && run.km <= SHIP_KM && !(run.km > HOP_KM && restIsland(from, to, run));
   if (weather) {
-    const lat = latticeOf(from, to), sky = lat ? await skyAtPoints(env, lat.pts, start + (lat.km / kmh) * HOUR * 1.5).catch(() => null) : null;
+    const lat = latticeOf(from, to, { dense: true }), sky = lat ? await skyAtPoints(env, lat.pts, start + (lat.km / kmh) * HOUR * 1.5).catch(() => null) : null;
     if (sky) {
-      const found = bestWay(lat, (i, when) => sky.at(i, when), start, kmh, { wind: style !== "scenic" });
+      const found = bestWay(lat, (i, when) => sky.at(i, when), start, kmh, { wind: style !== "scenic", coast });
       path = found.path; w = found.w;
-    } else [w] = await windsAlong(env, [{ path: [from, to], start, kmh }]);   // a short hop (or no forecast): the straight way, as the sky is
-  }
+    } else {
+      [w] = await windsAlong(env, [{ path: [from, to], start, kmh }]);   // a short hop (or no forecast): the straight way, as the sky is
+      if (coast && lat) path = bestWay(lat, () => null, start, kmh, { wind: false, coast }).path;        // (but along the coast all the same)
+    }
+  } else if (coast) { const lat = latticeOf(from, to, { dense: true }); if (lat) path = bestWay(lat, () => null, start, kmh, { wind: false, coast }).path; }
   if (style === "scenic") path = scenic(path);
-  path = finish(path, { hop, style });
-  return { way: path.slice(1, -1), km: pathKm(path), w };
+  path = finish(path, { hop, style, ceiling });
+  return { way: path.slice(1, -1), km: flownKm(path), w };
 }
 
 // ---- the way through the weather ----
@@ -83,31 +95,49 @@ export async function planRoute(env, { from, to, weather = true, hop = false, st
 // from stage to stage, a step sideways at most each time, with each stretch
 // at the pace the forecast gives it when the pigeon gets there, and storms
 // costing STORM_H hours each so it keeps out of them when it can.
-const LATTICE_OFF = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], LATTICE_KM = 300, STORM_H = 2;
-const MID = LATTICE_OFF.indexOf(0);
+// Planning before it leaves looks finer (dense): more stages, more points across, up to two
+// steps sideways a stage; a look in the air (light) is coarser, so more flights share one look.
+const LATTICE = {
+  light: { off: [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], km: 300, most: 9, step: 1 },
+  dense: { off: [-0.36, -0.3, -0.24, -0.18, -0.12, -0.06, 0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36], km: 220, most: 13, step: 2 },
+};
+const STORM_H = 2;
+// keeping to the coast: open sea costs this much more than land (as hours of flying), and a way must
+// keep this much less over open sea (km) to be worth it
+const COAST_W = 0.8, COAST_MIN = 80, COAST_RUN = 100;
+const SMOOTH_KM = 12;                         // a bend this close to the line between its neighbours isn't one
 // The lattice for a route (null for a short hop): its points (from, the stages' points row by row, to)
-export function latticeOf(from, to) {
-  const km = haversineKm(from[0], from[1], to[0], to[1]);
+export function latticeOf(from, to, { dense = false } = {}) {
+  const L = dense ? LATTICE.dense : LATTICE.light, km = haversineKm(from[0], from[1], to[0], to[1]);
   if (km < MIN_BEND_KM) return null;
-  const S = Math.min(9, Math.max(3, Math.round(km / LATTICE_KM))), pts = [[from[0], from[1]]];
+  const S = Math.min(L.most, Math.max(3, Math.round(km / L.km))), pts = [[from[0], from[1]]];
   for (let s = 1; s <= S; s++) {
     const f = s / (S + 1), [mLat, mLon] = gcPoint(from[0], from[1], to[0], to[1], f), [nLat, nLon] = gcPoint(from[0], from[1], to[0], to[1], Math.min(1, f + 0.01));
     const side = bearing(mLat, mLon, nLat, nLon) + 90;
-    for (const o of LATTICE_OFF) pts.push(o ? dest(mLat, mLon, side, o * km * Math.sin(f * Math.PI)) : [mLat, mLon]);
+    for (const o of L.off) pts.push(o ? dest(mLat, mLon, side, o * km * Math.sin(f * Math.PI)) : [mLat, mLon]);
   }
   pts.push([to[0], to[1]]);
   // and the straight line's own points, every ~200 km as ever, so a small storm on it isn't missed between stages
   const line = pointsFor(km), lineAt = pts.length;
   for (const f of line) pts.push(gcPoint(from[0], from[1], to[0], to[1], f));
-  return { from, to, km, S, pts, toAt: lineAt - 1, line, lineAt };
+  return { from, to, km, S, pts, toAt: lineAt - 1, line, lineAt, off: L.off, mid: L.off.indexOf(0), step: L.step };
 }
 // the point index of stage s (0: from, S+1: to), offset o
-const nodeOf = (lat, s, o) => (s === 0 ? 0 : s === lat.S + 1 ? lat.toAt : 1 + (s - 1) * LATTICE_OFF.length + o);
+const nodeOf = (lat, s, o) => (s === 0 ? 0 : s === lat.S + 1 ? lat.toAt : 1 + (s - 1) * lat.off.length + o);
+// how far a point is from the great circle through a and b (km)
+function offLine(a, b, p) {
+  const d13 = haversineKm(a[0], a[1], p[0], p[1]) / R, t13 = bearing(a[0], a[1], p[0], p[1]) * rad, t12 = bearing(a[0], a[1], b[0], b[1]) * rad;
+  return Math.abs(Math.asin(Math.sin(d13) * Math.sin(t13 - t12)) * R);
+}
 // The best way through a lattice, given the sky (skyAt(point index, when)):
-// { path (from … to, each bend tagged why), why ("s", "w" or null: straight),
+// { path (from … to, each bend tagged why), why ("s", "w", "o" or null: straight),
 //   w: its weather as windsFor gives it, hours, straight: the straight line's hours }
-export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
-  const { S, pts } = lat, K = LATTICE_OFF.length, whenOf = (s) => start + ((s / (S + 1)) * lat.km / kmh) * HOUR, high = kmh >= JET_KMH;   // (a rocket: up to the jet stream)
+// Each stretch is judged by the sky when the pigeon would really get there (the
+// time it has taken to that point, on that way, as the wind has let it): so a
+// way can wait for the wind to turn, or keep ahead of a storm. With `coast`, open
+// sea costs more than land, and it keeps to the coast where it can.
+export function bestWay(lat, skyAt, start, kmh, { wind = true, coast = false } = {}) {
+  const { S, pts } = lat, K = lat.off.length, MID = lat.mid, high = kmh >= JET_KMH;   // (a rocket: up to the jet stream)
   // storms the straight line's own points see, by the stretch between stages they fall in
   const head = bearing(lat.from[0], lat.from[1], lat.to[0], lat.to[1]), lineStorms = new Map();
   let firstStorm = null, firstK = null;
@@ -117,60 +147,79 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
     const s = Math.floor(f * (S + 1)); lineStorms.set(s, (lineStorms.get(s) || 0) + 1);
     if (!firstStorm) { firstStorm = pts[lat.lineAt + k]; firstK = sk; }
   });
-  const leg = (s1, o1, s2, o2) => {
+  const seaOf = (a, b, d) => { if (!coast) return 0; let n = 0; for (const f of [0.125, 0.375, 0.625, 0.875]) { const q = gcPoint(a[0], a[1], b[0], b[1], f); if (isSea(placeAt(q[0], q[1]))) n++; } return (n / 4) * d; };
+  const legs = new Map();
+  const leg = (s1, o1, s2, o2, t0) => {
     const a = pts[nodeOf(lat, s1, o1)], b = pts[nodeOf(lat, s2, o2)], d = haversineKm(a[0], a[1], b[0], b[1]), head = bearing(a[0], a[1], b[0], b[1]);
-    const pa = paceAt(skyAt(nodeOf(lat, s1, o1), whenOf(s1)), head, high), pb = paceAt(skyAt(nodeOf(lat, s2, o2), whenOf(s2)), head, high);
+    const pa = paceAt(skyAt(nodeOf(lat, s1, o1), t0), head, high), pb = paceAt(skyAt(nodeOf(lat, s2, o2), t0 + (d / kmh) * HOUR), head, high);
     // (a stretch along the straight line, or leaving or joining it, meets the storms its points saw)
     const onLine = (s1 === 0 || o1 === MID) || (s2 === S + 1 || o2 === MID);
     const f = pa && pb ? 2 / (1 / pa.f + 1 / pb.f) : (pa || pb || { f: 1 }).f, storms = (isSevere(pb?.k) ? 1 : 0) + (s1 === 0 && isSevere(pa?.k) ? 1 : 0) + (onLine ? lineStorms.get(s1) || 0 : 0);
-    const sk = isSevere(pb?.k) ? pb.k : isSevere(pa?.k) ? pa.k : null;
-    return { d, f, tail: ((pa?.tail ?? 0) + (pb?.tail ?? 0)) / (pa && pb ? 2 : 1), storms, sk, hours: d / (kmh * f), cost: d / (kmh * f) + storms * STORM_H, at: b, pace: pb };
+    const sk = isSevere(pb?.k) ? pb.k : isSevere(pa?.k) ? pa.k : null, hours = d / (kmh * f);
+    const k = `${s1}.${o1}.${s2}.${o2}`; let sea = legs.get(k); if (sea == null) { sea = seaOf(a, b, d); legs.set(k, sea); }
+    return { d, f, tail: ((pa?.tail ?? 0) + (pb?.tail ?? 0)) / (pa && pb ? 2 : 1), storms, sk, sea, hours, cost: hours + storms * STORM_H + (sea / kmh) * COAST_W, at: b, pace: pb };
   };
-  // stage by stage: the cheapest way to each point
-  let cost = [{ c: 0, chain: [] }];                                   // stage 0: just `from`
+  // stage by stage: the cheapest way to each point, and when it gets there
+  let cost = [{ c: 0, t: start, chain: [] }];                         // stage 0: just `from`
   for (let s = 1; s <= S + 1; s++) {
     const n = s === S + 1 ? 1 : K, next = [];
     for (let o = 0; o < n; o++) {
       let best = null;
       cost.forEach((prev, po) => {
-        if (!prev || (s > 1 && s <= S && Math.abs(po - o) > 1)) return;  // a step sideways at most
-        const l = leg(s - 1, s === 1 ? 0 : po, s, s === S + 1 ? 0 : o), c = prev.c + l.cost;
-        if (!best || c < best.c) best = { c, chain: [...prev.chain, { o: s === S + 1 ? null : o, l }] };
+        if (!prev || (s > 1 && s <= S && Math.abs(po - o) > lat.step)) return;   // a step or two sideways at most
+        const l = leg(s - 1, s === 1 ? 0 : po, s, s === S + 1 ? 0 : o, prev.t), c = prev.c + l.cost;
+        if (!best || c < best.c) best = { c, t: prev.t + l.hours * HOUR, chain: [...prev.chain, { o: s === S + 1 ? null : o, l }] };
       });
       next.push(best);
     }
     cost = next;
   }
-  const chainOf = (os) => os.map((o, k) => ({ o, l: leg(k, k ? os[k - 1] : 0, k + 1, k + 1 === S + 1 ? 0 : o) }));
+  const chainOf = (os) => { let t = start; return os.map((o, k) => { const l = leg(k, k ? os[k - 1] : 0, k + 1, k + 1 === S + 1 ? 0 : o, t); t += l.hours * HOUR; return { o, l }; }); };
   const sum = (chain) => {
     const km = chain.reduce((a, x) => a + x.l.d, 0), hours = chain.reduce((a, x) => a + x.l.hours, 0), storms = chain.reduce((a, x) => a + x.l.storms, 0);
+    const sea = chain.reduce((a, x) => a + x.l.sea, 0), c = chain.reduce((a, x) => a + x.l.cost, 0);
     const f = hours ? km / (kmh * hours) : 1, wind = Math.round(chain.reduce((a, x) => a + x.l.tail * x.l.d, 0) / (km || 1));
     const stormL = chain.find((x) => x.l.storms)?.l, stormAt = stormL?.at || null;
     // the spot that did most of it (as windsFor says it)
     const worst = chain.filter((x) => x.l.pace).sort((a, b) => (f < 1 ? a.l.pace.f - b.l.pace.f : b.l.pace.f - a.l.pace.f))[0];
     const wk = worst && (worst.l.pace.f >= 1 ? "tailwind" : worst.l.pace.k || "headwind");
     const wx = worst && Math.abs(Math.log(worst.l.pace.f)) >= 0.05 ? { k: wk, lat: worst.l.at[0], lon: worst.l.at[1], at: (chain.indexOf(worst) + 0.5) / chain.length, ...altOf({ k: wk, alt: worst.l.pace.alt }) } : null;   // (how far along: the middle of that stretch)
-    return { km, hours, storms, w: { wind, f: Math.round(Math.min(1.6, Math.max(0.6, f)) * 1e4) / 1e4, wx, storms, storm: stormAt ? { lat: stormAt[0], lon: stormAt[1], at: 0.5, k: stormL.sk || firstK || "storms" } : null } };
+    return { km, hours, storms, sea, c, w: { wind, f: Math.round(Math.min(1.6, Math.max(0.6, f)) * 1e4) / 1e4, wx, storms, storm: stormAt ? { lat: stormAt[0], lon: stormAt[1], at: 0.5, k: stormL.sk || firstK || "storms" } : null } };
   };
   const straight = sum(chainOf([...Array(S).fill(MID), 0])), best = sum(cost[0].chain);
   let why = null;
   if (straight.storms > 0 && best.storms < straight.storms) why = "s";
   else if (wind && best.hours < straight.hours * (1 - WIND_GAIN) && best.storms <= straight.storms) why = "w";
+  else if (coast && best.storms <= straight.storms && straight.sea - best.sea > COAST_MIN && best.c < straight.c) why = "o";
   if (!why) return { path: [lat.from, lat.to], why: null, w: straight.w, hours: straight.hours, straight: straight.hours };
   const stormPt = firstStorm || (straight.w.storm && [straight.w.storm.lat, straight.w.storm.lon]);
   if (firstStorm) straight.w.storm = { lat: firstStorm[0], lon: firstStorm[1], at: 0.5, k: firstK };
   const sk = firstK || straight.w.storm?.k || "storms";
   const name = why === "s" && stormPt ? safeName(stormPt[0], stormPt[1]) : null;
-  const bends = cost[0].chain.slice(0, -1).map((x, k) => [round5(pts[nodeOf(lat, k + 1, x.o)][0]), round5(pts[nodeOf(lat, k + 1, x.o)][1]), why, ...(name ? [name] : [])]);
+  let bends = cost[0].chain.slice(0, -1).map((x, k) => [round5(pts[nodeOf(lat, k + 1, x.o)][0]), round5(pts[nodeOf(lat, k + 1, x.o)][1]), why, ...(name ? [name] : [])]);
+  // the bends that hardly bend go: a smoother way, the same way
+  for (let i = 0; i < bends.length && bends.length > 1;) {
+    const prev = i ? bends[i - 1] : lat.from, next = i < bends.length - 1 ? bends[i + 1] : lat.to;
+    if (offLine(prev, next, bends[i]) < SMOOTH_KM) bends.splice(i, 1); else i++;
+  }
+  // following the coast: whose coast
+  if (why === "o") bends = bends.map((b) => [b[0], b[1], "o", coastOf(b[0], b[1])]);
   // (the first bend around storms says where they were, for the map to draw them, and what they were if not thunderstorms: hail, or icing)
   if (why === "s" && stormPt && bends.length) bends[0] = [bends[0][0], bends[0][1], why, name ?? null, { storm: [round2(stormPt[0]), round2(stormPt[1])], ...(sk !== "storms" ? { k: sk } : {}) }];
   return { path: [lat.from, ...bends, lat.to], why, w: best.w, hours: best.hours, straight: straight.hours };
 }
+// the country whose coast a point is by
+const coastOf = (lat, lon) => { try { const p = placeAt(lat, lon); return p && !isSea(p) ? p : countryNear(lat, lon) || null; } catch (_) { return null; } };
 // A way, through the passes, and resting on islands if it hops
-export function finish(path, { hop = false, style = null } = {}) {
-  const through = throughPasses(path);
-  return hop || style === "safe" ? hopped(through) : through;
+export function finish(path, { hop = false, style = null, ceiling = HIGH } = {}) {
+  let p = hop ? shipped(path) : path;                                // (an ocean: by ship, first)
+  p = throughPasses(p, ceiling);
+  return hop || style === "safe" ? hopped(p) : p;
 }
+// How high a pigeon flies: below this it goes over the top, above it through a pass.
+// A standard or swift pigeon looks for a pass over any high ground; a turbo goes
+// over all but the high ranges, a rocket over everything but the very highest.
+export const ceilingFor = (kind) => { const sp = PIGEONS[kind]?.speed ?? 1; return sp >= 9 ? 4500 : sp >= 3 ? 2600 : HIGH; };
 
 // Mountain passes: where a way goes over high ground (the land's height, from
 // open terrain data: _elevgrid.js), it goes through a pass instead. A known
@@ -186,20 +235,23 @@ function highest(a, b) {
   for (let k = 1; k < n; k++) { const at = gcPoint(a[0], a[1], b[0], b[1], k / n), m = elevAt(at[0], at[1]); if (m > top.m) top = { m, at }; }
   return top;
 }
-function throughPasses(path) {
+function throughPasses(path, ceiling = HIGH) {
   const out = [...path];
   for (let i = 0, n = 0; i < out.length - 1 && n < PASSES_MOST; i++) {
+    if (out[i + 1].sail || (out[i][2] === "b" && out[i + 1][2] === "b")) continue;     // (at sea, by ship)
     // (worked out the same whichever way it's flying, so pigeons each way take the same pass)
     const [p, q] = out[i][0] < out[i + 1][0] || (out[i][0] === out[i + 1][0] && out[i][1] <= out[i + 1][1]) ? [out[i], out[i + 1]] : [out[i + 1], out[i]];
-    const pt = passFor(p, q);
+    const pt = passFor(p, q, ceiling);
     if (pt) { out.splice(i + 1, 0, pt); n++; i++; }
   }
   return out;
 }
 // The pass from p to q, if the way between goes over high ground (null if not)
-function passFor(p, q) {
+function passFor(p, q, ceiling = HIGH) {
   const top = highest(p, q);
   if (top.m < HIGH || elevAt(p[0], p[1]) >= top.m - LOWER || elevAt(q[0], q[1]) >= top.m - LOWER) return null;
+  // high enough to fly over: no pass, it just goes over the top (kept, so the card can say so)
+  if (top.m < ceiling) return [round5(top.at[0]), round5(top.at[1]), "m", overName(top.at)];
   const base = haversineKm(p[0], p[1], q[0], q[1]), most = Math.min(base * PASS_MOST, base + PASS_KM);
   const via = (x) => haversineKm(p[0], p[1], x[0], x[1]) + haversineKm(x[0], x[1], q[0], q[1]);
   // a known pass near the top, the one that adds least
@@ -221,6 +273,8 @@ function passFor(p, q) {
 }
 // A pass of no known name: "a pass in Norway"
 const passName = ([lat, lon]) => { const p = placeAt(lat, lon); return p && !isSea(p) ? `a pass in ${p}` : "a pass"; };
+// Mountains it flew over: "the mountains of Switzerland"
+const overName = ([lat, lon]) => { const p = placeAt(lat, lon); return p && !isSea(p) ? `the mountains of ${p}` : "the mountains"; };
 
 // The scenic way: past the landmark it can see for least extra (and then
 // another), so long as the whole way is no more than SCENIC_MORE further.
@@ -254,6 +308,7 @@ const HOP_KM = 450, HOP_PART = 200, HOP_REST = HOUR, HOPS = 4, SEA_STEP = 25;
 function hopped(path) {
   const out = [...path];
   for (let i = 0, n = 0; i < out.length - 1 && n < HOPS;) {
+    if (out[i + 1].sail || (out[i][2] === "b" && out[i + 1][2] === "b")) { i++; continue; }      // (by ship)
     const run = seaRun(out[i], out[i + 1]), isle = run && run.km > HOP_KM ? restIsland(out[i], out[i + 1], run) : null;
     if (!isle) { i++; continue; }
     out.splice(i + 1, 0, isle); n++;                                 // (and look again at the way to it)
@@ -291,23 +346,56 @@ function restIsland(p, q, run) {
 }
 const safeName = (lat, lon) => { try { return placeName(lat, lon); } catch (_) { return null; } };
 
+// By ship: a stretch of open sea longer than SHIP_KM (an ocean, too long to hop
+// across) is crossed on a ship along the shipping lanes (_ships.js), from the
+// port that suits best near where the sea starts to one near where it ends. It
+// waits BOARD for its ship, then each point of the lane is reached at the
+// ship's pace (`sail` ms, in place of flying), and it flies on from the port.
+export const SHIP_KM = 1200;
+const BOARD = HOUR;
+function shipped(path) {
+  const out = [...path];
+  for (let i = 0; i < out.length - 1; i++) {
+    if (out[i + 1].sail) continue;
+    const run = seaRun(out[i], out[i + 1]); if (!run || run.km <= SHIP_KM) continue;
+    let best = null;
+    for (const [A, da] of portsNear(run.a[0], run.a[1])) for (const [B, db] of portsNear(run.b[0], run.b[1])) {
+      if (A === B) continue;
+      const l = lane(A[0], B[0]); if (!l) continue;
+      const score = da + db + l.km * (SPEED_KMH / SHIP_KMH);           // (the time it takes: a ship is slower than flying)
+      if (!best || score < best.score) best = { A, B, l, score };
+    }
+    if (!best) continue;
+    const ns = best.l.nodes, pts = [Object.assign([ns[0][2], ns[0][3], "b", ns[0][1]], { rest: BOARD })];
+    for (let k = 1; k < ns.length; k++) pts.push(Object.assign([ns[k][2], ns[k][3], "b", k === ns.length - 1 ? ns[k][1] : null], { sail: Math.round((haversineKm(ns[k - 1][2], ns[k - 1][3], ns[k][2], ns[k][3]) / SHIP_KMH) * HOUR) }));
+    out.splice(i + 1, 0, ...pts); i += pts.length;
+  }
+  return out;
+}
+// How far it flies (km): the way, but not the stretches it's carried by ship
+export function flownKm(path) {
+  let k = 0;
+  for (let i = 0; i < path.length - 1; i++) if (!path[i + 1].sail) k += haversineKm(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]);
+  return k;
+}
+
 // The planned points with their times: flying `flight` ms (resting where a
 // point asks to, `rest` ms) from `start` at `from`. Returns legs and when it lands.
 export function timeWay(from, way, to, start, flight) {
   const pts = [from, ...way, to], seg = [];
   for (let i = 0; i < pts.length - 1; i++) seg.push(haversineKm(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]));
-  const total = seg.reduce((a, b) => a + b, 0) || 1;
+  const total = seg.reduce((a, b, i) => a + (way[i]?.sail ? 0 : b), 0) || 1;      // (by ship: its own pace, not the flight's)
   const legs = []; let t = start;
   way.forEach((q, i) => {
-    t += (flight * seg[i]) / total;
+    t += q.sail ? q.sail : (flight * seg[i]) / total;
     const leg = [round5(q[0]), round5(q[1]), Math.round(t), q[2] || "w", ...(q[3] || q[4] ? [q[3] ?? null] : []), ...(q[4] ? [q[4]] : [])];   // ([4]: its name; [5]: more, for the map)
     legs.push(leg);
     if (q.rest) { t += q.rest; legs.push([leg[0], leg[1], Math.round(t), leg[3], ...(q[3] ? [q[3]] : [])]); }
   });
   return { legs, land: Math.round(t + (flight * seg[seg.length - 1]) / total) };
 }
-// how long it rests along the way, all told
-export const restOf = (way) => way.reduce((a, q) => a + (q.rest || 0), 0);
+// how long it rests along the way, all told (and sails, by ship: not flying either)
+export const restOf = (way) => way.reduce((a, q) => a + (q.rest || 0) + (q.sail || 0), 0);
 
 // Pigeon Death's odds on a way (with Pigeon Death on): 1 in 100 for an ordinary
 // flight; more for a long stretch of open sea with nowhere to rest (half as
@@ -323,6 +411,7 @@ export function riskOf(path, storms = 0, style = null) {
   for (let i = 0; i < path.length - 1; i++) {
     const a = path[i], b = path[i + 1], d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(1, Math.ceil(d / RISK_STEP));
     if (i > 0 && (a.rest || a[2] === "i" || a[2] === "t" || a[2] === "h")) run = 0;              // (it rested there)
+    if (b.sail) { run = 0; continue; }                                                          // (on a ship: safe)
     for (let k = 0; k < n; k++) { const q = gcPoint(a[0], a[1], b[0], b[1], (k + 0.5) / n); if (isSea(placeAt(q[0], q[1]))) { run += d / n; sea = Math.max(sea, run); } else run = 0; }
   }
   const near = (lat, lon, r) => path.some((q, i) => i < path.length - 1 && [0, 0.25, 0.5, 0.75, 1].some((f) => { const x = gcPoint(q[0], q[1], path[i + 1][0], path[i + 1][1], f); return haversineKm(x[0], x[1], lat, lon) <= r; }));
@@ -347,6 +436,7 @@ export function tire(from, way, to, kmh, { every, rest }) {
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1], seg = hours(a, b);
     if (i > 0) { out.push(pts[i]); if (pts[i].rest) flown = 0; }
+    if (b.sail) { flown = 0; continue; }                                 // (on a ship: resting all the way)
     let done = 0;                                            // how far along this stretch (ms of flying)
     while (flown + (seg - done) > every) {
       let at = done + (every - flown), spot = null;

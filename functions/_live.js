@@ -18,13 +18,18 @@
    storms on the way on, it shelters there until the first hour it could
    leave and meet none (up to MAX_HOLD); a safe pigeon in the air over land,
    with storms ahead and no way around them, comes down where it is and
-   does the same. Kept as a rest ("h", where), and told.
+   does the same, and so does any pigeon with storms close ahead (SHELTER_KM)
+   that it can't get around. Kept as a rest ("h", where), and told.
+   A turn for a better wind must save LIVE_GAIN and TURN_MIN at least, and
+   twice that soon after the last one, so it doesn't swing back and forth as
+   the forecast changes its mind. A pigeon with a voyage by ship still ahead
+   keeps its plan (the ship sails on whatever the weather).
    Run from the tick; every flight checked in one go shares one look at the
    sky (the same squares of it as ever: never who's flying). */
-import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT, chunks } from "./_pigeon.js";
+import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT, chunks, haversineKm } from "./_pigeon.js";
 import { skyAlong, skyAtPoints, pointsFor } from "./_weather.js";
 import { stopsOf, posAt, renear } from "./_moments.js";
-import { squeeze, passed, pathKm, round5, round2, latticeOf, bestWay, finish, timeWay, restOf, hopsFor, tire, tiredOf } from "./_route.js";
+import { squeeze, passed, pathKm, round5, round2, latticeOf, bestWay, finish, timeWay, restOf, hopsFor, tire, tiredOf, flownKm, ceilingFor } from "./_route.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -35,8 +40,12 @@ const LIVE_POINTS = 500;                          // points of sky asked about i
 const LIVE_STEP = 0.03, LIVE_MS = 5 * MIN;        // a change smaller than this share of what's left (and this long) isn't made
 const WX_TELL = 15 * MIN;                         // later by this much more: told again
 const LIVE_GAIN = 0.05, TURN_EVERY = HOUR, MAX_HOLD = 12 * HOUR;        // a better way must be this much quicker; and no more than one weather turn an hour
+const TURN_MIN = 15 * MIN, TURN_CALM = 3 * HOUR;  // and save this long at least; twice as much within TURN_CALM of the last turn for the wind
+const SHELTER_KM = 150;                           // storms this close ahead, and no way around: any pigeon over land comes down
 // the latest it may land: its longest flight, and a day on top for resting and sheltering on the way
-const latestOf = (r) => r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1) / (r.risky ? RISKY_SPEED : 1) + DAY;
+// (and any time by ship: a voyage isn't flying)
+const sailOf = (r) => { const b = legsOf(r).filter((l) => l[3] === "b"); return b.length > 1 ? b.at(-1)[2] - b[0][2] : 0; };
+const latestOf = (r) => r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1) / (r.risky ? RISKY_SPEED : 1) + DAY + sailOf(r);
 const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
 const kmhOf = (r) => SPEED_KMH * (PIGEONS[r.pigeon]?.speed ?? 1) * (r.risky ? RISKY_SPEED : 1);
 const legsOf = (r) => { try { return r.legs ? JSON.parse(r.legs) : []; } catch (_) { return []; } };
@@ -79,6 +88,8 @@ export async function liveTick(env, D, t) {
   for (const x of list) {
     if (!x.group && kms.has(x.r.bird)) x.tired = tiredOf(kms.get(x.r.bird));
     const legs = legsOf(x.r), stops = stopsOf(x.r), last = legs.filter((l) => l[3] === "r").at(-1);
+    if (legs.some((l) => l[3] === "b" && l[2] > t)) { await mark(D, x, t); continue; }              // a voyage still ahead: it keeps its plan
+    x.lastTurn = last || null;
     Object.assign(x, { legs, rest: restLeft(legs, t), kmh: kmhOf(x.r), path: aheadOf(stops, legs, t) });
     const ri = legs.findIndex((l, i) => restPair(l, legs[i + 1] || []) && l[2] <= t && legs[i + 1][2] > t);
     x.restAt = ri < 0 ? null : ri;
@@ -101,7 +112,9 @@ export async function liveTick(env, D, t) {
       if (stormy && x.restAt != null) ev(await shelter(D, t, x, w, sky));                  // on an island: wait them out
       const better = did || !grid ? null : pick(x, w, (i, when) => grid.at(x.latAt + i, when), t);
       if (better) ev(await turnFor(D, t, x, better, w));                                 // a way around (or a better wind)
-      if (!did && stormy && x.r.style === "safe" && x.restAt == null && !isSea(placeAt(x.path[0][0], x.path[0][1]))) ev(await shelter(D, t, x, w, sky));   // safe, over land: come down
+      // over land with storms ahead and no way round: a safe pigeon comes down, and so does any with them close
+      const close = w?.storm && haversineKm(x.path[0][0], x.path[0][1], w.storm.lat, w.storm.lon) <= SHELTER_KM;
+      if (!did && stormy && (x.r.style === "safe" || close) && x.restAt == null && !isSea(placeAt(x.path[0][0], x.path[0][1]))) ev(await shelter(D, t, x, w, sky));
       if (!did) did = await retime(env, D, t, x, w);
     } catch (e) { console.error("pigeon live", e && e.message); }
     if (did) changed++;
@@ -113,20 +126,22 @@ const mark = (D, x, t) => (x.group
   ? D.prepare("UPDATE pg_gdeliv SET live_at = ? WHERE msg_id = ? AND user_id = ?").bind(t, x.r.msg_id, x.r.user_id)
   : D.prepare("UPDATE pg_msgs SET live_at = ? WHERE id = ?").bind(t, x.r.id)).run();
 // how long a way takes (hours) with its weather, and its rests
-const hoursOf = (path, w, rest, kmh) => pathKm(path) / (kmh * (w?.f || 1)) + rest / HOUR;
+const hoursOf = (path, w, rest, kmh) => flownKm(path) / (kmh * (w?.f || 1)) + rest / HOUR;
 // A better way from here, if there is one: { way: { p, rest }, w, why: "s" (around storms) or "w" (the wind) }.
 // The quickest way through the sky ahead (bestWay), through the passes and resting on islands as it would.
 function pick(x, w, skyAt, t) {
   if (!x.lat || !w) return null;
-  const found = bestWay(x.lat, skyAt, t, x.kmh, { wind: x.r.style !== "scenic" });
-  let p = finish(found.path, { hop: hopsFor(x.r.pigeon), style: x.r.style });
+  const hop = hopsFor(x.r.pigeon), found = bestWay(x.lat, skyAt, t, x.kmh, { wind: x.r.style !== "scenic", coast: hop && x.r.style !== "scenic" });
+  let p = finish(found.path, { hop, style: x.r.style, ceiling: ceilingFor(x.r.pigeon) });
   if (x.tired) p = [p[0], ...tire(p[0], p.slice(1, -1), p[p.length - 1], x.kmh * (found.w.f || 1), x.tired), p[p.length - 1]];
   const way = { p, rest: restOf(p.slice(1, -1)) };
   // storms in its way now: a way that keeps out of them (the straight line from here, if that does)
   if (w.storms > 0 && found.w.storms < w.storms) return { way, w: found.w, why: "s" };
   if (w.storms > 0 || found.why !== "w") return null;
-  // a better wind: only if clearly quicker than the way it's going
-  return hoursOf(p, found.w, way.rest, x.kmh) < hoursOf(x.path, w, x.rest, x.kmh) * (1 - LIVE_GAIN) ? { way, w: found.w, why: "w" } : null;
+  // a better wind: only if clearly quicker than the way it's going (more so just after turning for one)
+  const now = hoursOf(x.path, w, x.rest, x.kmh), then = hoursOf(p, found.w, way.rest, x.kmh);
+  const soon = x.lastTurn && x.lastTurn[4] === "w" && t - x.lastTurn[2] < TURN_CALM ? 2 : 1;
+  return now - then > soon * Math.max(now * LIVE_GAIN, TURN_MIN / HOUR) ? { way, w: found.w, why: "w" } : null;
 }
 // It changes course for the weather: from where it is now, the better way.
 async function turnFor(D, t, x, better, wasW) {
@@ -135,7 +150,7 @@ async function turnFor(D, t, x, better, wasW) {
   // the bends it makes are for this reason; passes and islands stay what they are
   const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" || q[2] === "w" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}));
   const latest = latestOf(r);
-  const flying = Math.round((pathKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
+  const flying = Math.round((flownKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
   const done = passed(x.legs, t);
   // the turn keeps the way it was going (and where the storms were), for the map
   const was = x.path.slice(1).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]).slice(-12).map((q) => [round2(q[0]), round2(q[1])]);

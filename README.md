@@ -146,7 +146,11 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — 1.0.3
+## InFlight (/pigeon) — 1.0.4
+
+**1.0.4** (ships, coasts and surer times): standard pigeons cross oceans by
+ship and keep to coasts, fast ones fly over the mountains, finer wind-optimal
+planning, 15-minute showers, ensemble landing ranges and steadier turns.
 
 **1.0.3** (a fresh chat, and the Earth itself): Messages-style bubbles,
 magnetic storms, volcanoes and wildfires, the flight card as a story, flying
@@ -348,6 +352,38 @@ planned before it leaves, turned for in the air, sheltered from on an island,
 drawn on the map (an ash cloud with grit falling, smoke with embers rising) and
 on the card ("Goes around volcanic ash over France"). If either source doesn't
 answer, pigeons fly as if all were calm. Credited in Account → Map & Weather Data.
+
+**Coasts, mountains and ships.** A standard pigeon keeps to the coast rather
+than cross open sea it has nowhere to rest on: the planner charges open sea
+more than land (`COAST_W`) and bends along the shore ("o", whose coast), so Rome
+to Barcelona goes round by Italy and France; a sea with an island part way over
+is still hopped. A turbo flies high enough to go over all but the high ranges,
+and a rocket over all but the very highest (`ceilingFor`): no pass, just "m",
+over the mountains. An ocean is too far to hop: a standard pigeon rides a ship
+along the main shipping lanes (`functions/_ships.js`, a network of ports and
+straits, canals and capes, checked against the coastline with
+`.tools/geo/lanes.mjs`), from the port that suits best to one across: an hour
+waiting for the ship, then each point of the lane at a ship's 40 km/h ("b"),
+safe from Pigeon Death, and on from the port. Lisbon to New York takes about
+six days. The card says "Boards a ship at Lisbon · Across the North Atlantic"
+and "At Sea"; the live weather leaves a voyage be; a friend who moves while it's
+at sea is flown to from where it comes ashore.
+
+**Wind-optimal routes.** The planner looks at a finer lattice (up to 13 stages
+of 13 points, two steps sideways a stage) and judges each stretch by the sky
+when the pigeon would really get there on that way, so a way can wait for the
+wind to turn or keep ahead of a storm; bends that hardly bend are smoothed out.
+A look in the air uses the coarser lattice, so more flights share one look.
+
+**Showers and how sure.** The forecast includes Open-Meteo's 15-minute rain and
+weather for the next two hours, so a shower just ahead is met (or missed) as it
+will be. Open-Meteo's ensemble forecast (the same model run many times) says how
+much the members disagree about the wind along the way: the "likely" landing
+range is the middle 80% of theirs (`spread`, kept with the pigeon), or the old
+estimate if it doesn't answer. In the air, a turn for a better wind must save
+15 minutes and 5% at least, twice that within three hours of the last, and any
+pigeon over land with storms within 150 km and no way round comes down to wait
+them out.
 
 **Pigeon Death's odds by the way.** With Pigeon Death on, a pigeon's chance
 of being lost depends on the way it takes (`riskOf` in `functions/_route.js`):

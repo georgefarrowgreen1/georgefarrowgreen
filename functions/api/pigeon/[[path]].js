@@ -1,5 +1,5 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
@@ -8,7 +8,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
-import { windsFor, windsAlong, forecastFor } from "../../_weather.js";
+import { windsFor, windsAlong, forecastFor, ensembleFor, spreadOf } from "../../_weather.js";
 import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
@@ -24,7 +24,7 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
-import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf } from "../../_route.js";
+import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -235,7 +235,7 @@ async function reroute(env, u, p, t, waitUntil) {
     }
     // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
     if (t < m.sent_at) {
-      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style }), rest = restOf(plan.way);
+      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon) }), rest = restOf(plan.way);
       const km = plan.km, flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m))) + rest;
       const off = Math.max(t, m.deliver_at - flight), deliver = off + flight;
       const way = plan.way.length ? JSON.stringify(timeWay([m.from_lat, m.from_lon], plan.way, [p.lat, p.lon], off, flight - rest).legs) : null;
@@ -248,15 +248,27 @@ async function reroute(env, u, p, t, waitUntil) {
     }
     const turned = turnsOf(legs).at(-1);                           // (planned bends and cheers aren't turns)
     if (turned && t - turned[2] < TURN_EVERY) continue;
-    const st = stopsOf(m), [pLat, pLon] = posAt(st, t);                // where it is right now, on the way it was going
-    const done = passed(legs, t), flown = pathKm([[m.from_lat, m.from_lon], ...done, [pLat, pLon]]);
-    const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style }), ahead = plan.km, rest = restOf(plan.way);
-    const speed = msgSpeed(m);
-    const latest = m.sent_at + MAX_FLIGHT / speed;
-    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest));
-    const km = flown + ahead;
-    legs.length = 0;
-    legs.push(...done, [round5(pLat), round5(pLon), t], ...timeWay([pLat, pLon], plan.way, [p.lat, p.lon], t, deliver - t - rest).legs);
+    const speed = msgSpeed(m), latest = m.sent_at + MAX_FLIGHT / speed;
+    // on its way by ship (waiting for it, or at sea): the ship sails on, and it turns from where it comes ashore
+    const ship = legs.filter((l) => l[3] === "b"), ashore = ship.at(-1);
+    let deliver, km;
+    if (ashore && ship[0][2] <= t && ashore[2] > t) {
+      const keep = legs.filter((l) => l[2] <= ashore[2]), was = pathKm([[ashore[0], ashore[1]], ...legs.filter((l) => l[2] > ashore[2]), [m.to_lat, m.to_lon]]);
+      const plan = await planRoute(env, { from: [ashore[0], ashore[1]], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon) }), rest = restOf(plan.way);
+      deliver = ashore[2] + (plan.km / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest;
+      km = m.km - was + plan.km;
+      legs.length = 0;
+      legs.push(...keep, ...timeWay([ashore[0], ashore[1]], plan.way, [p.lat, p.lon], ashore[2], deliver - ashore[2] - rest).legs);
+    } else {
+      const st = stopsOf(m), [pLat, pLon] = posAt(st, t);                // where it is right now, on the way it was going
+      const done = passed(legs, t), flown = pathKm([[m.from_lat, m.from_lon], ...done, [pLat, pLon]]);
+      const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon) }), ahead = plan.km, rest = restOf(plan.way);
+      const sails = plan.way.some((q) => q.sail);                          // (a voyage on the new way: days more, not a flight's)
+      deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest + (sails ? 7 * DAY : 0), t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest));
+      km = flown + ahead;
+      legs.length = 0;
+      legs.push(...done, [round5(pLat), round5(pLon), t], ...timeWay([pLat, pLon], plan.way, [p.lat, p.lon], t, deliver - t - rest).legs);
+    }
     // a doomed pigeon is still lost before it would land, now on its new course
     const lostAt = m.lost_at == null ? null : m.lost_at < deliver ? m.lost_at : t + (deliver - t) / 2;
     const r = await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
@@ -794,7 +806,7 @@ async function sendMessage({ request, env, waitUntil }) {
     // to each stretch); one booked to land later, around the forecast for then
     // (when that's not too far off to know)
     const ahead = landAt != null && hasTo ? Math.max(t, landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed)) : t;
-    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: ahead - t < FORECAST_AHEAD, hop: hopsFor(kind), style, start: ahead, kmh: SPEED_KMH * speed }) : null;
+    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: ahead - t < FORECAST_AHEAD, hop: hopsFor(kind), style, start: ahead, kmh: SPEED_KMH * speed, ceiling: ceilingFor(kind) }) : null;
     km = plan ? plan.km : DEFAULT_KM; w = plan ? plan.w : { wind: null, f: 1 }; way = plan ? plan.way : [];
     if (plan && carrier) way = tire([u.lat, u.lon], way, [r.lat, r.lon], SPEED_KMH * speed * (w.f || 1), tiredOf(carrier.km));
     const rest = restOf(way);
@@ -805,6 +817,8 @@ async function sendMessage({ request, env, waitUntil }) {
   if (off < t) throw new HttpError(409, `That’s too soon: a ${kind} pigeon takes ${waitText(flight)} to get there.`);
   const deliver = off + flight;
   const planned = way.length ? timeWay([u.lat, u.lon], way, [r.lat, r.lon], off, flight - restOf(way)).legs : null;    // the way, with its times
+  // how sure that landing time is (the ensemble forecast along the way): only for one that leaves now
+  const spread = hasTo && !via && landAt == null ? spreadOf(await ensembleFor(env, [[u.lat, u.lon], ...way, [r.lat, r.lon]], flight / HOUR).catch(() => null), off, SPEED_KMH * speed) : null;
   const from = mystery ? "mystery" : PIGEONS[kind].max ? kind : null;      // the loft it leaves: a mystery one comes from its own
   if (from) {
     const p = mystery ? MYSTERY : PIGEONS[kind], l = loft(u, from, t);
@@ -822,13 +836,13 @@ async function sendMessage({ request, env, waitUntil }) {
   if (via && lostAt != null && lostAt >= via.at && lostAt < via.off) lostAt = via.off + (lostAt - via.at);   // never while resting with a friend
   try {
     await D.batch([claimId(D, id, "m", t), D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
-      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin, via, via_ct, via_at, via_off, via_place, legs, wx, wx_ms, wx_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      from_lat, from_lon, from_place, to_lat, to_lon, to_place, wind, wind_f, sched, skin, via, via_ct, via_at, via_off, via_place, legs, wx, wx_ms, wx_at, spread)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, swift, kind, risky, lostAt, km, off, deliver, photo ? (lostAt ?? deliver + PHOTO_TTL) : null,
         u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, await skinNow(D, u, t),
         via?.id ?? null, via?.ct ?? null, via?.at ?? null, via?.off ?? null, via?.place ?? null,
         // the map draws it resting there: two stops at the same spot
-        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : planned ? JSON.stringify(planned) : null, wx.wx, wx.ms, wx.reach == null ? null : off + wx.reach)]);
+        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : planned ? JSON.stringify(planned) : null, wx.wx, wx.ms, wx.reach == null ? null : off + wx.reach, spread)]);
   } catch (e) {
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
     throw e;
@@ -888,13 +902,15 @@ async function routePlan({ request, env }) {
   // every kind of pigeon, each way, so every time How It Flies shows is the planned one
   // (the same sky each time: the forecast is kept a while)
   const kinds = {};
+  // how sure each landing time is: one look at the ensemble along the straight way, long enough for the slowest
+  const ens = await ensembleFor(env, [from, to], flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), PIGEONS.standard.speed) / HOUR * 1.5).catch(() => null);
   for (const k of ["standard", "swift", "turbo", "rocket"]) {
     const speed = PIGEONS[k].speed * (u.risky ? RISKY_SPEED : 1), plans = (kinds[k] = {});
     for (const style of STYLES) {
-      const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed });
+      const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed, ceiling: ceilingFor(k) });
       const way = carrier ? tire(from, plan.way, to, SPEED_KMH * speed * (plan.w.f || 1), tiredOf(carrier.km)) : plan.way;
       const rest = restOf(way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
-      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs, risk: riskOf([from, ...way, to], plan.w.storms || 0, styleOf(style)) };
+      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs, risk: riskOf([from, ...way, to], plan.w.storms || 0, styleOf(style)), spread: spreadOf(ens, t, SPEED_KMH * speed) };
     }
   }
   return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans: kinds[kind] || kinds.standard, kinds });

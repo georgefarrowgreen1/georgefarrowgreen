@@ -12,11 +12,11 @@ import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HttpError, json, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
+  UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsAlong } from "./_weather.js";
-import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf, riskOf } from "./_route.js";
+import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf, riskOf, ceilingFor } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
@@ -336,7 +336,7 @@ async function send({ request, env, waitUntil }) {
   // between people who aren't friends: coarse places at both ends (the stored destination too)
   const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, place: null, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }));
   // each one's way (passes; islands, for a standard pigeon), then the weather each will meet along it, all in one look
-  const plans = new Map(await Promise.all(to.filter((r) => r.lat != null).map(async (r) => [r.id, await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style })])));
+  const plans = new Map(await Promise.all(to.filter((r) => r.lat != null).map(async (r) => [r.id, await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style, ceiling: ceilingFor(kind) })])));
   const placed = to.filter((r) => plans.has(r.id));
   const winds = await windsAlong(env, placed.map((r) => ({ path: [r.from, ...plans.get(r.id).way, [r.lat, r.lon]].map((q) => [q[0], q[1]]), start: t, kmh: SPEED_KMH * speed })));
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));
@@ -459,14 +459,26 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     if (haversineKm(d.to_lat, d.to_lon, pp.lat, pp.lon) <= REROUTE_KM) continue;
     const turned = turnsOf(legs).at(-1);                             // (planned bends and cheers aren't turns)
     if (turned && t - turned[2] < TURN_EVERY) continue;
-    const [pLat, pLon] = posAt(stopsOf(d), t);                          // where it is now, on the way it was going
-    const done = passed(legs, t), flown = pathKm([[d.from_lat, d.from_lon], ...done, [pLat, pLon]]);
-    const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false, hop: hopsFor(d.pigeon), style: d.style }), ahead = plan.km, rest = restOf(plan.way);
-    const speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
-    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed, t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed + rest));
-    const km = flown + ahead;
-    legs.length = 0;
-    legs.push(...done, [round5(pLat), round5(pLon), t], ...timeWay([pLat, pLon], plan.way, [pp.lat, pp.lon], t, deliver - t - rest).legs);
+    const speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1), ship = legs.filter((l) => l[3] === "b"), ashore = ship.at(-1);
+    let deliver, km;
+    if (ashore && ship[0][2] <= t && ashore[2] > t) {
+      // on its way by ship: the ship sails on, and it turns from where it comes ashore
+      const keep = legs.filter((l) => l[2] <= ashore[2]), was = pathKm([[ashore[0], ashore[1]], ...legs.filter((l) => l[2] > ashore[2]), [d.to_lat, d.to_lon]]);
+      const plan = await planRoute(env, { from: [ashore[0], ashore[1]], to: [pp.lat, pp.lon], weather: false, hop: hopsFor(d.pigeon), style: d.style, ceiling: ceilingFor(d.pigeon) }), rest = restOf(plan.way);
+      deliver = ashore[2] + (plan.km / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed + rest;
+      km = d.km - was + plan.km;
+      legs.length = 0;
+      legs.push(...keep, ...timeWay([ashore[0], ashore[1]], plan.way, [pp.lat, pp.lon], ashore[2], deliver - ashore[2] - rest).legs);
+    } else {
+      const [pLat, pLon] = posAt(stopsOf(d), t);                          // where it is now, on the way it was going
+      const done = passed(legs, t), flown = pathKm([[d.from_lat, d.from_lon], ...done, [pLat, pLon]]);
+      const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false, hop: hopsFor(d.pigeon), style: d.style, ceiling: ceilingFor(d.pigeon) }), ahead = plan.km, rest = restOf(plan.way);
+      const sails = plan.way.some((q) => q.sail);                          // (a voyage on the new way: days more, not a flight's)
+      deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed + (sails ? 7 * DAY : 0), t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed + rest));
+      km = flown + ahead;
+      legs.length = 0;
+      legs.push(...done, [round5(pLat), round5(pLon), t], ...timeWay([pLat, pLon], plan.way, [pp.lat, pp.lon], t, deliver - t - rest).legs);
+    }
     const lostAt = d.lost_at == null ? null : d.lost_at < deliver ? d.lost_at : t + (deliver - t) / 2;
     const r = await D.prepare(`UPDATE pg_gdeliv SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ? WHERE msg_id = ? AND user_id = ? AND deliver_at > ?`)
       .bind(pp.lat, pp.lon, pp.place, deliver, km, JSON.stringify(legs), lostAt, d.msg_id, u.id, t).run();

@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.3";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.0.4";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -265,6 +265,7 @@ const I = {
   mic: ico(`<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>`),
   play: `<svg viewBox="0 0 24 24" class="ico fillico" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>`,
   pause: `<svg viewBox="0 0 24 24" class="ico fillico" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>`,
+  ship: ico(`<path d="M3.5 14.5h17l-2 5h-13z"/><path d="M6.5 14.5V10h11v4.5"/><path d="M10 10V6.5h4V10"/>`),
   volcano: ico(`<path d="M3 20.5h18l-5.5-9h-7z"/><path d="M8.5 11.5 10 9h4l1.5 2.5"/><path d="M12 6.5V3.5M9.2 6 8 3.8M14.8 6 16 3.8"/>`),
   fire: ico(`<path d="M12 21.5c-3.6 0-6.2-2.5-6.2-5.8 0-3.3 2.7-5.2 3.7-8.6.5 2 1.5 3.1 2.5 3.7.3-2.8 1.7-5 3.7-6.8-.2 3.5 2.5 5.8 2.5 9.7 0 3.3-2.6 5.8-6.2 5.8z"/>`),
   compass: ico(`<circle cx="12" cy="12" r="9"/><path d="m15.6 8.4-2.3 4.9-4.9 2.3 2.3-4.9z"/>`),
@@ -394,10 +395,21 @@ const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // What its planned way is doing about now: going around storms, riding the wind,
 // resting on an island, through a pass, past a landmark (see functions/_route.js)
 // resting on an island ("i"), or sheltering from storms ("h"), right now: [where, until when, which], or null
+// (and waiting for a ship, "b"; or at sea on it, "sail": [the sea, when it's ashore, "sail", the port])
 function restingOn(m, t = now()) {
   const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c" && l[3] !== "f");
-  const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h" || l[3] === "t") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
-  return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || (legs[i][3] === "h" ? "" : "an island"), legs[i + 1][2], legs[i][3], SEVERE_WORD[legs[i][5]?.k] || "storms"];
+  if (m.lost || t >= m.deliverAt) return null;
+  const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h" || l[3] === "t" || l[3] === "b") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && legs[k + 1][1] === l[1] && t >= l[2] && t < legs[k + 1][2]);
+  if (i >= 0) return [legs[i][4] || (legs[i][3] === "h" ? "" : legs[i][3] === "b" ? "the port" : "an island"), legs[i + 1][2], legs[i][3], SEVERE_WORD[legs[i][5]?.k] || "storms"];
+  const sh = shipOf(legs);
+  return sh && t >= sh.off && t < sh.ashore ? [sh.sea, sh.ashore, "sail", sh.to] : null;
+}
+// A voyage by ship (a standard pigeon across an ocean): where it boards, when the ship
+// sails, the sea it crosses, where and when it comes ashore; null if it doesn't
+function shipOf(legs) {
+  const b = (legs || []).filter((l) => l[3] === "b"); if (b.length < 3) return null;
+  const mid = b[Math.floor(b.length / 2)], last = b.at(-1);
+  return { from: b[0][4] || "port", board: b[0][2], off: b[1][2], to: last[4] || "port", ashore: last[2], sea: overWhere(mid[1], mid[0]) };
 }
 // The way a pigeon would go if it left now (How It Flies), from the server's
 // planner: { key, at, data } for one friend (every kind of pigeon, each way), kept 10 minutes.
@@ -434,6 +446,7 @@ function wayWords(legs) {
   const said = [], sw = severeOf(legs);
   for (const l of legs || []) {
     const n = l[4], say = { s: `around ${sw}${n ? ` over ${n}` : ""}`, w: "riding the wind", i: `resting on ${n || "an island"}`, v: `past ${n || "a landmark"}`,
+      o: `along the coast${n ? ` of ${n}` : ""}`, m: `over ${n || "the mountains"}`, b: n ? `by ship from ${n}` : "",
       p: `through ${!n ? "a pass" : /^a |^[A-Z][\w’']*['’]s /.test(n) ? n : `the ${n}`}` }[l[3]];
     if (say && !said.includes(say)) said.push(say);
   }
@@ -444,6 +457,8 @@ function routeNote(m) {
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
   const rest = restingOn(m, t);
   if (rest) return rest[2] === "h" ? { icon: I.storm, text: `Sheltering${rest[0] ? ` ${rest[0]}` : ` from ${rest[3]}`} until about ${fmtTime(rest[1])}` }
+    : rest[2] === "b" ? { icon: I.ship, text: `Waiting for a ship at ${rest[0]}, sailing ${fmtShort(rest[1])}` }
+    : rest[2] === "sail" ? { icon: I.ship, text: `On a ship across ${rest[0]}, ashore at ${rest[3]} about ${fmtShort(rest[1])}` }
     : rest[2] === "t" ? { icon: I.bird, text: `Catching its breath ${rest[0] || "on the way"} until ${fmtTime(rest[1])}` }
     : { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
   const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
@@ -459,6 +474,9 @@ function routeNote(m) {
     t: [I.bird, ahead ? `A breather ${name || "on the way"} coming up` : `Caught its breath ${name || "on the way"}`],
     p: [I.map, `${ahead ? "Through" : "Came through"} ${!name ? "the pass" : /^a |^[A-Z][\w’']*['’]s /.test(name) ? name : `the ${name}`}`],
     v: [I.loc, ahead ? `The scenic way, past ${name || "a landmark"}` : `Came the scenic way, past ${name || "a landmark"}`],
+    o: [I.waves, ahead ? `Following the coast${name ? ` of ${name}` : ""}` : `Followed the coast${name ? ` of ${name}` : ""}`],
+    m: [I.map, ahead ? `Flying over ${name || "the mountains"}` : `Flew over ${name || "the mountains"}`],
+    b: [I.ship, ahead ? "A voyage by ship ahead" : "Came by ship"],
   }[l[3]];
   return say ? { icon: say[0], text: say[1] } : null;
 }
@@ -709,7 +727,7 @@ function drawMap(cv, m, cardH) {
   const base = cv._base || (cv._base = document.createElement("canvas"));
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
-  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : restingOn(b.r)?.[2] === "sail" ? "sail" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   // the wind it met, for the streaks: each route still being flown, measured along its length
   cv._snap = { ox, oy, k, globe: false }; cv._seaCol = col("--sea");
   cv._fwd = (lon, lat) => { const L = lon + 360 * Math.round((cx - lon) / 360); return [X(L), Y(mercY(lat))]; };
@@ -807,11 +825,13 @@ function clockIn(ts, tz) {
 // and the more the weather has to do with the flight (its wind, the time the
 // weather has cost or saved, the storms and wind it's going around), narrowing
 // as it gets closer. [earliest, latest] (to 5 minutes), or null once it's within ~10.
-function landRange(at, from, { wind = null, delay = 0, legs = [] } = {}) {
+// With `sure` (how much the ensemble forecast's members disagree about the
+// flight's length, as a share of it), the range is the middle 80% of theirs.
+function landRange(at, from, { wind = null, delay = 0, legs = [], sure = null } = {}) {
   const R = Math.max(0, at - now()), H = R / HOUR;
   const wx = Math.min(0.4, Math.abs(Math.log(Math.max(0.4, (80 + (wind || 0)) / 80))) + (delay ? Math.abs(delay) / Math.max(HOUR, at - from) : 0)
     + 0.04 * (legs || []).filter((l) => /^[srhw]$/.test(l[3] || "")).length);
-  const spread = Math.min(3 * HOUR, R * (0.01 + 0.15 * wx * Math.min(1, H / 48)));
+  const spread = Math.min(3 * HOUR, sure != null ? R * 2.56 * sure : R * (0.01 + 0.15 * wx * Math.min(1, H / 48)));
   if (spread < 10 * MIN) return null;
   const five = (x) => Math.round(x / (5 * MIN)) * 5 * MIN;
   return [five(at - spread / 2), five(at + spread / 2)];
@@ -823,7 +843,7 @@ function landsLine(m) {
   const mine = m.from === S.me.id, other = friend(mine ? m.to : m.from), at = m.deliverAt, you = clockIn(at, MY_TZ);
   const them = other?.tz && other.tz !== MY_TZ ? clockIn(at, other.tz) : null;
   // (in the air, a range when it's not yet sure: "Lands 21:10–21:40")
-  const range = m.flying && !m.lost ? landRange(at, m.sentAt, { wind: m.wind, delay: m.delay, legs: m.legs }) : null;
+  const range = m.flying && !m.lost ? landRange(at, m.sentAt, { wind: m.wind, delay: m.delay, legs: m.legs, sure: m.spread }) : null;
   if (range) return `Lands ${rangeText(range)}${them && them !== you ? ` · about ${them} ${esc(first(other.name))}’s time` : ""}`;
   if (!them || them === you) return `Lands ${you}`;
   return mine ? `Lands ${them} ${esc(first(other.name))}’s time · ${you} yours` : `Lands ${you} · ${them} for ${esc(first(other.name))}`;
@@ -1235,7 +1255,15 @@ function drawBirds(cv, ts, xf) {
     const bob = flying && !STILL.matches ? Math.sin((ts / 1000) * hz * 2 * Math.PI + (r.deliverAt % 997) - 1.2) * 1.2 : 0;
     const flip = dx > 0 ? -1 : 1;                                 // the icon faces left; turn it the way it's flying
     const tilt = flying ? Math.max(-0.35, Math.min(0.35, Math.atan2(dy, Math.abs(dx) || 1))) * -flip : 0;   // nose up or down with its course
-    g.save(); g.translate(px, py + bob); g.rotate(-tilt); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
+    // at sea on a ship: the ship under it, rocking a little
+    if (phase === "sail") {
+      const rock = STILL.matches ? 0 : Math.sin(ts / 700 + (r.deliverAt % 97)) * 0.06;
+      g.save(); g.translate(px, py + 13); g.rotate(rock); g.fillStyle = "#3a3f4a"; g.strokeStyle = "#fff"; g.lineWidth = 2; g.lineJoin = "round";
+      g.beginPath(); g.moveTo(-17, -4); g.lineTo(17, -4); g.lineTo(12, 5); g.lineTo(-12, 5); g.closePath(); g.stroke(); g.fill();
+      g.fillStyle = "#e14b3b"; g.fillRect(-9, -9, 6, 5); g.fillStyle = "#3d9bff"; g.fillRect(-2, -9, 6, 5); g.fillStyle = "#f2b33d"; g.fillRect(5, -9, 6, 5);   // (its containers)
+      g.restore();
+    }
+    g.save(); g.translate(px, py + bob - (phase === "sail" ? 10 : 0)); g.rotate(-tilt); g.scale(1.6 * flip, 1.6); g.translate(-12, -11);
     const bird = birdAt(w);
     g.lineWidth = r.skin && SKINS[r.skin] ? 4 : 3; g.strokeStyle = SKINS[r.skin]?.ring || "#fff"; g.stroke(bird); g.fillStyle = color; g.fill(bird);   // the pigeon in its colour (grey where it was lost)
     g.restore();
@@ -1425,7 +1453,7 @@ function drawGlobe(cv, m, cardH, fast) {
   const base = cv._base || (cv._base = document.createElement("canvas"));
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
-  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : restingOn(b.r)?.[2] === "sail" ? "sail" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   cv._snap = { globe: true, lon: lon0, lat: lat0, R }; cv._seaCol = col("--bg") || col("--sea");
   cv._fwd = (lon, lat) => { const p = proj(lon, lat); return p[2] ? [p[0], p[1]] : null; };
   cv._inv = (x, y) => {
@@ -2127,6 +2155,14 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.0.4", at: Date.UTC(2026, 9, 15), title: "Ships, coasts and surer times", items: [
+    ["ship", "teal", "Across oceans by ship", "A standard pigeon can’t fly an ocean, so it rides a ship along the real shipping lanes, then flies on from the port."],
+    ["waves", "blue", "Along the coast", "Standard pigeons keep to the coast rather than cross open sea with nowhere to rest."],
+    ["map", "green", "Over the mountains", "Turbo and rocket pigeons fly high enough to go straight over all but the highest ranges."],
+    ["wind", "indigo", "Cleverer with the wind", "Routes are planned on a finer grid, with the wind as it will be when the pigeon gets there."],
+    ["rain", "orange", "Showers, and steadier turns", "Showers in the next two hours are planned for, pigeons don’t swing back and forth between routes, and any pigeon over land waits out storms close ahead."],
+    ["clock", "pink", "Surer landing times", "The likely landing time comes from how much many forecasts agree about the wind."],
+  ] },
   { v: "1.0.3", at: Date.UTC(2026, 9, 15), title: "A fresh chat, and the Earth itself", items: [
     ["bubble", "blue", "Chats that feel like Messages", "Tails on bubbles, the time over each stretch of a chat, Read under your latest, and big emoji. Tap a message for when it was sent, landed and read."],
     ["volcano", "red", "Volcanoes, wildfires and magnetic storms", "Pigeons fly around volcanic ash and wildfire smoke, and wander a little in magnetic storms, from live NASA and NOAA data."],
@@ -4827,7 +4863,7 @@ function drawSheet(refresh) {
       const big = !kind ? "No pigeon free" : kind === "mystery" ? "Who knows when?" : g ? landHint(c, kind) : `Lands ${atTime(landAt)}`;
       const to = g ? `to ${esc(g.name)} · ${others(g).length + 1} people` : `to ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(plan?.km ?? chatKm(f))}` : ""}`;
       const adv = !g && kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null, wxNow = !g && S.wxPlan.get(f.id)?.d?.now;
-      const sure = landAt ? landRange(landAt, now(), { wind: plan?.wind, legs: plan?.legs }) : null;          // (how sure that is)
+      const sure = landAt ? landRange(landAt, now(), { wind: plan?.wind, legs: plan?.legs, sure: plan?.spread }) : null;          // (how sure that is)
       const wx = adv?.early ? ["early", I.wind, `${fmtDur(adv.early)} early on a tailwind`] : adv?.late ? ["late", I[(adv.wx && WX[adv.wx.k]?.[1]) || "storm"], `${fmtDur(adv.late)} late: ${adv.wx && WX[adv.wx.k] ? WX[adv.wx.k][0] : "rough weather"}`]
         : wxNow ? ["clear", I.sun, "Clear skies"] : null;
       const hero = `<div class="flyhero">${kind ? pg(kind, S.me.skin) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
@@ -5360,13 +5396,24 @@ function fcEvents(m, t) {
         : { at, until, icon: I.bird, tone: "teal", title: `${over ? "Rested" : done ? "Resting" : "Rests"} on ${n || "an island"}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` });
       i++; continue;
     }
+    // by ship: boarding (and the voyage), then coming ashore; the lane's own points aren't rows
+    if (tag === "b") {
+      if (once.has("b")) continue; once.add("b");
+      const sh = shipOf(legs); if (!sh) continue;
+      const sailing = t >= sh.off, ashore = t >= sh.ashore;
+      ev.push({ at: sh.board, until: sh.ashore, icon: I.ship, tone: "teal", title: `${ashore || sailing ? "Boarded" : done ? "Waiting for" : "Boards"} a ship at ${sh.from}`, sub: `Across ${sh.sea} · ${fmtDur(sh.ashore - sh.off)} at sea` });
+      ev.push({ at: sh.ashore, icon: I.ship, tone: "teal", title: `${ashore ? "Came" : "Comes"} ashore at ${sh.to}`, sub: "And flies on from there" });
+      continue;
+    }
     // storms and wind once each: the first place it meets them (it may bend around them, or ride the wind, several times)
-    if (tag === "s" || tag === "w") { if (once.has(tag + (tag === "s" ? done : ""))) continue; once.add(tag + (tag === "s" ? done : "")); }
+    if (tag === "s" || tag === "w" || tag === "o") { if (once.has(tag + (tag === "s" ? done : ""))) continue; once.add(tag + (tag === "s" ? done : "")); }
     const say = {
       s: [severeIcon(severeKOf(legs)), "warn", `${done ? "Went" : "Goes"} around ${severeOf(legs)}${n ? ` over ${n}` : ""}`, ""],
       w: [I.wind, "green", done ? "Rode the wind" : "Rides the wind", "A longer way, but quicker"],
       p: [I.map, "", `${done ? "Came through" : "Through"} ${passName(n)}`, "Over the mountains"],
       v: [I.loc, "teal", `${done ? "Flew past" : "Past"} ${n || "a landmark"}`, "For its postmark"],
+      o: [I.waves, "teal", `${done ? "Followed" : "Follows"} the coast${n ? ` of ${n}` : ""}`, "Over land, rather than open sea"],
+      m: [I.map, "", `${done ? "Flew" : "Flies"} over ${n || "the mountains"}`, "High enough not to need a pass"],
       r: [n === "s" ? severeIcon(l[5]?.k) : I.wind, "warn", n === "s" ? `Turned to keep clear of ${SEVERE_WORD[l[5]?.k] || "storms"}` : "Turned to ride the wind", "Changed course in the air"],
     }[tag];
     if (say) ev.push({ at, tag, icon: say[0], tone: say[1], title: say[2], sub: say[3] });
@@ -5422,7 +5469,7 @@ function flightCard(card, m) {
     html = `<span class="fcpeek"><span class="fccoin">${coin}</span><span class="fct"><span class="big">${big}${!m.lost && !landed ? `<small> · ${lands}</small>` : ""}</span><span class="fcs">${sub}</span></span></span>
       <span class="fcbar k-${k}${m.lost ? " lost" : ""}"><i></i></span>`;
   } else {
-    const pill = m.lost ? "" : landed ? ["ok", `${I.check}Landed`] : resting ? (resting[2] === "h" ? ["warn", "Sheltering"] : ["teal", "Resting"])
+    const pill = m.lost ? "" : landed ? ["ok", `${I.check}Landed`] : resting ? (resting[2] === "h" ? ["warn", "Sheltering"] : resting[2] === "b" ? ["teal", "Waiting for a Ship"] : resting[2] === "sail" ? ["teal", "At Sea"] : ["teal", "Resting"])
       : f.phase === "up" ? ["ok", "Taking Off"] : f.phase === "down" ? ["ok", "Landing"] : ["tint", "In Flight"];
     const head = m.lost ? `${from} → ${to}` : landed ? `in ${to} · ${esc(fmtShort(m.deliverAt))}` : `to ${to} · <span class="lands">${lands}</span>`;
     // the rows: took off, what happens on the way, now, lands
@@ -5434,7 +5481,7 @@ function flightCard(card, m) {
     else if (m.wind != null && !landed) chips.push(`<span class="fcchip wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>`);
     chips.push(`<span class="fcchip dim">${Math.round(f.frac * 100)}% of the way</span>`);
     // (only what it's doing now: a turn for the weather, or a rest; the rest of its way has rows of its own)
-    const said = note && /^(Rerouted|Sheltering|Resting on .* until)/.test(note.text);
+    const said = note && /^(Rerouted|Sheltering|Resting on .* until|Waiting for a ship|On a ship)/.test(note.text);
     const extra = `<span class="fcchips">${chips.join("")}</span>${said ? `<span class="waynote">${note.icon}${esc(note.text)}</span>` : ""}`;
     if (!m.lost && !landed) {
       const nr = rows.find((r) => r.now);

@@ -222,10 +222,22 @@ export async function forecastFor(env, routes, hours = 24) {
 }
 // One square's weather in hour h of its forecast
 const hourAt = (H, h) => H && h >= 0 && h < H.time.length ? Object.fromEntries(WIND_VARS.split(",").map((k) => [k, H[k]?.[h]])) : null;
+// The weather at a moment: its hour's, with the quarter-hour's rain and weather in it for
+// the next couple of hours (Open-Meteo's 15-minute forecast), so a shower that's passing
+// is met, or missed, as it will be
+const QUARTER = 15 * 60e3;
+function weatherAt(H, when) {
+  const w = hourAt(H, Math.max(0, Math.floor((when - H.time[0] * 1000) / HOUR)));
+  const Q = H.q15, q = Q?.time?.length ? Math.floor((when - Q.time[0] * 1000) / QUARTER) : -1;
+  if (!w || q < 0 || q >= Q.time.length) return w;
+  const code = Q.weather_code?.[q], rain = Q.precipitation?.[q];
+  return { ...w, ...(code != null ? { weather_code: code } : {}), ...(rain != null ? { precipitation: rain * 4 } : {}) };    // (a quarter's rain, as an hour's)
+}
 // Open-Meteo's forecast for some squares, hour by hour from this hour, `hours`
 // of it: a list matching `cells` (null if it didn't answer). Kept for everyone
 // for half an hour; asked a hundred squares at a time.
 const ASK_EACH = 100;
+const Q15_VARS = "precipitation,weather_code", Q15_N = 8;                 // the next two hours, a quarter at a time
 async function hourlyFor(env, cells, hours) {
   const h0 = Math.floor(Date.now() / HOUR) * HOUR;
   const cache = typeof caches !== "undefined" && !env.WEATHER_URL ? caches.default : null;
@@ -237,10 +249,11 @@ async function hourlyFor(env, cells, hours) {
       const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
       u.searchParams.set("latitude", part.map((p) => p.lat).join(",")); u.searchParams.set("longitude", part.map((p) => p.lon).join(","));
       u.searchParams.set("hourly", WIND_VARS); u.searchParams.set("forecast_hours", String(hours));
+      u.searchParams.set("minutely_15", Q15_VARS); u.searchParams.set("forecast_minutely_15", String(Q15_N));
       u.searchParams.set("timeformat", "unixtime"); u.searchParams.set("wind_speed_unit", "kmh");
       const res = await fetch(u, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json" } });
       if (!res.ok) return null;
-      const d = await res.json(); list = (Array.isArray(d) ? d : [d]).map((x) => x?.hourly || null);
+      const d = await res.json(); list = (Array.isArray(d) ? d : [d]).map((x) => (x?.hourly ? { ...x.hourly, ...(x.minutely_15?.time ? { q15: x.minutely_15 } : {}) } : null));
     } catch (_) { return null; }
     if (list.length !== part.length || !list.every((x) => Array.isArray(x?.time))) return null;
     if (cache) await cache.put(ck, new Response(JSON.stringify(part.map((p, k) => [key(p), list[k]])), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=1800" } })).catch(() => {});
@@ -310,7 +323,7 @@ export async function skyAlong(env, paths, until) {
       const mine = pts.filter((p) => p.i === i).map((p) => ({ ...p, i: 0 }));
       const ws = mine.map((p) => {
         const H = byCell.get(key(p)), eta = start + ((p.f * kms[i]) / kmh) * HOUR;
-        return H ? withEarth(hourAt(H, Math.max(0, Math.floor((eta - H.time[0] * 1000) / HOUR))), E, p.lat, p.lon, eta) : null;
+        return H ? withEarth(weatherAt(H, eta), E, p.lat, p.lon, eta) : null;
       });
       return tally([paths[i]], mine, ws, [kmh >= JET_KMH])[0];
     },
@@ -327,7 +340,7 @@ export async function skyAtPoints(env, pts, until) {
   const [list, E] = await Promise.all([hourlyFor(env, cells, hours), earthFor(env).catch(() => null)]);
   if (!list) return null;
   const byCell = new Map(cells.map((p, k) => [key(p), list[k]]));
-  return { at: (i, when) => { const H = byCell.get(key(snapped[i])); return H ? withEarth(hourAt(H, Math.max(0, Math.floor((when - H.time[0] * 1000) / HOUR))), E, snapped[i].lat, snapped[i].lon, when) : null; } };
+  return { at: (i, when) => { const H = byCell.get(key(snapped[i])); return H ? withEarth(weatherAt(H, when), E, snapped[i].lat, snapped[i].lon, when) : null; } };
 }
 // The weather along each of some flights ({ path, start, kmh }), as it will
 // meet it. All in the next hour: the sky as it is now (windsFor). The forecast
@@ -344,3 +357,61 @@ export async function windsAlong(env, flights) {
 }
 // The forecast hour a time falls in (or null: beyond the forecast).
 export const hourOf = (fc, t) => (fc || []).find((x) => t >= x.at && t < x.at + HOUR) || null;
+
+// ---- how sure a landing time is ----
+// Open-Meteo's ensemble forecast (free, no key, as the rest): the same model run
+// many times over from slightly different starts. Where its members agree about
+// the wind along the way, a landing time is sure; where they don't, it could be
+// a good deal sooner or later. ensembleFor asks for the wind at a few points
+// along a way (the same quarter-degree squares as ever); spreadOf says how much
+// the flight's length varies across the members, as a share of it (the
+// standard deviation over the mean), or null if it can't say. ENSEMBLE_URL: tests only.
+const ENS_POINTS = 8, ENS_MEMBERS_LEAST = 5;
+export async function ensembleFor(env, path, hours) {
+  if (env.WEATHER_OFF || !path?.length) return null;
+  const km = lenOf(path), all = pointsFor(km), step = Math.max(1, Math.ceil(all.length / ENS_POINTS));
+  const fs = all.filter((_, i) => i % step === 0);
+  const pts = fs.map((f) => {
+    const [lat, lon] = alongPath(path, f), [nLat, nLon] = alongPath(path, Math.min(1, f + 0.02)), so = snap((lon + 540) % 360 - 180);
+    return { f, lat: Math.max(-90, Math.min(90, snap(lat))), lon: so === -180 ? 180 : so, head: bearing(lat, lon, nLat, nLon) };
+  });
+  const h0 = Math.floor(Date.now() / HOUR) * HOUR, n = Math.min(168, Math.max(2, Math.ceil(hours) + 2));
+  const cache = typeof caches !== "undefined" && !env.ENSEMBLE_URL ? caches.default : null;
+  const ck = new Request(`https://inflight-ensemble.cache/v1/${h0}/${n}/${pts.map(key).join(";")}`);
+  let list = null;
+  try { const hit = cache && await cache.match(ck); if (hit) list = await hit.json(); } catch (_) {}
+  if (!list) {
+    try {
+      const u = new URL(`${env.ENSEMBLE_URL || "https://ensemble-api.open-meteo.com"}/v1/ensemble`);
+      u.searchParams.set("latitude", pts.map((p) => p.lat).join(",")); u.searchParams.set("longitude", pts.map((p) => p.lon).join(","));
+      u.searchParams.set("hourly", "wind_speed_10m,wind_direction_10m"); u.searchParams.set("models", "icon_seamless");
+      u.searchParams.set("forecast_hours", String(n)); u.searchParams.set("timeformat", "unixtime"); u.searchParams.set("wind_speed_unit", "kmh");
+      const res = await fetch(u, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json" } });
+      if (!res.ok) return null;
+      const d = await res.json(); list = (Array.isArray(d) ? d : [d]).map((x) => x?.hourly || null);
+    } catch (_) { return null; }
+    if (list.length !== pts.length || !list.every((x) => Array.isArray(x?.time))) return null;
+    if (cache) await cache.put(ck, new Response(JSON.stringify(list), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" } })).catch(() => {});
+  }
+  return { km, pts, list };
+}
+export function spreadOf(E, start, kmh) {
+  if (!E) return null;
+  const members = Object.keys(E.list[0]).filter((k) => /^wind_speed_10m(_member\d+)?$/.test(k)).map((k) => k.slice("wind_speed_10m".length));
+  if (members.length < ENS_MEMBERS_LEAST) return null;
+  const durs = [];
+  for (const m of members) {
+    let sum = 0, n = 0;
+    E.pts.forEach((p, i) => {
+      const H = E.list[i], h = Math.floor((start + ((p.f * E.km) / kmh) * HOUR - H.time[0] * 1000) / HOUR);
+      const sp = H[`wind_speed_10m${m}`]?.[h], dir = H[`wind_direction_10m${m}`]?.[h];
+      if (sp == null || dir == null) return;
+      const tail = Number(sp) * Math.cos(((Number(dir) + 180) - p.head) * r);
+      sum += 1 / Math.min(MAX_F, Math.max(0.4, (SPEED_KMH + tail) / SPEED_KMH)); n++;
+    });
+    if (n) durs.push(sum / n);
+  }
+  if (durs.length < ENS_MEMBERS_LEAST) return null;
+  const mean = durs.reduce((a, b) => a + b, 0) / durs.length, sd = Math.sqrt(durs.reduce((a, b) => a + (b - mean) ** 2, 0) / durs.length);
+  return Math.round(Math.min(0.3, Math.max(0.005, sd / mean)) * 1e4) / 1e4;
+}
