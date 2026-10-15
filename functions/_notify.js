@@ -320,17 +320,21 @@ async function wxTick(env, D, t, since) {
 }
 // A pigeon in the air changed course for the weather (_live.js): its sender
 // and recipient hear why and when it now lands (in a group, its recipient).
-// Where the storms are, only with names on.
+// Where the storms are (or where it's sheltering), only with names on.
 const TURN_WHY = { s: (where) => `to go around storms${where ? ` over ${where}` : ""}`, w: () => "to ride the wind" };
 async function turnNotes(env, D, t, turns) {
   let pushes = 0;
   for (const x of turns) {
     const why = (p) => (TURN_WHY[x.why] || TURN_WHY.w)(p.names ? x.where : null);
+    // (sheltering: "Your pigeon is sheltering from storms on the Azores until about 16:00. It now lands at 21:40.")
+    const say = (p, who) => x.why === "h"
+      ? `${who} is sheltering from storms${p.names && x.where ? ` ${x.where}` : ""} until about ${clockAt(x.until, p.tz)}. It now lands at ${clockAt(x.deliver, p.tz)}.`
+      : `${who} changed course ${why(p)}. It now lands at ${clockAt(x.deliver, p.tz)}.`;
     if (x.group) {
       const g = await D.prepare(`SELECT g.name, u.notify_prefs, gm.muted FROM pg_groups g JOIN pg_users u ON u.id = ?2
         LEFT JOIN pg_group_members gm ON gm.group_id = g.id AND gm.user_id = ?2 WHERE g.id = ?1`).bind(x.r.group_id, x.r.user_id).first();
       const p = g && prefsOf(g); if (!p || !p.delays || isQuiet(p, t) || g.muted) continue;
-      pushes += await pushTo(env, x.r.user_id, { title: p.names ? g.name : "InFlight", body: `A pigeon to you changed course ${why(p)}. It now lands at ${clockAt(x.deliver, p.tz)}.`,
+      pushes += await pushTo(env, x.r.user_id, { title: p.names ? g.name : "InFlight", body: say(p, "A pigeon to you"),
         tag: "wxturn-" + x.r.msg_id, url: `/pigeon/#open=${x.r.group_id}` });
       continue;
     }
@@ -338,9 +342,9 @@ async function turnNotes(env, D, t, turns) {
     const s = results.find((u) => u.id === x.r.sender), r = results.find((u) => u.id === x.r.recipient); if (!s || !r) continue;
     const sp = prefsOf(s), rp = prefsOf(r);
     if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, s.id, { title: sp.names ? `To ${firstName(r.name)}` : "InFlight",
-      body: `Your pigeon changed course ${why(sp)}. It now lands at ${clockAt(x.deliver, sp.tz)}.`, tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${r.id}` });
+      body: say(sp, "Your pigeon"), tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${r.id}` });
     if (rp.delays && !isQuiet(rp, t)) pushes += await pushTo(env, r.id, { title: rp.names ? firstName(s.name) : "InFlight",
-      body: `${rp.names ? "Their" : "A"} pigeon to you changed course ${why(rp)}. It now lands at ${clockAt(x.deliver, rp.tz)}.`, tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${s.id}` });
+      body: say(rp, `${rp.names ? "Their" : "A"} pigeon to you`), tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${s.id}` });
   }
   return pushes;
 }

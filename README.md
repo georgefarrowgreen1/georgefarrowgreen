@@ -382,6 +382,16 @@ one such turn an hour. Its sender and recipient are told ("Your pigeon changed
 course to go around storms over France. It now lands at 19:12."; in a group,
 the recipient), and the map card says "Rerouted around storms over France".
 
+And it waits out storms it can't get around. Resting on an island with storms
+on the way on, it shelters there until the first whole hour it could leave and
+meet none (up to 12 hours; storms that won't clear by then, it flies on
+through, slowly). A safe pigeon in the air over land, with storms ahead and no
+way around them, comes down where it is and does the same. The wait is kept
+as a rest (`"h"`, where), put down to the storms, and told ("Your pigeon is
+sheltering from storms on the Azores until about 15:00. It now lands at
+22:00."); the map card says "Sheltering on the Azores until about 15:00".
+Rests and shelters get a day on top of a pigeon's longest flight.
+
 The map card says what it's doing ("Resting on the Azores until 09:48",
 "Through the Gotthard Pass"). Turning for someone who moved drops the rest of
 the plan and plans again from where it is; a cheer keeps the plan, sooner.

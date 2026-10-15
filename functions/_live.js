@@ -14,19 +14,28 @@
    point where it turned is kept ("r", and why), its plan from there replaced.
    At most one such turn an hour. Its sender and recipient are told (in a
    group, the recipient).
+   And it waits out storms it can't get around: resting on an island with
+   storms on the way on, it shelters there until the first hour it could
+   leave and meet none (up to MAX_HOLD); a safe pigeon in the air over land,
+   with storms ahead and no way around them, comes down where it is and
+   does the same. Kept as a rest ("h", where), and told.
    Run from the tick; every flight checked in one go shares one look at the
    sky (the same squares of it as ever: never who's flying). */
-import { MIN, HOUR, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT } from "./_pigeon.js";
+import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT } from "./_pigeon.js";
 import { skyAlong } from "./_weather.js";
 import { stopsOf, posAt, renear } from "./_moments.js";
 import { squeeze, passed, pathKm, round5, arcsOf, finish, timeWay, restOf, hopsFor } from "./_route.js";
 import { placeName } from "./_where.js";
+import { placeAt } from "./_placegrid.js";
+import { isSea } from "./_passport.js";
 import { refly, reflyGroup } from "./_flyover.js";
 
 export const LIVE_EVERY = 30 * MIN, LIVE_LEFT = HOUR, LIVE_EACH = 40;
 const LIVE_STEP = 0.03, LIVE_MS = 5 * MIN;        // a change smaller than this share of what's left (and this long) isn't made
 const WX_TELL = 15 * MIN;                         // later by this much more: told again
-const LIVE_GAIN = 0.05, TURN_EVERY = HOUR;        // a better way must be this much quicker; and no more than one weather turn an hour
+const LIVE_GAIN = 0.05, TURN_EVERY = HOUR, MAX_HOLD = 12 * HOUR;        // a better way must be this much quicker; and no more than one weather turn an hour
+// the latest it may land: its longest flight, and a day on top for resting and sheltering on the way
+const latestOf = (r) => r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1) / (r.risky ? RISKY_SPEED : 1) + DAY;
 const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
 const kmhOf = (r) => SPEED_KMH * (PIGEONS[r.pigeon]?.speed ?? 1) * (r.risky ? RISKY_SPEED : 1);
 const legsOf = (r) => { try { return r.legs ? JSON.parse(r.legs) : []; } catch (_) { return []; } };
@@ -68,19 +77,24 @@ export async function liveTick(env, D, t) {
     Object.assign(x, { legs, rest: restLeft(legs, t), kmh: kmhOf(x.r), path: aheadOf(stops, legs, t) });
     x.at = paths.push(x.path) - 1;
     // the ways it could take from here instead (not while it's resting, nor just after it turned for the weather)
-    const resting = legs.some((l, i) => restPair(l, legs[i + 1] || []) && l[2] <= t && legs[i + 1][2] > t);
-    x.ways = resting || (last && t - last[2] < TURN_EVERY) ? []
+    const ri = legs.findIndex((l, i) => restPair(l, legs[i + 1] || []) && l[2] <= t && legs[i + 1][2] > t);
+    x.restAt = ri < 0 ? null : ri;
+    x.ways = x.restAt != null || (last && t - last[2] < TURN_EVERY) ? []
       : arcsOf(x.path[0], x.path[x.path.length - 1]).map((p) => finish(p, { hop: hopsFor(x.r.pigeon), style: x.r.style }))
         .map((p) => ({ p, at: paths.push(p.map((q) => [q[0], q[1]])) - 1, rest: restOf(p.slice(1, -1)) }));
   }
-  const until = Math.max(...list.map((x) => x.r.deliver_at)) + 12 * HOUR;
+  const until = Math.max(...list.map((x) => x.r.deliver_at)) + MAX_HOLD;
   const sky = await skyAlong(env, paths, until).catch(() => null);
   let changed = 0;
   for (const x of list) {
     let did = false;
     if (sky) try {
-      const w = sky.at(x.at, t + x.rest, x.kmh), better = pick(x, w, (k) => sky.at(x.ways[k].at, t, x.kmh));
-      if (better) { const turn = await turnFor(D, t, x, better, w); if (turn) { turns.push(turn); did = true; } }
+      const w = sky.at(x.at, t + x.rest, x.kmh), stormy = w && w.storms > 0;
+      const ev = (e) => { if (e) { turns.push(e); did = true; } };
+      if (stormy && x.restAt != null) ev(await shelter(D, t, x, w, sky));                  // on an island: wait them out
+      const better = did ? null : pick(x, w, (k) => sky.at(x.ways[k].at, t, x.kmh));
+      if (better) ev(await turnFor(D, t, x, better, w));                                 // a way around (or a better wind)
+      if (!did && stormy && x.r.style === "safe" && x.restAt == null && !isSea(placeAt(x.path[0][0], x.path[0][1]))) ev(await shelter(D, t, x, w, sky));   // safe, over land: come down
       if (!did) did = await retime(env, D, t, x, w);
     } catch (e) { console.error("pigeon live", e && e.message); }
     if (did) changed++;
@@ -114,7 +128,7 @@ async function turnFor(D, t, x, better, wasW) {
   const where = better.why === "s" && wasW.storm ? safeName(wasW.storm.lat, wasW.storm.lon) : null;
   // the bends it makes are for this reason; passes and islands stay what they are
   const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}));
-  const latest = r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1) / (r.risky ? RISKY_SPEED : 1);
+  const latest = latestOf(r);
   const flying = Math.round((pathKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
   const done = passed(x.legs, t);
   const legs = JSON.stringify([...done, [round5(pLat), round5(pLon), t, "r", better.why], ...timeWay([pLat, pLon], pts, end, t, Math.max(0, deliver - t - way.rest)).legs]);
@@ -134,6 +148,38 @@ async function turnFor(D, t, x, better, wasW) {
   await after(D, t, x, lostAt ?? deliver);
   return { group: x.group, r, why: better.why, where, deliver };
 }
+// It shelters from the storms ahead: where it's resting (or, over land, where
+// it is) until the first hour it could leave and meet none on the way.
+async function shelter(D, t, x, w, sky) {
+  const r = x.r, onIsle = x.restAt != null, from = onIsle ? x.legs[x.restAt + 1][2] : t;
+  let until = null;
+  for (let k = 1; k * HOUR <= MAX_HOLD && !until; k++) { const wk = sky.at(x.at, from + k * HOUR, x.kmh); if (wk && wk.storms === 0) until = from + k * HOUR; }
+  if (!until) return null;                                            // not clearing soon: it flies on (slowly)
+  const hold = until - from, latest = latestOf(r);
+  if (r.deliver_at + hold > latest) return null;
+  const later = (l) => [l[0], l[1], l[2] + hold, ...l.slice(3)];
+  let legs, where;
+  if (onIsle) {
+    const isle = x.legs[x.restAt][4]; where = isle ? `on ${isle}` : null;
+    const h = (l, at) => [l[0], l[1], at, "h", ...(where ? [where] : [])];
+    legs = x.legs.map((l, i) => (i < x.restAt ? l : i === x.restAt ? h(l, l[2]) : i === x.restAt + 1 ? h(l, l[2] + hold) : later(l)));
+  } else {
+    const [lat, lon] = x.path[0], place = safeName(lat, lon); where = place ? `in ${place}` : null;
+    const h = (at) => [round5(lat), round5(lon), at, "h", ...(where ? [where] : [])];
+    legs = [...passed(x.legs, t), h(t), h(t + hold), ...x.legs.filter((l) => l[2] > t).map(later)];
+  }
+  const deliver = r.deliver_at + hold, lostAt = r.lost_at == null || r.lost_at <= t ? r.lost_at : r.lost_at + hold;
+  const wx = w.storm ? JSON.stringify({ k: "storms", lat: w.storm.lat, lon: w.storm.lon }) : r.wx, wxMs = (r.wx_ms || 0) + hold, json = JSON.stringify(legs);
+  const q = x.group
+    ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wx = ?4, wx_ms = ?5, wx_at = ?6, wx_told = ?6, live_at = ?6
+        WHERE msg_id = ?7 AND user_id = ?8 AND deliver_at = ?9 AND legs IS ?10`).bind(deliver, json, lostAt, wx, wxMs, t, r.msg_id, r.user_id, r.deliver_at, r.legs)
+    : D.prepare(`UPDATE pg_msgs SET deliver_at = ?1, legs = ?2, lost_at = ?3, wx = ?4, wx_ms = ?5, wx_at = ?6, wx_told = ?6, live_at = ?6,
+        expires_at = CASE WHEN photo = 1 THEN ?7 ELSE expires_at END WHERE id = ?8 AND deliver_at = ?9 AND legs IS ?10`)
+      .bind(deliver, json, lostAt, wx, wxMs, t, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
+  if (!(await q.run()).meta.changes) return null;
+  await after(D, t, x, lostAt ?? deliver);
+  return { group: x.group, r, why: "h", where, until, deliver };
+}
 const safeName = (lat, lon) => { try { return placeName(lat, lon); } catch (_) { return null; } };
 // A flight changed: the pigeons it'll pass, and the friends it'll fly over, again
 async function after(D, t, x, end) {
@@ -149,7 +195,7 @@ async function after(D, t, x, end) {
 async function retime(env, D, t, x, w) {
   const r = x.r, left = r.deliver_at - t, flying = Math.max(0, left - x.rest), was = r.wind_f || 1;
   if (!w || w.wind == null) return false;
-  const latest = r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1) / (r.risky ? RISKY_SPEED : 1);
+  const latest = latestOf(r);
   const deliver = Math.min(latest, Math.round(t + x.rest + (flying * was) / w.f)), change = deliver - r.deliver_at;
   if (Math.abs(change) < Math.max(LIVE_MS, LIVE_STEP * left)) return false;
   const legs = JSON.stringify(squeeze(x.legs, t, r.deliver_at, deliver));

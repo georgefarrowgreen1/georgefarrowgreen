@@ -388,23 +388,25 @@ const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // there. A pigeon that changed course (its friend moved) flies several legs.
 // What its planned way is doing about now: going around storms, riding the wind,
 // resting on an island, through a pass, past a landmark (see functions/_route.js)
-// resting on an island right now: [where, until when], or null
+// resting on an island ("i"), or sheltering from storms ("h"), right now: [where, until when, which], or null
 function restingOn(m, t = now()) {
   const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c");
-  const i = legs.findIndex((l, k) => l[3] === "i" && legs[k + 1]?.[3] === "i" && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
-  return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || "an island", legs[i + 1][2]];
+  const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
+  return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || (legs[i][3] === "h" ? "" : "an island"), legs[i + 1][2], legs[i][3]];
 }
 function routeNote(m) {
   const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c"); if (!legs.length || m.lost) return null;
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
   const rest = restingOn(m, t);
-  if (rest) return { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
+  if (rest) return rest[2] === "h" ? { icon: I.storm, text: `Sheltering${rest[0] ? ` ${rest[0]}` : " from storms"} until about ${fmtTime(rest[1])}` }
+    : { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
   const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
   const ahead = !landed && l === next, name = l[4], over = name ? ` over ${name}` : "";
   const turned = ahead && last?.[3] === "r";                     // it changed course for the weather on the way (live)
   const say = {
     s: [I.storm, turned ? `Rerouted around storms${over}` : ahead ? `Going around storms${over}` : `Went around storms${over}`],
     w: [I.wind, turned ? "Rerouted to ride the wind" : ahead ? "Riding the wind: a longer way, but quicker" : "Rode the wind: a longer way, but quicker"],
+    h: [I.storm, ahead ? `Sheltering from storms${name ? ` ${name}` : ""} on the way` : `Sheltered from storms${name ? ` ${name}` : ""}`],
     r: [name === "s" ? I.storm : I.wind, name === "s" ? "Rerouted to keep clear of storms" : "Rerouted to ride the wind"],
     i: [I.bird, ahead ? `Resting on ${name || "an island"} on the way` : `Rested on ${name || "an island"}`],
     p: [I.map, ahead ? `Through the ${name || "pass"}` : `Came through the ${name || "pass"}`],
@@ -4849,7 +4851,7 @@ function tickMap() {
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
   const flew = m.deliverAt - m.sentAt;
   const resting = restingOn(m);
-  const speed = m.lost ? "" : resting ? "Resting" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
+  const speed = m.lost ? "" : resting ? (resting[2] === "h" ? "Sheltering" : "Resting") : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   const { share, cheer } = cardShell(card), canShare = shareable(m);
   if (share.hidden === canShare) share.hidden = !canShare;
   share.dataset.id = m.id;
