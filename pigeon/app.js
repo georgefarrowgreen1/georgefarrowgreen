@@ -4815,7 +4815,7 @@ function drawSheet(refresh) {
         `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><span class="ccav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></span></button>`).join("")}
         <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><span class="ccav any" aria-hidden="true">${I.bird}</span><span><b>Any Pigeon</b><small>No name</small></span></button></div>` : "";
       // which way: three to pick from, each with when it would land; then the way itself, as a line with its stops
-      const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, mapped && plans ? plansNow(now(), kind) : null)}<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`;
+      const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, mapped && plans ? plansNow(now(), kind) : null)}${mapped ? "" : `<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`}`;
       const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
       // when it lands: as soon as it can, or a time worth a tap that it can make (it waits in your loft and leaves in time to land then), or another
       const chip = (act, id, on, b, small, off, av = "") => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}"${id != null ? ` data-id="${esc(String(id))}"` : ""}${off ? " disabled" : ""}>${av}<span><b>${b}</b><small>${small}</small></span></button>`;
@@ -4823,7 +4823,7 @@ function drawSheet(refresh) {
       if (!g) {
         const sk = schedKind(), ms = sk ? flightMs(chatKm(f), mySpeed(sk)) : 0, presets = schedPresets(), cur = sched?.at, other = cur && !presets.some(([, at]) => at === cur);
         landing = `<div class="ghead">When It Lands</div><div class="carriers chiprail" role="radiogroup" aria-label="When it lands">
-          ${chip("schednow", null, !cur, "Soonest", kind && kind !== "mystery" ? esc(atShort(now() + plannedMs({ ...c, sched: null }, kind))) : "As soon as it can", false, `<span class="ccav when" aria-hidden="true">${I.bird}</span>`)}
+          ${chip("schednow", null, !cur, "Soonest", kind && kind !== "mystery" ? esc(atTime(now() + plannedMs({ ...c, sched: null }, kind))) : "As soon as it can", false, `<span class="ccav when" aria-hidden="true">${I.bird}</span>`)}
           ${sk ? presets.filter(([, at]) => at - ms >= now() || cur === at).map(([label, at]) => chip("schedset", at, cur === at, esc(label), esc(atShort(at)))).join("") : ""}
           ${chip("schedule", null, !!other, other ? esc(atShort(cur)) : "Another Time", other ? "Your time" : sk ? "Pick one" : "Swift or faster", !sk, `<span class="ccav when" aria-hidden="true">${I.clock}</span>`)}</div>`;
         // a stop on the way: straight there, or with a friend you both have (and how much longer that takes)
@@ -5152,8 +5152,10 @@ const ROUTE_SHORT = { fastest: "Quickest", scenic: "Landmarks", safe: "Rests on 
 function routeSeg(style, plans) {
   const i = ROUTES.findIndex((r) => r[0] === style);
   return `<div class="seg" role="radiogroup" aria-label="Route" data-i="${i}"><i class="segthumb" aria-hidden="true"></i>${ROUTES.map(([k, name, , icon]) =>
-    `<button type="button" role="radio" aria-checked="${k === style}" data-act="routeset" data-id="${k}">${icon}<b>${name}</b><small>${plans?.[k] ? esc(atTime(plans[k].deliverAt)) : ROUTE_SHORT[k]}</small>${S.me.risky && plans?.[k]?.risk ? riskTag(plans[k].risk) : ""}</button>`).join("")}</div>`;
+    `<button type="button" role="radio" aria-checked="${k === style}" data-act="routeset" data-id="${k}">${icon}<b>${name}</b><small>${plans?.[k] ? esc(k === style || !plans[style] ? atTime(plans[k].deliverAt) : segDelta(plans[k].deliverAt - plans[style].deliverAt)) : ROUTE_SHORT[k]}</small>${S.me.risky && plans?.[k]?.risk ? riskTag(plans[k].risk) : ""}</button>`).join("")}</div>`;
 }
+// the other ways, against the chosen one: "+12 min", "same time", "−5 min"
+const segDelta = (d) => (Math.abs(d) < MIN ? "same time" : `${d > 0 ? "+" : "−"}${fmtDur(Math.abs(d))}`);
 // Pigeon Death's odds on a way (with it on): "1 in 140", green when better than usual, red when worse
 const riskLevel = (r) => (r.p <= 0.007 ? "lo" : r.p >= 0.013 ? "hi" : "mid");
 const riskTag = (r) => `<em class="rk ${riskLevel(r)}">1 in ${Math.round(1 / r.p)}</em>`;
@@ -5171,7 +5173,9 @@ function segGlide(root, fromStyle) {
   void th.offsetWidth; th.classList.add("glide"); th.style.setProperty("--i", to);
 }
 // See the Way: from here to there, with each storm, wind, pass, island and landmark where it comes
-function wayCard(plan, d) {
+// nothing on the way: what that means for the way picked
+const STRAIGHT = { fastest: "Straight there: nothing on the way worth going around", scenic: "Straight there: no landmark near enough to fly past", safe: "Straight there: no long sea to rest on the way across" };
+function wayCard(plan, d, style) {
   const t0 = d.at, span = Math.max(1, plan.deliverAt - t0);
   let last = -1;
   const dots = fcEvents({ legs: plan.legs, via: true, near: [] }, t0 - 1).map((e) => {
@@ -5182,7 +5186,7 @@ function wayCard(plan, d) {
     <span class="wayhd"><b>See the Way</b><span class="waygo">${I.map}On the map</span></span>
     <span class="wayline" aria-hidden="true"><i class="wayend from"></i>${dots}<i class="wayend to"></i></span>
     <span class="wayends"><span><b>${esc(d.fromPlace || "Here")}</b>now</span><span><b>${esc(d.toPlace || "There")}</b>${esc(atTime(now() + plan.deliverAt - t0))}</span></span>
-    <span class="waywords">${esc(wayWords(plan.legs).replace(/^./, (x) => x.toUpperCase()))}</span></button>`;
+    <span class="waywords">${esc(wayWords(plan.legs) === "the straight way" ? STRAIGHT[style] || "Straight there" : wayWords(plan.legs).replace(/^./, (x) => x.toUpperCase()))}</span></button>`;
 }
 // sizes and places set from code (inline style attributes are blocked)
 function flyBits(root, fromStyle) {

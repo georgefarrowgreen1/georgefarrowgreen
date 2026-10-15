@@ -1935,3 +1935,17 @@ html.night .nav-ghost .night{background:none}
 .menu-pop .mtime{padding:2px 14px 8px;font-size:12px;line-height:16px;color:var(--label-2);text-align:center;font-variant-numeric:tabular-nums}
 /* the blue settles before the bottom, so the tail meets it exactly */
 .b.me:not(.up,.lost,.pic,.once,.gone,.jumbo){background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint) calc(100% - 20px))}
+/* How It Flies, refined: the chosen pigeon tinted, the ones you can't send now a little smaller,
+   chips picked with a soft fill rather than an outline, and the sections closer together */
+.flysheet .ghead{margin:20px 36px 8px}
+.kinds .kc[aria-checked="true"]{background:color-mix(in srgb,var(--tint) 10%,var(--cell))}
+.kinds .kc:disabled{min-height:50px;padding-top:6px;padding-bottom:6px}
+.kinds .kc:disabled .kdur{display:none}
+.kinds .kc:disabled .pg{font-size:15px}
+.kinds .kc:disabled .ctext > span:first-child{font-size:15px}
+.kinds .kc:disabled .val{font-weight:500;color:var(--label-2)}
+.flysheet .cc[aria-checked="true"]{background:color-mix(in srgb,var(--tint) 13%,var(--cell));box-shadow:none}
+.flysheet .cc{min-height:44px}
+.flysheet .cc b{font-size:15px}
+.flysheet .cc small{font-size:12px}
+.flysheet .seg{margin-bottom:10px}
