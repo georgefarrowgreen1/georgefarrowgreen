@@ -70,6 +70,8 @@ async function prune(c, html) {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : "" }; }
+  // an open app catches up at once (a pigeon that changed course is redrawn on its map straight away)
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => cs.forEach((c) => c.postMessage({ inflight: "sync" }))).catch(() => {}));
   e.waitUntil(self.registration.showNotification(d.title || "InFlight", {
     body: d.body || "A pigeon has landed.",
     icon: "/pigeon/icon-192.png",

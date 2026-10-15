@@ -414,7 +414,11 @@ On the map, a pigeon that turned for the weather shows the way it was going
 as a faint dotted line from where it turned (kept on the turn's point,
 `[lat, lon, at, "r", why, { was, storm }]`), the storms it went around (planned
 or on the way) are drawn as a storm cloud while it flies, and where it
-sheltered gets an orange ring.
+sheltered gets an orange ring. An open map keeps up by itself: the chat is
+fetched again every 15 seconds, and a notification arriving while the app is
+open (a course change, say) makes it catch up at once (the service worker
+tells it to sync); if the way changes while you watch, a note says so ("Its
+way just changed: rerouted around storms over France").
 
 The map card says what it's doing ("Resting on the Azores until 09:48",
 "Through the Gotthard Pass"). Turning for someone who moved drops the rest of

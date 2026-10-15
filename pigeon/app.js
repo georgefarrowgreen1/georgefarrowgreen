@@ -4917,6 +4917,11 @@ function tickMap() {
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !(m.route || m.flock)) return;
   if (m.flock) return tickFlockMap(m, card, cv);
+  // its way changed while the map was open (it turned for the weather, sheltered, or was cheered on): say so
+  // (its shape: where it goes, not when; a cheer only speeds it up)
+  const way = JSON.stringify((m.legs || []).filter((l) => l[3] !== "c").map((l) => [l[3], l[0], l[1]]));
+  if (s.way != null && s.way !== way && !m.lost && m.deliverAt > now()) { const n = routeNote(m); toast(esc(n ? `Its way just changed: ${n.text[0].toLowerCase()}${n.text.slice(1)}.` : `Its way just changed: it now lands ${atTime(m.deliverAt)}.`)); haptic("tick"); }
+  s.way = way;
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
   const flew = m.deliverAt - m.sentAt;
   const resting = restingOn(m);
@@ -6696,7 +6701,7 @@ async function start() {
   mount();
   textSize(); window.addEventListener("focus", textSize);
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
-  navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); });
+  navigator.serviceWorker?.addEventListener?.("message", (e) => { if (e.data?.inflight === "open") openLink(e.data.hash); else if (e.data?.inflight === "sync" && S.me) sync(); });
   const m = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
   if (m) { S.pendingAdd = m[1].toLowerCase(); history.replaceState(null, "", location.pathname); }
   // a confirm-your-email link: works signed in or not, on any phone
