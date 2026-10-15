@@ -23,10 +23,10 @@ const FOREVER = "public, max-age=31536000, immutable";
 const memo = new Map();
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 async function fingerprint(ctx, path) {
-  // a deployment's files never change, so once worked out a fingerprint holds for
-  // as long as this copy runs (re-checked each minute only when testing locally)
-  const hit = memo.get(path), local = /^(localhost|127\.)/.test(new URL(ctx.request.url).hostname);
-  if (hit && (!local || Date.now() - hit.at < 60_000)) return hit.v;
+  // worked out again each minute: just after a deploy the files can briefly be
+  // last version's, and a fingerprint of those mustn't stick for as long as this copy runs
+  const hit = memo.get(path);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
   const r = await ctx.env.ASSETS.fetch(new URL(path, ctx.request.url));
   if (!r.ok) return "";
   let body = await r.text();
@@ -67,16 +67,18 @@ export async function onRequest(ctx) {
   }
 
   if (/\.(js|css)$/.test(url.pathname)) {
-    const want = url.searchParams.get("v"), v = await fingerprint(ctx, url.pathname);
-    const fresh = want && want === v;
-    let out;
-    if (url.pathname.endsWith(".js")) {
-      const js = await stampImports(ctx, url.pathname, await res.text());
-      out = new Response(ctx.request.method === "HEAD" ? null : js, res);
-      out.headers.delete("content-length"); out.headers.delete("etag");
-    } else out = new Response(res.body, res);
-    // only a file asked for by its current fingerprint is safe to keep forever
-    out.headers.set("Cache-Control", fresh ? FOREVER : "no-cache");
+    // the file as sent (a module with its imports stamped), and its own fingerprint
+    const want = url.searchParams.get("v");
+    let body = await res.text();
+    if (url.pathname.endsWith(".js")) body = await stampImports(ctx, url.pathname, body);
+    const head = ctx.request.method === "HEAD";                      // (no body to check: go by the file's fingerprint)
+    const v = head ? await fingerprint(ctx, url.pathname) : hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body))).slice(0, 12);
+    const out = new Response(head ? null : body, res);
+    out.headers.delete("content-length"); out.headers.delete("etag");
+    // kept forever only when what's sent is exactly what was asked for: just after a
+    // deploy the old file can be served under the new fingerprint, and a phone that
+    // kept that would show last version's styles (or code) until the next change
+    out.headers.set("Cache-Control", want && want === v ? FOREVER : "no-store");
     return withSecurity(out);
   }
   return withSecurity(res);

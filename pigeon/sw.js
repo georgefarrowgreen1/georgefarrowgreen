@@ -8,7 +8,7 @@
 // change, so those come from the copy whenever it has them. Nothing from the
 // API is ever kept here: messages stay sealed in the app's own storage.
 
-const SHELL = "inflight-shell-v1", PAGE = "/pigeon/", WAIT = 4000;
+const SHELL = "inflight-shell-v2", PAGE = "/pigeon/", WAIT = 4000;        // (v2: drops copies kept before files were checked against their fingerprint)
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
@@ -44,13 +44,15 @@ async function page(e, r) {
     return net;                                  // nothing kept yet: keep waiting for the network (or its error)
   }
 }
-// a fingerprinted file: kept for good once fetched
+// a fingerprinted file: kept for good once fetched, if the server vouches that it's
+// the file that fingerprint names (it says so with "immutable"; anything else is
+// used this once and asked for again next time)
 async function file(r) {
   try {
     const c = await caches.open(SHELL), hit = await c.match(r);
     if (hit) return hit;
-    const res = await fetch(r);
-    if (res.ok) c.put(r, res.clone()).catch(() => {});
+    const res = await fetch(r, { cache: "reload" });
+    if (res.ok && /immutable/.test(res.headers.get("Cache-Control") || "")) c.put(r, res.clone()).catch(() => {});
     return res;
   } catch (_) { return fetch(r); }
 }

@@ -7055,6 +7055,7 @@ async function start() {
 /* ---------------- updates ----------------
    The page carries a fingerprint of the app. When a newer one is live, an open
    copy reloads itself, unless you're in the middle of something, when it asks. */
+// (the page's own version: its files' fingerprints, which the server checks before a phone may keep them)
 const VERSION = document.querySelector('meta[name="inflight-version"]')?.content || "";
 // a reload for a new version comes back to the chat you were in, where you were in it
 function reloadHere() {

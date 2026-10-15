@@ -1778,7 +1778,9 @@ html.night .nav-ghost .night{background:none}
   .mapcard.fc.enter,.mapcard.fc.swap *,.mapcard.fc.swap .fctl li::before,.now > .fcdot::after{animation:none!important}
 }
 
-/* How It Flies: when it would land up top, a bar for each pigeon's time, the
+/* (Styles and code are each fetched by their fingerprint; the server only lets a
+   phone keep one that matches, see functions/pigeon/_middleware.js.)
+   How It Flies: when it would land up top, a bar for each pigeon's time, the
    route as a sliding switch, and the way it would go as a line with its stops.
    It plays in when it opens (bars grow, stops pop on), and a new choice moves
    only what changed (the thumb glides, the time drops in, the stops redraw). */
