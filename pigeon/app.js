@@ -1582,7 +1582,8 @@ async function forget() {
   try { S.player?.pause(); } catch (_) {}
   if (rec) recStop(false);
   stopLocWatch(); dropAvatarDraft(); airEl = null;
-  try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem("inflight-badges"); localStorage.removeItem("inflight-pushsub"); } catch (_) {}
+  try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem("inflight-badges"); localStorage.removeItem("inflight-pushsub"); localStorage.removeItem(OPENED_KEY); } catch (_) {}
+  openedFor = null;
   if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {});
     if (await idb.get("pinsup:" + S.me.id).catch(() => null)) { await idb.del("pins:" + S.me.id).catch(() => {}); await idb.del("pinsup:" + S.me.id).catch(() => {}); } }
   S.outbox = [];
@@ -2114,9 +2115,25 @@ async function openNote(id, from, to, ct) {
    closes, or the moment you leave the app. */
 const ONCE_MS = 15000;
 let onceOpen = null;
+// The ones you've opened are kept on this phone too (just their ids), so the
+// button never comes back: not on a fresh start from the cache, not before the
+// server's word arrives.
+const OPENED_KEY = "inflight-opened";
+let openedFor = null;
+function opened() {
+  if (S.me && openedFor !== S.me.id) {
+    openedFor = S.me.id;
+    try { const v = JSON.parse(localStorage.getItem(OPENED_KEY) || "null"); if (v?.uid === S.me.id) for (const id of v.ids || []) S.viewedOnce.add(id); } catch (_) {}
+  }
+  return S.viewedOnce;
+}
+const openedOnce = (id) => opened().has(id);
+function saveOpened() { try { localStorage.setItem(OPENED_KEY, JSON.stringify({ uid: S.me.id, ids: [...S.viewedOnce].slice(-500) })); } catch (_) {} }
+// past its time it's gone, even before the server has tidied it away
+const picGone = (m) => m.photo === 2 || S.photoGone.has(m.id) || (m.expiresAt != null && now() >= m.expiresAt);
 async function viewOnce(id) {
   const fid = S.chat, g = group(fid), m = (S.msgs.get(fid) || []).find((x) => x.id === id), p = S.plain.get(id);
-  if (!m || !onceP(p) || onceOpen) return;
+  if (!m || !onceP(p) || onceOpen || m.viewedAt || opened().has(id) || picGone(m)) return;
   haptic("tick");
   const el = document.createElement("div");
   el.className = "oview"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Photo, view once");
@@ -2134,7 +2151,7 @@ async function viewOnce(id) {
   document.addEventListener("visibilitychange", hide);
   el.addEventListener("click", close);
   // counted as opened now (no second go), unless it never arrives
-  m.viewedAtServer = !!m.viewedAt; m.viewedAt = m.viewedAt || now(); S.viewedOnce.add(id); render();
+  m.viewedAtServer = !!m.viewedAt; m.viewedAt = m.viewedAt || now(); opened().add(id); saveOpened(); render();
   let plain, got = false;
   try {
     const r = await api((g ? "group-photo/" : "photo/") + id, { raw: true }), bytes = await r.arrayBuffer();
@@ -2143,7 +2160,7 @@ async function viewOnce(id) {
   } catch (e) {
     close();
     // no signal, or the server never answered: it wasn't handed over, so it can still be opened later
-    if (!got && (e.offline || !e.status || e.status >= 500)) { S.viewedOnce.delete(id); if (m.viewedAt && !m.viewedAtServer) delete m.viewedAt; render(); return toast(esc(e.offline ? "You’re offline. The photo is still there to open once you’re back." : "Couldn’t open the photo just now. Try again in a moment.")); }
+    if (!got && (e.offline || !e.status || e.status >= 500)) { opened().delete(id); saveOpened(); if (m.viewedAt && !m.viewedAtServer) delete m.viewedAt; render(); return toast(esc(e.offline ? "You’re offline. The photo is still there to open once you’re back." : "Couldn’t open the photo just now. Try again in a moment.")); }
     if (e.status === 410) toast(esc(e.message || "This photo has already been opened."));
     else toast(esc(e.message || "Couldn’t open this photo."));
     return;
@@ -3232,15 +3249,15 @@ function bubble(f, m, gapTop, g) {
     html = `<div class="b voicem${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${gone ? `<span class="vgone">${I.gone}Voice pigeon expired</span>` : voiceHtml(m.id, p.v, mine)}${tail}</div>`;
   } else if (onceP(p)) {
     // view once: a pill to tap (theirs), what became of it (yours), the words below
-    const gone = m.photo === 2 || S.photoGone.has(m.id), seen = (m.flock || []).filter((x) => x.viewedAt).length;
-    const opened = mine ? (g ? seen > 0 : !!m.viewedAt) : !!(m.viewedAt || S.viewedOnce.has(m.id));
+    const gone = picGone(m), seen = (m.flock || []).filter((x) => x.viewedAt).length;
+    const opened = mine ? (g ? seen > 0 : !!m.viewedAt) : !!(m.viewedAt || openedOnce(m.id));
     const label = mine ? (g && seen ? `Opened by ${seen}` : opened ? "Opened" : gone ? "Photo expired" : "Photo") : opened ? "Opened" : gone ? "Photo expired" : "View photo";
     const can = !mine && !opened && !gone && !m.flying && !m.lost;
     const words = p.t || quote;
     html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}" data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
       : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
     if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
-  } else if (p.p && (m.photo === 2 || S.photoGone.has(m.id))) {
+  } else if (p.p && picGone(m)) {
     // gone: a quiet outline of where it was, the time beside it; its words (if any) in their own bubble below
     const words = p.t || quote;
     html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${tapAct}><span class="gonel">${I.gone}${picWord(p)} expired</span>${words ? "" : tail}</div>`;
@@ -3269,10 +3286,10 @@ function bubble(f, m, gapTop, g) {
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
     else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
-  const onceDone = onceP(p) && (m.viewedAt || S.viewedOnce.has(m.id) || (m.flock || []).some((x) => x.viewedAt));
+  const onceDone = onceP(p) && (m.viewedAt || openedOnce(m.id) || (m.flock || []).some((x) => x.viewedAt));
   // once everyone who could open it has, there's nothing left to disappear
   const allSeen = onceP(p) && (g ? (m.flock || []).length > 0 && m.flock.every((x) => x.viewedAt) : !!m.viewedAt);
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id) && !(onceDone && !mine) && !(mine && allSeen)) meta.push(`<span class="fl exp">${onceP(p) ? (mine ? "View once · " : "Opens once · ") : ""}${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
+  if (p.p && m.photo === 1 && !m.flying && !picGone(m) && !(onceDone && !mine) && !(mine && allSeen)) meta.push(`<span class="fl exp">${onceP(p) ? (mine ? "View once · " : "Opens once · ") : ""}${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 // A friend's pigeon to someone else, stopping with you on the way: read it, and add a line.
