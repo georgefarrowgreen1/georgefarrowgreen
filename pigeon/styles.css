@@ -1854,3 +1854,21 @@ html.night .nav-ghost .night{background:none}
   .segthumb.glide,.waycard{transition:none}
   .flysheet.enter *,.flysheet.enter .wayline::before,.waycard.chg *,.waycard.chg .wayline::before,.flyhero.chg *{animation:none!important}
 }
+/* How It Flies' choices as rails of chips (who carries it, when it lands, where it
+   stops): one line each that scrolls sideways, edge to edge, the chosen one ringed */
+.carriers.chiprail{flex-wrap:nowrap;margin:0;padding:2px 16px 4px;overflow-x:auto;scroll-snap-type:x proximity;scroll-padding:0 16px;scrollbar-width:none;overscroll-behavior-x:contain}
+.carriers.chiprail::-webkit-scrollbar{display:none}
+.chiprail .cc{flex:none;scroll-snap-align:start;max-width:220px;transition:box-shadow .2s,transform .45s var(--snappy),opacity .2s}
+.chiprail .cc:active:not(:disabled){transform:scale(.95)}
+.chiprail .cc b,.chiprail .cc small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chiprail .cc:not(:has(.ccav,.av)){padding-left:14px}
+.chiprail .cc > .av{flex:none;width:32px;height:32px;font-size:12px}
+.ccav.when{color:var(--tint)}
+.ccav.when svg,.ccav.when .ico{width:17px;height:17px;font-size:17px}
+.ccav.when svg.bird{fill:currentColor}
+.cc[aria-checked="true"] .ccav.when{background:var(--tint-fill);color:#fff}
+.chiprail .cc[aria-checked="true"] > .av{box-shadow:0 0 0 2px var(--tint)}
+.flysheet .chiprail .cc.picked{animation:fc-pick .4s var(--bouncy)}
+@keyframes fc-pick{40%{transform:scale(1.05)}}
+.ghead .gmore{font-size:15px;font-weight:500}
+@media (prefers-reduced-motion:reduce){.flysheet .chiprail .cc{animation:none!important;transition:none}}

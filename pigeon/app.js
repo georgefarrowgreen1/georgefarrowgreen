@@ -3982,6 +3982,14 @@ function viaFor(chat, dumb = dumbText()) {
   if (friend(v.id)?.lat == null) { S.via = null; return null; }
   return v;
 }
+// Friends you and this friend both have (who a pigeon could stop over with), for How It Flies
+const mutualsBusy = new Set();
+async function loadMutuals(id) {
+  if (mutualsBusy.has(id)) return; mutualsBusy.add(id);
+  try { const r = await api("mutuals?with=" + encodeURIComponent(id)); S.mutuals = { chat: id, at: now(), ids: r.ids || [] }; if (S.sheet?.type === "flysheet" && S.chat === id) renderSheet(); }
+  catch (_) { S.mutuals = { chat: id, at: now(), ids: [] }; }
+  finally { mutualsBusy.delete(id); }
+}
 // Paid pigeons you have, fastest last: what a scheduled pigeon can be
 const schedKind = () => (["swift", "turbo", "rocket"].includes(S.pick) && (S.me[S.pick] || 0) > 0 ? S.pick : ["swift", "turbo", "rocket"].find((k) => (S.me[k] || 0) > 0) || null);
 // Times worth a tap: this evening, tomorrow morning and evening, Saturday morning
@@ -4651,24 +4659,45 @@ function drawSheet(refresh) {
       const mystery = `<button type="button" class="cell kc" role="radio" aria-checked="${kind === "mystery"}" data-act="pigeon" data-id="mystery"${can.mystery ? "" : " disabled"}>${pg("mystery")}
           <span class="ctext"><span>Mystery</span><span class="csub">${esc(sched ? "Can’t be booked ahead" : myLeft ? "1 a day · any pigeon, any time" : `Used today${myNext ? ` · next in ${fmtDur(myNext - now())}` : ""}`)}</span></span><span class="val">?</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
       const bd = kind ? birdFor() : null, busy = (b) => (b.state === "flying" ? "Flying" : b.state === "waiting" ? "Booked" : "Resting");
-      const carriers = S.birds.length && kind ? `<div class="ghead">Carried By</div><div class="carriers" role="radiogroup" aria-label="Carried by">${S.birds.map((b) =>
+      const carriers = S.birds.length && kind ? `<div class="ghead">Carried By<button type="button" class="gmore" data-act="birds">Your Pigeons</button></div><div class="carriers chiprail" role="radiogroup" aria-label="Carried by">${S.birds.map((b) =>
         `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><span class="ccav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></span></button>`).join("")}
         <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><span class="ccav any" aria-hidden="true">${I.bird}</span><span><b>Any Pigeon</b><small>No name</small></span></button></div>` : "";
       // which way: three to pick from, each with when it would land; then the way itself, as a line with its stops
       const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, plans)}<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`;
       const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
-      const opts = [];
-      if (!g) opts.push(cell({ act: "schedule", icon: I.clock, tile: "blue", label: "When It Lands", val: sched ? esc(atTime(sched.at)) : "Soonest", chev: true }),
-        cell({ act: "via", icon: I.people, tile: "teal", label: "Stop Over", val: via ? esc(first(friend(via.id).name)) : "None", chev: true }));
-      if (S.birds.length || S.hall.length) opts.push(cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true }));
+      // when it lands: as soon as it can, or a time worth a tap that it can make (it waits in your loft and leaves in time to land then), or another
+      const chip = (act, id, on, b, small, off, av = "") => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}"${id != null ? ` data-id="${esc(String(id))}"` : ""}${off ? " disabled" : ""}>${av}<span><b>${b}</b><small>${small}</small></span></button>`;
+      let landing = "", stop = "";
+      if (!g) {
+        const sk = schedKind(), ms = sk ? flightMs(chatKm(f), mySpeed(sk)) : 0, presets = schedPresets(), cur = sched?.at, other = cur && !presets.some(([, at]) => at === cur);
+        landing = `<div class="ghead">When It Lands</div><div class="carriers chiprail" role="radiogroup" aria-label="When it lands">
+          ${chip("schednow", null, !cur, "Soonest", kind && kind !== "mystery" ? esc(atShort(plan && !sched ? plan.deliverAt : now() + etaMs(c, kind))) : "As soon as it can", false, `<span class="ccav when" aria-hidden="true">${I.bird}</span>`)}
+          ${sk ? presets.filter(([, at]) => at - ms >= now() || cur === at).map(([label, at]) => chip("schedset", at, cur === at, esc(label), esc(atShort(at)))).join("") : ""}
+          ${chip("schedule", null, !!other, other ? esc(atShort(cur)) : "Another Time", other ? "Your time" : sk ? "Pick one" : "Swift or faster", !sk, `<span class="ccav when" aria-hidden="true">${I.clock}</span>`)}</div>`;
+        // a stop on the way: straight there, or with a friend you both have (and how much longer that takes)
+        const mu = S.mutuals?.chat === f.id ? S.mutuals : null;
+        if (!mu || now() - mu.at > 5 * MIN) loadMutuals(f.id);
+        const pals = S.me.lat != null && f.lat != null ? (mu?.ids || []).map(friend).filter((p) => p?.lat != null).slice(0, 8) : [];
+        if (pals.length || via) {
+          const sp = mySpeed(kind && KIND[kind] ? kind : "standard"), direct = flightMs(chatKm(f), sp);
+          const extra = (p) => flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, f.lat, f.lon), sp) - direct;
+          stop = `<div class="ghead">Stop Over</div><div class="carriers chiprail" role="radiogroup" aria-label="Stop over">
+            ${chip("viaclear", null, !via, "Straight There", "No stop", false, `<span class="ccav when" aria-hidden="true">${I.up}</span>`)}
+            ${pals.map((p) => chip("viaset", p.id, via?.id === p.id, esc(first(p.name)), `${p.place ? `${esc(p.place)} · ` : ""}+${esc(fmtDur(Math.max(0, extra(p))))}`, false, avatar(p, "xs"))).join("")}</div>`;
+        }
+      }
       // (it plays in when it opens; redrawn for a new choice, only what changed moves)
       const old = $(".sheet .body", $layer), fresh = !$(".flyhero", $layer), top = old && !fresh ? old.scrollTop : 0;
+      const rails = fresh ? [] : [...$layer.querySelectorAll(".sheet .chiprail")].map((r) => r.scrollLeft);
       const was = s.shown || {}, nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) };
-      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${route}${way}
-        ${opts.length ? `<div class="group mt">${opts.join("")}</div>` : ""}
+      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${landing}${stop}${route}${way}
+        ${!carriers && (S.birds.length || S.hall.length) ? `<div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true })}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
         ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${style === "safe" && !via ? 200 : 100} is lost on the way.</div>` : ""}`);
       const body = $(".sheet .body", $layer); body.classList.add("flysheet"); if (top) body.scrollTop = top;
+      // the chip just tapped gives a little bounce
+      if (S.flyTap) { const k = S.flyTap; S.flyTap = null; body.querySelector(`.chiprail [data-act="${k.dataset.act}"]${k.dataset.id ? `[data-id="${CSS.escape(k.dataset.id)}"]` : ""}`)?.classList.add("picked"); }
+      body.querySelectorAll(".chiprail").forEach((r, i) => { r.scrollLeft = rails[i] || 0; const on = $("[aria-checked=true]", r); if (on && fresh) r.scrollLeft = Math.max(0, on.offsetLeft - 16 - (r.clientWidth - on.offsetWidth) / 3); });
       body.classList.toggle("enter", fresh);
       if (!fresh && was.land !== nowKey.land) $(".flyhero", body).classList.add("chg");
       if (!fresh && (was.style !== style || was.kind !== kind)) $(".waycard", body)?.classList.add("chg");
@@ -5647,7 +5676,7 @@ async function onClick1(e, t) {
       } catch (err) { toast(esc(err.message)); }
       return;
     }
-    case "birdset": S.birdPick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
+    case "birdset": S.flyTap = t; S.birdPick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "wave": {
       const chat = S.chat, x = (S.fly.get(chat) || []).find((y) => y.id === id && !y.mine); if (!x || x.waved) return;
       t.disabled = true;
@@ -6007,6 +6036,11 @@ async function onClick1(e, t) {
     case "schedule": S.sheet = { type: "schedule", chat: S.chat }; return renderSheet();
     case "wxwait": S.sched = { chat: S.chat, at: +id }; S.pick = t.dataset.kind; S.via = null; haptic("tick"); return renderCompose();
     case "schedpick": S.sched = { chat: S.sheet?.chat || S.chat, at: +id }; S.via = null; S.sheet = null; renderSheet(); return renderCompose();
+    // chosen right on How It Flies (it stays open)
+    case "schednow": S.flyTap = t; S.sched = null; haptic("tick"); renderSheet(); return renderCompose();
+    case "schedset": S.flyTap = t; S.sched = { chat: S.chat, at: +id }; S.via = null; haptic("tick"); renderSheet(); return renderCompose();
+    case "viaset": S.flyTap = t; S.via = { chat: S.chat, id }; S.sched = null; haptic("tick"); renderSheet(); return renderCompose();
+    case "viaclear": S.flyTap = t; S.via = null; haptic("tick"); renderSheet(); return renderCompose();
     case "unschedule": S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "risky": return setRisky(!S.me.risky);
