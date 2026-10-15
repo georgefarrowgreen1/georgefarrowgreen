@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.2";            // shown in Account
+const APP_VERSION = "1.0.3";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1907,6 +1907,7 @@ async function sync() {
       if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged)) render();
       S.chatChanged = false;
       S.synced = true;                            // from here on, what changes is news
+      maybeWhatsNew();
       if (!same) cacheSave();
       if (S.outbox.length) outboxFlush();
     } catch (e) { if (e.status !== 401) { console.warn("sync", e.message); S.syncFails = (S.syncFails || 0) + 1; } }
@@ -2124,6 +2125,40 @@ async function openNote(id, from, to, ct) {
     try { const o = await E2E.open(await pairFor(pubFromId(k)), { id: id + ":via", from, to, type: "note" }, ct); if (typeof o?.t === "string") S.notes.set(id, o.t); return; } catch (_) {}
   }
 }
+/* ---------- What's New ----------
+   Once, after an update: what's changed since the version this phone last
+   opened. Someone new (or new on this phone, who joined after it came out) has
+   nothing to catch up on. Every release is in Account, under the version. */
+const RELEASES = [
+  { v: "1.0.3", at: Date.UTC(2026, 9, 15), title: "A fresh chat, and the Earth itself", items: [
+    ["bubble", "blue", "Chats that feel like Messages", "Tails on bubbles, the time over each stretch of a chat, Read under your latest, and big emoji. Tap a message for when it was sent, landed and read."],
+    ["volcano", "red", "Volcanoes, wildfires and magnetic storms", "Pigeons fly around volcanic ash and wildfire smoke, and wander a little in magnetic storms, from live NASA and NOAA data."],
+    ["map", "teal", "The flight as a story", "Pull up the card on the map: storms dodged, passes, rests, near misses and when it lands, likely give or take a little."],
+    ["people", "green", "Flying together", "Two pigeons off the same way at once fly together, each a little quicker for it."],
+    ["wind", "indigo", "Cleverer routes", "Rockets ride the jet stream, named pigeons stop for a breather, and The Way shows the other routes faintly."],
+    ["once", "pink", "Tidier photos", "Opened and expired photos fold into a small pill, and a view-once photo can’t be opened twice."],
+    ["pass", "orange", "Near misses, folded up", "A run of them in a chat folds into one line. Tap it to see each."],
+  ] },
+  { v: "1.0.2", at: Date.UTC(2026, 8, 1), title: "Safer, steadier, faster", items: [
+    ["shield", "green", "Privacy that holds everywhere", "Blocks hold inside groups, and Opened, Updated and lofts follow your privacy switches both ways."],
+    ["clock", "blue", "Opens with no signal", "The app starts from a saved copy, never hangs on a slow request, and keeps trying queued pigeons."],
+    ["trash", "red", "Deleting means deleting", "Deleting your account removes everything of it."],
+  ] },
+];
+const verCmp = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
+const SEEN_KEY = "inflight-seen";
+let whatsNewDone = false;
+function maybeWhatsNew() {
+  if (whatsNewDone || !S.me || S.locked || AUTH_VIEWS.has(S.view)) return;
+  whatsNewDone = true;
+  let seen = null;
+  try { seen = localStorage.getItem(SEEN_KEY); localStorage.setItem(SEEN_KEY, APP_VERSION); } catch (_) { return; }
+  // never opened here before: someone who joined before this version came out has missed it
+  if (!seen) { const cur = RELEASES.find((r) => r.v === APP_VERSION); if (!cur || !S.me.joinedAt || S.me.joinedAt >= cur.at) return; seen = RELEASES.find((r) => r.at <= S.me.joinedAt)?.v || "1.0.2"; }
+  if (verCmp(seen, APP_VERSION) >= 0 || !RELEASES.some((r) => verCmp(r.v, seen) > 0)) return;
+  setTimeout(() => { if (!S.sheet && !S.locked && !AUTH_VIEWS.has(S.view)) { S.sheet = { type: "whatsnew", since: seen }; renderSheet(); } }, 900);
+}
+
 /* ---------- view-once photos ----------
    Downloaded only when tapped, and only once (the server hands it over a
    single time, then deletes it). Shown full screen for at most 15 seconds,
@@ -3092,7 +3127,7 @@ function vAccount() {
       ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
       ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
     </div>
-    <p class="aver">InFlight ${APP_VERSION}<button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
+    <p class="aver">InFlight ${APP_VERSION}<button type="button" class="alink" data-act="whatsnewall">What’s New</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
@@ -5029,6 +5064,16 @@ function drawSheet(refresh) {
     case "view":
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
+    case "whatsnew": {
+      // what's new: since the version you last opened (or every release, from Account)
+      const list = RELEASES.filter((r) => s.all || verCmp(r.v, s.since || "0") > 0);
+      const rows = (r) => `<div class="wnlist">${r.items.map(([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic] || I.bird}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`).join("")}</div>`;
+      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in InFlight</h2><p>${s.all ? "Every update, newest first" : `Version ${APP_VERSION}`}</p></div>
+        ${list.map((r) => `${s.all || list.length > 1 ? `<div class="ghead">${esc(r.v)} · ${esc(r.title)}</div>` : ""}${rows(r)}`).join("")}
+        <div class="wnfoot"><button type="button" class="btn wide" data-act="close">Continue</button></div>`, { name: "What’s New" });
+      $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
+      return;
+    }
     case "credits": {
       // where the weather, the heights and the maps come from, as their licences ask
       const out = (href, icon, tile, label, sub) => `<a class="cell has-icon" href="${href}" target="_blank" rel="noopener noreferrer"><span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span><span class="csub">${sub}</span></span>${chevSm}</a>`;
@@ -6222,6 +6267,7 @@ async function onClick1(e, t) {
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     }
     case "creditsheet": S.sheet = { type: "credits" }; return renderSheet();
+    case "whatsnewall": S.sheet = { type: "whatsnew", all: true }; return renderSheet();
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;

@@ -1954,3 +1954,18 @@ html.night .nav-ghost .night{background:none}
 .gfoot a{color:var(--tint);text-decoration:none}
 a.cell{text-decoration:none;color:inherit}
 a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2px}
+/* What's New: after an update, once */
+.wnhero{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 24px 8px;text-align:center}
+.wnhero h2{margin:6px 0 0;font-size:26px;line-height:31px;font-weight:700;letter-spacing:-.4px;text-wrap:balance}
+.wnhero p{margin:0;font-size:15px;color:var(--label-2)}
+.wnlogo{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:linear-gradient(160deg,color-mix(in srgb,var(--tint) 70%,#fff),var(--tint));color:#fff;font-size:34px;box-shadow:0 8px 22px color-mix(in srgb,var(--tint) 35%,transparent)}
+.wnlist{display:flex;flex-direction:column;gap:18px;padding:14px 28px 8px}
+.wnrow{display:flex;align-items:flex-start;gap:14px;animation:wnin .55s cubic-bezier(.32,.72,0,1) both;animation-delay:calc(.12s + var(--i, 0) * .06s)}
+.wnrow .tile{flex:none;width:40px;height:40px;border-radius:11px;font-size:21px}
+.wnt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.wnt b{font-size:16px;line-height:21px;font-weight:600}
+.wnt small{font-size:14px;line-height:19px;color:var(--label-2);text-wrap:pretty}
+.wnfoot{padding:22px 20px 8px}
+.wnfoot .btn{width:100%}
+@keyframes wnin{from{opacity:0;transform:translateY(10px)}}
+@media (prefers-reduced-motion:reduce){.wnrow{animation:none}}
