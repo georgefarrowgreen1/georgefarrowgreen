@@ -262,7 +262,8 @@ pigeon) has when it would land up top (and the weather on the way), the kinds,
 with how many you have, how long each takes and why one can't fly; which named
 pigeon carries it; When It Lands and Stop Over as chips; the Route (Fastest,
 Scenic or Safe, each with when it would land); See the Way (the way it would go
-if it left now, as a line with its stops, and on the map); and whether Pigeon
+if it left now, as a line with its stops, and on the map, where the other ways
+are drawn faint with their names: tap one for that way); and whether Pigeon
 Death is on. Every time it shows is the planner's: `GET route-plan` plans every
 kind of pigeon each way at once, just as sending would (with the rests, the
 passes and the weather), and the message box's hint says the same once it's in.
@@ -346,6 +347,13 @@ from there are squeezed, with a point ("f") where they meet and where they
 part; it's kept as a moment like a near miss, so both people are told ("Your
 pigeon to Reuben and your pigeon to Nia are flying together over France"), the
 chat says so, and the card's timeline has it.
+
+**How sure the landing time is.** While a landing is a way off, the card,
+How It Flies and The Way give it as a range ("lands 21:10–21:40", "likely Fri
+05:35–05:50"): wider the further off it is and the more the weather has to do
+with the flight (its wind, the time the weather has cost or saved, the storms it
+goes around), and narrowing as it gets closer, until it's just the time
+(`landRange` in `pigeon/app.js`).
 
 **The Skies.** The globe button on Messages opens one live map of every pigeon
 in the air to or from you, from every chat and group, with a countdown for

@@ -511,6 +511,7 @@ function mapFrame(cv, m, cardH) {
 // where it's furthest from the chosen way ("Scenic · 10:45"); tap a name for that
 // way. Returns where the names are, for the taps. xy: a route point → [x, y, seen]
 function drawAlts(g, m, xy, W, H) {
+  if (!m.alts?.length) return [];                                     // (only The Way has them; a group's map has no one route)
   const hits = [], main = routePts(m).map(xy), apart = (P, Q) => Math.max(...P.map(([x, y]) => Math.min(...Q.map(([u, v]) => Math.hypot(u - x, v - y)))));
   g.save(); g.font = "600 12px -apple-system, system-ui, sans-serif"; g.lineCap = "round"; g.lineJoin = "round";
   // (two ways that go the same way are one line, named for both: "Fastest & Safe")
@@ -796,10 +797,28 @@ function clockIn(ts, tz) {
     return f(ts, ymd) === f(now(), ymd) ? time : `${f(ts, { weekday: "short" })} ${time}`;
   } catch (_) { return fmtShort(ts); }
 }
+// How sure a landing time is: a range around it, wider the further off it is
+// and the more the weather has to do with the flight (its wind, the time the
+// weather has cost or saved, the storms and wind it's going around), narrowing
+// as it gets closer. [earliest, latest] (to 5 minutes), or null once it's within ~10.
+function landRange(at, from, { wind = null, delay = 0, legs = [] } = {}) {
+  const R = Math.max(0, at - now()), H = R / HOUR;
+  const wx = Math.min(0.4, Math.abs(Math.log(Math.max(0.4, (80 + (wind || 0)) / 80))) + (delay ? Math.abs(delay) / Math.max(HOUR, at - from) : 0)
+    + 0.04 * (legs || []).filter((l) => /^[srhw]$/.test(l[3] || "")).length);
+  const spread = Math.min(3 * HOUR, R * (0.01 + 0.15 * wx * Math.min(1, H / 48)));
+  if (spread < 10 * MIN) return null;
+  const five = (x) => Math.round(x / (5 * MIN)) * 5 * MIN;
+  return [five(at - spread / 2), five(at + spread / 2)];
+}
+// "21:10–21:40", "Fri 23:40–Sat 00:30"
+const rangeText = ([lo, hi], tz = MY_TZ) => `${clockIn(lo, tz)}–${new Date(lo).toDateString() === new Date(hi).toDateString() ? fmtTime(hi) : clockIn(hi, tz)}`;
 // Lands 08:12 Mira's time · 16:12 yours (when your clocks differ)
 function landsLine(m) {
   const mine = m.from === S.me.id, other = friend(mine ? m.to : m.from), at = m.deliverAt, you = clockIn(at, MY_TZ);
   const them = other?.tz && other.tz !== MY_TZ ? clockIn(at, other.tz) : null;
+  // (in the air, a range when it's not yet sure: "Lands 21:10–21:40")
+  const range = m.flying && !m.lost ? landRange(at, m.sentAt, { wind: m.wind, delay: m.delay, legs: m.legs }) : null;
+  if (range) return `Lands ${rangeText(range)}${them && them !== you ? ` · about ${them} ${esc(first(other.name))}’s time` : ""}`;
   if (!them || them === you) return `Lands ${you}`;
   return mine ? `Lands ${them} ${esc(first(other.name))}’s time · ${you} yours` : `Lands ${you} · ${them} for ${esc(first(other.name))}`;
 }
@@ -4698,10 +4717,11 @@ function drawSheet(refresh) {
       const big = !kind ? "No pigeon free" : kind === "mystery" ? "Who knows when?" : g ? landHint(c, kind) : `Lands ${atTime(landAt)}`;
       const to = g ? `to ${esc(g.name)} · ${others(g).length + 1} people` : `to ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(plan?.km ?? chatKm(f))}` : ""}`;
       const adv = !g && kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null, wxNow = !g && S.wxPlan.get(f.id)?.d?.now;
+      const sure = landAt ? landRange(landAt, now(), { wind: plan?.wind, legs: plan?.legs }) : null;          // (how sure that is)
       const wx = adv?.early ? ["early", I.wind, `${fmtDur(adv.early)} early on a tailwind`] : adv?.late ? ["late", I[(adv.wx && WX[adv.wx.k]?.[1]) || "storm"], `${fmtDur(adv.late)} late: ${adv.wx && WX[adv.wx.k] ? WX[adv.wx.k][0] : "rough weather"}`]
         : wxNow ? ["clear", I.sun, "Clear skies"] : null;
       const hero = `<div class="flyhero">${kind ? pg(kind, S.me.skin) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
-        <span class="fht"><b class="fhbig">${esc(big)}</b><span class="flyto">${landAt ? `in ${esc(fmtDur(landAt - now()))} · ` : ""}${to}</span>
+        <span class="fht"><b class="fhbig">${esc(big)}</b><span class="flyto">${landAt && !sched && sure ? `likely ${esc(rangeText(sure))} · ` : ""}${landAt ? `in ${esc(fmtDur(landAt - now()))} · ` : ""}${to}</span>
         ${wx ? `<span class="fhwx ${wx[0]}">${wx[1]}${esc(wx[2])}</span>` : ""}</span></div>`;
       // the pigeons, each with a bar for how long it would take
       const most = Math.max(1, ...KINDS.map(([k]) => plannedMs(c, k) || 0));
@@ -4720,7 +4740,7 @@ function drawSheet(refresh) {
         `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><span class="ccav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></span></button>`).join("")}
         <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><span class="ccav any" aria-hidden="true">${I.bird}</span><span><b>Any Pigeon</b><small>No name</small></span></button></div>` : "";
       // which way: three to pick from, each with when it would land; then the way itself, as a line with its stops
-      const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, plansNow(now(), kind))}<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`;
+      const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, mapped && plans ? plansNow(now(), kind) : null)}<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`;
       const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
       // when it lands: as soon as it can, or a time worth a tap that it can make (it waits in your loft and leaves in time to land then), or another
       const chip = (act, id, on, b, small, off, av = "") => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}"${id != null ? ` data-id="${esc(String(id))}"` : ""}${off ? " disabled" : ""}>${av}<span><b>${b}</b><small>${small}</small></span></button>`;
@@ -5012,7 +5032,7 @@ function tickPreview(card, cv) {
   for (const e of fcEvents({ ...live, via: true }, t)) rows.push({ ...e, time: fcAt(e.at, true), title: esc(e.title), sub: esc(e.sub || "") });
   rows.push({ at: live.deliverAt, time: fcAt(live.deliverAt), dot: "end", title: `Lands in ${to}` });
   const name = KIND[k]?.name || "Standard";
-  const html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">Lands ${esc(clockIn(live.deliverAt, MY_TZ))}</span><span class="fcs">if it left now · in ${esc(fmtDur(live.deliverAt - t))}</span></span></span>
+  const html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">Lands ${esc(clockIn(live.deliverAt, MY_TZ))}</span><span class="fcs">if it left now · ${(() => { const r = landRange(live.deliverAt, t, { wind: m.wind, legs: live.legs }); return r ? `likely ${esc(rangeText(r))}` : `in ${esc(fmtDur(live.deliverAt - t))}`; })()}</span></span></span>
     ${routeSeg(m.style, plansNow(t, m.pigeon))}
     <ol class="fctl" aria-label="The way it would go">${rows.map(fcRow).join("")}</ol>
     <span class="fcwho"><span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${/^[AEIOU]/.test(name) ? "An" : "A"} ${esc(name.toLowerCase())} pigeon</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>${m.risky ? `<span class="fctags">${m.risk ? riskTag(m.risk).replace('<em class="rk', '<span class="fcchip risk rk').replace("</em>", "</span>") : `<span class="fcchip risk">1.25×</span>`}</span>` : ""}</span>`;
