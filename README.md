@@ -593,7 +593,10 @@ quarter-degree grid (about 28 km) so Open-Meteo can't tell where a route starts
 or ends; each square's weather is kept 10 minutes, so a busy sky asks once. What blows the
 pigeon's way changes its cruising speed (80 km/h plus the tailwind, or minus a
 headwind; between 0.6× and 1.6×), and the 5-minute and 3-day limits still apply
-after it. Storms slow it too: it sits out thunder (0.7×), picks its way
+after it. Storms slow it too (thunder by the weather code, or air unstable
+enough for it, CAPE 1,500 J/kg or more, with rain falling; hail, slower still,
+0.6×, is gone around and sheltered from like storms; and rain is heavy by its
+code or when 4 mm an hour or more is falling): it sits out thunder (0.7×), picks its way
 through heavy rain, snow and fog, and fights gusts over 60 km/h. The server
 keeps how much later (or earlier) that makes it, and the spot where the weather
 did most of it (what and where, never who). When it's 5 minutes or more, the

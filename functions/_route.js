@@ -14,7 +14,7 @@
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
 import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH } from "./_pigeon.js";
-import { windsAlong, skyAtPoints, paceAt, pointsFor } from "./_weather.js";
+import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -110,7 +110,7 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
   const head = bearing(lat.from[0], lat.from[1], lat.to[0], lat.to[1]), lineStorms = new Map();
   let firstStorm = null;
   lat.line.forEach((f, k) => {
-    if (paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head)?.k !== "storms") return;
+    if (!isSevere(paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head)?.k)) return;
     const s = Math.floor(f * (S + 1)); lineStorms.set(s, (lineStorms.get(s) || 0) + 1);
     firstStorm ||= pts[lat.lineAt + k];
   });
@@ -119,7 +119,7 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
     const pa = paceAt(skyAt(nodeOf(lat, s1, o1), whenOf(s1)), head), pb = paceAt(skyAt(nodeOf(lat, s2, o2), whenOf(s2)), head);
     // (a stretch along the straight line, or leaving or joining it, meets the storms its points saw)
     const onLine = (s1 === 0 || o1 === MID) || (s2 === S + 1 || o2 === MID);
-    const f = pa && pb ? 2 / (1 / pa.f + 1 / pb.f) : (pa || pb || { f: 1 }).f, storms = (pb?.k === "storms" ? 1 : 0) + (s1 === 0 && pa?.k === "storms" ? 1 : 0) + (onLine ? lineStorms.get(s1) || 0 : 0);
+    const f = pa && pb ? 2 / (1 / pa.f + 1 / pb.f) : (pa || pb || { f: 1 }).f, storms = (isSevere(pb?.k) ? 1 : 0) + (s1 === 0 && isSevere(pa?.k) ? 1 : 0) + (onLine ? lineStorms.get(s1) || 0 : 0);
     return { d, f, tail: ((pa?.tail ?? 0) + (pb?.tail ?? 0)) / (pa && pb ? 2 : 1), storms, hours: d / (kmh * f), cost: d / (kmh * f) + storms * STORM_H, at: b, pace: pb };
   };
   // stage by stage: the cheapest way to each point

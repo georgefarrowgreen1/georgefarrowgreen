@@ -757,7 +757,7 @@ function landsLine(m) {
 
 /* ---------- what the weather did to a flight ---------- */
 // "Delayed 40m · storms over the Alps", "25m early · tailwind over France"
-const WX = { storms: ["storms", "storm"], rain: ["heavy rain", "rain"], snow: ["snow", "snow"], fog: ["fog", "fog"], gales: ["gales", "wind"],
+const WX = { storms: ["storms", "storm"], hail: ["hail", "storm"], rain: ["heavy rain", "rain"], snow: ["snow", "snow"], fog: ["fog", "fog"], gales: ["gales", "wind"],
   headwind: ["headwinds", "wind"], tailwind: ["a tailwind", "wind"] };
 // a mountain range when it's right over one, else the country or sea
 function wxWhere(lon, lat) {
@@ -1022,7 +1022,7 @@ function drawRadar(g, cv, ts, xf) {
 
 // The weather that's holding a pigeon up, drawn where it is: a cloud with rain
 // falling, a storm cloud that flashes, drifting snow, banks of fog, or gusts.
-const WX_SKY = { storms: ["#596072", 0.7, "Storms"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
+const WX_SKY = { storms: ["#596072", 0.7, "Storms"], hail: ["#4f5668", 0.75, "Hail"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
 function wxCells(routes) {
   const held = routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt).map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon }));
   // and the storms it went around (planned, or turning for them on the way), while it's flying
@@ -1041,8 +1041,8 @@ function drawWx(g, cv, ts, xf) {
     g.save();
     const radar = !!RAIN_K[w.k];                           // (rain, storms and snow are on the radar)
     // what falls from it
-    if (radar) { /* the radar draws it */ } else if (w.k === "rain" || w.k === "storms") {
-      g.strokeStyle = w.k === "storms" ? "#4f7fc4" : "#5b8fd6"; g.lineWidth = Math.max(1, R / 40); g.lineCap = "round";
+    if (radar) { /* the radar draws it */ } else if (w.k === "rain" || w.k === "storms" || w.k === "hail") {
+      g.strokeStyle = w.k === "rain" ? "#5b8fd6" : "#4f7fc4"; g.lineWidth = Math.max(1, R / 40); g.lineCap = "round";
       for (let i = 0; i < 16; i++) {
         const ph = ((t * 1.5 + i * 0.381 + w.seed * 0.1) % 1 + 1) % 1, dx = -0.8 + (i / 15) * 1.6 + Math.sin(i * 7.3) * 0.06;
         const xx = x + dx * R * 0.75, yy = y + R * 0.38 + ph * R * 0.8, len = R * 0.15;
@@ -1060,7 +1060,7 @@ function drawWx(g, cv, ts, xf) {
     }
     // the cloud: soft puffs that drift a little
     if (radar) { /* none */ } else if (w.k !== "fog") {
-      const flash = w.k === "storms" && (STILL.matches || ((t + w.seed) % 3.4) < 0.16);
+      const flash = (w.k === "storms" || w.k === "hail") && (STILL.matches || ((t + w.seed) % 3.4) < 0.16);
       // one shape (puffs on a flat base), so it reads as a cloud, not a bunch of balls
       const puffs = [[-0.5, 0.02, 0.36], [-0.16, -0.2, 0.48], [0.24, -0.12, 0.42], [0.56, 0.06, 0.3]], shape = new Path2D();
       for (const [i, [px, py, pr]] of puffs.entries()) {

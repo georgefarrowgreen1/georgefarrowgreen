@@ -24,8 +24,8 @@ import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js"
 // where along a route to look: a point every SAMPLE_KM or so (each in the middle of
 // its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
 // What's asked of Open-Meteo: the wind where pigeons fly (120 m up; 10 m if that's
-// missing), the gusts and the weather
-const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code";
+// missing), the gusts and the weather, and how unstable (CAPE) and wet the air is
+const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation";
 const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
 export const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
@@ -33,14 +33,21 @@ const GALE = 60;                                 // gusts (km/h) a pigeon has to
 const CELL = 0.25, WX_TTL = 10 * 60e3;           // the grid points are snapped to, and how long a square's weather is kept
 const snap = (v) => Math.round(v / CELL) * CELL;
 
-// What the sky is doing at one point (WMO weather code, gusts), and how much
-// of its speed a pigeon keeps flying through it.
-export function skyAt(code, gust) {
+// What the sky is doing at one point (WMO weather code, gusts, and how
+// unstable and wet the air is), and how much of its speed a pigeon keeps
+// flying through it. Thunderstorms are the weather code's, or air unstable
+// enough for them (CAPE, J/kg) with rain falling; hail is worse still; rain
+// is heavy by the weather code or by how much is falling (mm an hour).
+const STORM_CAPE = 1500, STORM_RAIN = 1, HEAVY_RAIN = 4;
+const SEVERE = new Set(["storms", "hail"]);
+export const isSevere = (k) => SEVERE.has(k);              // what a pigeon goes around, or shelters from
+export function skyAt(code, gust, cape = 0, rain = 0) {
   let k = null, keep = 1;
-  if (code >= 95) [k, keep] = ["storms", 0.7];
+  if (code === 96 || code === 99) [k, keep] = ["hail", 0.6];
+  else if (code >= 95 || (cape >= STORM_CAPE && rain >= STORM_RAIN)) [k, keep] = ["storms", 0.7];
   else if (code === 75 || code === 86) [k, keep] = ["snow", 0.8];
   else if ((code >= 71 && code <= 77) || code === 85) [k, keep] = ["snow", 0.9];
-  else if (code === 65 || code === 67 || code === 82) [k, keep] = ["rain", 0.85];
+  else if (code === 65 || code === 67 || code === 82 || rain >= HEAVY_RAIN) [k, keep] = ["rain", 0.85];
   else if ((code >= 61 && code <= 66) || code === 80 || code === 81) [k, keep] = ["rain", 0.93];
   else if (code === 45 || code === 48) [k, keep] = ["fog", 0.9];
   if (gust >= GALE) { keep *= 0.9; k = k || "gales"; }
@@ -94,7 +101,7 @@ export function paceAt(w, head) {
   if (sp == null || dir == null || !Number.isFinite(speed) || !Number.isFinite(from)) return null;
   // wind_direction is where it blows from; the pigeon gains what blows its way
   const tail = speed * Math.cos(((from + 180) - head) * r);
-  const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0);
+  const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0, Number(w.cape) || 0, Number(w.precipitation) || 0);
   return { f: Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), tail, k: sky.k };
 }
 function tally(routes, pts, list) {
@@ -104,7 +111,7 @@ function tally(routes, pts, list) {
     const { tail, f } = pace, sky = { k: pace.k }, s = sum[pts[k].i];
     // each point stands for an equal stretch of the route: add up the time it takes
     s.tail += tail; s.slow += 1 / f; s.n++;
-    if (sky.k === "storms") { s.storms++; if (!s.storm) s.storm = { lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f }; }
+    if (isSevere(sky.k)) { s.storms++; if (!s.storm) s.storm = { lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f }; }
     const k2 = f >= 1 ? "tailwind" : sky.k || "headwind";
     const here = { f, k: k2, lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f };
     if (!s.lo || f < s.lo.f) s.lo = here;
@@ -138,6 +145,7 @@ export async function windsFor(env, routes) {
       if (res.ok) data = await res.json();
     } catch (_) {}
     // Open-Meteo didn't answer: the hour now from MET Norway's forecast
+    const fromMet = !data;
     if (!data) { const met = await metFor(env, ask, 1).catch(() => null); if (!met) return calm; data = met.map((H) => (H ? { current: hourAt(H, 0) } : {})); }
     const fresh = Array.isArray(data) ? data : [data];
     if (fresh.length !== ask.length) return calm;
@@ -145,6 +153,7 @@ export async function windsFor(env, routes) {
     ask.forEach((p, k) => {
       const c = fresh[k]?.current; if (!c) return;
       const w = { current: Object.fromEntries(WIND_VARS.split(",").map((k) => [k, c[k]])) };
+      if (c.precipitation != null && !fromMet) w.current.precipitation = c.precipitation * 4;   // (now: the last 15 minutes', as an hour's)
       got.set(key(p), w); keep.push(D.prepare("INSERT OR REPLACE INTO pg_wxcache (cell, at, w) VALUES (?, ?, ?)").bind(key(p), t, JSON.stringify(w)));
     });
     if (keep.length) await D.batch(keep).catch(() => {});

@@ -283,7 +283,7 @@ async function groupTick(env, D, t, since) {
 // Weather: when a pigeon flies into whatever is holding it up (15 minutes or
 // more), its sender and recipient hear how late it'll be. In a group only the
 // recipient does, so one message can't set off a notification per member.
-const WX_WORDS = { storms: "storms", rain: "heavy rain", snow: "snow", fog: "fog", gales: "gales", headwind: "strong headwinds" };
+const WX_WORDS = { storms: "storms", hail: "hail", rain: "heavy rain", snow: "snow", fog: "fog", gales: "gales", headwind: "strong headwinds" };
 const WX_MIN = 15 * MIN;
 const lateBy = (ms) => { const m = Math.round(ms / MIN); return m >= 90 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`; };
 const clockAt = (ts, tz) => { try { return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ts); } catch (_) { return ""; } };
