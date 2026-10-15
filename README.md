@@ -554,7 +554,9 @@ can't see which one it was. One per person per message: another replaces it,
 the same again takes it back. Code: `functions/_reacts.js`, table `pg_reacts`.
 
 **Weather.** At take-off the server asks Open-Meteo (free, no key) for the wind
-at five points along each route (`functions/_weather.js`), snapped to a
+120 m up (where pigeons fly; the wind at the ground if that's missing) at a
+point every 200 km or so along each route, five to twelve of them
+(`functions/_weather.js`), snapped to a
 quarter-degree grid (about 28 km) so Open-Meteo can't tell where a route starts
 or ends; each square's weather is kept 10 minutes, so a busy sky asks once. What blows the
 pigeon's way changes its cruising speed (80 km/h plus the tailwind, or minus a

@@ -42,7 +42,7 @@ async function windGrid({ request, env }) {
   try {
     const url = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
     url.searchParams.set("latitude", lats.join(",")); url.searchParams.set("longitude", lons.join(","));
-    url.searchParams.set("current", "wind_speed_10m,wind_direction_10m,precipitation"); url.searchParams.set("wind_speed_unit", "kmh");
+    url.searchParams.set("current", "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,precipitation"); url.searchParams.set("wind_speed_unit", "kmh");   // (the wind where pigeons fly)
     const res = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json(); list = Array.isArray(d) ? d : [d];
@@ -52,7 +52,8 @@ async function windGrid({ request, env }) {
   const U = [], V = [], P = [];
   for (const p of list) {
     const mm = Number(p?.current?.precipitation); P.push(Number.isFinite(mm) && mm > 0 ? Math.round(mm * 40) / 10 : 0);   // (the last 15 minutes' rain, as a rate)
-    const sp = Number(p?.current?.wind_speed_10m), from = Number(p?.current?.wind_direction_10m);
+    const c = p?.current, hi = c?.wind_speed_120m != null && c?.wind_direction_120m != null;
+    const sp = Number(hi ? c.wind_speed_120m : c?.wind_speed_10m), from = Number(hi ? c.wind_direction_120m : c?.wind_direction_10m);
     const ok = Number.isFinite(sp) && Number.isFinite(from), to = (from + 180) * r;
     U.push(ok ? Math.round(sp * Math.sin(to) * 10) / 10 : 0); V.push(ok ? Math.round(sp * Math.cos(to) * 10) / 10 : 0);
   }

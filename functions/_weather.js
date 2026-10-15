@@ -1,5 +1,6 @@
 // Weather for InFlight's pigeons. At take-off the server asks Open-Meteo (free,
-// no key) for the wind at a few points along each route; the part of it
+// no key) for the wind at a few points along each route (120 m up, where
+// pigeons fly, rather than at the ground); the part of it
 // blowing the pigeon's way speeds it up, and a headwind slows it down. Only
 // points along the route are sent, never who's flying. If the forecast doesn't
 // answer quickly, the pigeon simply flies at its usual speed. The points are
@@ -22,6 +23,9 @@ import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js"
 
 // where along a route to look: a point every SAMPLE_KM or so (each in the middle of
 // its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
+// What's asked of Open-Meteo: the wind where pigeons fly (120 m up; 10 m if that's
+// missing), the gusts and the weather
+const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code";
 const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
 const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
@@ -84,8 +88,9 @@ const key = (p) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
 function tally(routes, pts, list) {
   const sum = routes.map(() => ({ tail: 0, slow: 0, n: 0, lo: null, hi: null, storms: 0, storm: null }));
   list.forEach((w, k) => {
-    const speed = Number(w?.wind_speed_10m), from = Number(w?.wind_direction_10m);
-    if (w?.wind_speed_10m == null || w?.wind_direction_10m == null || !Number.isFinite(speed) || !Number.isFinite(from)) return;
+    const [sp, dir] = w?.wind_speed_120m != null && w?.wind_direction_120m != null ? [w.wind_speed_120m, w.wind_direction_120m] : [w?.wind_speed_10m, w?.wind_direction_10m];
+    const speed = Number(sp), from = Number(dir);
+    if (sp == null || dir == null || !Number.isFinite(speed) || !Number.isFinite(from)) return;
     // wind_direction is where it blows from; the pigeon gains what blows its way
     const tail = speed * Math.cos(((from + 180) - pts[k].head) * r);
     const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0);
@@ -121,7 +126,7 @@ export async function windsFor(env, routes) {
     try {
       const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
       u.searchParams.set("latitude", ask.map((p) => p.lat).join(",")); u.searchParams.set("longitude", ask.map((p) => p.lon).join(","));
-      u.searchParams.set("current", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code"); u.searchParams.set("wind_speed_unit", "kmh");
+      u.searchParams.set("current", WIND_VARS); u.searchParams.set("wind_speed_unit", "kmh");
       const res = await fetch(u, { signal: AbortSignal.timeout(2500), headers: { Accept: "application/json" } });
       if (!res.ok) return calm;
       data = await res.json();
@@ -131,7 +136,7 @@ export async function windsFor(env, routes) {
     const keep = [];
     ask.forEach((p, k) => {
       const c = fresh[k]?.current; if (!c) return;
-      const w = { current: { wind_speed_10m: c.wind_speed_10m, wind_direction_10m: c.wind_direction_10m, wind_gusts_10m: c.wind_gusts_10m, weather_code: c.weather_code } };
+      const w = { current: Object.fromEntries(WIND_VARS.split(",").map((k) => [k, c[k]])) };
       got.set(key(p), w); keep.push(D.prepare("INSERT OR REPLACE INTO pg_wxcache (cell, at, w) VALUES (?, ?, ?)").bind(key(p), t, JSON.stringify(w)));
     });
     if (keep.length) await D.batch(keep).catch(() => {});
@@ -158,7 +163,7 @@ export async function forecastFor(env, routes, hours = 24) {
   return out;
 }
 // One square's weather in hour h of its forecast
-const hourAt = (H, h) => H && h >= 0 && h < H.time.length ? { wind_speed_10m: H.wind_speed_10m?.[h], wind_direction_10m: H.wind_direction_10m?.[h], wind_gusts_10m: H.wind_gusts_10m?.[h], weather_code: H.weather_code?.[h] } : null;
+const hourAt = (H, h) => H && h >= 0 && h < H.time.length ? Object.fromEntries(WIND_VARS.split(",").map((k) => [k, H[k]?.[h]])) : null;
 // Open-Meteo's forecast for some squares, hour by hour from this hour, `hours`
 // of it: a list matching `cells` (null if it didn't answer). Kept for everyone
 // for half an hour; asked a hundred squares at a time.
@@ -173,7 +178,7 @@ async function hourlyFor(env, cells, hours) {
     try {
       const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
       u.searchParams.set("latitude", part.map((p) => p.lat).join(",")); u.searchParams.set("longitude", part.map((p) => p.lon).join(","));
-      u.searchParams.set("hourly", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code"); u.searchParams.set("forecast_hours", String(hours));
+      u.searchParams.set("hourly", WIND_VARS); u.searchParams.set("forecast_hours", String(hours));
       u.searchParams.set("timeformat", "unixtime"); u.searchParams.set("wind_speed_unit", "kmh");
       const res = await fetch(u, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json" } });
       if (!res.ok) return null;
