@@ -3,7 +3,7 @@
    map in the app uses (the same coastline and the same lists), so a push about
    a moment over Belgium says what the map would. */
 import { LAND } from "../pigeon/land.js";
-import { COUNTRIES, SEAS } from "../pigeon/countries.js";
+import { COUNTRIES, EDGES, SEAS } from "../pigeon/countries.js";
 import { haversineKm } from "./_pigeon.js";
 
 let rings = null;
@@ -34,10 +34,11 @@ export function onLand(lat, lon) {
   return inside;
 }
 // the nearest country's middle (bigger countries reach further): "land" when none is near
+const NAMED = [...COUNTRIES, ...EDGES];
 export function countryNear(lat, lon) {
   lon = ((lon + 540) % 360) - 180;
   let best = null, bd = Infinity;
-  for (const [name, la, lo, tier] of COUNTRIES) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
+  for (const [name, la, lo, tier] of NAMED) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
   return best && bd < 1500 ? (/^(United|Netherlands|Philippines|Central|Dominican|UAE)/.test(best) ? "the " + best : best) : "land";
 }
 // that, or the sea it's in

@@ -351,12 +351,19 @@ flyovers, the passport and postmarks all simply follow.
   ahead), and stopovers and group pigeons meet the forecast the same way.
 - *Riding the wind:* with no storms in the way, an arc the wind blows along
   is taken if it lands at least 4% sooner, though it's further.
-- *Mountain passes:* a way over the Alps, the Pyrenees, the Himalayas, the
-  Rockies, the Andes or the Caucasus goes through the pass that adds least
-  (`functions/_mountains.js`), if that's no more than a third further.
+- *Mountain passes:* where the way goes over high ground (the land's average
+  height every half degree, from open terrain data: `functions/_elevgrid.js`),
+  it goes through a pass: a known one near the top (`functions/_mountains.js`:
+  the Alps, Pyrenees, Himalayas, Rockies, Andes, Caucasus, Norway, the Atlas,
+  Japan and more), the one that adds least; else the lowest way across it can
+  find either side ("a pass in Norway"). Not when it starts or ends in the
+  mountains.
 - *Island hopping:* a standard pigeon facing more than 450 km of open sea
-  rests an hour on an island part way over (`functions/_islands.js`); faster
-  ones fly straight over.
+  rests an hour on an island part way over: any of ~1,300 islands out at sea
+  from Natural Earth's 10 m coastline (`functions/_islands.data.js`), named
+  from a hand-made list where there is one ("the Azores"), else by the country
+  they're off ("an island off Greenland"); faster ones fly straight over. The
+  data files are made by the scripts in `.tools/geo` (see its README).
 - *Route styles* (How It Flies → Route, kept on the phone): Fastest (all of
   the above), Scenic (no chasing the wind, but bends past up to two landmarks
   for their postmarks, at most 15% further) or Safe (every pigeon island-hops,

@@ -1,9 +1,14 @@
-/* ---------- islands to rest on ----------
-   Where a pigeon can come down for a rest on a long sea crossing: small
-   islands and island groups out in open water, [name, lat, lon]. (Big ones,
-   like Ireland or Sri Lanka, are land on the map already, so a way across
-   them needs no stop.) */
+/* ---------- islands, by name ----------
+   The names islands are known by, [name, lat, lon]: the islands pigeons rest
+   on (functions/_islands.data.js, every island out at sea in Natural Earth's
+   10 m coastline) take the name of the nearest of these within 250 km (see
+   .tools/geo). Big archipelagos have a point at each end. */
 export const ISLANDS = [
+  // (big archipelagos have a point at each end, so every island in them is named)
+  ["the Azores", 39.45, -31.13], ["the Canary Islands", 28.4, -14.0], ["Hawaii", 19.6, -155.5], ["Cape Verde", 16.6, -22.9],
+  ["the Galápagos", 0.4, -91.0], ["the Aleutian Islands", 52.0, 178.0], ["the Aleutian Islands", 54.0, -165.0], ["the Kuril Islands", 50.3, 155.5],
+  ["the Bahamas", 22.0, -74.0], ["the Marquesas", -8.0, -140.6], ["the Tuamotus", -16.5, -143.0], ["the Solomon Islands", -8.0, 157.0],
+  ["Svalbard", 79.5, 22.0], ["the Faroe Islands", 61.8, -6.9], ["the Maldives", 1.0, 73.2], ["the Seychelles", -9.4, 46.4],
   // the North Atlantic and the Arctic
   ["Iceland", 64.15, -21.94], ["the Faroe Islands", 62.01, -6.77], ["Shetland", 60.15, -1.15], ["Orkney", 58.98, -2.96],
   ["the Outer Hebrides", 57.76, -7.02], ["the Isle of Man", 54.15, -4.48], ["the Channel Islands", 49.45, -2.54],

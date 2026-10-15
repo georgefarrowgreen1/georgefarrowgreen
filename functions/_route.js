@@ -18,8 +18,9 @@ import { windsAlong } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
-import { ISLANDS } from "./_islands.js";
-import { RANGES } from "./_mountains.js";
+import { ISLES } from "./_islands.data.js";
+import { PASSES } from "./_mountains.js";
+import { elevAt } from "./_elevgrid.js";
 import { LANDMARKS, marksAlong } from "./_landmarks.js";
 
 const R = 6371, rad = Math.PI / 180, deg = 180 / Math.PI;
@@ -105,40 +106,55 @@ export function finish(path, { hop = false, style = null } = {}) {
   return hop || style === "safe" ? hopped(through) : through;
 }
 
-// Mountain passes: a way over one of the great ranges goes through its best
-// pass instead (the one that adds least), if that isn't far out of the way.
-// Not when it starts or ends in the mountains (it's going there).
-const PASS_STEP = 20, PASS_MOST = 1.35, PASS_KM = 400;
-const inside = (edge, lat, lon) => {
-  let c = false;
-  for (let i = 0, j = edge.length - 1; i < edge.length; j = i++) {
-    const [ay, ax] = edge[i], [by, bx] = edge[j];
-    if ((ay > lat) !== (by > lat) && lon < ((bx - ax) * (lat - ay)) / (by - ay) + ax) c = !c;
-  }
-  return c;
-};
-const crosses = (edge, a, b) => {
+// Mountain passes: where a way goes over high ground (the land's height, from
+// open terrain data: _elevgrid.js), it goes through a pass instead. A known
+// pass near where it's highest, the one that adds least; if none is near, the
+// lowest way across it can find either side, if that's well lower. Not when it
+// starts or ends up in the mountains (it's going there). At most PASSES_MOST.
+const PASS_STEP = 20, PASS_MOST = 1.35, PASS_KM = 400, HIGH = 1100, LOWER = 300, PASS_NEAR = 400, PASSES_MOST = 3;
+const SIDE_KM = [25, 50, 75, 100, 150, 200, 300];
+// the highest point of the way from a to b (and where)
+function highest(a, b) {
   const d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(2, Math.ceil(d / PASS_STEP));
-  for (let k = 1; k < n; k++) { const [lat, lon] = gcPoint(a[0], a[1], b[0], b[1], k / n); if (inside(edge, lat, lon)) return true; }
-  return false;
-};
+  let top = { m: -1, at: a };
+  for (let k = 1; k < n; k++) { const at = gcPoint(a[0], a[1], b[0], b[1], k / n), m = elevAt(at[0], at[1]); if (m > top.m) top = { m, at }; }
+  return top;
+}
 function throughPasses(path) {
   const out = [...path];
-  for (const range of RANGES) {
-    for (let i = 0; i < out.length - 1; i++) {
-      const p = out[i], q = out[i + 1];
-      if (inside(range.edge, p[0], p[1]) || inside(range.edge, q[0], q[1]) || !crosses(range.edge, p, q)) continue;
-      const base = haversineKm(p[0], p[1], q[0], q[1]);
-      let best = null, km = Math.min(base * PASS_MOST, base + PASS_KM);
-      for (const [name, lat, lon] of range.passes) {
-        const via = haversineKm(p[0], p[1], lat, lon) + haversineKm(lat, lon, q[0], q[1]);
-        if (via < km) { km = via; best = [lat, lon, "p", name]; }
-      }
-      if (best) { out.splice(i + 1, 0, best); break; }               // (once over each range)
-    }
+  for (let i = 0, n = 0; i < out.length - 1 && n < PASSES_MOST; i++) {
+    // (worked out the same whichever way it's flying, so pigeons each way take the same pass)
+    const [p, q] = out[i][0] < out[i + 1][0] || (out[i][0] === out[i + 1][0] && out[i][1] <= out[i + 1][1]) ? [out[i], out[i + 1]] : [out[i + 1], out[i]];
+    const pt = passFor(p, q);
+    if (pt) { out.splice(i + 1, 0, pt); n++; i++; }
   }
   return out;
 }
+// The pass from p to q, if the way between goes over high ground (null if not)
+function passFor(p, q) {
+  const top = highest(p, q);
+  if (top.m < HIGH || elevAt(p[0], p[1]) >= top.m - LOWER || elevAt(q[0], q[1]) >= top.m - LOWER) return null;
+  const base = haversineKm(p[0], p[1], q[0], q[1]), most = Math.min(base * PASS_MOST, base + PASS_KM);
+  const via = (x) => haversineKm(p[0], p[1], x[0], x[1]) + haversineKm(x[0], x[1], q[0], q[1]);
+  // a known pass near the top, the one that adds least
+  let best = null;
+  for (const [name, lat, lon] of PASSES) {
+    if (haversineKm(lat, lon, top.at[0], top.at[1]) > PASS_NEAR) continue;
+    const km = via([lat, lon]); if (km <= most && (!best || km < best.km)) best = { km, pt: [lat, lon, "p", name] };
+  }
+  if (best) return best.pt;
+  // else the lowest way across, either side of the top
+  const side = bearing(p[0], p[1], q[0], q[1]);
+  let low = null;
+  for (const d of SIDE_KM) for (const s of [90, -90]) {
+    const x = dest(top.at[0], top.at[1], side + s, d), km = via(x); if (km > most) continue;
+    const m = Math.max(highest(p, x).m, highest(x, q).m), score = m + (km - base) * 2;
+    if (m <= top.m - LOWER && (!low || score < low.score)) low = { score, km, x };
+  }
+  return low ? [round5(low.x[0]), round5(low.x[1]), "p", passName(low.x)] : null;
+}
+// A pass of no known name: "a pass in Norway"
+const passName = ([lat, lon]) => { const p = placeAt(lat, lon); return p && !isSea(p) ? `a pass in ${p}` : "a pass"; };
 
 // The scenic way: past the landmark it can see for least extra (and then
 // another), so long as the whole way is no more than SCENIC_MORE further.
@@ -166,7 +182,8 @@ function scenic(path) {
 export const hopsFor = (kind) => (PIGEONS[kind]?.speed ?? 1) <= 1;
 // Island hopping: a stretch of open sea longer than HOP_KM gets a rest on an
 // island part way over (the one that splits it most evenly, if one's near
-// enough the way), HOP_REST each, HOPS at most.
+// enough the way: any island out at sea, from Natural Earth's 10 m coastline,
+// _islands.data.js), HOP_REST each, HOPS at most.
 const HOP_KM = 450, HOP_PART = 200, HOP_REST = HOUR, HOPS = 4, SEA_STEP = 25;
 function hopped(path) {
   const out = [...path];
@@ -195,7 +212,8 @@ function seaRun(a, b) {
 function restIsland(p, q, run) {
   const base = haversineKm(p[0], p[1], q[0], q[1]), most = Math.min(0.2 * run.km, 900);
   let best = null, score = run.km * 0.85;
-  for (const [name, lat, lon] of ISLANDS) {
+  for (const [name, lat, lon] of ISLES) {
+    if (name === p[3] || name === q[3]) continue;                     // not another of the islands it's just rested on
     const a = haversineKm(run.a[0], run.a[1], lat, lon), b = haversineKm(lat, lon, run.b[0], run.b[1]);
     const pa = haversineKm(p[0], p[1], lat, lon), qb = haversineKm(lat, lon, q[0], q[1]);
     if (Math.min(a, b, pa, qb) < HOP_PART) continue;                // part way over, not just off either end

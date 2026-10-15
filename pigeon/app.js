@@ -3,7 +3,8 @@
 import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
 import { LAND } from "./land.js";
 import { PLACES, nearestPlace, snapToMile } from "./places.js";
-import { COUNTRIES, RANGES, SEAS } from "./countries.js";
+import { COUNTRIES, EDGES, RANGES, SEAS } from "./countries.js";
+const NAMED = [...COUNTRIES, ...EDGES];         // (naming where something is: the labels, and more points inside the biggest countries)
 import { qrSvg } from "./qr.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -410,7 +411,7 @@ function routeNote(m) {
     h: [I.storm, ahead ? `Sheltering from storms${name ? ` ${name}` : ""} on the way` : `Sheltered from storms${name ? ` ${name}` : ""}`],
     r: [name === "s" ? I.storm : I.wind, name === "s" ? "Rerouted to keep clear of storms" : "Rerouted to ride the wind"],
     i: [I.bird, ahead ? `Resting on ${name || "an island"} on the way` : `Rested on ${name || "an island"}`],
-    p: [I.map, ahead ? `Through the ${name || "pass"}` : `Came through the ${name || "pass"}`],
+    p: [I.map, `${ahead ? "Through" : "Came through"} ${!name ? "the pass" : /^a |^[A-Z][\w’']*['’]s /.test(name) ? name : `the ${name}`}`],
     v: [I.loc, ahead ? `The scenic way, past ${name || "a landmark"}` : `Came the scenic way, past ${name || "a landmark"}`],
   }[l[3]];
   return say ? { icon: say[0], text: say[1] } : null;
@@ -754,7 +755,7 @@ function overWhere(lon, lat) {
   lon = ((lon + 540) % 360) - 180;
   if (onLand(lon, lat)) {
     let best = null, bd = Infinity;
-    for (const [name, la, lo, tier] of COUNTRIES) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
+    for (const [name, la, lo, tier] of NAMED) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
     return best && bd < 1500 ? (/^(United|Netherlands|Philippines|Central|Dominican|UAE)/.test(best) ? "the " + best : best) : "land";
   }
   const sea = SEAS.find(([, s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e); if (sea) return sea[0];

@@ -60,6 +60,19 @@ export const RANGES = [
   [1.2, [[136.5, 36], [137.8, 35.5], [138.5, 36.5]], "the Japanese Alps"],                                                       // Japanese Alps
 ];
 // Seas, as boxes (s, n, w, e), smallest first: the first that holds a point at sea names it.
+// The biggest countries reach a long way from where the map writes their
+// names: a few more points inside them (for naming places, not drawn), so
+// Newfoundland is Canada, not Greenland, and Kamchatka is Russia.
+export const EDGES = [
+  ["Canada", 48.5, -56, 1], ["Canada", 52, -70, 1], ["Canada", 45.5, -63.5, 1], ["Canada", 47, -78, 1], ["Canada", 54, -124, 1], ["Canada", 68, -80, 1], ["Canada", 68, -120, 1], ["Canada", 63, -135, 1],
+  ["United States", 64, -152, 1], ["United States", 28.5, -82, 1], ["United States", 45, -120, 1], ["United States", 43, -72, 1], ["United States", 33, -115, 1],
+  ["Russia", 62, 150, 1], ["Russia", 56, 159, 1], ["Russia", 47, 142.5, 1], ["Russia", 56, 40, 1], ["Russia", 68, 60, 1], ["Russia", 72, 110, 1], ["Russia", 65, 175, 1],
+  ["China", 41, 85, 1], ["China", 45, 127, 1], ["China", 25, 115, 1], ["China", 31, 89, 1],
+  ["Australia", -26, 121, 1], ["Australia", -20, 145, 1], ["Australia", -36, 146, 1], ["Australia", -42, 146.5, 1],
+  ["Brazil", -3, -60, 1], ["Brazil", -22, -45, 1], ["Brazil", -8, -37, 1], ["Brazil", -30, -53, 1],
+  ["Argentina", -48, -69, 2], ["Chile", -45, -73, 2], ["India", 30, 77, 2], ["India", 12, 78, 2], ["Indonesia", 0, 101, 2], ["Indonesia", -4, 138, 2],
+  ["Greenland", 66, -48, 1], ["Greenland", 80, -40, 1],
+];
 export const SEAS = [
   ["the English Channel", 49.2, 51.1, -5.5, 1.8], ["the Irish Sea", 51.8, 55, -6.5, -2.8], ["the Adriatic Sea", 40, 45.8, 12, 19.7],
   ["the Aegean Sea", 35, 41, 22.5, 28], ["the Persian Gulf", 23.5, 30.5, 47.5, 57], ["the Red Sea", 12.5, 30, 32, 43.5],

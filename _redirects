@@ -1,3 +1,4 @@
 # The repo root is the site, so its dotfiles would otherwise be served too
 /.github/* / 302
 /.gitignore / 302
+/.tools/* / 302

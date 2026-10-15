@@ -1,32 +1,34 @@
-/* ---------- mountains, and the passes through them ----------
-   The great ranges, roughly drawn ([lat, lon] around each), and the passes a
-   pigeon goes through instead of over the top: [name, lat, lon]. */
-export const RANGES = [
-  { name: "the Alps",
-    edge: [[44.1, 7.0], [44.4, 6.3], [45.2, 5.8], [46.0, 6.2], [46.4, 6.9], [46.6, 7.6], [47.3, 9.5], [47.6, 11.0], [47.8, 12.9], [47.9, 14.2], [47.8, 16.0],
-      [47.2, 16.1], [46.5, 15.0], [46.2, 13.5], [46.0, 12.2], [45.9, 10.8], [45.8, 9.3], [45.6, 8.0], [45.0, 7.4], [44.3, 7.7]],
-    passes: [["Col de Tende", 44.15, 7.56], ["Mont Cenis Pass", 45.26, 6.9], ["Great St Bernard Pass", 45.87, 7.17], ["Simplon Pass", 46.25, 8.03],
+/* ---------- passes through the mountains ----------
+   Where the land is high (functions/_elevgrid.js) a pigeon goes through a pass
+   rather than over the top: one of these, the known passes through the great
+   ranges, when there's one near; else the lowest way across it can find.
+   [name, lat, lon]. */
+export const PASSES = [
+  // the Alps
+  ["Col de Tende", 44.15, 7.56], ["Mont Cenis Pass", 45.26, 6.9], ["Great St Bernard Pass", 45.87, 7.17], ["Simplon Pass", 46.25, 8.03],
       ["Gotthard Pass", 46.56, 8.56], ["San Bernardino Pass", 46.5, 9.17], ["Reschen Pass", 46.83, 10.51], ["Brenner Pass", 47.0, 11.51],
-      ["Radstädter Tauern Pass", 47.25, 13.56], ["Semmering Pass", 47.63, 15.83]] },
-  { name: "the Pyrenees",
-    edge: [[43.2, -1.8], [43.0, 0.0], [42.9, 1.5], [42.5, 3.1], [42.3, 3.0], [42.3, 1.5], [42.5, 0.0], [42.8, -1.8]],
-    passes: [["Roncesvalles Pass", 43.02, -1.33], ["Somport Pass", 42.79, -0.53], ["Col de Puymorens", 42.55, 1.82], ["Col du Perthus", 42.46, 2.86]] },
-  { name: "the Himalayas",
-    edge: [[37.0, 72.0], [35.0, 72.5], [33.0, 75.0], [30.5, 79.0], [28.5, 83.0], [27.3, 88.0], [27.0, 92.0], [27.5, 96.0], [29.0, 98.5], [32.0, 99.0],
-      [35.0, 97.0], [36.5, 90.0], [36.5, 82.0], [37.5, 76.0]],
-    passes: [["Khunjerab Pass", 36.85, 75.43], ["Karakoram Pass", 35.51, 77.82], ["Shipki La", 31.82, 78.75], ["Nathu La", 27.39, 88.83]] },
-  { name: "the Rockies",
-    edge: [[60.0, -128.0], [60.0, -122.0], [54.0, -116.5], [49.0, -112.8], [45.0, -108.0], [40.0, -105.25], [35.5, -105.3], [35.5, -108.5], [40.0, -109.5],
-      [45.0, -113.5], [49.0, -117.5], [54.0, -122.0]],
-    passes: [["Yellowhead Pass", 52.88, -118.46], ["Kicking Horse Pass", 51.45, -116.28], ["Rogers Pass", 51.3, -117.52], ["Marias Pass", 48.32, -113.35],
-      ["South Pass", 42.36, -108.92], ["Loveland Pass", 39.66, -105.88]] },
-  { name: "the Andes",
-    edge: [[10.0, -73.0], [5.0, -75.5], [0.0, -77.0], [-5.0, -78.5], [-10.0, -76.0], [-15.0, -70.5], [-20.0, -67.5], [-25.0, -67.0], [-30.0, -69.0],
-      [-35.0, -70.0], [-40.0, -71.0], [-45.0, -71.3], [-50.0, -72.8], [-50.0, -74.5], [-45.0, -73.0], [-40.0, -72.5], [-35.0, -70.45], [-30.0, -70.6],
-      [-25.0, -70.2], [-20.0, -70.0], [-15.0, -74.0], [-10.0, -78.0], [-5.0, -80.0], [0.0, -79.0], [5.0, -77.0], [10.0, -74.5]],
-    passes: [["Paso de Jama", -23.24, -67.03], ["Paso de los Libertadores", -32.82, -70.08], ["Paso Pehuenche", -35.98, -70.4],
-      ["Paso Cardenal Samoré", -40.7, -71.94], ["Ticlio Pass", -11.6, -76.2]] },
-  { name: "the Caucasus",
-    edge: [[43.5, 40.0], [43.2, 44.0], [42.0, 48.0], [41.2, 47.5], [42.2, 44.0], [42.8, 40.0]],
-    passes: [["Cross Pass", 42.52, 44.45], ["Mamison Pass", 42.7, 43.78]] },
+      ["Radstädter Tauern Pass", 47.25, 13.56], ["Semmering Pass", 47.63, 15.83],
+  // the Pyrenees
+  ["Roncesvalles Pass", 43.02, -1.33], ["Somport Pass", 42.79, -0.53], ["Col de Puymorens", 42.55, 1.82], ["Col du Perthus", 42.46, 2.86],
+  // the Himalayas
+  ["Khunjerab Pass", 36.85, 75.43], ["Karakoram Pass", 35.51, 77.82], ["Shipki La", 31.82, 78.75], ["Nathu La", 27.39, 88.83],
+  // the Rockies
+  ["Yellowhead Pass", 52.88, -118.46], ["Kicking Horse Pass", 51.45, -116.28], ["Rogers Pass", 51.3, -117.52], ["Marias Pass", 48.32, -113.35],
+      ["South Pass", 42.36, -108.92], ["Loveland Pass", 39.66, -105.88],
+  // the Andes
+  ["Paso de Jama", -23.24, -67.03], ["Paso de los Libertadores", -32.82, -70.08], ["Paso Pehuenche", -35.98, -70.4],
+      ["Paso Cardenal Samoré", -40.7, -71.94], ["Ticlio Pass", -11.6, -76.2],
+  // the Caucasus
+  ["Cross Pass", 42.52, 44.45], ["Mamison Pass", 42.7, 43.78],
+  // more ranges
+  ["Hardanger Pass", 60.53, 7.5], ["Dovrefjell Pass", 62.27, 9.55],                              // Norway's mountains
+  ["Tizi n'Tichka Pass", 31.29, -7.38], ["Tizi n'Test Pass", 30.87, -8.38],             // the Atlas
+  ["Predeal Pass", 45.5, 25.58], ["Dukla Pass", 49.4, 21.7],   // the Carpathians
+  ["Kaimai Saddle", -37.85, 175.95], ["Arthur's Pass", -42.94, 171.56], ["Haast Pass", -44.1, 169.35],   // New Zealand
+  ["Usui Pass", 36.36, 138.66], ["Nomugi Pass", 36.08, 137.71],                          // Japan's Alps
+  ["Khyber Pass", 34.09, 71.1], ["Salang Pass", 35.32, 69.03],                           // the Hindu Kush
+  ["Torugart Pass", 40.55, 75.39], ["Irkeshtam Pass", 39.68, 73.9],                      // the Tian Shan
+  ["Tehachapi Pass", 35.1, -118.45], ["Donner Pass", 39.32, -120.33], ["Snoqualmie Pass", 47.42, -121.41],   // the Sierra and the Cascades
+  ["Paytak Pass", 34.25, 46.05], ["Tarmaber Pass", 9.85, 39.73],                                // the Zagros, the Ethiopian highlands
+  ["Dead Horse Gap", -36.52, 148.27],                                                              // the Snowy Mountains
 ];
