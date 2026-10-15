@@ -341,16 +341,20 @@ waving closes 12 hours after the pigeon passed.
 is planned as it leaves (`functions/_route.js`) and kept as timed points in the
 message's `legs` ([lat, lon, at, tag, name]), which the map, near misses,
 flyovers, the passport and postmarks all simply follow.
-- *Around storms:* the sky along the straight line and four gentle arcs is
-  looked at in one request, each stretch by the forecast for the hour the
-  pigeon gets there (`windsAlong` in `functions/_weather.js`, up to 96 hours
-  ahead), so it misses a storm that's coming and doesn't dodge one that'll be
-  gone; a pigeon that would fly into thunderstorms takes the quickest arc that
-  misses them ("Going around storms over France"). A pigeon booked to land
-  later is planned around the forecast for when it takes off (up to three days
-  ahead), and stopovers and group pigeons meet the forecast the same way.
-- *Riding the wind:* with no storms in the way, an arc the wind blows along
-  is taken if it lands at least 4% sooner, though it's further.
+- *Around storms, and with the wind:* the sky across the route is looked at as
+  a lattice: a row of points every ~300 km along it (3 to 9 rows), each with
+  points 10%, 20% and 30% of the route's length either side of the straight
+  line (none at the ends), plus the straight line's own points every ~200 km,
+  all in one request, each by the forecast for the hour the pigeon gets there
+  (up to 96 hours ahead). The quickest way through it is found row by row (a
+  step sideways at most each time), each stretch at the pace its weather gives,
+  storms costing two hours each (`latticeOf` and `bestWay` in
+  `functions/_route.js`). A pigeon that would fly into thunderstorms takes the
+  quickest way that keeps out of them, round the clearer side ("Going around
+  storms over France"); with none in the way, it rides the wind if that's at
+  least 4% quicker. A pigeon booked to land later is planned around the forecast
+  for when it takes off (up to three days ahead); stopovers and group pigeons
+  meet the forecast along their way too.
 - *Mountain passes:* where the way goes over high ground (the land's average
   height every half degree, from open terrain data: `functions/_elevgrid.js`),
   it goes through a pass: a known one near the top (`functions/_mountains.js`:
@@ -372,16 +376,17 @@ flyovers, the passport and postmarks all simply follow.
 **Live weather.** A pigeon in the air keeps an eye on the sky ahead
 (`functions/_live.js`, from the tick). Every half hour, each flight with more
 than an hour to go looks again at the forecast along the rest of its way, each
-stretch for when it'll get there, all of them in one look at the sky. Its pace
+stretch for when it'll get there, as many as fit in 500 points of sky in one
+look (the rest next time: Open-Meteo counts every point). Its pace
 changes with it: what's still ahead is retimed, so it lands sooner or later
 (changes under 5 minutes, or 3% of what's left, aren't made). A landing made
 15 minutes or more later is told again when it reaches the weather, as at
 take-off. Group pigeons too.
 
 It changes course when that's better. If storms have got into its way since
-it left, it takes the quickest way around them from where it is now (the
-straight line on, or a gentle arc either side, through the passes and resting
-on islands as it would have); with none in the way, if the wind along another
+it left, it takes the quickest way around them from where it is now (the same
+search through the sky ahead, through the passes and resting on islands as it
+would have); with none in the way, if the wind along another
 way would now get it there at least 5% sooner, it rides that instead (a scenic
 pigeon doesn't chase the wind). The point where it turned is kept in its legs
 (`[lat, lon, at, "r", why]`) and the rest of its plan replaced; no more than

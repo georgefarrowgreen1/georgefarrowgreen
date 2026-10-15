@@ -27,7 +27,7 @@ import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js"
 // missing), the gusts and the weather
 const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code";
 const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
-const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
+export const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
 const GALE = 60;                                 // gusts (km/h) a pigeon has to fight
 const CELL = 0.25, WX_TTL = 10 * 60e3;           // the grid points are snapped to, and how long a square's weather is kept
@@ -85,17 +85,24 @@ export function alongPath(path, f) {
 const key = (p) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
 // What the weather at those points (w[k]: Open-Meteo's wind, gusts and weather
 // code at pts[k]) does to each route.
+// One point's weather (as Open-Meteo gives it) for a pigeon heading `head`
+// (degrees): its pace there (× its usual), the tailwind (km/h), and what the
+// sky is doing (k). null if there's no weather for it.
+export function paceAt(w, head) {
+  const [sp, dir] = w?.wind_speed_120m != null && w?.wind_direction_120m != null ? [w.wind_speed_120m, w.wind_direction_120m] : [w?.wind_speed_10m, w?.wind_direction_10m];
+  const speed = Number(sp), from = Number(dir);
+  if (sp == null || dir == null || !Number.isFinite(speed) || !Number.isFinite(from)) return null;
+  // wind_direction is where it blows from; the pigeon gains what blows its way
+  const tail = speed * Math.cos(((from + 180) - head) * r);
+  const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0);
+  return { f: Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), tail, k: sky.k };
+}
 function tally(routes, pts, list) {
   const sum = routes.map(() => ({ tail: 0, slow: 0, n: 0, lo: null, hi: null, storms: 0, storm: null }));
   list.forEach((w, k) => {
-    const [sp, dir] = w?.wind_speed_120m != null && w?.wind_direction_120m != null ? [w.wind_speed_120m, w.wind_direction_120m] : [w?.wind_speed_10m, w?.wind_direction_10m];
-    const speed = Number(sp), from = Number(dir);
-    if (sp == null || dir == null || !Number.isFinite(speed) || !Number.isFinite(from)) return;
-    // wind_direction is where it blows from; the pigeon gains what blows its way
-    const tail = speed * Math.cos(((from + 180) - pts[k].head) * r);
-    const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0);
+    const pace = paceAt(w, pts[k].head); if (!pace) return;
+    const { tail, f } = pace, sky = { k: pace.k }, s = sum[pts[k].i];
     // each point stands for an equal stretch of the route: add up the time it takes
-    const f = Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), s = sum[pts[k].i];
     s.tail += tail; s.slow += 1 / f; s.n++;
     if (sky.k === "storms") { s.storms++; if (!s.storm) s.storm = { lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f }; }
     const k2 = f >= 1 ? "tailwind" : sky.k || "headwind";
@@ -217,6 +224,19 @@ export async function skyAlong(env, paths, until) {
       return tally([paths[i]], mine, ws)[0];
     },
   };
+}
+// The forecast at some points (each [lat, lon]), until `until`: { at(i, when) }
+// gives point i's weather (as Open-Meteo has it) in the hour `when` falls in;
+// null if the forecast didn't answer.
+export async function skyAtPoints(env, pts, until) {
+  if (!pts.length || env.WEATHER_OFF) return null;
+  const snapped = pts.map(([lat, lon]) => { const so = snap((lon + 540) % 360 - 180); return { lat: Math.max(-90, Math.min(90, snap(lat))), lon: so === -180 ? 180 : so }; });
+  const cells = [...new Map(snapped.map((p) => [key(p), p])).values()];
+  const h0 = Math.floor(Date.now() / HOUR) * HOUR, hours = Math.min(FORECAST_HOURS, Math.max(1, Math.ceil((until - h0) / HOUR) + 1));
+  const list = await hourlyFor(env, cells, hours);
+  if (!list) return null;
+  const byCell = new Map(cells.map((p, k) => [key(p), list[k]]));
+  return { at: (i, when) => { const H = byCell.get(key(snapped[i])); return H ? hourAt(H, Math.max(0, Math.floor((when - H.time[0] * 1000) / HOUR))) : null; } };
 }
 // The weather along each of some flights ({ path, start, kmh }), as it will
 // meet it. All in the next hour: the sky as it is now (windsFor). The forecast

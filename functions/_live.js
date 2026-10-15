@@ -22,15 +22,16 @@
    Run from the tick; every flight checked in one go shares one look at the
    sky (the same squares of it as ever: never who's flying). */
 import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT } from "./_pigeon.js";
-import { skyAlong } from "./_weather.js";
+import { skyAlong, skyAtPoints, pointsFor } from "./_weather.js";
 import { stopsOf, posAt, renear } from "./_moments.js";
-import { squeeze, passed, pathKm, round5, arcsOf, finish, timeWay, restOf, hopsFor } from "./_route.js";
+import { squeeze, passed, pathKm, round5, latticeOf, bestWay, finish, timeWay, restOf, hopsFor } from "./_route.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
 import { refly, reflyGroup } from "./_flyover.js";
 
 export const LIVE_EVERY = 30 * MIN, LIVE_LEFT = HOUR, LIVE_EACH = 40;
+const LIVE_POINTS = 500;                          // points of sky asked about in one go, at most (Open-Meteo counts each); the rest wait for the next tick
 const LIVE_STEP = 0.03, LIVE_MS = 5 * MIN;        // a change smaller than this share of what's left (and this long) isn't made
 const WX_TELL = 15 * MIN;                         // later by this much more: told again
 const LIVE_GAIN = 0.05, TURN_EVERY = HOUR, MAX_HOLD = 12 * HOUR;        // a better way must be this much quicker; and no more than one weather turn an hour
@@ -71,28 +72,30 @@ async function due(D, t) {
 export async function liveTick(env, D, t) {
   const list = await due(D, t), turns = [];
   if (!list.length) return { changed: 0, turns };
-  const paths = [];
+  const paths = [], pts = [], take = [];
   for (const x of list) {
     const legs = legsOf(x.r), stops = stopsOf(x.r), last = legs.filter((l) => l[3] === "r").at(-1);
     Object.assign(x, { legs, rest: restLeft(legs, t), kmh: kmhOf(x.r), path: aheadOf(stops, legs, t) });
-    x.at = paths.push(x.path) - 1;
-    // the ways it could take from here instead (not while it's resting, nor just after it turned for the weather)
     const ri = legs.findIndex((l, i) => restPair(l, legs[i + 1] || []) && l[2] <= t && legs[i + 1][2] > t);
     x.restAt = ri < 0 ? null : ri;
-    x.ways = x.restAt != null || (last && t - last[2] < TURN_EVERY) ? []
-      : arcsOf(x.path[0], x.path[x.path.length - 1]).map((p) => finish(p, { hop: hopsFor(x.r.pigeon), style: x.r.style }))
-        .map((p) => ({ p, at: paths.push(p.map((q) => [q[0], q[1]])) - 1, rest: restOf(p.slice(1, -1)) }));
+    // the sky across the rest of its way, to find a better one (not while it's resting, nor just after it turned for the weather)
+    x.lat = x.restAt != null || (last && t - last[2] < TURN_EVERY) ? null : latticeOf(x.path[0], x.path[x.path.length - 1]);
+    const n = pointsFor(pathKm(x.path)).length + (x.lat ? x.lat.pts.length : 0);
+    if (take.length && pts.length + paths.length * 8 + n > LIVE_POINTS) break;         // enough for one look: the rest next time
+    x.at = paths.push(x.path) - 1;
+    if (x.lat) { x.latAt = pts.length; pts.push(...x.lat.pts); }
+    take.push(x);
   }
-  const until = Math.max(...list.map((x) => x.r.deliver_at)) + MAX_HOLD;
-  const sky = await skyAlong(env, paths, until).catch(() => null);
+  const until = Math.max(...take.map((x) => x.r.deliver_at)) + MAX_HOLD;
+  const [sky, grid] = await Promise.all([skyAlong(env, paths, until).catch(() => null), pts.length ? skyAtPoints(env, pts, until).catch(() => null) : null]);
   let changed = 0;
-  for (const x of list) {
+  for (const x of take) {
     let did = false;
     if (sky) try {
       const w = sky.at(x.at, t + x.rest, x.kmh), stormy = w && w.storms > 0;
       const ev = (e) => { if (e) { turns.push(e); did = true; } };
       if (stormy && x.restAt != null) ev(await shelter(D, t, x, w, sky));                  // on an island: wait them out
-      const better = did ? null : pick(x, w, (k) => sky.at(x.ways[k].at, t, x.kmh));
+      const better = did || !grid ? null : pick(x, w, (i, when) => grid.at(x.latAt + i, when), t);
       if (better) ev(await turnFor(D, t, x, better, w));                                 // a way around (or a better wind)
       if (!did && stormy && x.r.style === "safe" && x.restAt == null && !isSea(placeAt(x.path[0][0], x.path[0][1]))) ev(await shelter(D, t, x, w, sky));   // safe, over land: come down
       if (!did) did = await retime(env, D, t, x, w);
@@ -102,32 +105,29 @@ export async function liveTick(env, D, t) {
   }
   return { changed, turns };
 }
-// how long a way takes (hours) with its weather, and its rests
-const hoursOf = (path, w, rest, kmh) => pathKm(path) / (kmh * (w?.f || 1)) + rest / HOUR;
-// A better way from here, if there is one: { k, w, why: "s" (around storms) or "w" (the wind) }
-function pick(x, w, weatherOf) {
-  if (!x.ways.length || !w) return null;
-  const ws = x.ways.map((_, k) => weatherOf(k)), now = hoursOf(x.path, w, x.rest, x.kmh);
-  const time = (k) => hoursOf(x.ways[k].p, ws[k], x.ways[k].rest, x.kmh);
-  const ks = x.ways.map((_, k) => k).filter((k) => ws[k]);
-  if (w.storms > 0) {
-    const k = ks.sort((a, b) => ws[a].storms - ws[b].storms || time(a) - time(b))[0];
-    return k != null && ws[k].storms < w.storms ? { k, w: ws[k], why: "s" } : null;
-  }
-  if (x.r.style === "scenic") return null;
-  const k = ks.filter((k) => ws[k].storms === 0).sort((a, b) => time(a) - time(b))[0];
-  return k != null && time(k) < now * (1 - LIVE_GAIN) ? { k, w: ws[k], why: "w" } : null;
-}
 const mark = (D, x, t) => (x.group
   ? D.prepare("UPDATE pg_gdeliv SET live_at = ? WHERE msg_id = ? AND user_id = ?").bind(t, x.r.msg_id, x.r.user_id)
   : D.prepare("UPDATE pg_msgs SET live_at = ? WHERE id = ?").bind(t, x.r.id)).run();
-
+// how long a way takes (hours) with its weather, and its rests
+const hoursOf = (path, w, rest, kmh) => pathKm(path) / (kmh * (w?.f || 1)) + rest / HOUR;
+// A better way from here, if there is one: { way: { p, rest }, w, why: "s" (around storms) or "w" (the wind) }.
+// The quickest way through the sky ahead (bestWay), through the passes and resting on islands as it would.
+function pick(x, w, skyAt, t) {
+  if (!x.lat || !w) return null;
+  const found = bestWay(x.lat, skyAt, t, x.kmh, { wind: x.r.style !== "scenic" });
+  const p = finish(found.path, { hop: hopsFor(x.r.pigeon), style: x.r.style }), way = { p, rest: restOf(p.slice(1, -1)) };
+  // storms in its way now: a way that keeps out of them (the straight line from here, if that does)
+  if (w.storms > 0 && found.w.storms < w.storms) return { way, w: found.w, why: "s" };
+  if (w.storms > 0 || found.why !== "w") return null;
+  // a better wind: only if clearly quicker than the way it's going
+  return hoursOf(p, found.w, way.rest, x.kmh) < hoursOf(x.path, w, x.rest, x.kmh) * (1 - LIVE_GAIN) ? { way, w: found.w, why: "w" } : null;
+}
 // It changes course for the weather: from where it is now, the better way.
 async function turnFor(D, t, x, better, wasW) {
-  const r = x.r, way = x.ways[better.k], w = better.w, [pLat, pLon] = x.path[0], end = x.path[x.path.length - 1];
+  const r = x.r, way = better.way, w = better.w, [pLat, pLon] = x.path[0], end = x.path[x.path.length - 1];
   const where = better.why === "s" && wasW.storm ? safeName(wasW.storm.lat, wasW.storm.lon) : null;
   // the bends it makes are for this reason; passes and islands stay what they are
-  const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}));
+  const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" || q[2] === "w" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}));
   const latest = latestOf(r);
   const flying = Math.round((pathKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
   const done = passed(x.legs, t);

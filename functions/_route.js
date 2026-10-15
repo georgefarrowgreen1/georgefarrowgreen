@@ -14,7 +14,7 @@
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
 import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH } from "./_pigeon.js";
-import { windsAlong } from "./_weather.js";
+import { windsAlong, skyAtPoints, paceAt, pointsFor } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -38,30 +38,17 @@ function bearing(aLat, aLon, bLat, bLon) {
   const x = Math.cos(aLat * rad) * Math.sin(bLat * rad) - Math.sin(aLat * rad) * Math.cos(bLat * rad) * Math.cos((bLon - aLon) * rad);
   return (Math.atan2(y, x) * deg + 360) % 360;
 }
-// The longest leg of a path bent out to one side by a share of its length: a
-// smooth arc (three points along a curve, furthest out in the middle)
-function bent(path, share, tag) {
-  let i = 0, best = -1;
-  for (let k = 0; k < path.length - 1; k++) { const d = haversineKm(path[k][0], path[k][1], path[k + 1][0], path[k + 1][1]); if (d > best) { best = d; i = k; } }
-  const [a, b] = [path[i], path[i + 1]];
-  const arc = [0.25, 0.5, 0.75].map((f) => {
-    const [mLat, mLon] = gcPoint(a[0], a[1], b[0], b[1], f), side = bearing(mLat, mLon, b[0], b[1]) + (share > 0 ? 90 : -90);
-    const [lat, lon] = dest(mLat, mLon, side, Math.abs(share) * best * Math.sin(f * Math.PI));
-    return [lat, lon, tag];
-  });
-  return [...path.slice(0, i + 1), ...arc, ...path.slice(i + 1)];
-}
-const BENDS = [0.12, -0.12, 0.25, -0.25];
 const MIN_BEND_KM = 150;                     // a short hop just goes straight
 const WIND_GAIN = 0.04;                      // riding the wind: only for a way at least 4% quicker
 
 // Plan the way from `from` to `to` ([lat, lon] each). With weather, the sky
-// along the straight line and a few gentle arcs is looked at together, in one
-// request, each stretch as the forecast has it when the pigeon (leaving at
-// `start`, at `kmh`) would get there: a pigeon that would fly into storms takes the arc
-// that misses them (the quickest that does); otherwise, if the wind along an
-// arc gets it there clearly sooner, it rides the wind (a longer way, but quicker).
-// Over the great mountain ranges it goes through a pass. With `hop` (a
+// across the route is looked at, in one request, as a lattice of points either
+// side of the straight line (latticeOf), each as the forecast has it when the
+// pigeon (leaving at `start`, at `kmh`) would get there, and the quickest way
+// through it found (bestWay): a pigeon that would fly into storms takes the
+// quickest way that keeps out of them; otherwise, if the wind along another
+// way gets it there clearly sooner, it rides the wind (longer, but quicker).
+// Over high ground it goes through a pass. With `hop` (a
 // standard pigeon), it rests on islands on the way across a
 // long stretch of sea.
 // Its sender can pick the route's style: "fastest" (all the above), "scenic"
@@ -73,33 +60,103 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 export const STYLES = ["fastest", "scenic", "safe"];
 export const styleOf = (x) => (STYLES.includes(x) && x !== "fastest" ? x : null);    // as kept (fastest: null)
 export async function planRoute(env, { from, to, weather = true, hop = false, style = null, start = Date.now(), kmh = SPEED_KMH }) {
-  const straight = [from, to];
-  let path = straight, w = { wind: null, f: 1, wx: null };
+  let path = [from, to], w = { wind: null, f: 1, wx: null };
   if (weather) {
-    const paths = arcsOf(from, to);
-    const ws = await windsAlong(env, paths.map((p) => ({ path: p.map((q) => [q[0], q[1]]), start, kmh })));
-    const time = (k) => pathKm(paths[k]) / (ws[k].f || 1);
-    let pick = 0, why = null;
-    // storms on the straight line: the quickest way that keeps out of them (or has fewest)
-    if (ws[0].storms > 0 && paths.length > 1) {
-      const order = paths.map((_, k) => k).sort((a, b) => ws[a].storms - ws[b].storms || time(a) - time(b));
-      if (ws[order[0]].storms < ws[0].storms) { pick = order[0]; why = "s"; }
-    }
-    // no storms in the way: an arc the wind blows along gets there sooner, though it's further (only if it's worth it)
-    if (!why && paths.length > 1 && style !== "scenic") {
-      const best = paths.map((_, k) => k).filter((k) => ws[k].storms <= ws[0].storms).sort((a, b) => time(a) - time(b))[0];
-      if (best && time(best) < time(0) * (1 - WIND_GAIN)) { pick = best; why = "w"; }
-    }
-    const name = why === "s" && ws[0].storm ? safeName(ws[0].storm.lat, ws[0].storm.lon) : null;
-    path = paths[pick].map((q, k, all) => (k && k < all.length - 1 ? [q[0], q[1], why || q[2], ...(name ? [name] : [])] : q));
-    w = ws[pick];
+    const lat = latticeOf(from, to), sky = lat ? await skyAtPoints(env, lat.pts, start + (lat.km / kmh) * HOUR * 1.5).catch(() => null) : null;
+    if (sky) {
+      const found = bestWay(lat, (i, when) => sky.at(i, when), start, kmh, { wind: style !== "scenic" });
+      path = found.path; w = found.w;
+    } else [w] = await windsAlong(env, [{ path: [from, to], start, kmh }]);   // a short hop (or no forecast): the straight way, as the sky is
   }
   if (style === "scenic") path = scenic(path);
   path = finish(path, { hop, style });
   return { way: path.slice(1, -1), km: pathKm(path), w };
 }
-// The straight way and, if it's long enough, the gentle arcs either side of it
-export const arcsOf = (from, to) => [[from, to], ...(pathKm([from, to]) >= MIN_BEND_KM ? BENDS.map((s) => bent([from, to], s, "s")) : [])];
+
+// ---- the way through the weather ----
+// The sky across a route, as a lattice: LATTICE_OFF of its length either side
+// of the straight line (furthest in the middle, none at the ends), at a row of
+// stages along it (one every LATTICE_KM, 3 to 9). The quickest way through,
+// from stage to stage, a step sideways at most each time, with each stretch
+// at the pace the forecast gives it when the pigeon gets there, and storms
+// costing STORM_H hours each so it keeps out of them when it can.
+const LATTICE_OFF = [-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3], LATTICE_KM = 300, STORM_H = 2;
+const MID = LATTICE_OFF.indexOf(0);
+// The lattice for a route (null for a short hop): its points (from, the stages' points row by row, to)
+export function latticeOf(from, to) {
+  const km = haversineKm(from[0], from[1], to[0], to[1]);
+  if (km < MIN_BEND_KM) return null;
+  const S = Math.min(9, Math.max(3, Math.round(km / LATTICE_KM))), pts = [[from[0], from[1]]];
+  for (let s = 1; s <= S; s++) {
+    const f = s / (S + 1), [mLat, mLon] = gcPoint(from[0], from[1], to[0], to[1], f), [nLat, nLon] = gcPoint(from[0], from[1], to[0], to[1], Math.min(1, f + 0.01));
+    const side = bearing(mLat, mLon, nLat, nLon) + 90;
+    for (const o of LATTICE_OFF) pts.push(o ? dest(mLat, mLon, side, o * km * Math.sin(f * Math.PI)) : [mLat, mLon]);
+  }
+  pts.push([to[0], to[1]]);
+  // and the straight line's own points, every ~200 km as ever, so a small storm on it isn't missed between stages
+  const line = pointsFor(km), lineAt = pts.length;
+  for (const f of line) pts.push(gcPoint(from[0], from[1], to[0], to[1], f));
+  return { from, to, km, S, pts, toAt: lineAt - 1, line, lineAt };
+}
+// the point index of stage s (0: from, S+1: to), offset o
+const nodeOf = (lat, s, o) => (s === 0 ? 0 : s === lat.S + 1 ? lat.toAt : 1 + (s - 1) * LATTICE_OFF.length + o);
+// The best way through a lattice, given the sky (skyAt(point index, when)):
+// { path (from … to, each bend tagged why), why ("s", "w" or null: straight),
+//   w: its weather as windsFor gives it, hours, straight: the straight line's hours }
+export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
+  const { S, pts } = lat, K = LATTICE_OFF.length, whenOf = (s) => start + ((s / (S + 1)) * lat.km / kmh) * HOUR;
+  // storms the straight line's own points see, by the stretch between stages they fall in
+  const head = bearing(lat.from[0], lat.from[1], lat.to[0], lat.to[1]), lineStorms = new Map();
+  let firstStorm = null;
+  lat.line.forEach((f, k) => {
+    if (paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head)?.k !== "storms") return;
+    const s = Math.floor(f * (S + 1)); lineStorms.set(s, (lineStorms.get(s) || 0) + 1);
+    firstStorm ||= pts[lat.lineAt + k];
+  });
+  const leg = (s1, o1, s2, o2) => {
+    const a = pts[nodeOf(lat, s1, o1)], b = pts[nodeOf(lat, s2, o2)], d = haversineKm(a[0], a[1], b[0], b[1]), head = bearing(a[0], a[1], b[0], b[1]);
+    const pa = paceAt(skyAt(nodeOf(lat, s1, o1), whenOf(s1)), head), pb = paceAt(skyAt(nodeOf(lat, s2, o2), whenOf(s2)), head);
+    // (a stretch along the straight line, or leaving or joining it, meets the storms its points saw)
+    const onLine = (s1 === 0 || o1 === MID) || (s2 === S + 1 || o2 === MID);
+    const f = pa && pb ? 2 / (1 / pa.f + 1 / pb.f) : (pa || pb || { f: 1 }).f, storms = (pb?.k === "storms" ? 1 : 0) + (s1 === 0 && pa?.k === "storms" ? 1 : 0) + (onLine ? lineStorms.get(s1) || 0 : 0);
+    return { d, f, tail: ((pa?.tail ?? 0) + (pb?.tail ?? 0)) / (pa && pb ? 2 : 1), storms, hours: d / (kmh * f), cost: d / (kmh * f) + storms * STORM_H, at: b, pace: pb };
+  };
+  // stage by stage: the cheapest way to each point
+  let cost = [{ c: 0, chain: [] }];                                   // stage 0: just `from`
+  for (let s = 1; s <= S + 1; s++) {
+    const n = s === S + 1 ? 1 : K, next = [];
+    for (let o = 0; o < n; o++) {
+      let best = null;
+      cost.forEach((prev, po) => {
+        if (!prev || (s > 1 && s <= S && Math.abs(po - o) > 1)) return;  // a step sideways at most
+        const l = leg(s - 1, s === 1 ? 0 : po, s, s === S + 1 ? 0 : o), c = prev.c + l.cost;
+        if (!best || c < best.c) best = { c, chain: [...prev.chain, { o: s === S + 1 ? null : o, l }] };
+      });
+      next.push(best);
+    }
+    cost = next;
+  }
+  const chainOf = (os) => os.map((o, k) => ({ o, l: leg(k, k ? os[k - 1] : 0, k + 1, k + 1 === S + 1 ? 0 : o) }));
+  const sum = (chain) => {
+    const km = chain.reduce((a, x) => a + x.l.d, 0), hours = chain.reduce((a, x) => a + x.l.hours, 0), storms = chain.reduce((a, x) => a + x.l.storms, 0);
+    const f = hours ? km / (kmh * hours) : 1, wind = Math.round(chain.reduce((a, x) => a + x.l.tail * x.l.d, 0) / (km || 1));
+    const stormAt = chain.find((x) => x.l.storms)?.l.at || null;
+    // the spot that did most of it (as windsFor says it)
+    const worst = chain.filter((x) => x.l.pace).sort((a, b) => (f < 1 ? a.l.pace.f - b.l.pace.f : b.l.pace.f - a.l.pace.f))[0];
+    const wx = worst && Math.abs(Math.log(worst.l.pace.f)) >= 0.05 ? { k: worst.l.pace.f >= 1 ? "tailwind" : worst.l.pace.k || "headwind", lat: worst.l.at[0], lon: worst.l.at[1], at: chain.indexOf(worst) / chain.length } : null;
+    return { km, hours, storms, w: { wind, f: Math.round(Math.min(1.6, Math.max(0.6, f)) * 1e4) / 1e4, wx, storms, storm: stormAt ? { lat: stormAt[0], lon: stormAt[1], at: 0.5 } : null } };
+  };
+  const straight = sum(chainOf([...Array(S).fill(MID), 0])), best = sum(cost[0].chain);
+  let why = null;
+  if (straight.storms > 0 && best.storms < straight.storms) why = "s";
+  else if (wind && best.hours < straight.hours * (1 - WIND_GAIN) && best.storms <= straight.storms) why = "w";
+  if (!why) return { path: [lat.from, lat.to], why: null, w: straight.w, hours: straight.hours, straight: straight.hours };
+  const stormPt = firstStorm || (straight.w.storm && [straight.w.storm.lat, straight.w.storm.lon]);
+  if (firstStorm) straight.w.storm = { lat: firstStorm[0], lon: firstStorm[1], at: 0.5 };
+  const name = why === "s" && stormPt ? safeName(stormPt[0], stormPt[1]) : null;
+  const bends = cost[0].chain.slice(0, -1).map((x, k) => [round5(pts[nodeOf(lat, k + 1, x.o)][0]), round5(pts[nodeOf(lat, k + 1, x.o)][1]), why, ...(name ? [name] : [])]);
+  return { path: [lat.from, ...bends, lat.to], why, w: best.w, hours: best.hours, straight: straight.hours };
+}
 // A way, through the passes, and resting on islands if it hops
 export function finish(path, { hop = false, style = null } = {}) {
   const through = throughPasses(path);
