@@ -13,6 +13,7 @@
 // back of ordinary API traffic, and from an outside scheduler (see
 // .github/workflows/inflight-notify.yml) when nobody is using the app.
 
+import { liveTick } from "./_live.js";
 import { stampPassports } from "./_passport.js";
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
@@ -485,6 +486,7 @@ export async function tick(env, origin) {
       body: p.names ? `It’s resting with you on its way to ${firstName(m.rname)}. Add a line before it flies on.` : "It’s resting with you for an hour. Add a line before it flies on.",
       tag: "via-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
+  await liveTick(env, D, t).catch((e) => console.error("pigeon live", e && e.message));   // the weather ahead of pigeons in the air
   pushes += await wxTick(env, D, t, since);
   pushes += await nearTick(env, D, t, since);
   pushes += await flyTick(env, D, t, since);

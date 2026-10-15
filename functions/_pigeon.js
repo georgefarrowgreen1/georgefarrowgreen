@@ -269,6 +269,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
   "ALTER TABLE pg_msgs ADD COLUMN style TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN style TEXT",                     // the route's style: scenic or safe (null: fastest)
+  "ALTER TABLE pg_msgs ADD COLUMN live_at INTEGER", "ALTER TABLE pg_gdeliv ADD COLUMN live_at INTEGER",             // when the weather ahead was last looked at (in flight)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",
   // the once-a-minute tick finds what's due by these, not by reading every message
   "CREATE INDEX IF NOT EXISTS pg_msgs_due ON pg_msgs(deliver_at) WHERE notified_at IS NULL",

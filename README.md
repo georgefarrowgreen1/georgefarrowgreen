@@ -362,6 +362,15 @@ flyovers, the passport and postmarks all simply follow.
   for their postmarks, at most 15% further) or Safe (every pigeon island-hops,
   and Pigeon Death's risk is halved). A stopover's way is its own.
 
+**Live weather.** A pigeon in the air keeps an eye on the sky ahead
+(`functions/_live.js`, from the tick). Every half hour, each flight with more
+than an hour to go looks again at the forecast along the rest of its way, each
+stretch for when it'll get there, all of them in one look at the sky. Its pace
+changes with it: what's still ahead is retimed, so it lands sooner or later
+(changes under 5 minutes, or 3% of what's left, aren't made). A landing made
+15 minutes or more later is told again when it reaches the weather, as at
+take-off. Group pigeons too.
+
 The map card says what it's doing ("Resting on the Azores until 09:48",
 "Through the Gotthard Pass"). Turning for someone who moved drops the rest of
 the plan and plans again from where it is; a cheer keeps the plan, sooner.
