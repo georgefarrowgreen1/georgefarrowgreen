@@ -265,6 +265,9 @@ const I = {
   mic: ico(`<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>`),
   play: `<svg viewBox="0 0 24 24" class="ico fillico" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.6-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>`,
   pause: `<svg viewBox="0 0 24 24" class="ico fillico" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>`,
+  volcano: ico(`<path d="M3 20.5h18l-5.5-9h-7z"/><path d="M8.5 11.5 10 9h4l1.5 2.5"/><path d="M12 6.5V3.5M9.2 6 8 3.8M14.8 6 16 3.8"/>`),
+  fire: ico(`<path d="M12 21.5c-3.6 0-6.2-2.5-6.2-5.8 0-3.3 2.7-5.2 3.7-8.6.5 2 1.5 3.1 2.5 3.7.3-2.8 1.7-5 3.7-6.8-.2 3.5 2.5 5.8 2.5 9.7 0 3.3-2.6 5.8-6.2 5.8z"/>`),
+  compass: ico(`<circle cx="12" cy="12" r="9"/><path d="m15.6 8.4-2.3 4.9-4.9 2.3 2.3-4.9z"/>`),
   storm: ico(`<path d="M7 15.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 15.5"/><path d="m13 12-2.5 4h3L11 20.5"/>`),
   rain: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="m9 17.5-1 2.5M13 17.5l-1 2.5M17 17.5l-1 2.5"/>`),
   snow: ico(`<path d="M7 14.5a4.5 4.5 0 1 1 1.2-8.8 5.5 5.5 0 0 1 10.3 2.8A3 3 0 0 1 18 14.5H7z"/><path d="M9 18h.01M13 19.5h.01M17 18h.01M11 21h.01M15 21h.01"/>`),
@@ -422,7 +425,10 @@ function plannedMs(c, k) {
 // The way in a few words: "through the Simplon Pass · around storms over France"
 // What a way went around, or sheltered from: storms, or hail, or icy weather (the
 // planner and the live turns note it on the leg when it wasn't thunderstorms)
-const SEVERE_WORD = { storms: "storms", hail: "hail", icing: "icy weather" };
+const SEVERE_WORD = { storms: "storms", hail: "hail", icing: "icy weather", ash: "volcanic ash", smoke: "wildfire smoke" };
+// its icon: a volcano for ash, a fire for smoke, else a storm cloud
+const severeIcon = (k) => (k === "ash" ? I.volcano : k === "smoke" ? I.fire : I.storm);
+const severeKOf = (legs, tag = "s") => (legs || []).find((l) => l[3] === tag && l[5]?.k)?.[5]?.k || null;
 const severeOf = (legs, tag = "s") => SEVERE_WORD[(legs || []).find((l) => l[3] === tag && l[5]?.k)?.[5]?.k] || "storms";
 function wayWords(legs) {
   const said = [], sw = severeOf(legs);
@@ -826,7 +832,7 @@ function landsLine(m) {
 /* ---------- what the weather did to a flight ---------- */
 // "Delayed 40m · storms over the Alps", "25m early · tailwind over France"
 const WX = { storms: ["storms", "storm"], hail: ["hail", "storm"], icing: ["icy weather", "fog"], heat: ["fierce heat", "sun"], cold: ["bitter cold", "snow"], rain: ["heavy rain", "rain"], snow: ["snow", "snow"], fog: ["fog", "fog"], gales: ["gales", "wind"],
-  headwind: ["headwinds", "wind"], tailwind: ["a tailwind", "wind"] };
+  headwind: ["headwinds", "wind"], tailwind: ["a tailwind", "wind"], ash: ["volcanic ash", "volcano"], smoke: ["wildfire smoke", "fire"], magnetic: ["a magnetic storm", "compass"] };
 // a mountain range when it's right over one, else the country or sea
 function wxWhere(lon, lat) {
   for (const [wd, pts, name] of RANGES) {
@@ -1087,7 +1093,7 @@ function drawRadar(g, cv, ts, xf) {
 
 // The weather that's holding a pigeon up, drawn where it is: a cloud with rain
 // falling, a storm cloud that flashes, drifting snow, banks of fog, or gusts.
-const WX_SKY = { storms: ["#596072", 0.7, "Storms"], hail: ["#4f5668", 0.75, "Hail"], icing: ["#d6e2ee", 0.82, "Ice"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
+const WX_SKY = { storms: ["#596072", 0.7, "Storms"], hail: ["#4f5668", 0.75, "Hail"], icing: ["#d6e2ee", 0.82, "Ice"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"], ash: ["#6e6660", 0.8, "Ash"], smoke: ["#a8978a", 0.62, "Smoke"] };
 function wxCells(routes) {
   const held = routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt).map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon }));
   // and the storms it went around (planned, or turning for them on the way), while it's flying
@@ -1113,6 +1119,16 @@ function drawWx(g, cv, ts, xf) {
         const xx = x + dx * R * 0.75, yy = y + R * 0.38 + ph * R * 0.8, len = R * 0.15;
         g.globalAlpha = 0.75 * Math.sin(Math.PI * ph);
         g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx - len * 0.3, yy + len); g.stroke();
+      }
+    } else if (w.k === "ash" || w.k === "smoke") {
+      // ash: grey grit drifting down; smoke: embers rising from the fire beneath it
+      const up = w.k === "smoke";
+      g.fillStyle = up ? "#ff8a3d" : "#4a4440";
+      for (let i = 0; i < 14; i++) {
+        const ph = ((t * (up ? 0.45 : 0.25) + i * 0.31 + w.seed * 0.1) % 1 + 1) % 1, dx = -0.8 + (i / 13) * 1.6;
+        const xx = x + dx * R * 0.7 + Math.sin(t * 1.1 + i) * R * 0.05, yy = up ? y + R * 1.05 - ph * R * 0.75 : y + R * 0.38 + ph * R * 0.8;
+        g.globalAlpha = 0.85 * Math.sin(Math.PI * ph);
+        g.beginPath(); g.arc(xx, yy, Math.max(1.2, R / (up ? 30 : 36)), 0, 7); g.fill();
       }
     } else if (w.k === "snow") {
       g.fillStyle = "#fff"; g.strokeStyle = "rgba(0,0,0,.18)"; g.lineWidth = 0.8;
@@ -5020,6 +5036,10 @@ function drawSheet(refresh) {
         <div class="group">${out("https://open-meteo.com/", I.wind, "blue", "Open-Meteo", "Forecasts and the wind · CC BY 4.0")}
           ${out("https://api.met.no/", I.sun, "teal", "MET Norway", "When Open-Meteo can’t answer · CC BY 4.0")}</div>
         <div class="gfoot">Weather data by Open-Meteo.com and MET Norway, used under Creative Commons Attribution 4.0.</div>
+        <div class="ghead">The Earth</div>
+        <div class="group">${out("https://www.swpc.noaa.gov/products/planetary-k-index", I.compass, "indigo", "NOAA Space Weather", "Magnetic storms that put pigeons off course")}
+          ${out("https://eonet.gsfc.nasa.gov/", I.volcano, "red", "NASA EONET", "Volcanoes and wildfires to fly around")}</div>
+        <div class="gfoot">The planetary K index from NOAA’s Space Weather Prediction Center, and natural events from NASA’s Earth Observatory Natural Event Tracker: both US government data, free to use.</div>
         <div class="ghead">Mountains</div>
         <div class="group">${out("https://registry.opendata.aws/terrain-tiles/", I.dist, "green", "Terrain Tiles", "Heights for mountain passes · Mapzen and AWS")}</div>
         <div class="gfoot">Terrain Tiles bring together ETOPO1 and GMTED2010 (US government, public domain), SRTM (NASA), EU-DEM (produced using Copernicus data and information funded by the European Union) and other national elevation data. <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">All the sources</a></div>
@@ -5027,7 +5047,7 @@ function drawSheet(refresh) {
         <div class="group">${out("https://www.naturalearthdata.com/", I.globe, "orange", "Natural Earth", "Coastlines, countries and places · public domain")}</div>
         <div class="ghead">GIFs</div>
         <div class="group">${out("https://giphy.com/", `<span class="gifico" aria-hidden="true">GIF</span>`, "indigo", "GIPHY", "Search and trending GIFs")}</div>
-        <div class="gfoot">The maps and heights are kept on InFlight’s own server, and it asks for the weather and GIFs itself, so none of these see who you are.</div>`);
+        <div class="gfoot">The maps and heights are kept on InFlight’s own server, and it asks for the weather, the Earth’s news and GIFs itself, so none of these see who you are.</div>`);
       return;
     }
     case "appearance":
@@ -5307,18 +5327,18 @@ function fcEvents(m, t) {
       const until = tagged[i + 1][2], over = until <= t;
       // a breather: its named pigeon tires on a long flight (fewer, shorter ones as it rises through the ranks)
       if (tag === "t") { ev.push({ at, until, icon: I.bird, tone: "", title: `${over ? "Caught its breath" : done ? "Catching its breath" : "A breather"} ${n || "on the way"}`, sub: `${fmtDur(until - at)} on the ground${m.bird?.name ? ` · ${m.bird.name} needs it` : ""}` }); i++; continue; }
-      ev.push(tag === "h" ? { at, until, icon: I.storm, tone: "warn", title: `${over ? "Sheltered" : done ? "Sheltering" : "Shelters"} from ${SEVERE_WORD[l[5]?.k] || "storms"}${n ? ` ${n}` : ""}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` }
+      ev.push(tag === "h" ? { at, until, icon: severeIcon(l[5]?.k), tone: "warn", title: `${over ? "Sheltered" : done ? "Sheltering" : "Shelters"} from ${SEVERE_WORD[l[5]?.k] || "storms"}${n ? ` ${n}` : ""}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` }
         : { at, until, icon: I.bird, tone: "teal", title: `${over ? "Rested" : done ? "Resting" : "Rests"} on ${n || "an island"}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` });
       i++; continue;
     }
     // storms and wind once each: the first place it meets them (it may bend around them, or ride the wind, several times)
     if (tag === "s" || tag === "w") { if (once.has(tag + (tag === "s" ? done : ""))) continue; once.add(tag + (tag === "s" ? done : "")); }
     const say = {
-      s: [I.storm, "warn", `${done ? "Went" : "Goes"} around ${severeOf(legs)}${n ? ` over ${n}` : ""}`, ""],
+      s: [severeIcon(severeKOf(legs)), "warn", `${done ? "Went" : "Goes"} around ${severeOf(legs)}${n ? ` over ${n}` : ""}`, ""],
       w: [I.wind, "green", done ? "Rode the wind" : "Rides the wind", "A longer way, but quicker"],
       p: [I.map, "", `${done ? "Came through" : "Through"} ${passName(n)}`, "Over the mountains"],
       v: [I.loc, "teal", `${done ? "Flew past" : "Past"} ${n || "a landmark"}`, "For its postmark"],
-      r: [n === "s" ? I.storm : I.wind, "warn", n === "s" ? `Turned to keep clear of ${SEVERE_WORD[l[5]?.k] || "storms"}` : "Turned to ride the wind", "Changed course in the air"],
+      r: [n === "s" ? severeIcon(l[5]?.k) : I.wind, "warn", n === "s" ? `Turned to keep clear of ${SEVERE_WORD[l[5]?.k] || "storms"}` : "Turned to ride the wind", "Changed course in the air"],
     }[tag];
     if (say) ev.push({ at, tag, icon: say[0], tone: say[1], title: say[2], sub: say[3] });
   }

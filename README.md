@@ -328,6 +328,20 @@ or so for about 40 minutes, a Legend every 16 for 15; `tire` in
 `functions/_route.js`). The plan before sending includes them for whoever would
 carry it, and a pigeon that turns for the weather keeps them on its new way.
 
+**Magnetic storms, volcanoes and wildfires.** `functions/_earth.js` asks two
+free sources with no key, from the server, and keeps them for everyone for half
+an hour: NOAA's planetary K index (observed and three days ahead) and NASA
+EONET's open volcanoes and wildfires. Homing pigeons steer partly by the Earth's
+magnetic field, and real ones do get lost in magnetic storms: from Kp 5 a pigeon
+wanders and flies slower, more the nearer the poles (none below 35°, up to 22%
+at Kp 9 past 60°), said like any weather ("1h 16m late: a magnetic storm").
+Volcanic ash (120 km round an erupting volcano) and wildfire smoke (40 km, more
+for a big fire) are marked on the weather's points and gone around like storms:
+planned before it leaves, turned for in the air, sheltered from on an island,
+drawn on the map (an ash cloud with grit falling, smoke with embers rising) and
+on the card ("Goes around volcanic ash over France"). If either source doesn't
+answer, pigeons fly as if all were calm. Credited in Account → Map & Weather Data.
+
 **Pigeon Death's odds by the way.** With Pigeon Death on, a pigeon's chance
 of being lost depends on the way it takes (`riskOf` in `functions/_route.js`):
 1 in 100 for an ordinary flight, half as much again for a stretch of open sea

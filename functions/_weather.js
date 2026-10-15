@@ -17,9 +17,14 @@
 // worth waiting for the weather to clear (forecastFor); a pigeon booked to
 // land later flies through the weather forecast for when it takes off.
 //
+// The Earth too (_earth.js): each point's weather says if there's volcanic ash
+// or wildfire smoke there (hz: gone around, like storms), and how much of its
+// pace a magnetic storm leaves a pigeon there (mag).
+//
 // WEATHER_URL: tests only.
 
 import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js";
+import { earthFor, hazardAt, kpAt, magKeep } from "./_earth.js";
 
 // where along a route to look: a point every SAMPLE_KM or so (each in the middle of
 // its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
@@ -46,7 +51,7 @@ const snap = (v) => Math.round(v / CELL) * CELL;
 // bitter cold.
 const STORM_CAPE = 1500, STORM_RAIN = 1, HEAVY_RAIN = 4;
 const HOT = [[40, 0.75], [35, 0.85]], COLD = [[-20, 0.8], [-10, 0.9]];
-const SEVERE = new Set(["storms", "hail", "icing"]);
+const SEVERE = new Set(["storms", "hail", "icing", "ash", "smoke"]);
 export const isSevere = (k) => SEVERE.has(k);              // what a pigeon goes around, or shelters from
 export function skyAt(code, gust, cape = 0, rain = 0, temp = null) {
   let k = null, keep = 1;
@@ -125,7 +130,16 @@ export function paceAt(w, head, high = false) {
   if (tail == null) return null;
   const temp = w.temperature_2m == null || !Number.isFinite(Number(w.temperature_2m)) ? null : Number(w.temperature_2m);
   const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0, Number(w.cape) || 0, Number(w.precipitation) || 0, temp);
+  // volcanic ash or wildfire smoke (as bad as storms, and gone around the same), and a magnetic storm (it wanders)
+  if (w.hz) { sky.keep *= 0.7; if (!isSevere(sky.k)) sky.k = w.hz; }
+  if (w.mag > 0 && w.mag < 1) { sky.keep *= w.mag; sky.k = sky.k || "magnetic"; }
   return { f: Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), tail, k: sky.k, alt };
+}
+// One point's weather with the Earth's part in it: ash or smoke there, and a magnetic storm then
+export function withEarth(h, E, lat, lon, when) {
+  if (!h || !E) return h;
+  const hz = hazardAt(E, lat, lon), mag = magKeep(kpAt(E, when), lat);
+  return hz || mag < 1 ? { ...h, ...(hz ? { hz } : {}), ...(mag < 1 ? { mag } : {}) } : h;
 }
 // (where a wind was met higher or lower than usual, so the card can say it climbed for it)
 export const altOf = (spot) => (spot.alt && spot.alt !== 120 && (spot.k === "tailwind" || spot.k === "headwind") ? { alt: spot.alt } : {});
@@ -184,7 +198,8 @@ export async function windsFor(env, routes, high = []) {
     });
     if (keep.length) await D.batch(keep).catch(() => {});
   }
-  return tally(routes, pts, pts.map((p) => got.get(key(p))?.current), high);
+  const E = await earthFor(env).catch(() => null);
+  return tally(routes, pts, pts.map((p) => withEarth(got.get(key(p))?.current, E, p.lat, p.lon, t)), high);
 }
 
 // The weather along each route for the next `hours`, hour by hour, from
@@ -196,11 +211,11 @@ export async function forecastFor(env, routes, hours = 24) {
   const none = routes.map(() => null);
   if (!routes.length || env.WEATHER_OFF) return none;
   const pts = pointsOf(routes), cells = [...new Map(pts.map((p) => [key(p), p])).values()];
-  const list = await hourlyFor(env, cells, hours);
+  const [list, E] = await Promise.all([hourlyFor(env, cells, hours), earthFor(env).catch(() => null)]);
   if (!list) return none;
   const byCell = new Map(cells.map((p, k) => [key(p), list[k]])), times = list[0].time, out = routes.map(() => []);
   for (let h = 0; h < times.length; h++) {
-    const ws = pts.map((p) => hourAt(byCell.get(key(p)), h));
+    const ws = pts.map((p) => withEarth(hourAt(byCell.get(key(p)), h), E, p.lat, p.lon, times[h] * 1000));
     tally(routes, pts, ws).forEach((x, i) => out[i].push({ at: times[h] * 1000, ...x }));
   }
   return out;
@@ -287,7 +302,7 @@ export async function skyAlong(env, paths, until) {
   if (!paths.length || env.WEATHER_OFF) return null;
   const pts = pointsOf(paths), cells = [...new Map(pts.map((p) => [key(p), p])).values()];
   const h0 = Math.floor(Date.now() / HOUR) * HOUR, hours = Math.min(FORECAST_HOURS, Math.max(1, Math.ceil((until - h0) / HOUR) + 1));
-  const list = await hourlyFor(env, cells, hours);
+  const [list, E] = await Promise.all([hourlyFor(env, cells, hours), earthFor(env).catch(() => null)]);
   if (!list) return null;
   const byCell = new Map(cells.map((p, k) => [key(p), list[k]])), kms = paths.map(lenOf);
   return {
@@ -295,7 +310,7 @@ export async function skyAlong(env, paths, until) {
       const mine = pts.filter((p) => p.i === i).map((p) => ({ ...p, i: 0 }));
       const ws = mine.map((p) => {
         const H = byCell.get(key(p)), eta = start + ((p.f * kms[i]) / kmh) * HOUR;
-        return H ? hourAt(H, Math.max(0, Math.floor((eta - H.time[0] * 1000) / HOUR))) : null;
+        return H ? withEarth(hourAt(H, Math.max(0, Math.floor((eta - H.time[0] * 1000) / HOUR))), E, p.lat, p.lon, eta) : null;
       });
       return tally([paths[i]], mine, ws, [kmh >= JET_KMH])[0];
     },
@@ -309,10 +324,10 @@ export async function skyAtPoints(env, pts, until) {
   const snapped = pts.map(([lat, lon]) => { const so = snap((lon + 540) % 360 - 180); return { lat: Math.max(-90, Math.min(90, snap(lat))), lon: so === -180 ? 180 : so }; });
   const cells = [...new Map(snapped.map((p) => [key(p), p])).values()];
   const h0 = Math.floor(Date.now() / HOUR) * HOUR, hours = Math.min(FORECAST_HOURS, Math.max(1, Math.ceil((until - h0) / HOUR) + 1));
-  const list = await hourlyFor(env, cells, hours);
+  const [list, E] = await Promise.all([hourlyFor(env, cells, hours), earthFor(env).catch(() => null)]);
   if (!list) return null;
   const byCell = new Map(cells.map((p, k) => [key(p), list[k]]));
-  return { at: (i, when) => { const H = byCell.get(key(snapped[i])); return H ? hourAt(H, Math.max(0, Math.floor((when - H.time[0] * 1000) / HOUR))) : null; } };
+  return { at: (i, when) => { const H = byCell.get(key(snapped[i])); return H ? withEarth(hourAt(H, Math.max(0, Math.floor((when - H.time[0] * 1000) / HOUR))), E, snapped[i].lat, snapped[i].lon, when) : null; } };
 }
 // The weather along each of some flights ({ path, start, kmh }), as it will
 // meet it. All in the next hour: the sky as it is now (windsFor). The forecast
