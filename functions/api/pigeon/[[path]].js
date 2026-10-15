@@ -13,7 +13,7 @@ import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
 import { WINDMAP_ROUTES } from "../../_windmap.js";
-import { findNear, dropNear, renear, nearViews, stopsOf, posAt } from "../../_moments.js";
+import { findNear, flockUp, dropNear, renear, nearViews, stopsOf, posAt } from "../../_moments.js";
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
@@ -845,6 +845,8 @@ async function sendMessage({ request, env, waitUntil }) {
   if (style && !via) await D.prepare("UPDATE pg_msgs SET style = ? WHERE id = ?").bind(style, id).run();
   // a photo is view-once unless the phone says it isn't (a GIF or a voice pigeon)
   if (photo) await D.prepare("UPDATE pg_msgs SET once = ? WHERE id = ?").bind(meta.once === false ? 0 : 1, id).run();
+  // pigeons off the same way at once fly together, quicker for it (before it's shown, so its times are right)
+  if (landAt == null && !via) await flockUp(D, { ...(await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first()) }).catch((e) => console.error("pigeon flock", e && e.message));
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));       // ten in a season keeps its look

@@ -400,6 +400,13 @@ async function nearTick(env, D, t, since) {
       for (const id of new Set([them(x), them(y)])) names.set(id, firstName((await D.prepare("SELECT name FROM pg_users WHERE id = ?").bind(id).first())?.name));
       const over = r.place && r.place !== "land" ? ` over ${r.place}` : "";
       let body;
+      if (r.kind === "flock") {                                     // flying together (functions/_moments.js): a little quicker for it
+        const say = (s) => (mine(s) ? `your pigeon to ${names.get(them(s))}` : `${names.get(them(s))}’s pigeon`);
+        const both = !p.names ? "Two of your pigeons are" : them(x) === them(y) ? (mine(x) === mine(y) ? "Your pigeons are" : `Your pigeon and ${names.get(them(x))}’s are`)
+          : `${say(x)[0].toUpperCase() + say(x).slice(1)} and ${say(y)} are`;
+        pushes += await pushTo(env, v, { title: "Flying together", body: `${both} flying together${p.names ? over : ""}: both a little quicker for it.`, tag: `near-${r.a}-${r.b}`, url: `/pigeon/#open=${them(x)}` });
+        continue;
+      }
       if (!p.names) body = r.kind === "overtake" ? "One of your pigeons just overtook another in mid-air." : "Two of your pigeons just passed each other in mid-air.";
       else if (them(x) === them(y)) {
         const n = names.get(them(x));

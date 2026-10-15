@@ -392,7 +392,7 @@ const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // resting on an island, through a pass, past a landmark (see functions/_route.js)
 // resting on an island ("i"), or sheltering from storms ("h"), right now: [where, until when, which], or null
 function restingOn(m, t = now()) {
-  const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c");
+  const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c" && l[3] !== "f");
   const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h" || l[3] === "t") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
   return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || (legs[i][3] === "h" ? "" : "an island"), legs[i + 1][2], legs[i][3], SEVERE_WORD[legs[i][5]?.k] || "storms"];
 }
@@ -434,7 +434,7 @@ function wayWords(legs) {
   return said.length ? said.slice(0, 3).join(" · ") : "the straight way";
 }
 function routeNote(m) {
-  const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c"); if (!legs.length || m.lost) return null;
+  const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c" && l[3] !== "f"); if (!legs.length || m.lost) return null;
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
   const rest = restingOn(m, t);
   if (rest) return rest[2] === "h" ? { icon: I.storm, text: `Sheltering${rest[0] ? ` ${rest[0]}` : ` from ${rest[3]}`} until about ${fmtTime(rest[1])}` }
@@ -3654,6 +3654,12 @@ function momentText(m, n, chatId) {
   const me = S.me.id, nm = (id) => first(personById(id)?.name || "a friend"), o = n.other;
   const mineThis = m.from === me, mineOther = o.from === me, kind = (k) => (KIND[k]?.name || "Standard").toLowerCase();
   const over = n.place && n.place !== "land" ? ` over ${n.place}` : "";
+  if (n.kind === "flock") {                                            // flying together
+    const same = (mineOther ? o.to : o.from) === chatId, here = mineThis ? "your pigeon" : `${nm(chatId)}’s pigeon`;
+    const there = same ? (mineOther ? "yours" : `${nm(chatId)}’s`) : mineOther ? `the one you sent ${nm(o.to)}` : `${nm(o.from)}’s`;
+    const both = same && mineThis === mineOther ? `${mineThis ? "Your" : `${nm(chatId)}’s`} pigeons` : `${here[0].toUpperCase() + here.slice(1)} and ${there}`;
+    return `${both} flew together${over}`;
+  }
   if ((mineOther ? o.to : o.from) === chatId) {                        // both in this chat
     if (n.kind !== "overtake") return mineThis === mineOther ? `Your pigeons passed each other${over}` : `Your pigeon and ${nm(chatId)}’s passed each other${over}`;
     const [lead, back] = n.lead === "other" ? [[mineOther, o.pigeon], [mineThis, m.pigeon]] : [[mineThis, m.pigeon], [mineOther, o.pigeon]];
@@ -3676,7 +3682,7 @@ function chatMoments(msgs, chatId) {
   const seen = new Set(), out = [];
   for (const m of msgs || []) for (const n of m.near || []) {
     const key = [m.id, n.other.id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
-    out.push({ at: n.at, html: `<button type="button" class="sysline moment" data-act="map" data-id="${esc(m.id)}">${I.pass}<span>${esc(momentText(m, n, chatId))}<span class="t"> · ${fmtTime(n.at)}</span></span></button>` });
+    out.push({ at: n.at, html: `<button type="button" class="sysline moment" data-act="map" data-id="${esc(m.id)}">${n.kind === "flock" ? I.people : I.pass}<span>${esc(momentText(m, n, chatId))}<span class="t"> · ${fmtTime(n.at)}</span></span></button>` });
   }
   out.push(...stampLines(msgs));
   for (const m of msgs || []) if (m.from === S.me.id && m.bird?.up && !m.flying && !m.lost)
@@ -4993,7 +4999,7 @@ function tickMap() {
   if (m.flock) return tickFlockMap(m, card, cv);
   // its way changed while the map was open (it turned for the weather, sheltered, or was cheered on): say so
   // (its shape: where it goes, not when; a cheer only speeds it up)
-  const way = JSON.stringify((m.legs || []).filter((l) => l[3] !== "c").map((l) => [l[3], l[0], l[1]]));
+  const way = JSON.stringify((m.legs || []).filter((l) => l[3] !== "c" && l[3] !== "f").map((l) => [l[3], l[0], l[1]]));
   if (s.way != null && s.way !== way && !m.lost && m.deliverAt > now()) { const n = routeNote(m); toast(esc(n ? `Its way just changed: ${n.text[0].toLowerCase()}${n.text.slice(1)}.` : `Its way just changed: it now lands ${atTime(m.deliverAt)}.`)); haptic("tick"); }
   s.way = way;
   const { share, cheer } = cardShell(card), canShare = shareable(m);
@@ -5138,7 +5144,7 @@ function fcDrag(card) {
 const passName = (n) => (!n ? "a pass" : /^a |^[A-Z][\w’']*['’]s /.test(n) ? n : `the ${n}`);
 // what happens on the way, in time order: [{ at, icon, tone, title, sub, until }]
 function fcEvents(m, t) {
-  const ev = [], legs = m.legs || [], tagged = legs.filter((l) => l[3] && l[3] !== "c"), once = new Set();
+  const ev = [], legs = m.legs || [], tagged = legs.filter((l) => l[3] && l[3] !== "c" && l[3] !== "f"), once = new Set();
   for (let i = 0; i < tagged.length; i++) {
     const l = tagged[i], [tag, n, at] = [l[3], l[4], l[2]], done = at <= t;
     if ((tag === "i" || tag === "h" || tag === "t") && tagged[i + 1]?.[3] === tag && tagged[i + 1][0] === l[0]) {
@@ -5171,8 +5177,12 @@ function fcEvents(m, t) {
     if (met.has(n.other.id)) continue; met.add(n.other.id);
     const o = n.other, nm = (id) => first(personById(id)?.name || "a friend");
     const whose = o.from === S.me.id ? `your pigeon to ${nm(o.to)}` : `${nm(o.from)}’s pigeon`;
-    ev.push({ at: n.at, icon: I.pass, tone: "orange", cls: "near", title: n.kind === "overtake" ? (n.lead === "other" ? `Overtaken by ${whose}` : `Overtook ${whose}`) : `Passed ${whose}`,
-      sub: n.place && n.place !== "land" ? `Over ${n.place}` : "In mid-air" });
+    const over = n.place && n.place !== "land" ? `Over ${n.place}` : "In mid-air";
+    if (n.kind === "flock") {                                       // (they part where its next "f" point is)
+      const parts = legs.find((l) => l[3] === "f" && l[2] > n.at)?.[2] ?? n.at;
+      ev.push({ at: n.at, icon: I.people, tone: "teal", cls: "near flock", title: `${n.at > t ? "Flies" : parts > t ? "Flying" : "Flew"} with ${whose}`, sub: `${over} · 10% faster together` }); continue;
+    }
+    ev.push({ at: n.at, icon: I.pass, tone: "orange", cls: "near", title: n.kind === "overtake" ? (n.lead === "other" ? `Overtaken by ${whose}` : `Overtook ${whose}`) : `Passed ${whose}`, sub: over });
   }
   return ev.sort((a, b) => a.at - b.at);
 }

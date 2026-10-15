@@ -337,6 +337,16 @@ Gulf); the safe way halves it. The route switch shows each way's odds ("1 in
 133", green when better than usual, red when worse), and How It Flies says why
 ("this way: a very long sea crossing").
 
+**Flying together.** Two pigeons someone can see both of (two you send off
+the same way at once, say), in the air together going the same way at much the
+same pace within 40 km of each other for half an hour or more, fly together for
+that stretch, taking turns at the front: each goes 10% faster for it
+(`flockUp` in `functions/_moments.js`, when a pigeon takes off). Their times
+from there are squeezed, with a point ("f") where they meet and where they
+part; it's kept as a moment like a near miss, so both people are told ("Your
+pigeon to Reuben and your pigeon to Nia are flying together over France"), the
+chat says so, and the card's timeline has it.
+
 **The Skies.** The globe button on Messages opens one live map of every pigeon
 in the air to or from you, from every chat and group, with a countdown for
 each. Tap a row to open that chat. It shows exactly what those chats already
