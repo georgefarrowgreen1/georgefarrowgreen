@@ -658,11 +658,10 @@ const receipts = (me, other, v) => (v.from === me.id && (me.no_receipts || other
 
 /* ---------------- sync: everything the home screens need ---------------- */
 const SEEN_EVERY = 60e3;
-let lastSweep = 0;
 async function sync({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
-  if (t - lastSweep > 60e3) { lastSweep = t; waitUntil(sweepPhotos(env).catch(() => {})); }       // (once a minute is plenty)
+  waitUntil(sweepPhotos(env).catch(() => {}));     // photos past their time are deleted promptly (two indexed look-ups)
   // an open app syncs every 15 s; note it at most once a minute for Last Online
   if (!(t - (u.seen_at || 0) < SEEN_EVERY)) await D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id).run();
   const { results: links } = await D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();

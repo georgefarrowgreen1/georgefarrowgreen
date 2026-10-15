@@ -505,7 +505,8 @@ export function msgView(me, m, t) {
     // a stopover: who, where and when (the line they added only reaches the recipient, once it lands)
     ...(m.via ? { via: m.via, viaPlace: m.via_place, viaAt: m.via_at, viaOff: m.via_off,
       note: m.recipient === me && !flying && !lost ? m.via_note || null : null } : {}),
-    photo: m.photo, photoSize: m.photo_size, flying, risky: !!m.risky,
+    photo: m.photo === 1 && m.expires_at != null && m.expires_at <= t ? 2 : m.photo,     // past its time: gone, even before the sweep deletes it
+    photoSize: m.photo_size, flying, risky: !!m.risky,
     lost, lostAt: lost ? m.lost_at : null,       // only once it has happened
     recalled: lost && !!m.recalled,              // called back by its sender: lost on purpose
     wind: m.wind ?? null,                        // tailwind at take-off (km/h; negative: headwind)

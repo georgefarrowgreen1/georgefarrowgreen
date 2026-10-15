@@ -2415,6 +2415,7 @@ function navGestures() {
   // tapping somewhere empty puts the keyboard away
   document.addEventListener("click", (e) => {
     const a = document.activeElement;
+    if (a === $ta && performance.now() - focusedAt < 700) return;          // a stray tap as the keyboard arrives isn't "put it away"
     if (!inField(a) || e.target === a || e.target.closest?.("input, textarea, select, button, a, label, [data-act], [contenteditable], .field-wrap, .compose, .fcell, .search")) return;
     a.blur();
   });
@@ -2470,6 +2471,7 @@ function pressFeedback(el) {
 // The message box, to the touch: a tap anywhere on it (or just above it) puts
 // you in it, even if the finger drifts a little, and a finger that drifts on
 // it never drags the screen along. Only a long message scrolls, inside its box.
+let focusedAt = 0;
 function composeTouch() {
   const TAP = 30;
   let t0 = null;
@@ -2489,8 +2491,12 @@ function composeTouch() {
     const s = t0; t0 = null;
     if (!s || s.far || $ta.disabled || $compose.hidden || !$(".crow", $compose)?.offsetParent) return;
     if (e.target.closest("button, a, input, select, label, .recbar")) return;
-    if (e.target === $ta) { if (document.activeElement !== $ta) $ta.focus(); return; }       // the box itself: the caret goes where you tapped
+    if (e.target === $ta && document.activeElement === $ta) return;        // already typing: the caret goes where you tapped
+    // Not yet typing: focus it here, inside the touch (iOS only shows the keyboard for that), and cancel the
+    // phone's own tap that would follow. That late tap is hit-tested after the screen has shifted for the
+    // keyboard, so it can land on the messages above and put the keyboard straight away again.
     e.preventDefault();
+    focusedAt = performance.now();
     $ta.focus(); const n = $ta.value.length; $ta.setSelectionRange(n, n);
   }, { passive: false });
   $compose.addEventListener("touchcancel", () => { t0 = null; }, { passive: true });
@@ -2555,7 +2561,7 @@ function mount() {
   // message box right on the keyboard. Touch screens only: there's no keyboard to clear otherwise.
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
   const typing = (on) => { if (touch) root().classList.toggle("typing", on); };
-  $ta.addEventListener("focus", () => typing(true));
+  $ta.addEventListener("focus", () => { focusedAt = performance.now(); typing(true); });
   $ta.addEventListener("blur", () => typing(false));
   window.visualViewport?.addEventListener?.("resize", () => {          // keyboard closed without leaving the box
     if (window.innerHeight - window.visualViewport.height < 80 && document.activeElement !== $ta) typing(false);
