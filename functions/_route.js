@@ -47,11 +47,13 @@ function bent(path, share, tag) {
 }
 const BENDS = [0.12, -0.12, 0.25, -0.25];
 const MIN_BEND_KM = 150;                     // a short hop just goes straight
+const WIND_GAIN = 0.04;                      // riding the wind: only for a way at least 4% quicker
 
 // Plan the way from `from` to `to` ([lat, lon] each). With weather (when it
 // leaves), the sky along the straight line and a few gentle arcs is looked at
 // together, in one request: a pigeon that would fly into storms takes the arc
-// that misses them (the quickest that does).
+// that misses them (the quickest that does); otherwise, if the wind along an
+// arc gets it there clearly sooner, it rides the wind (a longer way, but quicker).
 // Returns { way: the points between (each [lat, lon, tag, name?]), km, w: the
 // weather along it, as windsFor gives it }.
 export async function planRoute(env, { from, to, weather = true }) {
@@ -61,14 +63,19 @@ export async function planRoute(env, { from, to, weather = true }) {
   const paths = [straight, ...(long ? BENDS.map((s) => bent(straight, s, "s")) : [])];
   const ws = await windsFor(env, paths.map((p) => p.map((q) => [q[0], q[1]])));
   const time = (k) => pathKm(paths[k]) / (ws[k].f || 1);
-  let pick = 0;
+  let pick = 0, why = null;
   // storms on the straight line: the quickest way that keeps out of them (or has fewest)
   if (ws[0].storms > 0 && paths.length > 1) {
     const order = paths.map((_, k) => k).sort((a, b) => ws[a].storms - ws[b].storms || time(a) - time(b));
-    if (ws[order[0]].storms < ws[0].storms) pick = order[0];
+    if (ws[order[0]].storms < ws[0].storms) { pick = order[0]; why = "s"; }
   }
-  const path = paths[pick], way = path.slice(1, -1).map((q) => [q[0], q[1], q[2]]);
-  if (pick && ws[0].storm) for (const q of way) if (q[2] === "s") q[3] = safeName(ws[0].storm.lat, ws[0].storm.lon);
+  // no storms in the way: an arc the wind blows along gets there sooner, though it's further (only if it's worth it)
+  if (!why && paths.length > 1) {
+    const best = paths.map((_, k) => k).filter((k) => ws[k].storms <= ws[0].storms).sort((a, b) => time(a) - time(b))[0];
+    if (best && time(best) < time(0) * (1 - WIND_GAIN)) { pick = best; why = "w"; }
+  }
+  const path = paths[pick], way = path.slice(1, -1).map((q) => [q[0], q[1], why || q[2]]);
+  if (why === "s" && ws[0].storm) for (const q of way) q[3] = safeName(ws[0].storm.lat, ws[0].storm.lon);
   return { way, km: pathKm(path), w: ws[pick] };
 }
 const safeName = (lat, lon) => { try { return placeName(lat, lon); } catch (_) { return null; } };
