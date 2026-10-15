@@ -499,13 +499,44 @@ const routesOf = (m) => m.skies ? m.skies : m.flock ? m.flock.filter((r) => r.ro
 // Where the map sits: every route in view, unless the person has moved it.
 function mapFrame(cv, m, cardH) {
   const W = cv.clientWidth, H = cv.clientHeight, usableH = Math.max(80, H - cardH - 30), sy0 = 20 + usableH / 2;
-  const pts = routesOf(m).flatMap(routePts);
+  const pts = [...routesOf(m), ...(m.alts || [])].flatMap(routePts);
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   const fit = {
     cx: (Math.min(...xs) + Math.max(...xs)) / 2, cy: (Math.min(...ys) + Math.max(...ys)) / 2,
     k: Math.min(W / Math.max(8, (Math.max(...xs) - Math.min(...xs)) * 1.5), usableH / Math.max(6, (Math.max(...ys) - Math.min(...ys)) * 1.6 + 8)),
   };
   return { W, H, sy0, pts, fit, view: S.sheet?.view || fit, kMin: Math.max(W / 360, H / (2 * mercY(MERC_MAX))) };
+}
+// The Way: the other ways it could go (m.alts), faint and dotted, each named
+// where it's furthest from the chosen way ("Scenic · 10:45"); tap a name for that
+// way. Returns where the names are, for the taps. xy: a route point → [x, y, seen]
+function drawAlts(g, m, xy, W, H) {
+  const hits = [], main = routePts(m).map(xy), apart = (P, Q) => Math.max(...P.map(([x, y]) => Math.min(...Q.map(([u, v]) => Math.hypot(u - x, v - y)))));
+  g.save(); g.font = "600 12px -apple-system, system-ui, sans-serif"; g.lineCap = "round"; g.lineJoin = "round";
+  // (two ways that go the same way are one line, named for both: "Fastest & Safe")
+  const ways = [];
+  for (const a of m.alts || []) {
+    const P = routePts(a).map(xy), same = ways.find((w) => apart(w.P, P) < 6);
+    if (same) same.a = { ...same.a, name: `${same.a.name} & ${a.name}` }; else ways.push({ a, P });
+  }
+  for (const { a, P } of ways) {
+    // (the same way as the chosen one, near enough: nothing to show)
+    const off = P.map(([x, y]) => Math.min(...main.map(([u, v]) => Math.hypot(u - x, v - y))));
+    if (Math.max(...off) < 6) continue;
+    g.globalAlpha = 0.5; g.strokeStyle = cssVar(g.canvas, "--label-2"); g.lineWidth = 2.5; g.setLineDash([2, 7]);
+    g.beginPath(); let on = false; for (const [x, y, seen] of P) { if (seen === false) { on = false; continue; } on ? g.lineTo(x, y) : g.moveTo(x, y); on = true; } g.stroke();
+    g.setLineDash([]); g.globalAlpha = 1;
+    const i = off.indexOf(Math.max(...off)), [x, y, seen] = P[i]; if (seen === false || x < 0 || x > W || y < 0 || y > H) continue;
+    const label = `${a.name} · ${atShort(a.deliverAt)}`, w = g.measureText(label).width + 16, h = 22, bx = Math.max(4, Math.min(W - w - 4, x - w / 2)), by = Math.max(4, Math.min(H - h - 4, y - h / 2));
+    g.shadowColor = "rgba(0,0,0,.18)"; g.shadowBlur = 6; g.shadowOffsetY = 1;
+    g.fillStyle = cssVar(g.canvas, "--cell"); g.beginPath(); g.roundRect(bx, by, w, h, 11); g.fill();
+    g.shadowColor = "transparent"; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    g.strokeStyle = cssVar(g.canvas, "--sep"); g.lineWidth = 1; g.stroke();
+    g.fillStyle = cssVar(g.canvas, "--label-2"); g.textBaseline = "middle"; g.fillText(label, bx + 8, by + h / 2 + 0.5);
+    hits.push({ style: a.style, x0: bx - 8, y0: by - 8, x1: bx + w + 8, y1: by + h + 8 });
+  }
+  g.restore();
+  return hits;
 }
 function drawMap(cv, m, cardH) {
   cv._m = m; cv._cardH = cardH;
@@ -563,7 +594,9 @@ function drawMap(cv, m, cardH) {
     g.strokeStyle = col("--border"); g.lineWidth = k > 40 ? 1.2 : 0.8; g.setLineDash([4, 3]); g.stroke(); g.setLineDash([]);
   }
   const suns = drawNight(g, W, H, ox, oy, k);
-  // the routes (a message to a group has one per member), their ends, and each pigeon
+  // the other ways it could go (on The Way), faint, each with its name; then the routes
+  // (a message to a group has one per member), their ends, and each pigeon
+  cv._altHits = drawAlts(g, m, (p) => [X(p.x), Y(p.y), true], W, H);
   const tracks = routesOf(m).map((r) => { const rp = routePts(r); return { r, rp, P: rp.map((p) => [X(p.x), Y(p.y)]) }; });
   // the trail: solid where it has flown, dashed (and fainter) where it has still to go
   const line = (pts) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); };
@@ -1301,7 +1334,8 @@ function drawGlobe(cv, m, cardH, fast) {
     for (let a = 0; a < 8; a++) { const c = Math.cos(a * Math.PI / 4), s2 = Math.sin(a * Math.PI / 4); g.beginPath(); g.moveTo(c * 9, s2 * 9); g.lineTo(c * 12.5, s2 * 12.5); g.stroke(); }
     g.restore();
   }
-  // routes: solid where flown, dashed ahead; hidden round the back
+  // the other ways (on The Way), faint; then the routes: solid where flown, dashed ahead; hidden round the back
+  cv._altHits = drawAlts(g, m, (p) => proj(p.x, latOf(p.y)), W, H);
   const tracks = routesOf(m).map((r) => { const rp = routePts(r); const PP = rp.map((p) => proj(p.x, latOf(p.y))); return { r, rp, P: PP.map(([x, y]) => [x, y]), up: PP.map((p) => p[2]) }; });
   const seg = (P, up, a, b) => { g.beginPath(); let on = false; for (let i = a; i <= b; i++) { if (!up[i]) { on = false; continue; } on ? g.lineTo(P[i][0], P[i][1]) : g.moveTo(P[i][0], P[i][1]); on = true; } g.stroke(); };
   const lw = tracks.length > 1 ? 3 : 3.5, tint = col("--tint");
@@ -1489,6 +1523,9 @@ function mapGestures(cv) {
     // a quick tap that didn't move (and isn't the first half of a double tap): the pigeon, or the wind there
     if (down && down.moved < 8 && performance.now() - down.at < 300) {
       const d = down, tap = lastTap;
+      // one of the other ways' names (The Way): that way instead
+      const alt = (cv._altHits || []).find((h) => d.p[0] >= h.x0 && d.p[0] <= h.x1 && d.p[1] >= h.y0 && d.p[1] <= h.y1);
+      if (alt) { $(`.mapcard [data-act=routeset][data-id="${alt.style}"]`, $layer)?.click(); down = null; return; }
       const bird = (cv._birds || []).find((b) => Math.hypot(b.at[0] - d.p[0], b.at[1] - d.p[1]) < 30);
       setTimeout(() => { if (lastTap !== tap || !tap) return; bird ? birdTip(cv, bird) : windTip(cv, d.p[0], d.p[1]); }, 260);
     }
@@ -4966,6 +5003,9 @@ function tickPreview(card, cv) {
   const t = now(), go = (x) => x + (t - m.sentAt), k = kindOf(m);
   // as if it left now
   const live = { ...m, sentAt: t, deliverAt: go(m.deliverAt), legs: (m.legs || []).map((l) => [l[0], l[1], go(l[2]), ...l.slice(3)]) };
+  const others = plansNow(t, m.pigeon) || {};
+  live.alts = ROUTES.filter(([k]) => k !== m.style && others[k]).map(([k, name]) => ({ style: k, name, route: m.route, sentAt: t, deliverAt: others[k].deliverAt,
+    legs: (others[k].legs || []).map((l) => [l[0], l[1], l[2] + (t - S.routePlan.data.at), ...l.slice(3)]) }));
   card.classList.add("fc", "pv");
   const from = esc(m.fromPlace || "?"), to = esc(m.toPlace || "?"), coin = pgm(m);
   const rows = [{ at: t, now: true, coin, title: `Leaves ${from}`, sub: `${fmtMiles(m.km)} · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || "fastest").toLowerCase())} way` }];
