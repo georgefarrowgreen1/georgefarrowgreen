@@ -4387,6 +4387,7 @@ function drawSheet(refresh) {
         <div class="windtip" hidden></div><div class="birdtip glass" hidden></div>
         <div class="mapcard"></div>`, { flush: true, ...(s.id === "preview" ? { left: { label: "Back", act: "flysheet" } } : {}) });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
+      if (!$(".mapcard", $layer)._g) { $(".mapcard", $layer)._g = 1; fcDrag($(".mapcard", $layer)); }
       return tickMap();
     case "shareflight": {
       if ($(".shpick", $layer)) return;                            // already up: its pictures and switch update in place
@@ -4916,10 +4917,12 @@ function tickPreview(card, cv) {
 }
 function tickMap() {
   const s = S.sheet; if (!s || s.type !== "map") return;
-  if (s.id === "skies") return tickSkies($(".mapcard", $layer), $(".map", $layer));
-  if (s.id === "preview") return tickPreview($(".mapcard", $layer), $(".map", $layer));
-  const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
+  const m = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
+  // only one pigeon's own card folds (The Skies, a group's flights and the way before you send keep theirs)
+  if (card?.classList.contains("fc") && (!m || m.flock)) { card.classList.remove("fc", "fold", "swap"); $(".fcfold", card)?.remove(); const b = $(".mcb", card); if (b) b._html = ""; }
+  if (s.id === "skies") return tickSkies(card, cv);
+  if (s.id === "preview") return tickPreview(card, cv);
   if (!m || !card || !(m.route || m.flock)) return;
   if (m.flock) return tickFlockMap(m, card, cv);
   // its way changed while the map was open (it turned for the weather, sheltered, or was cheered on): say so
@@ -4927,30 +4930,144 @@ function tickMap() {
   const way = JSON.stringify((m.legs || []).filter((l) => l[3] !== "c").map((l) => [l[3], l[0], l[1]]));
   if (s.way != null && s.way !== way && !m.lost && m.deliverAt > now()) { const n = routeNote(m); toast(esc(n ? `Its way just changed: ${n.text[0].toLowerCase()}${n.text.slice(1)}.` : `Its way just changed: it now lands ${atTime(m.deliverAt)}.`)); haptic("tick"); }
   s.way = way;
-  const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
-  const flew = m.deliverAt - m.sentAt;
-  const resting = restingOn(m);
-  const speed = m.lost ? "" : resting ? (resting[2] === "h" ? "Sheltering" : "Resting") : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   const { share, cheer } = cardShell(card), canShare = shareable(m);
   if (share.hidden === canShare) share.hidden = !canShare;
   share.dataset.id = m.id;
   cheerState(cheer, m);
-  $(".mcb", card).innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
-    ${speed ? `<span class="speed">${speed}</span>` : ""}
-    ${!m.lost && left > 0 && f.phase !== "landed" && !resting ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
-    ${birdLine(m)}
-    ${routeNote(m) ? `<span class="waynote">${routeNote(m).icon}${esc(routeNote(m).text)}</span>` : ""}
-    ${!m.lost && left > LIVE_LEFT ? `<span class="checked">Watching the weather ahead · checked ${m.liveAt ? agoText(m.liveAt) : "at take-off"}</span>` : ""}
-    ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
-    ${flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : ""}
-    ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}
-    ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
-    <span class="prog k-${kindOf(m)}${m.lost ? " lost" : ""}"><i>${I.bird}</i></span>
-    ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
-    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.style ? ` · ${m.style}` : ""}${m.risky ? " · 1.25×" : ""}</span></span>`;
-  $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";
+  flightCard(card, m);
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
+}
+/* ---------- A pigeon's map card ----------
+   Folded, a slim bar over the map: how long it has left, where it is, and a
+   cheer. Pulled up, the flight as a timeline: where it took off, what it does
+   on the way (storms, wind, islands, passes, landmarks), where it is now, and
+   where it lands. Tap or swipe the bar to switch; this phone keeps your choice. */
+const mapOpen = () => { try { return localStorage.getItem("inflight-mapcard") === "open"; } catch (_) { return false; } };
+function mapFold(open) {
+  try { localStorage.setItem("inflight-mapcard", open ? "open" : "fold"); } catch (_) {}
+  const card = $(".mapcard.fc", $layer); if (!card) return;
+  haptic("tick"); card._tl = 0;
+  // (the new side fades in once; the once-a-second redraws don't replay it)
+  card.classList.add("swap"); clearTimeout(card._sw); card._sw = setTimeout(() => card.classList.remove("swap"), 320);
+  tickMap();
+}
+// swipe the card up to open it, down to fold it (not while scrolling the timeline)
+function fcDrag(card) {
+  let st = null;
+  card.addEventListener("touchstart", (e) => {
+    const tl = e.target.closest(".fctl");
+    st = e.touches.length === 1 && !(tl && tl.scrollHeight > tl.clientHeight + 1) ? { y: e.touches[0].clientY, x: e.touches[0].clientX } : null;
+  }, { passive: true });
+  card.addEventListener("touchend", (e) => {
+    if (!st || !card.classList.contains("fc")) return;
+    const t = e.changedTouches[0], dy = t.clientY - st.y, dx = t.clientX - st.x; st = null;
+    if (Math.abs(dy) < 28 || Math.abs(dx) > Math.abs(dy)) return;
+    const open = !card.classList.contains("fold");
+    if (dy < 0 && !open) mapFold(true); else if (dy > 0 && open) mapFold(false);
+  }, { passive: true });
+}
+const passName = (n) => (!n ? "a pass" : /^a |^[A-Z][\w’']*['’]s /.test(n) ? n : `the ${n}`);
+// what happens on the way, in time order: [{ at, icon, tone, title, sub, until }]
+function fcEvents(m, t) {
+  const ev = [], legs = m.legs || [], tagged = legs.filter((l) => l[3] && l[3] !== "c");
+  for (let i = 0; i < tagged.length; i++) {
+    const l = tagged[i], [tag, n, at] = [l[3], l[4], l[2]], done = at <= t, prev = ev.at(-1);
+    if ((tag === "i" || tag === "h") && tagged[i + 1]?.[3] === tag && tagged[i + 1][0] === l[0]) {
+      const until = tagged[i + 1][2], over = until <= t;
+      ev.push(tag === "h" ? { at, until, icon: I.storm, tone: "warn", title: `${over ? "Sheltered" : done ? "Sheltering" : "Shelters"} from storms${n ? ` ${n}` : ""}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` }
+        : { at, until, icon: I.bird, tone: "teal", title: `${over ? "Rested" : done ? "Resting" : "Rests"} on ${n || "an island"}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` });
+      i++; continue;
+    }
+    if (prev?.tag === tag && tag !== "v" && tag !== "p") continue;        // one line for a run of bends around the same storms
+    const say = {
+      s: [I.storm, "warn", `${done ? "Went" : "Goes"} around storms${n ? ` over ${n}` : ""}`, ""],
+      w: [I.wind, "green", done ? "Rode the wind" : "Rides the wind", "A longer way, but quicker"],
+      p: [I.map, "", `${done ? "Came through" : "Through"} ${passName(n)}`, "Over the mountains"],
+      v: [I.loc, "teal", `${done ? "Flew past" : "Past"} ${n || "a landmark"}`, "For its postmark"],
+      r: [n === "s" ? I.storm : I.wind, "warn", n === "s" ? "Turned to keep clear of storms" : "Turned to ride the wind", "Changed course in the air"],
+    }[tag];
+    if (say) ev.push({ at, tag, icon: say[0], tone: say[1], title: say[2], sub: say[3] });
+  }
+  // it turned to follow someone who moved
+  if (!m.via) for (const l of legs.filter((x) => !x[3])) {
+    const who = m.to === S.me.id ? "you" : first(friend(m.to)?.name || "them");
+    ev.push({ at: l[2], icon: I.loc, tone: "", title: "Changed course", sub: `To follow ${who}${who === "you" ? ": you moved" : ""}` });
+  }
+  for (const n of m.near || []) ev.push({ at: n.at, icon: I.pass, tone: "orange", title: momentText(m, n, S.chat), cls: "moment" });
+  return ev.sort((a, b) => a.at - b.at);
+}
+function fcRow(r) {
+  return `<li class="${r.cls || ""}${r.done ? " done" : ""}${r.flown ? " flown" : ""}${r.now ? " now" : ""}">
+    <span class="fcat">${r.now ? "Now" : r.time}</span>
+    <span class="fcdot ${r.dot || "ev"} ${r.tone || ""}">${r.now ? r.coin : r.dot === "ev" || !r.dot ? r.icon || "" : ""}</span>
+    <span class="fcwhat"><span class="fctitle">${r.title}</span>${r.sub ? `<span class="fcs">${r.sub}</span>` : ""}${r.extra || ""}</span></li>`;
+}
+function flightCard(card, m) {
+  const open = mapOpen(), t = m.lost ? m.lostAt : now(), left = m.deliverAt - now(), f = flightAt(m, t), k = kindOf(m);
+  const landed = !m.lost && left <= 0, resting = restingOn(m), flew = m.deliverAt - m.sentAt, note = routeNote(m), wx = wxSay(m);
+  card.classList.add("fc"); card.classList.toggle("fold", !open);
+  if (!$(".fcfold", card)) card.insertAdjacentHTML("afterbegin", `<button type="button" class="fcfold" data-act="mapfold"><i></i></button>`);
+  const fold = $(".fcfold", card), label = open ? "Fold the card away" : "Show the flight’s details";
+  if (fold.getAttribute("aria-label") !== label) { fold.setAttribute("aria-label", label); fold.setAttribute("aria-expanded", String(open)); }
+  const coin = m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m), from = esc(m.fromPlace || "?"), to = esc(m.toPlace || "?");
+  const where = !m.lost && !landed && !resting ? esc(overWhere(...pigeonLL(m))) : "";
+  const big = m.lost ? "Lost on the way" : landed ? "Landed" : esc(fmtDur(left));
+  const lands = landsLine(m).replace(/^Lands/, "lands");
+  let html;
+  if (!open) {
+    const sub = m.lost ? `${from} → ${to}` : landed ? `${from} → ${to} · flew ${esc(fmtDur(flew))}` : resting ? esc(note?.text || "Resting")
+      : `${from} → ${to}${where ? ` · over <b>${where}</b>` : ""}`;
+    html = `<span class="fcpeek"><span class="fccoin">${coin}</span><span class="fct"><span class="big">${big}${!m.lost && !landed ? `<small> · ${lands}</small>` : ""}</span><span class="fcs">${sub}</span></span></span>
+      <span class="fcbar k-${k}${m.lost ? " lost" : ""}"><i></i></span>`;
+  } else {
+    const pill = m.lost ? "" : landed ? ["ok", `${I.check}Landed`] : resting ? (resting[2] === "h" ? ["warn", "Sheltering"] : ["teal", "Resting"])
+      : f.phase === "up" ? ["ok", "Taking Off"] : f.phase === "down" ? ["ok", "Landing"] : ["tint", "In Flight"];
+    const head = m.lost ? `${from} → ${to}` : landed ? `in ${to} · ${esc(fmtShort(m.deliverAt))}` : `to ${to} · <span class="lands">${lands}</span>`;
+    // the rows: took off, what happens on the way, now, lands
+    const rows = [{ at: m.sentAt, time: clockIn(m.sentAt, MY_TZ), dot: "end", title: `Took off from ${from}`, sub: `${fmtMiles(m.km)}${m.style ? ` · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || m.style).toLowerCase())} way` : ""}` }];
+    for (const e of fcEvents(m, t)) rows.push({ ...e, time: `${e.at > t ? "~" : ""}${clockIn(e.at, MY_TZ)}`, title: esc(e.title), sub: esc(e.sub || ""), now: !!(resting && e.until && e.at <= t && t < e.until) });
+    const chips = [];
+    if (!resting) chips.push(`<span class="fcchip speed">${esc(fmtMph(f.kmh))}</span>`);
+    if (wx && !landed) chips.push(`<span class="fcchip wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>`);
+    else if (m.wind != null && !landed) chips.push(`<span class="fcchip wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>`);
+    chips.push(`<span class="fcchip dim">${Math.round(f.frac * 100)}% of the way</span>`);
+    // (only what it's doing now: a turn for the weather, or a rest; the rest of its way has rows of its own)
+    const said = note && /^(Rerouted|Sheltering|Resting on .* until)/.test(note.text);
+    const extra = `<span class="fcchips">${chips.join("")}</span>${said ? `<span class="waynote">${note.icon}${esc(note.text)}</span>` : ""}`;
+    if (!m.lost && !landed) {
+      const nr = rows.find((r) => r.now);
+      if (nr) Object.assign(nr, { coin, extra });
+      else rows.push({ at: t, now: true, coin, title: where ? `<span class="over">Over ${where}</span>` : esc(note?.text || "On its way"), extra });
+    }
+    if (m.lost) rows.push({ at: t, time: clockIn(t, MY_TZ), dot: "ev", tone: "red", icon: I.skull, title: "Lost on the way", sub: m.risky ? "Pigeon Death was on" : "" });
+    else rows.push({ at: m.deliverAt, time: clockIn(m.deliverAt, MY_TZ), dot: "end", title: `${landed ? "Landed" : "Lands"} in ${to}`,
+      sub: landed ? `Flew ${esc(fmtDur(flew))} · averaged ${esc(fmtMph(m.km / (flew / HOUR)))}` : "", extra: landed && wx ? `<span class="wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>` : "" });
+    rows.sort((a, b) => a.at - b.at || (a.now ? 1 : 0) - (b.now ? 1 : 0));
+    rows.forEach((r, i) => { r.done = r.at <= t && !r.now; r.flown = !!rows[i + 1] && rows[i + 1].at <= t; });
+    // anything else worth a line: who it flew over, cheers, the weather watch
+    const notes = [flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : "",
+      m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : "",
+      !m.lost && left > LIVE_LEFT ? `<span class="checked">Watching the weather ahead · checked ${m.liveAt ? agoText(m.liveAt) : "at take-off"}</span>` : ""].join("");
+    const b = m.bird, mine = b && m.from === S.me.id && b.id ? [...S.birds, ...S.hall].find((x) => x.id === b.id) : null;
+    const tags = [k !== "standard" ? `<span class="fcchip k-${k}">${esc(KIND[k]?.name || k)}</span>` : "",
+      m.style && m.style !== "fastest" ? `<span class="fcchip sty">${esc(ROUTES.find((x) => x[0] === m.style)?.[1] || m.style)}</span>` : "",
+      m.risky ? `<span class="fcchip risk">1.25×</span>` : ""].join("");
+    const who = b ? `<span class="fcwho"><span class="fcav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span class="fct"><span class="birdline">Carried by ${esc(b.name)}${esc(wearWord(b.wear))}</span><span class="fcs">${esc(b.up || b.rank)}${mine?.km >= 1 ? ` · ${fmtMiles(mine.km)} in all` : ""}</span></span>${tags ? `<span class="fctags">${tags}</span>` : ""}</span>`
+      : tags ? `<span class="fcwho"><span class="fctags">${tags}</span></span>` : "";
+    html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">${big}</span><span class="fcs">${head}</span></span>${pill ? `<span class="fcpill ${pill[0]}">${pill[1]}</span>` : ""}</span>
+      <ol class="fctl" aria-label="The flight, start to finish">${rows.map(fcRow).join("")}</ol>${notes ? `<span class="fcnotes">${notes}</span>` : ""}${who}`;
+  }
+  const body = $(".mcb", card);
+  if (body._html !== html) {
+    const tl = $(".fctl", card), top = tl ? tl.scrollTop : 0;
+    body.innerHTML = html; body._html = html;
+    // the timeline keeps its place; opened, it starts with now in view
+    const tl2 = $(".fctl", card), nr = tl2 && $(".now", tl2);
+    if (tl2 && card._tl) tl2.scrollTop = top;
+    else if (tl2) { card._tl = 1; if (nr) tl2.scrollTop = Math.max(0, nr.offsetTop - tl2.clientHeight / 3); }
+  }
+  const bar = $(".fcbar i", card); if (bar) bar.style.width = (f.frac * 100).toFixed(2) + "%";
 }
 /* ---------- In the air: every pigeon flying to or from you, at the top of Messages ----------
    One element that outlives re-renders (the list is redrawn on every sync), so
@@ -5597,6 +5714,7 @@ async function onClick1(e, t) {
       const cv = $(".map", $layer); if (cv) { cv._parts = null; cv._trailKey = null; }
       redrawMap(); return;
     }
+    case "mapfold": return mapFold(!mapOpen());
     case "mapglobe": { const cv = $(".map", $layer); if (!cv?._m) return; S.sheet.globe = !globeOn(cv._m); S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap(); }
     case "safety": {
       const f = personById(id); if (!f) return;

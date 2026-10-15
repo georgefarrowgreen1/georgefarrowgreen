@@ -302,6 +302,16 @@ pinch to zoom; the globe button switches to the flat map and back. Both show:
 - shallow water along the coasts, softly shaded mountain ranges, and country names as you zoom in (`pigeon/countries.js`);
 - a pigeon that flaps, tilts with its course and flutters as it takes off and lands. Only the pigeon is redrawn each frame; the map stays as it was drawn.
 
+The card over a pigeon's map starts folded to a slim bar: how long it has
+left and when it lands, where it is now, a progress bar and a round Cheer
+button, so the map gets the screen. Tap it or swipe it up and it becomes the
+flight as a timeline: when it took off, each thing on its way (storms it goes
+around, wind it rides, islands it rests on, passes, landmarks for postmarks,
+turns for the weather, near misses), a Now row with its speed, the wind or
+delay and how far it has got, and when it lands; then who is carrying it and
+how it flies. Swipe it down, or tap its handle, to fold it again. The phone
+remembers which you chose (`flightCard` in `pigeon/app.js`).
+
 **The Skies.** The globe button on Messages opens one live map of every pigeon
 in the air to or from you, from every chat and group, with a countdown for
 each. Tap a row to open that chat. It shows exactly what those chats already

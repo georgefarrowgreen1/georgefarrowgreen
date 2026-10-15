@@ -1664,3 +1664,96 @@ html.night .nav-ghost .night{background:none}
 .mapcard .waynote{display:flex;align-items:center;justify-content:center;gap:5px;font-size:13px;font-weight:600;color:var(--label-2);text-align:center}
 .mapcard .waynote .ico{font-size:14px;flex:none}
 .mapcard .checked{display:block;font-size:12px;color:var(--label-2);text-align:center;font-variant-numeric:tabular-nums}
+
+/* A pigeon's map card: folded to a slim bar over the map, or pulled up as the
+   flight's timeline (app.js flightCard) */
+.mapcard.fc{padding:6px 16px 14px;gap:12px}
+.mapcard.fc.fold{padding:6px 14px 12px;gap:10px;border-radius:26px}
+.fcfold{display:block;align-self:stretch;height:18px;margin:0 -16px -8px;padding:0;border:0;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.fcfold i{position:absolute;top:6px;left:50%;width:36px;height:5px;margin-left:-18px;border-radius:3px;background:var(--label-3)}
+.fcfold{position:relative}
+.mapcard.fc.fold .fcfold{position:absolute;inset:0;height:auto;margin:0;border-radius:inherit;z-index:1}
+.fcfold:focus-visible{outline:2px solid var(--tint);outline-offset:-2px}
+.mapcard.fc .fct{display:flex;flex-direction:column;flex:1;min-width:0}
+.mapcard.fc .fcs{font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.mapcard.fc .fct .fcs{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mapcard.fc .fct .fcs b{font-weight:600;color:var(--tint)}
+.fccoin{flex:none;display:grid;place-items:center;font-size:24px}
+.fccoin .pg{font-size:inherit;margin:0}
+.fccoin.lg{font-size:28px}
+.fccoin .lostp .ico{font-size:30px;color:var(--red)}
+.mapcard.fc .big{display:block;justify-content:normal;font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mapcard.fc .big small{font-size:15px;font-weight:500;color:var(--label-2)}
+.mapcard.fc .fchead .big{font-size:28px;letter-spacing:-.5px}
+/* folded */
+.fcpeek{display:flex;align-items:center;gap:12px;padding-right:52px;min-height:44px;margin-top:6px}
+.fcbar{position:relative;display:block;height:4px;border-radius:2px;background:var(--fill-2);overflow:hidden}
+.fcbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--k,var(--tint))}
+.fcbar.lost i{background:var(--red)}
+.mapcard.fc.fold .cheerbtn,.mapcard.fc.fold .shareflight{position:absolute;z-index:2;top:22px;right:14px;width:44px;height:44px;min-height:0;margin:0;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--tint-fill);color:#fff}
+.mapcard.fc.fold .cheerbtn .ico,.mapcard.fc.fold .shareflight .ico{color:#fff;margin:0;font-size:20px}
+.mapcard.fc.fold .cheerbtn span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.mapcard.fc.fold .shareflight{font-size:0}
+/* pulled up */
+.fchead{display:flex;align-items:center;gap:12px}
+.fcpill{flex:none;display:flex;align-items:center;gap:3px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.2px;color:var(--tint);background:color-mix(in srgb,var(--tint) 14%,transparent)}
+.fcpill .ico{font-size:13px}
+.fcpill.ok{color:var(--green-t);background:color-mix(in srgb,var(--green) 16%,transparent)}
+.fcpill.teal{color:var(--teal);background:color-mix(in srgb,var(--teal) 16%,transparent)}
+.fcpill.warn{color:var(--orange-t);background:color-mix(in srgb,var(--orange) 16%,transparent)}
+.fctl{position:relative;list-style:none;margin:0;padding:0;max-height:min(40vh,340px);overflow-y:auto;overscroll-behavior:contain}
+.fctl li{position:relative;display:grid;grid-template-columns:48px 24px minmax(0,1fr);column-gap:10px;padding-bottom:14px}
+.fctl li:last-child{padding-bottom:0}
+/* the line from each row down to the next: solid where it has flown */
+.fctl li:not(:last-child)::before{content:"";position:absolute;left:69px;top:12px;bottom:-12px;border-left:3px dotted var(--label-3)}
+.fctl li.flown:not(:last-child)::before{border-left:3px solid var(--tint)}
+.fcat{font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums;padding-top:2px;white-space:nowrap}
+.fctl .now .fcat{font-weight:700;color:var(--tint)}
+.fcdot{position:relative;z-index:1;justify-self:center;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--cell);border:2px solid var(--label-3);color:var(--label-2);box-sizing:border-box}
+.fcdot .ico{font-size:11px}
+.fcdot.end{width:14px;height:14px;margin-top:3px;border:3px solid var(--tint)}
+.done > .fcdot.end{background:var(--tint)}
+.fcdot.teal{border-color:var(--teal);color:var(--teal)}
+.fcdot.warn,.fcdot.orange{border-color:var(--orange);color:var(--orange-t)}
+.fcdot.green{border-color:var(--green);color:var(--green-t)}
+.fcdot.red{border-color:var(--red);color:var(--red)}
+.done > .fcdot.ev{opacity:.8}
+.now > .fcdot{width:24px;height:24px;margin-top:-2px;border:0;background:none;font-size:14px;box-shadow:0 0 0 3px var(--cell),0 0 0 6px color-mix(in srgb,var(--tint) 35%,transparent);border-radius:50%}
+.now > .fcdot .pg{font-size:inherit;margin:0}
+.fcwhat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fctitle{font-size:15px;font-weight:600;color:var(--label);text-wrap:pretty}
+.fctl li:not(.done):not(.now) .fctitle{color:var(--label)}
+.fctl .now .fctitle{font-size:16px;font-weight:700}
+.fctl .now .over{display:inline;font-size:inherit;font-weight:inherit;color:var(--tint)}
+.fctl .moment .fctitle{font-weight:600}
+.fcchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.fcchip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:8px;background:var(--fill);font-size:12px;font-weight:600;color:var(--label);font-variant-numeric:tabular-nums}
+.fcchip .ico{font-size:13px;flex:none}
+.fcchip.dim{color:var(--label-2)}
+.fcchip.wind .ico{color:var(--gray)}
+.fcchip.wind.tail,.fcchip.wx.early{color:var(--green-t)}
+.fcchip.wind.head,.fcchip.wx.late{color:var(--orange-t)}
+.fcchip.wx{text-align:left}
+.mapcard.fc .waynote,.mapcard.fc .fcwhat .wx{display:flex;align-items:flex-start;justify-content:flex-start;gap:5px;margin-top:4px;font-size:13px;font-weight:500;color:var(--label-2);text-align:left}
+.mapcard.fc .waynote .ico,.mapcard.fc .fcwhat .wx .ico{font-size:14px;flex:none;margin-top:1px}
+.mapcard.fc .fcwhat .wx.late{color:var(--orange-t)}
+.mapcard.fc .fcwhat .wx.early{color:var(--green-t)}
+.fcnotes{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:14px;background:var(--fill)}
+.mapcard.fc .fcnotes > span{display:block;text-align:left;font-size:13px}
+.mapcard.fc .checked{color:var(--label-2);font-weight:500}
+.fcwho{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--sep)}
+.fcav{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--orange-t);font-weight:700;font-size:15px}
+.mapcard.fc .fcwho .birdline{display:block;text-align:left;font-size:15px;font-weight:600;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fctags{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.fctags .fcchip{border-radius:999px;padding:5px 9px}
+.fctags .fcchip[class*=" k-"]{color:var(--k);background:color-mix(in srgb,var(--k) 16%,transparent)}
+.fctags .k-rocket{color:var(--p-rocket-text)}
+.fctags .k-swift{color:var(--p-swift-t)}.fctags .k-dumb{color:var(--p-dumb-t)}
+.fctags .sty{color:var(--teal);background:color-mix(in srgb,var(--teal) 15%,transparent)}
+.fctags .risk{color:var(--red);background:color-mix(in srgb,var(--red) 14%,transparent)}
+.mapcard.fc .cheerbtn,.mapcard.fc .shareflight{margin-top:0}
+.mapcard.fc:not(.fold) .cheerbtn{background:var(--tint-fill);color:#fff;min-height:48px;border-radius:16px}
+.mapcard.fc:not(.fold) .cheerbtn .ico{color:#fff}
+.mapcard.fc.swap > :not(.fcfold){animation:fc-in .28s ease-out both}
+@keyframes fc-in{from{opacity:0;transform:translateY(8px)}}
+@media (prefers-reduced-motion:reduce){.mapcard.fc.swap > :not(.fcfold){animation:none}}
