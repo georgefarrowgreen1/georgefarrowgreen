@@ -133,12 +133,13 @@ async function turnFor(D, t, x, better, wasW) {
   const done = passed(x.legs, t);
   // the turn keeps the way it was going (and where the storms were), for the map
   const was = x.path.slice(1).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]).slice(-12).map((q) => [round2(q[0]), round2(q[1])]);
-  const more = { was, ...(wasW.storm && better.why === "s" ? { storm: [round2(wasW.storm.lat), round2(wasW.storm.lon)] } : {}) };
+  const sk = wasW.storm?.k || "storms";                             // (storms, hail or icing)
+  const more = { was, ...(wasW.storm && better.why === "s" ? { storm: [round2(wasW.storm.lat), round2(wasW.storm.lon)], ...(sk !== "storms" ? { k: sk } : {}) } : {}) };
   const legs = JSON.stringify([...done, [round5(pLat), round5(pLon), t, "r", better.why, more], ...timeWay([pLat, pLon], pts, end, t, Math.max(0, deliver - t - way.rest)).legs]);
   const km = pathKm([[r.from_lat, r.from_lon], ...done, [pLat, pLon]]) + pathKm(way.p), left = r.deliver_at - t, change = deliver - r.deliver_at;
   const lostAt = r.lost_at == null || r.lost_at <= t ? r.lost_at : Math.round(t + ((r.lost_at - t) * (deliver - t)) / left);
   // the weather's part: going around storms, the time it costs is theirs (and the turn's notice has said so already)
-  const storm = better.why === "s" && wasW.storm ? { k: "storms", lat: wasW.storm.lat, lon: wasW.storm.lon } : null;
+  const storm = better.why === "s" && wasW.storm ? { k: sk, lat: wasW.storm.lat, lon: wasW.storm.lon } : null;
   const spot = storm || (w.wx ? (({ at, ...s }) => s)(w.wx) : null);
   const wx = spot ? JSON.stringify(spot) : r.wx, wxAt = spot ? t : r.wx_at, wxMs = (r.wx_ms || 0) + change;
   const q = x.group
@@ -149,7 +150,7 @@ async function turnFor(D, t, x, better, wasW) {
       .bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
   if (!(await q.run()).meta.changes) return null;
   await after(D, t, x, lostAt ?? deliver);
-  return { group: x.group, r, why: better.why, where, deliver };
+  return { group: x.group, r, why: better.why, where, deliver, k: sk };
 }
 // It shelters from the storms ahead: where it's resting (or, over land, where
 // it is) until the first hour it could leave and meet none on the way.
@@ -158,21 +159,21 @@ async function shelter(D, t, x, w, sky) {
   let until = null;
   for (let k = 1; k * HOUR <= MAX_HOLD && !until; k++) { const wk = sky.at(x.at, from + k * HOUR, x.kmh); if (wk && wk.storms === 0) until = from + k * HOUR; }
   if (!until) return null;                                            // not clearing soon: it flies on (slowly)
-  const hold = until - from, latest = latestOf(r);
+  const hold = until - from, latest = latestOf(r), sk = w.storm?.k || "storms", kx = sk !== "storms" ? [{ k: sk }] : [];
   if (r.deliver_at + hold > latest) return null;
   const later = (l) => [l[0], l[1], l[2] + hold, ...l.slice(3)];
   let legs, where;
   if (onIsle) {
     const isle = x.legs[x.restAt][4]; where = isle ? `on ${isle}` : null;
-    const h = (l, at) => [l[0], l[1], at, "h", ...(where ? [where] : [])];
+    const h = (l, at) => [l[0], l[1], at, "h", ...(where || kx.length ? [where] : []), ...kx];
     legs = x.legs.map((l, i) => (i < x.restAt ? l : i === x.restAt ? h(l, l[2]) : i === x.restAt + 1 ? h(l, l[2] + hold) : later(l)));
   } else {
     const [lat, lon] = x.path[0], place = safeName(lat, lon); where = place ? `in ${place}` : null;
-    const h = (at) => [round5(lat), round5(lon), at, "h", ...(where ? [where] : [])];
+    const h = (at) => [round5(lat), round5(lon), at, "h", ...(where || kx.length ? [where] : []), ...kx];
     legs = [...passed(x.legs, t), h(t), h(t + hold), ...x.legs.filter((l) => l[2] > t).map(later)];
   }
   const deliver = r.deliver_at + hold, lostAt = r.lost_at == null || r.lost_at <= t ? r.lost_at : r.lost_at + hold;
-  const wx = w.storm ? JSON.stringify({ k: "storms", lat: w.storm.lat, lon: w.storm.lon }) : r.wx, wxMs = (r.wx_ms || 0) + hold, json = JSON.stringify(legs);
+  const wx = w.storm ? JSON.stringify({ k: sk, lat: w.storm.lat, lon: w.storm.lon }) : r.wx, wxMs = (r.wx_ms || 0) + hold, json = JSON.stringify(legs);
   const q = x.group
     ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wx = ?4, wx_ms = ?5, wx_at = ?6, wx_told = ?6, live_at = ?6
         WHERE msg_id = ?7 AND user_id = ?8 AND deliver_at = ?9 AND legs IS ?10`).bind(deliver, json, lostAt, wx, wxMs, t, r.msg_id, r.user_id, r.deliver_at, r.legs)
@@ -181,7 +182,7 @@ async function shelter(D, t, x, w, sky) {
       .bind(deliver, json, lostAt, wx, wxMs, t, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
   if (!(await q.run()).meta.changes) return null;
   await after(D, t, x, lostAt ?? deliver);
-  return { group: x.group, r, why: "h", where, until, deliver };
+  return { group: x.group, r, why: "h", where, until, deliver, k: sk };
 }
 const safeName = (lat, lon) => { try { return placeName(lat, lon); } catch (_) { return null; } };
 // A flight changed: the pigeons it'll pass, and the friends it'll fly over, again

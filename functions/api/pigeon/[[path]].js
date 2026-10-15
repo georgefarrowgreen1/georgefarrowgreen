@@ -876,14 +876,19 @@ async function routePlan({ request, env }) {
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only plan pigeons to friends.");
   const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(other).first();
   if (u.lat == null || r?.lat == null) return json({ plans: null });
-  const speed = PIGEONS[kind].speed * (u.risky ? RISKY_SPEED : 1), from = [u.lat, u.lon], to = [r.lat, r.lon];
-  const plans = {};
-  for (const style of STYLES) {                                    // (the same sky each time: the forecast is kept a while)
-    const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(kind), style: styleOf(style), start: t, kmh: SPEED_KMH * speed });
-    const rest = restOf(plan.way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
-    plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, plan.way, to, t, flight - rest).legs };
+  const from = [u.lat, u.lon], to = [r.lat, r.lon];
+  // every kind of pigeon, each way, so every time How It Flies shows is the planned one
+  // (the same sky each time: the forecast is kept a while)
+  const kinds = {};
+  for (const k of ["standard", "swift", "turbo", "rocket"]) {
+    const speed = PIGEONS[k].speed * (u.risky ? RISKY_SPEED : 1), plans = (kinds[k] = {});
+    for (const style of STYLES) {
+      const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed });
+      const rest = restOf(plan.way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
+      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, plan.way, to, t, flight - rest).legs };
+    }
   }
-  return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans });
+  return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans: kinds[kind] || kinds.standard, kinds });
 }
 
 // A scheduled pigeon that hasn't taken off yet: it never leaves. No one was

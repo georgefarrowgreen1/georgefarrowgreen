@@ -336,14 +336,14 @@ async function wxTick(env, D, t, since) {
 // A pigeon in the air changed course for the weather (_live.js): its sender
 // and recipient hear why and when it now lands (in a group, its recipient).
 // Where the storms are (or where it's sheltering), only with names on.
-const TURN_WHY = { s: (where) => `to go around storms${where ? ` over ${where}` : ""}`, w: () => "to ride the wind" };
+const TURN_WHY = { s: (where, k) => `to go around ${WX_WORDS[k] || "storms"}${where ? ` over ${where}` : ""}`, w: () => "to ride the wind" };
 async function turnNotes(env, D, t, turns) {
   let pushes = 0;
   for (const x of turns) {
-    const why = (p) => (TURN_WHY[x.why] || TURN_WHY.w)(p.names ? x.where : null);
+    const why = (p) => (TURN_WHY[x.why] || TURN_WHY.w)(p.names ? x.where : null, x.k);
     // (sheltering: "Your pigeon is sheltering from storms on the Azores until about 16:00. It now lands at 21:40.")
     const say = (p, who) => x.why === "h"
-      ? `${who} is sheltering from storms${p.names && x.where ? ` ${x.where}` : ""} until about ${dayClock(x.until, p.tz)}. It now lands ${whenAt(x.deliver, p.tz)}.`
+      ? `${who} is sheltering from ${WX_WORDS[x.k] || "storms"}${p.names && x.where ? ` ${x.where}` : ""} until about ${dayClock(x.until, p.tz)}. It now lands ${whenAt(x.deliver, p.tz)}.`
       : `${who} changed course ${why(p)}. It now lands ${whenAt(x.deliver, p.tz)}.`;
     if (x.group) {
       const g = await D.prepare(`SELECT g.name, u.notify_prefs, gm.muted FROM pg_groups g JOIN pg_users u ON u.id = ?2

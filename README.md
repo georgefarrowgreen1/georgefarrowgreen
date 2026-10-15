@@ -258,11 +258,14 @@ moments, flyovers and rank-ups are small grey lines. Writing is one row: +
 (a photo, or a GIF), the message with its pigeon at the start and when it would
 land as the hint, and send (a microphone while it's empty). A line appears
 above it only when something stops a pigeon flying. How It Flies (tap the
-pigeon) has the kinds, with how many you have, how long each takes and why one
-can't fly; which named pigeon carries it; When It Lands; Stop Over; the weather;
-the Route (each style with when it would land); See the Way (the way it would
-go if it left now, in a few words and on the map: `GET route-plan`, planned
-just as sending would); and whether Pigeon Death is on.
+pigeon) has when it would land up top (and the weather on the way), the kinds,
+with how many you have, how long each takes and why one can't fly; which named
+pigeon carries it; When It Lands and Stop Over as chips; the Route (Fastest,
+Scenic or Safe, each with when it would land); See the Way (the way it would go
+if it left now, as a line with its stops, and on the map); and whether Pigeon
+Death is on. Every time it shows is the planner's: `GET route-plan` plans every
+kind of pigeon each way at once, just as sending would (with the rests, the
+passes and the weather), and the message box's hint says the same once it's in.
 
 **Scheduled pigeons.** In a one-to-one chat, How It Flies → When It Lands:
 pick when it should *land* (this evening, tomorrow morning, or any time in
@@ -467,9 +470,13 @@ of stamps in your Flight Log: each in its own postal ink, perforated, with the
 day it was first stamped (tap one for how often since), newest first. A flight
 is stamped once it has landed, along the way it really flew (great circles,
 turns and stopovers), with a point named every 20 km; where it set off and
-landed count as the nearest country. The names are the map's own, looked up
-in a quarter-degree grid made from them (`functions/_placegrid.js`, 70 KB), so
-stamping a flight costs well under a millisecond. The chat marks the flight
+landed count as the nearest country. Land is named by the border it's within
+(Natural Earth's countries, as a quarter-degree grid made by
+`.tools/geo/countries.mjs`), not by whichever country's middle is nearest, so a
+spot in eastern France is France. Every name is looked up in a quarter-degree
+grid (`functions/_placegrid.js`, 75 KB), so stamping a flight costs well under a
+millisecond; the app looks places up in the same grid (`pigeon/placegrid.js`),
+so the map card and a push about the same spot always agree. The chat marks the flight
 that collected new stamps ("New in your passport: Kazakhstan, Mongolia and 3
 more"), and Globetrotter is earned at 25 countries. Only your own pigeons that
 landed count, and in a group only those to your friends; nobody else sees your

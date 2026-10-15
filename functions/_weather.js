@@ -131,7 +131,7 @@ function tally(routes, pts, list) {
     const { tail, f } = pace, sky = { k: pace.k }, s = sum[pts[k].i];
     // each point stands for an equal stretch of the route: add up the time it takes
     s.tail += tail; s.slow += 1 / f; s.n++;
-    if (isSevere(sky.k)) { s.storms++; if (!s.storm) s.storm = { lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f }; }
+    if (isSevere(sky.k)) { s.storms++; if (!s.storm) s.storm = { lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f, k: sky.k }; }        // (which: storms, hail or icing)
     const k2 = f >= 1 ? "tailwind" : sky.k || "headwind";
     const here = { f, k: k2, lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f, alt: pace.alt };
     if (!s.lo || f < s.lo.f) s.lo = here;

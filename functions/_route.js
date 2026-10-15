@@ -108,11 +108,12 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
   const { S, pts } = lat, K = LATTICE_OFF.length, whenOf = (s) => start + ((s / (S + 1)) * lat.km / kmh) * HOUR;
   // storms the straight line's own points see, by the stretch between stages they fall in
   const head = bearing(lat.from[0], lat.from[1], lat.to[0], lat.to[1]), lineStorms = new Map();
-  let firstStorm = null;
+  let firstStorm = null, firstK = null;
   lat.line.forEach((f, k) => {
-    if (!isSevere(paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head)?.k)) return;
+    const sk = paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head)?.k;
+    if (!isSevere(sk)) return;
     const s = Math.floor(f * (S + 1)); lineStorms.set(s, (lineStorms.get(s) || 0) + 1);
-    firstStorm ||= pts[lat.lineAt + k];
+    if (!firstStorm) { firstStorm = pts[lat.lineAt + k]; firstK = sk; }
   });
   const leg = (s1, o1, s2, o2) => {
     const a = pts[nodeOf(lat, s1, o1)], b = pts[nodeOf(lat, s2, o2)], d = haversineKm(a[0], a[1], b[0], b[1]), head = bearing(a[0], a[1], b[0], b[1]);
@@ -120,7 +121,8 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
     // (a stretch along the straight line, or leaving or joining it, meets the storms its points saw)
     const onLine = (s1 === 0 || o1 === MID) || (s2 === S + 1 || o2 === MID);
     const f = pa && pb ? 2 / (1 / pa.f + 1 / pb.f) : (pa || pb || { f: 1 }).f, storms = (isSevere(pb?.k) ? 1 : 0) + (s1 === 0 && isSevere(pa?.k) ? 1 : 0) + (onLine ? lineStorms.get(s1) || 0 : 0);
-    return { d, f, tail: ((pa?.tail ?? 0) + (pb?.tail ?? 0)) / (pa && pb ? 2 : 1), storms, hours: d / (kmh * f), cost: d / (kmh * f) + storms * STORM_H, at: b, pace: pb };
+    const sk = isSevere(pb?.k) ? pb.k : isSevere(pa?.k) ? pa.k : null;
+    return { d, f, tail: ((pa?.tail ?? 0) + (pb?.tail ?? 0)) / (pa && pb ? 2 : 1), storms, sk, hours: d / (kmh * f), cost: d / (kmh * f) + storms * STORM_H, at: b, pace: pb };
   };
   // stage by stage: the cheapest way to each point
   let cost = [{ c: 0, chain: [] }];                                   // stage 0: just `from`
@@ -141,12 +143,12 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
   const sum = (chain) => {
     const km = chain.reduce((a, x) => a + x.l.d, 0), hours = chain.reduce((a, x) => a + x.l.hours, 0), storms = chain.reduce((a, x) => a + x.l.storms, 0);
     const f = hours ? km / (kmh * hours) : 1, wind = Math.round(chain.reduce((a, x) => a + x.l.tail * x.l.d, 0) / (km || 1));
-    const stormAt = chain.find((x) => x.l.storms)?.l.at || null;
+    const stormL = chain.find((x) => x.l.storms)?.l, stormAt = stormL?.at || null;
     // the spot that did most of it (as windsFor says it)
     const worst = chain.filter((x) => x.l.pace).sort((a, b) => (f < 1 ? a.l.pace.f - b.l.pace.f : b.l.pace.f - a.l.pace.f))[0];
     const wk = worst && (worst.l.pace.f >= 1 ? "tailwind" : worst.l.pace.k || "headwind");
     const wx = worst && Math.abs(Math.log(worst.l.pace.f)) >= 0.05 ? { k: wk, lat: worst.l.at[0], lon: worst.l.at[1], at: (chain.indexOf(worst) + 0.5) / chain.length, ...altOf({ k: wk, alt: worst.l.pace.alt }) } : null;   // (how far along: the middle of that stretch)
-    return { km, hours, storms, w: { wind, f: Math.round(Math.min(1.6, Math.max(0.6, f)) * 1e4) / 1e4, wx, storms, storm: stormAt ? { lat: stormAt[0], lon: stormAt[1], at: 0.5 } : null } };
+    return { km, hours, storms, w: { wind, f: Math.round(Math.min(1.6, Math.max(0.6, f)) * 1e4) / 1e4, wx, storms, storm: stormAt ? { lat: stormAt[0], lon: stormAt[1], at: 0.5, k: stormL.sk || firstK || "storms" } : null } };
   };
   const straight = sum(chainOf([...Array(S).fill(MID), 0])), best = sum(cost[0].chain);
   let why = null;
@@ -154,11 +156,12 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
   else if (wind && best.hours < straight.hours * (1 - WIND_GAIN) && best.storms <= straight.storms) why = "w";
   if (!why) return { path: [lat.from, lat.to], why: null, w: straight.w, hours: straight.hours, straight: straight.hours };
   const stormPt = firstStorm || (straight.w.storm && [straight.w.storm.lat, straight.w.storm.lon]);
-  if (firstStorm) straight.w.storm = { lat: firstStorm[0], lon: firstStorm[1], at: 0.5 };
+  if (firstStorm) straight.w.storm = { lat: firstStorm[0], lon: firstStorm[1], at: 0.5, k: firstK };
+  const sk = firstK || straight.w.storm?.k || "storms";
   const name = why === "s" && stormPt ? safeName(stormPt[0], stormPt[1]) : null;
   const bends = cost[0].chain.slice(0, -1).map((x, k) => [round5(pts[nodeOf(lat, k + 1, x.o)][0]), round5(pts[nodeOf(lat, k + 1, x.o)][1]), why, ...(name ? [name] : [])]);
-  // (the first bend around storms says where they were, for the map to draw them)
-  if (why === "s" && stormPt && bends.length) bends[0] = [bends[0][0], bends[0][1], why, name ?? null, { storm: [round2(stormPt[0]), round2(stormPt[1])] }];
+  // (the first bend around storms says where they were, for the map to draw them, and what they were if not thunderstorms: hail, or icing)
+  if (why === "s" && stormPt && bends.length) bends[0] = [bends[0][0], bends[0][1], why, name ?? null, { storm: [round2(stormPt[0]), round2(stormPt[1])], ...(sk !== "storms" ? { k: sk } : {}) }];
   return { path: [lat.from, ...bends, lat.to], why, w: best.w, hours: best.hours, straight: straight.hours };
 }
 // A way, through the passes, and resting on islands if it hops

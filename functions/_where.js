@@ -5,6 +5,7 @@
 import { LAND } from "../pigeon/land.js";
 import { COUNTRIES, EDGES, SEAS } from "../pigeon/countries.js";
 import { haversineKm } from "./_pigeon.js";
+import { STEP as CSTEP, NAMES as CNAMES, DATA as CDATA } from "./_countrygrid.data.js";
 
 let rings = null;
 // the coastline as rings of [lon, lat] (unwrapped so none jumps the date line), each with its box
@@ -41,10 +42,24 @@ export function countryNear(lat, lon) {
   for (const [name, la, lo, tier] of NAMED) { const d = haversineKm(lat, lon, la, lo) / [0, 3.2, 1.8, 1][tier]; if (d < bd) { bd = d; best = name; } }
   return best && bd < 1500 ? (/^(United|Netherlands|Philippines|Central|Dominican|UAE)/.test(best) ? "the " + best : best) : "land";
 }
+// The country a point of land is in, by its borders (functions/_countrygrid.data.js,
+// a quarter-degree grid made by .tools/geo/countries.mjs): null where it doesn't know
+const CW = Math.round(360 / CSTEP), CH = Math.round(180 / CSTEP), crows = new Map();
+let cdata = null;
+function countryAt(lat, lon) {
+  const r = Math.min(CH - 1, Math.max(0, Math.floor((90 - lat) / CSTEP))), c = ((Math.floor((lon + 180) / CSTEP) % CW) + CW) % CW;
+  let a = crows.get(r);
+  if (!a) {
+    cdata ||= CDATA.split(";"); a = new Uint16Array(CW); let x = 0;
+    for (const run of cdata[r].split(",")) { const [i, n] = run.split("."); const k = n ? parseInt(n, 36) : 1; a.fill(parseInt(i, 36), x, x + k); x += k; }
+    crows.set(r, a);
+  }
+  return CNAMES[a[c]] || null;
+}
 // that, or the sea it's in
 export function placeName(lat, lon) {
   lon = ((lon + 540) % 360) - 180;
-  if (onLand(lat, lon)) return countryNear(lat, lon);
+  if (onLand(lat, lon)) return countryAt(lat, lon) || countryNear(lat, lon);
   const sea = SEAS.find(([, s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e); if (sea) return sea[0];
   if (lat > 66) return "the Arctic Ocean";
   if (lat < -60) return "the Southern Ocean";
