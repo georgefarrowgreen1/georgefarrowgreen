@@ -19,6 +19,7 @@ import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
 import { ISLANDS } from "./_islands.js";
+import { RANGES } from "./_mountains.js";
 
 const R = 6371, rad = Math.PI / 180, deg = 180 / Math.PI;
 export const round5 = (x) => Math.round(x * 1e5) / 1e5;
@@ -57,7 +58,8 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 // together, in one request: a pigeon that would fly into storms takes the arc
 // that misses them (the quickest that does); otherwise, if the wind along an
 // arc gets it there clearly sooner, it rides the wind (a longer way, but quicker).
-// With `hop` (a standard pigeon), it rests on islands on the way across a
+// Over the great mountain ranges it goes through a pass. With `hop` (a
+// standard pigeon), it rests on islands on the way across a
 // long stretch of sea.
 // Returns { way: the points between (each [lat, lon, tag, name?], with `rest`
 // ms where it rests), km, w: the weather along it, as windsFor gives it }.
@@ -84,8 +86,44 @@ export async function planRoute(env, { from, to, weather = true, hop = false }) 
     path = paths[pick].map((q, k, all) => (k && k < all.length - 1 ? [q[0], q[1], why || q[2], ...(name ? [name] : [])] : q));
     w = ws[pick];
   }
+  path = throughPasses(path);
   if (hop) path = hopped(path);
   return { way: path.slice(1, -1), km: pathKm(path), w };
+}
+
+// Mountain passes: a way over one of the great ranges goes through its best
+// pass instead (the one that adds least), if that isn't far out of the way.
+// Not when it starts or ends in the mountains (it's going there).
+const PASS_STEP = 20, PASS_MOST = 1.35, PASS_KM = 400;
+const inside = (edge, lat, lon) => {
+  let c = false;
+  for (let i = 0, j = edge.length - 1; i < edge.length; j = i++) {
+    const [ay, ax] = edge[i], [by, bx] = edge[j];
+    if ((ay > lat) !== (by > lat) && lon < ((bx - ax) * (lat - ay)) / (by - ay) + ax) c = !c;
+  }
+  return c;
+};
+const crosses = (edge, a, b) => {
+  const d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(2, Math.ceil(d / PASS_STEP));
+  for (let k = 1; k < n; k++) { const [lat, lon] = gcPoint(a[0], a[1], b[0], b[1], k / n); if (inside(edge, lat, lon)) return true; }
+  return false;
+};
+function throughPasses(path) {
+  const out = [...path];
+  for (const range of RANGES) {
+    for (let i = 0; i < out.length - 1; i++) {
+      const p = out[i], q = out[i + 1];
+      if (inside(range.edge, p[0], p[1]) || inside(range.edge, q[0], q[1]) || !crosses(range.edge, p, q)) continue;
+      const base = haversineKm(p[0], p[1], q[0], q[1]);
+      let best = null, km = Math.min(base * PASS_MOST, base + PASS_KM);
+      for (const [name, lat, lon] of range.passes) {
+        const via = haversineKm(p[0], p[1], lat, lon) + haversineKm(lat, lon, q[0], q[1]);
+        if (via < km) { km = via; best = [lat, lon, "p", name]; }
+      }
+      if (best) { out.splice(i + 1, 0, best); break; }               // (once over each range)
+    }
+  }
+  return out;
 }
 
 // which pigeons hop from island to island (the faster ones fly straight over)
