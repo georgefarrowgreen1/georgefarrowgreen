@@ -1756,6 +1756,8 @@ html.night .nav-ghost .night{background:none}
 .mapcard.fc .cheerbtn,.mapcard.fc .shareflight{margin-top:0}
 .mapcard.fc:not(.fold) .cheerbtn{background:var(--tint-fill);color:#fff;min-height:48px;border-radius:16px}
 .mapcard.fc:not(.fold) .cheerbtn .ico{color:#fff}
+/* (the map has no wind or rain key: hidden too in case an older copy of the app still draws one) */
+.windkey,.rainkey{display:none!important}
 /* the map's buttons step aside while the card is up over them */
 .mapctl{transition:opacity .3s var(--smooth),transform .5s var(--snappy),top .3s}
 .mapctl.fcaside{opacity:0;transform:translateX(24px) scale(.8);pointer-events:none}
