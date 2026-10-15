@@ -3437,7 +3437,7 @@ async function shareImage() {
 
 /* ---------- achievements (in the Flight Log) ---------- */
 const BADGE_LOOK = { first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
-  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] , migration: ["blossom", "pink"], summer: ["sun", "yellow"], autumn: ["leaf", "orange"], winter: ["snowflake", "blue"]};
+  world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] , stormdodger: ["storm", "indigo"], weathered: ["shield", "gray"], jetstream: ["wind", "teal"], migration: ["blossom", "pink"], summer: ["sun", "yellow"], autumn: ["leaf", "orange"], winter: ["snowflake", "blue"]};
 /* ---------- the passport ----------
    Every country and sea your pigeons have flown over (functions/_passport.js),
    newest first: a stamp each, in postal ink, with the day it was first
@@ -4568,6 +4568,8 @@ function drawSheet(refresh) {
           ${tile(d.longest ? `${n(d.longest.km * 0.621371)} mi` : "–", "Longest flight", d.longest?.place ? `to ${esc(d.longest.place)}` : "")}
           ${tile(d.fastest ? `${n(d.fastest.kmh * 0.621371)} mph` : "–", "Fastest pigeon", d.fastest ? `a ${esc(KIND[d.fastest.kind]?.name.toLowerCase() || "")} pigeon` : "")}
           ${tile(d.tailwind ? `${n(d.tailwind * 0.621371)} mph` : "–", "Best tailwind")}
+          ${tile(n(d.dodged || 0), "Storms dodged", "went around them")}
+          ${tile(d.sheltered >= 1 ? `${n(d.sheltered)} h` : d.sheltered ? `${n(d.sheltered * 60)} min` : "–", "Sheltered", d.early ? `best wind: ${esc(fmtDur(d.early))} early` : "from storms")}
         </div>
         ${passportHtml(d.passport, s.allStamps)}
         ${postmarksHtml(d.postmarks)}

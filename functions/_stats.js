@@ -47,10 +47,10 @@ export async function logFor(D, uid, t) {
   const u = { id: uid };
   // one row per pigeon you've sent: one to one, and each of your group pigeons
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
   const received = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
       (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
@@ -64,6 +64,12 @@ export async function logFor(D, uid, t) {
   const fastest = landed.reduce((a, p) => (!a || pace(p) > pace(a) ? p : a), null);
   const windiest = sent.filter((p) => p.wind != null).reduce((a, p) => (!a || p.wind > a.wind ? p : a), null);
   const km = landed.reduce((n, p) => n + p.km, 0);
+  // the weather's part: flights that went around storms (planned, or changing course on the way), hours spent
+  // sheltering from them, and the most a wind brought one in early
+  const legsOf = (p) => { try { return p.legs ? JSON.parse(p.legs) : []; } catch (_) { return []; } };
+  const dodged = sent.filter((p) => legsOf(p).some((l) => l[3] === "s" || (l[3] === "r" && l[4] === "s"))).length;
+  const sheltered = sent.reduce((ms, p) => { const ls = legsOf(p); for (let i = 0; i < ls.length - 1; i++) if (ls[i][3] === "h" && ls[i + 1][3] === "h" && ls[i][0] === ls[i + 1][0]) ms += ls[i + 1][2] - ls[i][2]; return ms; }, 0) / 3600e3;
+  const early = Math.max(0, ...landed.filter((p) => p.wind > 0).map((p) => -(p.wx_ms || 0)));
   // Achievements: earned, or how close you are (0-1)
   const atlantic = (p) => p.from_lon != null && p.to_lon != null && ((p.from_lon < -40 && p.to_lon > -20) || (p.to_lon < -40 && p.from_lon > -20));
   const has = (k) => sent.some((p) => p.pigeon === k);
@@ -82,6 +88,9 @@ export async function logFor(D, uid, t) {
     badge("flock", "Flock Leader", "Send a pigeon to a group", sent.some((p) => p.grp) ? 1 : 0),
     badge("fleet", "Fleet", "Fly every kind: standard, swift, turbo and rocket", ["standard", "swift", "turbo", "rocket"].filter(has).length, 4),
     badge("globetrotter", "Globetrotter", "Your pigeons fly over 25 countries", (await passportFor(D, uid, t)).countries, 25),
+    badge("stormdodger", "Storm Dodger", "Go around storms 5 times", dodged, 5),
+    badge("weathered", "Weathered It", "Shelter from storms for 12 hours in all", Math.floor(sheltered), 12),
+    badge("jetstream", "Rode the Jet Stream", "Land 2 hours early on the wind", early >= 2 * 3600e3 ? 1 : 0),
   ];
   // seasonal: ten pigeons in one season (while it's on, how many so far this time)
   const sc = seasonCounts(sent.map((p) => p.sent_at)), now = seasonAt(t);
@@ -101,6 +110,7 @@ export async function logFor(D, uid, t) {
     longest: longest ? { km: longest.km, place: longest.to_place || null } : null,
     fastest: fastest ? { kmh: pace(fastest), kind: fastest.pigeon || "standard" } : null,
     tailwind: windiest && windiest.wind > 0 ? windiest.wind : null,
+    dodged, sheltered, early: early || null,
     kinds, since: sent.length ? Math.min(...sent.map((p) => p.sent_at)) : null,
   };
 }

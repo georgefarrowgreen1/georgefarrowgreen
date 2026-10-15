@@ -276,8 +276,12 @@ turbo or rocket: a standard pigeon can't wait that long for its turn.
 
 **Flight Log.** Account → Flight Log: miles flown (and how far around the world
 that is), pigeons sent, received and in the air, hours in the air, the longest
-flight, the fastest pigeon, the best tailwind, pigeons by kind, and how many
-were lost to Pigeon Death or called back. Worked out by `functions/_stats.js`
+flight, the fastest pigeon, the best tailwind, storms dodged (flights that
+went around them), hours sheltered from storms and the most a wind brought one
+in early, pigeons by kind, and how many were lost to Pigeon Death or called
+back. Three weather achievements go with them: Storm Dodger (around storms 5
+times), Weathered It (12 hours sheltering in all) and Rode the Jet Stream (2
+hours early on the wind). Worked out by `functions/_stats.js`
 from distances, times and kinds only; a group pigeon's destination is never
 named, since it could be someone who isn't your friend.
 
