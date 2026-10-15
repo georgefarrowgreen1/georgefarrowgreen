@@ -1695,7 +1695,7 @@ html.night .nav-ghost .night{background:none}
 .fcpill.ok{color:var(--green-t);background:color-mix(in srgb,var(--green) 16%,transparent)}
 .fcpill.teal{color:var(--teal);background:color-mix(in srgb,var(--teal) 16%,transparent)}
 .fcpill.warn{color:var(--orange-t);background:color-mix(in srgb,var(--orange) 16%,transparent)}
-.fctl{position:relative;list-style:none;margin:0 -4px;padding:4px 4px 2px;max-height:min(42vh,360px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
+.fctl{position:relative;list-style:none;margin:0 -4px;padding:8px 4px 2px;max-height:min(42vh,360px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;
   --fu:0px;--fd:0px;-webkit-mask-image:linear-gradient(transparent,#000 var(--fu),#000 calc(100% - var(--fd)),transparent);mask-image:linear-gradient(transparent,#000 var(--fu),#000 calc(100% - var(--fd)),transparent)}
 .fctl::-webkit-scrollbar{display:none}
 .fctl.more-up{--fu:22px}.fctl.more-down{--fd:26px}
@@ -1776,4 +1776,79 @@ html.night .nav-ghost .night{background:none}
 @media (prefers-reduced-motion:reduce){
   .mapcard.fc,.mapcard.fc.morph,.fcbar i,.mapctl{transition:none}
   .mapcard.fc.enter,.mapcard.fc.swap *,.mapcard.fc.swap .fctl li::before,.now > .fcdot::after{animation:none!important}
+}
+
+/* How It Flies: when it would land up top, a bar for each pigeon's time, the
+   route as a sliding switch, and the way it would go as a line with its stops.
+   It plays in when it opens (bars grow, stops pop on), and a new choice moves
+   only what changed (the thumb glides, the time drops in, the stops redraw). */
+.flyhero{display:flex;align-items:center;gap:14px;margin:2px 20px 18px}
+.flyhero > .pg{flex:none;font-size:30px;margin:0}
+.flyhero .pg.none{background:var(--fill-2)}
+.fht{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.fhbig{font-size:26px;line-height:1.15;font-weight:700;letter-spacing:-.5px;color:var(--label);font-variant-numeric:tabular-nums}
+.flyhero .flyto{margin:0;text-align:left;font-size:14px;line-height:19px}
+.fhwx{display:inline-flex;align-items:center;gap:5px;margin-top:5px;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:600;color:var(--label-2);background:var(--fill)}
+.fhwx .ico{font-size:13px}
+.fhwx.clear .ico{color:var(--orange)}
+.fhwx.early{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
+.fhwx.late{color:var(--orange-t);background:color-mix(in srgb,var(--orange) 15%,transparent)}
+.kdur{display:block;height:4px;margin-top:5px;border-radius:2px;width:calc(var(--w,0) * 100%);max-width:100%;background:var(--k,var(--tint));opacity:.85;transform-origin:left}
+.kc:disabled .kdur{opacity:.4}
+.kinds .kc[aria-checked="true"] .kdur{opacity:1}
+.cc{flex-direction:row;align-items:center;gap:10px;padding:6px 14px 6px 6px}
+.cc > span:last-child{display:flex;flex-direction:column}
+.ccav{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--orange-t);font-weight:700;font-size:14px}
+.ccav.any{color:var(--label-2)}
+.ccav.any svg{width:17px;height:17px;fill:currentColor}
+.cc[aria-checked="true"] .ccav{background:var(--tint-fill);color:#fff}
+.seg{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0 16px;padding:4px;border-radius:18px;background:var(--cell)}
+.segthumb{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px) / 3);border-radius:14px;background:var(--tint-fill);box-shadow:0 4px 14px color-mix(in srgb,var(--tint) 30%,transparent);transform:translateX(calc(var(--i,0) * 100%))}
+.segthumb.glide{transition:transform .55s var(--snappy)}
+.seg button{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:1px;min-height:62px;padding:8px 4px;border:0;border-radius:14px;background:none;color:var(--label);font:inherit;cursor:pointer;transition:color .25s}
+.seg button .ico{font-size:17px;color:var(--label-2);transition:color .25s}
+.seg button b{font-size:14px;font-weight:600}
+.seg button small{font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums;white-space:nowrap;transition:color .25s}
+.seg button[aria-checked="true"],.seg button[aria-checked="true"] .ico{color:#fff}
+.seg button[aria-checked="true"] small{color:rgba(255,255,255,.82)}
+.seg button:active{transform:scale(.96)}
+.waycard{display:flex;flex-direction:column;gap:10px;width:calc(100% - 32px);margin:14px 16px 0;padding:14px 16px 16px;border:0;border-radius:26px;background:var(--cell);color:var(--label);font:inherit;text-align:left;cursor:pointer;transition:transform .45s var(--snappy)}
+.waycard:active{transform:scale(.98)}
+.wayhd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wayhd b{font-size:16px;font-weight:600}
+.waygo{display:flex;align-items:center;gap:5px;font-size:14px;font-weight:500;color:var(--tint)}
+.waygo .ico{font-size:15px}
+.wayline{position:relative;display:block;height:30px}
+.wayline::before{content:"";position:absolute;left:7px;right:7px;top:14px;border-top:3px dotted var(--label-3);transform-origin:left}
+.wayend{position:absolute;top:8px;width:14px;height:14px;border-radius:50%;box-sizing:border-box;border:3px solid var(--tint);background:var(--cell)}
+.wayend.from{left:0;background:var(--tint)}.wayend.to{right:0}
+.waystop{position:absolute;top:3px;left:calc(7px + var(--x,0) * (100% - 14px));margin-left:-12px;width:24px;height:24px;border-radius:50%;box-sizing:border-box;display:grid;place-items:center;background:var(--cell);border:2px solid var(--label-3);color:var(--label-2)}
+.waystop .ico{font-size:12px}
+.waystop.teal{border-color:var(--teal);color:var(--teal)}
+.waystop.warn,.waystop.orange{border-color:var(--orange);color:var(--orange-t)}
+.waystop.green{border-color:var(--green);color:var(--green-t)}
+.wayends{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.wayends > span{display:flex;flex-direction:column}
+.wayends > span:last-child{align-items:flex-end;text-align:right}
+.wayends b{font-size:15px;font-weight:600;color:var(--label)}
+.waywords{font-size:13px;line-height:18px;color:var(--label-2);text-wrap:pretty}
+.waycard.loading{cursor:default}
+.waycard.loading .wayline::before{animation:sheen 1.4s ease-in-out infinite}
+/* playing in */
+.flysheet.enter .flyhero{animation:fc-in .5s var(--snappy) .05s both}
+.flysheet.enter .kdur{animation:kd-grow .7s var(--ease-out) both;animation-delay:calc(.18s + var(--i,0) * 70ms)}
+.flysheet.enter .wayline::before,.waycard.chg .wayline::before{animation:kd-grow .6s var(--ease-out) .2s both}
+.flysheet.enter .waystop,.waycard.chg .waystop{animation:bump .5s var(--bouncy) both;animation-delay:calc(.35s + var(--i,0) * 90ms)}
+.flysheet.enter .wayend.to,.waycard.chg .wayend.to{animation:bump .45s var(--bouncy) .7s both}
+.flyhero.chg .fhbig,.flyhero.chg .flyto{animation:fh-drop .45s var(--snappy) both}
+.flyhero.chg .flyto{animation-delay:.04s}
+@keyframes kd-grow{from{transform:scaleX(0)}}
+@keyframes fh-drop{from{opacity:0;transform:translateY(-8px)}}
+/* The Way: the flight card, with the switch on it */
+.mapcard.fc.pv .seg{margin:0;background:var(--fill)}
+.mapcard.fc.pv .seg button{min-height:56px}
+.mapcard.fc.pv .fctl li:first-child .fcdot{margin-top:-2px}
+@media (prefers-reduced-motion:reduce){
+  .segthumb.glide,.waycard{transition:none}
+  .flysheet.enter *,.flysheet.enter .wayline::before,.waycard.chg *,.waycard.chg .wayline::before,.flyhero.chg *{animation:none!important}
 }

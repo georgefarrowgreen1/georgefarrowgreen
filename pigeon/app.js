@@ -406,7 +406,7 @@ function routePlanFor(chat, kind) {
   api(`route-plan?with=${encodeURIComponent(chat)}&pigeon=${encodeURIComponent(kind)}`).then((d) => {
     if (S.routePlan?.key !== key) return;
     S.routePlan = { key, at: now(), data: d.plans ? d : null };
-    if (["flysheet", "routesheet"].includes(S.sheet?.type)) renderSheet();
+    if (S.sheet?.type === "flysheet") renderSheet();
   }).catch(() => { if (S.routePlan?.key === key) S.routePlan = { key, at: now() - PLAN_KEEP + MIN, data: null }; });
   return S.routePlan.data;
 }
@@ -4619,56 +4619,61 @@ function drawSheet(refresh) {
       return;
     }
     case "flysheet": {
-      // How it flies: which pigeon, who carries it, when it lands and where it stops
+      // How it flies: when it would land (up top), which pigeon, who carries it,
+      // which way (and a picture of it), when it lands and where it stops
       const c = s.chat === S.chat ? composeState() : null;
       if (!c) { S.sheet = null; return renderSheet(); }
       const { g, f, t, sched, via, can, kind } = c, who = esc(first(g ? g.name : f.name));
       const turn = g ? "Not your turn" : t.state === "outbound" ? "Yours is still on its way" : t.state === "inbound" ? `${who}’s is on its way` : `${who}’s turn first`;
       const when = (k) => (g ? landHint(c, k).replace(/^Lands/, "lands") : `lands ${atTime(sched ? sched.at : now() + etaMs(c, k))}`);
+      const style = routeStyle(), mapped = !g && !via && !sched && kind && kind !== "mystery" && f.lat != null && S.me.lat != null;
+      const plans = mapped ? routePlanFor(f.id, kind)?.plans : null, plan = plans?.[style];
+      // the top: when it lands, how long that is, where to, and the weather on the way
+      const landAt = !kind || kind === "mystery" || g ? null : sched ? sched.at : plan ? plan.deliverAt : now() + etaMs(c, kind);
+      const big = !kind ? "No pigeon free" : kind === "mystery" ? "Who knows when?" : g ? landHint(c, kind) : `Lands ${atTime(landAt)}`;
+      const to = g ? `to ${esc(g.name)} · ${others(g).length + 1} people` : `to ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(plan?.km ?? chatKm(f))}` : ""}`;
+      const adv = !g && kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null, wxNow = !g && S.wxPlan.get(f.id)?.d?.now;
+      const wx = adv?.early ? ["early", I.wind, `${fmtDur(adv.early)} early on a tailwind`] : adv?.late ? ["late", I[(adv.wx && WX[adv.wx.k]?.[1]) || "storm"], `${fmtDur(adv.late)} late: ${adv.wx && WX[adv.wx.k] ? WX[adv.wx.k][0] : "rough weather"}`]
+        : wxNow ? ["clear", I.sun, "Clear skies"] : null;
+      const hero = `<div class="flyhero">${kind ? pg(kind, S.me.skin) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
+        <span class="fht"><b class="fhbig">${esc(big)}</b><span class="flyto">${landAt ? `in ${esc(fmtDur(landAt - now()))} · ` : ""}${to}</span>
+        ${wx ? `<span class="fhwx ${wx[0]}">${wx[1]}${esc(wx[2])}</span>` : ""}</span></div>`;
+      // the pigeons, each with a bar for how long it would take
+      const most = Math.max(1, ...KINDS.map(([k]) => etaMs(c, k) || 0));
       const kinds = KINDS.map(([k, name]) => {
         const left = S.me[k] || 0, next = S.me[k + "NextAt"];
         const sub = k === "standard" ? (sched ? "Can’t be booked ahead" : t.free ? `Free · ${when(k)}` : turn)
           : left ? `${left} left · ${when(k)}` : `None left${next ? ` · next in ${fmtDur(next - now())}` : ""}`;
-        return `<button type="button" class="cell kc" role="radio" aria-checked="${k === kind}" data-act="pigeon" data-id="${k}"${can[k] ? "" : " disabled"}>${pg(k, S.me.skin)}
-          <span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span><span class="val">${fmtDur(etaMs(c, k))}</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
+        return `<button type="button" class="cell kc k-${k}" role="radio" aria-checked="${k === kind}" data-act="pigeon" data-id="${k}"${can[k] ? "" : " disabled"}>${pg(k, S.me.skin)}
+          <span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span><i class="kdur" data-w="${((etaMs(c, k) || 0) / most).toFixed(3)}"></i></span><span class="val">${fmtDur(etaMs(c, k))}</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
       }).join("");
       const myLeft = S.me.mystery || 0, myNext = S.me.mysteryNextAt;
       const mystery = `<button type="button" class="cell kc" role="radio" aria-checked="${kind === "mystery"}" data-act="pigeon" data-id="mystery"${can.mystery ? "" : " disabled"}>${pg("mystery")}
           <span class="ctext"><span>Mystery</span><span class="csub">${esc(sched ? "Can’t be booked ahead" : myLeft ? "1 a day · any pigeon, any time" : `Used today${myNext ? ` · next in ${fmtDur(myNext - now())}` : ""}`)}</span></span><span class="val">?</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
       const bd = kind ? birdFor() : null, busy = (b) => (b.state === "flying" ? "Flying" : b.state === "waiting" ? "Booked" : "Resting");
       const carriers = S.birds.length && kind ? `<div class="ghead">Carried By</div><div class="carriers" role="radiogroup" aria-label="Carried by">${S.birds.map((b) =>
-        `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></button>`).join("")}
-        <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><b>Any Pigeon</b><small>No name</small></button></div>` : "";
+        `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><span class="ccav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></span></button>`).join("")}
+        <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><span class="ccav any" aria-hidden="true">${I.bird}</span><span><b>Any Pigeon</b><small>No name</small></span></button></div>` : "";
+      // which way: three to pick from, each with when it would land; then the way itself, as a line with its stops
+      const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, plans)}<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`;
+      const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
       const opts = [];
-      if (!g) {
-        opts.push(cell({ act: "schedule", icon: I.clock, tile: "blue", label: "When It Lands", val: sched ? esc(atTime(sched.at)) : "Soonest", chev: true }),
-          cell({ act: "via", icon: I.people, tile: "teal", label: "Stop Over", val: via ? esc(first(friend(via.id).name)) : "None", chev: true }));
-        const wx = S.wxPlan.get(f.id)?.d?.now, adv = kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null;
-        if (wx) opts.push(cell({ icon: I.wind, tile: "gray", label: "Weather", val: adv?.early ? `${esc(fmtDur(adv.early))} early` : adv?.late ? `${esc(fmtDur(adv.late))} late` : "Clear" }));
-      }
-      if (!via) { const r = ROUTES.find((x) => x[0] === routeStyle()); opts.push(cell({ act: "routesheet", icon: r[3], tile: r[4], label: "Route", val: r[1], chev: true })); }
-      // the way it would go, if it left now
-      if (!g && !via && !sched && kind && kind !== "mystery" && f.lat != null && S.me.lat != null) {
-        const plan = routePlanFor(f.id, kind)?.plans?.[routeStyle()];
-        opts.push(cell({ act: plan ? "routepreview" : null, icon: I.map, tile: "green", label: "See the Way", chev: !!plan,
-          sub: plan ? esc(`${wayWords(plan.legs)} · lands ${atTime(plan.deliverAt)}`) : "Looking at the sky ahead…" }));
-      }
+      if (!g) opts.push(cell({ act: "schedule", icon: I.clock, tile: "blue", label: "When It Lands", val: sched ? esc(atTime(sched.at)) : "Soonest", chev: true }),
+        cell({ act: "via", icon: I.people, tile: "teal", label: "Stop Over", val: via ? esc(first(friend(via.id).name)) : "None", chev: true }));
       if (S.birds.length || S.hall.length) opts.push(cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true }));
-      const to = g ? `To ${esc(g.name)} · ${others(g).length + 1} people` : `To ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(chatKm(f))}` : ""}`;
-      $layer.innerHTML = sheetHtml("How It Flies", `<p class="flyto">${to}</p><div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}
+      // (it plays in when it opens; redrawn for a new choice, only what changed moves)
+      const old = $(".sheet .body", $layer), fresh = !$(".flyhero", $layer), top = old && !fresh ? old.scrollTop : 0;
+      const was = s.shown || {}, nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) };
+      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${route}${way}
         ${opts.length ? `<div class="group mt">${opts.join("")}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
-        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${routeStyle() === "safe" && !via ? 200 : 100} is lost on the way.</div>` : ""}`);
-      return;
-    }
-    case "routesheet": {
-      const cur = routeStyle(), c = s.chat === S.chat ? composeState() : null;
-      const plans = c && !c.g && c.kind && c.kind !== "mystery" && c.f?.lat != null ? routePlanFor(c.f.id, c.kind)?.plans : null;
-      const rows = ROUTES.map(([k, name, sub, icon, tile]) => `<button type="button" class="cell kc has-icon" role="radio" aria-checked="${k === cur}" data-act="routepick" data-id="${k}">
-        <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span>${plans?.[k] ? `<span class="val">${esc(atTime(plans[k].deliverAt))}</span>` : ""}<span class="ck" aria-hidden="true">${I.check}</span></button>`).join("");
-      $layer.innerHTML = sheetHtml("Route", `<div class="group kinds mt-s" role="radiogroup" aria-label="Route">${rows}</div>
-        <div class="gfoot">Every pigeon goes through mountain passes, and standard pigeons rest on islands across long seas, whichever you pick. The map shows the way it takes.</div>`,
-        { left: { label: "Back", act: "flysheet" } });
+        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${style === "safe" && !via ? 200 : 100} is lost on the way.</div>` : ""}`);
+      const body = $(".sheet .body", $layer); body.classList.add("flysheet"); if (top) body.scrollTop = top;
+      body.classList.toggle("enter", fresh);
+      if (!fresh && was.land !== nowKey.land) $(".flyhero", body).classList.add("chg");
+      if (!fresh && (was.style !== style || was.kind !== kind)) $(".waycard", body)?.classList.add("chg");
+      s.shown = nowKey;
+      flyBits(body, fresh ? null : was.style);
       return;
     }
     case "via": {
@@ -4900,24 +4905,45 @@ function drawSheet(refresh) {
       return;
   }
 }
-// The way it would go, before you send: the map, with a card saying so
+// each way's plan as if it left now (the same clock as the card's)
+function plansNow(t) {
+  const d = S.routePlan?.data; if (!d?.plans) return null;
+  return Object.fromEntries(Object.entries(d.plans).map(([k, p]) => [k, { ...p, deliverAt: p.deliverAt + (t - d.at) }]));
+}
+// The way it would go, before you send: the map, and a card like a flight's,
+// with the three ways to switch between (the map redraws for each)
 function tickPreview(card, cv) {
   const m = S.preview; if (!m || !card || !cv) return;
-  const name = ROUTES.find((x) => x[0] === m.style)?.[1] || "Fastest";
-  const html = `<span class="big">${pgm(m)}<span>If It Left Now</span></span>
-    <span class="speed">The ${esc(name.toLowerCase())} way · lands ${esc(atTime(m.deliverAt))}</span>
-    <span class="waynote">${I.map}${esc(wayWords(m.legs).replace(/^./, (c) => c.toUpperCase()))}</span>
-    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}</span></span>`;
-  let body = $(".mcb", card); if (!body) { card.innerHTML = `<div class="mcb"></div>`; body = $(".mcb", card); }
-  if (body._html !== html) { body.innerHTML = html; body._html = html; }
-  drawMap(cv, { ...m, sentAt: now(), deliverAt: now() + (m.deliverAt - m.sentAt), legs: (m.legs || []).map((l) => [l[0], l[1], l[2] + (now() - m.sentAt), ...l.slice(3)]) }, card.offsetHeight + 14);
+  const t = now(), go = (x) => x + (t - m.sentAt), k = kindOf(m);
+  // as if it left now
+  const live = { ...m, sentAt: t, deliverAt: go(m.deliverAt), legs: (m.legs || []).map((l) => [l[0], l[1], go(l[2]), ...l.slice(3)]) };
+  card.classList.add("fc", "pv");
+  const from = esc(m.fromPlace || "?"), to = esc(m.toPlace || "?"), coin = pgm(m);
+  const rows = [{ at: t, now: true, coin, title: `Leaves ${from}`, sub: `${fmtMiles(m.km)} · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || "fastest").toLowerCase())} way` }];
+  for (const e of fcEvents({ ...live, via: true }, t)) rows.push({ ...e, time: fcAt(e.at, true), title: esc(e.title), sub: esc(e.sub || "") });
+  rows.push({ at: live.deliverAt, time: fcAt(live.deliverAt), dot: "end", title: `Lands in ${to}` });
+  const name = KIND[k]?.name || "Standard";
+  const html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">Lands ${esc(clockIn(live.deliverAt, MY_TZ))}</span><span class="fcs">if it left now · in ${esc(fmtDur(live.deliverAt - t))}</span></span></span>
+    ${routeSeg(m.style, plansNow(t))}
+    <ol class="fctl" aria-label="The way it would go">${rows.map(fcRow).join("")}</ol>
+    <span class="fcwho"><span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${/^[AEIOU]/.test(name) ? "An" : "A"} ${esc(name.toLowerCase())} pigeon</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>${m.risky ? `<span class="fctags"><span class="fcchip risk">1.25×</span></span>` : ""}</span>`;
+  const body = $(".mcb", card) || (card.innerHTML = `<div class="mcb"></div>`, $(".mcb", card));
+  if (body._html !== html) {
+    body.innerHTML = html; body._html = html;
+    const tl = $(".fctl", card);
+    [...tl.children].forEach((li, i) => li.style.setProperty("--i", i));
+    fcFades(tl); if (!tl._f) { tl._f = 1; tl.addEventListener("scroll", () => fcFades(tl), { passive: true }); }
+    segGlide(card, card._style); card._style = m.style;
+  }
+  drawMap(cv, live, card.offsetHeight + 14);
+  fcAside(card);
 }
 function tickMap() {
   const s = S.sheet; if (!s || s.type !== "map") return;
   const m = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
-  // only one pigeon's own card folds (The Skies, a group's flights and the way before you send keep theirs)
-  if (card?.classList.contains("fc") && (!m || m.flock)) { card.classList.remove("fc", "fold", "swap"); $(".fcfold", card)?.remove(); const b = $(".mcb", card); if (b) b._html = ""; fcAside(card); }
+  // only one pigeon's own card folds (The Skies and a group's flights keep theirs; the way before you send has one like it, unfolding)
+  if (card?.classList.contains("fc") && (s.id === "skies" || m?.flock)) { card.classList.remove("fc", "fold", "swap", "pv"); $(".fcfold", card)?.remove(); const b = $(".mcb", card); if (b) b._html = ""; fcAside(card); }
   if (s.id === "skies") return tickSkies(card, cv);
   if (s.id === "preview") return tickPreview(card, cv);
   if (!m || !card || !(m.route || m.flock)) return;
@@ -4935,6 +4961,50 @@ function tickMap() {
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
 }
+/* ---------- choosing the way: How It Flies and The Way ----------
+   Fastest, Scenic or Safe as one sliding switch (each with when it would
+   land), and the way it would go as a line with its stops on it. */
+const ROUTE_SHORT = { fastest: "Quickest", scenic: "Landmarks", safe: "Rests on islands" };
+function routeSeg(style, plans) {
+  const i = ROUTES.findIndex((r) => r[0] === style);
+  return `<div class="seg" role="radiogroup" aria-label="Route" data-i="${i}"><i class="segthumb" aria-hidden="true"></i>${ROUTES.map(([k, name, , icon]) =>
+    `<button type="button" role="radio" aria-checked="${k === style}" data-act="routeset" data-id="${k}">${icon}<b>${name}</b><small>${plans?.[k] ? esc(atTime(plans[k].deliverAt)) : ROUTE_SHORT[k]}</small></button>`).join("")}</div>`;
+}
+// the switch's thumb glides from the last choice to this one
+function segGlide(root, fromStyle) {
+  const seg = $(".seg", root); if (!seg) return;
+  const th = $(".segthumb", seg), to = +seg.dataset.i, from = fromStyle ? ROUTES.findIndex((r) => r[0] === fromStyle) : to;
+  th.style.setProperty("--i", from < 0 ? to : from);
+  if (from < 0 || from === to || STILL.matches) return th.style.setProperty("--i", to);
+  void th.offsetWidth; th.classList.add("glide"); th.style.setProperty("--i", to);
+}
+// See the Way: from here to there, with each storm, wind, pass, island and landmark where it comes
+function wayCard(plan, d) {
+  const t0 = d.at, span = Math.max(1, plan.deliverAt - t0);
+  let last = -1;
+  const dots = fcEvents({ legs: plan.legs, via: true, near: [] }, t0 - 1).map((e) => {
+    const x = Math.max(last + 0.07, Math.min(0.93, Math.max(0.07, (e.at - t0) / span))); last = x;
+    return `<span class="waystop ${e.tone || ""}" data-x="${Math.min(0.93, x).toFixed(3)}">${e.icon}</span>`;
+  }).join("");
+  return `<button type="button" class="waycard" data-act="routepreview">
+    <span class="wayhd"><b>See the Way</b><span class="waygo">${I.map}On the map</span></span>
+    <span class="wayline" aria-hidden="true"><i class="wayend from"></i>${dots}<i class="wayend to"></i></span>
+    <span class="wayends"><span><b>${esc(d.fromPlace || "Here")}</b>now</span><span><b>${esc(d.toPlace || "There")}</b>${esc(atTime(plan.deliverAt))}</span></span>
+    <span class="waywords">${esc(wayWords(plan.legs).replace(/^./, (x) => x.toUpperCase()))}</span></button>`;
+}
+// sizes and places set from code (inline style attributes are blocked)
+function flyBits(root, fromStyle) {
+  root.querySelectorAll(".kdur[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
+  root.querySelectorAll(".waystop[data-x]").forEach((el, i) => { el.style.setProperty("--x", el.dataset.x); el.style.setProperty("--i", i); });
+  root.querySelectorAll(".kinds .kc").forEach((el, i) => el.style.setProperty("--i", i));
+  segGlide(root, fromStyle);
+}
+// the flight it would be, from the server's plan for that way
+function previewFrom(style) {
+  const d = S.routePlan?.data, plan = d?.plans?.[style]; if (!plan) return null;
+  return { id: "preview", preview: true, style, from: S.me.id, to: S.chat, pigeon: d.pigeon, skin: S.me.skin, route: [...d.from, ...d.to], legs: plan.legs, km: plan.km,
+    sentAt: d.at, deliverAt: plan.deliverAt, fromPlace: d.fromPlace, toPlace: d.toPlace, flying: true, wind: plan.wind, risky: S.me.risky };
+}
 /* ---------- A pigeon's map card ----------
    Folded, a slim bar over the map: how long it has left, where it is, and a
    cheer. Pulled up, the flight as a timeline: where it took off, what it does
@@ -4947,14 +5017,17 @@ function mapFold(open) {
   try { localStorage.setItem("inflight-mapcard", open ? "open" : "fold"); } catch (_) {}
   const card = $(".mapcard.fc", $layer); if (!card) return;
   haptic("tick"); card._tl = 0;
+  fcMorph(card, () => tickMap());
+}
+// redraw the card, then spring its height from the old to the new while the
+// map follows it (the new side plays in once; the once-a-second redraws don't replay it)
+function fcMorph(card, redraw) {
   const h0 = card.offsetHeight;
-  // (the new side plays in once; the once-a-second redraws don't replay it)
   card.classList.remove("swap", "morph"); card.style.height = ""; void card.offsetWidth;
   card.classList.add("swap"); clearTimeout(card._sw);
-  tickMap();
+  redraw();
   const done = () => { card.classList.remove("swap", "morph"); card.style.height = ""; };
   if (STILL.matches) { card._sw = setTimeout(done, 50); return; }
-  // its height springs from the old to the new, and the map follows it
   const h1 = card.offsetHeight;
   card.style.height = h0 + "px"; void card.offsetHeight;
   card.classList.add("morph"); card.style.height = h1 + "px";
@@ -5906,15 +5979,23 @@ async function onClick1(e, t) {
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
-    case "routesheet": S.sheet = { type: "routesheet", chat: S.chat }; return renderSheet();
     case "routepreview": {
-      const d = S.routePlan?.data, style = routeStyle(), plan = d?.plans?.[style]; if (!plan) return;
       // the flight it would be, drawn on the map as if it were in the air
-      S.preview = { id: "preview", preview: true, style, from: S.me.id, to: S.chat, pigeon: d.pigeon, skin: S.me.skin, route: [...d.from, ...d.to], legs: plan.legs, km: plan.km,
-        sentAt: d.at, deliverAt: plan.deliverAt, fromPlace: d.fromPlace, toPlace: d.toPlace, flying: true, wind: plan.wind };
-      S.sheet = { type: "map", id: "preview" }; return renderSheet();
+      const p = previewFrom(routeStyle()); if (!p) return;
+      S.preview = p; S.sheet = { type: "map", id: "preview" }; return renderSheet();
     }
-    case "routepick": try { localStorage.setItem("inflight-route", id); } catch (_) {} haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
+    case "routeset": {
+      if (!ROUTES.some((r) => r[0] === id) || id === routeStyle()) return;
+      try { localStorage.setItem("inflight-route", id); } catch (_) {}
+      haptic("tick");
+      // on The Way: that way instead, the map re-fitted to it and the card springing to its new size
+      if (S.sheet?.type === "map" && S.sheet.id === "preview") {
+        const p = previewFrom(id), card = $(".mapcard", $layer); if (!p || !card) return;
+        S.preview = p; S.sheet.view = S.sheet.gview = null;
+        return fcMorph(card, () => tickMap());
+      }
+      return renderSheet();
+    }
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
