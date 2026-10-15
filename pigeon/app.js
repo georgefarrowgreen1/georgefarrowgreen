@@ -1907,7 +1907,6 @@ async function sync() {
       if (!AUTH_VIEWS.has(S.view) && (!same || wasCache || S.chatChanged)) render();
       S.chatChanged = false;
       S.synced = true;                            // from here on, what changes is news
-      maybeWhatsNew();
       if (!same) cacheSave();
       if (S.outbox.length) outboxFlush();
     } catch (e) { if (e.status !== 401) { console.warn("sync", e.message); S.syncFails = (S.syncFails || 0) + 1; } }
@@ -2126,9 +2125,7 @@ async function openNote(id, from, to, ct) {
   }
 }
 /* ---------- What's New ----------
-   Once, after an update: what's changed since the version this phone last
-   opened. Someone new (or new on this phone, who joined after it came out) has
-   nothing to catch up on. Every release is in Account, under the version. */
+   Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
   { v: "1.0.3", at: Date.UTC(2026, 9, 15), title: "A fresh chat, and the Earth itself", items: [
     ["bubble", "blue", "Chats that feel like Messages", "Tails on bubbles, the time over each stretch of a chat, Read under your latest, and big emoji. Tap a message for when it was sent, landed and read."],
@@ -2145,19 +2142,6 @@ const RELEASES = [
     ["trash", "red", "Deleting means deleting", "Deleting your account removes everything of it."],
   ] },
 ];
-const verCmp = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
-const SEEN_KEY = "inflight-seen";
-let whatsNewDone = false;
-function maybeWhatsNew() {
-  if (whatsNewDone || !S.me || S.locked || AUTH_VIEWS.has(S.view)) return;
-  whatsNewDone = true;
-  let seen = null;
-  try { seen = localStorage.getItem(SEEN_KEY); localStorage.setItem(SEEN_KEY, APP_VERSION); } catch (_) { return; }
-  // never opened here before: someone who joined before this version came out has missed it
-  if (!seen) { const cur = RELEASES.find((r) => r.v === APP_VERSION); if (!cur || !S.me.joinedAt || S.me.joinedAt >= cur.at) return; seen = RELEASES.find((r) => r.at <= S.me.joinedAt)?.v || "1.0.2"; }
-  if (verCmp(seen, APP_VERSION) >= 0 || !RELEASES.some((r) => verCmp(r.v, seen) > 0)) return;
-  setTimeout(() => { if (!S.sheet && !S.locked && !AUTH_VIEWS.has(S.view)) { S.sheet = { type: "whatsnew", since: seen }; renderSheet(); } }, 900);
-}
 
 /* ---------- view-once photos ----------
    Downloaded only when tapped, and only once (the server hands it over a
@@ -3127,7 +3111,7 @@ function vAccount() {
       ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
       ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
     </div>
-    <p class="aver">InFlight ${APP_VERSION}<button type="button" class="alink" data-act="whatsnewall">What’s New</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
+    <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="InFlight ${APP_VERSION}: what’s new">InFlight ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
@@ -5065,12 +5049,12 @@ function drawSheet(refresh) {
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
     case "whatsnew": {
-      // what's new: since the version you last opened (or every release, from Account)
-      const list = RELEASES.filter((r) => s.all || verCmp(r.v, s.since || "0") > 0);
+      // what's new: every release, newest first
+      const list = RELEASES;
       const rows = (r) => `<div class="wnlist">${r.items.map(([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic] || I.bird}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`).join("")}</div>`;
-      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in InFlight</h2><p>${s.all ? "Every update, newest first" : `Version ${APP_VERSION}`}</p></div>
-        ${list.map((r) => `${s.all || list.length > 1 ? `<div class="ghead">${esc(r.v)} · ${esc(r.title)}</div>` : ""}${rows(r)}`).join("")}
-        <div class="wnfoot"><button type="button" class="btn wide" data-act="close">Continue</button></div>`, { name: "What’s New" });
+      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>What’s New in InFlight</h2><p>Version ${APP_VERSION}</p></div>
+        ${list.map((r) => `<div class="ghead">${esc(r.v)} · ${esc(r.title)}</div>${rows(r)}`).join("")}
+        <div class="wnfoot"><button type="button" class="btn wide" data-act="close">Done</button></div>`, { name: "What’s New" });
       $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     }
@@ -6267,7 +6251,7 @@ async function onClick1(e, t) {
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     }
     case "creditsheet": S.sheet = { type: "credits" }; return renderSheet();
-    case "whatsnewall": S.sheet = { type: "whatsnew", all: true }; return renderSheet();
+    case "whatsnew": S.sheet = { type: "whatsnew" }; return renderSheet();
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;

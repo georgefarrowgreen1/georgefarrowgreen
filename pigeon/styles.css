@@ -1969,3 +1969,6 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .wnfoot .btn{width:100%}
 @keyframes wnin{from{opacity:0;transform:translateY(10px)}}
 @media (prefers-reduced-motion:reduce){.wnrow{animation:none}}
+/* the version: tap it for what's new */
+.aver .averbtn{display:inline-flex;align-items:center;gap:2px;padding:4px 8px;border:0;border-radius:8px;background:none;font:inherit;color:var(--label-2);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.aver .averbtn:active{background:var(--fill)}

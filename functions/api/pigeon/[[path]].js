@@ -37,7 +37,7 @@ function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
     lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, skin: u.skin || null,
-    handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok, joinedAt: u.created_at || null };
+    handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
 /* ---------------- accounts ---------------- */

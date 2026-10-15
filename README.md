@@ -150,12 +150,10 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 
 **1.0.3** (a fresh chat, and the Earth itself): Messages-style bubbles,
 magnetic storms, volcanoes and wildfires, the flight card as a story, flying
-together, cleverer routes, tidier photos and folded-up near misses. **What's
-New** shows once after an update (`RELEASES` in `pigeon/app.js`): what's
-changed since the version this phone last opened (kept in localStorage), or,
-on a phone that's never said, since the account joined (`joinedAt`), so
-someone new has nothing to catch up on. Every release is in Account, under the
-version. Add an entry to `RELEASES` and bump `APP_VERSION` with each update.
+together, cleverer routes, tidier photos and folded-up near misses. Tap the
+version at the foot of Account for **What's New**: every release, newest first
+(`RELEASES` in `pigeon/app.js`; it never pops up on its own). Add an entry to
+`RELEASES` and bump `APP_VERSION` with each update.
 
 **1.0.2** (security, privacy, stability and speed): a pigeon from someone
 you've blocked or unfriended no longer follows you when you move; blocks hold
