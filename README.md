@@ -596,7 +596,10 @@ headwind; between 0.6× and 1.6×), and the 5-minute and 3-day limits still appl
 after it. Storms slow it too (thunder by the weather code, or air unstable
 enough for it, CAPE 1,500 J/kg or more, with rain falling; hail, slower still,
 0.6×, is gone around and sheltered from like storms; and rain is heavy by its
-code or when 4 mm an hour or more is falling): it sits out thunder (0.7×), picks its way
+code or when 4 mm an hour or more is falling; ice on its wings in freezing
+fog or freezing rain, 0.7×, is gone around and sheltered from too; fierce heat,
+35 °C or more, and bitter cold, −10 °C or less, slow it by up to a quarter):
+it sits out thunder (0.7×), picks its way
 through heavy rain, snow and fog, and fights gusts over 60 km/h. The server
 keeps how much later (or earlier) that makes it, and the spot where the weather
 did most of it (what and where, never who). When it's 5 minutes or more, the

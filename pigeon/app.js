@@ -757,7 +757,7 @@ function landsLine(m) {
 
 /* ---------- what the weather did to a flight ---------- */
 // "Delayed 40m · storms over the Alps", "25m early · tailwind over France"
-const WX = { storms: ["storms", "storm"], hail: ["hail", "storm"], rain: ["heavy rain", "rain"], snow: ["snow", "snow"], fog: ["fog", "fog"], gales: ["gales", "wind"],
+const WX = { storms: ["storms", "storm"], hail: ["hail", "storm"], icing: ["icy weather", "fog"], heat: ["fierce heat", "sun"], cold: ["bitter cold", "snow"], rain: ["heavy rain", "rain"], snow: ["snow", "snow"], fog: ["fog", "fog"], gales: ["gales", "wind"],
   headwind: ["headwinds", "wind"], tailwind: ["a tailwind", "wind"] };
 // a mountain range when it's right over one, else the country or sea
 function wxWhere(lon, lat) {
@@ -1022,7 +1022,7 @@ function drawRadar(g, cv, ts, xf) {
 
 // The weather that's holding a pigeon up, drawn where it is: a cloud with rain
 // falling, a storm cloud that flashes, drifting snow, banks of fog, or gusts.
-const WX_SKY = { storms: ["#596072", 0.7, "Storms"], hail: ["#4f5668", 0.75, "Hail"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
+const WX_SKY = { storms: ["#596072", 0.7, "Storms"], hail: ["#4f5668", 0.75, "Hail"], icing: ["#d6e2ee", 0.82, "Ice"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
 function wxCells(routes) {
   const held = routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt).map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon }));
   // and the storms it went around (planned, or turning for them on the way), while it's flying

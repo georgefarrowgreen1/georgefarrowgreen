@@ -24,8 +24,8 @@ import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js"
 // where along a route to look: a point every SAMPLE_KM or so (each in the middle of
 // its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
 // What's asked of Open-Meteo: the wind where pigeons fly (120 m up; 10 m if that's
-// missing), the gusts and the weather, and how unstable (CAPE) and wet the air is
-const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation";
+// missing), the gusts and the weather, how unstable (CAPE) and wet the air is, and how warm
+const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation,temperature_2m";
 const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
 export const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
@@ -38,19 +38,29 @@ const snap = (v) => Math.round(v / CELL) * CELL;
 // flying through it. Thunderstorms are the weather code's, or air unstable
 // enough for them (CAPE, J/kg) with rain falling; hail is worse still; rain
 // is heavy by the weather code or by how much is falling (mm an hour).
+// And the cold and heat (°C): ice on its wings in freezing fog or freezing rain
+// (gone around and sheltered from, like storms), and slower in fierce heat or
+// bitter cold.
 const STORM_CAPE = 1500, STORM_RAIN = 1, HEAVY_RAIN = 4;
-const SEVERE = new Set(["storms", "hail"]);
+const HOT = [[40, 0.75], [35, 0.85]], COLD = [[-20, 0.8], [-10, 0.9]];
+const SEVERE = new Set(["storms", "hail", "icing"]);
 export const isSevere = (k) => SEVERE.has(k);              // what a pigeon goes around, or shelters from
-export function skyAt(code, gust, cape = 0, rain = 0) {
+export function skyAt(code, gust, cape = 0, rain = 0, temp = null) {
   let k = null, keep = 1;
+  const icy = code === 48 || code === 56 || code === 57 || code === 66 || code === 67 || (code === 45 && temp != null && temp <= 0);
   if (code === 96 || code === 99) [k, keep] = ["hail", 0.6];
   else if (code >= 95 || (cape >= STORM_CAPE && rain >= STORM_RAIN)) [k, keep] = ["storms", 0.7];
+  else if (icy) [k, keep] = ["icing", 0.7];
   else if (code === 75 || code === 86) [k, keep] = ["snow", 0.8];
   else if ((code >= 71 && code <= 77) || code === 85) [k, keep] = ["snow", 0.9];
   else if (code === 65 || code === 67 || code === 82 || rain >= HEAVY_RAIN) [k, keep] = ["rain", 0.85];
   else if ((code >= 61 && code <= 66) || code === 80 || code === 81) [k, keep] = ["rain", 0.93];
   else if (code === 45 || code === 48) [k, keep] = ["fog", 0.9];
   if (gust >= GALE) { keep *= 0.9; k = k || "gales"; }
+  if (temp != null) {
+    const hot = HOT.find(([c]) => temp >= c), cold = COLD.find(([c]) => temp <= c);
+    if (hot) { keep *= hot[1]; k = k || "heat"; } else if (cold) { keep *= cold[1]; k = k || "cold"; }
+  }
   return { k, keep };
 }
 const r = Math.PI / 180;
@@ -101,7 +111,8 @@ export function paceAt(w, head) {
   if (sp == null || dir == null || !Number.isFinite(speed) || !Number.isFinite(from)) return null;
   // wind_direction is where it blows from; the pigeon gains what blows its way
   const tail = speed * Math.cos(((from + 180) - head) * r);
-  const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0, Number(w.cape) || 0, Number(w.precipitation) || 0);
+  const temp = w.temperature_2m == null || !Number.isFinite(Number(w.temperature_2m)) ? null : Number(w.temperature_2m);
+  const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0, Number(w.cape) || 0, Number(w.precipitation) || 0, temp);
   return { f: Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), tail, k: sky.k };
 }
 function tally(routes, pts, list) {
