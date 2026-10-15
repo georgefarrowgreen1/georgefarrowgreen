@@ -404,6 +404,12 @@ function restingOn(m, t = now()) {
   const sh = shipOf(legs);
   return sh && t >= sh.off && t < sh.ashore ? [sh.sea, sh.ashore, "sail", sh.to] : null;
 }
+// How far a flight goes, flown and by ship: "8 mi · 3,560 mi by ship"
+function milesOf(km, legs) {
+  const b = (legs || []).filter((l) => l[3] === "b");
+  let sea = 0; for (let i = 1; i < b.length - 1; i++) sea += haversineKm(b[i][0], b[i][1], b[i + 1][0], b[i + 1][1]);
+  return sea > 50 ? `${fmtMiles(km)} · ${fmtMiles(sea)} by ship` : fmtMiles(km);
+}
 // A voyage by ship (a standard pigeon across an ocean): where it boards, when the ship
 // sails, the sea it crosses, where and when it comes ashore; null if it doesn't
 function shipOf(legs) {
@@ -5205,14 +5211,14 @@ function tickPreview(card, cv) {
     legs: (others[k].legs || []).map((l) => [l[0], l[1], l[2] + (t - S.routePlan.data.at), ...l.slice(3)]) }));
   card.classList.add("fc", "pv");
   const from = esc(m.fromPlace || "?"), to = esc(m.toPlace || "?"), coin = pgm(m);
-  const rows = [{ at: t, now: true, coin, title: `Leaves ${from}`, sub: `${fmtMiles(m.km)} · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || "fastest").toLowerCase())} way` }];
+  const rows = [{ at: t, now: true, coin, title: `Leaves ${from}`, sub: `${milesOf(m.km, live.legs)} · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || "fastest").toLowerCase())} way` }];
   for (const e of fcEvents({ ...live, via: true }, t)) rows.push({ ...e, time: fcAt(e.at, true), title: esc(e.title), sub: esc(e.sub || "") });
   rows.push({ at: live.deliverAt, time: fcAt(live.deliverAt), dot: "end", title: `Lands in ${to}` });
   const name = KIND[k]?.name || "Standard";
   const html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">Lands ${esc(clockIn(live.deliverAt, MY_TZ))}</span><span class="fcs">if it left now · ${(() => { const r = landRange(live.deliverAt, t, { wind: m.wind, legs: live.legs }); return r ? `likely ${esc(rangeText(r))}` : `in ${esc(fmtDur(live.deliverAt - t))}`; })()}</span></span></span>
     ${routeSeg(m.style, plansNow(t, m.pigeon))}
     <ol class="fctl" aria-label="The way it would go">${rows.map(fcRow).join("")}</ol>
-    <span class="fcwho"><span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${/^[AEIOU]/.test(name) ? "An" : "A"} ${esc(name.toLowerCase())} pigeon</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>${m.risky ? `<span class="fctags">${m.risk ? riskTag(m.risk).replace('<em class="rk', '<span class="fcchip risk rk').replace("</em>", "</span>") : `<span class="fcchip risk">1.25×</span>`}</span>` : ""}</span>`;
+    <span class="fcwho"><span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${/^[AEIOU]/.test(name) ? "An" : "A"} ${esc(name.toLowerCase())} pigeon</span><span class="fcs">${milesOf(m.km, m.legs)}${m.risky ? " · Pigeon Death on" : ""}</span></span>${m.risky ? `<span class="fctags">${m.risk ? riskTag(m.risk).replace('<em class="rk', '<span class="fcchip risk rk').replace("</em>", "</span>") : `<span class="fcchip risk">1.25×</span>`}</span>` : ""}</span>`;
   const body = $(".mcb", card) || (card.innerHTML = `<div class="mcb"></div>`, $(".mcb", card));
   if (body._html !== html) {
     body.innerHTML = html; body._html = html;
@@ -5473,7 +5479,7 @@ function flightCard(card, m) {
       : f.phase === "up" ? ["ok", "Taking Off"] : f.phase === "down" ? ["ok", "Landing"] : ["tint", "In Flight"];
     const head = m.lost ? `${from} → ${to}` : landed ? `in ${to} · ${esc(fmtShort(m.deliverAt))}` : `to ${to} · <span class="lands">${lands}</span>`;
     // the rows: took off, what happens on the way, now, lands
-    const rows = [{ at: m.sentAt, time: fcAt(m.sentAt), dot: "end", title: `Took off from ${from}`, sub: `${fmtMiles(m.km)}${m.style ? ` · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || m.style).toLowerCase())} way` : ""}` }];
+    const rows = [{ at: m.sentAt, time: fcAt(m.sentAt), dot: "end", title: `Took off from ${from}`, sub: `${milesOf(m.km, m.legs)}${m.style ? ` · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || m.style).toLowerCase())} way` : ""}` }];
     for (const e of fcEvents(m, t)) rows.push({ ...e, time: fcAt(e.at, e.at > t), title: esc(e.title), sub: esc(e.sub || ""), now: !!(resting && e.until && e.at <= t && t < e.until) });
     const chips = [];
     if (!resting) chips.push(`<span class="fcchip speed">${esc(fmtMph(f.kmh))}</span>`);
@@ -5503,7 +5509,7 @@ function flightCard(card, m) {
       m.style && m.style !== "fastest" ? `<span class="fcchip sty">${esc(ROUTES.find((x) => x[0] === m.style)?.[1] || m.style)}</span>` : "",
       m.risky ? `<span class="fcchip risk">1.25×</span>` : ""].join("");
     const who = b ? `<span class="fcav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span class="fct"><span class="birdline">Carried by ${esc(b.name)}${esc(wearWord(b.wear))}</span><span class="fcs">${esc(b.up || b.rank)}${mine?.km >= 1 ? ` · ${fmtMiles(mine.km)} in all` : ""}</span></span>`
-      : `<span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${m.mystery ? "A mystery pigeon" : `${/^[AEIOU]/.test(KIND[k]?.name || "") ? "An" : "A"} ${esc((KIND[k]?.name || "standard").toLowerCase())} pigeon`}</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>`;
+      : `<span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${m.mystery ? "A mystery pigeon" : `${/^[AEIOU]/.test(KIND[k]?.name || "") ? "An" : "A"} ${esc((KIND[k]?.name || "standard").toLowerCase())} pigeon`}</span><span class="fcs">${milesOf(m.km, m.legs)}${m.risky ? " · Pigeon Death on" : ""}</span></span>`;
     html = `<span class="fchead" data-act="mapfold"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">${big}</span><span class="fcs">${head}</span></span>${pill ? `<span class="fcpill ${pill[0]}">${pill[1]}</span>` : ""}</span>
       <ol class="fctl" aria-label="The flight, start to finish">${rows.map(fcRow).join("")}</ol>${notes ? `<span class="fcnotes">${notes}</span>` : ""}<span class="fcwho">${who}${tags ? `<span class="fctags">${tags}</span>` : ""}</span>`;
   }
