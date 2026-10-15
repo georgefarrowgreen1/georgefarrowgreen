@@ -5039,7 +5039,15 @@ function fcEvents(m, t) {
     const who = m.to === S.me.id ? "you" : first(friend(m.to)?.name || "them");
     ev.push({ at: l[2], icon: I.loc, tone: "", title: "Changed course", sub: `To follow ${who}${who === "you" ? ": you moved" : ""}` });
   }
-  for (const n of m.near || []) ev.push({ at: n.at, icon: I.pass, tone: "orange", title: momentText(m, n, S.chat), cls: "moment" });
+  // near misses, once each (a pair can be stored from both sides): "Passed Reuben's pigeon", "Overtook your pigeon to Nia"
+  const met = new Set();
+  for (const n of m.near || []) {
+    if (met.has(n.other.id)) continue; met.add(n.other.id);
+    const o = n.other, nm = (id) => first(personById(id)?.name || "a friend");
+    const whose = o.from === S.me.id ? `your pigeon to ${nm(o.to)}` : `${nm(o.from)}’s pigeon`;
+    ev.push({ at: n.at, icon: I.pass, tone: "orange", cls: "near", title: n.kind === "overtake" ? (n.lead === "other" ? `Overtaken by ${whose}` : `Overtook ${whose}`) : `Passed ${whose}`,
+      sub: n.place && n.place !== "land" ? `Over ${n.place}` : "In mid-air" });
+  }
   return ev.sort((a, b) => a.at - b.at);
 }
 // a row's time: "14:02", or "Mon" under it on another day ("~" when it's still to come)
