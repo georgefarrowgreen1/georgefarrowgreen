@@ -515,6 +515,7 @@ export function msgView(me, m, t) {
     ...wxView(m),
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
     style: m.style || null,                      // the way it was sent: "scenic" or "safe" (null: the fastest)
+    liveAt: flying ? m.live_at ?? null : null,   // when the weather ahead was last looked at (_live.js)
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"])
     ...cheerView(m, me), ...birdOn(m, me),
     fromPlace: m.from_place, toPlace: m.to_place,

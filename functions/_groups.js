@@ -66,7 +66,7 @@ function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
     return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, viewedAt: d.viewed_at || null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
-      legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
+      liveAt: d.live_at ?? null, legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
       toPlace: friend ? d.to_place : null };
   });
   const live = flock.filter((x) => !x.lost);
@@ -78,7 +78,7 @@ function ownView(m, dels, friends, t) {
 function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
   return { ...baseView(m), ...birdOn(m, d.user_id), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, d.user_id),
-    legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
+    liveAt: d.live_at ?? null, legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null, viewedAt: d.viewed_at || null };
 }
@@ -87,7 +87,7 @@ const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
   const { results } = await D.prepare(`SELECT * FROM (
-      SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+      SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
   return results;
@@ -435,7 +435,7 @@ async function getPhoto({ request, env }, id) {
 export async function groupSkies(D, uid, t) {
   const friends = await friendIds(D, uid);
   const { results: rows } = await D.prepare(`
-    SELECT m.*, d.wrap, d.km, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+    SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
       FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2)
     UNION ALL

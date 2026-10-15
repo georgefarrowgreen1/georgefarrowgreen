@@ -44,6 +44,7 @@ KIND.mystery = { name: "Mystery", speed: 1, max: 1 };        // a secret: start 
 const DUMB = /^\/dumb(?:\s+|$)/i;
 // Pigeon Death (Account → Pigeons): 1.25× faster, but 1 in 100 is lost on the way
 const RISKY_SPEED = 1.25;
+const LIVE_LEFT = HOUR;                // pigeons with longer than this to go have the sky ahead looked at again (functions/_live.js)
 const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
 const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
@@ -4861,6 +4862,7 @@ function tickMap() {
     ${!m.lost && left > 0 && f.phase !== "landed" && !resting ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${birdLine(m)}
     ${routeNote(m) ? `<span class="waynote">${routeNote(m).icon}${esc(routeNote(m).text)}</span>` : ""}
+    ${!m.lost && left > LIVE_LEFT ? `<span class="checked">Watching the weather ahead · checked ${m.liveAt ? agoText(m.liveAt) : "at take-off"}</span>` : ""}
     ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
     ${flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : ""}
     ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}
