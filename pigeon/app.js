@@ -3222,6 +3222,8 @@ function footHtml(m, mine, g) {
   const ts = mine ? m.sentAt : m.deliverAt, read = mine && !g && !!m.readAt;     // (the day above it goes by the same time)
   return `<span class="ft">${fmtTime(ts)}${read ? `<span class="rd" role="img" aria-label="Read">${I.ticks}</span>` : ""}</span>`;
 }
+// in a group, "Landed for all · read by" sits under your latest landed message only (the older ones keep it if something's still to say)
+let quietMeta = null;
 function bubble(f, m, gapTop, g) {
   if (m.stopover) return stopCard(f, m);
   const mine = m.from === S.me.id, k = kindOf(m);
@@ -3284,7 +3286,7 @@ function bubble(f, m, gapTop, g) {
     else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>`, "done"));
     else if (c.lost === c.n) meta.push(`<button class="fl lostm" data-act="whohas" data-id="${esc(m.id)}">${I.skull} Lost on the way · Pigeon Death</button>`);
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
-    else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
+    else if (!quietMeta?.has(m.id)) { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
   const onceDone = onceP(p) && (m.viewedAt || openedOnce(m.id) || (m.flock || []).some((x) => x.viewedAt));
   // once everyone who could open it has, there's nothing left to disappear
@@ -3892,7 +3894,9 @@ function vGroupChat(g) {
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && S.outbox.some((o) => o.to === g.id)) body = "";
   else if (!msgs.length) body = `${evsTo(Infinity)}<p class="empty"><b>Say hello</b>Each message flies to everyone in ${esc(g.name)} at once: one pigeon each, over the real distance to each of them.</p>`;
-  else for (let i = 0; i < msgs.length; i++) {
+  const landed = (msgs || []).filter((m) => m.from === S.me.id && !m.flying && !m.lost && !m.waiting && !m.recalled);
+  quietMeta = new Set(landed.slice(0, -1).map((m) => m.id));
+  if (msgs?.length) for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
     if (dayLabel(at) !== lastDay) { lastDay = dayLabel(at); body += `<div class="stamp">${lastDay}</div>`; prevFrom = null; }
     const lines = evsTo(at) + stampsTo(at); if (lines) { body += lines; prevFrom = null; }
