@@ -14,7 +14,7 @@
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
 import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH } from "./_pigeon.js";
-import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere, altOf } from "./_weather.js";
+import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere, altOf, JET_KMH } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -22,6 +22,8 @@ import { ISLES } from "./_islands.data.js";
 import { PASSES } from "./_mountains.js";
 import { elevAt } from "./_elevgrid.js";
 import { LANDMARKS, marksAlong } from "./_landmarks.js";
+import { staminaOf } from "./_birds.js";
+import { nearestPlace } from "../pigeon/places.js";
 
 const R = 6371, rad = Math.PI / 180, deg = 180 / Math.PI;
 export const round5 = (x) => Math.round(x * 1e5) / 1e5;
@@ -105,19 +107,19 @@ const nodeOf = (lat, s, o) => (s === 0 ? 0 : s === lat.S + 1 ? lat.toAt : 1 + (s
 // { path (from … to, each bend tagged why), why ("s", "w" or null: straight),
 //   w: its weather as windsFor gives it, hours, straight: the straight line's hours }
 export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
-  const { S, pts } = lat, K = LATTICE_OFF.length, whenOf = (s) => start + ((s / (S + 1)) * lat.km / kmh) * HOUR;
+  const { S, pts } = lat, K = LATTICE_OFF.length, whenOf = (s) => start + ((s / (S + 1)) * lat.km / kmh) * HOUR, high = kmh >= JET_KMH;   // (a rocket: up to the jet stream)
   // storms the straight line's own points see, by the stretch between stages they fall in
   const head = bearing(lat.from[0], lat.from[1], lat.to[0], lat.to[1]), lineStorms = new Map();
   let firstStorm = null, firstK = null;
   lat.line.forEach((f, k) => {
-    const sk = paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head)?.k;
+    const sk = paceAt(skyAt(lat.lineAt + k, start + ((f * lat.km) / kmh) * HOUR), head, high)?.k;
     if (!isSevere(sk)) return;
     const s = Math.floor(f * (S + 1)); lineStorms.set(s, (lineStorms.get(s) || 0) + 1);
     if (!firstStorm) { firstStorm = pts[lat.lineAt + k]; firstK = sk; }
   });
   const leg = (s1, o1, s2, o2) => {
     const a = pts[nodeOf(lat, s1, o1)], b = pts[nodeOf(lat, s2, o2)], d = haversineKm(a[0], a[1], b[0], b[1]), head = bearing(a[0], a[1], b[0], b[1]);
-    const pa = paceAt(skyAt(nodeOf(lat, s1, o1), whenOf(s1)), head), pb = paceAt(skyAt(nodeOf(lat, s2, o2), whenOf(s2)), head);
+    const pa = paceAt(skyAt(nodeOf(lat, s1, o1), whenOf(s1)), head, high), pb = paceAt(skyAt(nodeOf(lat, s2, o2), whenOf(s2)), head, high);
     // (a stretch along the straight line, or leaving or joining it, meets the storms its points saw)
     const onLine = (s1 === 0 || o1 === MID) || (s2 === S + 1 || o2 === MID);
     const f = pa && pb ? 2 / (1 / pa.f + 1 / pb.f) : (pa || pb || { f: 1 }).f, storms = (isSevere(pb?.k) ? 1 : 0) + (s1 === 0 && isSevere(pa?.k) ? 1 : 0) + (onLine ? lineStorms.get(s1) || 0 : 0);
@@ -306,6 +308,37 @@ export function timeWay(from, way, to, start, flight) {
 }
 // how long it rests along the way, all told
 export const restOf = (way) => way.reduce((a, q) => a + (q.rest || 0), 0);
+
+// Stamina: a named pigeon gets tired on a long flight, and comes down on land
+// for a breather ("t", a rest like an island's) every so many hours of flying.
+// The more miles it has flown (staminaOf: its career), the longer it goes
+// between rests and the shorter they are: a Fledgling every 5 hours or so for
+// about 40 minutes, a Legend every 16 for 15. Not over the sea (it waits for
+// land), not within an hour of landing, and a rest on the way (an island, or
+// sheltering) counts.
+export const tiredOf = (km) => { const s = staminaOf(km); return { every: (2 + s * 0.14) * HOUR, rest: Math.round((50 - s * 0.35) * 60e3) }; };
+export function tire(from, way, to, kmh, { every, rest }) {
+  const pts = [from, ...way, to], out = [], hours = (a, b) => (haversineKm(a[0], a[1], b[0], b[1]) / kmh) * HOUR;
+  const left = (i) => { let ms = 0; for (let k = i; k < pts.length - 1; k++) ms += hours(pts[k], pts[k + 1]); return ms; };
+  let flown = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], seg = hours(a, b);
+    if (i > 0) { out.push(pts[i]); if (pts[i].rest) flown = 0; }
+    let done = 0;                                            // how far along this stretch (ms of flying)
+    while (flown + (seg - done) > every) {
+      let at = done + (every - flown), spot = null;
+      // the first land from there on along this stretch (25 km at a time)
+      for (; at < seg; at += (25 / kmh) * HOUR) { const q = gcPoint(a[0], a[1], b[0], b[1], at / seg); if (!isSea(placeAt(q[0], q[1]))) { spot = q; break; } }
+      if (!spot) break;                                      // sea all the rest of this stretch: the next land, then
+      if (left(i) - at < HOUR) break;                        // nearly there: it flies on
+      const name = nearestPlace(spot[0], spot[1]);
+      out.push(Object.assign([round5(spot[0]), round5(spot[1]), "t", name.startsWith("near ") ? name : `near ${name}`], { rest }));
+      done = at; flown = 0;
+    }
+    flown += seg - done;
+  }
+  return out;
+}
 
 // A flight changing pace from time t (cheered on): the points still ahead keep
 // their places, their times squeezed to land at `end` instead of `was`.

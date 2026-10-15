@@ -24,7 +24,7 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
-import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES } from "../../_route.js";
+import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -778,6 +778,8 @@ async function sendMessage({ request, env, waitUntil }) {
   // A stopover: it rests an hour with a friend you both have, who can read it
   // (their own sealed copy) and add a line for the recipient, then flies on.
   const via = meta.via == null ? null : await stopover(D, u, to, r, String(meta.via), String(meta.viaCt || ""), landAt);
+  // a named pigeon carrying it gets tired on a long flight (its stamina, from its miles)
+  const carrier = await carrierOf(D, u.id, kind === "dumb" ? null : meta.bird, t);
   let km, w, flight, calm, way = [];
   if (via) {
     const k1 = haversineKm(u.lat, u.lon, via.lat, via.lon), k2 = haversineKm(via.lat, via.lon, r.lat, r.lon);
@@ -794,6 +796,7 @@ async function sendMessage({ request, env, waitUntil }) {
     const ahead = landAt != null && hasTo ? Math.max(t, landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed)) : t;
     const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: ahead - t < FORECAST_AHEAD, hop: hopsFor(kind), style, start: ahead, kmh: SPEED_KMH * speed }) : null;
     km = plan ? plan.km : DEFAULT_KM; w = plan ? plan.w : { wind: null, f: 1 }; way = plan ? plan.way : [];
+    if (plan && carrier) way = tire([u.lat, u.lon], way, [r.lat, r.lon], SPEED_KMH * speed * (w.f || 1), tiredOf(carrier.km));
     const rest = restOf(way);
     flight = Math.round(flightMs(km / w.f, speed)) + rest; calm = flightMs(km, speed) + rest;
   }
@@ -873,6 +876,7 @@ async function routePlan({ request, env }) {
   const u = await requireUser(request, env), q = new URL(request.url).searchParams, t = Date.now();
   await limit(env, "routeplan:" + u.id, 60, 60 * 60e3);
   const other = q.get("with") || "", kind = Object.hasOwn(PIGEONS, q.get("pigeon")) ? q.get("pigeon") : "standard", D = await db(env);
+  const carrier = await carrierOf(D, u.id, q.get("bird"), t);              // (the named pigeon that would carry it: its rests)
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only plan pigeons to friends.");
   const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(other).first();
   if (u.lat == null || r?.lat == null) return json({ plans: null });
@@ -884,11 +888,18 @@ async function routePlan({ request, env }) {
     const speed = PIGEONS[k].speed * (u.risky ? RISKY_SPEED : 1), plans = (kinds[k] = {});
     for (const style of STYLES) {
       const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed });
-      const rest = restOf(plan.way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
-      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, plan.way, to, t, flight - rest).legs };
+      const way = carrier ? tire(from, plan.way, to, SPEED_KMH * speed * (plan.w.f || 1), tiredOf(carrier.km)) : plan.way;
+      const rest = restOf(way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
+      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs };
     }
   }
   return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans: kinds[kind] || kinds.standard, kinds });
+}
+
+// The named pigeon of yours that would carry it, if it's free to: { km } (its miles), else null
+async function carrierOf(D, uid, id, t) {
+  if (!id || !UUID_RE.test(String(id))) return null;
+  return D.prepare("SELECT km FROM pg_birds WHERE id = ? AND owner = ? AND retired_at IS NULL AND lost_at IS NULL AND COALESCE(busy_until, 0) <= ?").bind(String(id), uid, t).first();
 }
 
 // A scheduled pigeon that hasn't taken off yet: it never leaves. No one was

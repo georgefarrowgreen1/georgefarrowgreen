@@ -24,8 +24,11 @@ import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js"
 // where along a route to look: a point every SAMPLE_KM or so (each in the middle of
 // its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
 // What's asked of Open-Meteo: the wind where pigeons fly (80, 120 and 180 m up; 10 m if
-// those are missing), the gusts and the weather, how unstable (CAPE) and wet the air is, and how warm
-const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_80m,wind_direction_80m,wind_speed_180m,wind_direction_180m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation,temperature_2m";
+// those are missing), the gusts and the weather, how unstable (CAPE) and wet the air is, and how warm;
+// and the jet stream's wind (250 hPa, about 10 km up), which only rockets fly high enough to ride
+const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_80m,wind_direction_80m,wind_speed_180m,wind_direction_180m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation,temperature_2m,wind_speed_250hPa,wind_direction_250hPa";
+// Rockets (9× a pigeon's pace) climb to the jet stream when it blows their way: anything this fast
+export const JET_KMH = SPEED_KMH * 8, JET_ALT = 10000;
 const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
 export const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
@@ -108,15 +111,17 @@ const key = (p) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
 // A pigeon flies at whichever height (80, 120 or 180 m up) has the kindest
 // wind there: climbing to catch a tailwind, or keeping low out of a headwind
 // (alt: the height it chose; 120 m if they're all the same). Only the wind at
-// the ground, if that's all there is.
+// the ground, if that's all there is. A rocket (high) can climb on up to the
+// jet stream (JET_ALT) when that's kinder still.
 const HEIGHTS = [120, 80, 180];
-export function paceAt(w, head) {
+export function paceAt(w, head, high = false) {
   if (!w) return null;
   // wind_direction is where it blows from; the pigeon gains what blows its way
   const tailAt = (sp, dir) => (sp == null || dir == null || !Number.isFinite(Number(sp)) || !Number.isFinite(Number(dir)) ? null : Number(sp) * Math.cos(((Number(dir) + 180) - head) * r));
   let tail = null, alt = null;
   for (const h of HEIGHTS) { const t = tailAt(w[`wind_speed_${h}m`], w[`wind_direction_${h}m`]); if (t != null && (tail == null || t > tail + 1)) { tail = t; alt = h; } }
   if (tail == null) { tail = tailAt(w.wind_speed_10m, w.wind_direction_10m); alt = null; }
+  if (high) { const jet = tailAt(w.wind_speed_250hPa, w.wind_direction_250hPa); if (jet != null && (tail == null || jet > tail + 5)) { tail = jet; alt = JET_ALT; } }
   if (tail == null) return null;
   const temp = w.temperature_2m == null || !Number.isFinite(Number(w.temperature_2m)) ? null : Number(w.temperature_2m);
   const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0, Number(w.cape) || 0, Number(w.precipitation) || 0, temp);
@@ -124,10 +129,11 @@ export function paceAt(w, head) {
 }
 // (where a wind was met higher or lower than usual, so the card can say it climbed for it)
 export const altOf = (spot) => (spot.alt && spot.alt !== 120 && (spot.k === "tailwind" || spot.k === "headwind") ? { alt: spot.alt } : {});
-function tally(routes, pts, list) {
+// (high: which routes are flown by rockets, high enough for the jet stream)
+function tally(routes, pts, list, high = []) {
   const sum = routes.map(() => ({ tail: 0, slow: 0, n: 0, lo: null, hi: null, storms: 0, storm: null }));
   list.forEach((w, k) => {
-    const pace = paceAt(w, pts[k].head); if (!pace) return;
+    const pace = paceAt(w, pts[k].head, !!high[pts[k].i]); if (!pace) return;
     const { tail, f } = pace, sky = { k: pace.k }, s = sum[pts[k].i];
     // each point stands for an equal stretch of the route: add up the time it takes
     s.tail += tail; s.slow += 1 / f; s.n++;
@@ -143,7 +149,7 @@ function tally(routes, pts, list) {
     return { wind: Math.round(tail / n), f, wx: Math.abs(Math.log(worst.f)) >= 0.05 ? { k: worst.k, lat: worst.lat, lon: worst.lon, at: worst.at, ...altOf(worst) } : null, storms, storm };
   });
 }
-export async function windsFor(env, routes) {
+export async function windsFor(env, routes, high = []) {
   const calm = routes.map(() => ({ wind: null, f: 1, wx: null, storms: 0, storm: null }));
   if (!routes.length || env.WEATHER_OFF) return calm;
   const pts = pointsOf(routes);
@@ -178,7 +184,7 @@ export async function windsFor(env, routes) {
     });
     if (keep.length) await D.batch(keep).catch(() => {});
   }
-  return tally(routes, pts, pts.map((p) => got.get(key(p))?.current));
+  return tally(routes, pts, pts.map((p) => got.get(key(p))?.current), high);
 }
 
 // The weather along each route for the next `hours`, hour by hour, from
@@ -291,7 +297,7 @@ export async function skyAlong(env, paths, until) {
         const H = byCell.get(key(p)), eta = start + ((p.f * kms[i]) / kmh) * HOUR;
         return H ? hourAt(H, Math.max(0, Math.floor((eta - H.time[0] * 1000) / HOUR))) : null;
       });
-      return tally([paths[i]], mine, ws)[0];
+      return tally([paths[i]], mine, ws, [kmh >= JET_KMH])[0];
     },
   };
 }
@@ -314,10 +320,11 @@ export async function skyAtPoints(env, pts, until) {
 export async function windsAlong(env, flights) {
   const t = Date.now(), paths = flights.map((f) => f.path), ends = flights.map((f) => f.start + (lenOf(f.path) / f.kmh) * HOUR);
   const soon = (f) => f.start <= t + HOUR;
-  if (flights.every(soon) && Math.max(...ends) <= t + HOUR) return windsFor(env, paths);
+  const high = flights.map((f) => f.kmh >= JET_KMH);
+  if (flights.every(soon) && Math.max(...ends) <= t + HOUR) return windsFor(env, paths, high);
   const sky = await skyAlong(env, paths, Math.max(...ends)).catch(() => null);
   if (sky) return flights.map((f, i) => sky.at(i, f.start, f.kmh));
-  const now = await windsFor(env, paths);
+  const now = await windsFor(env, paths, high);
   return flights.map((f, i) => (soon(f) ? now[i] : { wind: null, f: 1, wx: null, storms: 0, storm: null }));
 }
 // The forecast hour a time falls in (or null: beyond the forecast).

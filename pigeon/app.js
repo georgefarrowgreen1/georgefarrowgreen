@@ -393,7 +393,7 @@ const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // resting on an island ("i"), or sheltering from storms ("h"), right now: [where, until when, which], or null
 function restingOn(m, t = now()) {
   const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c");
-  const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
+  const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h" || l[3] === "t") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
   return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || (legs[i][3] === "h" ? "" : "an island"), legs[i + 1][2], legs[i][3], SEVERE_WORD[legs[i][5]?.k] || "storms"];
 }
 // The way a pigeon would go if it left now (How It Flies), from the server's
@@ -401,11 +401,11 @@ function restingOn(m, t = now()) {
 // Asked for one kind, it answers with that kind's ways as data.plans.
 const PLAN_KEEP = 10 * MIN;
 function routePlanFor(chat, kind) {
-  const key = chat, p = S.routePlan;
+  const bd = birdFor(), key = chat + ":" + (bd?.id || ""), p = S.routePlan;     // (who'd carry it: a named pigeon stops for breathers)
   const view = (d) => (d ? { ...d, pigeon: d.kinds?.[kind] ? kind : d.pigeon, plans: d.kinds?.[kind] || d.plans } : null);
   if (p?.key === key && (p.loading || now() - p.at < PLAN_KEEP)) return view(p.data);
   S.routePlan = { key, at: now(), loading: true, data: p?.key === key ? p.data : null };
-  api(`route-plan?with=${encodeURIComponent(chat)}&pigeon=${encodeURIComponent(KIND[kind] ? kind : "standard")}`).then((d) => {
+  api(`route-plan?with=${encodeURIComponent(chat)}&pigeon=${encodeURIComponent(KIND[kind] ? kind : "standard")}${bd ? `&bird=${encodeURIComponent(bd.id)}` : ""}`).then((d) => {
     if (S.routePlan?.key !== key) return;
     S.routePlan = { key, at: now(), data: d.plans ? d : null };
     if (S.sheet?.type === "flysheet") renderSheet();
@@ -416,7 +416,7 @@ function routePlanFor(chat, kind) {
 // How long a pigeon of this kind would take, the way it would really go (the
 // planner's, with its rests and the weather, once it has answered), else at its calm pace
 function plannedMs(c, k) {
-  const d = !c.g && !c.via && !c.sched && S.routePlan?.key === c.f?.id ? S.routePlan.data : null, p = d?.kinds?.[k]?.[routeStyle()];
+  const d = !c.g && !c.via && !c.sched && S.routePlan?.key === c.f?.id + ":" + (birdFor()?.id || "") ? S.routePlan.data : null, p = d?.kinds?.[k]?.[routeStyle()];
   return p ? Math.max(0, p.deliverAt - d.at) : etaMs(c, k);
 }
 // The way in a few words: "through the Simplon Pass · around storms over France"
@@ -438,6 +438,7 @@ function routeNote(m) {
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
   const rest = restingOn(m, t);
   if (rest) return rest[2] === "h" ? { icon: I.storm, text: `Sheltering${rest[0] ? ` ${rest[0]}` : ` from ${rest[3]}`} until about ${fmtTime(rest[1])}` }
+    : rest[2] === "t" ? { icon: I.bird, text: `Catching its breath ${rest[0] || "on the way"} until ${fmtTime(rest[1])}` }
     : { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
   const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
   const ahead = !landed && l === next, name = l[4], over = name ? ` over ${name}` : "";
@@ -449,6 +450,7 @@ function routeNote(m) {
     h: [I.storm, ahead ? `Sheltering from ${hw}${name ? ` ${name}` : ""} on the way` : `Sheltered from ${hw}${name ? ` ${name}` : ""}`],
     r: [name === "s" ? I.storm : I.wind, name === "s" ? `Rerouted to keep clear of ${hw}` : "Rerouted to ride the wind"],
     i: [I.bird, ahead ? `Resting on ${name || "an island"} on the way` : `Rested on ${name || "an island"}`],
+    t: [I.bird, ahead ? `A breather ${name || "on the way"} coming up` : `Caught its breath ${name || "on the way"}`],
     p: [I.map, `${ahead ? "Through" : "Came through"} ${!name ? "the pass" : /^a |^[A-Z][\w’']*['’]s /.test(name) ? name : `the ${name}`}`],
     v: [I.loc, ahead ? `The scenic way, past ${name || "a landmark"}` : `Came the scenic way, past ${name || "a landmark"}`],
   }[l[3]];
@@ -789,9 +791,12 @@ function wxSay(m, short) {
   const late = m.delay > 0, w = m.wx && WX[m.wx.k], landed = !m.flying;
   const when = late ? (landed ? `Landed ${fmtDur(m.delay)} late` : `Delayed ${fmtDur(m.delay)}`) : `${fmtDur(-m.delay)} early`;
   if (short) return late ? `${landed ? `${fmtDur(m.delay)} late` : `delayed ${fmtDur(m.delay)}`}${w ? ` by ${w[0]}` : ""}` : `${fmtDur(-m.delay)} early${w ? ` on ${w[0]}` : ""}`;
-  // (a wind met higher or lower than usual: it climbed for a tailwind, or kept low out of a headwind)
+  // (a wind met higher or lower than usual: it climbed for a tailwind, or kept low out of a headwind;
+  // a rocket climbed all the way to the jet stream)
   const alt = m.wx?.alt, where = w ? wxWhere(m.wx.lon, m.wx.lat) : "";
   const why = !w ? (late ? "bad weather" : "a tailwind")
+    : alt >= 5000 && m.wx.k === "tailwind" ? `rode the jet stream over ${where}`
+    : alt >= 5000 ? `climbed to the jet stream, above the worst of the ${w[0]} over ${where}`
     : alt && m.wx.k === "tailwind" ? `${alt > 120 ? "climbed" : "flew low"} to catch a tailwind over ${where}`
     : alt && m.wx.k === "headwind" ? `${alt > 120 ? "climbed above" : "kept low under"} the worst of the headwinds over ${where}`
     : `${w[0]} over ${where}`;
@@ -4100,7 +4105,7 @@ function renderCompose() {
   // its pigeon, at the start of the message: the named one carrying it, or its kind
   // (a moment after a chat opens, the planner's times, so the hint says what How It Flies will)
   clearTimeout(planSoon);
-  if (!g && !via && !sched && kind && KIND[kind] && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id && now() - S.routePlan.at < PLAN_KEEP))
+  if (!g && !via && !sched && kind && KIND[kind] && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP))
     planSoon = setTimeout(() => { if (S.chat === f.id && S.view === "chat") routePlanFor(f.id, kind); }, 1200);
   const bd = kind && kind !== "dumb" ? birdFor() : null, hint = kind && !f.keyChanged && S.me.lat != null ? landHint(c, kind) : "Message";
   pill.hidden = !!f.keyChanged || S.me.lat == null;
@@ -5128,8 +5133,10 @@ function fcEvents(m, t) {
   const ev = [], legs = m.legs || [], tagged = legs.filter((l) => l[3] && l[3] !== "c"), once = new Set();
   for (let i = 0; i < tagged.length; i++) {
     const l = tagged[i], [tag, n, at] = [l[3], l[4], l[2]], done = at <= t;
-    if ((tag === "i" || tag === "h") && tagged[i + 1]?.[3] === tag && tagged[i + 1][0] === l[0]) {
+    if ((tag === "i" || tag === "h" || tag === "t") && tagged[i + 1]?.[3] === tag && tagged[i + 1][0] === l[0]) {
       const until = tagged[i + 1][2], over = until <= t;
+      // a breather: its named pigeon tires on a long flight (fewer, shorter ones as it rises through the ranks)
+      if (tag === "t") { ev.push({ at, until, icon: I.bird, tone: "", title: `${over ? "Caught its breath" : done ? "Catching its breath" : "A breather"} ${n || "on the way"}`, sub: `${fmtDur(until - at)} on the ground${m.bird?.name ? ` · ${m.bird.name} needs it` : ""}` }); i++; continue; }
       ev.push(tag === "h" ? { at, until, icon: I.storm, tone: "warn", title: `${over ? "Sheltered" : done ? "Sheltering" : "Shelters"} from ${SEVERE_WORD[l[5]?.k] || "storms"}${n ? ` ${n}` : ""}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` }
         : { at, until, icon: I.bird, tone: "teal", title: `${over ? "Rested" : done ? "Resting" : "Rests"} on ${n || "an island"}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` });
       i++; continue;

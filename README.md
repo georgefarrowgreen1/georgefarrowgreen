@@ -315,6 +315,18 @@ delay and how far it has got, and when it lands; then who is carrying it and
 how it flies. Swipe it down, or tap its handle, to fold it again. The phone
 remembers which you chose (`flightCard` in `pigeon/app.js`).
 
+**Rockets fly high, and named pigeons tire.** Rocket pigeons climb to the
+jet stream (the wind 250 hPa up, about 10 km, asked of Open-Meteo with the rest)
+when it blows their way, and the card says so ("4h early · rode the jet stream
+over Poland"); other pigeons can't climb that high, and a jet stream the wrong
+way just leaves a rocket flying low. A named pigeon gets tired on a long flight:
+it comes down on land for a breather ("t" legs, a rest like an island's) every
+few hours of flying, near the nearest town, and the more miles it has flown the
+longer it goes between them and the shorter they are (a Fledgling every 5 hours
+or so for about 40 minutes, a Legend every 16 for 15; `tire` in
+`functions/_route.js`). The plan before sending includes them for whoever would
+carry it, and a pigeon that turns for the weather keeps them on its new way.
+
 **The Skies.** The globe button on Messages opens one live map of every pigeon
 in the air to or from you, from every chat and group, with a countdown for
 each. Tap a row to open that chat. It shows exactly what those chats already

@@ -21,10 +21,10 @@
    does the same. Kept as a rest ("h", where), and told.
    Run from the tick; every flight checked in one go shares one look at the
    sky (the same squares of it as ever: never who's flying). */
-import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT } from "./_pigeon.js";
+import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT, chunks } from "./_pigeon.js";
 import { skyAlong, skyAtPoints, pointsFor } from "./_weather.js";
 import { stopsOf, posAt, renear } from "./_moments.js";
-import { squeeze, passed, pathKm, round5, round2, latticeOf, bestWay, finish, timeWay, restOf, hopsFor } from "./_route.js";
+import { squeeze, passed, pathKm, round5, round2, latticeOf, bestWay, finish, timeWay, restOf, hopsFor, tire, tiredOf } from "./_route.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -40,8 +40,8 @@ const latestOf = (r) => r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1)
 const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
 const kmhOf = (r) => SPEED_KMH * (PIGEONS[r.pigeon]?.speed ?? 1) * (r.risky ? RISKY_SPEED : 1);
 const legsOf = (r) => { try { return r.legs ? JSON.parse(r.legs) : []; } catch (_) { return []; } };
-// a rest: two points at the same spot, one when it lands, one when it's off again
-const restPair = (a, b) => !!a[3] && (a[3] === "i" || a[3] === "h") && b[3] === a[3] && a[0] === b[0] && a[1] === b[1];
+// a rest: two points at the same spot, one when it lands, one when it's off again (on an island, sheltering, or a breather)
+const restPair = (a, b) => !!a[3] && (a[3] === "i" || a[3] === "h" || a[3] === "t") && b[3] === a[3] && a[0] === b[0] && a[1] === b[1];
 // time still to spend resting, from t
 function restLeft(legs, t) {
   let ms = 0;
@@ -73,7 +73,11 @@ export async function liveTick(env, D, t) {
   const list = await due(D, t), turns = [];
   if (!list.length) return { changed: 0, turns };
   const paths = [], pts = [], take = [];
+  // the named pigeons carrying them: how often they need a breather, on a way it turns to
+  const ids = list.filter((x) => !x.group && x.r.bird).map((x) => x.r.bird), kms = new Map();
+  for (const part of chunks(ids, 50)) for (const b of (await D.prepare(`SELECT id, km FROM pg_birds WHERE id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results) kms.set(b.id, b.km);
   for (const x of list) {
+    if (!x.group && kms.has(x.r.bird)) x.tired = tiredOf(kms.get(x.r.bird));
     const legs = legsOf(x.r), stops = stopsOf(x.r), last = legs.filter((l) => l[3] === "r").at(-1);
     Object.assign(x, { legs, rest: restLeft(legs, t), kmh: kmhOf(x.r), path: aheadOf(stops, legs, t) });
     const ri = legs.findIndex((l, i) => restPair(l, legs[i + 1] || []) && l[2] <= t && legs[i + 1][2] > t);
@@ -115,7 +119,9 @@ const hoursOf = (path, w, rest, kmh) => pathKm(path) / (kmh * (w?.f || 1)) + res
 function pick(x, w, skyAt, t) {
   if (!x.lat || !w) return null;
   const found = bestWay(x.lat, skyAt, t, x.kmh, { wind: x.r.style !== "scenic" });
-  const p = finish(found.path, { hop: hopsFor(x.r.pigeon), style: x.r.style }), way = { p, rest: restOf(p.slice(1, -1)) };
+  let p = finish(found.path, { hop: hopsFor(x.r.pigeon), style: x.r.style });
+  if (x.tired) p = [p[0], ...tire(p[0], p.slice(1, -1), p[p.length - 1], x.kmh * (found.w.f || 1), x.tired), p[p.length - 1]];
+  const way = { p, rest: restOf(p.slice(1, -1)) };
   // storms in its way now: a way that keeps out of them (the straight line from here, if that does)
   if (w.storms > 0 && found.w.storms < w.storms) return { way, w: found.w, why: "s" };
   if (w.storms > 0 || found.why !== "w") return null;
