@@ -15,7 +15,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   UUID_RE, PHOTO_TTL, gcPoint, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
-import { windsFor } from "./_weather.js";
+import { windsAlong } from "./_weather.js";
 import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
@@ -335,13 +335,14 @@ async function send({ request, env, waitUntil }) {
   const { results: rows } = others.length ? await D.prepare(`SELECT id, lat, lon, place FROM pg_users WHERE id IN (${others.map(() => "?").join(",")})`).bind(...others).all() : { results: [] };
   // between people who aren't friends: coarse places at both ends (the stored destination too)
   const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, place: null, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }));
-  // the weather along each route, all in one look
-  const placed = to.filter((r) => r.lat != null), winds = await windsFor(env, placed.map((r) => [r.from[0], r.from[1], r.lat, r.lon]));
+  // each one's way (passes; islands, for a standard pigeon), then the weather each will meet along it, all in one look
+  const plans = new Map(await Promise.all(to.filter((r) => r.lat != null).map(async (r) => [r.id, await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style })])));
+  const placed = to.filter((r) => plans.has(r.id));
+  const winds = await windsAlong(env, placed.map((r) => ({ path: [r.from, ...plans.get(r.id).way, [r.lat, r.lon]].map((q) => [q[0], q[1]]), start: t, kmh: SPEED_KMH * speed })));
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));
   const dels = await Promise.all(to.map(async (r) => {
     const w = windOf.get(r.id) || { wind: null, f: 1 };
-    // its way (resting on islands, for a standard pigeon)
-    const plan = r.lat != null ? await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style }) : null, rest = plan ? restOf(plan.way) : 0;
+    const plan = plans.get(r.id) || null, rest = plan ? restOf(plan.way) : 0;
     const km = plan ? plan.km : 500, at = Math.round(t + flightMs(km / w.f, speed) + rest), wx = wxOf([w], flightMs(km, speed) + rest, at - t);
     const legs = plan?.way.length ? JSON.stringify(timeWay(r.from, plan.way, [r.lat, r.lon], t, at - t - rest).legs) : null;
     // Pigeon Death: each pigeon takes its own chance

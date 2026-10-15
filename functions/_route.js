@@ -13,8 +13,8 @@
    Everything that follows a flight (the map, near misses, flyovers, the
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
-import { haversineKm, gcPoint, HOUR, PIGEONS } from "./_pigeon.js";
-import { windsFor } from "./_weather.js";
+import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH } from "./_pigeon.js";
+import { windsAlong } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -54,9 +54,10 @@ const BENDS = [0.12, -0.12, 0.25, -0.25];
 const MIN_BEND_KM = 150;                     // a short hop just goes straight
 const WIND_GAIN = 0.04;                      // riding the wind: only for a way at least 4% quicker
 
-// Plan the way from `from` to `to` ([lat, lon] each). With weather (when it
-// leaves), the sky along the straight line and a few gentle arcs is looked at
-// together, in one request: a pigeon that would fly into storms takes the arc
+// Plan the way from `from` to `to` ([lat, lon] each). With weather, the sky
+// along the straight line and a few gentle arcs is looked at together, in one
+// request, each stretch as the forecast has it when the pigeon (leaving at
+// `start`, at `kmh`) would get there: a pigeon that would fly into storms takes the arc
 // that misses them (the quickest that does); otherwise, if the wind along an
 // arc gets it there clearly sooner, it rides the wind (a longer way, but quicker).
 // Over the great mountain ranges it goes through a pass. With `hop` (a
@@ -70,13 +71,13 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 // ms where it rests), km, w: the weather along it, as windsFor gives it }.
 export const STYLES = ["fastest", "scenic", "safe"];
 export const styleOf = (x) => (STYLES.includes(x) && x !== "fastest" ? x : null);    // as kept (fastest: null)
-export async function planRoute(env, { from, to, weather = true, hop = false, style = null }) {
+export async function planRoute(env, { from, to, weather = true, hop = false, style = null, start = Date.now(), kmh = SPEED_KMH }) {
   const straight = [from, to];
   let path = straight, w = { wind: null, f: 1, wx: null };
   if (weather) {
     const long = pathKm(straight) >= MIN_BEND_KM;
     const paths = [straight, ...(long ? BENDS.map((s) => bent(straight, s, "s")) : [])];
-    const ws = await windsFor(env, paths.map((p) => p.map((q) => [q[0], q[1]])));
+    const ws = await windsAlong(env, paths.map((p) => ({ path: p.map((q) => [q[0], q[1]]), start, kmh })));
     const time = (k) => pathKm(paths[k]) / (ws[k].f || 1);
     let pick = 0, why = null;
     // storms on the straight line: the quickest way that keeps out of them (or has fewest)

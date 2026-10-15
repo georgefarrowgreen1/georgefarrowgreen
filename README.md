@@ -342,8 +342,13 @@ is planned as it leaves (`functions/_route.js`) and kept as timed points in the
 message's `legs` ([lat, lon, at, tag, name]), which the map, near misses,
 flyovers, the passport and postmarks all simply follow.
 - *Around storms:* the sky along the straight line and four gentle arcs is
-  looked at in one request; a pigeon that would fly into thunderstorms takes
-  the quickest arc that misses them ("Going around storms over France").
+  looked at in one request, each stretch by the forecast for the hour the
+  pigeon gets there (`windsAlong` in `functions/_weather.js`, up to 96 hours
+  ahead), so it misses a storm that's coming and doesn't dodge one that'll be
+  gone; a pigeon that would fly into thunderstorms takes the quickest arc that
+  misses them ("Going around storms over France"). A pigeon booked to land
+  later is planned around the forecast for when it takes off (up to three days
+  ahead), and stopovers and group pigeons meet the forecast the same way.
 - *Riding the wind:* with no storms in the way, an arc the wind blows along
   is taken if it lands at least 4% sooner, though it's further.
 - *Mountain passes:* a way over the Alps, the Pyrenees, the Himalayas, the

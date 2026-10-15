@@ -8,7 +8,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
-import { windsFor, forecastFor, hourOf } from "../../_weather.js";
+import { windsFor, windsAlong, forecastFor } from "../../_weather.js";
 import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
@@ -209,6 +209,7 @@ function waitText(ms) {
 // a pigeon turns once you're more than REROUTE_KM from where it's heading, and
 // at most every 10 minutes, so a drive doesn't send it zig-zagging.
 const TURN_EVERY = 10 * 60e3;
+const FORECAST_AHEAD = 72 * 3600e3;          // a pigeon booked further ahead than this flies whatever it meets
 async function reroute(env, u, p, t, waitUntil) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ?1 AND deliver_at > ?2 AND to_lat IS NOT NULL AND (lost_at IS NULL OR lost_at > ?2)").bind(u.id, t).all();
@@ -779,25 +780,22 @@ async function sendMessage({ request, env, waitUntil }) {
   const via = meta.via == null ? null : await stopover(D, u, to, r, String(meta.via), String(meta.viaCt || ""), landAt);
   let km, w, flight, calm, way = [];
   if (via) {
-    const [w1, w2] = await windsFor(env, [[u.lat, u.lon, via.lat, via.lon], [via.lat, via.lon, r.lat, r.lon]]);
     const k1 = haversineKm(u.lat, u.lon, via.lat, via.lon), k2 = haversineKm(via.lat, via.lon, r.lat, r.lon);
+    const [w1, w2] = await windsAlong(env, [{ path: [[u.lat, u.lon], [via.lat, via.lon]], start: t, kmh: SPEED_KMH * speed },
+      { path: [[via.lat, via.lon], [r.lat, r.lon]], start: t + flightMs(k1, speed) + LAYOVER, kmh: SPEED_KMH * speed }]);
     const f1 = Math.round(flightMs(k1 / w1.f, speed)), f2 = Math.round(flightMs(k2 / w2.f, speed));
     Object.assign(via, { at: t + f1, off: t + f1 + LAYOVER });
     km = k1 + k2; flight = f1 + LAYOVER + f2; calm = flightMs(k1, speed) + LAYOVER + flightMs(k2, speed);
     w = { ws: [w1, w2], wind: w1.wind == null || w2.wind == null ? w1.wind ?? w2.wind : (w1.wind * k1 + w2.wind * k2) / Math.max(1, km), f: (k1 / w1.f + k2 / w2.f) ? km / (k1 / w1.f + k2 / w2.f) : 1 };
   } else {
-    // its way, planned (around storms, …); one booked for later goes by the forecast instead (below)
-    const later = landAt != null && hasTo && landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed) > t + 30 * 60e3;
-    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: !later, hop: hopsFor(kind), style }) : null;
+    // its way, planned around the weather it'll meet (the forecast, for when it gets
+    // to each stretch); one booked to land later, around the forecast for then
+    // (when that's not too far off to know)
+    const ahead = landAt != null && hasTo ? Math.max(t, landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed)) : t;
+    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: ahead - t < FORECAST_AHEAD, hop: hopsFor(kind), style, start: ahead, kmh: SPEED_KMH * speed }) : null;
     km = plan ? plan.km : DEFAULT_KM; w = plan ? plan.w : { wind: null, f: 1 }; way = plan ? plan.way : [];
     const rest = restOf(way);
     flight = Math.round(flightMs(km / w.f, speed)) + rest; calm = flightMs(km, speed) + rest;
-    // booked to land later: it flies through the weather forecast for when it takes off
-    if (later) {
-      const [fc] = await forecastFor(env, [[u.lat, u.lon, r.lat, r.lon]]);
-      const h1 = hourOf(fc, landAt - calm), h = h1 && (hourOf(fc, landAt - Math.round(flightMs(km / h1.f, speed))) || h1);   // (once more: the weather moves its take-off)
-      if (h) { w = h; flight = Math.round(flightMs(km / w.f, speed)) + rest; }
-    }
   }
   const wx = wxOf(w.ws || [w], calm, flight, via ? [[0, via.at - t], [via.off - t, flight - (via.off - t)]] : undefined);   // what the weather did to it
   const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off

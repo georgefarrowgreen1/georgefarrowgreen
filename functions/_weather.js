@@ -145,30 +145,82 @@ export async function forecastFor(env, routes, hours = 24) {
   const none = routes.map(() => null);
   if (!routes.length || env.WEATHER_OFF) return none;
   const pts = pointsOf(routes), cells = [...new Map(pts.map((p) => [key(p), p])).values()];
-  const h0 = Math.floor(Date.now() / HOUR) * HOUR;
-  const cache = typeof caches !== "undefined" && !env.WEATHER_URL ? caches.default : null;
-  const ck = new Request(`https://inflight-forecast.cache/v1/${h0}/${hours}/${cells.map(key).sort().join(";")}`);
-  let list = null;
-  try { const hit = cache && await cache.match(ck); if (hit) list = await hit.json(); } catch (_) {}
-  if (!list) {
-    try {
-      const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
-      u.searchParams.set("latitude", cells.map((p) => p.lat).join(",")); u.searchParams.set("longitude", cells.map((p) => p.lon).join(","));
-      u.searchParams.set("hourly", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code"); u.searchParams.set("forecast_hours", String(hours));
-      u.searchParams.set("timeformat", "unixtime"); u.searchParams.set("wind_speed_unit", "kmh");
-      const res = await fetch(u, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json" } });
-      if (!res.ok) return none;
-      const d = await res.json(); list = (Array.isArray(d) ? d : [d]).map((x) => x?.hourly || null);
-    } catch (_) { return none; }
-    if (list.length !== cells.length || !Array.isArray(list[0]?.time)) return none;
-    if (cache) await cache.put(ck, new Response(JSON.stringify(list), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=1800" } })).catch(() => {});
-  }
+  const list = await hourlyFor(env, cells, hours);
+  if (!list) return none;
   const byCell = new Map(cells.map((p, k) => [key(p), list[k]])), times = list[0].time, out = routes.map(() => []);
   for (let h = 0; h < times.length; h++) {
-    const ws = pts.map((p) => { const H = byCell.get(key(p)); return H && { wind_speed_10m: H.wind_speed_10m?.[h], wind_direction_10m: H.wind_direction_10m?.[h], wind_gusts_10m: H.wind_gusts_10m?.[h], weather_code: H.weather_code?.[h] }; });
+    const ws = pts.map((p) => hourAt(byCell.get(key(p)), h));
     tally(routes, pts, ws).forEach((x, i) => out[i].push({ at: times[h] * 1000, ...x }));
   }
   return out;
+}
+// One square's weather in hour h of its forecast
+const hourAt = (H, h) => H && h >= 0 && h < H.time.length ? { wind_speed_10m: H.wind_speed_10m?.[h], wind_direction_10m: H.wind_direction_10m?.[h], wind_gusts_10m: H.wind_gusts_10m?.[h], weather_code: H.weather_code?.[h] } : null;
+// Open-Meteo's forecast for some squares, hour by hour from this hour, `hours`
+// of it: a list matching `cells` (null if it didn't answer). Kept for everyone
+// for half an hour; asked a hundred squares at a time.
+const ASK_EACH = 100;
+async function hourlyFor(env, cells, hours) {
+  const h0 = Math.floor(Date.now() / HOUR) * HOUR;
+  const cache = typeof caches !== "undefined" && !env.WEATHER_URL ? caches.default : null;
+  const parts = await Promise.all(chunks(cells, ASK_EACH).map(async (part) => {
+    const ck = new Request(`https://inflight-forecast.cache/v1/${h0}/${hours}/${part.map(key).sort().join(";")}`);
+    try { const hit = cache && await cache.match(ck); if (hit) { const kept = await hit.json(); const by = new Map(kept); return part.map((p) => by.get(key(p)) || null); } } catch (_) {}
+    let list;
+    try {
+      const u = new URL(`${env.WEATHER_URL || "https://api.open-meteo.com"}/v1/forecast`);
+      u.searchParams.set("latitude", part.map((p) => p.lat).join(",")); u.searchParams.set("longitude", part.map((p) => p.lon).join(","));
+      u.searchParams.set("hourly", "wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code"); u.searchParams.set("forecast_hours", String(hours));
+      u.searchParams.set("timeformat", "unixtime"); u.searchParams.set("wind_speed_unit", "kmh");
+      const res = await fetch(u, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json" } });
+      if (!res.ok) return null;
+      const d = await res.json(); list = (Array.isArray(d) ? d : [d]).map((x) => x?.hourly || null);
+    } catch (_) { return null; }
+    if (list.length !== part.length || !list.every((x) => Array.isArray(x?.time))) return null;
+    if (cache) await cache.put(ck, new Response(JSON.stringify(part.map((p, k) => [key(p), list[k]])), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=1800" } })).catch(() => {});
+    return list;
+  }));
+  return parts.some((x) => !x) ? null : parts.flat();
+}
+
+// ---- the weather as the pigeon will meet it ----
+// A pigeon on a long flight meets each stretch of sky hours after it leaves,
+// so each point along its way is judged by the forecast for the hour it gets
+// there (as far as FORECAST_HOURS ahead; past that, it isn't counted).
+export const FORECAST_HOURS = 96;
+const lenOf = (path) => { let k = 0; for (let i = 0; i < path.length - 1; i++) k += haversineKm(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]); return k; };
+// The forecast along some paths, until `until`: { at(i, start, kmh) } gives
+// path i's weather (as windsFor would) flown from `start` at kmh; null if the
+// forecast didn't answer.
+export async function skyAlong(env, paths, until) {
+  if (!paths.length || env.WEATHER_OFF) return null;
+  const pts = pointsOf(paths), cells = [...new Map(pts.map((p) => [key(p), p])).values()];
+  const h0 = Math.floor(Date.now() / HOUR) * HOUR, hours = Math.min(FORECAST_HOURS, Math.max(1, Math.ceil((until - h0) / HOUR) + 1));
+  const list = await hourlyFor(env, cells, hours);
+  if (!list) return null;
+  const byCell = new Map(cells.map((p, k) => [key(p), list[k]])), kms = paths.map(lenOf);
+  return {
+    at(i, start, kmh) {
+      const mine = pts.filter((p) => p.i === i).map((p) => ({ ...p, i: 0 }));
+      const ws = mine.map((p) => {
+        const H = byCell.get(key(p)), eta = start + ((p.f * kms[i]) / kmh) * HOUR;
+        return H ? hourAt(H, Math.max(0, Math.floor((eta - H.time[0] * 1000) / HOUR))) : null;
+      });
+      return tally([paths[i]], mine, ws)[0];
+    },
+  };
+}
+// The weather along each of some flights ({ path, start, kmh }), as it will
+// meet it. All in the next hour: the sky as it is now (windsFor). The forecast
+// down: the sky now for those leaving now, calm for any leaving later.
+export async function windsAlong(env, flights) {
+  const t = Date.now(), paths = flights.map((f) => f.path), ends = flights.map((f) => f.start + (lenOf(f.path) / f.kmh) * HOUR);
+  const soon = (f) => f.start <= t + HOUR;
+  if (flights.every(soon) && Math.max(...ends) <= t + HOUR) return windsFor(env, paths);
+  const sky = await skyAlong(env, paths, Math.max(...ends)).catch(() => null);
+  if (sky) return flights.map((f, i) => sky.at(i, f.start, f.kmh));
+  const now = await windsFor(env, paths);
+  return flights.map((f, i) => (soon(f) ? now[i] : { wind: null, f: 1, wx: null, storms: 0, storm: null }));
 }
 // The forecast hour a time falls in (or null: beyond the forecast).
 export const hourOf = (fc, t) => (fc || []).find((x) => t >= x.at && t < x.at + HOUR) || null;
