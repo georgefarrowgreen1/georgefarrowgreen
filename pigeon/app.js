@@ -3240,6 +3240,9 @@ function bubble(f, m, gapTop, g) {
     html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}" data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
       : `<div class="b once${opened || gone ? " done" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
     if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
+  } else if (p.p && (m.photo === 2 || S.photoGone.has(m.id))) {
+    // gone: a small grey bubble saying so, the time beside it (and its words, if it had any)
+    html = `<div class="b gone${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}<span class="gonel">${I.gone}${picWord(p)} expired</span>${p.t ? `<span class="gcap">${text}</span>` : ""}${tail}</div>`;
   } else if (p.p) {
     let photo;
     // its real shape, known before it loads, so the chat doesn't jump as photos and GIFs appear

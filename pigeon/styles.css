@@ -1894,3 +1894,10 @@ html.night .nav-ghost .night{background:none}
 .momrun.unfold .momlist > :nth-child(n+4){animation-delay:.09s}
 @keyframes momin{from{opacity:0;transform:translateY(-6px)}}
 @media (prefers-reduced-motion:reduce){.momrun .momsum .chev{transition:none}.momrun.unfold .momlist > *{animation:none}}
+/* a photo or GIF that has expired: a small grey bubble, not an empty frame */
+.b.gone,.b.gone.me{background:var(--fill);color:var(--label-2)}
+.b.gone .gonel{display:inline-flex;align-items:center;gap:6px;font-size:calc(15px * var(--ts, 1))}
+.b.gone .gonel .ico{font-size:17px;flex:none;opacity:.8}
+.b.gone .gcap{display:block;margin-top:3px;color:var(--label)}
+.b.gone .ft,.b.gone.me .ft{color:var(--label-2)}
+.b.gone .ft{margin-top:3px}
