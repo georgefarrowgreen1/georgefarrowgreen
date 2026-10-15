@@ -371,7 +371,10 @@ it must be a crossing in mid-air, not two setting off or arriving together),
 and names the spot with the map's own country and sea names
 (`functions/_where.js`). As it happens, both people get a push (Mid-air
 Moments, in Notifications), the chat gets a line (tap it for the map), and
-the map marks the spot. Only pigeons you could already see count.
+the map marks the spot. Only pigeons you could already see count. Pigeons
+sent together that meet the same one read as one line with a count (×2), and
+three or more in a row fold into one ("5 near misses over India and
+Malaysia · 07:11–11:36"); tap it to see each.
 
 **Cheer it on.** While a pigeon flies, both ends of the chat can cheer it on
 (the map card's Cheer It On button, or the menu on your own pigeon). Each

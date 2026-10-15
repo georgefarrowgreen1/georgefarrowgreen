@@ -1879,3 +1879,18 @@ html.night .nav-ghost .night{background:none}
 .seg button[aria-checked="true"] .rk{background:rgba(255,255,255,.2);color:#fff}
 .fctags .rk.lo{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
 .fctags .rk.mid{color:var(--label-2);background:var(--fill)}
+/* a run of mid-air moments folds into one line; tap to unfold */
+.sysline .momx{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;background:var(--fill);font-size:11px;font-weight:600;line-height:15px;vertical-align:1px;font-variant-numeric:tabular-nums}
+.momrun{display:flex;flex-direction:column;align-items:center}
+.momrun .momsum .chev{font-size:12px;margin:0 0 0 4px;vertical-align:-2px;transition:transform .32s cubic-bezier(.32,.72,0,1)}
+.momrun.open .momsum .chev{transform:rotate(90deg)}
+.momrun.open .momsum{color:var(--label)}
+.momlist{display:flex;flex-direction:column;align-items:center;width:100%}
+.momlist .sysline{margin:2px auto}
+.momlist:last-child{margin-bottom:6px}
+.momrun.unfold .momlist > *{animation:momin .36s cubic-bezier(.32,.72,0,1) both}
+.momrun.unfold .momlist > :nth-child(2){animation-delay:.03s}
+.momrun.unfold .momlist > :nth-child(3){animation-delay:.06s}
+.momrun.unfold .momlist > :nth-child(n+4){animation-delay:.09s}
+@keyframes momin{from{opacity:0;transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){.momrun .momsum .chev{transition:none}.momrun.unfold .momlist > *{animation:none}}

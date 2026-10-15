@@ -3733,17 +3733,44 @@ function stampLines(msgs) {
   return (msgs || []).filter((m) => m.from === S.me.id && m.stamps?.length && !m.flying).map((m) => ({ at: m.deliverAt + 1,
     html: `<button type="button" class="sysline stamps" data-act="flightlog">${I.globe}<span>New in your passport: ${esc(and(m.stamps))}</span></button>` }));
 }
-// this chat's moments, each once (both pigeons may be here), in time order
+// this chat's moments, each once (both pigeons may be here), in time order.
+// Pigeons sent together meet the same one at the same minute: that reads as
+// one line with a count.
+const momLine = (x) => `<button type="button" class="sysline moment" data-act="map" data-id="${esc(x.id)}">${x.kind === "flock" ? I.people : I.pass}<span>${esc(x.text)}<span class="t"> · ${fmtTime(x.at)}</span>${x.n > 1 ? `<span class="momx">×${x.n}</span>` : ""}</span></button>`;
 function chatMoments(msgs, chatId) {
-  const seen = new Set(), out = [];
+  const seen = new Set(), same = new Map(), out = [];
   for (const m of msgs || []) for (const n of m.near || []) {
     const key = [m.id, n.other.id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
-    out.push({ at: n.at, html: `<button type="button" class="sysline moment" data-act="map" data-id="${esc(m.id)}">${n.kind === "flock" ? I.people : I.pass}<span>${esc(momentText(m, n, chatId))}<span class="t"> · ${fmtTime(n.at)}</span></span></button>` });
+    const text = momentText(m, n, chatId), dup = text + "|" + fmtTime(n.at), was = same.get(dup);
+    if (was && Math.abs(was.at - n.at) < 10 * 60e3) { was.mom.n++; continue; }
+    const x = { mom: { key, id: m.id, text, at: n.at, kind: n.kind, place: n.place && n.place !== "land" ? n.place : "", n: 1 }, at: n.at };
+    same.set(dup, x); out.push(x);
   }
+  for (const x of out) x.html = momLine(x.mom);
   out.push(...stampLines(msgs));
   for (const m of msgs || []) if (m.from === S.me.id && m.bird?.up && !m.flying && !m.lost)
     out.push({ at: m.deliverAt, html: `<button type="button" class="sysline rankup" data-act="bird" data-id="${esc(m.bird.id)}">${I.bird}<span>${esc(m.bird.name)} became ${aRank(esc(m.bird.up))} on this flight</span></button>` });
   return out.sort((a, b) => a.at - b.at);
+}
+// Three or more mid-air moments in a row fold into one line ("5 near misses
+// over India and Malaysia"); tap to see each. Stays open across re-renders.
+const momOpen = new Set();
+function momRun(items) {
+  const out = []; let run = [];
+  const flush = () => {
+    const n = run.reduce((a, x) => a + x.mom.n, 0);
+    if (run.length < 2 || n < 3) { out.push(...run.map((x) => x.html)); run = []; return; }
+    const ms = run.map((x) => x.mom), key = ms[0].key, open = momOpen.has(key);
+    const places = [...new Set(ms.map((x) => x.place).filter(Boolean))];
+    const where = places.length > 3 ? ` over ${places.slice(0, 2).join(", ")} and ${places.length - 2} more` : places.length ? ` over ${places.length > 1 ? `${places.slice(0, -1).join(", ")} and ${places.at(-1)}` : places[0]}` : "";
+    const what = ms.every((x) => x.kind === "flock") ? "flights together" : ms.some((x) => x.kind === "flock") ? "mid-air moments" : "near misses";
+    const t0 = fmtTime(ms[0].at), t1 = fmtTime(ms.at(-1).at), when = t0 === t1 ? t0 : `${t0}–${t1}`;
+    out.push(`<div class="momrun${open ? " open" : ""}"><button type="button" class="sysline moment momsum" data-act="momrun" data-id="${esc(key)}" aria-expanded="${open}">${ms.every((x) => x.kind === "flock") ? I.people : I.pass}<span>${n} ${what}${esc(where)}<span class="t"> · ${when}</span></span>${chevSm}</button><div class="momlist"${open ? "" : " hidden"}>${run.map((x) => x.html).join("")}</div></div>`);
+    run = [];
+  };
+  for (const x of items) { if (x.mom) { run.push(x); continue; } flush(); out.push(x.html); }
+  flush();
+  return out.join("");
 }
 // Flyovers in a chat with a friend: their pigeon over you (wave while it's
 // fresh), yours over them (and whether they waved).
@@ -3873,7 +3900,7 @@ function vChat() {
   const msgs = S.msgs.get(f.id);
   let body = "", lastDay = "", prevFrom = null;
   const moms = [...chatMoments(msgs, f.id), ...flyLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
-  const momsTo = (at) => { let h = ""; while (mo < moms.length && moms[mo].at <= at) h += moms[mo++].html; return h; };
+  const momsTo = (at) => { const h = []; while (mo < moms.length && moms[mo].at <= at) h.push(moms[mo++]); return momRun(h); };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
   else if (!msgs.length && S.outbox.some((o) => o.to === f.id)) body = "";
   else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
@@ -5771,6 +5798,13 @@ async function onClick1(e, t) {
       return;
     }
     case "birdset": S.flyTap = t; S.birdPick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
+    case "momrun": {
+      const box = t.closest(".momrun"), list = box?.querySelector(".momlist"); if (!list) return;
+      const open = !momOpen.has(id); open ? momOpen.add(id) : momOpen.delete(id);
+      haptic(); box.classList.toggle("open", open); t.setAttribute("aria-expanded", open); list.hidden = !open;
+      box.classList.toggle("unfold", open); if (open) setTimeout(() => box.classList.remove("unfold"), 600);
+      return;
+    }
     case "wave": {
       const chat = S.chat, x = (S.fly.get(chat) || []).find((y) => y.id === id && !y.mine); if (!x || x.waved) return;
       t.disabled = true;
