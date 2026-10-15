@@ -400,10 +400,12 @@ function routeNote(m) {
   const rest = restingOn(m, t);
   if (rest) return { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
   const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
-  const ahead = !landed && l === next, name = l[4];
+  const ahead = !landed && l === next, name = l[4], over = name ? ` over ${name}` : "";
+  const turned = ahead && last?.[3] === "r";                     // it changed course for the weather on the way (live)
   const say = {
-    s: [I.storm, ahead ? `Going around storms${name ? ` over ${name}` : ""}` : `Went around storms${name ? ` over ${name}` : ""}`],
-    w: [I.wind, ahead ? "Riding the wind: a longer way, but quicker" : "Rode the wind: a longer way, but quicker"],
+    s: [I.storm, turned ? `Rerouted around storms${over}` : ahead ? `Going around storms${over}` : `Went around storms${over}`],
+    w: [I.wind, turned ? "Rerouted to ride the wind" : ahead ? "Riding the wind: a longer way, but quicker" : "Rode the wind: a longer way, but quicker"],
+    r: [name === "s" ? I.storm : I.wind, name === "s" ? "Rerouted to keep clear of storms" : "Rerouted to ride the wind"],
     i: [I.bird, ahead ? `Resting on ${name || "an island"} on the way` : `Rested on ${name || "an island"}`],
     p: [I.map, ahead ? `Through the ${name || "pass"}` : `Came through the ${name || "pass"}`],
     v: [I.loc, ahead ? `The scenic way, past ${name || "a landmark"}` : `Came the scenic way, past ${name || "a landmark"}`],

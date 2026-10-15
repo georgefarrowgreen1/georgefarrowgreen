@@ -5,17 +5,28 @@
    pace changes with it: what's still ahead is retimed, so it lands sooner or
    later. Small changes aren't worth it. A landing made much later by the
    weather is told, as at take-off (wx_at: see wxTick in _notify.js).
+   And it changes course when that's better: if storms have got into its way
+   since it left, it takes the quickest way around them it can find from where
+   it is now (the straight line on, or a gentle arc either side, through the
+   passes and resting on islands as it would have); with none in the way, if
+   the wind along another way would now get it there at least LIVE_GAIN
+   sooner, it rides that instead (a scenic pigeon doesn't chase the wind). The
+   point where it turned is kept ("r", and why), its plan from there replaced.
+   At most one such turn an hour. Its sender and recipient are told (in a
+   group, the recipient).
    Run from the tick; every flight checked in one go shares one look at the
    sky (the same squares of it as ever: never who's flying). */
 import { MIN, HOUR, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT } from "./_pigeon.js";
 import { skyAlong } from "./_weather.js";
 import { stopsOf, posAt, renear } from "./_moments.js";
-import { squeeze } from "./_route.js";
+import { squeeze, passed, pathKm, round5, arcsOf, finish, timeWay, restOf, hopsFor } from "./_route.js";
+import { placeName } from "./_where.js";
 import { refly, reflyGroup } from "./_flyover.js";
 
 export const LIVE_EVERY = 30 * MIN, LIVE_LEFT = HOUR, LIVE_EACH = 40;
 const LIVE_STEP = 0.03, LIVE_MS = 5 * MIN;        // a change smaller than this share of what's left (and this long) isn't made
 const WX_TELL = 15 * MIN;                         // later by this much more: told again
+const LIVE_GAIN = 0.05, TURN_EVERY = HOUR;        // a better way must be this much quicker; and no more than one weather turn an hour
 const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
 const kmhOf = (r) => SPEED_KMH * (PIGEONS[r.pigeon]?.speed ?? 1) * (r.risky ? RISKY_SPEED : 1);
 const legsOf = (r) => { try { return r.legs ? JSON.parse(r.legs) : []; } catch (_) { return []; } };
@@ -47,26 +58,92 @@ async function due(D, t) {
   return [...one.map((r) => ({ r, group: false })), ...grp.map((r) => ({ r, group: true }))];
 }
 
+// Returns what it did: { changed, turns: [{ group, r, why, where, deliver }] } (turns are told, by the tick)
 export async function liveTick(env, D, t) {
-  const list = await due(D, t);
-  if (!list.length) return 0;
+  const list = await due(D, t), turns = [];
+  if (!list.length) return { changed: 0, turns };
+  const paths = [];
   for (const x of list) {
-    const legs = legsOf(x.r), stops = stopsOf(x.r);
+    const legs = legsOf(x.r), stops = stopsOf(x.r), last = legs.filter((l) => l[3] === "r").at(-1);
     Object.assign(x, { legs, rest: restLeft(legs, t), kmh: kmhOf(x.r), path: aheadOf(stops, legs, t) });
+    x.at = paths.push(x.path) - 1;
+    // the ways it could take from here instead (not while it's resting, nor just after it turned for the weather)
+    const resting = legs.some((l, i) => restPair(l, legs[i + 1] || []) && l[2] <= t && legs[i + 1][2] > t);
+    x.ways = resting || (last && t - last[2] < TURN_EVERY) ? []
+      : arcsOf(x.path[0], x.path[x.path.length - 1]).map((p) => finish(p, { hop: hopsFor(x.r.pigeon), style: x.r.style }))
+        .map((p) => ({ p, at: paths.push(p.map((q) => [q[0], q[1]])) - 1, rest: restOf(p.slice(1, -1)) }));
   }
-  const until = Math.max(...list.map((x) => x.r.deliver_at));
-  const sky = await skyAlong(env, list.map((x) => x.path), until).catch(() => null);
+  const until = Math.max(...list.map((x) => x.r.deliver_at)) + 12 * HOUR;
+  const sky = await skyAlong(env, paths, until).catch(() => null);
   let changed = 0;
-  for (const [i, x] of list.entries()) {
-    const ok = sky ? await retime(env, D, t, x, sky.at(i, t + x.rest, x.kmh)).catch((e) => { console.error("pigeon live", e && e.message); return false; }) : false;
-    if (ok) changed++;
+  for (const x of list) {
+    let did = false;
+    if (sky) try {
+      const w = sky.at(x.at, t + x.rest, x.kmh), better = pick(x, w, (k) => sky.at(x.ways[k].at, t, x.kmh));
+      if (better) { const turn = await turnFor(D, t, x, better, w); if (turn) { turns.push(turn); did = true; } }
+      if (!did) did = await retime(env, D, t, x, w);
+    } catch (e) { console.error("pigeon live", e && e.message); }
+    if (did) changed++;
     else await mark(D, x, t);
   }
-  return changed;
+  return { changed, turns };
+}
+// how long a way takes (hours) with its weather, and its rests
+const hoursOf = (path, w, rest, kmh) => pathKm(path) / (kmh * (w?.f || 1)) + rest / HOUR;
+// A better way from here, if there is one: { k, w, why: "s" (around storms) or "w" (the wind) }
+function pick(x, w, weatherOf) {
+  if (!x.ways.length || !w) return null;
+  const ws = x.ways.map((_, k) => weatherOf(k)), now = hoursOf(x.path, w, x.rest, x.kmh);
+  const time = (k) => hoursOf(x.ways[k].p, ws[k], x.ways[k].rest, x.kmh);
+  const ks = x.ways.map((_, k) => k).filter((k) => ws[k]);
+  if (w.storms > 0) {
+    const k = ks.sort((a, b) => ws[a].storms - ws[b].storms || time(a) - time(b))[0];
+    return k != null && ws[k].storms < w.storms ? { k, w: ws[k], why: "s" } : null;
+  }
+  if (x.r.style === "scenic") return null;
+  const k = ks.filter((k) => ws[k].storms === 0).sort((a, b) => time(a) - time(b))[0];
+  return k != null && time(k) < now * (1 - LIVE_GAIN) ? { k, w: ws[k], why: "w" } : null;
 }
 const mark = (D, x, t) => (x.group
   ? D.prepare("UPDATE pg_gdeliv SET live_at = ? WHERE msg_id = ? AND user_id = ?").bind(t, x.r.msg_id, x.r.user_id)
   : D.prepare("UPDATE pg_msgs SET live_at = ? WHERE id = ?").bind(t, x.r.id)).run();
+
+// It changes course for the weather: from where it is now, the better way.
+async function turnFor(D, t, x, better, wasW) {
+  const r = x.r, way = x.ways[better.k], w = better.w, [pLat, pLon] = x.path[0], end = x.path[x.path.length - 1];
+  const where = better.why === "s" && wasW.storm ? safeName(wasW.storm.lat, wasW.storm.lon) : null;
+  // the bends it makes are for this reason; passes and islands stay what they are
+  const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}));
+  const latest = r.sent_at + MAX_FLIGHT / (PIGEONS[r.pigeon]?.speed ?? 1) / (r.risky ? RISKY_SPEED : 1);
+  const flying = Math.round((pathKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
+  const done = passed(x.legs, t);
+  const legs = JSON.stringify([...done, [round5(pLat), round5(pLon), t, "r", better.why], ...timeWay([pLat, pLon], pts, end, t, Math.max(0, deliver - t - way.rest)).legs]);
+  const km = pathKm([[r.from_lat, r.from_lon], ...done, [pLat, pLon]]) + pathKm(way.p), left = r.deliver_at - t, change = deliver - r.deliver_at;
+  const lostAt = r.lost_at == null || r.lost_at <= t ? r.lost_at : Math.round(t + ((r.lost_at - t) * (deliver - t)) / left);
+  // the weather's part: going around storms, the time it costs is theirs (and the turn's notice has said so already)
+  const storm = better.why === "s" && wasW.storm ? { k: "storms", lat: wasW.storm.lat, lon: wasW.storm.lon } : null;
+  const spot = storm || (w.wx ? (({ at, ...s }) => s)(w.wx) : null);
+  const wx = spot ? JSON.stringify(spot) : r.wx, wxAt = spot ? t : r.wx_at, wxMs = (r.wx_ms || 0) + change;
+  const q = x.group
+    ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = ?9, live_at = ?9, km = ?10
+        WHERE msg_id = ?11 AND user_id = ?12 AND deliver_at = ?13 AND legs IS ?14`).bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, r.msg_id, r.user_id, r.deliver_at, r.legs)
+    : D.prepare(`UPDATE pg_msgs SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = ?9, live_at = ?9, km = ?10,
+        expires_at = CASE WHEN photo = 1 THEN ?11 ELSE expires_at END WHERE id = ?12 AND deliver_at = ?13 AND legs IS ?14`)
+      .bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
+  if (!(await q.run()).meta.changes) return null;
+  await after(D, t, x, lostAt ?? deliver);
+  return { group: x.group, r, why: better.why, where, deliver };
+}
+const safeName = (lat, lon) => { try { return placeName(lat, lon); } catch (_) { return null; } };
+// A flight changed: the pigeons it'll pass, and the friends it'll fly over, again
+async function after(D, t, x, end) {
+  if (x.group) {
+    if (x.r.photo === 1) await D.prepare("UPDATE pg_gmsgs SET expires_at = MAX(COALESCE(expires_at, 0), ?) WHERE id = ?").bind(end + PHOTO_TTL, x.r.msg_id).run();
+    await reflyGroup(D, x.r.msg_id, t).catch(() => {});
+  } else {
+    await renear(D, x.r.id, t).catch(() => {}); await refly(D, x.r.id, t).catch(() => {});
+  }
+}
 
 // Its pace from now on, with the weather ahead as it is now: true if it changed
 async function retime(env, D, t, x, w) {
@@ -90,11 +167,6 @@ async function retime(env, D, t, x, w) {
       .bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, retell ? 1 : 0, t, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
   const res = await q.run();
   if (!res.meta.changes) return false;
-  if (x.group) {
-    if (r.photo === 1) await D.prepare("UPDATE pg_gmsgs SET expires_at = MAX(COALESCE(expires_at, 0), ?) WHERE id = ?").bind((lostAt ?? deliver) + PHOTO_TTL, r.msg_id).run();
-    await reflyGroup(D, r.msg_id, t).catch(() => {});
-  } else {
-    await renear(D, r.id, t).catch(() => {}); await refly(D, r.id, t).catch(() => {});
-  }
+  await after(D, t, x, lostAt ?? deliver);
   return true;
 }

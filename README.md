@@ -371,6 +371,17 @@ changes with it: what's still ahead is retimed, so it lands sooner or later
 15 minutes or more later is told again when it reaches the weather, as at
 take-off. Group pigeons too.
 
+It changes course when that's better. If storms have got into its way since
+it left, it takes the quickest way around them from where it is now (the
+straight line on, or a gentle arc either side, through the passes and resting
+on islands as it would have); with none in the way, if the wind along another
+way would now get it there at least 5% sooner, it rides that instead (a scenic
+pigeon doesn't chase the wind). The point where it turned is kept in its legs
+(`[lat, lon, at, "r", why]`) and the rest of its plan replaced; no more than
+one such turn an hour. Its sender and recipient are told ("Your pigeon changed
+course to go around storms over France. It now lands at 19:12."; in a group,
+the recipient), and the map card says "Rerouted around storms over France".
+
 The map card says what it's doing ("Resting on the Azores until 09:48",
 "Through the Gotthard Pass"). Turning for someone who moved drops the rest of
 the plan and plans again from where it is; a cheer keeps the plan, sooner.

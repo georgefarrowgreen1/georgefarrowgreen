@@ -75,8 +75,7 @@ export async function planRoute(env, { from, to, weather = true, hop = false, st
   const straight = [from, to];
   let path = straight, w = { wind: null, f: 1, wx: null };
   if (weather) {
-    const long = pathKm(straight) >= MIN_BEND_KM;
-    const paths = [straight, ...(long ? BENDS.map((s) => bent(straight, s, "s")) : [])];
+    const paths = arcsOf(from, to);
     const ws = await windsAlong(env, paths.map((p) => ({ path: p.map((q) => [q[0], q[1]]), start, kmh })));
     const time = (k) => pathKm(paths[k]) / (ws[k].f || 1);
     let pick = 0, why = null;
@@ -95,9 +94,15 @@ export async function planRoute(env, { from, to, weather = true, hop = false, st
     w = ws[pick];
   }
   if (style === "scenic") path = scenic(path);
-  path = throughPasses(path);
-  if (hop || style === "safe") path = hopped(path);
+  path = finish(path, { hop, style });
   return { way: path.slice(1, -1), km: pathKm(path), w };
+}
+// The straight way and, if it's long enough, the gentle arcs either side of it
+export const arcsOf = (from, to) => [[from, to], ...(pathKm([from, to]) >= MIN_BEND_KM ? BENDS.map((s) => bent([from, to], s, "s")) : [])];
+// A way, through the passes, and resting on islands if it hops
+export function finish(path, { hop = false, style = null } = {}) {
+  const through = throughPasses(path);
+  return hop || style === "safe" ? hopped(through) : through;
 }
 
 // Mountain passes: a way over one of the great ranges goes through its best
