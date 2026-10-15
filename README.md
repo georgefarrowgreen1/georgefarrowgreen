@@ -418,7 +418,8 @@ flyovers, the passport and postmarks all simply follow.
   for when it takes off (up to three days ahead); stopovers and group pigeons
   meet the forecast along their way too.
 - *Mountain passes:* where the way goes over high ground (the land's average
-  height every half degree, from open terrain data: `functions/_elevgrid.js`),
+  height every half degree, from the AWS Terrain Tiles: `functions/_elevgrid.js`;
+  credited with the weather and map data in Account → Map & Weather Data),
   it goes through a pass: a known one near the top (`functions/_mountains.js`:
   the Alps, Pyrenees, Himalayas, Rockies, Andes, Caucasus, Norway, the Atlas,
   Japan and more), the one that adds least; else the lowest way across it can

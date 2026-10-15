@@ -1949,3 +1949,8 @@ html.night .nav-ghost .night{background:none}
 .flysheet .cc b{font-size:15px}
 .flysheet .cc small{font-size:12px}
 .flysheet .seg{margin-bottom:10px}
+/* Account: the data credits, under the version */
+.aver .alink{display:block;margin:6px auto 0;padding:4px 8px;border:0;background:none;font:inherit;color:var(--tint);cursor:pointer}
+.gfoot a{color:var(--tint);text-decoration:none}
+a.cell{text-decoration:none;color:inherit}
+a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2px}

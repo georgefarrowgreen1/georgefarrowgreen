@@ -3076,7 +3076,7 @@ function vAccount() {
       ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
       ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
     </div>
-    <p class="aver">InFlight ${APP_VERSION}</p>
+    <p class="aver">InFlight ${APP_VERSION}<button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
 const toggleCell = ({ act, id, icon, tile, label, sub, on, disabled }) => `<button type="button" class="cell has-icon" role="switch" aria-checked="${!!on}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}${disabled ? " disabled" : ""}>
@@ -5013,6 +5013,23 @@ function drawSheet(refresh) {
     case "view":
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
+    case "credits": {
+      // where the weather, the heights and the maps come from, as their licences ask
+      const out = (href, icon, tile, label, sub) => `<a class="cell has-icon" href="${href}" target="_blank" rel="noopener noreferrer"><span class="tile ${tile}">${icon}</span><span class="ctext"><span>${label}</span><span class="csub">${sub}</span></span>${chevSm}</a>`;
+      $layer.innerHTML = sheetHtml("Map & Weather Data", `<div class="ghead">Weather</div>
+        <div class="group">${out("https://open-meteo.com/", I.wind, "blue", "Open-Meteo", "Forecasts and the wind · CC BY 4.0")}
+          ${out("https://api.met.no/", I.sun, "teal", "MET Norway", "When Open-Meteo can’t answer · CC BY 4.0")}</div>
+        <div class="gfoot">Weather data by Open-Meteo.com and MET Norway, used under Creative Commons Attribution 4.0.</div>
+        <div class="ghead">Mountains</div>
+        <div class="group">${out("https://registry.opendata.aws/terrain-tiles/", I.dist, "green", "Terrain Tiles", "Heights for mountain passes · Mapzen and AWS")}</div>
+        <div class="gfoot">Terrain Tiles bring together ETOPO1 and GMTED2010 (US government, public domain), SRTM (NASA), EU-DEM (produced using Copernicus data and information funded by the European Union) and other national elevation data. <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">All the sources</a></div>
+        <div class="ghead">Maps</div>
+        <div class="group">${out("https://www.naturalearthdata.com/", I.globe, "orange", "Natural Earth", "Coastlines, countries and places · public domain")}</div>
+        <div class="ghead">GIFs</div>
+        <div class="group">${out("https://giphy.com/", `<span class="gifico" aria-hidden="true">GIF</span>`, "indigo", "GIPHY", "Search and trending GIFs")}</div>
+        <div class="gfoot">The maps and heights are kept on InFlight’s own server, and it asks for the weather and GIFs itself, so none of these see who you are.</div>`);
+      return;
+    }
     case "appearance":
       $layer.innerHTML = sheetHtml("Appearance", `<div class="group mt-s">
         ${THEMES.map((k) => `<button type="button" class="cell" role="radio" aria-checked="${theme() === k}" data-act="theme" data-id="${esc(k)}"><span class="ctext"><span>${THEME_NAMES[k]}</span></span>${theme() === k ? `<span class="val tick">${I.check}</span>` : ""}</button>`).join("")}
@@ -6184,6 +6201,7 @@ async function onClick1(e, t) {
       const waiting = S.outbox.filter((o) => !o.err).length;
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
     }
+    case "creditsheet": S.sheet = { type: "credits" }; return renderSheet();
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
