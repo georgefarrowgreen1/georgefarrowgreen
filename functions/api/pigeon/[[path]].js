@@ -24,7 +24,7 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
-import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf } from "../../_route.js";
+import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -865,6 +865,27 @@ async function wxPlan({ request, env }) {
   return json({ now: view(now), hours: (fc || []).map((x) => ({ at: x.at, ...view(x) })) });
 }
 
+// How a pigeon would go if it left now, each way it could be sent (How It
+// Flies shows it before you send): for each route style, its way (timed from
+// now), how far, and when it would land. Planned as sending would plan it, so
+// it's what would happen, weather and all, if nothing changes.
+async function routePlan({ request, env }) {
+  const u = await requireUser(request, env), q = new URL(request.url).searchParams, t = Date.now();
+  await limit(env, "routeplan:" + u.id, 60, 60 * 60e3);
+  const other = q.get("with") || "", kind = Object.hasOwn(PIGEONS, q.get("pigeon")) ? q.get("pigeon") : "standard", D = await db(env);
+  if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only plan pigeons to friends.");
+  const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(other).first();
+  if (u.lat == null || r?.lat == null) return json({ plans: null });
+  const speed = PIGEONS[kind].speed * (u.risky ? RISKY_SPEED : 1), from = [u.lat, u.lon], to = [r.lat, r.lon];
+  const plans = {};
+  for (const style of STYLES) {                                    // (the same sky each time: the forecast is kept a while)
+    const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(kind), style: styleOf(style), start: t, kmh: SPEED_KMH * speed });
+    const rest = restOf(plan.way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
+    plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, plan.way, to, t, flight - rest).legs };
+  }
+  return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans });
+}
+
 // A scheduled pigeon that hasn't taken off yet: it never leaves. No one was
 // told about it, so it just goes, and the pigeon goes back in its loft.
 async function cancelScheduled(env, D, u, m, t) {
@@ -1314,7 +1335,7 @@ const ROUTES = {
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "POST block": block, "DELETE block": unblock,
-  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan,
+  "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,

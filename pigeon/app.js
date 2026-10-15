@@ -396,6 +396,30 @@ function restingOn(m, t = now()) {
   const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
   return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || (legs[i][3] === "h" ? "" : "an island"), legs[i + 1][2], legs[i][3]];
 }
+// The way a pigeon would go if it left now (How It Flies), from the server's
+// planner: { key, at, data } for one friend and kind of pigeon, kept 10 minutes.
+const PLAN_KEEP = 10 * MIN;
+function routePlanFor(chat, kind) {
+  const key = chat + ":" + kind, p = S.routePlan;
+  if (p?.key === key && (p.loading || now() - p.at < PLAN_KEEP)) return p.data || null;
+  S.routePlan = { key, at: now(), loading: true, data: p?.key === key ? p.data : null };
+  api(`route-plan?with=${encodeURIComponent(chat)}&pigeon=${encodeURIComponent(kind)}`).then((d) => {
+    if (S.routePlan?.key !== key) return;
+    S.routePlan = { key, at: now(), data: d.plans ? d : null };
+    if (["flysheet", "routesheet"].includes(S.sheet?.type)) renderSheet();
+  }).catch(() => { if (S.routePlan?.key === key) S.routePlan = { key, at: now() - PLAN_KEEP + MIN, data: null }; });
+  return S.routePlan.data;
+}
+// The way in a few words: "through the Simplon Pass · around storms over France"
+function wayWords(legs) {
+  const said = [];
+  for (const l of legs || []) {
+    const n = l[4], say = { s: `around storms${n ? ` over ${n}` : ""}`, w: "riding the wind", i: `resting on ${n || "an island"}`, v: `past ${n || "a landmark"}`,
+      p: `through ${!n ? "a pass" : /^a |^[A-Z][\w’']*['’]s /.test(n) ? n : `the ${n}`}` }[l[3]];
+    if (say && !said.includes(say)) said.push(say);
+  }
+  return said.length ? said.slice(0, 3).join(" · ") : "the straight way";
+}
 function routeNote(m) {
   const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c"); if (!legs.length || m.lost) return null;
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
@@ -4330,12 +4354,12 @@ function drawSheet(refresh) {
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
     case "map":
-      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
+      if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : s.id === "preview" ? "The Way" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button><button type="button" class="layerbtn" data-act="maplayers" aria-pressed="${windOn()}" aria-label="Wind map">${I.layers}</button></div>
         <div class="windkey glass"${windOn() ? "" : " hidden"}><b>Wind</b><i></i><span><small>0</small><small>10</small><small>20</small><small>30+ mph</small></span></div>
         <div class="rainkey glass" hidden><b>Rain</b><i></i><span><small>Light</small><small>Heavy</small><small>Extreme</small></span></div>
         <div class="windtip" hidden></div><div class="birdtip glass" hidden></div>
-        <div class="mapcard"></div>`, { flush: true });
+        <div class="mapcard"></div>`, { flush: true, ...(s.id === "preview" ? { left: { label: "Back", act: "flysheet" } } : {}) });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
       return tickMap();
     case "shareflight": {
@@ -4597,6 +4621,12 @@ function drawSheet(refresh) {
         if (wx) opts.push(cell({ icon: I.wind, tile: "gray", label: "Weather", val: adv?.early ? `${esc(fmtDur(adv.early))} early` : adv?.late ? `${esc(fmtDur(adv.late))} late` : "Clear" }));
       }
       if (!via) { const r = ROUTES.find((x) => x[0] === routeStyle()); opts.push(cell({ act: "routesheet", icon: r[3], tile: r[4], label: "Route", val: r[1], chev: true })); }
+      // the way it would go, if it left now
+      if (!g && !via && !sched && kind && kind !== "mystery" && f.lat != null && S.me.lat != null) {
+        const plan = routePlanFor(f.id, kind)?.plans?.[routeStyle()];
+        opts.push(cell({ act: plan ? "routepreview" : null, icon: I.map, tile: "green", label: "See the Way", chev: !!plan,
+          sub: plan ? esc(`${wayWords(plan.legs)} · lands ${atTime(plan.deliverAt)}`) : "Looking at the sky ahead…" }));
+      }
       if (S.birds.length || S.hall.length) opts.push(cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true }));
       const to = g ? `To ${esc(g.name)} · ${others(g).length + 1} people` : `To ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(chatKm(f))}` : ""}`;
       $layer.innerHTML = sheetHtml("How It Flies", `<p class="flyto">${to}</p><div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}
@@ -4606,9 +4636,10 @@ function drawSheet(refresh) {
       return;
     }
     case "routesheet": {
-      const cur = routeStyle();
+      const cur = routeStyle(), c = s.chat === S.chat ? composeState() : null;
+      const plans = c && !c.g && c.kind && c.kind !== "mystery" && c.f?.lat != null ? routePlanFor(c.f.id, c.kind)?.plans : null;
       const rows = ROUTES.map(([k, name, sub, icon, tile]) => `<button type="button" class="cell kc has-icon" role="radio" aria-checked="${k === cur}" data-act="routepick" data-id="${k}">
-        <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span><span class="ck" aria-hidden="true">${I.check}</span></button>`).join("");
+        <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span>${plans?.[k] ? `<span class="val">${esc(atTime(plans[k].deliverAt))}</span>` : ""}<span class="ck" aria-hidden="true">${I.check}</span></button>`).join("");
       $layer.innerHTML = sheetHtml("Route", `<div class="group kinds mt-s" role="radiogroup" aria-label="Route">${rows}</div>
         <div class="gfoot">Every pigeon goes through mountain passes, and standard pigeons rest on islands across long seas, whichever you pick. The map shows the way it takes.</div>`,
         { left: { label: "Back", act: "flysheet" } });
@@ -4843,9 +4874,22 @@ function drawSheet(refresh) {
       return;
   }
 }
+// The way it would go, before you send: the map, with a card saying so
+function tickPreview(card, cv) {
+  const m = S.preview; if (!m || !card || !cv) return;
+  const name = ROUTES.find((x) => x[0] === m.style)?.[1] || "Fastest";
+  const html = `<span class="big">${pgm(m)}<span>If It Left Now</span></span>
+    <span class="speed">The ${esc(name.toLowerCase())} way · lands ${esc(atTime(m.deliverAt))}</span>
+    <span class="waynote">${I.map}${esc(wayWords(m.legs).replace(/^./, (c) => c.toUpperCase()))}</span>
+    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}</span></span>`;
+  let body = $(".mcb", card); if (!body) { card.innerHTML = `<div class="mcb"></div>`; body = $(".mcb", card); }
+  if (body._html !== html) { body.innerHTML = html; body._html = html; }
+  drawMap(cv, { ...m, sentAt: now(), deliverAt: now() + (m.deliverAt - m.sentAt), legs: (m.legs || []).map((l) => [l[0], l[1], l[2] + (now() - m.sentAt), ...l.slice(3)]) }, card.offsetHeight + 14);
+}
 function tickMap() {
   const s = S.sheet; if (!s || s.type !== "map") return;
   if (s.id === "skies") return tickSkies($(".mapcard", $layer), $(".map", $layer));
+  if (s.id === "preview") return tickPreview($(".mapcard", $layer), $(".map", $layer));
   const m = (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   if (!m || !card || !(m.route || m.flock)) return;
@@ -5641,6 +5685,13 @@ async function onClick1(e, t) {
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
     case "routesheet": S.sheet = { type: "routesheet", chat: S.chat }; return renderSheet();
+    case "routepreview": {
+      const d = S.routePlan?.data, style = routeStyle(), plan = d?.plans?.[style]; if (!plan) return;
+      // the flight it would be, drawn on the map as if it were in the air
+      S.preview = { id: "preview", preview: true, style, from: S.me.id, to: S.chat, pigeon: d.pigeon, skin: S.me.skin, route: [...d.from, ...d.to], legs: plan.legs, km: plan.km,
+        sentAt: d.at, deliverAt: plan.deliverAt, fromPlace: d.fromPlace, toPlace: d.toPlace, flying: true, wind: plan.wind };
+      S.sheet = { type: "map", id: "preview" }; return renderSheet();
+    }
     case "routepick": try { localStorage.setItem("inflight-route", id); } catch (_) {} haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);

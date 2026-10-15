@@ -260,7 +260,9 @@ land as the hint, and send (a microphone while it's empty). A line appears
 above it only when something stops a pigeon flying. How It Flies (tap the
 pigeon) has the kinds, with how many you have, how long each takes and why one
 can't fly; which named pigeon carries it; When It Lands; Stop Over; the weather;
-the Route; and whether Pigeon Death is on.
+the Route (each style with when it would land); See the Way (the way it would
+go if it left now, in a few words and on the map: `GET route-plan`, planned
+just as sending would); and whether Pigeon Death is on.
 
 **Scheduled pigeons.** In a one-to-one chat, How It Flies → When It Lands:
 pick when it should *land* (this evening, tomorrow morning, or any time in
