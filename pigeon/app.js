@@ -4920,7 +4920,7 @@ function tickMap() {
   const m = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
   const card = $(".mapcard", $layer), cv = $(".map", $layer);
   // only one pigeon's own card folds (The Skies, a group's flights and the way before you send keep theirs)
-  if (card?.classList.contains("fc") && (!m || m.flock)) { card.classList.remove("fc", "fold", "swap"); $(".fcfold", card)?.remove(); const b = $(".mcb", card); if (b) b._html = ""; }
+  if (card?.classList.contains("fc") && (!m || m.flock)) { card.classList.remove("fc", "fold", "swap"); $(".fcfold", card)?.remove(); const b = $(".mcb", card); if (b) b._html = ""; fcAside(card); }
   if (s.id === "skies") return tickSkies(card, cv);
   if (s.id === "preview") return tickPreview(card, cv);
   if (!m || !card || !(m.route || m.flock)) return;
@@ -4942,44 +4942,92 @@ function tickMap() {
    Folded, a slim bar over the map: how long it has left, where it is, and a
    cheer. Pulled up, the flight as a timeline: where it took off, what it does
    on the way (storms, wind, islands, passes, landmarks), where it is now, and
-   where it lands. Tap or swipe the bar to switch; this phone keeps your choice. */
+   where it lands. Tap or swipe the bar to switch; this phone keeps your choice.
+   It springs between the two while the map re-fits around it, the rows rise
+   in one after another, and the map's buttons step aside while it's up. */
 const mapOpen = () => { try { return localStorage.getItem("inflight-mapcard") === "open"; } catch (_) { return false; } };
 function mapFold(open) {
   try { localStorage.setItem("inflight-mapcard", open ? "open" : "fold"); } catch (_) {}
   const card = $(".mapcard.fc", $layer); if (!card) return;
   haptic("tick"); card._tl = 0;
-  // (the new side fades in once; the once-a-second redraws don't replay it)
-  card.classList.add("swap"); clearTimeout(card._sw); card._sw = setTimeout(() => card.classList.remove("swap"), 320);
+  const h0 = card.offsetHeight;
+  // (the new side plays in once; the once-a-second redraws don't replay it)
+  card.classList.remove("swap", "morph"); card.style.height = ""; void card.offsetWidth;
+  card.classList.add("swap"); clearTimeout(card._sw);
   tickMap();
+  const done = () => { card.classList.remove("swap", "morph"); card.style.height = ""; };
+  if (STILL.matches) { card._sw = setTimeout(done, 50); return; }
+  // its height springs from the old to the new, and the map follows it
+  const h1 = card.offsetHeight;
+  card.style.height = h0 + "px"; void card.offsetHeight;
+  card.classList.add("morph"); card.style.height = h1 + "px";
+  fcFollow(card, 650);
+  card._sw = setTimeout(done, 760);
 }
-// swipe the card up to open it, down to fold it (not while scrolling the timeline)
+// keep the map fitted above the card while it changes size
+function fcFollow(card, ms) {
+  const cv = $(".map", $layer), end = performance.now() + ms;
+  cancelAnimationFrame(fcFollow.raf);
+  const step = () => {
+    if (!cv?._m || !card.isConnected || S.sheet?.type !== "map") return;
+    drawMap(cv, cv._m, card.offsetHeight + 14); fcAside(card);
+    if (performance.now() < end) fcFollow.raf = requestAnimationFrame(step);
+  };
+  fcFollow.raf = requestAnimationFrame(step);
+}
+// the map's buttons and keys step aside when the card comes up over them (and back when it folds)
+function fcAside(card) {
+  const top = card?.classList.contains("fc") ? card.offsetTop : Infinity;
+  for (const el of $layer.querySelectorAll(".mapctl, .windkey, .rainkey")) {
+    const under = top < el.offsetTop + el.offsetHeight + 10;
+    if (el.classList.contains("fcaside") !== under) { el.classList.toggle("fcaside", under); if (el.matches(".mapctl")) el.inert = under; }
+  }
+}
+// drag the card: it follows your finger (stiffly the wrong way), and past a
+// little way it opens or folds; let go short of that and it springs back
 function fcDrag(card) {
   let st = null;
   card.addEventListener("touchstart", (e) => {
     const tl = e.target.closest(".fctl");
-    st = e.touches.length === 1 && !(tl && tl.scrollHeight > tl.clientHeight + 1) ? { y: e.touches[0].clientY, x: e.touches[0].clientX } : null;
+    st = card.classList.contains("fc") && e.touches.length === 1 && !(tl && tl.scrollHeight > tl.clientHeight + 1)
+      ? { y: e.touches[0].clientY, x: e.touches[0].clientX, t: performance.now(), v: 0, dy: 0, dir: null } : null;
   }, { passive: true });
-  card.addEventListener("touchend", (e) => {
-    if (!st || !card.classList.contains("fc")) return;
-    const t = e.changedTouches[0], dy = t.clientY - st.y, dx = t.clientX - st.x; st = null;
-    if (Math.abs(dy) < 28 || Math.abs(dx) > Math.abs(dy)) return;
+  card.addEventListener("touchmove", (e) => {
+    if (!st) return;
+    const t = e.touches[0], dy = t.clientY - st.y, dx = t.clientX - st.x;
+    if (!st.dir) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dx) > Math.abs(dy)) { st = null; return; }
+      st.dir = "y"; card.classList.add("drag");
+    }
+    e.preventDefault();
+    const now = performance.now(); st.v = (dy - st.dy) / Math.max(1, now - st.t); st.t = now; st.dy = dy;
+    const open = !card.classList.contains("fold"), way = open ? dy > 0 : dy < 0;
+    card.style.transform = `translateY(${(way ? dy * 0.5 : dy * 0.15).toFixed(1)}px)`;
+  }, { passive: false });
+  const end = () => {
+    if (!st?.dir) { st = null; return; }
+    const s = st; st = null;
+    card.classList.remove("drag"); card.style.transform = "";
     const open = !card.classList.contains("fold");
-    if (dy < 0 && !open) mapFold(true); else if (dy > 0 && open) mapFold(false);
-  }, { passive: true });
+    if (open ? s.dy > 60 || (s.dy > 20 && s.v > 0.5) : s.dy < -30 || (s.dy < -10 && s.v < -0.4)) mapFold(!open);
+  };
+  card.addEventListener("touchend", end); card.addEventListener("touchcancel", end);
 }
 const passName = (n) => (!n ? "a pass" : /^a |^[A-Z][\w’']*['’]s /.test(n) ? n : `the ${n}`);
 // what happens on the way, in time order: [{ at, icon, tone, title, sub, until }]
 function fcEvents(m, t) {
-  const ev = [], legs = m.legs || [], tagged = legs.filter((l) => l[3] && l[3] !== "c");
+  const ev = [], legs = m.legs || [], tagged = legs.filter((l) => l[3] && l[3] !== "c"), once = new Set();
   for (let i = 0; i < tagged.length; i++) {
-    const l = tagged[i], [tag, n, at] = [l[3], l[4], l[2]], done = at <= t, prev = ev.at(-1);
+    const l = tagged[i], [tag, n, at] = [l[3], l[4], l[2]], done = at <= t;
     if ((tag === "i" || tag === "h") && tagged[i + 1]?.[3] === tag && tagged[i + 1][0] === l[0]) {
       const until = tagged[i + 1][2], over = until <= t;
       ev.push(tag === "h" ? { at, until, icon: I.storm, tone: "warn", title: `${over ? "Sheltered" : done ? "Sheltering" : "Shelters"} from storms${n ? ` ${n}` : ""}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` }
         : { at, until, icon: I.bird, tone: "teal", title: `${over ? "Rested" : done ? "Resting" : "Rests"} on ${n || "an island"}`, sub: `${over ? "Until" : "Until about"} ${clockIn(until, MY_TZ)}` });
       i++; continue;
     }
-    if (prev?.tag === tag && tag !== "v" && tag !== "p") continue;        // one line for a run of bends around the same storms
+    // storms and wind once each: the first place it meets them (it may bend around them, or ride the wind, several times)
+    if (tag === "s" || tag === "w") { if (once.has(tag + (tag === "s" ? done : ""))) continue; once.add(tag + (tag === "s" ? done : "")); }
     const say = {
       s: [I.storm, "warn", `${done ? "Went" : "Goes"} around storms${n ? ` over ${n}` : ""}`, ""],
       w: [I.wind, "green", done ? "Rode the wind" : "Rides the wind", "A longer way, but quicker"],
@@ -4997,6 +5045,11 @@ function fcEvents(m, t) {
   for (const n of m.near || []) ev.push({ at: n.at, icon: I.pass, tone: "orange", title: momentText(m, n, S.chat), cls: "moment" });
   return ev.sort((a, b) => a.at - b.at);
 }
+// a row's time: "14:02", or "Mon" under it on another day ("~" when it's still to come)
+function fcAt(ts, soon) {
+  const c = clockIn(ts, MY_TZ), [, day, hm] = /^(?:(\S+) )?(\d\d:\d\d)$/.exec(c) || [, "", c];
+  return `${soon ? "~" : ""}${hm}${day ? `<small>${day}</small>` : ""}`;
+}
 function fcRow(r) {
   return `<li class="${r.cls || ""}${r.done ? " done" : ""}${r.flown ? " flown" : ""}${r.now ? " now" : ""}">
     <span class="fcat">${r.now ? "Now" : r.time}</span>
@@ -5006,7 +5059,9 @@ function fcRow(r) {
 function flightCard(card, m) {
   const open = mapOpen(), t = m.lost ? m.lostAt : now(), left = m.deliverAt - now(), f = flightAt(m, t), k = kindOf(m);
   const landed = !m.lost && left <= 0, resting = restingOn(m), flew = m.deliverAt - m.sentAt, note = routeNote(m), wx = wxSay(m);
-  card.classList.add("fc"); card.classList.toggle("fold", !open);
+  // the first time: it rises in a beat after the sheet
+  if (!card.classList.contains("fc")) { card.classList.add("fc", "enter"); setTimeout(() => card.classList.remove("enter"), 900); }
+  card.classList.toggle("fold", !open);
   if (!$(".fcfold", card)) card.insertAdjacentHTML("afterbegin", `<button type="button" class="fcfold" data-act="mapfold"><i></i></button>`);
   const fold = $(".fcfold", card), label = open ? "Fold the card away" : "Show the flight’s details";
   if (fold.getAttribute("aria-label") !== label) { fold.setAttribute("aria-label", label); fold.setAttribute("aria-expanded", String(open)); }
@@ -5025,8 +5080,8 @@ function flightCard(card, m) {
       : f.phase === "up" ? ["ok", "Taking Off"] : f.phase === "down" ? ["ok", "Landing"] : ["tint", "In Flight"];
     const head = m.lost ? `${from} → ${to}` : landed ? `in ${to} · ${esc(fmtShort(m.deliverAt))}` : `to ${to} · <span class="lands">${lands}</span>`;
     // the rows: took off, what happens on the way, now, lands
-    const rows = [{ at: m.sentAt, time: clockIn(m.sentAt, MY_TZ), dot: "end", title: `Took off from ${from}`, sub: `${fmtMiles(m.km)}${m.style ? ` · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || m.style).toLowerCase())} way` : ""}` }];
-    for (const e of fcEvents(m, t)) rows.push({ ...e, time: `${e.at > t ? "~" : ""}${clockIn(e.at, MY_TZ)}`, title: esc(e.title), sub: esc(e.sub || ""), now: !!(resting && e.until && e.at <= t && t < e.until) });
+    const rows = [{ at: m.sentAt, time: fcAt(m.sentAt), dot: "end", title: `Took off from ${from}`, sub: `${fmtMiles(m.km)}${m.style ? ` · the ${esc((ROUTES.find((x) => x[0] === m.style)?.[1] || m.style).toLowerCase())} way` : ""}` }];
+    for (const e of fcEvents(m, t)) rows.push({ ...e, time: fcAt(e.at, e.at > t), title: esc(e.title), sub: esc(e.sub || ""), now: !!(resting && e.until && e.at <= t && t < e.until) });
     const chips = [];
     if (!resting) chips.push(`<span class="fcchip speed">${esc(fmtMph(f.kmh))}</span>`);
     if (wx && !landed) chips.push(`<span class="fcchip wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>`);
@@ -5040,34 +5095,45 @@ function flightCard(card, m) {
       if (nr) Object.assign(nr, { coin, extra });
       else rows.push({ at: t, now: true, coin, title: where ? `<span class="over">Over ${where}</span>` : esc(note?.text || "On its way"), extra });
     }
-    if (m.lost) rows.push({ at: t, time: clockIn(t, MY_TZ), dot: "ev", tone: "red", icon: I.skull, title: "Lost on the way", sub: m.risky ? "Pigeon Death was on" : "" });
-    else rows.push({ at: m.deliverAt, time: clockIn(m.deliverAt, MY_TZ), dot: "end", title: `${landed ? "Landed" : "Lands"} in ${to}`,
+    if (m.lost) rows.push({ at: t, time: fcAt(t), dot: "ev", tone: "red", icon: I.skull, title: "Lost on the way", sub: m.risky ? "Pigeon Death was on" : "" });
+    else rows.push({ at: m.deliverAt, time: fcAt(m.deliverAt), dot: "end", title: `${landed ? "Landed" : "Lands"} in ${to}`,
       sub: landed ? `Flew ${esc(fmtDur(flew))} · averaged ${esc(fmtMph(m.km / (flew / HOUR)))}` : "", extra: landed && wx ? `<span class="wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>` : "" });
     rows.sort((a, b) => a.at - b.at || (a.now ? 1 : 0) - (b.now ? 1 : 0));
     rows.forEach((r, i) => { r.done = r.at <= t && !r.now; r.flown = !!rows[i + 1] && rows[i + 1].at <= t; });
     // anything else worth a line: who it flew over, cheers, the weather watch
     const notes = [flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : "",
       m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : "",
-      !m.lost && left > LIVE_LEFT ? `<span class="checked">Watching the weather ahead · checked ${m.liveAt ? agoText(m.liveAt) : "at take-off"}</span>` : ""].join("");
+      !m.lost && left > LIVE_LEFT ? `<span class="checked">${I.eye}Watching the weather ahead · checked ${m.liveAt ? agoText(m.liveAt) : "at take‑off"}</span>` : ""].join("");
+    // who carries it (a named pigeon), or what kind of pigeon it is; and how it flies
     const b = m.bird, mine = b && m.from === S.me.id && b.id ? [...S.birds, ...S.hall].find((x) => x.id === b.id) : null;
-    const tags = [k !== "standard" ? `<span class="fcchip k-${k}">${esc(KIND[k]?.name || k)}</span>` : "",
+    const tags = [b && k !== "standard" ? `<span class="fcchip k-${k}">${esc(KIND[k]?.name || k)}</span>` : "",
       m.style && m.style !== "fastest" ? `<span class="fcchip sty">${esc(ROUTES.find((x) => x[0] === m.style)?.[1] || m.style)}</span>` : "",
       m.risky ? `<span class="fcchip risk">1.25×</span>` : ""].join("");
-    const who = b ? `<span class="fcwho"><span class="fcav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span class="fct"><span class="birdline">Carried by ${esc(b.name)}${esc(wearWord(b.wear))}</span><span class="fcs">${esc(b.up || b.rank)}${mine?.km >= 1 ? ` · ${fmtMiles(mine.km)} in all` : ""}</span></span>${tags ? `<span class="fctags">${tags}</span>` : ""}</span>`
-      : tags ? `<span class="fcwho"><span class="fctags">${tags}</span></span>` : "";
-    html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">${big}</span><span class="fcs">${head}</span></span>${pill ? `<span class="fcpill ${pill[0]}">${pill[1]}</span>` : ""}</span>
-      <ol class="fctl" aria-label="The flight, start to finish">${rows.map(fcRow).join("")}</ol>${notes ? `<span class="fcnotes">${notes}</span>` : ""}${who}`;
+    const who = b ? `<span class="fcav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span class="fct"><span class="birdline">Carried by ${esc(b.name)}${esc(wearWord(b.wear))}</span><span class="fcs">${esc(b.up || b.rank)}${mine?.km >= 1 ? ` · ${fmtMiles(mine.km)} in all` : ""}</span></span>`
+      : `<span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${m.mystery ? "A mystery pigeon" : `${/^[AEIOU]/.test(KIND[k]?.name || "") ? "An" : "A"} ${esc((KIND[k]?.name || "standard").toLowerCase())} pigeon`}</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>`;
+    html = `<span class="fchead" data-act="mapfold"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">${big}</span><span class="fcs">${head}</span></span>${pill ? `<span class="fcpill ${pill[0]}">${pill[1]}</span>` : ""}</span>
+      <ol class="fctl" aria-label="The flight, start to finish">${rows.map(fcRow).join("")}</ol>${notes ? `<span class="fcnotes">${notes}</span>` : ""}<span class="fcwho">${who}${tags ? `<span class="fctags">${tags}</span>` : ""}</span>`;
   }
   const body = $(".mcb", card);
   if (body._html !== html) {
     const tl = $(".fctl", card), top = tl ? tl.scrollTop : 0;
     body.innerHTML = html; body._html = html;
-    // the timeline keeps its place; opened, it starts with now in view
+    // the timeline keeps its place; opened, it starts at now (with a little of what came before)
     const tl2 = $(".fctl", card), nr = tl2 && $(".now", tl2);
-    if (tl2 && card._tl) tl2.scrollTop = top;
-    else if (tl2) { card._tl = 1; if (nr) tl2.scrollTop = Math.max(0, nr.offsetTop - tl2.clientHeight / 3); }
+    if (tl2) {
+      [...tl2.children].forEach((li, i) => li.style.setProperty("--i", i));        // (each row a beat after the last, as they rise in)
+      if (card._tl) tl2.scrollTop = top;
+      else { card._tl = 1; if (nr) tl2.scrollTop = Math.max(0, nr.offsetTop - 22); }
+      fcFades(tl2); if (!tl2._f) { tl2._f = 1; tl2.addEventListener("scroll", () => fcFades(tl2), { passive: true }); }
+    }
   }
   const bar = $(".fcbar i", card); if (bar) bar.style.width = (f.frac * 100).toFixed(2) + "%";
+  fcAside(card);
+}
+// the timeline fades out at an edge with more to scroll to
+function fcFades(tl) {
+  const up = tl.scrollTop > 2, down = tl.scrollTop + tl.clientHeight < tl.scrollHeight - 2;
+  tl.classList.toggle("more-up", up); tl.classList.toggle("more-down", down);
 }
 /* ---------- In the air: every pigeon flying to or from you, at the top of Messages ----------
    One element that outlives re-renders (the list is redrawn on every sync), so
