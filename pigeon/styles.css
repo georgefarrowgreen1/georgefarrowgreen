@@ -1692,11 +1692,11 @@ html.night .nav-ghost .night{background:none}
 .mapcard.fc .big small{font-size:15px;font-weight:500;color:var(--label-2)}
 .mapcard.fc .fchead .big{font-size:28px;letter-spacing:-.5px}
 /* folded */
-.fcpeek{display:flex;align-items:center;gap:12px;padding-right:52px;min-height:44px;margin-top:6px}
+.fcpeek{display:flex;align-items:center;gap:12px;padding-right:52px;min-height:48px;margin-top:10px}
 .fcbar{position:relative;display:block;height:4px;border-radius:2px;background:var(--fill-2);overflow:hidden}
 .fcbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--k,var(--tint));transition:width .9s var(--smooth)}
 .fcbar.lost i{background:var(--red)}
-.mapcard.fc.fold .cheerbtn,.mapcard.fc.fold .shareflight{position:absolute;z-index:2;top:22px;right:14px;width:44px;height:44px;min-height:0;margin:0;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--tint-fill);color:#fff}
+.mapcard.fc.fold .cheerbtn,.mapcard.fc.fold .shareflight{position:absolute;z-index:2;top:18px;right:14px;width:44px;height:44px;min-height:0;margin:0;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--tint-fill);color:#fff}
 .mapcard.fc.fold .cheerbtn .ico,.mapcard.fc.fold .shareflight .ico{color:#fff;margin:0;font-size:20px}
 .mapcard.fc.fold .cheerbtn span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .mapcard.fc.fold .shareflight{font-size:0}
