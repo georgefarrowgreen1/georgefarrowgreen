@@ -16,6 +16,8 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
+import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5 } from "./_route.js";
+import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
@@ -450,15 +452,16 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     const nf = !friends.has(d0.sender), d = nf ? { ...d0, from_lat: coarse(d0.from_lat), from_lon: coarse(d0.from_lon) } : d0;
     const pp = nf ? { ...p, lat: coarse(p.lat), lon: coarse(p.lon) } : p;
     if (haversineKm(d.to_lat, d.to_lon, pp.lat, pp.lon) <= REROUTE_KM) continue;
-    const turned = legs.filter((l) => l[3] !== "c").at(-1);
+    const turned = turnsOf(legs).at(-1);                             // (planned bends and cheers aren't turns)
     if (turned && t - turned[2] < TURN_EVERY) continue;
-    const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [d.from_lat, d.from_lon, d.sent_at];
-    const f = Math.min(1, Math.max(0, (t - sAt) / (d.deliver_at - sAt)));
-    const [pLat, pLon] = gcPoint(sLat, sLon, d.to_lat, d.to_lon, f);
-    const ahead = haversineKm(pLat, pLon, pp.lat, pp.lon), speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
-    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed, t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed));
-    const km = Math.max(0, d.km - haversineKm(pLat, pLon, d.to_lat, d.to_lon)) + ahead;
-    legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
+    const [pLat, pLon] = posAt(stopsOf(d), t);                          // where it is now, on the way it was going
+    const done = passed(legs, t), flown = pathKm([[d.from_lat, d.from_lon], ...done, [pLat, pLon]]);
+    const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false }), ahead = plan.km, rest = restOf(plan.way);
+    const speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
+    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed, t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed + rest));
+    const km = flown + ahead;
+    legs.length = 0;
+    legs.push(...done, [round5(pLat), round5(pLon), t], ...timeWay([pLat, pLon], plan.way, [pp.lat, pp.lon], t, deliver - t - rest).legs);
     const lostAt = d.lost_at == null ? null : d.lost_at < deliver ? d.lost_at : t + (deliver - t) / 2;
     const r = await D.prepare(`UPDATE pg_gdeliv SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ? WHERE msg_id = ? AND user_id = ? AND deliver_at > ?`)
       .bind(pp.lat, pp.lon, pp.place, deliver, km, JSON.stringify(legs), lostAt, d.msg_id, u.id, t).run();

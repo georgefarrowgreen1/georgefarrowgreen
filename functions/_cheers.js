@@ -9,6 +9,7 @@
    (all they can see). Whoever's on the other end is told. */
 import { MIN, HOUR, PHOTO_TTL, HttpError, json, db, body, limit, requireUser, UUID_RE } from "./_pigeon.js";
 import { posAt, renear } from "./_moments.js";
+import { squeeze, passed } from "./_route.js";
 import { cheeredNote } from "./_notify.js";
 import { refly, reflyGroup } from "./_flyover.js";
 
@@ -22,7 +23,8 @@ function plan(start, row, t) {
   const stops = [start, ...legs, [row.to_lat, row.to_lon, row.deliver_at]];
   const left = row.deliver_at - t, cut = Math.round(Math.min(left * CHEER_CUT, CHEER_MOST)), deliver = row.deliver_at - cut;
   const [lat, lon] = posAt(stops, t);
-  legs.push([Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5, t, "c"]);
+  // where it is now becomes a point on its way; the points still ahead (a planned bend, a rest) keep their places, sooner
+  legs = [...passed(legs, t), [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5, t, "c"], ...squeeze(legs, t, row.deliver_at, deliver).filter((l) => l[2] > t)];
   // a doomed pigeon is still lost the same share of the way along
   const lostAt = row.lost_at == null || row.lost_at <= t ? row.lost_at : Math.round(t + ((row.lost_at - t) * (deliver - t)) / left);
   return { cut, deliver, legs: JSON.stringify(legs), lostAt };

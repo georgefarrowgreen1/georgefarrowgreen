@@ -386,6 +386,24 @@ const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // The route, as points along the great circle (longitudes unwrapped so it never jumps the date line).
 // The route as points along great circles, each with the time the pigeon is
 // there. A pigeon that changed course (its friend moved) flies several legs.
+// What its planned way is doing about now: going around storms, riding the wind,
+// resting on an island, through a pass, past a landmark (see functions/_route.js)
+function routeNote(m) {
+  const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c"); if (!legs.length || m.lost) return null;
+  const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
+  const rest = legs.find((l, i) => l[3] === "i" && legs[i + 1]?.[3] === "i" && legs[i + 1][0] === l[0] && t >= l[2] && t < legs[i + 1][2]);
+  if (rest && !landed) { const until = legs[legs.indexOf(rest) + 1][2]; return { icon: I.bird, text: `Resting on ${rest[4] || "an island"} until ${fmtTime(until)}` }; }
+  const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
+  const ahead = !landed && l === next, name = l[4];
+  const say = {
+    s: [I.storm, ahead ? `Going around storms${name ? ` over ${name}` : ""}` : `Went around storms${name ? ` over ${name}` : ""}`],
+    w: [I.wind, ahead ? "Riding the wind: a longer way, but quicker" : "Rode the wind: a longer way, but quicker"],
+    i: [I.bird, ahead ? `Resting on ${name || "an island"} on the way` : `Rested on ${name || "an island"}`],
+    p: [I.map, ahead ? `Through the ${name || "pass"}` : `Came through the ${name || "pass"}`],
+    v: [I.loc, ahead ? `The scenic way, past ${name || "a landmark"}` : `Came the scenic way, past ${name || "a landmark"}`],
+  }[l[3]];
+  return say ? { icon: say[0], text: say[1] } : null;
+}
 function routePts(m) {
   const stops = [[m.route[0], m.route[1], m.sentAt], ...(m.legs || []), [m.route[2], m.route[3], m.deliverAt]];
   const pts = []; let prev = null;
@@ -396,7 +414,7 @@ function routePts(m) {
       if (prev != null) { while (p.lon - prev > 180) p.lon -= 360; while (p.lon - prev < -180) p.lon += 360; }   // never jump the date line
       prev = p.lon; pts.push({ x: p.lon, y: mercY(p.lat), t: aT + (bT - aT) * j / n });
     }
-    if (i < stops.length - 2) pts[pts.length - 1].turn = stops[i + 1][3] !== "c";     // (cheered on: faster from here, not a turn)
+    if (i < stops.length - 2) pts[pts.length - 1].turn = !stops[i + 1][3];     // (only where it turned for someone moving: planned bends, rests and cheers aren't turns)
   }
   return pts;
 }
@@ -3607,7 +3625,7 @@ function flySub(m) {
   const k = kindOf(m), c = m.flock ? flockCount(m) : null, bits = [m.bird ? m.bird.name : "", m.mystery ? `Mystery: ${KIND[k].name.toLowerCase()}` : KIND[k].name];
   bits.push(c ? `${c.landed} of ${c.n} landed` : `lands ${atTime(m.deliverAt)}`);
   if (m.via) bits.push(`via ${first(friend(m.via)?.name || "a friend")}`);
-  if ((m.legs || []).filter((l) => l[3] !== "c").length > (m.via ? 2 : 0)) bits.push("changed course");
+  if ((m.legs || []).filter((l) => !l[3]).length > (m.via ? 2 : 0)) bits.push("changed course");
   if (m.cheers) bits.push(`cheered on ×${m.cheers}`);
   const w = wxSay(m, true) || (windWord(m.wind) && windWord(m.wind) !== "calm" ? windWord(m.wind) : "");
   if (w) bits.push(w);
@@ -4816,6 +4834,7 @@ function tickMap() {
     ${speed ? `<span class="speed">${speed}</span>` : ""}
     ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${birdLine(m)}
+    ${routeNote(m) ? `<span class="waynote">${routeNote(m).icon}${esc(routeNote(m).text)}</span>` : ""}
     ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}
     ${flyText(m) ? `<span class="flyover">${I.wave}${esc(flyText(m))}</span>` : ""}
     ${m.cheers ? `<span class="cheers">${I.wind}Cheered on ${m.cheers === 1 ? "once" : m.cheers + " times"} · ${esc(soonerText(m.cheerMs))} sooner</span>` : ""}

@@ -1660,3 +1660,6 @@ html.night .nav-ghost .night{background:none}
 .bootfail p{margin:0 0 12px;color:var(--label-2);font-size:16px;line-height:21px;max-width:34ch}
 .bootfail .btn{max-width:360px}
 .sheet header h2:focus{outline:none}
+/* the map card: what its planned way is doing (around storms, riding the wind, resting, a pass, a landmark) */
+.mapcard .waynote{display:flex;align-items:center;justify-content:center;gap:5px;font-size:13px;font-weight:600;color:var(--label-2);text-align:center}
+.mapcard .waynote .ico{font-size:14px;flex:none}

@@ -13,7 +13,7 @@ import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
 import { WINDMAP_ROUTES } from "../../_windmap.js";
-import { findNear, dropNear, renear, nearViews } from "../../_moments.js";
+import { findNear, dropNear, renear, nearViews, stopsOf, posAt } from "../../_moments.js";
 import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
@@ -24,6 +24,7 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
+import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5 } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -233,26 +234,28 @@ async function reroute(env, u, p, t, waitUntil) {
     }
     // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
     if (t < m.sent_at) {
-      const km = haversineKm(m.from_lat, m.from_lon, p.lat, p.lon), flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m)));
+      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false }), rest = restOf(plan.way);
+      const km = plan.km, flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m))) + rest;
       const off = Math.max(t, m.deliver_at - flight), deliver = off + flight;
+      const way = plan.way.length ? JSON.stringify(timeWay([m.from_lat, m.from_lon], plan.way, [p.lat, p.lon], off, flight - rest).legs) : null;
       const lostAt = m.lost_at == null ? null : Math.round(off + ((m.lost_at - m.sent_at) / (m.deliver_at - m.sent_at)) * flight);
-      await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, km = ?, sent_at = ?, deliver_at = ?, lost_at = ?,
+      await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, km = ?, sent_at = ?, deliver_at = ?, lost_at = ?, legs = ?,
         expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND sent_at > ?`)
-        .bind(p.lat, p.lon, p.place, km, off, deliver, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
+        .bind(p.lat, p.lon, p.place, km, off, deliver, lostAt, way, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
       waitUntil(renear(D, m.id, -Infinity).catch(() => {})); waitUntil(refly(D, m.id, -Infinity).catch(() => {}));
       continue;
     }
-    const turned = legs.filter((l) => l[3] !== "c").at(-1);         // (being cheered on isn't turning)
+    const turned = turnsOf(legs).at(-1);                           // (planned bends and cheers aren't turns)
     if (turned && t - turned[2] < TURN_EVERY) continue;
-    const [sLat, sLon, sAt] = legs.length ? legs[legs.length - 1] : [m.from_lat, m.from_lon, m.sent_at];
-    const f = Math.min(1, Math.max(0, (t - sAt) / (m.deliver_at - sAt)));
-    const [pLat, pLon] = gcPoint(sLat, sLon, m.to_lat, m.to_lon, f);           // where it is right now
-    const ahead = haversineKm(pLat, pLon, p.lat, p.lon);
+    const st = stopsOf(m), [pLat, pLon] = posAt(st, t);                // where it is right now, on the way it was going
+    const done = passed(legs, t), flown = pathKm([[m.from_lat, m.from_lon], ...done, [pLat, pLon]]);
+    const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false }), ahead = plan.km, rest = restOf(plan.way);
     const speed = msgSpeed(m);
     const latest = m.sent_at + MAX_FLIGHT / speed;
-    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed));
-    const km = Math.max(0, m.km - haversineKm(pLat, pLon, m.to_lat, m.to_lon)) + ahead;
-    legs.push([Math.round(pLat * 1e5) / 1e5, Math.round(pLon * 1e5) / 1e5, t]);
+    const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest));
+    const km = flown + ahead;
+    legs.length = 0;
+    legs.push(...done, [round5(pLat), round5(pLon), t], ...timeWay([pLat, pLon], plan.way, [p.lat, p.lon], t, deliver - t - rest).legs);
     // a doomed pigeon is still lost before it would land, now on its new course
     const lostAt = m.lost_at == null ? null : m.lost_at < deliver ? m.lost_at : t + (deliver - t) / 2;
     const r = await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
@@ -773,7 +776,7 @@ async function sendMessage({ request, env, waitUntil }) {
   // A stopover: it rests an hour with a friend you both have, who can read it
   // (their own sealed copy) and add a line for the recipient, then flies on.
   const via = meta.via == null ? null : await stopover(D, u, to, r, String(meta.via), String(meta.viaCt || ""), landAt);
-  let km, w, flight, calm;
+  let km, w, flight, calm, way = [];
   if (via) {
     const [w1, w2] = await windsFor(env, [[u.lat, u.lon, via.lat, via.lon], [via.lat, via.lon, r.lat, r.lon]]);
     const k1 = haversineKm(u.lat, u.lon, via.lat, via.lon), k2 = haversineKm(via.lat, via.lon, r.lat, r.lon);
@@ -782,20 +785,24 @@ async function sendMessage({ request, env, waitUntil }) {
     km = k1 + k2; flight = f1 + LAYOVER + f2; calm = flightMs(k1, speed) + LAYOVER + flightMs(k2, speed);
     w = { ws: [w1, w2], wind: w1.wind == null || w2.wind == null ? w1.wind ?? w2.wind : (w1.wind * k1 + w2.wind * k2) / Math.max(1, km), f: (k1 / w1.f + k2 / w2.f) ? km / (k1 / w1.f + k2 / w2.f) : 1 };
   } else {
-    km = hasTo ? haversineKm(u.lat, u.lon, r.lat, r.lon) : DEFAULT_KM;
-    [w] = hasTo ? await windsFor(env, [[u.lat, u.lon, r.lat, r.lon]]) : [{ wind: null, f: 1 }];     // the weather along the way
-    flight = Math.round(flightMs(km / w.f, speed)); calm = flightMs(km, speed);
+    // its way, planned (around storms, …); one booked for later goes by the forecast instead (below)
+    const later = landAt != null && hasTo && landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed) > t + 30 * 60e3;
+    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: !later }) : null;
+    km = plan ? plan.km : DEFAULT_KM; w = plan ? plan.w : { wind: null, f: 1 }; way = plan ? plan.way : [];
+    const rest = restOf(way);
+    flight = Math.round(flightMs(km / w.f, speed)) + rest; calm = flightMs(km, speed) + rest;
     // booked to land later: it flies through the weather forecast for when it takes off
-    if (landAt != null && hasTo && landAt - calm > t + 30 * 60e3) {
+    if (later) {
       const [fc] = await forecastFor(env, [[u.lat, u.lon, r.lat, r.lon]]);
       const h1 = hourOf(fc, landAt - calm), h = h1 && (hourOf(fc, landAt - Math.round(flightMs(km / h1.f, speed))) || h1);   // (once more: the weather moves its take-off)
-      if (h) { w = h; flight = Math.round(flightMs(km / w.f, speed)); }
+      if (h) { w = h; flight = Math.round(flightMs(km / w.f, speed)) + rest; }
     }
   }
   const wx = wxOf(w.ws || [w], calm, flight, via ? [[0, via.at - t], [via.off - t, flight - (via.off - t)]] : undefined);   // what the weather did to it
   const off = landAt == null ? t : Math.round(landAt) - flight;                 // take-off
   if (off < t) throw new HttpError(409, `That’s too soon: a ${kind} pigeon takes ${waitText(flight)} to get there.`);
   const deliver = off + flight;
+  const planned = way.length ? timeWay([u.lat, u.lon], way, [r.lat, r.lon], off, flight - restOf(way)).legs : null;    // the way, with its times
   const from = mystery ? "mystery" : PIGEONS[kind].max ? kind : null;      // the loft it leaves: a mystery one comes from its own
   if (from) {
     const p = mystery ? MYSTERY : PIGEONS[kind], l = loft(u, from, t);
@@ -817,7 +824,7 @@ async function sendMessage({ request, env, waitUntil }) {
         u.lat, u.lon, u.place, hasTo ? r.lat : null, hasTo ? r.lon : null, hasTo ? r.place : null, w.wind, w.f, landAt == null ? null : 1, await skinNow(D, u, t),
         via?.id ?? null, via?.ct ?? null, via?.at ?? null, via?.off ?? null, via?.place ?? null,
         // the map draws it resting there: two stops at the same spot
-        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : null, wx.wx, wx.ms, wx.reach == null ? null : off + wx.reach)]);
+        via ? JSON.stringify([[via.lat, via.lon, via.at], [via.lat, via.lon, via.off]]) : planned ? JSON.stringify(planned) : null, wx.wx, wx.ms, wx.reach == null ? null : off + wx.reach)]);
   } catch (e) {
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
     throw e;
