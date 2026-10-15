@@ -16,7 +16,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsAlong } from "./_weather.js";
-import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf } from "./_route.js";
+import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf, riskOf } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
@@ -347,7 +347,8 @@ async function send({ request, env, waitUntil }) {
     const legs = plan?.way.length ? JSON.stringify(timeWay(r.from, plan.way, [r.lat, r.lon], t, at - t - rest).legs) : null;
     // Pigeon Death: each pigeon takes its own chance
     const roll = crypto.getRandomValues(new Uint32Array(2));
-    const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS * (style === "safe" ? 0.5 : 1) ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
+    const odds = plan ? riskOf([r.from, ...plan.way, [r.lat, r.lon]], w.storms || 0, style).p : RISKY_LOSS * (style === "safe" ? 0.5 : 1);     // (its own way's odds)
+    const lostAt = risky && roll[0] / 2 ** 32 < odds ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
     return { to: r.id, km, at, lostAt, r, w, wx, legs };
   }));
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));

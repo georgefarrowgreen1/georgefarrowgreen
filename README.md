@@ -327,6 +327,16 @@ or so for about 40 minutes, a Legend every 16 for 15; `tire` in
 `functions/_route.js`). The plan before sending includes them for whoever would
 carry it, and a pigeon that turns for the weather keeps them on its new way.
 
+**Pigeon Death's odds by the way.** With Pigeon Death on, a pigeon's chance
+of being lost depends on the way it takes (`riskOf` in `functions/_route.js`):
+1 in 100 for an ordinary flight, half as much again for a stretch of open sea
+over 500 km with nowhere to rest (double over 1,500 km), more through severe
+weather it couldn't get around, and more past falcon country (the narrow
+crossings birds of prey migrate over, like Gibraltar and the Bosphorus, and the
+Gulf); the safe way halves it. The route switch shows each way's odds ("1 in
+133", green when better than usual, red when worse), and How It Flies says why
+("this way: a very long sea crossing").
+
 **The Skies.** The globe button on Messages opens one live map of every pigeon
 in the air to or from you, from every chat and group, with a countdown for
 each. Tap a row to open that chat. It shows exactly what those chats already

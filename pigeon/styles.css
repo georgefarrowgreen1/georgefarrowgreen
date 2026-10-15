@@ -1872,3 +1872,10 @@ html.night .nav-ghost .night{background:none}
 @keyframes fc-pick{40%{transform:scale(1.05)}}
 .ghead .gmore{font-size:15px;font-weight:500}
 @media (prefers-reduced-motion:reduce){.flysheet .chiprail .cc{animation:none!important;transition:none}}
+/* Pigeon Death's odds on each way (with it on) */
+.seg .rk{display:block;margin-top:3px;padding:1px 7px;border-radius:999px;font-style:normal;font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--fill);color:var(--label-2);transition:background-color .25s,color .25s}
+.seg .rk.lo{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
+.seg .rk.hi{color:var(--red);background:color-mix(in srgb,var(--red) 13%,transparent)}
+.seg button[aria-checked="true"] .rk{background:rgba(255,255,255,.2);color:#fff}
+.fctags .rk.lo{color:var(--green-t);background:color-mix(in srgb,var(--green) 15%,transparent)}
+.fctags .rk.mid{color:var(--label-2);background:var(--fill)}

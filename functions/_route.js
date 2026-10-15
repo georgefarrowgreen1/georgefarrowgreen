@@ -13,7 +13,7 @@
    Everything that follows a flight (the map, near misses, flyovers, the
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
-import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH } from "./_pigeon.js";
+import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH, RISKY_LOSS } from "./_pigeon.js";
 import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere, altOf, JET_KMH } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
@@ -308,6 +308,29 @@ export function timeWay(from, way, to, start, flight) {
 }
 // how long it rests along the way, all told
 export const restOf = (way) => way.reduce((a, q) => a + (q.rest || 0), 0);
+
+// Pigeon Death's odds on a way (with Pigeon Death on): 1 in 100 for an ordinary
+// flight; more for a long stretch of open sea with nowhere to rest (half as
+// much again past 500 km, double past 1,500), for severe weather it couldn't get
+// around, and past falcon country (where raptors gather: the narrow crossings
+// birds of prey migrate over, and the Gulf, where falconry is a tradition);
+// halved the safe way. { p, sea: its longest open sea (km), storms, hawk: where }
+export const HAWKS = [["the Strait of Gibraltar", 36.0, -5.6, 120], ["the Bosphorus", 41.1, 29.0, 120], ["the Gulf", 25.5, 52.5, 500],
+  ["the Isthmus of Panama", 9.0, -79.6, 200], ["the Sinai", 29.5, 34.5, 200], ["the Strait of Messina", 38.2, 15.6, 80], ["Falsterbo", 55.4, 12.8, 80], ["Veracruz", 19.2, -96.1, 150]];
+const RISK_STEP = 50;
+export function riskOf(path, storms = 0, style = null) {
+  let sea = 0, run = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1], d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(1, Math.ceil(d / RISK_STEP));
+    if (i > 0 && (a.rest || a[2] === "i" || a[2] === "t" || a[2] === "h")) run = 0;              // (it rested there)
+    for (let k = 0; k < n; k++) { const q = gcPoint(a[0], a[1], b[0], b[1], (k + 0.5) / n); if (isSea(placeAt(q[0], q[1]))) { run += d / n; sea = Math.max(sea, run); } else run = 0; }
+  }
+  const near = (lat, lon, r) => path.some((q, i) => i < path.length - 1 && [0, 0.25, 0.5, 0.75, 1].some((f) => { const x = gcPoint(q[0], q[1], path[i + 1][0], path[i + 1][1], f); return haversineKm(x[0], x[1], lat, lon) <= r; }));
+  const hawk = HAWKS.find(([, lat, lon, r]) => near(lat, lon, r));
+  let p = RISKY_LOSS * (sea > 1500 ? 2 : sea > 500 ? 1.5 : 1) * (1 + Math.min(1.5, 0.5 * storms)) * (hawk ? 1.3 : 1) * (style === "safe" ? 0.5 : 1);
+  p = Math.min(0.03, Math.max(0.003, p));
+  return { p: Math.round(p * 1e5) / 1e5, sea: Math.round(sea), storms, hawk: hawk ? hawk[0] : null };
+}
 
 // Stamina: a named pigeon gets tired on a long flight, and comes down on land
 // for a breather ("t", a rest like an island's) every so many hours of flying.

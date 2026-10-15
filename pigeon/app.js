@@ -4707,7 +4707,7 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${landing}${stop}${route}${way}
         ${!carriers && (S.birds.length || S.hall.length) ? `<div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true })}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
-        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${style === "safe" && !via ? 200 : 100} is lost on the way.</div>` : ""}`);
+        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${plan?.risk ? Math.round(1 / plan.risk.p) : style === "safe" && !via ? 200 : 100} is lost on the way${plan?.risk && riskWhy(plan.risk) ? ` (this way: ${esc(riskWhy(plan.risk))})` : ""}.</div>` : ""}`);
       const body = $(".sheet .body", $layer); body.classList.add("flysheet"); if (top) body.scrollTop = top;
       // the chip just tapped gives a little bounce
       if (S.flyTap) { const k = S.flyTap; S.flyTap = null; body.querySelector(`.chiprail [data-act="${k.dataset.act}"]${k.dataset.id ? `[data-id="${CSS.escape(k.dataset.id)}"]` : ""}`)?.classList.add("picked"); }
@@ -4969,7 +4969,7 @@ function tickPreview(card, cv) {
   const html = `<span class="fchead"><span class="fccoin lg">${coin}</span><span class="fct"><span class="big">Lands ${esc(clockIn(live.deliverAt, MY_TZ))}</span><span class="fcs">if it left now · in ${esc(fmtDur(live.deliverAt - t))}</span></span></span>
     ${routeSeg(m.style, plansNow(t, m.pigeon))}
     <ol class="fctl" aria-label="The way it would go">${rows.map(fcRow).join("")}</ol>
-    <span class="fcwho"><span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${/^[AEIOU]/.test(name) ? "An" : "A"} ${esc(name.toLowerCase())} pigeon</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>${m.risky ? `<span class="fctags"><span class="fcchip risk">1.25×</span></span>` : ""}</span>`;
+    <span class="fcwho"><span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${/^[AEIOU]/.test(name) ? "An" : "A"} ${esc(name.toLowerCase())} pigeon</span><span class="fcs">${fmtMiles(m.km)}${m.risky ? " · Pigeon Death on" : ""}</span></span>${m.risky ? `<span class="fctags">${m.risk ? riskTag(m.risk).replace('<em class="rk', '<span class="fcchip risk rk').replace("</em>", "</span>") : `<span class="fcchip risk">1.25×</span>`}</span>` : ""}</span>`;
   const body = $(".mcb", card) || (card.innerHTML = `<div class="mcb"></div>`, $(".mcb", card));
   if (body._html !== html) {
     body.innerHTML = html; body._html = html;
@@ -5011,7 +5011,15 @@ const ROUTE_SHORT = { fastest: "Quickest", scenic: "Landmarks", safe: "Rests on 
 function routeSeg(style, plans) {
   const i = ROUTES.findIndex((r) => r[0] === style);
   return `<div class="seg" role="radiogroup" aria-label="Route" data-i="${i}"><i class="segthumb" aria-hidden="true"></i>${ROUTES.map(([k, name, , icon]) =>
-    `<button type="button" role="radio" aria-checked="${k === style}" data-act="routeset" data-id="${k}">${icon}<b>${name}</b><small>${plans?.[k] ? esc(atTime(plans[k].deliverAt)) : ROUTE_SHORT[k]}</small></button>`).join("")}</div>`;
+    `<button type="button" role="radio" aria-checked="${k === style}" data-act="routeset" data-id="${k}">${icon}<b>${name}</b><small>${plans?.[k] ? esc(atTime(plans[k].deliverAt)) : ROUTE_SHORT[k]}</small>${S.me.risky && plans?.[k]?.risk ? riskTag(plans[k].risk) : ""}</button>`).join("")}</div>`;
+}
+// Pigeon Death's odds on a way (with it on): "1 in 140", green when better than usual, red when worse
+const riskLevel = (r) => (r.p <= 0.007 ? "lo" : r.p >= 0.013 ? "hi" : "mid");
+const riskTag = (r) => `<em class="rk ${riskLevel(r)}">1 in ${Math.round(1 / r.p)}</em>`;
+// and why: "a long sea crossing, falcons around the Bosphorus"
+function riskWhy(r) {
+  const why = [r.sea > 500 ? (r.sea > 1500 ? "a very long sea crossing" : "a long sea crossing") : "", r.storms ? "storms it can’t get around" : "", r.hawk ? `falcons around ${r.hawk}` : ""].filter(Boolean);
+  return why.length ? why.join(", ") : "";
 }
 // the switch's thumb glides from the last choice to this one
 function segGlide(root, fromStyle) {
@@ -5046,7 +5054,7 @@ function flyBits(root, fromStyle) {
 function previewFrom(style) {
   const c = composeState(), d = c?.f && c.kind && KIND[c.kind] ? routePlanFor(c.f.id, c.kind) : null, plan = d?.plans?.[style]; if (!plan) return null;
   return { id: "preview", preview: true, style, from: S.me.id, to: S.chat, pigeon: d.pigeon, skin: S.me.skin, route: [...d.from, ...d.to], legs: plan.legs, km: plan.km,
-    sentAt: d.at, deliverAt: plan.deliverAt, fromPlace: d.fromPlace, toPlace: d.toPlace, flying: true, wind: plan.wind, risky: S.me.risky };
+    sentAt: d.at, deliverAt: plan.deliverAt, fromPlace: d.fromPlace, toPlace: d.toPlace, flying: true, wind: plan.wind, risky: S.me.risky, risk: plan.risk };
 }
 /* ---------- A pigeon's map card ----------
    Folded, a slim bar over the map: how long it has left, where it is, and a

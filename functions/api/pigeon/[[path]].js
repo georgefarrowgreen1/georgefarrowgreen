@@ -24,7 +24,7 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
-import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf } from "../../_route.js";
+import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -814,9 +814,11 @@ async function sendMessage({ request, env, waitUntil }) {
     const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
     if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   }
-  // Pigeon Death: 1 in 100 is lost somewhere between 15% and 85% of the way
+  // Pigeon Death: lost somewhere between 15% and 85% of the way, as often as its way's odds say
+  // (1 in 100 as a rule; more over long open sea, through storms it can't avoid, past falcons; half the safe way)
   const roll = crypto.getRandomValues(new Uint32Array(2));
-  let lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS * (style === "safe" ? 0.5 : 1) ? Math.round(off + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - off)) : null;
+  const odds = hasTo ? riskOf([[u.lat, u.lon], ...(via ? [[via.lat, via.lon]] : way), [r.lat, r.lon]], (w.ws ? w.ws.reduce((a, x) => a + (x.storms || 0), 0) : w.storms) || 0, via ? null : style).p : RISKY_LOSS;
+  let lostAt = risky && roll[0] / 2 ** 32 < odds ? Math.round(off + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (deliver - off)) : null;
   if (via && lostAt != null && lostAt >= via.at && lostAt < via.off) lostAt = via.off + (lostAt - via.at);   // never while resting with a friend
   try {
     await D.batch([claimId(D, id, "m", t), D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at,
@@ -890,7 +892,7 @@ async function routePlan({ request, env }) {
       const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed });
       const way = carrier ? tire(from, plan.way, to, SPEED_KMH * speed * (plan.w.f || 1), tiredOf(carrier.km)) : plan.way;
       const rest = restOf(way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
-      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs };
+      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs, risk: riskOf([from, ...way, to], plan.w.storms || 0, styleOf(style)) };
     }
   }
   return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans: kinds[kind] || kinds.standard, kinds });
