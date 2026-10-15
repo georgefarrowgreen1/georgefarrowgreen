@@ -23,9 +23,9 @@ import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js"
 
 // where along a route to look: a point every SAMPLE_KM or so (each in the middle of
 // its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
-// What's asked of Open-Meteo: the wind where pigeons fly (120 m up; 10 m if that's
-// missing), the gusts and the weather, how unstable (CAPE) and wet the air is, and how warm
-const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation,temperature_2m";
+// What's asked of Open-Meteo: the wind where pigeons fly (80, 120 and 180 m up; 10 m if
+// those are missing), the gusts and the weather, how unstable (CAPE) and wet the air is, and how warm
+const WIND_VARS = "wind_speed_120m,wind_direction_120m,wind_speed_80m,wind_direction_80m,wind_speed_180m,wind_direction_180m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,cape,precipitation,temperature_2m";
 const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
 export const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
@@ -105,16 +105,25 @@ const key = (p) => `${p.lat.toFixed(2)},${p.lon.toFixed(2)}`;
 // One point's weather (as Open-Meteo gives it) for a pigeon heading `head`
 // (degrees): its pace there (× its usual), the tailwind (km/h), and what the
 // sky is doing (k). null if there's no weather for it.
+// A pigeon flies at whichever height (80, 120 or 180 m up) has the kindest
+// wind there: climbing to catch a tailwind, or keeping low out of a headwind
+// (alt: the height it chose; 120 m if they're all the same). Only the wind at
+// the ground, if that's all there is.
+const HEIGHTS = [120, 80, 180];
 export function paceAt(w, head) {
-  const [sp, dir] = w?.wind_speed_120m != null && w?.wind_direction_120m != null ? [w.wind_speed_120m, w.wind_direction_120m] : [w?.wind_speed_10m, w?.wind_direction_10m];
-  const speed = Number(sp), from = Number(dir);
-  if (sp == null || dir == null || !Number.isFinite(speed) || !Number.isFinite(from)) return null;
+  if (!w) return null;
   // wind_direction is where it blows from; the pigeon gains what blows its way
-  const tail = speed * Math.cos(((from + 180) - head) * r);
+  const tailAt = (sp, dir) => (sp == null || dir == null || !Number.isFinite(Number(sp)) || !Number.isFinite(Number(dir)) ? null : Number(sp) * Math.cos(((Number(dir) + 180) - head) * r));
+  let tail = null, alt = null;
+  for (const h of HEIGHTS) { const t = tailAt(w[`wind_speed_${h}m`], w[`wind_direction_${h}m`]); if (t != null && (tail == null || t > tail + 1)) { tail = t; alt = h; } }
+  if (tail == null) { tail = tailAt(w.wind_speed_10m, w.wind_direction_10m); alt = null; }
+  if (tail == null) return null;
   const temp = w.temperature_2m == null || !Number.isFinite(Number(w.temperature_2m)) ? null : Number(w.temperature_2m);
   const sky = skyAt(Number(w.weather_code) || 0, Number(w.wind_gusts_10m) || 0, Number(w.cape) || 0, Number(w.precipitation) || 0, temp);
-  return { f: Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), tail, k: sky.k };
+  return { f: Math.min(MAX_F, Math.max(0.4, ((SPEED_KMH + tail) / SPEED_KMH) * sky.keep)), tail, k: sky.k, alt };
 }
+// (where a wind was met higher or lower than usual, so the card can say it climbed for it)
+export const altOf = (spot) => (spot.alt && spot.alt !== 120 && (spot.k === "tailwind" || spot.k === "headwind") ? { alt: spot.alt } : {});
 function tally(routes, pts, list) {
   const sum = routes.map(() => ({ tail: 0, slow: 0, n: 0, lo: null, hi: null, storms: 0, storm: null }));
   list.forEach((w, k) => {
@@ -124,14 +133,14 @@ function tally(routes, pts, list) {
     s.tail += tail; s.slow += 1 / f; s.n++;
     if (isSevere(sky.k)) { s.storms++; if (!s.storm) s.storm = { lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f }; }
     const k2 = f >= 1 ? "tailwind" : sky.k || "headwind";
-    const here = { f, k: k2, lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f };
+    const here = { f, k: k2, lat: pts[k].lat, lon: pts[k].lon, at: pts[k].f, alt: pace.alt };
     if (!s.lo || f < s.lo.f) s.lo = here;
     if (!s.hi || f > s.hi.f) s.hi = here;
   });
   return sum.map(({ tail, slow, n, lo, hi, storms, storm }) => {
     if (!n) return { wind: null, f: 1, wx: null, storms: 0, storm: null };
     const f = Math.min(MAX_F, Math.max(MIN_F, n / slow)), worst = f < 1 ? lo : hi;   // the spot that did most of it
-    return { wind: Math.round(tail / n), f, wx: Math.abs(Math.log(worst.f)) >= 0.05 ? { k: worst.k, lat: worst.lat, lon: worst.lon, at: worst.at } : null, storms, storm };
+    return { wind: Math.round(tail / n), f, wx: Math.abs(Math.log(worst.f)) >= 0.05 ? { k: worst.k, lat: worst.lat, lon: worst.lon, at: worst.at, ...altOf(worst) } : null, storms, storm };
   });
 }
 export async function windsFor(env, routes) {

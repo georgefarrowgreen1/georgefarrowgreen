@@ -14,7 +14,7 @@
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
 import { haversineKm, gcPoint, HOUR, PIGEONS, SPEED_KMH } from "./_pigeon.js";
-import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere } from "./_weather.js";
+import { windsAlong, skyAtPoints, paceAt, pointsFor, isSevere, altOf } from "./_weather.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -144,7 +144,8 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
     const stormAt = chain.find((x) => x.l.storms)?.l.at || null;
     // the spot that did most of it (as windsFor says it)
     const worst = chain.filter((x) => x.l.pace).sort((a, b) => (f < 1 ? a.l.pace.f - b.l.pace.f : b.l.pace.f - a.l.pace.f))[0];
-    const wx = worst && Math.abs(Math.log(worst.l.pace.f)) >= 0.05 ? { k: worst.l.pace.f >= 1 ? "tailwind" : worst.l.pace.k || "headwind", lat: worst.l.at[0], lon: worst.l.at[1], at: (chain.indexOf(worst) + 0.5) / chain.length } : null;   // (how far along: the middle of that stretch)
+    const wk = worst && (worst.l.pace.f >= 1 ? "tailwind" : worst.l.pace.k || "headwind");
+    const wx = worst && Math.abs(Math.log(worst.l.pace.f)) >= 0.05 ? { k: wk, lat: worst.l.at[0], lon: worst.l.at[1], at: (chain.indexOf(worst) + 0.5) / chain.length, ...altOf({ k: wk, alt: worst.l.pace.alt }) } : null;   // (how far along: the middle of that stretch)
     return { km, hours, storms, w: { wind, f: Math.round(Math.min(1.6, Math.max(0.6, f)) * 1e4) / 1e4, wx, storms, storm: stormAt ? { lat: stormAt[0], lon: stormAt[1], at: 0.5 } : null } };
   };
   const straight = sum(chainOf([...Array(S).fill(MID), 0])), best = sum(cost[0].chain);

@@ -775,7 +775,12 @@ function wxSay(m, short) {
   const late = m.delay > 0, w = m.wx && WX[m.wx.k], landed = !m.flying;
   const when = late ? (landed ? `Landed ${fmtDur(m.delay)} late` : `Delayed ${fmtDur(m.delay)}`) : `${fmtDur(-m.delay)} early`;
   if (short) return late ? `${landed ? `${fmtDur(m.delay)} late` : `delayed ${fmtDur(m.delay)}`}${w ? ` by ${w[0]}` : ""}` : `${fmtDur(-m.delay)} early${w ? ` on ${w[0]}` : ""}`;
-  const why = w ? `${w[0]} over ${wxWhere(m.wx.lon, m.wx.lat)}` : late ? "bad weather" : "a tailwind";
+  // (a wind met higher or lower than usual: it climbed for a tailwind, or kept low out of a headwind)
+  const alt = m.wx?.alt, where = w ? wxWhere(m.wx.lon, m.wx.lat) : "";
+  const why = !w ? (late ? "bad weather" : "a tailwind")
+    : alt && m.wx.k === "tailwind" ? `${alt > 120 ? "climbed" : "flew low"} to catch a tailwind over ${where}`
+    : alt && m.wx.k === "headwind" ? `${alt > 120 ? "climbed above" : "kept low under"} the worst of the headwinds over ${where}`
+    : `${w[0]} over ${where}`;
   return { text: `${when} · ${why}`, icon: I[w ? w[1] : "wind"], cls: late ? "late" : "early" };
 }
 

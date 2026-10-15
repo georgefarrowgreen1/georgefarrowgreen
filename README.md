@@ -581,6 +581,12 @@ the pair key; in a group sealed once with a key for each member), so the server
 can't see which one it was. One per person per message: another replaces it,
 the same again takes it back. Code: `functions/_reacts.js`, table `pg_reacts`.
 
+**Climbing for the wind.** The wind is asked for 80, 120 and 180 m up, and at
+each point a pigeon flies at whichever height is kindest (120 m unless another
+is clearly better): it climbs to catch a stronger tailwind, or keeps low under
+the worst of a headwind, and the card says so ("4h 50m early · climbed to
+catch a tailwind over Luxembourg").
+
 **Weather.** (If Open-Meteo doesn't answer, MET Norway's free forecast,
 api.met.no, is asked instead: one point at a time, so 40 squares at most per
 look, with an identifying User-Agent as its terms ask; it has no wind 120 m
