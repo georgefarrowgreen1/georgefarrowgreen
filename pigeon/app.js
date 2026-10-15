@@ -2226,6 +2226,11 @@ const PTR_AT = 70;
 // flipping a switch control gives the system's own tick (iOS 18 and later),
 // so a hidden one is flipped; elsewhere, navigator.vibrate. Off in Appearance.
 let hapticEl = null;
+// The way a pigeon goes (How It Flies → Route), kept on this phone for the next one
+const ROUTES = [["fastest", "Fastest", "The quickest way: around storms, riding the wind", I.wind, "blue"],
+  ["scenic", "Scenic", "Past up to two landmarks for their postmarks, a little further", I.loc, "green"],
+  ["safe", "Safe", "Rests on islands rather than cross long seas, and halves Pigeon Death’s risk", I.shield, "teal"]];
+const routeStyle = () => { try { const v = localStorage.getItem("inflight-route"); return ROUTES.some((r) => r[0] === v) ? v : "fastest"; } catch (_) { return "fastest"; } };
 const hapticsOn = () => { try { return localStorage.getItem("inflight-haptics") !== "0"; } catch (_) { return true; } };
 function haptic(kind = "tick") {
   if (!hapticsOn()) return;
@@ -4585,12 +4590,22 @@ function drawSheet(refresh) {
         const wx = S.wxPlan.get(f.id)?.d?.now, adv = kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null;
         if (wx) opts.push(cell({ icon: I.wind, tile: "gray", label: "Weather", val: adv?.early ? `${esc(fmtDur(adv.early))} early` : adv?.late ? `${esc(fmtDur(adv.late))} late` : "Clear" }));
       }
+      if (!via) { const r = ROUTES.find((x) => x[0] === routeStyle()); opts.push(cell({ act: "routesheet", icon: r[3], tile: r[4], label: "Route", val: r[1], chev: true })); }
       if (S.birds.length || S.hall.length) opts.push(cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true }));
       const to = g ? `To ${esc(g.name)} · ${others(g).length + 1} people` : `To ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(chatKm(f))}` : ""}`;
       $layer.innerHTML = sheetHtml("How It Flies", `<p class="flyto">${to}</p><div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}
         ${opts.length ? `<div class="group mt">${opts.join("")}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
-        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost on the way.</div>` : ""}`);
+        ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${routeStyle() === "safe" && !via ? 200 : 100} is lost on the way.</div>` : ""}`);
+      return;
+    }
+    case "routesheet": {
+      const cur = routeStyle();
+      const rows = ROUTES.map(([k, name, sub, icon, tile]) => `<button type="button" class="cell kc has-icon" role="radio" aria-checked="${k === cur}" data-act="routepick" data-id="${k}">
+        <span class="tile ${tile}">${icon}</span><span class="ctext"><span>${name}</span><span class="csub">${esc(sub)}</span></span><span class="ck" aria-hidden="true">${I.check}</span></button>`).join("");
+      $layer.innerHTML = sheetHtml("Route", `<div class="group kinds mt-s" role="radiogroup" aria-label="Route">${rows}</div>
+        <div class="gfoot">Every pigeon goes through mountain passes, and standard pigeons rest on islands across long seas, whichever you pick. The map shows the way it takes.</div>`,
+        { left: { label: "Back", act: "flysheet" } });
       return;
     }
     case "via": {
@@ -4848,7 +4863,7 @@ function tickMap() {
     ${wxSay(m) ? `<span class="wx ${wxSay(m).cls}">${wxSay(m).icon}${esc(wxSay(m).text)}</span>` : m.wind != null && !m.lost ? `<span class="wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>` : ""}
     <span class="prog k-${kindOf(m)}${m.lost ? " lost" : ""}"><i>${I.bird}</i></span>
     ${!m.lost && left > 0 ? `<span class="lands">${landsLine(m)}</span>` : ""}
-    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.risky ? " · 1.25×" : ""}</span></span>`;
+    <span class="route"><span>${esc(m.fromPlace || "?")} → ${esc(m.toPlace || "?")}</span><span>${fmtMiles(m.km)}${kindOf(m) === "standard" ? "" : ` · ${kindOf(m)}`}${m.style ? ` · ${m.style}` : ""}${m.risky ? " · 1.25×" : ""}</span></span>`;
   $(".prog i", card).style.width = (f.frac * 100).toFixed(2) + "%";
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
@@ -5618,6 +5633,8 @@ async function onClick1(e, t) {
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
+    case "routesheet": S.sheet = { type: "routesheet", chat: S.chat }; return renderSheet();
+    case "routepick": try { localStorage.setItem("inflight-route", id); } catch (_) {} haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
     case "haptics": { const on = !hapticsOn(); try { localStorage.setItem("inflight-haptics", on ? "1" : "0"); } catch (_) {} if (on) haptic("success"); return renderSheet(); }
     case "skin": return setSkin(id);
     case "vianote": S.sheet = { type: "vianote", id, chat: S.chat }; return renderSheet();
@@ -6355,13 +6372,14 @@ async function send() {
     const once = !!blob && !att?.voice && !att?.gif;            // photos are view-once; GIFs and voice pigeons aren't
     const g = group(to), bd = S.sendKind === "dumb" ? null : birdFor(), carry = { ...(bd ? { bird: bd.id } : {}), ...(blob ? { once } : {}) };
     let meta;
+    const route = routeStyle() === "fastest" ? {} : { route: routeStyle() };   // the way it goes
     if (g) {
       // sealed once; its key sealed for each member (and for me, so my other phones can read it)
       const { body, key, h } = await E2E.sealGroup({ id, from: S.me.id, group: g.id, type: "msg" }, payload);
       const keys = {};
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
-      meta = { id, group: g.id, body, keys, pigeon: S.sendKind, ...carry };
-    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...carry, ...(sc ? { landAt: sc.at } : {}),
+      meta = { id, group: g.id, body, keys, pigeon: S.sendKind, ...carry, ...route };
+    } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
       ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";

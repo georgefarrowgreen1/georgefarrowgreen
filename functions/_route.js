@@ -20,6 +20,7 @@ import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
 import { ISLANDS } from "./_islands.js";
 import { RANGES } from "./_mountains.js";
+import { LANDMARKS, marksAlong } from "./_landmarks.js";
 
 const R = 6371, rad = Math.PI / 180, deg = 180 / Math.PI;
 export const round5 = (x) => Math.round(x * 1e5) / 1e5;
@@ -61,9 +62,15 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 // Over the great mountain ranges it goes through a pass. With `hop` (a
 // standard pigeon), it rests on islands on the way across a
 // long stretch of sea.
+// Its sender can pick the route's style: "fastest" (all the above), "scenic"
+// (it doesn't chase the wind, but bends past up to two landmarks for their
+// postmarks, a little further) or "safe" (every pigeon rests on islands
+// rather than cross long seas; the sender also halves Pigeon Death's risk).
 // Returns { way: the points between (each [lat, lon, tag, name?], with `rest`
 // ms where it rests), km, w: the weather along it, as windsFor gives it }.
-export async function planRoute(env, { from, to, weather = true, hop = false }) {
+export const STYLES = ["fastest", "scenic", "safe"];
+export const styleOf = (x) => (STYLES.includes(x) && x !== "fastest" ? x : null);    // as kept (fastest: null)
+export async function planRoute(env, { from, to, weather = true, hop = false, style = null }) {
   const straight = [from, to];
   let path = straight, w = { wind: null, f: 1, wx: null };
   if (weather) {
@@ -78,7 +85,7 @@ export async function planRoute(env, { from, to, weather = true, hop = false }) 
       if (ws[order[0]].storms < ws[0].storms) { pick = order[0]; why = "s"; }
     }
     // no storms in the way: an arc the wind blows along gets there sooner, though it's further (only if it's worth it)
-    if (!why && paths.length > 1) {
+    if (!why && paths.length > 1 && style !== "scenic") {
       const best = paths.map((_, k) => k).filter((k) => ws[k].storms <= ws[0].storms).sort((a, b) => time(a) - time(b))[0];
       if (best && time(best) < time(0) * (1 - WIND_GAIN)) { pick = best; why = "w"; }
     }
@@ -86,8 +93,9 @@ export async function planRoute(env, { from, to, weather = true, hop = false }) 
     path = paths[pick].map((q, k, all) => (k && k < all.length - 1 ? [q[0], q[1], why || q[2], ...(name ? [name] : [])] : q));
     w = ws[pick];
   }
+  if (style === "scenic") path = scenic(path);
   path = throughPasses(path);
-  if (hop) path = hopped(path);
+  if (hop || style === "safe") path = hopped(path);
   return { way: path.slice(1, -1), km: pathKm(path), w };
 }
 
@@ -122,6 +130,28 @@ function throughPasses(path) {
       }
       if (best) { out.splice(i + 1, 0, best); break; }               // (once over each range)
     }
+  }
+  return out;
+}
+
+// The scenic way: past the landmark it can see for least extra (and then
+// another), so long as the whole way is no more than SCENIC_MORE further.
+// Not the ones it'll see anyway, nor any by where it starts or lands.
+const SCENIC_MORE = 0.15, SCENIC_MARKS = 2, SCENIC_ENDS = 20;
+function scenic(path) {
+  const out = [...path], most = pathKm(path) * (1 + SCENIC_MORE), [a, b] = [path[0], path[path.length - 1]];
+  for (let n = 0; n < SCENIC_MARKS; n++) {
+    const seen = new Set(marksAlong(out));
+    let best = null;
+    for (const [id, name, lat, lon, r] of LANDMARKS) {
+      if (seen.has(id) || haversineKm(a[0], a[1], lat, lon) <= r + SCENIC_ENDS || haversineKm(b[0], b[1], lat, lon) <= r + SCENIC_ENDS) continue;
+      for (let i = 0; i < out.length - 1; i++) {
+        const p = out[i], q = out[i + 1], more = haversineKm(p[0], p[1], lat, lon) + haversineKm(lat, lon, q[0], q[1]) - haversineKm(p[0], p[1], q[0], q[1]);
+        if (!best || more < best.more) best = { more, i, pt: [lat, lon, "v", name] };
+      }
+    }
+    if (!best || pathKm(out) + best.more > most) break;
+    out.splice(best.i + 1, 0, best.pt);
   }
   return out;
 }

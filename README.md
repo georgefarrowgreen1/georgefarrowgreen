@@ -260,7 +260,7 @@ land as the hint, and send (a microphone while it's empty). A line appears
 above it only when something stops a pigeon flying. How It Flies (tap the
 pigeon) has the kinds, with how many you have, how long each takes and why one
 can't fly; which named pigeon carries it; When It Lands; Stop Over; the weather;
-and whether Pigeon Death is on.
+the Route; and whether Pigeon Death is on.
 
 **Scheduled pigeons.** In a one-to-one chat, How It Flies → When It Lands:
 pick when it should *land* (this evening, tomorrow morning, or any time in
@@ -336,6 +336,30 @@ is cheered on or is called back (`functions/_flyover.js`). Group pigeons count
 too, for friends who aren't in the group. A friend who has moved since, or is
 no longer a friend, isn't told. Flyovers are deleted after a month, and
 waving closes 12 hours after the pigeon passed.
+
+**The way it goes.** A pigeon no longer just flies the great circle: its way
+is planned as it leaves (`functions/_route.js`) and kept as timed points in the
+message's `legs` ([lat, lon, at, tag, name]), which the map, near misses,
+flyovers, the passport and postmarks all simply follow.
+- *Around storms:* the sky along the straight line and four gentle arcs is
+  looked at in one request; a pigeon that would fly into thunderstorms takes
+  the quickest arc that misses them ("Going around storms over France").
+- *Riding the wind:* with no storms in the way, an arc the wind blows along
+  is taken if it lands at least 4% sooner, though it's further.
+- *Mountain passes:* a way over the Alps, the Pyrenees, the Himalayas, the
+  Rockies, the Andes or the Caucasus goes through the pass that adds least
+  (`functions/_mountains.js`), if that's no more than a third further.
+- *Island hopping:* a standard pigeon facing more than 450 km of open sea
+  rests an hour on an island part way over (`functions/_islands.js`); faster
+  ones fly straight over.
+- *Route styles* (How It Flies → Route, kept on the phone): Fastest (all of
+  the above), Scenic (no chasing the wind, but bends past up to two landmarks
+  for their postmarks, at most 15% further) or Safe (every pigeon island-hops,
+  and Pigeon Death's risk is halved). A stopover's way is its own.
+
+The map card says what it's doing ("Resting on the Azores until 09:48",
+"Through the Gotthard Pass"). Turning for someone who moved drops the rest of
+the plan and plans again from where it is; a cheer keeps the plan, sooner.
 
 **Plan around the weather.** Before you send, the composer checks the next
 day's forecast along the way (`forecastFor` in `functions/_weather.js`: the

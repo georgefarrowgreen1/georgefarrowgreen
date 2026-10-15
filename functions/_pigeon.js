@@ -268,6 +268,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN bird_wear TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN bird_wear TEXT",   // and had on when it carried this       // the landmarks it flew past (JSON ids, in order)
   "ALTER TABLE pg_users ADD COLUMN mystery INTEGER", "ALTER TABLE pg_users ADD COLUMN mystery_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
+  "ALTER TABLE pg_msgs ADD COLUMN style TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN style TEXT",                     // the route's style: scenic or safe (null: fastest)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",
   // the once-a-minute tick finds what's due by these, not by reading every message
   "CREATE INDEX IF NOT EXISTS pg_msgs_due ON pg_msgs(deliver_at) WHERE notified_at IS NULL",
@@ -512,6 +513,7 @@ export function msgView(me, m, t) {
     wind: m.wind ?? null,                        // tailwind at take-off (km/h; negative: headwind)
     ...wxView(m),
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
+    style: m.style || null,                      // the way it was sent: "scenic" or "safe" (null: the fastest)
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"])
     ...cheerView(m, me), ...birdOn(m, me),
     fromPlace: m.from_place, toPlace: m.to_place,

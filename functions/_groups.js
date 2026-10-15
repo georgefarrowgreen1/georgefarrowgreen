@@ -16,7 +16,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
-import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor } from "./_route.js";
+import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
@@ -82,7 +82,7 @@ function theirView(m, d, friends, t) {
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null, viewedAt: d.viewed_at || null };
 }
-const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, mystery: !!m.mystery, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
+const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
@@ -328,7 +328,7 @@ async function send({ request, env, waitUntil }) {
     const r = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
     if (!r.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   }
-  const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1);
+  const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1), style = styleOf(meta.route);
   // no pigeon to anyone you've blocked, or who has blocked you (from a group made before the block)
   const cut = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
   const others = want.filter((m) => m !== u.id && !cut.has(m)), mine = await friendIds(D, u.id);
@@ -341,20 +341,20 @@ async function send({ request, env, waitUntil }) {
   const dels = await Promise.all(to.map(async (r) => {
     const w = windOf.get(r.id) || { wind: null, f: 1 };
     // its way (resting on islands, for a standard pigeon)
-    const plan = r.lat != null ? await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind) }) : null, rest = plan ? restOf(plan.way) : 0;
+    const plan = r.lat != null ? await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style }) : null, rest = plan ? restOf(plan.way) : 0;
     const km = plan ? plan.km : 500, at = Math.round(t + flightMs(km / w.f, speed) + rest), wx = wxOf([w], flightMs(km, speed) + rest, at - t);
     const legs = plan?.way.length ? JSON.stringify(timeWay(r.from, plan.way, [r.lat, r.lon], t, at - t - rest).legs) : null;
     // Pigeon Death: each pigeon takes its own chance
     const roll = crypto.getRandomValues(new Uint32Array(2));
-    const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
+    const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS * (style === "safe" ? 0.5 : 1) ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
     return { to: r.id, km, at, lostAt, r, w, wx, legs };
   }));
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));
   await D.batch([
     claimId(D, id, "g", t),
-    D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
-      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t)),
+    D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin, style)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
+      photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t), style),
     ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs)),
   ]);
@@ -445,7 +445,7 @@ export async function groupSkies(D, uid, t) {
 }
 export async function rerouteGroups(env, u, p, t, waitUntil) {
   const D = await db(env);
-  const { results } = await D.prepare(`SELECT d.*, m.sender, m.sent_at, m.from_lat, m.from_lon, m.pigeon, m.risky, m.group_id, m.photo FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
+  const { results } = await D.prepare(`SELECT d.*, m.sender, m.sent_at, m.from_lat, m.from_lon, m.pigeon, m.risky, m.group_id, m.photo, m.style FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
     WHERE d.user_id = ?1 AND d.deliver_at > ?2 AND d.to_lat IS NOT NULL AND (d.lost_at IS NULL OR d.lost_at > ?2)`).bind(u.id, t).all();
   if (!results.length) return;
   const friends = await friendIds(D, u.id);
@@ -459,7 +459,7 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     if (turned && t - turned[2] < TURN_EVERY) continue;
     const [pLat, pLon] = posAt(stopsOf(d), t);                          // where it is now, on the way it was going
     const done = passed(legs, t), flown = pathKm([[d.from_lat, d.from_lon], ...done, [pLat, pLon]]);
-    const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false, hop: hopsFor(d.pigeon) }), ahead = plan.km, rest = restOf(plan.way);
+    const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false, hop: hopsFor(d.pigeon), style: d.style }), ahead = plan.km, rest = restOf(plan.way);
     const speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
     const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed, t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed + rest));
     const km = flown + ahead;
