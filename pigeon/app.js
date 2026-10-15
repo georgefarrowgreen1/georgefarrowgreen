@@ -388,11 +388,17 @@ const MAP_KMAX = 400;                       // pixels per degree at full zoom
 // there. A pigeon that changed course (its friend moved) flies several legs.
 // What its planned way is doing about now: going around storms, riding the wind,
 // resting on an island, through a pass, past a landmark (see functions/_route.js)
+// resting on an island right now: [where, until when], or null
+function restingOn(m, t = now()) {
+  const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c");
+  const i = legs.findIndex((l, k) => l[3] === "i" && legs[k + 1]?.[3] === "i" && legs[k + 1][0] === l[0] && t >= l[2] && t < legs[k + 1][2]);
+  return i < 0 || m.lost || t >= m.deliverAt ? null : [legs[i][4] || "an island", legs[i + 1][2]];
+}
 function routeNote(m) {
   const legs = (m.legs || []).filter((l) => l[3] && l[3] !== "c"); if (!legs.length || m.lost) return null;
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
-  const rest = legs.find((l, i) => l[3] === "i" && legs[i + 1]?.[3] === "i" && legs[i + 1][0] === l[0] && t >= l[2] && t < legs[i + 1][2]);
-  if (rest && !landed) { const until = legs[legs.indexOf(rest) + 1][2]; return { icon: I.bird, text: `Resting on ${rest[4] || "an island"} until ${fmtTime(until)}` }; }
+  const rest = restingOn(m, t);
+  if (rest) return { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
   const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
   const ahead = !landed && l === next, name = l[4];
   const say = {
@@ -4825,14 +4831,15 @@ function tickMap() {
   if (m.flock) return tickFlockMap(m, card, cv);
   const left = m.deliverAt - now(), f = flightAt(m, m.lost ? m.lostAt : now());
   const flew = m.deliverAt - m.sentAt;
-  const speed = m.lost ? "" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
+  const resting = restingOn(m);
+  const speed = m.lost ? "" : resting ? "Resting" : f.phase === "landed" ? `Flew ${fmtDur(flew)} · averaged ${fmtMph(m.km / (flew / HOUR))} · landed ${fmtShort(m.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
   const { share, cheer } = cardShell(card), canShare = shareable(m);
   if (share.hidden === canShare) share.hidden = !canShare;
   share.dataset.id = m.id;
   cheerState(cheer, m);
   $(".mcb", card).innerHTML = `<span class="big">${m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m)}<span>${m.lost ? "Lost on the way" : left > 0 ? fmtDur(left) + " away" : "Landed"}</span></span>
     ${speed ? `<span class="speed">${speed}</span>` : ""}
-    ${!m.lost && left > 0 && f.phase !== "landed" ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
+    ${!m.lost && left > 0 && f.phase !== "landed" && !resting ? `<span class="over">${I.loc}Now over ${esc(overWhere(...pigeonLL(m)))}</span>` : ""}
     ${birdLine(m)}
     ${routeNote(m) ? `<span class="waynote">${routeNote(m).icon}${esc(routeNote(m).text)}</span>` : ""}
     ${m.near?.length ? `<span class="moment">${I.pass}${esc(momentText(m, m.near.at(-1), S.chat))} · ${fmtTime(m.near.at(-1).at)}</span>` : ""}

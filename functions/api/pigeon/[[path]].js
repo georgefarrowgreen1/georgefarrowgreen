@@ -24,7 +24,7 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
-import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5 } from "../../_route.js";
+import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
 // All of InFlight's API lives under /api/pigeon/*. One router keeps the
@@ -234,7 +234,7 @@ async function reroute(env, u, p, t, waitUntil) {
     }
     // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
     if (t < m.sent_at) {
-      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false }), rest = restOf(plan.way);
+      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon) }), rest = restOf(plan.way);
       const km = plan.km, flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m))) + rest;
       const off = Math.max(t, m.deliver_at - flight), deliver = off + flight;
       const way = plan.way.length ? JSON.stringify(timeWay([m.from_lat, m.from_lon], plan.way, [p.lat, p.lon], off, flight - rest).legs) : null;
@@ -249,7 +249,7 @@ async function reroute(env, u, p, t, waitUntil) {
     if (turned && t - turned[2] < TURN_EVERY) continue;
     const st = stopsOf(m), [pLat, pLon] = posAt(st, t);                // where it is right now, on the way it was going
     const done = passed(legs, t), flown = pathKm([[m.from_lat, m.from_lon], ...done, [pLat, pLon]]);
-    const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false }), ahead = plan.km, rest = restOf(plan.way);
+    const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon) }), ahead = plan.km, rest = restOf(plan.way);
     const speed = msgSpeed(m);
     const latest = m.sent_at + MAX_FLIGHT / speed;
     const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest, t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest));
@@ -787,7 +787,7 @@ async function sendMessage({ request, env, waitUntil }) {
   } else {
     // its way, planned (around storms, …); one booked for later goes by the forecast instead (below)
     const later = landAt != null && hasTo && landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed) > t + 30 * 60e3;
-    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: !later }) : null;
+    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: !later, hop: hopsFor(kind) }) : null;
     km = plan ? plan.km : DEFAULT_KM; w = plan ? plan.w : { wind: null, f: 1 }; way = plan ? plan.way : [];
     const rest = restOf(way);
     flight = Math.round(flightMs(km / w.f, speed)) + rest; calm = flightMs(km, speed) + rest;

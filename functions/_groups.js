@@ -16,7 +16,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
 } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded } from "./_notify.js";
 import { windsFor } from "./_weather.js";
-import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5 } from "./_route.js";
+import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor } from "./_route.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
@@ -338,22 +338,25 @@ async function send({ request, env, waitUntil }) {
   // the weather along each route, all in one look
   const placed = to.filter((r) => r.lat != null), winds = await windsFor(env, placed.map((r) => [r.from[0], r.from[1], r.lat, r.lon]));
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));
-  const dels = to.map((r) => {
+  const dels = await Promise.all(to.map(async (r) => {
     const w = windOf.get(r.id) || { wind: null, f: 1 };
-    const km = r.lat != null ? haversineKm(r.from[0], r.from[1], r.lat, r.lon) : 500, at = t + flightMs(km / w.f, speed), wx = wxOf([w], flightMs(km, speed), at - t);
+    // its way (resting on islands, for a standard pigeon)
+    const plan = r.lat != null ? await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind) }) : null, rest = plan ? restOf(plan.way) : 0;
+    const km = plan ? plan.km : 500, at = Math.round(t + flightMs(km / w.f, speed) + rest), wx = wxOf([w], flightMs(km, speed) + rest, at - t);
+    const legs = plan?.way.length ? JSON.stringify(timeWay(r.from, plan.way, [r.lat, r.lon], t, at - t - rest).legs) : null;
     // Pigeon Death: each pigeon takes its own chance
     const roll = crypto.getRandomValues(new Uint32Array(2));
     const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
-    return { to: r.id, km, at, lostAt, r, w, wx };
-  });
+    return { to: r.id, km, at, lostAt, r, w, wx, legs };
+  }));
   const last = Math.max(t, ...dels.map((d) => d.lostAt ?? d.at));
   await D.batch([
     claimId(D, id, "g", t),
     D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
       photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t)),
-    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach)),
+    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs)),
   ]);
   if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   // one of your named pigeons leads: it flies the longest route
@@ -456,7 +459,7 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     if (turned && t - turned[2] < TURN_EVERY) continue;
     const [pLat, pLon] = posAt(stopsOf(d), t);                          // where it is now, on the way it was going
     const done = passed(legs, t), flown = pathKm([[d.from_lat, d.from_lon], ...done, [pLat, pLon]]);
-    const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false }), ahead = plan.km, rest = restOf(plan.way);
+    const plan = await planRoute(env, { from: [pLat, pLon], to: [pp.lat, pp.lon], weather: false, hop: hopsFor(d.pigeon) }), ahead = plan.km, rest = restOf(plan.way);
     const speed = PIGEONS[d.pigeon].speed * (d.risky ? RISKY_SPEED : 1);
     const deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(d.sent_at + MAX_FLIGHT / speed, t + (ahead / (SPEED_KMH * (d.wind_f || 1))) * 3600e3 / speed + rest));
     const km = flown + ahead;

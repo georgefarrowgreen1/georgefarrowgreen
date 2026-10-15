@@ -13,9 +13,12 @@
    Everything that follows a flight (the map, near misses, flyovers, the
    passport and postmarks) already walks these timed points, so a bent route
    is simply followed. */
-import { haversineKm, gcPoint } from "./_pigeon.js";
+import { haversineKm, gcPoint, HOUR, PIGEONS } from "./_pigeon.js";
 import { windsFor } from "./_weather.js";
 import { placeName } from "./_where.js";
+import { placeAt } from "./_placegrid.js";
+import { isSea } from "./_passport.js";
+import { ISLANDS } from "./_islands.js";
 
 const R = 6371, rad = Math.PI / 180, deg = 180 / Math.PI;
 export const round5 = (x) => Math.round(x * 1e5) / 1e5;
@@ -54,29 +57,79 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 // together, in one request: a pigeon that would fly into storms takes the arc
 // that misses them (the quickest that does); otherwise, if the wind along an
 // arc gets it there clearly sooner, it rides the wind (a longer way, but quicker).
-// Returns { way: the points between (each [lat, lon, tag, name?]), km, w: the
-// weather along it, as windsFor gives it }.
-export async function planRoute(env, { from, to, weather = true }) {
+// With `hop` (a standard pigeon), it rests on islands on the way across a
+// long stretch of sea.
+// Returns { way: the points between (each [lat, lon, tag, name?], with `rest`
+// ms where it rests), km, w: the weather along it, as windsFor gives it }.
+export async function planRoute(env, { from, to, weather = true, hop = false }) {
   const straight = [from, to];
-  if (!weather) return { way: [], km: pathKm(straight), w: { wind: null, f: 1, wx: null } };
-  const long = pathKm(straight) >= MIN_BEND_KM;
-  const paths = [straight, ...(long ? BENDS.map((s) => bent(straight, s, "s")) : [])];
-  const ws = await windsFor(env, paths.map((p) => p.map((q) => [q[0], q[1]])));
-  const time = (k) => pathKm(paths[k]) / (ws[k].f || 1);
-  let pick = 0, why = null;
-  // storms on the straight line: the quickest way that keeps out of them (or has fewest)
-  if (ws[0].storms > 0 && paths.length > 1) {
-    const order = paths.map((_, k) => k).sort((a, b) => ws[a].storms - ws[b].storms || time(a) - time(b));
-    if (ws[order[0]].storms < ws[0].storms) { pick = order[0]; why = "s"; }
+  let path = straight, w = { wind: null, f: 1, wx: null };
+  if (weather) {
+    const long = pathKm(straight) >= MIN_BEND_KM;
+    const paths = [straight, ...(long ? BENDS.map((s) => bent(straight, s, "s")) : [])];
+    const ws = await windsFor(env, paths.map((p) => p.map((q) => [q[0], q[1]])));
+    const time = (k) => pathKm(paths[k]) / (ws[k].f || 1);
+    let pick = 0, why = null;
+    // storms on the straight line: the quickest way that keeps out of them (or has fewest)
+    if (ws[0].storms > 0 && paths.length > 1) {
+      const order = paths.map((_, k) => k).sort((a, b) => ws[a].storms - ws[b].storms || time(a) - time(b));
+      if (ws[order[0]].storms < ws[0].storms) { pick = order[0]; why = "s"; }
+    }
+    // no storms in the way: an arc the wind blows along gets there sooner, though it's further (only if it's worth it)
+    if (!why && paths.length > 1) {
+      const best = paths.map((_, k) => k).filter((k) => ws[k].storms <= ws[0].storms).sort((a, b) => time(a) - time(b))[0];
+      if (best && time(best) < time(0) * (1 - WIND_GAIN)) { pick = best; why = "w"; }
+    }
+    const name = why === "s" && ws[0].storm ? safeName(ws[0].storm.lat, ws[0].storm.lon) : null;
+    path = paths[pick].map((q, k, all) => (k && k < all.length - 1 ? [q[0], q[1], why || q[2], ...(name ? [name] : [])] : q));
+    w = ws[pick];
   }
-  // no storms in the way: an arc the wind blows along gets there sooner, though it's further (only if it's worth it)
-  if (!why && paths.length > 1) {
-    const best = paths.map((_, k) => k).filter((k) => ws[k].storms <= ws[0].storms).sort((a, b) => time(a) - time(b))[0];
-    if (best && time(best) < time(0) * (1 - WIND_GAIN)) { pick = best; why = "w"; }
+  if (hop) path = hopped(path);
+  return { way: path.slice(1, -1), km: pathKm(path), w };
+}
+
+// which pigeons hop from island to island (the faster ones fly straight over)
+export const hopsFor = (kind) => (PIGEONS[kind]?.speed ?? 1) <= 1;
+// Island hopping: a stretch of open sea longer than HOP_KM gets a rest on an
+// island part way over (the one that splits it most evenly, if one's near
+// enough the way), HOP_REST each, HOPS at most.
+const HOP_KM = 450, HOP_PART = 200, HOP_REST = HOUR, HOPS = 4, SEA_STEP = 25;
+function hopped(path) {
+  const out = [...path];
+  for (let i = 0, n = 0; i < out.length - 1 && n < HOPS;) {
+    const run = seaRun(out[i], out[i + 1]), isle = run && run.km > HOP_KM ? restIsland(out[i], out[i + 1], run) : null;
+    if (!isle) { i++; continue; }
+    out.splice(i + 1, 0, isle); n++;                                 // (and look again at the way to it)
   }
-  const path = paths[pick], way = path.slice(1, -1).map((q) => [q[0], q[1], why || q[2]]);
-  if (why === "s" && ws[0].storm) for (const q of way) q[3] = safeName(ws[0].storm.lat, ws[0].storm.lon);
-  return { way, km: pathKm(path), w: ws[pick] };
+  return out;
+}
+// the longest stretch of open sea from a to b: where it starts and ends, and how long
+function seaRun(a, b) {
+  const d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(1, Math.ceil(d / SEA_STEP)), at = (k) => gcPoint(a[0], a[1], b[0], b[1], k / n);
+  let best = null, start = null;
+  for (let k = 0; k <= n; k++) {
+    const [lat, lon] = at(k), sea = isSea(placeAt(lat, lon));
+    if (sea && start == null) start = k;
+    if (start != null && (!sea || k === n)) {
+      const end = sea ? k : k - 1, km = ((end - start) / n) * d;
+      if (!best || km > best.km) best = { a: at(start), b: at(end), km };
+      start = null;
+    }
+  }
+  return best;
+}
+function restIsland(p, q, run) {
+  const base = haversineKm(p[0], p[1], q[0], q[1]), most = Math.min(0.2 * run.km, 900);
+  let best = null, score = run.km * 0.85;
+  for (const [name, lat, lon] of ISLANDS) {
+    const a = haversineKm(run.a[0], run.a[1], lat, lon), b = haversineKm(lat, lon, run.b[0], run.b[1]);
+    const pa = haversineKm(p[0], p[1], lat, lon), qb = haversineKm(lat, lon, q[0], q[1]);
+    if (Math.min(a, b, pa, qb) < HOP_PART) continue;                // part way over, not just off either end
+    const detour = pa + qb - base;
+    const s = Math.max(a, b) + detour / 2;
+    if (detour <= most && s < score) { score = s; best = Object.assign([lat, lon, "i", name], { rest: HOP_REST }); }
+  }
+  return best;
 }
 const safeName = (lat, lon) => { try { return placeName(lat, lon); } catch (_) { return null; } };
 
