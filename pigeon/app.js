@@ -987,8 +987,7 @@ function gridAt(gr, a, lon, lat) {
 const radarCells = (cv) => (cv._wx || []).filter((w) => RAIN_K[w.k]);
 function radarWanted(cv) { return radarCells(cv).length > 0 || (windOn() && S.windGrid?.p?.some((v) => v >= 0.2)); }
 function drawRadar(g, cv, ts, xf) {
-  const want = !!cv._inv && radarWanted(cv), keyEl = $(".rainkey", $layer);
-  if (keyEl && keyEl.hidden === want) keyEl.hidden = !want;
+  const want = !!cv._inv && radarWanted(cv);
   if (!want) return;
   const W = cv.clientWidth, H = cv.clientHeight, ST = 3, cw = Math.ceil(W / ST), ch = Math.ceil(H / ST);
   const off = cv._radar || (cv._radar = document.createElement("canvas"));
@@ -4382,8 +4381,6 @@ function drawSheet(refresh) {
     case "map":
       if (!$(".map", $layer)) $layer.innerHTML = sheetHtml(s.id === "skies" ? "The Skies" : s.id === "preview" ? "The Way" : ((m) => m?.flock ? (m.flying ? "Pigeons in Flight" : "The Flights") : m && !m.flying ? "The Flight" : "Pigeon in Flight")((S.msgs.get(S.chat) || []).find((x) => x.id === s.id)), `<canvas class="map" role="img" aria-label="Map of the pigeon’s route. Drag to move, pinch to zoom."></canvas>
         <div class="mapctl glass"><button type="button" data-act="mapzoom" data-id="in" aria-label="Zoom in">${I.plus}</button><button type="button" data-act="mapzoom" data-id="out" aria-label="Zoom out">${I.minus}</button><button type="button" class="fitbtn" data-act="mapzoom" data-id="fit" aria-label="Show the whole route">${I.loc}</button><button type="button" class="globebtn" data-act="mapglobe" aria-pressed="false" aria-label="Globe or flat map">${I.globe}</button><button type="button" class="layerbtn" data-act="maplayers" aria-pressed="${windOn()}" aria-label="Wind map">${I.layers}</button></div>
-        <div class="windkey glass"${windOn() ? "" : " hidden"}><b>Wind</b><i></i><span><small>0</small><small>10</small><small>20</small><small>30+ mph</small></span></div>
-        <div class="rainkey glass" hidden><b>Rain</b><i></i><span><small>Light</small><small>Heavy</small><small>Extreme</small></span></div>
         <div class="windtip" hidden></div><div class="birdtip glass" hidden></div>
         <div class="mapcard"></div>`, { flush: true, ...(s.id === "preview" ? { left: { label: "Back", act: "flysheet" } } : {}) });
       if (!$(".map", $layer)._g) { $(".map", $layer)._g = 1; mapGestures($(".map", $layer)); }
@@ -4975,10 +4972,10 @@ function fcFollow(card, ms) {
   };
   fcFollow.raf = requestAnimationFrame(step);
 }
-// the map's buttons and keys step aside when the card comes up over them (and back when it folds)
+// the map's buttons step aside when the card comes up over them (and back when it folds)
 function fcAside(card) {
   const top = card?.classList.contains("fc") ? card.offsetTop : Infinity;
-  for (const el of $layer.querySelectorAll(".mapctl, .windkey, .rainkey")) {
+  for (const el of $layer.querySelectorAll(".mapctl")) {
     const under = top < el.offsetTop + el.offsetHeight + 10;
     if (el.classList.contains("fcaside") !== under) { el.classList.toggle("fcaside", under); if (el.matches(".mapctl")) el.inert = under; }
   }
@@ -5776,7 +5773,7 @@ async function onClick1(e, t) {
     case "viewonce": return viewOnce(id);
     case "maplayers": {
       const on = !windOn(); try { localStorage.setItem("inflight-windmap", on ? "1" : "0"); } catch (_) {}
-      t.setAttribute("aria-pressed", String(on)); const k = $(".windkey", $layer); if (k) k.hidden = !on;
+      t.setAttribute("aria-pressed", String(on));
       const cv = $(".map", $layer); if (cv) { cv._parts = null; cv._trailKey = null; }
       redrawMap(); return;
     }
