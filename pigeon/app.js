@@ -3219,11 +3219,20 @@ const airTrack = (m) => `<span class="trk" aria-hidden="true"><i data-from="${es
 function footHtml(m, mine, g) {
   if (mine && m.lost && !g) return `<span class="ft lostft">${I.skull}${m.bird ? `${esc(m.bird.name)} was lost` : "Lost on the way"} · Pigeon Death</span>`;
   if (mine && m.flying && !g) return `<span class="ft">${m.waiting ? I.clock : ""}lands ${atTime(m.deliverAt)}</span>`;
-  const ts = mine ? m.sentAt : m.deliverAt, read = mine && !g && !!m.readAt;     // (the day above it goes by the same time)
-  return `<span class="ft">${fmtTime(ts)}${read ? `<span class="rd" role="img" aria-label="Read">${I.ticks}</span>` : ""}</span>`;
+  // landed: no time on the bubble, as in Messages (the time sits in the header above it, and in its menu)
+  return "";
 }
 // in a group, "Landed for all · read by" sits under your latest landed message only (the older ones keep it if something's still to say)
 let quietMeta = null;
+// one to three emoji on their own: big, with no bubble
+const JUMBO_RE = /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*\s*){1,3}$/u;
+// a header over each stretch of the chat, as in Messages: "Today 17:24", "Yesterday 10:19", "Mon 13 Oct 09:02"
+const TIME_GAP = HOUR;
+const stampHtml = (at) => `<div class="stamp"><b>${dayLabel(at)}</b> ${fmtTime(at)}</div>`;
+// under your latest landed message (one to one): landed, or read, and when
+function statusLine(m) {
+  return `<div class="meta me rstat">${m.readAt ? `Read ${fmtShort(m.readAt)}` : `Landed ${fmtShort(m.deliverAt)}`}</div>`;
+}
 function bubble(f, m, gapTop, g) {
   if (m.stopover) return stopCard(f, m);
   const mine = m.from === S.me.id, k = kindOf(m);
@@ -3238,6 +3247,7 @@ function bubble(f, m, gapTop, g) {
   }
   const p = S.plain.get(m.id) || { t: "" };
   const quote = p.q ? quoteHtml(p.q, g) : "";
+  const jumbo = !p.p && !p.v && !p.q && !p.bad && !m.flying && !m.lost && JUMBO_RE.test(p.t || "");
   const text = p.bad ? `<span class="bad-scroll">${p.unchecked ? "Check the new safety number to open this message." : "This message couldn’t be opened on this phone."}</span>` : esc(p.t).replace(/\n/g, "<br>");
   // tap: your pigeon in the air → its flight; anything that's arrived → react, reply or its flight
   const tapAct = mine && m.flying ? ` data-act="flymenu" data-id="${esc(m.id)}"` : !m.flying && !m.lost && !p.bad ? ` data-act="msgmenu" data-id="${esc(m.id)}"` : "";
@@ -3273,7 +3283,7 @@ function bubble(f, m, gapTop, g) {
     else photo = `<div class="ph"${ar}>Opening photo…</div>`;
     // the time goes under its words, or over the picture when there are none
     html = `<div class="b pic${cls}" data-mid="${esc(m.id)}"${tapAct}>${photo}${p.t || quote || up ? `<span class="ptxt">${quote}${text}${tail}</span>` : foot.replace('class="ft', 'class="ft over')}</div>`;
-  } else html = `<div class="b${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
+  } else html = `<div class="b${jumbo ? " jumbo" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
   // a line added by the friend it stopped with on the way
   if (m.via && !mine && S.notes.get(m.id)) html += `<div class="vianote"><b>${esc(first(friend(m.via)?.name || "A friend"))} added</b><span>${esc(S.notes.get(m.id))}</span></div>`;
   html += reactsHtml(m, mine);
@@ -3698,6 +3708,12 @@ function openReactMenu(anchor, id) {
   const flight = m && !m.flying && !m.lost && (m.route || m.flock?.some((x) => x.route));
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
     ...(flight ? [{ label: "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: I.map, act: "map", id }] : [])]);
+  if (m) {
+    const g = group(S.chat), mine = m.from === S.me.id, bits = [`Sent ${fmtShort(m.sentAt)}`];
+    if (!m.flying && !m.lost) bits.push(`${g && mine ? "First landed" : "Landed"} ${fmtShort(g && mine ? Math.min(...(m.flock || [{ deliverAt: m.deliverAt }]).map((x) => x.deliverAt || Infinity)) : m.deliverAt)}`);
+    if (mine && !g && m.readAt) bits.push(`Read ${fmtShort(m.readAt)}`);
+    $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="mtime" role="none">${bits.join(" · ")}</div>`);
+  }
   $(".menu-pop", $pop).insertAdjacentHTML("afterbegin", `<div class="rrow" role="none">${REACTIONS.map((e) => `<button type="button" class="${e === cur ? "on" : ""}" data-act="react" data-id="${esc(id)}" data-e="${esc(e)}" role="menuitem" aria-label="React ${esc(e)}">${e}</button>`).join("")}</div>`);
 }
 async function sendReact(id, e) {
@@ -3767,7 +3783,7 @@ function chatMoments(msgs, chatId) {
   const seen = new Set(), same = new Map(), out = [];
   for (const m of msgs || []) for (const n of m.near || []) {
     const key = [m.id, n.other.id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
-    const text = momentText(m, n, chatId), dup = text + "|" + fmtTime(n.at), was = same.get(dup);
+    const text = momentText(m, n, chatId), dup = text, was = same.get(dup);
     if (was && Math.abs(was.at - n.at) < 10 * 60e3) { was.mom.n++; continue; }
     const x = { mom: { key, id: m.id, text, at: n.at, kind: n.kind, place: n.place && n.place !== "land" ? n.place : "", n: 1 }, at: n.at };
     same.set(dup, x); out.push(x);
@@ -3886,7 +3902,7 @@ function vGroupChat(g) {
   const ghosts = told ? (g.unseen || []).filter((id) => !added.has(id)) : [];
   if (told && g.unseen?.length) { S.pins["g:" + g.id] = [...new Set([...(S.pins["g:" + g.id] || []), ...g.members.map((p) => p.id)])]; g.unseen = []; savePins(); }
   if (ghosts.length) g.ghosts = [...new Set([...(g.ghosts || []), ...ghosts])];
-  let body = "", lastDay = "", prevFrom = null, ev = 0;
+  let body = "", lastAt = 0, prevFrom = null, ev = 0;
   const stl = stampLines(msgs).sort((a, b) => a.at - b.at); let si = 0;
   const stampsTo = (at) => { let h = ""; while (si < stl.length && stl[si].at <= at) h += stl[si++].html; return h; };
   // the group's changes up to a moment, as lines
@@ -3898,7 +3914,8 @@ function vGroupChat(g) {
   quietMeta = new Set(landed.slice(0, -1).map((m) => m.id));
   if (msgs?.length) for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], mine = m.from === S.me.id, at = mine || m.flying || m.lost ? m.sentAt : m.deliverAt;
-    if (dayLabel(at) !== lastDay) { lastDay = dayLabel(at); body += `<div class="stamp">${lastDay}</div>`; prevFrom = null; }
+    if (!sameDay(at, lastAt) || at - lastAt > TIME_GAP) { body += stampHtml(at); prevFrom = null; }
+    lastAt = at;
     const lines = evsTo(at) + stampsTo(at); if (lines) { body += lines; prevFrom = null; }
     // pigeons still flying to you, one after another: one card between them
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
@@ -3926,7 +3943,8 @@ function vChat() {
   const f = friend(S.chat);
   if (!f) return `${navbar("", { left: backBtn("tab", S.backTo || "messages"), solid: true })}<p class="empty"><b>Not in your friends</b>This person isn’t in your friends any more.</p>`;
   const msgs = S.msgs.get(f.id);
-  let body = "", lastDay = "", prevFrom = null;
+  let body = "", lastAt = 0, prevFrom = null;
+  const lastLanded = [...(msgs || [])].reverse().find((m) => m.from === S.me.id && !m.flying && !m.lost && !m.waiting && !m.recalled)?.id;
   const moms = [...chatMoments(msgs, f.id), ...flyLines(f)].sort((a, b) => a.at - b.at); let mo = 0;
   const momsTo = (at) => { const h = []; while (mo < moms.length && moms[mo].at <= at) h.push(moms[mo++]); return momRun(h); };
   if (!msgs) body = `<p class="empty">Opening your messages…</p>`;
@@ -3934,11 +3952,13 @@ function vChat() {
   else if (!msgs.length) body = `${momsTo(Infinity)}<p class="empty"><b>Say hello</b>Messages to ${esc(first(f.name))} are end-to-end encrypted and fly the real distance between you.</p>`;
   else for (let i = 0; i < msgs.length; i++) {
     const m = msgs[i], at = m.from === S.me.id || m.flying || m.lost ? m.sentAt : m.deliverAt;
-    if (dayLabel(at) !== lastDay) { lastDay = dayLabel(at); body += `<div class="stamp">${lastDay}</div>`; prevFrom = null; }
+    if (!sameDay(at, lastAt) || at - lastAt > TIME_GAP) { body += stampHtml(at); prevFrom = null; }
+    lastAt = at;
     const ml = momsTo(at); if (ml) { body += ml; prevFrom = null; }
     let j = i; while (j < msgs.length && inbound(msgs[j])) j++;
     if (j - i >= 2) { body += flyRun(msgs.slice(i, j), null); i = j - 1; prevFrom = null; continue; }
     body += bubble(f, m, prevFrom !== null && prevFrom !== m.from);
+    if (m.id === lastLanded) body += statusLine(m);
     prevFrom = m.from;
   }
   if (msgs?.length) body += momsTo(Infinity);

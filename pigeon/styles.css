@@ -1902,11 +1902,6 @@ html.night .nav-ghost .night{background:none}
 .b.gone .ft,.b.gone.me .ft{float:none;margin:0 -2px 0 0;color:var(--label-3)}
 .b.gone .ft svg{opacity:.8}
 .b.gone + .b.ocap{margin-top:3px}
-/* bubbles, one after another from the same person: the corners between them tuck in */
-.b.me:not(.pic,.once,.gone):has(+ .b.me:not(.pic,.once,.gone)){border-bottom-right-radius:8px}
-.b.me:not(.pic,.once,.gone) + .b.me:not(.pic,.once,.gone){border-top-right-radius:8px}
-.b:not(.me,.pic,.once,.gone):has(+ .b:not(.me,.pic,.once,.gone)){border-bottom-left-radius:8px}
-.b:not(.me,.pic,.once,.gone) + .b:not(.me,.pic,.once,.gone){border-top-left-radius:8px}
 /* view once: a lighter button to open it, and yours in the air laid out like any pigeon in the air */
 .b.once.live{gap:7px;padding:9px 16px 9px 12px}
 .b.once.live b,.b.once.up b{font-weight:600}
@@ -1919,3 +1914,24 @@ html.night .nav-ghost .night{background:none}
 .b.once.up > .ft{margin:0 -2px 0 8px}
 /* lost on the way: an outline with a broken edge, where the message would have been */
 .b.me.lost{opacity:1;background:none;color:var(--label-2);box-shadow:none;border:1.5px dashed color-mix(in srgb,var(--red) 45%,transparent);padding:6.5px 11.5px 7.5px}
+/* Messages-style bubbles: the last of a run from one person gets a tail */
+.b{z-index:0}
+.b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before,
+.b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::before{content:"";position:absolute;z-index:-1;bottom:0;width:20px;height:20px}
+.b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem):not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::after,
+.b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::after{content:"";position:absolute;z-index:-1;bottom:0;width:10px;height:20px;background:var(--bg-plain)}
+.b.me:not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::before{right:-7px;background:var(--tint);border-bottom-left-radius:16px 14px}
+.b.me:not(:has(+ .b.me:not(.pic,.once,.gone,.up,.lost,.jumbo,.voicem)))::after{right:-10px;border-bottom-left-radius:10px}
+.b:not(.me):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::before{left:-7px;background:var(--bubble-in);border-bottom-right-radius:16px 14px}
+.b:not(.me):not(:has(+ .b:not(.me,.pic,.once,.gone,.up,.lost,.jumbo,.voicem,.sealed)))::after{left:-10px;border-bottom-right-radius:10px}
+.b{border-radius:20px;padding:7px 14px 8px}
+.b.gap-top{margin-top:12px}
+/* one to three emoji on their own: big, no bubble */
+.b.jumbo,.b.jumbo.me{background:none;box-shadow:none;padding:0 2px;font-size:calc(46px * var(--ts, 1));line-height:1.15}
+/* the time over a stretch of the chat, and landed / read under your latest */
+.msgs .stamp{margin:18px 0 8px;font-size:12px;line-height:16px;font-weight:500;color:var(--label-2)}
+.msgs .stamp b{font-weight:600}
+.meta.rstat{margin:3px 4px 4px;font-size:11px;font-weight:500;color:var(--label-2)}
+.menu-pop .mtime{padding:2px 14px 8px;font-size:12px;line-height:16px;color:var(--label-2);text-align:center;font-variant-numeric:tabular-nums}
+/* the blue settles before the bottom, so the tail meets it exactly */
+.b.me:not(.up,.lost,.pic,.once,.gone,.jumbo){background:linear-gradient(180deg,color-mix(in srgb,var(--tint) 88%,#fff),var(--tint) calc(100% - 20px))}
