@@ -3238,7 +3238,7 @@ function bubble(f, m, gapTop, g) {
     const can = !mine && !opened && !gone && !m.flying && !m.lost;
     const words = p.t || quote;
     html = can ? `<button type="button" class="b once live${cls}" data-mid="${esc(m.id)}" data-act="viewonce" data-id="${esc(m.id)}" aria-label="View photo, once">${I.once}<b>${label}</b></button>`
-      : `<div class="b once${opened || gone ? " done" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
+      : `<div class="b once${opened || gone ? " done gone" : ""}${cls}" data-mid="${esc(m.id)}"${tapAct}>${I.once}<b>${label}</b>${words ? "" : tail}</div>`;
     if (words) html += `<div class="b ocap${cls}" data-mid="${esc(m.id)}"${tapAct}>${quote}${text}${tail}</div>`;
   } else if (p.p && (m.photo === 2 || S.photoGone.has(m.id))) {
     // gone: a quiet outline of where it was, the time beside it; its words (if any) in their own bubble below
@@ -3270,7 +3270,9 @@ function bubble(f, m, gapTop, g) {
     else { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
   }
   const onceDone = onceP(p) && (m.viewedAt || S.viewedOnce.has(m.id) || (m.flock || []).some((x) => x.viewedAt));
-  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id) && !(onceDone && !mine)) meta.push(`<span class="fl exp">${onceP(p) ? (mine ? "View once · " : "Opens once · ") : ""}${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
+  // once everyone who could open it has, there's nothing left to disappear
+  const allSeen = onceP(p) && (g ? (m.flock || []).length > 0 && m.flock.every((x) => x.viewedAt) : !!m.viewedAt);
+  if (p.p && m.photo === 1 && !m.flying && !S.photoGone.has(m.id) && !(onceDone && !mine) && !(mine && allSeen)) meta.push(`<span class="fl exp">${onceP(p) ? (mine ? "View once · " : "Opens once · ") : ""}${picWord(p)} disappears in <span data-eta="${esc(m.expiresAt)}"></span></span>`);
   return html + (meta.length ? `<div class="meta${mine ? " me" : ""}">${meta.join("")}</div>` : "");
 }
 // A friend's pigeon to someone else, stopping with you on the way: read it, and add a line.
