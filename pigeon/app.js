@@ -2560,6 +2560,32 @@ function mount() {
   window.visualViewport?.addEventListener?.("resize", () => {          // keyboard closed without leaving the box
     if (window.innerHeight - window.visualViewport.height < 80 && document.activeElement !== $ta) typing(false);
   });
+  fitKeyboard();
+}
+// iOS doesn't shrink the page for the keyboard: it slides the whole page up
+// under it, taking the chat's header and Back off the top of the screen. So
+// while the keyboard is up, the app is made exactly as tall as the space above
+// it, and the page is put back at the top whenever iOS nudges it; the message
+// box then sits right on the keyboard and everything above stays in view.
+function fitKeyboard() {
+  const vv = window.visualViewport; if (!vv || !matchMedia("(pointer: coarse)").matches) return;
+  const doc = document.documentElement;
+  let raf = 0, was = false;
+  const fit = () => {
+    raf = 0;
+    const kb = window.innerHeight - vv.height > 80 && inField(document.activeElement);
+    if (kb) doc.style.setProperty("--app-h", `${Math.round(vv.height)}px`); else doc.style.removeProperty("--app-h");
+    doc.classList.toggle("kbup", kb);
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    // the newest message stays in sight as the keyboard comes up (if that's where you were)
+    if (kb && !was && S.view === "chat" && S.stick && $view) $view.scrollTop = $view.scrollHeight;
+    was = kb;
+  };
+  const soon = () => { if (!raf) raf = requestAnimationFrame(fit); };
+  vv.addEventListener("resize", soon); vv.addEventListener("scroll", soon);
+  window.addEventListener("scroll", soon, { passive: true });
+  document.addEventListener("focusin", () => { soon(); setTimeout(fit, 350); });     // (and once the keyboard has finished arriving)
+  document.addEventListener("focusout", () => setTimeout(fit, 60));
 }
 function fitTa() {
   if (!$ta.offsetParent) { $ta.style.height = ""; return; }       // hidden (not in a chat): nothing to measure yet
@@ -3988,7 +4014,10 @@ function renderCompose() {
   // nothing typed: the send button becomes a microphone (voice pigeons)
   const mic = $(".mic", $compose), showMic = !has && !blocked && voiceOK() && dumb == null;
   mic.hidden = !showMic; btn.hidden = showMic && !S.busy; mic.disabled = !!S.busy;
-  $ta.disabled = blocked && !S.err && dumb == null;   // you can always delete a /dumb that can't fly
+  // you can always delete a /dumb that can't fly; and the box you're typing in is never switched off under you
+  // (iOS puts the keyboard away the moment a focused field is disabled; Send stays off instead)
+  const off = blocked && !S.err && dumb == null;
+  if (!off || document.activeElement !== $ta) $ta.disabled = off;
   const rb = $(".replybar", $compose), rt = S.replyTo && S.replyTo.chat === S.chat ? S.replyTo : null;
   rb.hidden = !rt;
   if (rt && rb.dataset.for !== rt.id) {
@@ -6628,6 +6657,7 @@ async function checkUpdate() {
   try { live = /name="inflight-version" content="([\w-]+)"/.exec(await (await fetch("/pigeon/", { cache: "no-store" })).text())?.[1] || ""; } catch { return; }
   if (!live || live === VERSION) return;
   const busy = S.sheet || S.attach || ($ta && $ta.value.trim()) || (AUTH_VIEWS.has(S.view) && S.view !== "welcome") || $(".asheet, .menu-pop")
+    || S.view === "chat" || inField(document.activeElement)               // (never under your fingers: a reload would take the keyboard away)
     || rec || onceOpen || (S.player && !S.player.paused) || S.busy;       // (never mid-recording, mid-photo, mid-voice-note or mid-send)
   if (!busy) return reloadHere();
   toast("A new version of InFlight is ready.", "Update", reloadHere);
