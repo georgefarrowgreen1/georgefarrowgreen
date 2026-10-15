@@ -135,9 +135,10 @@ export async function windsFor(env, routes) {
       u.searchParams.set("latitude", ask.map((p) => p.lat).join(",")); u.searchParams.set("longitude", ask.map((p) => p.lon).join(","));
       u.searchParams.set("current", WIND_VARS); u.searchParams.set("wind_speed_unit", "kmh");
       const res = await fetch(u, { signal: AbortSignal.timeout(2500), headers: { Accept: "application/json" } });
-      if (!res.ok) return calm;
-      data = await res.json();
-    } catch (_) { return calm; }
+      if (res.ok) data = await res.json();
+    } catch (_) {}
+    // Open-Meteo didn't answer: the hour now from MET Norway's forecast
+    if (!data) { const met = await metFor(env, ask, 1).catch(() => null); if (!met) return calm; data = met.map((H) => (H ? { current: hourAt(H, 0) } : {})); }
     const fresh = Array.isArray(data) ? data : [data];
     if (fresh.length !== ask.length) return calm;
     const keep = [];
@@ -195,8 +196,48 @@ async function hourlyFor(env, cells, hours) {
     if (cache) await cache.put(ck, new Response(JSON.stringify(part.map((p, k) => [key(p), list[k]])), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=1800" } })).catch(() => {});
     return list;
   }));
-  return parts.some((x) => !x) ? null : parts.flat();
+  if (!parts.some((x) => !x)) return parts.flat();
+  // Open-Meteo didn't answer: MET Norway's forecast instead, for as many squares as it can be asked about
+  return metFor(env, cells, hours).catch(() => null);
 }
+
+// ---- when Open-Meteo is down: MET Norway ----
+// The Norwegian Meteorological Institute's free forecast (api.met.no), asked
+// one point at a time, so only MET_MOST squares (spread evenly; the rest go
+// without), named as its terms ask. Given in Open-Meteo's shape, hour by hour
+// from this hour (its later hours are 6-hourly: each hour takes the last
+// forecast before it). It has no wind 120 m up: the wind at the ground does.
+// MET_URL: tests only.
+const MET_MOST = 40, MET_UA = "InFlight/1.0 (https://georgefarrowgreen.com/pigeon/)";
+// its weather symbols as WMO weather codes
+const metCode = (s = "") => /thunder/.test(s) ? 95 : /heavysnow/.test(s) ? 75 : /snow/.test(s) ? 71 : /sleet/.test(s) ? 67 : /heavyrain/.test(s) ? 65 : /rain/.test(s) ? 61 : /fog/.test(s) ? 45 : 0;
+async function metFor(env, cells, hours) {
+  const h0 = Math.floor(Date.now() / HOUR) * HOUR, times = Array.from({ length: hours }, (_, h) => (h0 + h * HOUR) / 1000);
+  const n = Math.min(cells.length, MET_MOST), pick = [...new Set(Array.from({ length: n }, (_, k) => Math.floor((k * cells.length) / n)))];
+  const out = cells.map(() => null);
+  await Promise.all(pick.map(async (k) => {
+    try {
+      const u = new URL(`${env.MET_URL || "https://api.met.no"}/weatherapi/locationforecast/2.0/complete`);
+      u.searchParams.set("lat", String(cells[k].lat)); u.searchParams.set("lon", String(cells[k].lon));
+      const res = await fetch(u, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": MET_UA, Accept: "application/json" } });
+      if (res.ok) out[k] = metHourly(await res.json(), times);
+    } catch (_) {}
+  }));
+  return out.some(Boolean) ? out : null;
+}
+function metHourly(d, times) {
+  const ts = (d?.properties?.timeseries || []).map((x) => {
+    const one = x.data?.next_1_hours, six = x.data?.next_6_hours, next = one || six;
+    return { t: Date.parse(x.time) / 1000, i: x.data?.instant?.details || {}, sym: next?.summary?.symbol_code, mm: next?.details?.precipitation_amount != null ? next.details.precipitation_amount / (one ? 1 : 6) : null };
+  }).filter((x) => Number.isFinite(x.t)).sort((a, b) => a.t - b.t);
+  if (!ts.length) return null;
+  const at = times.map((t) => ts.filter((x) => x.t <= t).at(-1) || ts[0]);
+  const ms = (v) => (v == null ? null : Math.round(v * 36) / 10);    // m/s → km/h
+  return { time: times, wind_speed_10m: at.map((x) => ms(x.i.wind_speed)), wind_direction_10m: at.map((x) => x.i.wind_from_direction ?? null),
+    wind_gusts_10m: at.map((x) => ms(x.i.wind_speed_of_gust) ?? 0), weather_code: at.map((x) => metCode(x.sym)),
+    temperature_2m: at.map((x) => x.i.air_temperature ?? null), precipitation: at.map((x) => x.mm) };
+}
+
 
 // ---- the weather as the pigeon will meet it ----
 // A pigeon on a long flight meets each stretch of sky hours after it leaves,
