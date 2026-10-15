@@ -287,6 +287,21 @@ const WX_WORDS = { storms: "storms", rain: "heavy rain", snow: "snow", fog: "fog
 const WX_MIN = 15 * MIN;
 const lateBy = (ms) => { const m = Math.round(ms / MIN); return m >= 90 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`; };
 const clockAt = (ts, tz) => { try { return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ts); } catch (_) { return ""; } };
+// When, as someone in that time zone would say it: "15:00", "tomorrow 07:15", "Sat 22:00", "Sat 25 Oct 22:00"
+const DAYS_AHEAD = 6;
+function dayClock(ts, tz, t = Date.now()) {
+  const clock = clockAt(ts, tz);
+  try {
+    const day = (x) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(x);
+    const n = Math.round((Date.parse(day(ts)) - Date.parse(day(t))) / DAY);
+    if (n <= 0) return clock;
+    if (n === 1) return `tomorrow ${clock}`;
+    const f = (o) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, ...o }).format(ts);
+    return n <= DAYS_AHEAD ? `${f({ weekday: "short" })} ${clock}` : `${f({ weekday: "short" })} ${f({ day: "numeric", month: "short" })} ${clock}`;
+  } catch (_) { return clock; }
+}
+// "at 15:00", "tomorrow at 07:15", "on Sat at 22:00"
+const whenAt = (ts, tz) => { const d = dayClock(ts, tz), [w, c] = d.includes(" ") ? [d.slice(0, d.lastIndexOf(" ")), d.slice(d.lastIndexOf(" ") + 1)] : [null, d]; return !w ? `at ${c}` : w === "tomorrow" ? `tomorrow at ${c}` : `on ${w} at ${c}`; };
 async function wxTick(env, D, t, since) {
   let pushes = 0;
   const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.wx, m.wx_ms, m.deliver_at, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
@@ -299,9 +314,9 @@ async function wxTick(env, D, t, since) {
     let k = "bad weather"; try { k = WX_WORDS[JSON.parse(m.wx).k] || k; } catch (_) {}
     const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
     if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "InFlight",
-      body: `Your pigeon flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, at ${clockAt(m.deliver_at, sp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.recipient}` });
+      body: `Your pigeon flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, sp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.recipient}` });
     if (rp.delays && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
-      body: `${rp.names ? "Their" : "A"} pigeon to you flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, at ${clockAt(m.deliver_at, rp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.sender}` });
+      body: `${rp.names ? "Their" : "A"} pigeon to you flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, rp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
   const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, gm.muted FROM pg_gdeliv d
     JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
@@ -314,7 +329,7 @@ async function wxTick(env, D, t, since) {
     const p = prefsOf(d); if (!p.delays || isQuiet(p, t) || d.muted) continue;
     let k = "bad weather"; try { k = WX_WORDS[JSON.parse(d.wx).k] || k; } catch (_) {}
     pushes += await pushTo(env, d.user_id, { title: p.names ? d.gname : "InFlight",
-      body: `A pigeon to you flew into ${k}. It’ll land ${lateBy(d.wx_ms)} late, at ${clockAt(d.deliver_at, p.tz)}.`, tag: "wx-" + d.rid, url: `/pigeon/#open=${d.group_id}` });
+      body: `A pigeon to you flew into ${k}. It’ll land ${lateBy(d.wx_ms)} late, ${whenAt(d.deliver_at, p.tz)}.`, tag: "wx-" + d.rid, url: `/pigeon/#open=${d.group_id}` });
   }
   return pushes;
 }
@@ -328,8 +343,8 @@ async function turnNotes(env, D, t, turns) {
     const why = (p) => (TURN_WHY[x.why] || TURN_WHY.w)(p.names ? x.where : null);
     // (sheltering: "Your pigeon is sheltering from storms on the Azores until about 16:00. It now lands at 21:40.")
     const say = (p, who) => x.why === "h"
-      ? `${who} is sheltering from storms${p.names && x.where ? ` ${x.where}` : ""} until about ${clockAt(x.until, p.tz)}. It now lands at ${clockAt(x.deliver, p.tz)}.`
-      : `${who} changed course ${why(p)}. It now lands at ${clockAt(x.deliver, p.tz)}.`;
+      ? `${who} is sheltering from storms${p.names && x.where ? ` ${x.where}` : ""} until about ${dayClock(x.until, p.tz)}. It now lands ${whenAt(x.deliver, p.tz)}.`
+      : `${who} changed course ${why(p)}. It now lands ${whenAt(x.deliver, p.tz)}.`;
     if (x.group) {
       const g = await D.prepare(`SELECT g.name, u.notify_prefs, gm.muted FROM pg_groups g JOIN pg_users u ON u.id = ?2
         LEFT JOIN pg_group_members gm ON gm.group_id = g.id AND gm.user_id = ?2 WHERE g.id = ?1`).bind(x.r.group_id, x.r.user_id).first();
