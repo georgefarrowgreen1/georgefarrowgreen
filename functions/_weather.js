@@ -20,7 +20,10 @@
 
 import { HOUR, SPEED_KMH, gcPoint, db, chunks, haversineKm } from "./_pigeon.js";
 
-const POINTS = [0.1, 0.3, 0.5, 0.7, 0.9];      // where along the route to look
+// where along a route to look: a point every SAMPLE_KM or so (each in the middle of
+// its stretch), POINTS_LEAST to POINTS_MOST of them, so a storm can't slip between
+const SAMPLE_KM = 200, POINTS_LEAST = 5, POINTS_MOST = 12;
+const pointsFor = (km) => { const n = Math.min(POINTS_MOST, Math.max(POINTS_LEAST, Math.ceil(km / SAMPLE_KM))); return Array.from({ length: n }, (_, k) => (k + 0.5) / n); };
 const MIN_F = 0.6, MAX_F = 1.6;                  // even a gale only does so much (over the whole way)
 const GALE = 60;                                 // gusts (km/h) a pigeon has to fight
 const CELL = 0.25, WX_TTL = 10 * 60e3;           // the grid points are snapped to, and how long a square's weather is kept
@@ -56,7 +59,7 @@ function pointsOf(routes) {
   const pts = [];
   routes.forEach((route, i) => {
     const path = route.length === 4 && typeof route[0] === "number" ? [[route[0], route[1]], [route[2], route[3]]] : route;
-    for (const f of POINTS) {
+    for (const f of pointsFor(lenOf(path))) {
       const [lat, lon] = alongPath(path, f), [nLat, nLon] = alongPath(path, Math.min(1, f + 0.02));
       const sl = Math.max(-90, Math.min(90, snap(lat))), so = snap((lon + 540) % 360 - 180);
       pts.push({ i, f, lat: sl, lon: so === -180 ? 180 : so, head: bearing(lat, lon, nLat, nLon) });
