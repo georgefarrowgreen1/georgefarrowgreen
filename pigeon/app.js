@@ -562,6 +562,25 @@ function drawMap(cv, m, cardH) {
     if (flown.length > 1) { g.lineWidth = lw + 1.5; g.strokeStyle = col("--cell"); line(flown); g.lineWidth = lw; g.strokeStyle = tint; line(flown); }   // a light edge so it reads on land and sea
   }
   g.globalAlpha = 1; g.setLineDash([]);
+  // the weather on the way: the way it was going before it turned for the weather, faint;
+  // and where it sheltered from storms
+  const nearT = (rp, t) => rp.reduce((a, p, i) => (Math.abs(p.t - t) < Math.abs(rp[a].t - t) ? i : a), 0);
+  for (const { r, rp, P } of tracks) for (const [k, l] of (r.legs || []).entries()) {
+    if (l[3] === "r" && l[5]?.was?.length) {
+      const i = nearT(rp, l[2]), pts = [P[i]]; let prev = rp[i].x, a = { lat: l[0], lon: l[1] };
+      for (const [lat, lon] of l[5].was) {
+        for (let j = 1; j <= 16; j++) { const q = gcPoint(a, { lat, lon }, j / 16); while (q.lon - prev > 180) q.lon -= 360; while (q.lon - prev < -180) q.lon += 360; prev = q.lon; pts.push([X(q.lon), Y(mercY(q.lat))]); }
+        a = { lat, lon };
+      }
+      g.save(); g.globalAlpha = 0.55; g.strokeStyle = col("--label-3"); g.lineWidth = 2; g.setLineDash([3, 6]); line(pts); g.restore();
+    }
+    if (l[3] === "h" && r.legs[k + 1]?.[3] === "h" && (k === 0 || r.legs[k - 1][3] !== "h" || r.legs[k - 1][0] !== l[0])) {
+      const [x, y] = P[nearT(rp, l[2])];
+      g.fillStyle = col("--cell"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
+      g.strokeStyle = col("--orange"); g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, 5, 0, 7); g.stroke();
+    }
+  }
+  g.strokeStyle = tint;
   for (const { rp, P } of tracks) rp.forEach((p, i) => { if (p.turn) { g.fillStyle = col("--cell"); g.beginPath(); g.arc(P[i][0], P[i][1], 5, 0, 7); g.fill(); g.fillStyle = col("--tint"); g.beginPath(); g.arc(P[i][0], P[i][1], 2.5, 0, 7); g.fill(); } });   // where it turned
   for (const { r, rp } of tracks) for (const n of r.near || []) {        // where it passed another pigeon
     const near = rp.reduce((a, p) => (Math.abs(p.t - n.at) < Math.abs(a.t - n.at) ? p : a), rp[0]);
@@ -1005,9 +1024,11 @@ function drawRadar(g, cv, ts, xf) {
 // falling, a storm cloud that flashes, drifting snow, banks of fog, or gusts.
 const WX_SKY = { storms: ["#596072", 0.7, "Storms"], rain: ["#8a95a8", 0.6, "Heavy rain"], snow: ["#dfe5ee", 0.85, "Snow"], fog: ["#e4e7ec", 0.78, "Fog"], gales: ["#a9b1bf", 0.5, "Gales"] };
 function wxCells(routes) {
-  return routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt)
-    .filter((r, i, a) => a.findIndex((x) => x.wx.lat === r.wx.lat && x.wx.lon === r.wx.lon) === i)
-    .map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon, seed: (Math.abs(r.wx.lat * 7 + r.wx.lon * 13) % 10) }));
+  const held = routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt).map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon }));
+  // and the storms it went around (planned, or turning for them on the way), while it's flying
+  const dodged = routes.filter((r) => !r.here && !r.lost && now() < r.deliverAt).flatMap((r) => (r.legs || []).filter((l) => l[5]?.storm).map((l) => ({ k: "storms", lat: l[5].storm[0], lon: l[5].storm[1] })));
+  return [...held, ...dodged].filter((c, i, a) => a.findIndex((x) => Math.abs(x.lat - c.lat) < 0.3 && Math.abs(x.lon - c.lon) < 0.3) === i)
+    .map((c) => ({ ...c, seed: (Math.abs(c.lat * 7 + c.lon * 13) % 10) }));
 }
 function drawWx(g, cv, ts, xf) {
   const t = STILL.matches ? 0 : ts / 1000;

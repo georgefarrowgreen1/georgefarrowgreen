@@ -24,7 +24,7 @@
 import { MIN, HOUR, DAY, SPEED_KMH, PIGEONS, RISKY_SPEED, PHOTO_TTL, MAX_FLIGHT } from "./_pigeon.js";
 import { skyAlong, skyAtPoints, pointsFor } from "./_weather.js";
 import { stopsOf, posAt, renear } from "./_moments.js";
-import { squeeze, passed, pathKm, round5, latticeOf, bestWay, finish, timeWay, restOf, hopsFor } from "./_route.js";
+import { squeeze, passed, pathKm, round5, round2, latticeOf, bestWay, finish, timeWay, restOf, hopsFor } from "./_route.js";
 import { placeName } from "./_where.js";
 import { placeAt } from "./_placegrid.js";
 import { isSea } from "./_passport.js";
@@ -131,7 +131,10 @@ async function turnFor(D, t, x, better, wasW) {
   const latest = latestOf(r);
   const flying = Math.round((pathKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
   const done = passed(x.legs, t);
-  const legs = JSON.stringify([...done, [round5(pLat), round5(pLon), t, "r", better.why], ...timeWay([pLat, pLon], pts, end, t, Math.max(0, deliver - t - way.rest)).legs]);
+  // the turn keeps the way it was going (and where the storms were), for the map
+  const was = x.path.slice(1).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]).slice(-12).map((q) => [round2(q[0]), round2(q[1])]);
+  const more = { was, ...(wasW.storm && better.why === "s" ? { storm: [round2(wasW.storm.lat), round2(wasW.storm.lon)] } : {}) };
+  const legs = JSON.stringify([...done, [round5(pLat), round5(pLon), t, "r", better.why, more], ...timeWay([pLat, pLon], pts, end, t, Math.max(0, deliver - t - way.rest)).legs]);
   const km = pathKm([[r.from_lat, r.from_lon], ...done, [pLat, pLon]]) + pathKm(way.p), left = r.deliver_at - t, change = deliver - r.deliver_at;
   const lostAt = r.lost_at == null || r.lost_at <= t ? r.lost_at : Math.round(t + ((r.lost_at - t) * (deliver - t)) / left);
   // the weather's part: going around storms, the time it costs is theirs (and the turn's notice has said so already)

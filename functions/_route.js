@@ -25,6 +25,7 @@ import { LANDMARKS, marksAlong } from "./_landmarks.js";
 
 const R = 6371, rad = Math.PI / 180, deg = 180 / Math.PI;
 export const round5 = (x) => Math.round(x * 1e5) / 1e5;
+export const round2 = (x) => Math.round(x * 100) / 100;
 export const pathKm = (path) => { let k = 0; for (let i = 0; i < path.length - 1; i++) k += haversineKm(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]); return k; };
 // where you get to going d km from (lat, lon) on a bearing (degrees)
 function dest(lat, lon, brg, d) {
@@ -155,6 +156,8 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true } = {}) {
   if (firstStorm) straight.w.storm = { lat: firstStorm[0], lon: firstStorm[1], at: 0.5 };
   const name = why === "s" && stormPt ? safeName(stormPt[0], stormPt[1]) : null;
   const bends = cost[0].chain.slice(0, -1).map((x, k) => [round5(pts[nodeOf(lat, k + 1, x.o)][0]), round5(pts[nodeOf(lat, k + 1, x.o)][1]), why, ...(name ? [name] : [])]);
+  // (the first bend around storms says where they were, for the map to draw them)
+  if (why === "s" && stormPt && bends.length) bends[0] = [bends[0][0], bends[0][1], why, name ?? null, { storm: [round2(stormPt[0]), round2(stormPt[1])] }];
   return { path: [lat.from, ...bends, lat.to], why, w: best.w, hours: best.hours, straight: straight.hours };
 }
 // A way, through the passes, and resting on islands if it hops
@@ -291,7 +294,7 @@ export function timeWay(from, way, to, start, flight) {
   const legs = []; let t = start;
   way.forEach((q, i) => {
     t += (flight * seg[i]) / total;
-    const leg = [round5(q[0]), round5(q[1]), Math.round(t), q[2] || "w", ...(q[3] ? [q[3]] : [])];
+    const leg = [round5(q[0]), round5(q[1]), Math.round(t), q[2] || "w", ...(q[3] || q[4] ? [q[3] ?? null] : []), ...(q[4] ? [q[4]] : [])];   // ([4]: its name; [5]: more, for the map)
     legs.push(leg);
     if (q.rest) { t += q.rest; legs.push([leg[0], leg[1], Math.round(t), leg[3], ...(q[3] ? [q[3]] : [])]); }
   });

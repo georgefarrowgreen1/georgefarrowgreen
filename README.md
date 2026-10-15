@@ -410,6 +410,12 @@ sheltering from storms on the Azores until about 15:00. It now lands at
 22:00."); the map card says "Sheltering on the Azores until about 15:00".
 Rests and shelters get a day on top of a pigeon's longest flight.
 
+On the map, a pigeon that turned for the weather shows the way it was going
+as a faint dotted line from where it turned (kept on the turn's point,
+`[lat, lon, at, "r", why, { was, storm }]`), the storms it went around (planned
+or on the way) are drawn as a storm cloud while it flies, and where it
+sheltered gets an orange ring.
+
 The map card says what it's doing ("Resting on the Azores until 09:48",
 "Through the Gotthard Pass"). Turning for someone who moved drops the rest of
 the plan and plans again from where it is; a cheer keeps the plan, sooner.
