@@ -1391,7 +1391,7 @@ const ROUTES = {
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
 };
 
-const HOSTS = /^(?:(?:www\.)?georgefarrowgreen\.com|localhost|127\.0\.0\.1)$/;
+const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
   if (!HOSTS.test(url.hostname)) return json({ error: "Not found." }, 404);

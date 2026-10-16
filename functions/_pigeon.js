@@ -563,12 +563,15 @@ function derToRawEcdsa(der) {
   const out = new Uint8Array(64); out.set(pad(readInt()), 0); out.set(pad(readInt()), 32);
   return out;
 }
-export function rpIdFor(request) { return new URL(request.url).hostname; }
+// Passkeys belong to georgefarrowgreen.com, whichever of InFlight's addresses you're at
+// (georgefarrowgreen.com/pigeon or chat.georgefarrowgreen.com): one passkey works at both
+const RP_SITE = "georgefarrowgreen.com", ADDRESSES = new Set([RP_SITE, "chat." + RP_SITE]);
+export function rpIdFor(request) { const h = new URL(request.url).hostname; return ADDRESSES.has(h) ? RP_SITE : h; }
 function originOk(origin, request) {
   try {
     const o = new URL(origin), here = new URL(request.url);
-    if (o.hostname === "localhost" || o.hostname === "127.0.0.1") return here.hostname === o.hostname;
-    return o.protocol === "https:" && o.host === here.host;
+    if (/(^|\.)localhost$/.test(o.hostname) || o.hostname === "127.0.0.1") return here.hostname === o.hostname;   // local testing
+    return o.protocol === "https:" && (o.host === here.host || (ADDRESSES.has(o.host) && ADDRESSES.has(here.host)));
   } catch (_) { return false; }
 }
 export async function newChallenge(env, mode, userId) {

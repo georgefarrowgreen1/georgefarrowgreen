@@ -68,6 +68,10 @@ const S = {
 };
 const now = () => Date.now() + S.skew;
 const $ = (sel, root = document) => root.querySelector(sel);
+// passkeys belong to georgefarrowgreen.com, at either of InFlight's addresses (as the server has it: rpIdFor)
+const RP_ID = /(^|\.)georgefarrowgreen\.com$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
+// where InFlight is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.georgefarrowgreen.com"
+const HERE = () => `${location.host}${location.pathname.replace(/\/(index\.html)?$/, "").replace(/\/+$/, "")}`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /* ---------------- this phone's storage (IndexedDB) ----------------
@@ -420,7 +424,9 @@ function shipKm(legs) {
 // sails, the sea it crosses, where and when it comes ashore; null if it doesn't
 function shipOf(legs) {
   const b = (legs || []).filter((l) => l[3] === "b"); if (b.length < 3) return null;
-  const mid = b[Math.floor(b.length / 2)], last = b.at(-1);
+  // (the sea it crosses: the middle of its longest leg, not the strait it sails out by)
+  let mid = [b[1][0], b[1][1]], far = -1, last = b.at(-1);
+  for (let i = 1; i < b.length - 1; i++) { const d = haversineKm(b[i][0], b[i][1], b[i + 1][0], b[i + 1][1]); if (d > far) { far = d; const w = b[i + 1][1] - b[i][1] > 180 ? -360 : b[i + 1][1] - b[i][1] < -180 ? 360 : 0, lo = (b[i][1] + b[i + 1][1] + w) / 2; mid = [(b[i][0] + b[i + 1][0]) / 2, lo > 180 ? lo - 360 : lo < -180 ? lo + 360 : lo]; } }
   return { from: b[0][4] || "port", board: b[0][2], off: b[1][2], to: last[4] || "port", ashore: last[2], sea: overWhere(mid[1], mid[0]) };
 }
 // When a ship gets in, as you'd say it: "at 14:00", "tomorrow", "on Thursday", "on 23 Oct"
@@ -4448,7 +4454,7 @@ async function resetWith(mode, btn) {
     let ecdh, pub;
     if (mode === "keep") {
       const a = await navigator.credentials.get({ publicKey: {
-        challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 120000,
+        challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 120000,
         allowCredentials: S.resetInfo.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })),
         extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
       const secret = a && prfResult(a), pk = a && S.resetInfo.passkeys.find((p) => p.id === a.id);
@@ -7149,7 +7155,7 @@ function setLockPrefs(v) { try { if (v) localStorage.setItem(LOCK_KEY, JSON.stri
 // a user-verified passkey check, on this phone
 async function lockCheck() {
   const ids = (S.passkeys || []).map((p) => p.id).filter(Boolean);
-  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 60000,
+  const a = await navigator.credentials.get({ publicKey: { challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 60000,
     allowCredentials: ids.map((id) => ({ type: "public-key", id: fromB64url(id) })) } });
   const ad = a && new Uint8Array(a.response.authenticatorData);
   if (!ad || !(ad[32] & 0x04)) throw new Error("not verified");           // the UV flag: Face ID, Touch ID or the passcode was used
@@ -7623,7 +7629,7 @@ function textSize() {
 // anything was drawn), with a code to scan that opens this same link on a phone.
 // Nothing else runs: no session, no sync, nothing stored.
 function notAvailable() {
-  const site = $(".na-site"); if (site) site.textContent = `${location.host}/pigeon`;
+  const site = $(".na-site"); if (site) site.textContent = HERE();
   const box = $(".na-qr"); if (!box) return;
   const link = /#(add|reset|verify|open)=/.test(location.hash);
   box.innerHTML = `${qrSvg(location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
