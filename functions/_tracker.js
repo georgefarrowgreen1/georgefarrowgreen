@@ -109,13 +109,25 @@ async function today(D, t) {
   return { landed, km: Math.round(km / 10) * 10, seas: [...seas].sort((x, y) => y[1] - x[1]).map(([p]) => p) };
 }
 
+// Pigeons on their way to, from or across the Moon (functions/_moon.js): only how many (where on Earth
+// they left from or are going is someone's home), and only those both ends allow
+async function toTheMoon(D, t) {
+  const ok = "COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0";
+  const r = await D.prepare(`SELECT
+      (SELECT COUNT(*) FROM pg_msgs m JOIN pg_users a ON a.id = m.sender JOIN pg_users b ON b.id = m.recipient
+        WHERE m.moon IS NOT NULL AND m.sent_at <= ?1 AND m.deliver_at > ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) AND ${ok}) +
+      (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id JOIN pg_users a ON a.id = g.sender JOIN pg_users b ON b.id = d.user_id
+        WHERE d.moon IS NOT NULL AND g.sent_at <= ?1 AND d.deliver_at > ?1 AND (d.lost_at IS NULL OR d.lost_at > ?1) AND ${ok}) AS n`).bind(t).first();
+  return r?.n || 0;
+}
+
 export async function trackerSnapshot(D, t) {
   const all = await inTheAir(D, t);
   const shown = [];
   for (const f of all) { if (f.hidden) continue; const v = trackerView(f, t); if (v) shown.push(v); }
   // shuffled, so the order says nothing either
   for (let i = shown.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [shown[i], shown[j]] = [shown[j], shown[i]]; }
-  return { at: Math.floor(t / FRESH) * FRESH, inAir: all.length, pigeons: shown, today: await today(D, t) };
+  return { at: Math.floor(t / FRESH) * FRESH, inAir: all.length, pigeons: shown, moon: await toTheMoon(D, t), today: await today(D, t) };
 }
 
 // (one copy per server, while it's fresh; and the edge keeps it for everyone near it)

@@ -41,6 +41,8 @@ export const PIGEONS = {
 // Mystery pigeons: one a day, from no loft and on no one's turn, but which kind
 // turns up (and so when it lands) is drawn as it takes off: maybe a rocket, maybe a dumb one.
 export const MYSTERY = { max: 1, every: DAY, col: "mystery", atCol: "mystery_at" };
+// Lunar pigeons (functions/_moon.js): the only ones that reach the Moon, from lofts of their own
+export const LUNAR_LOFTS = { lunar: { max: 3, every: DAY / 3, col: "lunar", atCol: "lunar_at" }, lunarx: { max: 1, every: DAY, col: "lunarx", atCol: "lunarx_at" } };
 export const MYSTERY_ODDS = [["dumb", 10], ["standard", 32], ["swift", 30], ["turbo", 19], ["rocket", 9]];   // out of 100
 export function drawMystery() {
   const r = (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * 100;
@@ -294,6 +296,11 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_lostdue ON pg_gdeliv(lost_at) WHERE lost_at IS NOT NULL AND notified_at IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_wx ON pg_gdeliv(wx_at) WHERE wx_at IS NOT NULL AND wx_told IS NULL",
   "CREATE INDEX IF NOT EXISTS pg_reacts_due ON pg_reacts(deliver_at) WHERE notified_at IS NULL",
+  // the Moon (functions/_moon.js): where on it you are (JSON; null: on Earth), your lunar lofts, and a flight's two ends
+  "ALTER TABLE pg_users ADD COLUMN moon TEXT",
+  "ALTER TABLE pg_users ADD COLUMN lunar INTEGER", "ALTER TABLE pg_users ADD COLUMN lunar_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN lunarx INTEGER", "ALTER TABLE pg_users ADD COLUMN lunarx_at INTEGER",
+  "ALTER TABLE pg_msgs ADD COLUMN moon TEXT", "ALTER TABLE pg_gdeliv ADD COLUMN moon TEXT",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -450,7 +457,7 @@ export function turn(me, last, t) {
 // admin can give extras past full: they stay until used, and hatching picks
 // up again once the loft drops below full.
 export function loft(u, kind, t) {
-  const p = kind === "mystery" ? MYSTERY : PIGEONS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
+  const p = kind === "mystery" ? MYSTERY : PIGEONS[kind] || LUNAR_LOFTS[kind], at = u[p.atCol] ?? t, have = u[p.col] ?? p.max;
   const hatched = Math.max(0, Math.floor((t - at) / p.every));
   const count = have >= p.max ? have : Math.min(p.max, have + hatched);
   return { count, hatched, at, nextAt: count >= p.max ? null : at + (hatched + 1) * p.every };
@@ -528,6 +535,7 @@ export function msgView(me, m, t) {
     wind: m.wind ?? null,                        // tailwind at take-off (km/h; negative: headwind)
     ...wxView(m),
     route: m.from_lat == null || m.to_lat == null ? null : [m.from_lat, m.from_lon, m.to_lat, m.to_lon],
+    ...(m.moon ? { moon: JSON.parse(m.moon) } : {}),       // to, from or on the Moon: its two ends (functions/_moon.js)
     style: m.style || null,                      // the way it was sent: "scenic" or "safe" (null: the fastest)
     liveAt: flying ? m.live_at ?? null : null,   // when the weather ahead was last looked at (_live.js)
     legs: m.legs ? JSON.parse(m.legs) : [],      // points where it changed course: [lat, lon, at] (or sped up, cheered on: [lat, lon, at, "c"])

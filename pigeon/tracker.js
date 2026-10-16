@@ -155,6 +155,9 @@ function start() {
     const top = [...where].sort((a, b) => b[1] - a[1]).slice(0, 7);
     $(".tk-where").innerHTML = top.length ? top.map(([w, c]) => `<li><span>Over ${esc(w)}</span><b>${c}</b></li>`).join("") : `<li class="none">None out in the open right now.</li>`;
     // today, as totals
+    // the Moon's: only how many (off the map: they're in space)
+    $(".tk-moon").hidden = !data?.moon; $(".tk-moonn").textContent = (data?.moon || 0).toLocaleString("en-GB");
+    $(".tk-moonl").textContent = data?.moon === 1 ? "on its way to or from the Moon" : "on their way to or from the Moon";
     const td = data?.today;
     if (td) {
       const mi = Math.round((td.km * 0.621371) / 10) * 10;
@@ -182,7 +185,7 @@ function start() {
       // (only what the page knows how to draw)
       const td = d.today && typeof d.today === "object" ? d.today : null;
       data = { today: td && { landed: Number(td.landed) || 0, km: Number(td.km) || 0, seas: (Array.isArray(td.seas) ? td.seas : []).filter((x) => typeof x === "string").slice(0, 60) },
-        inAir: Number(d.inAir) || 0, pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000)
+        inAir: Number(d.inAir) || 0, moon: Math.max(0, Math.floor(Number(d.moon) || 0)), pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000)
         .map((p) => ({ ...p, tr: (Array.isArray(p.tr) ? p.tr : []).filter((q) => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).slice(0, 8) })) };
       shown = group(data.pigeons); when = Date.now(); failed = false; base = null; hover = null; tip.hidden = true;
       panel();

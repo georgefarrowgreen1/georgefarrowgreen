@@ -51,11 +51,16 @@ export async function stampPassports(D, t, uid = null, max = 12) {
     WHERE d.deliver_at <= ?1 AND d.lost_at IS NULL AND m.from_lat IS NOT NULL AND d.to_lat IS NOT NULL ${mine}
     AND EXISTS (SELECT 1 FROM pg_links l WHERE l.status = 'ok' AND ((l.a = m.sender AND l.b = d.user_id) OR (l.a = d.user_id AND l.b = m.sender)))
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id) ORDER BY d.deliver_at LIMIT ${max}`).bind(...args).all();
-  const flights = [...one, ...grp].sort((a, b) => a.deliver_at - b.deliver_at).slice(0, max);
+  // to, from or across the Moon (functions/_moon.js): no countries or seas on the way, just the Moon
+  const { results: lunar } = await D.prepare(`SELECT m.id, m.sender, m.km, m.sent_at, m.deliver_at, m.moon FROM pg_msgs m
+    WHERE m.deliver_at <= ?1 AND m.lost_at IS NULL AND m.moon IS NOT NULL ${mine}
+    AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id) ORDER BY m.deliver_at LIMIT ${max}`).bind(...args).all();
+  const flights = [...one, ...grp, ...lunar.map((f) => ({ ...f, lunar: true }))].sort((a, b) => a.deliver_at - b.deliver_at).slice(0, max);
   if (flights.length) await ensureFeathers(D);         // (everyone's feathers so far, before any more are earned)
   for (const f of flights) {
     let places = [], marks = [];
-    try { const st = stopsOf(f); places = placesAlong(st); marks = marksAlong(st); } catch (_) {}
+    if (f.lunar) places = ["the Moon"];
+    else try { const st = stopsOf(f); places = placesAlong(st); marks = marksAlong(st); } catch (_) {}
     const r = await D.prepare("INSERT OR IGNORE INTO pg_stamped (id, user_id, at, places, marks) VALUES (?, ?, ?, ?, ?)").bind(f.id, f.sender, f.deliver_at, JSON.stringify(places), marks.length ? JSON.stringify(marks) : null).run();
     if (!r.meta.changes) continue;
     // feathers: for the flight, each country or sea new to the passport, each new postmark

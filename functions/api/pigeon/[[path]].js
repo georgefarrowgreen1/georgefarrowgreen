@@ -1,7 +1,7 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace, snapApprox, deviceOf,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
 } from "../../_pigeon.js";
@@ -27,6 +27,7 @@ import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
+import { cleanMoon, endOf, isLunar, lunarFlight, LUNAR, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
@@ -37,9 +38,9 @@ const MAX_CT = 70000;                 // an encrypted scroll (2,000 characters o
 const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 
 function meView(u, t) {
-  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t);
+  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t), ln = loft(u, "lunar", t), lx = loft(u, "lunarx", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, lunar: ln.count, lunarNextAt: ln.nextAt, lunarx: lx.count, lunarxNextAt: lx.nextAt, moon: moonView(u), avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
@@ -325,7 +326,16 @@ async function updateMe({ request, env, waitUntil }) {
     await D.prepare("UPDATE pg_users SET loc_approx = ? WHERE id = ?").bind(b.approxLocation ? 1 : 0, u.id).run();
     if (b.approxLocation && u.lat != null && b.lat === undefined) { const a = snapApprox(u.lat, u.lon); await D.prepare("UPDATE pg_users SET lat = ?, lon = ? WHERE id = ?").bind(a.lat, a.lon, u.id).run(); }
   }
+  // To the Moon: a spot on it, and none on Earth (it isn't kept while you're there); Update
+  // Automatically goes off, so the phone doesn't bring you straight back. Setting a place on
+  // Earth again (below) brings you home.
+  if (b.moon != null && b.lat === undefined) {
+    const mn = cleanMoon(b.moon);
+    await limit(env, "move:" + u.id, 30, 15 * 60e3);
+    await D.prepare("UPDATE pg_users SET moon = ?, lat = NULL, lon = NULL, place = ?, auto_loc = 0, loc_at = ? WHERE id = ?").bind(JSON.stringify({ lat: mn.lat, lon: mn.lon }), mn.place, t, u.id).run();
+  }
   if (b.lat !== undefined) {
+    if (u.moon) await D.prepare("UPDATE pg_users SET moon = NULL WHERE id = ?").bind(u.id).run();
     const p = cleanPlace(b, b.approxLocation ?? !!u.loc_approx);
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
     if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
@@ -698,7 +708,7 @@ async function sync({ request, env, waitUntil }) {
   // overflow D1's 100 parameters, and others can add rows here by asking)
   const people = new Map();
   if (links.length) {
-    const { results } = await D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
+    const { results } = await D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
       FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id).all();
     for (const p of results) people.set(p.id, p);
   }
@@ -726,7 +736,7 @@ async function sync({ request, env, waitUntil }) {
     }
     if (l.status === "ok") {
       const last = lastBy.get(p.id);
-      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: u.hide_online || p.hide_online ? null : p.loc_at || null,
+      friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, moon: moonView(p), locAt: u.hide_online || p.hide_online ? null : p.loc_at || null,
         seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
         tz: ((z) => (z && z !== "UTC" ? z : null))(prefsOf(p).tz),                    // their phone's time zone: "lands 08:12 their time"
         last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t), streak: streaks.get(p.id) || null,
@@ -779,9 +789,12 @@ async function sendMessage({ request, env, waitUntil }) {
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   const D = await db(env), t = Date.now();
   if (await idTaken(D, id)) throw new HttpError(409, "That scroll was already sent.");
-  if (!u.lat && u.lat !== 0) throw new HttpError(409, "Set your roost in the Roost tab before sending pigeons.");
+  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your roost in the Roost tab before sending pigeons.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
-  const r = await D.prepare("SELECT lat, lon, place FROM pg_users WHERE id = ?").bind(to).first();
+  const r = await D.prepare("SELECT lat, lon, place, moon FROM pg_users WHERE id = ?").bind(to).first();
+  // to, from or across the Moon: only a lunar pigeon goes, and it flies none of the Earth's ways
+  if (u.moon || r?.moon) return sendLunar({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta });
+  if (isLunar(meta.pigeon)) throw new HttpError(409, "A lunar pigeon only flies to or from the Moon.");
 
   // Standard pigeons are free but only fly when it's your turn. Swift (2×),
   // turbo (3×) and rocket (9×) fly any time, and each one sent leaves the loft.
@@ -886,6 +899,48 @@ async function sendMessage({ request, env, waitUntil }) {
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
   const me = landAt == null && !mystery ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: meView(me, t) } : {}) });
+}
+
+// A pigeon to, from or on the Moon (functions/_moon.js): a lunar pigeon from its loft, timed by
+// how far away the Moon is today (or, across the Moon, how far it bounds). No stopovers, no
+// booking ahead, no named pigeons (they're Earth birds), and none of the Earth's routes or weather.
+async function sendLunar({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }) {
+  const kind = String(meta.pigeon || "");
+  if (!isLunar(kind)) throw new HttpError(409, "Only a lunar pigeon can fly to or from the Moon.");
+  if (meta.landAt != null) throw new HttpError(409, "A lunar pigeon can’t be booked to land at a time.");
+  if (meta.via != null) throw new HttpError(409, "A lunar pigeon can’t stop over on the way.");
+  const from = endOf(u), dest = r && endOf(r);
+  if (!from || !dest) throw new HttpError(409, "They haven’t set where they are yet.");
+  const risky = u.risky ? 1 : 0, f = lunarFlight(kind, from, dest, t, risky ? RISKY_SPEED : 1), deliver = t + f.ms;
+  const p = LUNAR_LOFTS[kind], l = loft(u, kind, t);
+  if (l.count <= 0) throw new HttpError(409, `No ${LUNAR[kind].name} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
+  const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
+  const took = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
+  if (!took.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
+  // Pigeon Death: 1 in 100 is lost in space (or, from the Moon, burns up coming home)
+  const roll = crypto.getRandomValues(new Uint32Array(2));
+  const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * f.ms) : null;
+  const moon = JSON.stringify({ k: f.k, from, to: dest, dist: f.dist });
+  try {
+    await D.batch([claimId(D, id, "m", t), D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at, from_place, to_place, skin, moon)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, kind, risky, lostAt, f.km, t, deliver,
+        photo ? (lostAt ?? deliver + PHOTO_TTL) : null, from.place, dest.place, await skinNow(D, u, t), moon)]);
+  } catch (e) {
+    if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
+    throw e;
+  }
+  if (photo) {
+    try { await env.BIO_R2.put(`pigeon/${id}`, photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } }); }
+    catch (e) { await D.batch([D.prepare("DELETE FROM pg_msgs WHERE id = ?").bind(id), D.prepare("DELETE FROM pg_ids WHERE id = ?").bind(id)]); throw e; }
+    await D.prepare("UPDATE pg_msgs SET once = ? WHERE id = ?").bind(meta.once === false ? 0 : 1, id).run();
+  }
+  const vn = await pairVanish(D, u.id, to); if (vn) await D.prepare("UPDATE pg_msgs SET vanish = ? WHERE id = ?").bind(vn.ms, id).run();
+  const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
+  await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));
+  await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
+  waitUntil(pigeonSent(env, u, to, deliver, LUNAR[kind].name).catch(() => {}));
+  const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
+  return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), me: meView(me, t) });
 }
 
 // Before sending: the weather along the way now, and for the next day hour by

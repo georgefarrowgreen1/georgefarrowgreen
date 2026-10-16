@@ -47,14 +47,15 @@ export async function logFor(D, uid, t) {
   const u = { id: uid };
   // one row per pigeon you've sent: one to one, and each of your group pigeons
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
   const received = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
       (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
-  const landed = sent.filter((p) => p.deliver_at <= t && p.lost_at == null);
+  // (the Moon's flights count as flights, and for the Moonshot badge; their distances stay out of the Earth's records)
+  const landedAll = sent.filter((p) => p.deliver_at <= t && p.lost_at == null), landed = landedAll.filter((p) => !p.lunar);
   const kinds = {};
   for (const p of sent) kinds[p.pigeon || "standard"] = (kinds[p.pigeon || "standard"] || 0) + 1;
   const longest = landed.reduce((a, p) => (!a || p.km > a.km ? p : a), null);
@@ -75,7 +76,7 @@ export async function logFor(D, uid, t) {
   const has = (k) => sent.some((p) => p.pigeon === k);
   const badge = (id, name, desc, n, of = 1) => ({ id, name, desc, earned: n >= of, progress: Math.min(1, n / of), ...(of > 1 ? { n: Math.min(n, of), of } : {}) });
   const badges = [
-    badge("first", "First Flight", "Your first pigeon lands", landed.length),
+    badge("first", "First Flight", "Your first pigeon lands", landedAll.length),
     badge("frequent", "Frequent Flyer", "Send 50 pigeons", sent.length, 50),
     badge("penpal", "Pen Pal", "Receive 25 pigeons", received.n, 25),
     badge("longhaul", "Long Haul", "A single flight over 5,000 km", landed.some((p) => p.km >= 5000) ? 1 : 0),
@@ -83,7 +84,7 @@ export async function logFor(D, uid, t) {
     badge("world", "Around the World", "Fly 40,075 km in all", Math.round(km), 40075),
     badge("rocket", "Rocket Mail", "A rocket pigeon lands", landed.some((p) => p.pigeon === "rocket") ? 1 : 0),
     badge("tailwind", "Tailwind Rider", "Catch a 30 mph tailwind", sent.some((p) => p.wind >= 48) ? 1 : 0),
-    badge("daredevil", "Daredevil", "10 Pigeon Death pigeons survive", landed.filter((p) => p.risky).length, 10),
+    badge("daredevil", "Daredevil", "10 Pigeon Death pigeons survive", landedAll.filter((p) => p.risky).length, 10),
     badge("homing", "Second Thoughts", "Call a pigeon back", sent.some((p) => p.recalled && p.lost_at <= t) ? 1 : 0),
     badge("flock", "Flock Leader", "Send a pigeon to a group", sent.some((p) => p.grp) ? 1 : 0),
     badge("fleet", "Fleet", "Fly every kind: standard, swift, turbo and rocket", ["standard", "swift", "turbo", "rocket"].filter(has).length, 4),
@@ -91,6 +92,7 @@ export async function logFor(D, uid, t) {
     badge("stormdodger", "Storm Dodger", "Go around storms 5 times", dodged, 5),
     badge("weathered", "Weathered It", "Shelter from storms for 12 hours in all", Math.floor(sheltered), 12),
     badge("jetstream", "Rode the Jet Stream", "Land 2 hours early on the wind", early >= 2 * 3600e3 ? 1 : 0),
+    badge("moonshot", "Moonshot", "A pigeon lands on the Moon, or comes home from it", landedAll.some((p) => p.lunar) ? 1 : 0),
   ];
   // seasonal: ten pigeons in one season (while it's on, how many so far this time)
   const sc = seasonCounts(sent.map((p) => p.sent_at)), now = seasonAt(t);
@@ -101,7 +103,7 @@ export async function logFor(D, uid, t) {
   }
   return {
     badges,
-    sent: sent.length, landed: landed.length, received: received.n,
+    sent: sent.length, landed: landedAll.length, received: received.n,
     flying: sent.filter((p) => p.sent_at <= t && p.deliver_at > t && !(p.lost_at != null && p.lost_at <= t)).length,
     lost: sent.filter((p) => p.lost_at != null && p.lost_at <= t && !p.recalled).length,
     recalled: sent.filter((p) => p.recalled).length,

@@ -146,7 +146,23 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.0.9
+## InFlight (chat.georgefarrowgreen.com) — 1.1.0
+
+**1.1.0** (to the Moon): anyone can set themselves on the Moon (My Profile →
+Location → Go to the Moon), at a named site or anywhere on a map of either
+side. While they're there their spot on Earth isn't kept at all, and Update
+Automatically goes off; choosing somewhere on Earth brings them home. Only
+lunar pigeons fly to the Moon or leave it, from lofts of their own (3 a day,
+about 3 days each way like Apollo; 1 Lunar Express a day, about a day), and
+the trip is as long as the Moon is far away that day (`functions/_moon.js`,
+from its orbit). Between two people on the Moon a pigeon bounds over the
+surface. A lunar flight keeps none of the Earth's places on its row (its two
+ends are in `moon`, an Earth end only to the half degree), so routing,
+weather, flyovers, the passport's countries and InFlight Live's dots all
+pass it by; the phone draws the trip instead (`pigeon/moon.js`). In a group,
+pigeons to or from someone on the Moon go as lunar pigeons by themselves.
+The passport gets a Moon stamp, there's a Moonshot badge, and InFlight Live
+counts the pigeons out in space (a number only).
 
 **1.0.8** (a new home, and InFlight Live): InFlight moved to
 chat.georgefarrowgreen.com, bringing each phone's sign-in across, and the

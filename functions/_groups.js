@@ -22,6 +22,7 @@ import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
+import { endOf, lunarFlight, isLunar } from "./_moon.js";
 
 export const GROUP_MAX = 12;
 const GROUPS_EACH = 50;            // groups one person can be in
@@ -62,13 +63,21 @@ async function groupFor(D, u, gid) {
 // even those give away only roughly where.
 export const coarse = (x) => (x == null ? x : Math.round(x * 2) / 2);
 const wxFor = (d, friend) => { const w = wxView(d); return friend || !w.delay ? w : { delay: w.delay }; };
+// a pigeon to or from the Moon: its two ends (functions/_moon.js); between people who aren't friends, no place names
+function moonOf(d, friend) {
+  let mn = null; try { mn = d.moon ? JSON.parse(d.moon) : null; } catch (_) {}
+  if (!mn) return {};
+  // (someone who isn't a friend: no place names, and no spot on Earth at all, however rough)
+  const strip = (e) => (e.b === "earth" ? { b: "earth", lat: null, lon: null, place: null } : { ...e, place: null });
+  return { moon: friend ? mn : { ...mn, from: strip(mn.from), to: strip(mn.to) } };
+}
 // Your own message: how each pigeon is getting on (friends' routes only).
 function ownView(m, dels, friends, t) {
   const flock = dels.map((d) => {
     const lost = lostBy(d, t), friend = friends.has(d.user_id);
     return { to: d.user_id, deliverAt: d.deliver_at, flying: inAir(d, t), lost, lostAt: lost ? d.lost_at : null, viewedAt: d.viewed_at || null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, m.sender),
       liveAt: d.live_at ?? null, legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
-      toPlace: friend ? d.to_place : null };
+      toPlace: friend ? d.to_place : null, ...moonOf(d, friend) };
   });
   const live = flock.filter((x) => !x.lost);
   return { ...baseView(m), ...birdOn(m, m.sender), flock, cheered: Math.max(0, ...flock.filter((x) => x.flying).map((x) => x.cheered || 0)), deliverAt: Math.max(0, ...(live.length ? live : flock).map((x) => x.deliverAt)), flying: flock.some((x) => x.flying),
@@ -80,7 +89,7 @@ function theirView(m, d, friends, t) {
   const lost = lostBy(d, t), flying = !lost && t < d.deliver_at, friend = friends.has(m.sender), open = !flying && !lost;
   return { ...baseView(m), ...birdOn(m, d.user_id), deliverAt: d.deliver_at, flying, lost, lostAt: lost ? d.lost_at : null, recalled: lost && !!d.recalled, wind: d.wind ?? null, ...wxFor(d, friend), km: friend ? d.km : null, readAt: d.read_at, ...cheerView(d, d.user_id),
     liveAt: d.live_at ?? null, legs: friend && d.legs ? JSON.parse(d.legs) : [], route: friend && d.to_lat != null && m.from_lat != null ? [m.from_lat, m.from_lon, d.to_lat, d.to_lon] : null,
-    fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
+    fromPlace: friend ? m.from_place : null, toPlace: d.to_place, ...moonOf(d, friend),
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null, viewedAt: d.viewed_at || null };
 }
 const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, vanish: m.vanish || null, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
@@ -88,7 +97,7 @@ const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, vanish: m.
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
   const { results } = await D.prepare(`SELECT * FROM (
-      SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
+      SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id, d.moon
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
       WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) AND m.gone_at IS NULL ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
   return results;
@@ -148,7 +157,7 @@ export async function groupsForSync(env, u, t) {
   // anyone either of you has blocked, in a group you share: their name stays (so you know who wrote), nothing else of them
   const blocked = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
   // everyone in all your groups, and what's unread in each: one query each, however many groups
-  const { results: allMem } = await D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.loc_at, u.seen_at, u.hide_online
+  const { results: allMem } = await D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.moon, u.loc_at, u.seen_at, u.hide_online
     FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
     WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id).all();
   const { results: unreads } = await D.prepare(`SELECT m.group_id, COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
@@ -160,7 +169,8 @@ export async function groupsForSync(env, u, t) {
       const friend = p.user_id === u.id || friends.has(p.user_id);
       if (blocked.has(p.user_id)) return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: null, pub: JSON.parse(p.pub), friend: false, addedBy: p.added_by, km: null };
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
-        ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
+        onMoon: !!p.moon,                                                      // (where on it, only to friends)
+        ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, moon: p.moon ? JSON.parse(p.moon) : null, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
     const last = (await visible(D, u.id, g.id, 1))[0];
@@ -320,8 +330,9 @@ async function send({ request, env, waitUntil }) {
   if (photo && photo.size > MAX_PHOTO) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if (photo && !env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   const D = await db(env), t = Date.now(), g = await groupFor(D, u, meta.group);
-  if (u.lat == null) throw new HttpError(409, "Set your location in Account before sending pigeons.");
+  if (u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (await idTaken(D, id)) throw new HttpError(409, "That message was already sent.");
+  if (isLunar(meta.pigeon)) throw new HttpError(409, "In a group, pigeons to and from the Moon go as lunar pigeons by themselves. Choose any pigeon.");
   // everyone in the group right now, you included, needs their own sealed copy of the key
   const members = await membersOf(D, g.id);
   const want = members.map((m) => m.user_id);
@@ -344,15 +355,24 @@ async function send({ request, env, waitUntil }) {
   // no pigeon to anyone you've blocked, or who has blocked you (from a group made before the block)
   const cut = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
   const others = want.filter((m) => m !== u.id && !cut.has(m)), mine = await friendIds(D, u.id);
-  const { results: rows } = others.length ? await D.prepare(`SELECT id, lat, lon, place FROM pg_users WHERE id IN (${others.map(() => "?").join(",")})`).bind(...others).all() : { results: [] };
+  const { results: rows } = others.length ? await D.prepare(`SELECT id, lat, lon, place, moon FROM pg_users WHERE id IN (${others.map(() => "?").join(",")})`).bind(...others).all() : { results: [] };
   // between people who aren't friends: coarse places at both ends (the stored destination too)
-  const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, place: null, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }));
+  const to = rows.map((r) => (mine.has(r.id) ? { ...r, from: [u.lat, u.lon] } : { ...r, place: null, lat: coarse(r.lat), lon: coarse(r.lon), from: [coarse(u.lat), coarse(u.lon)] }))
+    // to or from the Moon: it goes as a lunar pigeon, whatever the rest of the group's is (functions/_moon.js)
+    .map((r) => (u.moon || r.moon ? { ...r, lunar: true } : r));
   // each one's way (passes; islands, for a standard pigeon), then the weather each will meet along it, all in one look
-  const plans = new Map(await Promise.all(to.filter((r) => r.lat != null).map(async (r) => [r.id, await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style, ceiling: ceilingFor(kind) })])));
+  const plans = new Map(await Promise.all(to.filter((r) => r.lat != null && !r.lunar).map(async (r) => [r.id, await planRoute(env, { from: r.from, to: [r.lat, r.lon], weather: false, hop: hopsFor(kind), style, ceiling: ceilingFor(kind) })])));
   const placed = to.filter((r) => plans.has(r.id));
   const winds = await windsAlong(env, placed.map((r) => ({ path: [r.from, ...plans.get(r.id).way, [r.lat, r.lon]].map((q) => [q[0], q[1]]), start: t, kmh: SPEED_KMH * speed })));
   const windOf = new Map(placed.map((r, i) => [r.id, winds[i]]));
+  const me = endOf(u);
   const dels = await Promise.all(to.map(async (r) => {
+    if (r.lunar) {
+      const end = endOf(r), f = end && me ? lunarFlight("lunar", me, end, t, risky ? RISKY_SPEED : 1) : null, at = t + (f ? f.ms : 3 * DAY);
+      const roll = crypto.getRandomValues(new Uint32Array(2)), lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
+      return { to: r.id, km: f ? f.km : 0, at, lostAt, r: { ...r, lat: null, lon: null, place: end?.place ?? null }, w: { wind: null, f: 1 }, wx: { wx: null, ms: 0, reach: null }, legs: null,
+        moon: f ? JSON.stringify({ k: f.k, from: me, to: end, dist: f.dist }) : null };
+    }
     const w = windOf.get(r.id) || { wind: null, f: 1 };
     const plan = plans.get(r.id) || null, rest = plan ? restOf(plan.way) : 0;
     const km = plan ? plan.km : 500, at = Math.round(t + flightMs(km / w.f, speed) + rest), wx = wxOf([w], flightMs(km, speed) + rest, at - t);
@@ -369,13 +389,13 @@ async function send({ request, env, waitUntil }) {
     D.prepare(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, photo, photo_size, pigeon, risky, sent_at, expires_at, from_lat, from_lon, from_place, skin, style)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, g.id, u.id, sealed, keys[u.id], photo ? 1 : 0, photo ? photo.size : null, kind, risky, t,
       photo ? last + PHOTO_TTL : null, u.lat, u.lon, u.place, await skinNow(D, u, t), style),
-    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs)),
+    ...dels.map((d) => D.prepare(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, lost_at, to_lat, to_lon, to_place, wind, wind_f, wx, wx_ms, wx_at, legs, moon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs, d.moon ?? null)),
   ]);
   if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
   if (g.vanish) await D.prepare("UPDATE pg_gmsgs SET vanish = ? WHERE id = ?").bind(g.vanish, id).run();
   // one of your named pigeons leads: it flies the longest route
-  const lead = dels.filter((d) => d.r.lat != null).sort((a, b) => b.km - a.km)[0];
+  const lead = dels.filter((d) => d.r.lat != null && !d.moon).sort((a, b) => b.km - a.km)[0];
   const bird = lead && kind !== "dumb" ? await claimBird(D, u.id, meta.bird, t, lead.at - t, lead.at) : null;
   if (bird) await D.prepare("UPDATE pg_gmsgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_to = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, lead.to, bird.wear, id).run();
   waitUntil(groupSent(env, u, g, dels.map((d) => ({ to: d.to, at: d.at })), kind).catch(() => {}));

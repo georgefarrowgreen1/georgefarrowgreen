@@ -2016,3 +2016,45 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .scanframe{position:absolute;inset:18%;border:3px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.28)}
 .scanmsg{text-align:center}
 .warn.strong{background:color-mix(in srgb,var(--red,#ff3b30) 16%,var(--cell));border-color:color-mix(in srgb,var(--red,#ff3b30) 45%,transparent)}
+
+/* ---------- the Moon (pigeon/moon.js): lunar pigeons, the picker, a flight to or from it ---------- */
+:root{--p-lunar:#8190b3;--p-lunarx:#5e5ce6}
+.pg.lunar{--pg:var(--p-lunar);background:linear-gradient(160deg,#e3e8f3,var(--p-lunar) 55%,#56607a)}
+.pg.lunarx{--pg:var(--p-lunarx);background:linear-gradient(160deg,#b9b8ff,var(--p-lunarx) 55%,#3532a8)}
+.k-lunar{--k:var(--p-lunar)}.k-lunarx{--k:var(--p-lunarx)}
+.lgrid.two{margin-top:10px}
+.mpwrap{position:relative;margin:4px 16px 0;border-radius:22px;overflow:hidden;background:#03050c}
+.moonpick{display:block;width:100%;aspect-ratio:1;max-height:56vh;cursor:crosshair;touch-action:manipulation}
+.mpside{position:absolute;left:0;right:0;bottom:10px;justify-content:center;margin:0}
+.mpside .cc{min-height:36px;padding:4px 12px;background:rgba(20,24,38,.72);color:#fff;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.mpside .cc small{color:rgba(235,235,245,.6)}
+.mpside .cc[aria-checked=true]{box-shadow:inset 0 0 0 1.5px #ffd166}
+.mpsel{display:grid;gap:2px;padding:12px 20px 10px}
+.mpsel b{font-size:20px;letter-spacing:-.3px;text-wrap:balance}
+.mpsel small{color:var(--label-2);font-size:13px}
+.body.moonbody{display:flex;flex-direction:column;background:#03050c;color:#f5f5f7}
+.moonsky{display:block;width:100%;height:min(46vh,380px);flex:none}
+.mooncard{margin:-18px 12px 16px;padding:14px 16px 6px;border-radius:22px;background:rgba(22,26,40,.92);border:1px solid rgba(160,180,230,.14);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);position:relative}
+.mchead{display:flex;align-items:center;gap:10px}
+.mchead .pg{font-size:22px}
+.mct{display:grid;min-width:0;flex:1}
+.mct b{font-size:17px}
+.mct small{color:rgba(235,235,245,.62);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mceta{display:grid;text-align:right;font-variant-numeric:tabular-nums}
+.mceta b{font-size:19px;letter-spacing:-.3px}.mceta b.lost{color:#ff6961}
+.mceta small{color:rgba(235,235,245,.62);font-size:12px}
+.mcnow{margin:10px 0 8px;font-size:14px;color:#ffd166;font-variant-numeric:tabular-nums}
+.mcbar{height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden}
+.mcbar i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,#ffd166,#ff9f0a)}
+.mcsteps{list-style:none;margin:10px 0 0;padding:0}
+.mcsteps li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,.07);font-size:14px;color:rgba(235,235,245,.5)}
+.mcsteps li:first-child{border-top:0}
+.mcsteps li.done{color:#f5f5f7}
+.mci{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.08)}
+.mci svg{width:15px;height:15px}
+.mcsteps li.done .mci{background:rgba(255,209,102,.18);color:#ffd166}
+.mcs{flex:1;min-width:0}
+.mcsteps time{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sheet:has(.moonbody){background:#03050c}
+.sheet:has(.moonbody) header h2{color:#f5f5f7}

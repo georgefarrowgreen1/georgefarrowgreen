@@ -74,3 +74,8 @@ a { color: var(--tint); }
 .tk-stat b { font-size: 22px; line-height: 1.1; font-weight: 700; letter-spacing: -.4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tk-seas-stat { cursor: default; }
 @media (max-width: 1100px) { .tk-tday { display: none !important; } .tk-today > div:nth-child(2) { border-left: 0; } }
+
+/* on their way to or from the Moon: a count only */
+.tk-moon { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(129, 144, 179, .12); border: 1px solid var(--edge); font-size: 13px; color: var(--fg-2); }
+.tk-moon svg { width: 18px; height: 18px; flex: none; fill: #c9d2e6; }
+.tk-moon b { color: var(--fg); font-variant-numeric: tabular-nums; }
