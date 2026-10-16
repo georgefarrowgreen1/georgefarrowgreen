@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.8";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.0.9";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2068,6 +2068,44 @@ async function restorePins() {
     if (p?.pins && typeof p.pins === "object") { S.pins = p.pins; await idb.set("pins:" + S.me.id, S.pins); await idb.set("pinsup:" + S.me.id, Date.now()); }
   } catch (_) {}
 }
+// Verify in person: your safety number with a friend, as a QR code. Scanning theirs (or
+// comparing the digits and saying they match) marks them Verified, kept with the trusted
+// keys ("v:" + id: the key that was verified), until their key changes.
+const safetyCode = (digits) => `inflight-safety:1:${(digits || []).join("")}`;
+const isVerified = (p) => !!p?.pub && !p.keyChanged && S.pins["v:" + p.id] === keyId(p.pub);
+const wasVerified = (p) => !!p?.keyChanged && !!S.pins["v:" + p.id];         // verified, and their key has changed since
+function setVerified(p, on) { if (on) S.pins["v:" + p.id] = keyId(p.pub); else delete S.pins["v:" + p.id]; savePins(); }
+function stopScan() { if (!S.scan) return; S.scan.on = false; S.scan.stream?.getTracks().forEach((t) => t.stop()); S.scan = null; }
+async function startScan(p, want) {
+  stopScan();
+  const v = $(".scanbox video", $layer), say = (t) => { const m = $(".scanmsg", $layer); if (m) m.textContent = t; };
+  if (!v) return;
+  const scan = S.scan = { on: true, stream: null };
+  try { scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
+  catch (_) { S.scan = null; return say("InFlight can’t use the camera here. Compare the 60 digits instead."); }
+  if (!scan.on) return stopScan();
+  v.srcObject = scan.stream; await v.play().catch(() => {});
+  // the browser's own reader where there is one (Android), else jsQR (loaded only now)
+  let det = null;
+  try { if ("BarcodeDetector" in window && (await BarcodeDetector.getSupportedFormats()).includes("qr_code")) det = new BarcodeDetector({ formats: ["qr_code"] }); } catch (_) {}
+  const jsQR = det ? null : (await import("./jsqr.js")).default;
+  const c = document.createElement("canvas"), g = c.getContext("2d", { willReadFrequently: true });
+  const look = async () => {
+    if (!scan.on || S.scan !== scan) return;
+    let text = null;
+    if (v.readyState >= 2 && v.videoWidth) {
+      if (det) text = (await det.detect(v).catch(() => []))[0]?.rawValue || null;
+      else { const w = c.width = Math.min(640, v.videoWidth), h = c.height = Math.round((w * v.videoHeight) / v.videoWidth); g.drawImage(v, 0, 0, w, h); text = jsQR(g.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "attemptBoth" })?.data || null; }
+    }
+    if (text?.startsWith("inflight-safety:")) {
+      stopScan();
+      if (text === want) { setVerified(p, true); haptic("success"); toast(`Verified. Your safety numbers match, so only you and ${esc(first(p.name))} can read your messages.`); S.sheet = { ...S.sheet.back }; return renderSheet(); }
+      haptic("heavy"); S.sheet = { ...S.sheet, bad: true }; return renderSheet();
+    }
+    setTimeout(look, 150);
+  };
+  look();
+}
 function checkPin(f) {
   const k = keyId(f.pub);
   if (!S.pins[f.id]) { S.pins[f.id] = k; savePins(); }
@@ -2255,6 +2293,13 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.0.9", at: Date.UTC(2026, 9, 16), title: "Safer by design", items: [
+    ["clock", "indigo", "Disappearing messages", "In a chat’s info: messages disappear 1, 7 or 30 days after they’re read, wiped from the server too. The flight stays in your Flight Log."],
+    ["shield", "teal", "Verify in person", "Scan each other’s Safety Number code to mark a friend Verified. If their key ever changes, you’ll know."],
+    ["key", "orange", "Stronger passwords", "Passwords are stretched with Argon2id, and ones that have turned up in a data breach are refused."],
+    ["bell", "red", "New sign-in alerts", "When your account signs in on a new phone, your other phones and your email hear about it."],
+    ["loc", "blue", "Approximate Location", "Privacy & Security: keep your spot to about 10 km instead of a mile."],
+  ] },
   { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and InFlight Live", items: [
     ["globe", "blue", "A new home", "InFlight now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
     ["map", "indigo", "InFlight Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
@@ -4371,7 +4416,7 @@ function vChat() {
   if (msgs?.length) body += momsTo(Infinity);
   // a pigeon in the air either way: the map button sits beside the menu
   const flying = msgs && [...msgs].reverse().find((m) => m.flying && !m.waiting && m.route);
-  const warn = f.keyChanged ? `<div class="warn"><span>${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
+  const warn = f.keyChanged ? `<div class="warn${wasVerified(f) ? " strong" : ""}"><span>${wasVerified(f) ? `You verified ${esc(first(f.name))} in person, and their security key has changed since. Verify again, together, before you send anything.` : `${esc(first(f.name))}’s security key changed. This happens when they make a new account or reset their password. Compare safety numbers before you send anything private.`}</span><button class="btn small" data-act="safety" data-id="${esc(f.id)}">Check</button></div>` : "";
   return `<div class="navbar solid chatnav">
       <div class="nb-left">${backBtn("tab", S.backTo || "messages")}</div>
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
@@ -4916,6 +4961,7 @@ function keepGlides(el, before) {
 // switch that changed still glides across.
 let shownSheet = null;
 function renderSheet(refresh) {
+  if (S.scan && S.sheet?.type !== "scan") stopScan();
   // a question sheet replaced by anything else (a link, the lock, Back): it's answered "no" once this settles
   if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
@@ -5042,15 +5088,28 @@ function drawSheet(refresh) {
       if (b) $("#f-bname", $layer).value = b.name;
       return;
     }
-    case "safety":
+    case "safety": {
+      const nm = esc(first(f?.name || "your friend")), ver = isVerified(f);
       $layer.innerHTML = sheetHtml("Safety Number", `
-        <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span></div>
+        <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span>${ver ? `<span class="verified">${I.check}Verified in person</span>` : ""}</div>
+        ${f?.keyChanged ? "" : `<div class="safeqr"><div class="qrbox">${qrSvg(safetyCode(s.digits), { title: `Your safety number with ${nm}, as a QR code` })}</div></div>`}
         <div class="group mt-s"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
-        <div class="gfoot">Compare these 60 digits with ${esc(first(f?.name || "your friend"))} in person or on a call. If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>
-        ${f?.keyChanged ? `<div class="warn sheetwarn"><span>${esc(first(f.name))}’s key changed. Only trust it once these digits match on both phones.</span></div>
+        <div class="gfoot">${f?.keyChanged ? "" : `Together, scan each other’s code, or compare these 60 digits in person or on a call. `}If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>
+        ${!f?.keyChanged ? `<div class="group mt">${ver ? cell({ act: "unverify", id: f.id, label: "Clear Verification", cls: "center destructive" })
+          : `${cell({ act: "scansafe", id: f.id, icon: I.camera, tile: "blue", label: "Scan Their Code" })}${cell({ act: "verifyok", id: f.id, icon: I.check, tile: "green", label: "Mark as Verified", sub: "The 60 digits match on both phones" })}`}</div>` : ""}
+        ${f?.keyChanged ? `<div class="warn sheetwarn"><span>${wasVerified(f) ? `You verified ${nm} in person, and their key has changed since. Don’t trust it until you’ve verified again, together.` : `${esc(first(f.name))}’s key changed. Only trust it once these digits match on both phones.`}</span></div>
           <div class="group mt">${cell({ act: "trustsafe", id: f.id, label: "They Match: Trust New Key", cls: "center action" })}</div>` : ""}`,
         { left: s.from ? { label: "Back", act: s.from } : null });
       return;
+    }
+    case "scan": {
+      const p = personById(s.id);
+      $layer.innerHTML = sheetHtml("Scan Their Code", `<div class="scanbox"><video playsinline muted autoplay aria-label="Camera"></video><span class="scanframe" aria-hidden="true"></span></div>
+        <p class="gfoot scanmsg" aria-live="polite">${s.bad ? `This isn’t the same safety number. Don’t trust this chat with ${esc(first(p?.name || "them"))} until your codes match.` : `Point your camera at ${esc(first(p?.name || "your friend"))}’s code: Safety Number on their phone.`}</p>
+        ${s.bad ? `<div class="group mt">${cell({ act: "scansafe", id: s.id, label: "Try Again", cls: "center action" })}</div>` : ""}`, { left: { label: "Back", act: "scanback" } });
+      if (!s.bad) startScan(p, safetyCode(s.back?.digits));
+      return;
+    }
     case "security": {
       const u = S.me;
       $layer.innerHTML = sheetHtml("Privacy & Security", `<div class="group mt-s">
@@ -5409,7 +5468,7 @@ function drawSheet(refresh) {
           ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
           ${km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
-        <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}
+        <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", val: isVerified(f) ? "Verified" : "", chev: true })}
           ${cell({ act: "vanishask", id: f.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: f.vanish ? vanishSay(f.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`, { name: `${f.name}: contact info` });
       return;
@@ -6603,6 +6662,10 @@ async function onClick1(e, t) {
       } catch (err) { toast(esc(err.message)); }
       return;
     }
+    case "scansafe": { const back = S.sheet?.type === "scan" ? S.sheet.back : S.sheet; S.sheet = { type: "scan", id, back }; return renderSheet(); }
+    case "scanback": { stopScan(); S.sheet = S.sheet?.back ? { ...S.sheet.back } : null; return renderSheet(); }
+    case "verifyok": { const p = personById(id); if (!p) return; setVerified(p, true); haptic("success"); toast(`${esc(first(p.name))} is verified.`); return renderSheet(); }
+    case "unverify": { const p = personById(id); if (!p) return; setVerified(p, false); toast("Verification cleared."); return renderSheet(); }
     case "trustsafe": { await trustNewKey(id); haptic("success"); toast("Trusted. Messages can go to them again."); S.sheet = null; return renderSheet(); }
     case "chatmenu": {
       const f = friend(S.chat); if (!f) return;

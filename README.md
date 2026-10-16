@@ -146,7 +146,7 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.0.8
+## InFlight (chat.georgefarrowgreen.com) — 1.0.9
 
 **1.0.8** (a new home, and InFlight Live): InFlight moved to
 chat.georgefarrowgreen.com, bringing each phone's sign-in across, and the
@@ -986,6 +986,11 @@ show a friendly "backend not set up" message).
 
 ### InFlight's security model
 
+- **Verify in person:** a friend's Safety Number sheet shows your shared 60-digit
+  number as a QR code. Scan theirs (the camera, read by the browser's own
+  BarcodeDetector or vendored jsQR 1.4.0, Apache-2.0, integrity-checked) or
+  compare the digits and Mark as Verified. It's kept, sealed, with your trusted
+  keys; if a verified friend's key changes, the chat warns more strongly.
 - **Disappearing messages** (a chat's or group's info sheet: 1, 7 or 30 days
   after reading): when the time's up, the server wipes the sealed message, its
   photo or voice pigeon, stopover note and reactions (in a group, once everyone

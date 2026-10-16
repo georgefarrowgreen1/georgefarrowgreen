@@ -2004,3 +2004,15 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 
 /* disappearing messages: the line at the top of the chat */
 .sysline.vanishline svg{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin-right:5px}
+
+/* verify in person: the safety number as a code, the scanner, the Verified mark */
+.safeqr{display:flex;justify-content:center;margin:4px 0 2px}
+.safeqr .qrbox{width:200px;height:200px;padding:10px;border-radius:20px;background:#fff;box-shadow:0 1px 0 var(--sep)}
+.safeqr .qrbox svg{display:block;width:100%;height:100%}
+.profile-head .verified{display:inline-flex;align-items:center;gap:5px;margin-top:4px;font-size:14px;font-weight:600;color:var(--green-t,#1d7f37)}
+.profile-head .verified svg{width:15px;height:15px}
+.scanbox{position:relative;margin:4px 16px 0;aspect-ratio:1;max-width:100%;border-radius:22px;overflow:hidden;background:#000}
+.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanframe{position:absolute;inset:18%;border:3px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.28)}
+.scanmsg{text-align:center}
+.warn.strong{background:color-mix(in srgb,var(--red,#ff3b30) 16%,var(--cell));border-color:color-mix(in srgb,var(--red,#ff3b30) 45%,transparent)}

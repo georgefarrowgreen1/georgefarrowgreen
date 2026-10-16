@@ -14,7 +14,7 @@
 // copy, Home Screen app and links cover the site; the API keeps its address).
 
 export const SECURITY = {
-  "Permissions-Policy": "geolocation=(self), microphone=(self), camera=(), publickey-credentials-get=(self), publickey-credentials-create=(self)",
+  "Permissions-Policy": "geolocation=(self), microphone=(self), camera=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)",
   "Content-Security-Policy": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; font-src 'self'; img-src 'self' blob:; media-src 'self' blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
   "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex",
