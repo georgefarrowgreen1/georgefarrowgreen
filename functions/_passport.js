@@ -77,11 +77,24 @@ export async function stampPassports(D, t, uid = null, max = 12) {
   }
   return flights.length;
 }
-// Your passport: each place, when your pigeons first flew over it, and how often since
+// Your passport: each place, when your pigeons first flew over it, and how often since,
+// and the journey that stamped it (trip: its message, ord: where on its way), so the
+// passport's pages can be filled journey by journey; trips: each journey's ends (yours,
+// so nothing you don't know), and whether it crossed an ocean by ship
 export async function passportFor(D, uid, t) {
-  const { results } = await D.prepare("SELECT place, first_at, n FROM pg_passport WHERE user_id = ? AND first_at <= ? ORDER BY first_at DESC, first_ord").bind(uid, t).all();
-  const places = results.map((r) => ({ name: r.place, at: r.first_at, n: r.n, sea: isSea(r.place) }));
-  return { places, countries: places.filter((p) => !p.sea).length, seas: places.filter((p) => p.sea).length };
+  const { results } = await D.prepare("SELECT place, first_at, first_id, first_ord, n FROM pg_passport WHERE user_id = ? AND first_at <= ? ORDER BY first_at DESC, first_ord").bind(uid, t).all();
+  const places = results.map((r) => ({ name: r.place, at: r.first_at, n: r.n, sea: isSea(r.place), trip: r.first_id || null, ord: r.first_ord ?? 0 }));
+  const ids = [...new Set(places.map((p) => p.trip).filter(Boolean))], trips = {};
+  const sailed = (legs) => { try { return JSON.parse(legs || "[]").some((l) => l[3] === "b"); } catch (_) { return false; } };
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90), q = part.map(() => "?").join(",");
+    const { results: one } = await D.prepare(`SELECT id, from_place, to_place, legs FROM pg_msgs WHERE sender = ? AND id IN (${q})`).bind(uid, ...part).all();
+    for (const m of one) trips[m.id] = { from: m.from_place || null, to: m.to_place || null, ship: sailed(m.legs) };
+    const { results: grp } = await D.prepare(`SELECT m.id, m.from_place, g.name AS to_place, (SELECT d.legs FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.legs LIKE '%"b"%' LIMIT 1) AS legs
+      FROM pg_gmsgs m LEFT JOIN pg_groups g ON g.id = m.group_id WHERE m.sender = ? AND m.id IN (${q})`).bind(uid, ...part).all();
+    for (const m of grp) trips[m.id] = { from: m.from_place || null, to: m.to_place || null, ship: sailed(m.legs) };
+  }
+  return { places, countries: places.filter((p) => !p.sea).length, seas: places.filter((p) => p.sea).length, trips };
 }
 // For a chat: the stamps each of your flights there was the first to collect, in the order it flew them
 export async function newStamps(D, uid, ids) {

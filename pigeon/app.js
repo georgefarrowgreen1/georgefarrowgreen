@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.5";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.0.6";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2223,6 +2223,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.0.6", at: Date.UTC(2026, 9, 16), title: "A real passport", items: [
+    ["globe", "red", "Your passport, as a passport", "Open it from your Flight Log: a photo page with how far your pigeons have flown, then visa pages filling up with rubber stamps, a journey at a time."],
+    ["map", "green", "Every country’s own stamp", "Each in its own ink with the country’s outline inside; seas crossed, and “Arrived by sea” after a voyage."],
+    ["loc", "indigo", "Every landmark’s own postmark", "Big Ben is a clock tower, Pisa leans, and Fuji has snow on top: all 69 drawn on their own."],
+  ] },
   { v: "1.0.5", at: Date.UTC(2026, 9, 16), title: "Ships on the map, and no ships", items: [
     ["ship", "teal", "The voyage on the map", "The lane a ship sails is drawn in teal with its two ports, and the card says the day the ship gets in."],
     ["bell", "orange", "Boarded, and ashore", "You’re told when a pigeon boards its ship and when it comes ashore, under Mid-air Moments."],
@@ -3830,16 +3835,148 @@ function postmarksHtml(pm) {
     <div class="pmgrid">${list.map(tile).join("")}${Array.from({ length: Math.min(left, list.length ? (3 - (list.length % 3)) % 3 : 3) }, () => `<span class="pmtile unknown" aria-hidden="true"><span class="pmseal"><b>?</b></span><b>Somewhere</b><small>to find</small></span>`).join("")}</div>
     <div class="gfoot">${list.length ? `${left} more to find. ` : ""}A pigeon that flies past somewhere famous, like the Eiffel Tower or Mount Fuji, brings back its postmark on the letter. The ones in your own town don’t count.</div>`;
 }
-function passportHtml(pp, all) {
+// In the Flight Log: your passport, closed, and what's in it (it opens as a book: passportBook)
+function passportHtml(pp) {
   if (!pp) return "";
-  const list = pp.places || [], shown = all ? list : list.slice(0, 12);
-  const stampDay = (t) => { const d = new Date(t); return `${d.getDate()} ${MON[d.getMonth()].toUpperCase()} ${String(d.getFullYear()).slice(2)}`; };
-  const stamp = (p) => `<button type="button" class="pstamp2${p.sea ? " sea" : ""}" data-act="stampinfo" data-id="${esc(p.name)}" data-ink="${inkOf(p.name, p.sea)}" data-tilt="${tiltOf(p.name)}"
-      aria-label="${esc(p.name)}: first flown over ${esc(fmtDate(p.at))}${p.n > 1 ? `, ${p.n} flights` : ""}"><b>${esc(p.name.replace(/^the /, ""))}</b><small>${stampDay(p.at)}</small>${p.sea ? I.waves : I.bird}</button>`;
+  const list = pp.places || [], last = list[0], pages = list.length ? passportPages(pp).length : 0, trips = new Set(list.map((p) => p.trip || p.at)).size;
   return `<div class="ghead">Passport <span class="gcount">${pp.countries} countr${pp.countries === 1 ? "y" : "ies"} · ${pp.seas} sea${pp.seas === 1 ? "" : "s"}</span></div>
-    ${list.length ? `<div class="passport">${shown.map(stamp).join("")}</div>
-      ${list.length > shown.length ? `<div class="stack"><button type="button" class="btn small plain" data-act="stampsall">See All ${list.length}</button></div>` : ""}`
-    : `<div class="gfoot">Each country and sea your pigeons fly over gets a stamp here once they’ve landed.</div>`}`;
+    <button type="button" class="ppcard" data-act="passport" aria-label="Open your passport"><span class="ppmini" aria-hidden="true">${passportCover()}</span>
+      <span class="ppt"><b>${esc(first(S.me.name))}’s Passport</b>${list.length ? `<small>${trips} journey${trips === 1 ? "" : "s"} · ${pages} page${pages === 1 ? "" : "s"} stamped</small>
+      <small>Last stamp: ${esc(last.name.replace(/^the /, ""))}, ${esc(pmDay(last.at).slice(0, -3).replace(/(\w+)$/, (x) => x[0] + x.slice(1).toLowerCase()))}</small>` : `<small>Each country and sea your pigeons fly over gets a stamp, once they’ve landed.</small>`}
+      <span class="pill">Open Passport</span></span></button>`;
+}
+/* ---------- the passport, as a passport ----------
+   A book: a photo page (you, and how far your pigeons have flown), then visa
+   pages that fill up with rubber stamps in the order your pigeons flew, a
+   journey at a time: each country in its own ink with its outline inside
+   (pigeon/shapes.js, loaded when the passport opens), each sea crossed, and
+   "Arrived by sea" for a journey that came by ship. Swipe to turn the page. */
+let SHAPES = null;
+const shapesLoad = () => (SHAPES ? Promise.resolve(SHAPES) : import("./shapes.js").then((m) => (SHAPES = m.SHAPES)).catch(() => (SHAPES = {})));
+const PP_INK = ["#b3262e", "#1f4fa3", "#5b3a9c", "#1d6b45", "#2a2a2e", "#126e78", "#7a4a1c"];
+const ppHash = (x, k = 5) => [...String(x)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, k);
+const ppInk = (p) => (p.sea ? "#1f4fa3" : PP_INK[ppHash(p.name) % PP_INK.length]);
+const PP_PER = 10;
+// The pages: oldest first, a journey's stamps together; a page holds PP_PER, and a journey
+// that wouldn't get three on this one starts the next
+function passportPages(pp) {
+  const list = [...(pp.places || [])].sort((a, b) => a.at - b.at || a.ord - b.ord), pages = [];
+  let cur = null, trip;
+  for (const p of list) {
+    const k = p.trip || `d${Math.floor(p.at / DAY)}`, fresh = k !== trip; trip = k;
+    if (!cur || cur.stamps.length >= PP_PER || (fresh && cur.stamps.length > PP_PER - 3)) pages.push(cur = { stamps: [], trips: [] });
+    cur.stamps.push(p); if (!cur.trips.some((t) => t.k === k)) cur.trips.push({ k, at: p.at, trip: pp.trips?.[p.trip] || null });
+  }
+  return pages;
+}
+// a journey, as the top of the page says it: "16 OCT · LONDON → SYDNEY"
+const ppJourney = (t) => [pmDay(t.at).slice(0, -3), t.trip?.from && t.trip?.to ? `${t.trip.from} → ${t.trip.to}` : ""].filter(Boolean).join(" · ").toUpperCase();
+const ppBird = `<path transform="translate(-12 -10)" d="${BIRD}"/>`;
+const PP_STAMPS = ["rect", "circle", "oval", "hex", "tri"];
+// One stamp, drawn in its local box, in its ink (SVG presentation attributes: no inline styles)
+function ppStamp(p, kind, code) {
+  const cap = p.name.replace(/^the /, "").toUpperCase(), d = pmDay(p.at), sh = !p.sea && SHAPES?.[p.name];
+  const fit = (n, w) => (n.length * 9.6 > w ? ` textLength="${w}" lengthAdjust="spacingAndGlyphs"` : "");
+  const land = (x, y, k) => (sh ? `<path d="${sh}" transform="translate(${x} ${y}) scale(${k})" class="pf"/>` : `<g transform="translate(${x + 50 * k} ${y + 50 * k}) scale(${k * 3})" class="pf">${ppBird}</g>`);
+  const T = (x, y, cls, txt, w) => `<text x="${x}" y="${y}" class="${cls}"${w ? fit(txt, w) : ""}>${esc(txt)}</text>`;
+  const id = `pa${ppHash(p.name + p.at)}`;
+  switch (kind) {
+    case "rect": return [140, 88, `<rect x="2" y="2" width="136" height="84" rx="10" class="ps"/><rect x="7" y="7" width="126" height="74" rx="6" class="ps pst"/>
+      ${T(70, 21, "px pxs", `ENTRY · ${code}`)}${land(13, 29, 0.32)}${T(92, 48, "px pxb", cap, 76)}${T(92, 63, "px", d)}<g transform="translate(92 74) scale(.55)" class="pf">${ppBird}</g>`];
+    case "circle": return [100, 100, `<circle cx="50" cy="50" r="47" class="ps"/><circle cx="50" cy="50" r="40" class="ps pst"/>
+      <defs><path id="${id}a" d="M14 50a36 36 0 0 1 72 0"/><path id="${id}b" d="M16 52a34 34 0 0 0 68 0"/></defs>
+      <text class="px pxb"${fit(cap, 96)}><textPath href="#${id}a" startOffset="50%">${esc(cap)}</textPath></text><text class="px pxs"><textPath href="#${id}b" startOffset="50%">BY PIGEON · ${code}</textPath></text>
+      ${land(38, 26, 0.24)}${T(50, 59, "px pxs", d)}`];
+    case "oval": return [130, 80, `<ellipse cx="65" cy="40" rx="62" ry="37" class="ps"/><ellipse cx="65" cy="40" rx="55" ry="30" class="ps pst"/>
+      ${T(65, 30, "px pxb", cap, 92)}${T(65, 45, "px", pmDay(p.at).replace(/ (\d\d)$/, " 20$1"))}<text x="65" y="56" class="px pxs" textLength="70" lengthAdjust="spacingAndGlyphs">DEPARTED · ${code}</text>`];
+    case "hex": return [100, 100, `<path d="M50 2 93 26v48L50 98 7 74V26Z" class="ps"/><path d="M50 9 87 30v40L50 91 13 70V30Z" class="ps pst"/>
+      ${land(32, 18, 0.36)}${T(50, 67, "px pxb", cap, 64)}${T(50, 79, "px pxs", d)}`];
+    case "tri": return [110, 96, `<path d="M55 4 106 92H4Z" class="ps"/><path d="M55 16 95 85H15Z" class="ps pst"/>
+      ${land(41, 34, 0.28)}${T(55, 70, "px pxb pxs2", cap, cap.length * 7.6 > 62 ? 62 : 0)}${T(55, 80, "px pxs", d)}`];
+    case "sea": return [130, 66, `<rect x="2" y="2" width="126" height="62" rx="4" class="ps" stroke-dasharray="7 3"/>
+      ${T(65, 20, "px pxs", p.ship ? "BY SHIP · CROSSED" : "AT SEA · CROSSED")}${T(65, 36, "px pxb", cap, 112)}${T(65, 50, "px pxs", d)}<path d="M14 56c5-4 8 4 13 0s8 4 13 0M90 56c5-4 8 4 13 0s8 4 13 0" class="ps pst"/>`];
+    default: return [136, 74, `<rect x="2" y="2" width="132" height="70" rx="14" class="ps"/><rect x="8" y="8" width="120" height="58" rx="10" class="ps pst"/>
+      <path d="M18 44h30l-5 8H23ZM26 44v-12h12l4 12M31 32v-6" class="ps"/>${T(88, 28, "px pxb", cap, 80)}${T(88, 42, "px", d)}${T(88, 55, "px pxs", "ARRIVED BY SEA")}`];
+  }
+}
+// A visa page: its journeys at the top, then the stamps, two to a row, each a little off and askew
+function ppVisa(pg, n) {
+  const ship = new Map(pg.trips.map((t) => [t.k, !!t.trip?.ship]));
+  const lastLand = new Map();
+  for (const p of pg.stamps) if (!p.sea) lastLand.set(p.trip || `d${Math.floor(p.at / DAY)}`, p);
+  const heads = pg.trips.map(ppJourney), head = heads.length > 2 ? `${heads.slice(0, 2).join(" · ")} · +${heads.length - 2}` : heads.join(" · ");
+  const stamps = pg.stamps.map((p, i) => {
+    const k = p.trip || `d${Math.floor(p.at / DAY)}`, h = ppHash(p.name + k), sailed = ship.get(k);
+    const kind = p.sea ? "sea" : sailed && lastLand.get(k) === p ? "ship" : PP_STAMPS[ppHash(p.name, 9) % PP_STAMPS.length];
+    const [w0, h0, body] = ppStamp({ ...p, ship: sailed }, kind, `IF ${100 + (ppHash(k) % 900)}`), K = 0.88, w = w0 * K, hgt = h0 * K;
+    const col = i % 2, row = Math.floor(i / 2), cx = (col ? 264 : 94) + ((h % 21) - 10), cy = 104 + row * 89 + ((h >> 5) % 13) - 6, rot = ((h >> 9) % 27) - 13;
+    const x = Math.max(4, Math.min(354 - w, cx - w / 2)), y = Math.max(52, Math.min(498 - hgt, cy - hgt / 2));
+    return `<g transform="translate(${x.toFixed(0)} ${y.toFixed(0)}) rotate(${rot} ${w / 2} ${hgt / 2}) scale(${K})" color="${ppInk(p)}" filter="url(#pprough)" data-act="stampinfo" data-id="${esc(p.name)}" role="button" tabindex="0"
+      aria-label="${esc(p.name)}: first flown over ${esc(fmtDate(p.at))}${p.n > 1 ? `, ${p.n} flights` : ""}"><g mask="url(#ppwear${h % 3})">${body}</g></g>`;
+  }).join("");
+  return `<svg viewBox="0 0 358 520" class="ppg" role="group" aria-label="Page ${n}"><rect width="358" height="520" rx="6" class="ppaper"/><rect width="358" height="520" rx="6" fill="url(#ppguil)"/>
+    <g transform="translate(179 286) scale(6)" class="ppwm">${ppBird}</g>
+    <text x="179" y="26" class="pphd">VISAS · VISAS</text><text x="179" y="42" class="ppjr"${head.length > 58 ? ` textLength="330" lengthAdjust="spacingAndGlyphs"` : ""}>${esc(head)}</text>
+    ${stamps}<text x="${n % 2 ? 340 : 18}" y="508" class="pppn">${n}</text></svg>`;
+}
+// The photo page
+function ppData(d) {
+  const pp = d.passport || {}, me = S.me, n = (x) => Math.round(x).toLocaleString("en-GB"), up = (x) => esc(String(x || "–").toUpperCase());
+  const [given, ...rest] = String(me.name || "").trim().split(/\s+/), sur = rest.join(" ") || given;
+  // (the machine-readable lines, as a real passport has them: "<" for every space; escaped, as they're written into the page)
+  const mrz = (x) => String(x).toUpperCase().normalize("NFD").replace(/[^A-Z0-9]+/g, "<");
+  const line1 = esc(`P<IFL${mrz(sur)}<<${mrz(rest.length ? given : "")}`.padEnd(40, "<").slice(0, 40));
+  const line2 = esc(`${String(pp.countries || 0).padStart(4, "0")}IF195<${pp.seas || 0}SEA${Math.round((d.km || 0) * 0.621371)}MI`.padEnd(40, "<").slice(0, 40));
+  const birds = S.birds.slice(0, 2).map((b) => b.name).join(" · ");
+  const f = (label, val, cls = "") => `<span class="ppf ${cls}"><small>${label}</small><b>${val}</b></span>`;
+  return `<div class="ppdata"><div class="pptop"><b>PASSPORT</b><small>PASSEPORT · INFLIGHT</small><em>TYPE P · LOFT</em></div>
+    <div class="ppid"><span class="ppphoto">${avatar(me, "xl")}</span><span class="ppfs">${f("Surname / Nom", up(sur))}${f("Given names / Prénoms", up(rest.length ? given : ""))}${f("Home loft / Pigeonnier", up(me.place))}${f("Handle", `@${up(me.handle)}`)}</span></div>
+    <div class="ppgrid">${f("Keeping pigeons since", up(d.since ? fmtDate(d.since).replace(/^\d+ /, "") : ""))}${f("Miles flown / Milles", `${n((d.km || 0) * 0.621371)} MI`)}
+      ${f("Countries / Pays", `${pp.countries || 0} OF 195`)}${f("Seas / Mers", n(pp.seas || 0))}
+      ${f("Furthest flight", d.longest?.place ? `TO ${up(d.longest.place)}` : "–")}${f("Pigeons", birds ? up(birds) : "–")}</div>
+    <div class="ppsig"><svg viewBox="0 0 160 30" aria-hidden="true"><path d="M4 20c14-14 22 6 34-4s18-12 28 1 20 4 28-7 14 6 26 4"/></svg><small>Signature of bearer</small></div>
+    <div class="ppmrz" aria-label="Machine readable zone">${line1}<br>${line2}</div></div>`;
+}
+const passportCover = () => `<svg viewBox="0 0 250 350" class="ppcover"><rect width="250" height="350" rx="14" class="ppleather"/><rect x="6" width="5" height="350" fill="rgba(0,0,0,.25)"/>
+  <g class="ppgold"><text x="125" y="70" class="ppc1">INFLIGHT</text><circle cx="125" cy="170" r="46"/><circle cx="125" cy="170" r="39" stroke-width="1"/>
+  <g transform="translate(125 172) scale(2.9)" class="ppgoldf">${ppBird}</g><path d="M74 205c-14-14-16-38-4-56M176 205c14-14 16-38 4-56M70 196l-8-2M66 184l-8-1M66 171l-8 1M70 159l-7 4M180 196l8-2M184 184l8-1M184 171l8 1M180 159l7 4" stroke-width="1.6"/>
+  <text x="125" y="270" class="ppc2">PASSPORT</text><text x="125" y="290" class="ppc3">PASSEPORT · PASAPORTE</text><rect x="111" y="312" width="28" height="18" rx="3" stroke-width="1.4"/><circle cx="125" cy="321" r="4.5" stroke-width="1.2"/></g></svg>`;
+// the ink: a little rough at the edges, and worn in places (one set for the whole book)
+const PP_DEFS = `<svg width="0" height="0" class="ppdefs" aria-hidden="true"><defs>
+  <filter id="pprough" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".06" numOctaves="2" seed="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.6"/></filter>
+  ${[0, 1, 2].map((i) => `<filter id="ppspk${i}"><feTurbulence type="fractalNoise" baseFrequency="${[0.9, 1.2, 0.7][i]}" numOctaves="2" seed="${i * 7 + 1}"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 ${[2.25, 2.4, 2.1][i]}"/></filter>
+  <mask id="ppwear${i}" maskUnits="userSpaceOnUse" x="-20" y="-20" width="200" height="160"><rect x="-20" y="-20" width="200" height="160" filter="url(#ppspk${i})"/></mask>`).join("")}
+  <pattern id="ppguil" width="60" height="24" patternUnits="userSpaceOnUse"><path d="M0 12c10-10 20-10 30 0s20 10 30 0M0 4c10-10 20-10 30 0s20 10 30 0M0 20c10-10 20-10 30 0s20 10 30 0" class="ppguilp"/></pattern></defs></svg>`;
+// The book: the photo page, then each visa page; only those near the one open are drawn
+function passportBook(d) {
+  const pages = passportPages(d.passport || {});
+  return `${PP_DEFS}<div class="ppbook" role="region" aria-label="Your passport">${[`<div class="ppage" data-i="0">${ppData(d)}</div>`, ...pages.map((_, i) => `<div class="ppage" data-i="${i + 1}"></div>`)].join("")}</div>
+    <div class="pppager"><button type="button" class="nbtn" data-act="ppturn" data-id="-1" aria-label="Previous page">${I.back}</button><span class="pplbl" aria-live="polite"></span><button type="button" class="nbtn ppnext" data-act="ppturn" data-id="1" aria-label="Next page">${I.back}</button></div>
+    ${pages.length ? "" : `<div class="gfoot">Each country and sea your pigeons fly over gets a stamp on the next page, once they’ve landed.</div>`}`;
+}
+function ppFill(book, d) {
+  const pages = passportPages(d.passport || {}), at = Math.round(book.scrollLeft / Math.max(1, book.clientWidth));
+  book.querySelectorAll(".ppage").forEach((el) => {
+    const i = +el.dataset.i; if (!i) return;
+    const near = Math.abs(i - at) <= 1;
+    if (near && !el.firstChild) el.innerHTML = ppVisa(pages[i - 1], i);
+    else if (!near && el.firstChild) el.innerHTML = "";
+  });
+  const lbl = $(".pplbl", $layer); if (lbl) lbl.textContent = at ? `Page ${at} of ${pages.length}` : pages.length ? "Photo page · swipe to turn" : "Photo page";
+  $layer.querySelectorAll("[data-act=ppturn]").forEach((b) => { b.disabled = +b.dataset.id < 0 ? at <= 0 : at >= pages.length; });
+  if (S.sheet?.type === "passport") S.sheet.page = at;
+}
+async function openPassport(trip) {
+  const from = S.sheet?.type === "flightlog" ? S.sheet : null;
+  const sh = S.sheet = { type: "passport", data: from?.data || null, back: !!from, trip };
+  renderSheet();
+  try {
+    if (!sh.data) sh.data = await api("flight-log");
+    await shapesLoad();
+    if (S.sheet !== sh) return;
+    if (trip) { const i = passportPages(sh.data.passport || {}).findIndex((pg) => pg.stamps.some((p) => p.trip === trip)); if (i >= 0) sh.page = i + 1; }
+    renderSheet();
+  } catch (err) { if (S.sheet === sh) { S.sheet = null; renderSheet(); } toast(esc(err.message)); }
 }
 function badgesHtml(list) {
   if (!list.length) return "";
@@ -3998,7 +4135,7 @@ function momentText(m, n, chatId) {
 function stampLines(msgs) {
   const and = (a) => (a.length > 3 ? `${a.slice(0, 2).join(", ")} and ${a.length - 2} more` : a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
   return (msgs || []).filter((m) => m.from === S.me.id && m.stamps?.length && !m.flying).map((m) => ({ at: m.deliverAt + 1,
-    html: `<button type="button" class="sysline stamps" data-act="flightlog">${I.globe}<span>New in your passport: ${esc(and(m.stamps))}</span></button>` }));
+    html: `<button type="button" class="sysline stamps" data-act="passport" data-id="${esc(m.id)}">${I.globe}<span>New in your passport: ${esc(and(m.stamps))}</span></button>` }));
 }
 // this chat's moments, each once (both pigeons may be here), in time order.
 // Pigeons sent together meet the same one at the same minute: that reads as
@@ -4979,7 +5116,7 @@ function drawSheet(refresh) {
           ${tile(n(d.dodged || 0), "Storms dodged", "went around them")}
           ${tile(d.sheltered >= 1 ? `${n(d.sheltered)} h` : d.sheltered ? `${n(d.sheltered * 60)} min` : "–", "Sheltered", d.early ? `best wind: ${esc(fmtDur(d.early))} early` : "from storms")}
         </div>
-        ${passportHtml(d.passport, s.allStamps)}
+        ${passportHtml(d.passport)}
         ${postmarksHtml(d.postmarks)}
         ${badgesHtml(d.badges || [])}
         ${skinsHtml(d.skins || [], S.me.skin)}
@@ -4990,7 +5127,6 @@ function drawSheet(refresh) {
       // sizes set from code (inline style attributes are blocked)
       $layer.querySelectorAll("[data-lap]").forEach((el) => el.style.setProperty("--lap", el.dataset.lap));
       $layer.querySelectorAll(".kbar[data-w], .bprog[data-w]").forEach((el) => el.style.setProperty("--w", el.dataset.w));
-      $layer.querySelectorAll(".pstamp2").forEach((el) => { el.style.setProperty("--ink", el.dataset.ink); el.style.setProperty("--tilt", el.dataset.tilt + "deg"); });
       return;
     }
     case "vianote": {
@@ -5000,6 +5136,18 @@ function drawSheet(refresh) {
         <div class="group mt-s"><label class="fcell"><textarea id="f-vianote" rows="3" maxlength="200" placeholder="Say something to ${esc(first(to?.name || "them"))}" aria-label="Your line"></textarea></label></div>
         <div class="gfoot">It flies on with the pigeon, end-to-end encrypted: only ${esc(first(to?.name || "they"))} can read it, when it lands. You can add one line.</div>${ferr}</form>`,
         { left: { label: "Cancel", act: "close" }, right: { label: "Add", form: "vianote-form" } });
+      return;
+    }
+    case "passport": {
+      const d = s.data, left = s.back ? { label: "Back", act: "flightlogback" } : undefined;
+      if (!d || !SHAPES) { $layer.innerHTML = sheetHtml("Passport", `<p class="empty">Opening your passport…</p>`, { left }); return; }
+      if (s.drawn === d && $(".ppbook", $layer)) return ppFill($(".ppbook", $layer), d);          // (already open: just the pages near the one you're on)
+      s.drawn = d;
+      $layer.innerHTML = sheetHtml("Passport", passportBook(d), { left });
+      const book = $(".ppbook", $layer);
+      if (s.page) book.scrollLeft = s.page * book.clientWidth;
+      ppFill(book, d);
+      let tm = 0; book.addEventListener("scroll", () => { clearTimeout(tm); tm = setTimeout(() => ppFill(book, d), 60); }, { passive: true });
       return;
     }
     case "flysheet": {
@@ -6210,7 +6358,9 @@ async function onClick1(e, t) {
     case "trustm": return trustNewKey(id);
     case "grouprename": S.sheet = { type: "grouprename", id }; return renderSheet();
     case "flightlog": return openFlightLog();
-    case "stampsall": if (S.sheet?.type === "flightlog") { const top = $(".sheet .body", $layer)?.scrollTop || 0; S.sheet.allStamps = true; renderSheet(); const b = $(".sheet .body", $layer); if (b) b.scrollTop = top; } return;
+    case "passport": haptic("tick"); return openPassport(id || null);
+    case "flightlogback": S.sheet = { type: "flightlog", data: S.sheet?.data || null }; renderSheet(); if (!S.sheet.data) openFlightLog(); return;
+    case "ppturn": { const book = $(".ppbook", $layer); if (book) { haptic("tick"); book.scrollBy({ left: +id * book.clientWidth, behavior: STILL.matches ? "auto" : "smooth" }); } return; }
     case "pmarkinfo": {
       const [mid, pid] = String(id).split(":"), m = (S.msgs.get(S.chat) || []).find((x) => x.id === mid), pm = m?.postmarks?.find((x) => x.id === pid); if (!pm) return;
       haptic("tick");
@@ -6224,6 +6374,7 @@ async function onClick1(e, t) {
     }
     case "stampinfo": {
       const p = S.sheet?.data?.passport?.places.find((x) => x.name === id); if (!p) return;
+      t.classList?.add("pphit"); setTimeout(() => t.classList?.remove("pphit"), 450);
       haptic("tick");
       return toast(`${esc(p.name[0].toUpperCase() + p.name.slice(1))}: first flown over ${esc(fmtDate(p.at))}${p.n > 1 ? `, and ${p.n - 1} flight${p.n === 2 ? "" : "s"} since` : ""}.`);
     }
@@ -7290,6 +7441,13 @@ async function send() {
   } catch (err) { if (here()) S.err = err.message; else toast(esc(err.message)); showUpload(null); }
   S.busy = false; S.sendingTo = null; renderCompose();
 }
+// Drawn buttons (a passport's stamps: SVG, not <button>) answer Enter and Space too; the passport turns with the arrow keys
+document.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target instanceof SVGElement && e.target.getAttribute("role") === "button" && e.target.dataset.act) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); return; }
+  if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && S.sheet?.type === "passport" && !/INPUT|TEXTAREA/.test(e.target.tagName)) {
+    const book = $(".ppbook", $layer); if (book) { e.preventDefault(); book.scrollBy({ left: (e.key === "ArrowRight" ? 1 : -1) * book.clientWidth, behavior: STILL.matches ? "auto" : "smooth" }); }
+  }
+});
 $(".page").addEventListener("keydown", (e) => {
   const f = e.target.closest?.("form[data-form=signup], form[data-form=signin]");
   if (f && e.key === "Enter" && e.target.tagName === "INPUT") {

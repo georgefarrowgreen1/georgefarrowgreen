@@ -35,11 +35,12 @@ async function fingerprint(ctx, path) {
   memo.set(path, { v, at: Date.now() });
   return v;
 }
-// import … from "./x.js"  →  "./x.js?v=…"
+// import … from "./x.js"  →  "./x.js?v=…" (and import("./x.js"), loaded only when it's needed)
+const IMPORT_RE = /\b(from\s+|import\()"(\.\/[\w./-]+\.js)"/g;
 async function stampImports(ctx, path, js) {
   const dir = path.slice(0, path.lastIndexOf("/") + 1), seen = new Map();
-  for (const [, rel] of js.matchAll(/\bfrom\s+"(\.\/[\w./-]+\.js)"/g)) if (!seen.has(rel)) seen.set(rel, await fingerprint(ctx, dir + rel.slice(2)));
-  return js.replace(/\bfrom\s+"(\.\/[\w./-]+\.js)"/g, (m, rel) => (seen.get(rel) ? `from "${rel}?v=${seen.get(rel)}"` : m));
+  for (const [, , rel] of js.matchAll(IMPORT_RE)) if (!seen.has(rel)) seen.set(rel, await fingerprint(ctx, dir + rel.slice(2)));
+  return js.replace(IMPORT_RE, (m, how, rel) => (seen.get(rel) ? `${how}"${rel}?v=${seen.get(rel)}"` : m));
 }
 
 // InFlight lives at one address. Cloudflare's preview addresses (*.pages.dev),

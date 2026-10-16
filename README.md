@@ -146,7 +146,7 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — 1.0.5
+## InFlight (/pigeon) — 1.0.6
 
 **1.0.4** (ships, coasts and surer times): standard pigeons cross oceans by
 ship and keep to coasts, fast ones fly over the mountains, finer wind-optimal
@@ -591,9 +591,24 @@ miles and rests for its trip home. Everyone it flies to sees its name and
 rank; only you see its career (`functions/_birds.js`). For a message to a
 group, your named pigeon flies the longest of its routes.
 
-**Passport.** Every country and sea your pigeons have flown over, as a page
-of stamps in your Flight Log: each in its own postal ink, perforated, with the
-day it was first stamped (tap one for how often since), newest first. A flight
+**Passport.** Every country and sea your pigeons have flown over, stamped in a
+passport. The Flight Log shows it closed (a burgundy cover with the InFlight
+crest, how many journeys and pages, the last stamp); it opens as a book you
+swipe through: a photo page (your name, loft and handle, how long you've kept
+pigeons, miles flown, countries of 195, seas, your furthest flight, your named
+pigeons, and a machine-readable strip along the bottom), then visa pages that
+fill up in the order your pigeons flew, a journey at a time (its day and ends at
+the top of the page, 10 stamps a page). Each country is a rubber stamp in its
+own ink (entry boxes, round postmarks, departure ovals, hexagons, triangles),
+with its outline inside (Natural Earth, simplified to 48 KB in `pigeon/shapes.js`
+by `.tools/geo/shapes.mjs`, loaded only when the passport opens); each sea is
+"At sea · crossed" ("By ship" on a voyage), and the last country of a journey that
+sailed is "Arrived by sea". The ink is a little rough and worn (SVG filters), the
+stamps a little askew; only the pages either side of the open one are drawn. Tap
+a stamp for when it was first stamped and how often since; the chat's "New in your
+passport" line opens the book at that flight's page. In the dark the pages stay
+paper, dimmed. The server says which journey first stamped each place, and each
+journey's ends (`trips`; yours, so nothing you don't already know). A flight
 is stamped once it has landed, along the way it really flew (great circles,
 turns and stopovers), with a point named every 20 km; where it set off and
 landed count as the nearest country. Land is named by the border it's within
