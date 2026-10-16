@@ -261,7 +261,14 @@ const MIGRATIONS = [
   "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
   "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE pg_users ADD COLUMN hide_tracker INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE pg_users ADD COLUMN loc_approx INTEGER NOT NULL DEFAULT 0",   // keep my spot to about 10 km, not a mile   // keep my pigeons off the public live tracker (functions/_tracker.js)
+  "ALTER TABLE pg_users ADD COLUMN loc_approx INTEGER NOT NULL DEFAULT 0",   // keep my spot to about 10 km, not a mile
+  // disappearing messages (functions/_vanish.js): the chat's setting when it was sent, and when it went
+  "ALTER TABLE pg_msgs ADD COLUMN vanish INTEGER", "ALTER TABLE pg_msgs ADD COLUMN gone_at INTEGER",
+  "ALTER TABLE pg_gmsgs ADD COLUMN vanish INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN gone_at INTEGER",
+  "ALTER TABLE pg_groups ADD COLUMN vanish INTEGER", "ALTER TABLE pg_groups ADD COLUMN vanish_by TEXT",
+  "CREATE TABLE IF NOT EXISTS pg_vanish (a TEXT NOT NULL, b TEXT NOT NULL, ms INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b))",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_vanish ON pg_msgs(read_at) WHERE vanish IS NOT NULL AND gone_at IS NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gmsgs_vanish ON pg_gmsgs(sent_at) WHERE vanish IS NOT NULL AND gone_at IS NULL",   // keep my pigeons off the public live tracker (functions/_tracker.js)
   "ALTER TABLE pg_users ADD COLUMN pins TEXT",
   // view-once photos: once = 1 (or null, sent before) means each recipient may download it once; viewed_at = when they did
   "ALTER TABLE pg_msgs ADD COLUMN once INTEGER", "ALTER TABLE pg_msgs ADD COLUMN viewed_at INTEGER",
@@ -504,7 +511,7 @@ export function msgView(me, m, t) {
   return {
     id: m.id, from: m.sender, to: m.recipient, km: m.km,
     pigeon: m.pigeon || (m.swift ? "swift" : "standard"), swift: (m.pigeon || (m.swift ? "swift" : "standard")) === "swift",
-    sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at,
+    sentAt: m.sent_at, deliverAt: m.deliver_at, expiresAt: flying ? null : m.expires_at, readAt: m.read_at, vanish: m.vanish || null,
     waiting: !lost && t < m.sent_at,             // scheduled, still in the loft (only its sender ever sees this)
     scheduled: !!m.sched,
     skin: m.skin || null, mystery: !!m.mystery,

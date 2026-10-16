@@ -986,6 +986,11 @@ show a friendly "backend not set up" message).
 
 ### InFlight's security model
 
+- **Disappearing messages** (a chat's or group's info sheet: 1, 7 or 30 days
+  after reading): when the time's up, the server wipes the sealed message, its
+  photo or voice pigeon, stopover note and reactions (in a group, once everyone
+  it flew to has read it), and phones stop showing it at once, even from their
+  saved copy. The flight itself stays for the Flight Log (`functions/_vanish.js`).
 - **Passwords are stretched with Argon2id** (64 MiB, 3 passes, on the phone;
   `pigeon/argon2.js` is hash-wasm 4.12.0, MIT, checked against npm's integrity
   hash), so guessing with graphics cards is slow. Its salt is marked `a2:`; an

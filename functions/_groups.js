@@ -10,6 +10,7 @@
 import { newStamps } from "./_passport.js";
 import { marksFor, markView } from "./_landmarks.js";
 import { noteSeason, skinNow } from "./_seasons.js";
+import { vanishOk } from "./_vanish.js";
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HttpError, json, body, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
   UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, wxView, wxOf, claimId, idTaken, cheerView, birdOn,
@@ -82,14 +83,14 @@ function theirView(m, d, friends, t) {
     fromPlace: friend ? m.from_place : null, toPlace: d.to_place,
     body: open ? m.body : null, key: open ? d.wrap : null, expiresAt: open ? m.expires_at : null, viewedAt: d.viewed_at || null };
 }
-const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
+const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, vanish: m.vanish || null, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
   const { results } = await D.prepare(`SELECT * FROM (
       SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
-      WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
+      WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) AND m.gone_at IS NULL ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
   return results;
 }
 async function deliveriesOf(D, ids) {
@@ -163,7 +164,7 @@ export async function groupsForSync(env, u, t) {
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
     const last = (await visible(D, u.id, g.id, 1))[0];
-    out.push({ id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, members,
+    out.push({ id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, members, vanish: g.vanish ? { ms: g.vanish, by: g.vanish_by } : null,
       last: last ? (await views(D, u.id, [last], friends, t))[0] : null, unread: unreadIn.get(g.id) || 0, turn: await turnIn(D, u.id, g.id, t) });
   }
   return out;
@@ -173,8 +174,19 @@ export async function groupsForSync(env, u, t) {
 // The server can't add anyone without it showing to everyone.
 function event(D, gid, t, kind, actor, target = null) {
   return D.prepare(`INSERT INTO pg_gevents (group_id, at, kind, actor, actor_name, target, target_name)
-    SELECT ?1, ?2, ?3, ?4, a.name, ?5, ${kind === "rename" ? "?6" : "(SELECT name FROM pg_users WHERE id = ?5)"} FROM pg_users a WHERE a.id = ?4`)
-    .bind(...[gid, t, kind, actor.id || actor, kind === "rename" ? null : target].concat(kind === "rename" ? [target] : []));
+    SELECT ?1, ?2, ?3, ?4, a.name, ?5, ${said(kind) ? "?6" : "(SELECT name FROM pg_users WHERE id = ?5)"} FROM pg_users a WHERE a.id = ?4`)
+    .bind(...[gid, t, kind, actor.id || actor, said(kind) ? null : target].concat(said(kind) ? [target] : []));
+}
+// (a new name, or how long messages last: words, not someone)
+const said = (kind) => kind === "rename" || kind === "vanish";
+// Disappearing messages for the group: anyone in it can set it, and everyone sees who did.
+async function setVanish({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "gvanish:" + u.id, 30, 24 * 3600e3);
+  const b = await body(request), D = await db(env), g = await groupFor(D, u, b.id), ms = Number(b.ms);
+  if (!vanishOk(ms)) throw new HttpError(400, "Choose off, 1 day, 7 days or 30 days.");
+  if ((g.vanish || 0) !== ms) await D.batch([D.prepare("UPDATE pg_groups SET vanish = ?, vanish_by = ? WHERE id = ?").bind(ms || null, u.id, g.id), event(D, g.id, Date.now(), "vanish", u, String(ms))]);
+  return json({ group: await groupView(env, u, g.id) });
 }
 
 /* ---------------- routes ---------------- */
@@ -268,7 +280,7 @@ async function listMessages({ request, env }) {
   const { results: ev } = await D.prepare(`SELECT e.at, e.kind, e.actor, e.actor_name, e.target, e.target_name FROM pg_gevents e
     JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at LIMIT 500`).bind(g.id, u.id).all();
   const events = ev.map((e) => ({ at: e.at, kind: e.kind, by: { id: e.actor, name: e.actor_name },
-    ...(e.kind === "rename" ? { name: e.target_name } : e.target ? { who: { id: e.target, name: e.target_name } } : {}) }));
+    ...(said(e.kind) ? { name: e.target_name } : e.target ? { who: { id: e.target, name: e.target_name } } : {}) }));
   const vs = await views(D, u.id, rows, friends, t), stamps = await newStamps(D, u.id, rows.filter((m) => m.sender === u.id).map((m) => m.id));
   for (const v of vs) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);      // the passport's new stamps (yours only)
   // postmarks: on yours, every landmark any of its pigeons passed; on theirs, the ones the pigeon to you did
@@ -361,6 +373,7 @@ async function send({ request, env, waitUntil }) {
       .bind(id, d.to, keys[d.to], d.km, d.at, d.lostAt, d.r.lat, d.r.lon, d.r.place, d.w.wind, d.w.f, d.wx.wx, d.wx.ms, d.wx.reach == null ? null : t + d.wx.reach, d.legs)),
   ]);
   if (photo) await env.BIO_R2.put(groupPhotoKey(id), photo.stream(), { httpMetadata: { contentType: "application/octet-stream" } });
+  if (g.vanish) await D.prepare("UPDATE pg_gmsgs SET vanish = ? WHERE id = ?").bind(g.vanish, id).run();
   // one of your named pigeons leads: it flies the longest route
   const lead = dels.filter((d) => d.r.lat != null).sort((a, b) => b.km - a.km)[0];
   const bird = lead && kind !== "dumb" ? await claimBird(D, u.id, meta.bird, t, lead.at - t, lead.at) : null;
@@ -504,6 +517,6 @@ export async function removeFromGroups(env, uid) {
 }
 
 export const GROUP_ROUTES = {
-  "POST groups": createGroup, "POST group-add": addMembers, "POST group-leave": leave, "POST group-mute": mute, "POST group-name": rename,
+  "POST groups": createGroup, "POST group-add": addMembers, "POST group-leave": leave, "POST group-mute": mute, "POST group-name": rename, "POST group-vanish": setVanish,
   "GET group-messages": listMessages, "POST group-messages": send, "POST group-read": markRead, "GET group-photo": getPhoto, "POST group-recall": recall,
 };

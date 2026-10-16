@@ -25,6 +25,7 @@ import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
+import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
@@ -705,8 +706,9 @@ async function sync({ request, env, waitUntil }) {
   const { results: lasts } = await D.prepare(`
     WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
     SELECT * FROM pg_msgs WHERE id IN (
-      SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
-      UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t).all();
+      SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 1) FROM o
+      UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t).all();
+  const vanishes = await vanishFor(D, u.id);
   const lastBy = new Map();
   for (const m of lasts) { const k = m.sender === u.id ? m.recipient : m.sender, had = lastBy.get(k); if (!had || m.sent_at > had.sent_at) lastBy.set(k, m); }
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
@@ -727,7 +729,8 @@ async function sync({ request, env, waitUntil }) {
       friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, locAt: u.hide_online || p.hide_online ? null : p.loc_at || null,
         seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
         tz: ((z) => (z && z !== "UTC" ? z : null))(prefsOf(p).tz),                    // their phone's time zone: "lands 08:12 their time"
-        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t), streak: streaks.get(p.id) || null });
+        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t), streak: streaks.get(p.id) || null,
+        vanish: vanishes.get(p.id) || null });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
@@ -743,9 +746,9 @@ async function listMessages({ request, env }) {
   if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
   const them = await D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other).first();
   // yours waiting to take off show (to you only); theirs only once they're in the air
-  const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3)
+  const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3) AND gone_at IS NULL
     ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t).all();
-  const { results: stops } = await D.prepare("SELECT * FROM pg_msgs WHERE via = ?1 AND sender = ?2 AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 50").bind(u.id, other, t).all();
+  const { results: stops } = await D.prepare("SELECT * FROM pg_msgs WHERE via = ?1 AND sender = ?2 AND sent_at <= ?3 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 50").bind(u.id, other, t).all();
   const views = [...results.map((m) => receipts(u, them, msgView(u.id, m, t))), ...stops.map((m) => stopView(u.id, m, t))].sort((a, b) => a.sentAt - b.sentAt);
   const near = await nearViews(D, u.id, results.map((m) => m.id), t);
   for (const v of views) if (near.has(v.id)) v.near = near.get(v.id);
@@ -868,6 +871,7 @@ async function sendMessage({ request, env, waitUntil }) {
   const bird = kind === "dumb" ? null : await claimBird(D, u.id, meta.bird, t, flight, deliver);
   if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, bird.wear, id).run();
   if (mystery) await D.prepare("UPDATE pg_msgs SET mystery = 1 WHERE id = ?").bind(id).run();
+  const vn = await pairVanish(D, u.id, to); if (vn) await D.prepare("UPDATE pg_msgs SET vanish = ? WHERE id = ?").bind(vn.ms, id).run();
   if (style && !via) await D.prepare("UPDATE pg_msgs SET style = ? WHERE id = ?").bind(style, id).run();
   if (noship && !via) await D.prepare("UPDATE pg_msgs SET noship = 1 WHERE id = ?").bind(id).run();
   // a photo is view-once unless the phone says it isn't (a GIF or a voice pigeon)
@@ -1456,7 +1460,7 @@ const ROUTES = {
   "POST admin-test-email": adminTestEmail,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
-  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
+  ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
 };
 
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;

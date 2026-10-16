@@ -2172,7 +2172,20 @@ async function loadChat(fid) {
 }
 // One chat's messages, opened. A copy from this phone (live = false) only
 // fills in until the fresh one arrives, and never tells the server anything.
+// Disappearing messages (functions/_vanish.js): one whose time is up, after it was read
+// (in a group, by everyone it flew to). The server wipes it within a minute; this hides
+// it at once, even from a copy saved on the phone.
+const vanishSay = (ms) => (ms ? `${ms / DAY} day${ms === DAY ? "" : "s"}` : "off");
+function vanished(m, t = Date.now()) {
+  if (!m?.vanish) return false;
+  if (m.flock) { const fl = m.flock.filter((x) => !x.lost); return fl.length > 0 && fl.every((x) => x.readAt) && Math.max(...fl.map((x) => x.readAt)) + m.vanish <= t; }
+  return !!m.readAt && m.readAt + m.vanish <= t;
+}
 async function applyChat(fid, d, live) {
+  if (d.messages?.some((m) => vanished(m))) {
+    for (const m of d.messages) if (vanished(m)) { S.plain.delete(m.id); S.pctx.delete(m.id); }
+    d = { ...d, messages: d.messages.filter((m) => !vanished(m)) };
+  }
   const g = group(fid), open = (m, kind) => (g ? decryptGroup(g, m, kind) : decrypt(fid, m, kind));
   if (!g && !friend(fid)) return;
   for (const r of d.reacts || []) await open(r, "react");
@@ -4264,6 +4277,8 @@ function birdLine(m) {
   const c = m.from === S.me.id && b.id ? [...S.birds, ...S.hall].find((x) => x.id === b.id) : null;
   return `<span class="birdline">${I.bird}Carried by ${esc(b.name)}${esc(wearWord(b.wear))} · ${esc(b.up || b.rank)}${c ? ` · ${fmtMiles(c.km)} in all` : ""}</span>`;
 }
+// at the top of a chat whose messages disappear
+const vanishLine = (v) => (v?.ms ? `<div class="sysline vanishline" role="note">${I.clock}Messages disappear ${vanishSay(v.ms)} after they’re read${v.by ? ` · set by ${v.by === S.me.id ? "you" : esc(first(personById(v.by)?.name || "a friend"))}` : ""}</div>` : "");
 function geventLines(list) {
   const nm = (p) => (p.id === S.me.id ? "you" : first(personById(p.id)?.name || p.name || "Someone"));
   const cap = (x) => x[0].toUpperCase() + x.slice(1), and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
@@ -4279,6 +4294,7 @@ function geventLines(list) {
       text = made ? `${by} made the group${whos.length ? ` with ${and(whos)}` : ""}` : `${by} added ${and(whos)}`;
     } else if (e.kind === "leave") text = `${by} left`;
     else if (e.kind === "rename") text = `${by} named the group “${e.name}”`;
+    else if (e.kind === "vanish") text = Number(e.name) ? `${by} set messages to disappear ${vanishSay(Number(e.name))} after they’re read` : `${by} turned off disappearing messages`;
     else continue;
     out += `<div class="sysline" role="note">${esc(text)}<span class="t"> · ${fmtTime(e.at)}</span></div>`;
   }
@@ -4327,7 +4343,7 @@ function vGroupChat(g) {
       <button class="chatwho" data-act="groupinfo" data-id="${esc(g.id)}" aria-label="${esc(g.name)}: details">${gavatar(g, "s")}<span class="wt"><span class="nm"><span>${esc(g.name)}</span>${I.chev}</span>${gchatSub(g)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeons", `data-id="${esc(flying.id)}"`) : ""}${nbtn("groupmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">${esc(g.name)}</h1>${warn}<div class="msgs">${body}${outboxBubbles(g.id)}</div>`;
+    <h1 class="sr">${esc(g.name)}</h1>${warn}<div class="msgs">${vanishLine(g.vanish)}${body}${outboxBubbles(g.id)}</div>`;
 }
 function vChat() {
   if (group(S.chat)) return vGroupChat(group(S.chat));
@@ -4361,7 +4377,7 @@ function vChat() {
       <button class="chatwho" data-act="friendinfo" data-id="${esc(f.id)}" aria-label="${esc(f.name)}: details">${avatar(f, "s", true)}<span class="wt"><span class="nm"><span>${esc(first(f.name))}</span>${I.chev}</span>${chatSub(f)}</span></button>
       <div class="nb-right">${flying ? nbtn("map", I.map, "Watch the pigeon", `data-id="${esc(flying.id)}"`) : ""}${nbtn("chatmenu", I.more, "More")}</div>
     </div>
-    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${warn}<div class="msgs">${body}${outboxBubbles(f.id)}</div>`;
+    <h1 class="sr">Chat with ${esc(first(f.name))}</h1>${warn}<div class="msgs">${vanishLine(f.vanish)}${body}${outboxBubbles(f.id)}</div>`;
 }
 
 /* ---------- sign-up and sign-in ---------- */
@@ -5126,6 +5142,7 @@ function drawSheet(refresh) {
         <div class="group mt">
           ${toggleCell({ act: "gmute", id: g.id, icon: I.moon, tile: "indigo", label: "Mute Notifications", sub: g.muted ? "No notifications or emails from this group" : "", on: g.muted })}
           ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
+          ${cell({ act: "vanishask", id: g.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: g.vanish ? vanishSay(g.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}
         </div>
         <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`, { name: `${g.name}: group info` });
       return;
@@ -5392,7 +5409,8 @@ function drawSheet(refresh) {
           ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
           ${km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
-        <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}</div>
+        <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", chev: true })}
+          ${cell({ act: "vanishask", id: f.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: f.vanish ? vanishSay(f.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`, { name: `${f.name}: contact info` });
       return;
     }
@@ -6569,6 +6587,21 @@ async function onClick1(e, t) {
       const f = personById(id); if (!f) return;
       S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : S.sheet?.type === "groupinfo" ? "groupinfo" : null), digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
       return renderSheet();
+    }
+    case "vanishask": {
+      const g = group(id), who = g ? "everyone in the group" : first(friend(id)?.name || "your friend");
+      return openActions({ title: "Disappearing Messages", message: `New messages disappear this long after they’re read, for you and ${who}. The flight stays in your Flight Log.`,
+        actions: [[DAY, "1 Day"], [7 * DAY, "7 Days"], [30 * DAY, "30 Days"], [0, "Off"]].map(([ms, label]) => ({ label, act: "vanishset", id: `${id}|${ms}` })) });
+    }
+    case "vanishset": {
+      const [cid, ms] = id.split("|"), g = group(cid);
+      try {
+        await api(g ? "group-vanish" : "vanish", { method: "POST", body: g ? { id: cid, ms: Number(ms) } : { with: cid, ms: Number(ms) } });
+        await sync(); if (S.chat === cid) await loadChat(cid).catch(() => {});
+        toast(Number(ms) ? `New messages disappear ${vanishSay(Number(ms))} after they’re read.` : "Disappearing messages are off.");
+        if (S.sheet) renderSheet(); render();
+      } catch (err) { toast(esc(err.message)); }
+      return;
     }
     case "trustsafe": { await trustNewKey(id); haptic("success"); toast("Trusted. Messages can go to them again."); S.sheet = null; return renderSheet(); }
     case "chatmenu": {

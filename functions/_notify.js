@@ -16,6 +16,7 @@
 import { liveTick } from "./_live.js";
 import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
+import { vanishSweep } from "./_vanish.js";
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -514,7 +515,8 @@ async function blurOld(D, t) {
 export async function tick(env, origin) {
   const D = await db(env), t = Date.now();
   await sweepPhotos(env).catch(() => {});     // photos go 24 h after landing, even if no one opens the app
-  await lockOldSecrets(D, env).catch((e) => console.error("at rest", e.message));   // (functions/_atrest.js: once PIGEON_PEPPER is set)
+  await lockOldSecrets(D, env).catch((e) => console.error("at rest", e.message));
+  await vanishSweep(env).catch((e) => console.error("vanish", e.message));          // disappearing messages that are due (functions/_vanish.js)   // (functions/_atrest.js: once PIGEON_PEPPER is set)
   // old rate-limit windows and ended sessions
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),

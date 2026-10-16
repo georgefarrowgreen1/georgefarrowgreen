@@ -2001,3 +2001,6 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 /* in the dark: the pages are still paper, just dimmer */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ppbook{--pp:#d9d2c1}}
 :root[data-theme="dark"] .ppbook{--pp:#d9d2c1}
+
+/* disappearing messages: the line at the top of the chat */
+.sysline.vanishline svg{display:inline-block;width:12px;height:12px;vertical-align:-1px;margin-right:5px}
