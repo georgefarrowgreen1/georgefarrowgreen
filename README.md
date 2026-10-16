@@ -146,7 +146,7 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — 1.0.4
+## InFlight (/pigeon) — 1.0.5
 
 **1.0.4** (ships, coasts and surer times): standard pigeons cross oceans by
 ship and keep to coasts, fast ones fly over the mountains, finer wind-optimal
@@ -368,6 +368,31 @@ safe from Pigeon Death, and on from the port. Lisbon to New York takes about
 six days. The card says "Boards a ship at Lisbon · Across the North Atlantic"
 and "At Sea"; the live weather leaves a voyage be; a friend who moves while it's
 at sea is flown to from where it comes ashore.
+
+**On the map, and being told.** The lane it sails is drawn in teal (solid where
+it has sailed, dotted ahead) with its two ports named; the card says when the
+ship gets in ("At sea across the North Atlantic: the ship gets in to New York on
+Thursday", or while it waits, when it sails). Its sender and recipient (in a
+group, its recipient) are told when it boards ("Your pigeon boarded a ship at
+Lisbon. It comes ashore at New York on Thu at 14:00.") and when it comes ashore,
+under Mid-air Moments; the ports only with names on (`shipTick`, claimed with
+`ship_told` so each is said once, and only within two hours of happening).
+
+**No ships.** In a hurry, a sender can have a standard pigeon fly the ocean
+itself (How It Flies → By Sea → Fly It All the Way, shown only when its way
+would take a ship): days quicker, but a long way with nowhere to land, so with
+Pigeon Death on its odds go up. The message keeps `noship`, so a friend moving
+or the live weather never puts it on a ship after all; its card says No Ships.
+How It Flies asks the server for both (`noShip` in route-plan, only for a kind
+whose way sails).
+
+**Planning cost.** How It Flies plans every kind of pigeon each way (12 plans,
+more with No Ships) from one look at the sky (`skies`: the slowest pigeon's look
+reaches far enough for the rest), each square's weather worked out once per
+quarter hour, and a way's longest sea and highest ground kept between plans.
+London to Sydney costs about half a second of CPU, short hops a few ms. The sky
+is looked at for twice the calm flight time, so a pigeon slowed by a headwind
+still has forecast to the end.
 
 **Wind-optimal routes.** The planner looks at a finer lattice (up to 13 stages
 of 13 points, two steps sideways a stage) and judges each stretch by the sky

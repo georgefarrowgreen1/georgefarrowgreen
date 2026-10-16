@@ -132,16 +132,20 @@ const hoursOf = (path, w, rest, kmh) => flownKm(path) / (kmh * (w?.f || 1)) + re
 function pick(x, w, skyAt, t) {
   if (!x.lat || !w) return null;
   const hop = hopsFor(x.r.pigeon), found = bestWay(x.lat, skyAt, t, x.kmh, { wind: x.r.style !== "scenic", coast: hop && x.r.style !== "scenic" });
-  let p = finish(found.path, { hop, style: x.r.style, ceiling: ceilingFor(x.r.pigeon) });
+  let p = finish(found.path, { hop, style: x.r.style, ceiling: ceilingFor(x.r.pigeon), ship: !x.r.noship });
   if (x.tired) p = [p[0], ...tire(p[0], p.slice(1, -1), p[p.length - 1], x.kmh * (found.w.f || 1), x.tired), p[p.length - 1]];
   const way = { p, rest: restOf(p.slice(1, -1)) };
   // storms in its way now: a way that keeps out of them (the straight line from here, if that does)
   if (w.storms > 0 && found.w.storms < w.storms) return { way, w: found.w, why: "s" };
   if (w.storms > 0 || found.why !== "w") return null;
   // a better wind: only if clearly quicker than the way it's going (more so just after turning for one)
-  const now = hoursOf(x.path, w, x.rest, x.kmh), then = hoursOf(p, found.w, way.rest, x.kmh);
-  const soon = x.lastTurn && x.lastTurn[4] === "w" && t - x.lastTurn[2] < TURN_CALM ? 2 : 1;
-  return now - then > soon * Math.max(now * LIVE_GAIN, TURN_MIN / HOUR) ? { way, w: found.w, why: "w" } : null;
+  return worthTurning(hoursOf(x.path, w, x.rest, x.kmh), hoursOf(p, found.w, way.rest, x.kmh), x.lastTurn, t) ? { way, w: found.w, why: "w" } : null;
+}
+// Is a way taking `then` hours, not `now`, worth turning for the wind? It must save LIVE_GAIN of the way
+// and TURN_MIN at least; twice that within TURN_CALM of its last turn for the wind (`last`, its "r" point)
+export function worthTurning(now, then, last, t) {
+  const soon = last && last[4] === "w" && t - last[2] < TURN_CALM ? 2 : 1;
+  return now - then > soon * Math.max(now * LIVE_GAIN, TURN_MIN / HOUR);
 }
 // It changes course for the weather: from where it is now, the better way.
 async function turnFor(D, t, x, better, wasW) {

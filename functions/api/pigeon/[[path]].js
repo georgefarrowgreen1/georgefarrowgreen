@@ -235,7 +235,7 @@ async function reroute(env, u, p, t, waitUntil) {
     }
     // still in its loft: it plans a new take-off so it lands when it was asked to (or as soon as it can)
     if (t < m.sent_at) {
-      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon) }), rest = restOf(plan.way);
+      const plan = await planRoute(env, { from: [m.from_lat, m.from_lon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon), ship: !m.noship }), rest = restOf(plan.way);
       const km = plan.km, flight = Math.round(flightMs(km / (m.wind_f || 1), msgSpeed(m))) + rest;
       const off = Math.max(t, m.deliver_at - flight), deliver = off + flight;
       const way = plan.way.length ? JSON.stringify(timeWay([m.from_lat, m.from_lon], plan.way, [p.lat, p.lon], off, flight - rest).legs) : null;
@@ -254,7 +254,7 @@ async function reroute(env, u, p, t, waitUntil) {
     let deliver, km;
     if (ashore && ship[0][2] <= t && ashore[2] > t) {
       const keep = legs.filter((l) => l[2] <= ashore[2]), was = pathKm([[ashore[0], ashore[1]], ...legs.filter((l) => l[2] > ashore[2]), [m.to_lat, m.to_lon]]);
-      const plan = await planRoute(env, { from: [ashore[0], ashore[1]], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon) }), rest = restOf(plan.way);
+      const plan = await planRoute(env, { from: [ashore[0], ashore[1]], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon), ship: !m.noship }), rest = restOf(plan.way);
       deliver = ashore[2] + (plan.km / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest;
       km = m.km - was + plan.km;
       legs.length = 0;
@@ -262,7 +262,7 @@ async function reroute(env, u, p, t, waitUntil) {
     } else {
       const st = stopsOf(m), [pLat, pLon] = posAt(st, t);                // where it is right now, on the way it was going
       const done = passed(legs, t), flown = pathKm([[m.from_lat, m.from_lon], ...done, [pLat, pLon]]);
-      const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon) }), ahead = plan.km, rest = restOf(plan.way);
+      const plan = await planRoute(env, { from: [pLat, pLon], to: [p.lat, p.lon], weather: false, hop: hopsFor(m.pigeon), style: m.style, ceiling: ceilingFor(m.pigeon), ship: !m.noship }), ahead = plan.km, rest = restOf(plan.way);
       const sails = plan.way.some((q) => q.sail);                          // (a voyage on the new way: days more, not a flight's)
       deliver = Math.max(t + MIN_FLIGHT / speed / 5, Math.min(latest + (sails ? 7 * DAY : 0), t + (ahead / (SPEED_KMH * (m.wind_f || 1))) * 3600e3 / speed + rest));
       km = flown + ahead;
@@ -787,6 +787,7 @@ async function sendMessage({ request, env, waitUntil }) {
   const hasTo = r && r.lat != null;
   const risky = u.risky ? 1 : 0, speed = PIGEONS[kind].speed * (risky ? RISKY_SPEED : 1);
   const style = styleOf(meta.route);                                         // the way it goes: fastest, scenic or safe
+  const noship = meta.noShip === true && hopsFor(kind) ? 1 : 0;              // in a hurry: it flies an ocean itself rather than take a ship
   // A stopover: it rests an hour with a friend you both have, who can read it
   // (their own sealed copy) and add a line for the recipient, then flies on.
   const via = meta.via == null ? null : await stopover(D, u, to, r, String(meta.via), String(meta.viaCt || ""), landAt);
@@ -806,7 +807,7 @@ async function sendMessage({ request, env, waitUntil }) {
     // to each stretch); one booked to land later, around the forecast for then
     // (when that's not too far off to know)
     const ahead = landAt != null && hasTo ? Math.max(t, landAt - flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), speed)) : t;
-    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: ahead - t < FORECAST_AHEAD, hop: hopsFor(kind), style, start: ahead, kmh: SPEED_KMH * speed, ceiling: ceilingFor(kind) }) : null;
+    const plan = hasTo ? await planRoute(env, { from: [u.lat, u.lon], to: [r.lat, r.lon], weather: ahead - t < FORECAST_AHEAD, hop: hopsFor(kind), style, start: ahead, kmh: SPEED_KMH * speed, ceiling: ceilingFor(kind), ship: !noship }) : null;
     km = plan ? plan.km : DEFAULT_KM; w = plan ? plan.w : { wind: null, f: 1 }; way = plan ? plan.way : [];
     if (plan && carrier) way = tire([u.lat, u.lon], way, [r.lat, r.lon], SPEED_KMH * speed * (w.f || 1), tiredOf(carrier.km));
     const rest = restOf(way);
@@ -857,6 +858,7 @@ async function sendMessage({ request, env, waitUntil }) {
   if (bird) await D.prepare("UPDATE pg_msgs SET bird = ?, bird_name = ?, bird_rank = ?, bird_wear = ? WHERE id = ?").bind(bird.id, bird.name, bird.rank, bird.wear, id).run();
   if (mystery) await D.prepare("UPDATE pg_msgs SET mystery = 1 WHERE id = ?").bind(id).run();
   if (style && !via) await D.prepare("UPDATE pg_msgs SET style = ? WHERE id = ?").bind(style, id).run();
+  if (noship && !via) await D.prepare("UPDATE pg_msgs SET noship = 1 WHERE id = ?").bind(id).run();
   // a photo is view-once unless the phone says it isn't (a GIF or a voice pigeon)
   if (photo) await D.prepare("UPDATE pg_msgs SET once = ? WHERE id = ?").bind(meta.once === false ? 0 : 1, id).run();
   // pigeons off the same way at once fly together, quicker for it (before it's shown, so its times are right)
@@ -901,19 +903,25 @@ async function routePlan({ request, env }) {
   const from = [u.lat, u.lon], to = [r.lat, r.lon];
   // every kind of pigeon, each way, so every time How It Flies shows is the planned one
   // (the same sky each time: the forecast is kept a while)
-  const kinds = {};
+  const kinds = {}, noShip = {}, skies = new Map();          // (the slowest first: its look at the sky reaches far enough for the rest)
   // how sure each landing time is: one look at the ensemble along the straight way, long enough for the slowest
   const ens = await ensembleFor(env, [from, to], flightMs(haversineKm(u.lat, u.lon, r.lat, r.lon), PIGEONS.standard.speed) / HOUR * 1.5).catch(() => null);
   for (const k of ["standard", "swift", "turbo", "rocket"]) {
     const speed = PIGEONS[k].speed * (u.risky ? RISKY_SPEED : 1), plans = (kinds[k] = {});
-    for (const style of STYLES) {
-      const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed, ceiling: ceilingFor(k) });
+    const each = async (style, ship) => {
+      const plan = await planRoute(env, { from, to, weather: true, hop: hopsFor(k), style: styleOf(style), start: t, kmh: SPEED_KMH * speed, ceiling: ceilingFor(k), skies, ship });
       const way = carrier ? tire(from, plan.way, to, SPEED_KMH * speed * (plan.w.f || 1), tiredOf(carrier.km)) : plan.way;
       const rest = restOf(way), flight = Math.round(flightMs(plan.km / plan.w.f, speed)) + rest;
-      plans[style] = { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs, risk: riskOf([from, ...way, to], plan.w.storms || 0, styleOf(style)), spread: spreadOf(ens, t, SPEED_KMH * speed) };
+      return { km: plan.km, deliverAt: t + flight, wind: plan.w.wind, legs: timeWay(from, way, to, t, flight - rest).legs, risk: riskOf([from, ...way, to], plan.w.storms || 0, styleOf(style)), spread: spreadOf(ens, t, SPEED_KMH * speed) };
+    };
+    for (const style of STYLES) plans[style] = await each(style, true);
+    // one that would take a ship: the same ways flown all the way instead, for a sender in a hurry
+    if (hopsFor(k) && STYLES.some((s) => plans[s].legs.some((l) => l[3] === "b"))) {
+      noShip[k] = {};
+      for (const style of STYLES) noShip[k][style] = await each(style, false);
     }
   }
-  return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans: kinds[kind] || kinds.standard, kinds });
+  return json({ at: t, pigeon: kind, from, to, fromPlace: u.place, toPlace: r.place, plans: kinds[kind] || kinds.standard, kinds, noShip });
 }
 
 // The named pigeon of yours that would carry it, if it's free to: { km } (its miles), else null

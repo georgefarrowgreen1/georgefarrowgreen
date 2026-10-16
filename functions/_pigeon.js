@@ -270,7 +270,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN mystery INTEGER", "ALTER TABLE pg_gmsgs ADD COLUMN mystery INTEGER",            // (in a group: the member its route went to, the longest)
   "ALTER TABLE pg_msgs ADD COLUMN style TEXT", "ALTER TABLE pg_gmsgs ADD COLUMN style TEXT",                     // the route's style: scenic or safe (null: fastest)
   "ALTER TABLE pg_msgs ADD COLUMN live_at INTEGER", "ALTER TABLE pg_gdeliv ADD COLUMN live_at INTEGER",             // when the weather ahead was last looked at (in flight)
-  "ALTER TABLE pg_msgs ADD COLUMN spread REAL",                                                                    // how sure its landing time is (the ensemble forecast: _weather.js)
+  "ALTER TABLE pg_msgs ADD COLUMN spread REAL",
+  "ALTER TABLE pg_msgs ADD COLUMN noship INTEGER",                                                                // its sender asked it to fly an ocean itself, not take a ship
+  "ALTER TABLE pg_msgs ADD COLUMN ship_told INTEGER", "ALTER TABLE pg_gdeliv ADD COLUMN ship_told INTEGER",       // told it boarded a ship (1), and came ashore (2)                                                                    // how sure its landing time is (the ensemble forecast: _weather.js)
   "CREATE INDEX IF NOT EXISTS pg_msgs_bird ON pg_msgs(bird)", "CREATE INDEX IF NOT EXISTS pg_gmsgs_bird ON pg_gmsgs(bird)",
   // the once-a-minute tick finds what's due by these, not by reading every message
   "CREATE INDEX IF NOT EXISTS pg_msgs_due ON pg_msgs(deliver_at) WHERE notified_at IS NULL",
@@ -506,6 +508,7 @@ export function msgView(me, m, t) {
     skin: m.skin || null, mystery: !!m.mystery,
     ...(m.photo ? { once: m.once !== 0, viewedAt: m.viewed_at || null } : {}),
     ...(m.spread != null && flying ? { spread: m.spread } : {}),
+    ...(m.noship ? { noShip: true } : {}),                 // flying an ocean itself, not by ship
     // a stopover: who, where and when (the line they added only reaches the recipient, once it lands)
     ...(m.via ? { via: m.via, viaPlace: m.via_place, viaAt: m.via_at, viaOff: m.via_off,
       note: m.recipient === me && !flying && !lost ? m.via_note || null : null } : {}),

@@ -221,7 +221,8 @@ export async function forecastFor(env, routes, hours = 24) {
   return out;
 }
 // One square's weather in hour h of its forecast
-const hourAt = (H, h) => H && h >= 0 && h < H.time.length ? Object.fromEntries(WIND_VARS.split(",").map((k) => [k, H[k]?.[h]])) : null;
+const VARS = WIND_VARS.split(",");
+const hourAt = (H, h) => { if (!H || h < 0 || h >= H.time.length) return null; const w = {}; for (const k of VARS) w[k] = H[k]?.[h]; return w; };
 // The weather at a moment: its hour's, with the quarter-hour's rain and weather in it for
 // the next couple of hours (Open-Meteo's 15-minute forecast), so a shower that's passing
 // is met, or missed, as it will be
@@ -340,7 +341,14 @@ export async function skyAtPoints(env, pts, until) {
   const [list, E] = await Promise.all([hourlyFor(env, cells, hours), earthFor(env).catch(() => null)]);
   if (!list) return null;
   const byCell = new Map(cells.map((p, k) => [key(p), list[k]]));
-  return { at: (i, when) => { const H = byCell.get(key(snapped[i])); return H ? withEarth(weatherAt(H, when), E, snapped[i].lat, snapped[i].lon, when) : null; } };
+  // (each square's weather at each quarter hour worked out once: a plan asks the same ones many times over)
+  const keys = snapped.map(key), seen = new Map();
+  return { until, at: (i, when) => {
+    const H = byCell.get(keys[i]); if (!H) return null;
+    const m = `${keys[i]}|${Math.floor(when / QUARTER)}`;
+    if (seen.has(m)) return seen.get(m);
+    const w = withEarth(weatherAt(H, when), E, snapped[i].lat, snapped[i].lon, when); seen.set(m, w); return w;
+  } };
 }
 // The weather along each of some flights ({ path, start, kmh }), as it will
 // meet it. All in the next hour: the sky as it is now (windsFor). The forecast

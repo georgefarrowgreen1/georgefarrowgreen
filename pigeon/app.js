@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.4";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.0.5";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -417,13 +417,61 @@ function shipOf(legs) {
   const mid = b[Math.floor(b.length / 2)], last = b.at(-1);
   return { from: b[0][4] || "port", board: b[0][2], off: b[1][2], to: last[4] || "port", ashore: last[2], sea: overWhere(mid[1], mid[0]) };
 }
+// When a ship gets in, as you'd say it: "at 14:00", "tomorrow", "on Thursday", "on 23 Oct"
+function onDay(ts) {
+  if (sameDay(ts, now())) return `at ${fmtTime(ts)}`;
+  if (sameDay(ts, now() + DAY)) return "tomorrow";
+  const d = new Date(ts); return ts - now() < 6 * DAY ? `on ${DOW_LONG[d.getDay()]}` : `on ${d.getDate()} ${MON[d.getMonth()]}`;
+}
+// A voyage on the map: the lane it sails (teal, solid where it has sailed, dotted ahead) and
+// its two ports. `stroke(P, i0, i1, up)` draws points i0 to i1 of a track (the globe hides the back).
+function drawVoyages(g, tracks, col, lw, stroke) {
+  const ports = [];
+  for (const { r, rp, P, up } of tracks) {
+    const sh = !r.here && !r.lost && shipOf(r.legs); if (!sh) continue;
+    const a = rp.findIndex((p) => p.t >= sh.off - 1), b = rp.findIndex((p) => p.t >= sh.ashore - 1); if (a < 0 || b <= a) continue;
+    const ft = flightAt(r).t, i = rp.findIndex((p) => p.t >= ft), cut = i < 0 ? b : Math.min(b, Math.max(a, i));
+    g.save(); g.lineCap = "round"; g.lineJoin = "round";
+    g.globalAlpha = 0.9; g.strokeStyle = col("--cell"); g.lineWidth = lw + 3; stroke(P, a, b, up);
+    g.globalAlpha = 1; g.strokeStyle = col("--teal");
+    if (cut > a) { g.lineWidth = lw; stroke(P, a, cut, up); }
+    if (cut < b) { g.lineWidth = lw - 0.5; g.setLineDash([0.5, 7]); stroke(P, cut, b, up); g.setLineDash([]); }
+    g.restore();
+    ports.push({ at: P[a], vis: !up || up[a], name: sh.from }, { at: P[b], vis: !up || up[b], name: sh.to });
+  }
+  for (const p of ports) {
+    if (!p.vis) continue;
+    const [x, y] = p.at;
+    g.fillStyle = col("--cell"); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
+    g.strokeStyle = col("--teal"); g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.stroke();
+  }
+  return ports;
+}
+// its ports' names, where there's room (after the ends have theirs)
+function portLabels(g, ports, free, taken, text, col) {
+  g.save(); g.font = "600 12px -apple-system, system-ui, sans-serif"; g.textBaseline = "middle"; g.textAlign = "left";
+  for (const p of ports) {
+    if (!p.vis || !p.name) continue;
+    const [x, y] = p.at, s = `${p.name}`, w = g.measureText(s).width;
+    taken.push([x - 8, y - 8, x + 8, y + 8]);
+    for (const [lx, ly] of [[x + 11, y], [x - 11 - w, y], [x - w / 2, y - 20], [x - w / 2, y + 20]]) {
+      const box = [lx - 3, ly - 9, lx + w + 3, ly + 9]; if (!free(box)) continue;
+      taken.push(box); text(s, lx, ly, col("--teal-t")); break;
+    }
+  }
+  g.restore();
+}
 // The way a pigeon would go if it left now (How It Flies), from the server's
 // planner: { key, at, data } for one friend (every kind of pigeon, each way), kept 10 minutes.
 // Asked for one kind, it answers with that kind's ways as data.plans.
 const PLAN_KEEP = 10 * MIN;
+// In a hurry (How It Flies → By Sea): a standard pigeon flies an ocean itself rather than take a ship, for this chat
+const noShipOn = () => !!S.chat && S.noShip === S.chat;
+// a kind's plans, each way: by ship where it would take one, unless it's flying it all
+const kindPlans = (d, k) => (noShipOn() && d?.noShip?.[k]) || d?.kinds?.[k];
 function routePlanFor(chat, kind) {
   const bd = birdFor(), key = chat + ":" + (bd?.id || ""), p = S.routePlan;     // (who'd carry it: a named pigeon stops for breathers)
-  const view = (d) => (d ? { ...d, pigeon: d.kinds?.[kind] ? kind : d.pigeon, plans: d.kinds?.[kind] || d.plans } : null);
+  const view = (d) => (d ? { ...d, pigeon: d.kinds?.[kind] ? kind : d.pigeon, plans: kindPlans(d, kind) || d.plans } : null);
   if (p?.key === key && (p.loading || now() - p.at < PLAN_KEEP)) return view(p.data);
   S.routePlan = { key, at: now(), loading: true, data: p?.key === key ? p.data : null };
   api(`route-plan?with=${encodeURIComponent(chat)}&pigeon=${encodeURIComponent(KIND[kind] ? kind : "standard")}${bd ? `&bird=${encodeURIComponent(bd.id)}` : ""}`).then((d) => {
@@ -437,7 +485,7 @@ function routePlanFor(chat, kind) {
 // How long a pigeon of this kind would take, the way it would really go (the
 // planner's, with its rests and the weather, once it has answered), else at its calm pace
 function plannedMs(c, k) {
-  const d = !c.g && !c.via && !c.sched && S.routePlan?.key === c.f?.id + ":" + (birdFor()?.id || "") ? S.routePlan.data : null, p = d?.kinds?.[k]?.[routeStyle()];
+  const d = !c.g && !c.via && !c.sched && S.routePlan?.key === c.f?.id + ":" + (birdFor()?.id || "") ? S.routePlan.data : null, p = kindPlans(d, k)?.[routeStyle()];
   return p ? Math.max(0, p.deliverAt - d.at) : etaMs(c, k);
 }
 // The way in a few words: "through the Simplon Pass · around storms over France"
@@ -463,8 +511,8 @@ function routeNote(m) {
   const t = m.lost ? m.lostAt : now(), landed = t >= m.deliverAt;
   const rest = restingOn(m, t);
   if (rest) return rest[2] === "h" ? { icon: I.storm, text: `Sheltering${rest[0] ? ` ${rest[0]}` : ` from ${rest[3]}`} until about ${fmtTime(rest[1])}` }
-    : rest[2] === "b" ? { icon: I.ship, text: `Waiting for a ship at ${rest[0]}, sailing ${fmtShort(rest[1])}` }
-    : rest[2] === "sail" ? { icon: I.ship, text: `On a ship across ${rest[0]}, ashore at ${rest[3]} about ${fmtShort(rest[1])}` }
+    : rest[2] === "b" ? { icon: I.ship, text: `Waiting for a ship at ${rest[0]}: it sails ${sameDay(rest[1], now()) ? `at ${fmtTime(rest[1])}` : fmtShort(rest[1])}${shipOf(legs) ? `, in ${shipOf(legs).to} ${onDay(shipOf(legs).ashore)}` : ""}` }
+    : rest[2] === "sail" ? { icon: I.ship, text: `At sea across ${rest[0]}: the ship gets in to ${rest[3]} ${onDay(rest[1])}` }
     : rest[2] === "t" ? { icon: I.bird, text: `Catching its breath ${rest[0] || "on the way"} until ${fmtTime(rest[1])}` }
     : { icon: I.bird, text: `Resting on ${rest[0]} until ${fmtTime(rest[1])}` };
   const next = legs.find((l) => l[2] > t), last = [...legs].reverse().find((l) => l[2] <= t), l = landed ? legs.at(-1) : next || last;
@@ -482,7 +530,7 @@ function routeNote(m) {
     v: [I.loc, ahead ? `The scenic way, past ${name || "a landmark"}` : `Came the scenic way, past ${name || "a landmark"}`],
     o: [I.waves, ahead ? `Following the coast${name ? ` of ${name}` : ""}` : `Followed the coast${name ? ` of ${name}` : ""}`],
     m: [I.map, ahead ? `Flying over ${name || "the mountains"}` : `Flew over ${name || "the mountains"}`],
-    b: [I.ship, ahead ? "A voyage by ship ahead" : "Came by ship"],
+    b: [I.ship, (() => { const sh = shipOf(legs); return !sh ? (ahead ? "A voyage by ship ahead" : "Came by ship") : ahead ? `By ship from ${sh.from}: in ${sh.to} ${onDay(sh.ashore)}` : `Came by ship from ${sh.from} to ${sh.to}`; })()],
   }[l[3]];
   return say ? { icon: say[0], text: say[1] } : null;
 }
@@ -642,6 +690,7 @@ function drawMap(cv, m, cardH) {
     if (flown.length > 1) { g.lineWidth = lw + 1.5; g.strokeStyle = col("--cell"); line(flown); g.lineWidth = lw; g.strokeStyle = tint; line(flown); }   // a light edge so it reads on land and sea
   }
   g.globalAlpha = 1; g.setLineDash([]);
+  const ports = drawVoyages(g, tracks, col, lw, (P, a, b) => line(P.slice(a, b + 1)));
   // the weather on the way: the way it was going before it turned for the weather, faint;
   // and where it sheltered from storms
   const nearT = (rp, t) => rp.reduce((a, p, i) => (Math.abs(p.t - t) < Math.abs(rp[a].t - t) ? i : a), 0);
@@ -697,6 +746,8 @@ function drawMap(cv, m, cardH) {
     end(tracks[0].P[0], tracks[0].P[4], m.fromPlace);
     for (const { r, P } of tracks) end(P[P.length - 1], P[P.length - 5], r.toPlace);
   }
+  g.font = "600 13px -apple-system, system-ui, sans-serif";
+  portLabels(g, ports, free, taken, text, col); cv._ports = ports.filter((p) => p.vis).map((p) => p.name);
   // country names: the biggest first, smaller ones as you zoom in (only where there's room)
   if (k >= 2.2 && k < 60) {
     g.save(); g.font = "600 10px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = col("--label-3");
@@ -1124,7 +1175,8 @@ function wxCells(routes) {
   const held = routes.filter((r) => !r.here && !r.lost && r.wx && WX_SKY[r.wx.k] && r.delay > 0 && now() < r.deliverAt).map((r) => ({ k: r.wx.k, lat: r.wx.lat, lon: r.wx.lon }));
   // and the storms it went around (planned, or turning for them on the way), while it's flying
   const dodged = routes.filter((r) => !r.here && !r.lost && now() < r.deliverAt).flatMap((r) => (r.legs || []).filter((l) => l[5]?.storm).map((l) => ({ k: l[5].k || "storms", lat: l[5].storm[0], lon: l[5].storm[1] })));
-  return [...held, ...dodged].filter((c, i, a) => a.findIndex((x) => Math.abs(x.lat - c.lat) < 0.3 && Math.abs(x.lon - c.lon) < 0.3) === i)
+  // (one cloud for the same weather: what held it up and what it went around are often the same storms, a little apart)
+  return [...held, ...dodged].filter((c, i, a) => a.findIndex((x) => Math.abs(x.lat - c.lat) < 1 && Math.abs(x.lon - c.lon) < 1.4 / Math.max(0.3, Math.cos(c.lat * Math.PI / 180))) === i)
     .map((c) => ({ ...c, seed: (Math.abs(c.lat * 7 + c.lon * 13) % 10) }));
 }
 function drawWx(g, cv, ts, xf) {
@@ -1417,6 +1469,7 @@ function drawGlobe(cv, m, cardH, fast) {
     if (cut > 0) { g.lineWidth = lw + 1.5; g.strokeStyle = col("--cell"); seg(P, up, 0, cut); g.lineWidth = lw; g.strokeStyle = tint; seg(P, up, 0, cut); }
   }
   g.globalAlpha = 1;
+  const ports = drawVoyages(g, tracks, col, lw, (P, a, b, up) => seg(P, up, a, b));
   for (const { r } of tracks) for (const n of r.near || []) { const p = proj(n.lon, n.lat); if (p[2]) sparkAt(g, p[0], p[1], col("--cell"), col("--orange")); }
   g.restore();                                                         // (out of the globe's clip)
   // ends and labels
@@ -1437,6 +1490,8 @@ function drawGlobe(cv, m, cardH, fast) {
     const w = g.measureText(name).width, ly = y + ((P[Math.max(0, j)] || P[i])[1] <= y ? 28 : -28), lx = Math.min(W - 8 - w, Math.max(8, x - w / 2)), box = [lx - 3, ly - 10, lx + w + 3, ly + 10];
     if (!free(box)) continue; taken.push(box); text(name, lx, ly, col("--label"));
   }
+  if (!fast) portLabels(g, ports, free, taken, text, col);
+  cv._ports = ports.filter((p) => p.vis).map((p) => p.name);
   if (k >= 2.2 && !fast) {
     g.save(); g.font = "600 10px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = col("--label-3");
     const tier = k >= 9 ? 3 : k >= 4.5 ? 2 : 1;
@@ -2161,6 +2216,12 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.0.5", at: Date.UTC(2026, 9, 16), title: "Ships on the map, and no ships", items: [
+    ["ship", "teal", "The voyage on the map", "The lane a ship sails is drawn in teal with its two ports, and the card says the day the ship gets in."],
+    ["bell", "orange", "Boarded, and ashore", "You’re told when a pigeon boards its ship and when it comes ashore, under Mid-air Moments."],
+    ["bird", "blue", "In a hurry? No ships", "How It Flies → By Sea: a standard pigeon can fly the ocean itself, days quicker, but a long way with nowhere to land."],
+    ["clock", "green", "Quicker to plan", "How It Flies works out every pigeon’s way in a fraction of the time, and a pigeon slowed by a headwind has the forecast all the way."],
+  ] },
   { v: "1.0.4", at: Date.UTC(2026, 9, 15), title: "Ships, coasts and surer times", items: [
     ["ship", "teal", "Across oceans by ship", "A standard pigeon can’t fly an ocean, so it rides a ship along the real shipping lanes, then flies on from the port."],
     ["waves", "blue", "Along the coast", "Standard pigeons keep to the coast rather than cross open sea with nowhere to rest."],
@@ -3198,7 +3259,7 @@ function vNotifySheet() {
       ${t("requests", I.addp, "green", "Friend Requests")}
       ${t("accepted", I.people, "indigo", "Request Accepted")}
       ${t("reactions", I.heart, "pink", "Reactions", "When someone reacts to your message")}
-      ${t("moments", I.pass, "teal", "Mid-air Moments", "Near misses, cheers, and friends’ pigeons flying over you")}
+      ${t("moments", I.pass, "teal", "Mid-air Moments", "Near misses, cheers, ships, and friends’ pigeons flying over you")}
       ${t("streaks", I.flame, "orange", "Flight Streaks", "A few hours before a streak with a friend runs out")}
       ${t("weekly", I.globe, "blue", "Your Week in Flight", "Sunday evening: miles flown and badges earned")}
     </div>
@@ -4893,6 +4954,13 @@ function drawSheet(refresh) {
         <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><span class="ccav any" aria-hidden="true">${I.bird}</span><span><b>Any Pigeon</b><small>No name</small></span></button></div>` : "";
       // which way: three to pick from, each with when it would land; then the way itself, as a line with its stops
       const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, mapped && plans ? plansNow(now(), kind) : null)}${mapped ? "" : `<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`}`;
+      // by sea: a standard pigeon whose way crosses an ocean takes a ship, unless its sender's in a hurry
+      const rd = mapped ? S.routePlan?.data : null, alone = rd?.noShip?.[kind]?.[style], shipped = rd?.kinds?.[kind]?.[style];
+      const sh = shipped && shipOf(shipped.legs);
+      const sea = alone && sh ? `<div class="ghead">By Sea</div><div class="carriers chiprail" role="radiogroup" aria-label="By sea">
+          ${chip("shipset", "ship", !noShipOn(), "Take a Ship", `${esc(sh.from)} to ${esc(sh.to)} · ${esc(atTime(shipped.deliverAt + now() - rd.at))}`, false, `<span class="ccav when" aria-hidden="true">${I.ship}</span>`)}
+          ${chip("shipset", "fly", noShipOn(), "Fly It All the Way", `No ships · ${esc(atTime(alone.deliverAt + now() - rd.at))}`, false, `<span class="ccav when" aria-hidden="true">${I.bird}</span>`)}</div>
+          <div class="gfoot">${noShipOn() ? `In a hurry: it flies across ${esc(sh.sea)} itself, a long way with nowhere to land${S.me.risky ? ", and Pigeon Death’s odds go up" : ""}.` : `Too far to fly across ${esc(sh.sea)}, so it rides a ship. In a hurry? It can fly it all the way.`}</div>` : "";
       const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
       // when it lands: as soon as it can, or a time worth a tap that it can make (it waits in your loft and leaves in time to land then), or another
       const chip = (act, id, on, b, small, off, av = "") => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}"${id != null ? ` data-id="${esc(String(id))}"` : ""}${off ? " disabled" : ""}>${av}<span><b>${b}</b><small>${small}</small></span></button>`;
@@ -4919,7 +4987,7 @@ function drawSheet(refresh) {
       const old = $(".sheet .body", $layer), fresh = !$(".flyhero", $layer), top = old && !fresh ? old.scrollTop : 0;
       const rails = fresh ? [] : [...$layer.querySelectorAll(".sheet .chiprail")].map((r) => r.scrollLeft);
       const was = s.shown || {}, nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) };
-      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${landing}${stop}${route}${way}
+      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${landing}${stop}${route}${way}${sea}
         ${!carriers && (S.birds.length || S.hall.length) ? `<div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true })}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
         ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${plan?.risk ? Math.round(1 / plan.risk.p) : style === "safe" && !via ? 200 : 100} is lost on the way${plan?.risk && riskWhy(plan.risk) ? ` (this way: ${esc(riskWhy(plan.risk))})` : ""}.</div>` : ""}`);
@@ -5196,7 +5264,7 @@ function drawSheet(refresh) {
 }
 // each way's plan for a kind of pigeon as if it left now (the same clock as the card's)
 function plansNow(t, kind) {
-  const d = S.routePlan?.data, plans = d?.kinds?.[kind] || d?.plans; if (!plans) return null;
+  const d = S.routePlan?.data, plans = kindPlans(d, kind) || d?.plans; if (!plans) return null;
   return Object.fromEntries(Object.entries(plans).map(([k, p]) => [k, { ...p, deliverAt: p.deliverAt + (t - d.at) }]));
 }
 // The way it would go, before you send: the map, and a card like a flight's,
@@ -5470,9 +5538,11 @@ function flightCard(card, m) {
   const lands = landsLine(m).replace(/^Lands/, "lands");
   let html;
   if (!open) {
+    // (folded, one line: just when it lands; the card pulled up has the likely range, and their time)
+    const peek = `lands ${esc(clockIn(m.deliverAt, MY_TZ))}`;
     const sub = m.lost ? `${from} → ${to}` : landed ? `${from} → ${to} · flew ${esc(fmtDur(flew))}` : resting ? esc(note?.text || "Resting")
       : `${from} → ${to}${where ? ` · over <b>${where}</b>` : ""}`;
-    html = `<span class="fcpeek"><span class="fccoin">${coin}</span><span class="fct"><span class="big">${big}${!m.lost && !landed ? `<small> · ${lands}</small>` : ""}</span><span class="fcs">${sub}</span></span></span>
+    html = `<span class="fcpeek"><span class="fccoin">${coin}</span><span class="fct"><span class="big">${big}${!m.lost && !landed ? `<small> · ${peek}</small>` : ""}</span><span class="fcs">${sub}</span></span></span>
       <span class="fcbar k-${k}${m.lost ? " lost" : ""}"><i></i></span>`;
   } else {
     const pill = m.lost ? "" : landed ? ["ok", `${I.check}Landed`] : resting ? (resting[2] === "h" ? ["warn", "Sheltering"] : resting[2] === "b" ? ["teal", "Waiting for a Ship"] : resting[2] === "sail" ? ["teal", "At Sea"] : ["teal", "Resting"])
@@ -5487,7 +5557,7 @@ function flightCard(card, m) {
     else if (m.wind != null && !landed) chips.push(`<span class="fcchip wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>`);
     chips.push(`<span class="fcchip dim">${Math.round(f.frac * 100)}% of the way</span>`);
     // (only what it's doing now: a turn for the weather, or a rest; the rest of its way has rows of its own)
-    const said = note && /^(Rerouted|Sheltering|Resting on .* until|Waiting for a ship|On a ship)/.test(note.text);
+    const said = note && /^(Rerouted|Sheltering|Resting on .* until|Waiting for a ship|At sea)/.test(note.text);
     const extra = `<span class="fcchips">${chips.join("")}</span>${said ? `<span class="waynote">${note.icon}${esc(note.text)}</span>` : ""}`;
     if (!m.lost && !landed) {
       const nr = rows.find((r) => r.now);
@@ -5507,6 +5577,7 @@ function flightCard(card, m) {
     const b = m.bird, mine = b && m.from === S.me.id && b.id ? [...S.birds, ...S.hall].find((x) => x.id === b.id) : null;
     const tags = [b && k !== "standard" ? `<span class="fcchip k-${k}">${esc(KIND[k]?.name || k)}</span>` : "",
       m.style && m.style !== "fastest" ? `<span class="fcchip sty">${esc(ROUTES.find((x) => x[0] === m.style)?.[1] || m.style)}</span>` : "",
+      m.noShip ? `<span class="fcchip sty">No Ships</span>` : "",
       m.risky ? `<span class="fcchip risk">1.25×</span>` : ""].join("");
     const who = b ? `<span class="fcav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span class="fct"><span class="birdline">Carried by ${esc(b.name)}${esc(wearWord(b.wear))}</span><span class="fcs">${esc(b.up || b.rank)}${mine?.km >= 1 ? ` · ${fmtMiles(mine.km)} in all` : ""}</span></span>`
       : `<span class="fcav pgk" aria-hidden="true">${coin}</span><span class="fct"><span class="fckind">${m.mystery ? "A mystery pigeon" : `${/^[AEIOU]/.test(KIND[k]?.name || "") ? "An" : "A"} ${esc((KIND[k]?.name || "standard").toLowerCase())} pigeon`}</span><span class="fcs">${milesOf(m.km, m.legs)}${m.risky ? " · Pigeon Death on" : ""}</span></span>`;
@@ -6342,6 +6413,7 @@ async function onClick1(e, t) {
     case "schedset": S.flyTap = t; S.sched = { chat: S.chat, at: +id }; S.via = null; haptic("tick"); renderSheet(); return renderCompose();
     case "viaset": S.flyTap = t; S.via = { chat: S.chat, id }; S.sched = null; haptic("tick"); renderSheet(); return renderCompose();
     case "viaclear": S.flyTap = t; S.via = null; haptic("tick"); renderSheet(); return renderCompose();
+    case "shipset": S.flyTap = t; S.noShip = id === "fly" ? S.chat : null; haptic("tick"); renderSheet(); return renderCompose();
     case "unschedule": S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
     case "risky": return setRisky(!S.me.risky);
@@ -7076,6 +7148,7 @@ async function send() {
       for (const p of [{ id: S.me.id, pub: S.myPub || S.me.pub }, ...others(g)]) keys[p.id] = await E2E.seal(await pairFor(p.id === S.me.id ? p.pub : trustedPub(p)), { id, from: S.me.id, to: p.id, type: "wrap" }, { k: key, h });
       meta = { id, group: g.id, body, keys, pigeon: S.sendKind, ...carry, ...route };
     } else meta = { id, to, ct: await E2E.seal(await base(to), { id, from: S.me.id, to, type: "msg" }, payload), pigeon: S.sendKind, ...carry, ...(vi ? {} : route), ...(sc ? { landAt: sc.at } : {}),
+      ...(!vi && !sc && noShipOn() && S.sendKind === "standard" ? { noShip: true } : {}),
       // a stopover: the friend on the way gets their own sealed copy (words only; photos stay between you two)
       ...(vi ? { via: vi.id, viaCt: await E2E.seal(await base(vi.id), { id, from: S.me.id, to: vi.id, type: "via" }, { t: text, ...(blob ? { ph: 1 } : {}) }) } : {}) };
     const path = g ? "group-messages" : "messages";
@@ -7086,7 +7159,7 @@ async function send() {
       if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }
       tidy();
       if (rt) S.replyTo = null;
-      if (sc) S.sched = null; if (vi) S.via = null;
+      if (sc) S.sched = null; if (vi) S.via = null; S.noShip = null;
       S.pick = null; S.stick = true; showUpload(null);
       haptic("tick"); render();
     };
@@ -7116,6 +7189,7 @@ async function send() {
     haptic("success");
     if (rt) S.replyTo = null;
     if (sc) { S.sched = null; if (r.me) S.me = r.me; toast(`Scheduled. It lands ${fmtLand(r.message.deliverAt)}.`); }
+    S.noShip = null;
     if (vi) { S.via = null; toast(`It’ll stop with ${esc(first(friend(vi.id)?.name || "your friend"))} on the way.`); }
     S.plain.set(id, payload);
     if (att && !once) { S.photos.set(id, att.preview); att.preview = null; }   // keep the preview as our own copy (not of a view-once photo)

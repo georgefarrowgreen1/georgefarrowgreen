@@ -46,6 +46,8 @@ function bearing(aLat, aLon, bLat, bLon) {
   const x = Math.cos(aLat * rad) * Math.sin(bLat * rad) - Math.sin(aLat * rad) * Math.cos(bLat * rad) * Math.cos((bLon - aLon) * rad);
   return (Math.atan2(y, x) * deg + 360) % 360;
 }
+// how far ahead it looks at the sky, as its calm flight time: long enough for the slowest a headwind makes it
+const SKY_AHEAD = 2;
 const MIN_BEND_KM = 150;                     // a short hop just goes straight
 const WIND_GAIN = 0.04;                      // riding the wind: only for a way at least 4% quicker
 
@@ -67,14 +69,18 @@ const WIND_GAIN = 0.04;                      // riding the wind: only for a way 
 // ms where it rests), km, w: the weather along it, as windsFor gives it }.
 export const STYLES = ["fastest", "scenic", "safe"];
 export const styleOf = (x) => (STYLES.includes(x) && x !== "fastest" ? x : null);    // as kept (fastest: null)
-export async function planRoute(env, { from, to, weather = true, hop = false, style = null, start = Date.now(), kmh = SPEED_KMH, ceiling = HIGH }) {
+// `skies`: a Map to share the forecast between plans of the same way (How It Flies plans
+// every kind of pigeon each way: one look at the sky does for them all)
+export async function planRoute(env, { from, to, weather = true, hop = false, style = null, start = Date.now(), kmh = SPEED_KMH, ceiling = HIGH, skies = null, ship = true }) {
   let path = [from, to], w = { wind: null, f: 1, wx: null };
   // a pigeon that hops (a standard one) keeps to the coast rather than cross open sea: a sea too
   // short to need an island, or with none to rest on (an ocean: it takes a ship instead)
   const run = hop && style !== "scenic" ? seaRun(from, to) : null;
   const coast = !!run && run.km >= COAST_RUN && run.km <= SHIP_KM && !(run.km > HOP_KM && restIsland(from, to, run));
   if (weather) {
-    const lat = latticeOf(from, to, { dense: true }), sky = lat ? await skyAtPoints(env, lat.pts, start + (lat.km / kmh) * HOUR * 1.5).catch(() => null) : null;
+    const lat = latticeOf(from, to, { dense: true }), until = lat ? start + (lat.km / kmh) * HOUR * SKY_AHEAD : 0, sk = `${from}|${to}`;
+    let sky = lat && skies?.get(sk);
+    if (lat && !(sky && sky.until >= until)) { sky = await skyAtPoints(env, lat.pts, until).catch(() => null); if (sky && skies) skies.set(sk, sky); }
     if (sky) {
       const found = bestWay(lat, (i, when) => sky.at(i, when), start, kmh, { wind: style !== "scenic", coast });
       path = found.path; w = found.w;
@@ -84,7 +90,7 @@ export async function planRoute(env, { from, to, weather = true, hop = false, st
     }
   } else if (coast) { const lat = latticeOf(from, to, { dense: true }); if (lat) path = bestWay(lat, () => null, start, kmh, { wind: false, coast }).path; }
   if (style === "scenic") path = scenic(path);
-  path = finish(path, { hop, style, ceiling });
+  path = finish(path, { hop, style, ceiling, ship });
   return { way: path.slice(1, -1), km: flownKm(path), w };
 }
 
@@ -210,9 +216,10 @@ export function bestWay(lat, skyAt, start, kmh, { wind = true, coast = false } =
 }
 // the country whose coast a point is by
 const coastOf = (lat, lon) => { try { const p = placeAt(lat, lon); return p && !isSea(p) ? p : countryNear(lat, lon) || null; } catch (_) { return null; } };
-// A way, through the passes, and resting on islands if it hops
-export function finish(path, { hop = false, style = null, ceiling = HIGH } = {}) {
-  let p = hop ? shipped(path) : path;                                // (an ocean: by ship, first)
+// A way, through the passes, and resting on islands if it hops. `ship`: false when its sender
+// asked it not to take a ship (it's urgent): it flies an ocean itself, quicker, but riskier
+export function finish(path, { hop = false, style = null, ceiling = HIGH, ship = true } = {}) {
+  let p = hop && ship ? shipped(path) : path;                        // (an ocean: by ship, first)
   p = throughPasses(p, ceiling);
   return hop || style === "safe" ? hopped(p) : p;
 }
@@ -228,13 +235,15 @@ export const ceilingFor = (kind) => { const sp = PIGEONS[kind]?.speed ?? 1; retu
 // starts or ends up in the mountains (it's going there). At most PASSES_MOST.
 const PASS_STEP = 20, PASS_MOST = 1.35, PASS_KM = 400, HIGH = 1100, LOWER = 300, PASS_NEAR = 400, PASSES_MOST = 3;
 const SIDE_KM = [25, 50, 75, 100, 150, 200, 300];
+// (the land doesn't move: a way's highest point and its longest sea are worked out once, and kept a while)
+const memo = (f) => { const m = new Map(); return (a, b) => { const k = `${a[0]},${a[1]},${b[0]},${b[1]}`; if (m.has(k)) return m.get(k); if (m.size > 4000) m.clear(); const v = f(a, b); m.set(k, v); return v; }; };
 // the highest point of the way from a to b (and where)
-function highest(a, b) {
+const highest = memo(function (a, b) {
   const d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(2, Math.ceil(d / PASS_STEP));
   let top = { m: -1, at: a };
   for (let k = 1; k < n; k++) { const at = gcPoint(a[0], a[1], b[0], b[1], k / n), m = elevAt(at[0], at[1]); if (m > top.m) top = { m, at }; }
   return top;
-}
+});
 function throughPasses(path, ceiling = HIGH) {
   const out = [...path];
   for (let i = 0, n = 0; i < out.length - 1 && n < PASSES_MOST; i++) {
@@ -316,7 +325,7 @@ function hopped(path) {
   return out;
 }
 // the longest stretch of open sea from a to b: where it starts and ends, and how long
-function seaRun(a, b) {
+const seaRun = memo(function (a, b) {
   const d = haversineKm(a[0], a[1], b[0], b[1]), n = Math.max(1, Math.ceil(d / SEA_STEP)), at = (k) => gcPoint(a[0], a[1], b[0], b[1], k / n);
   let best = null, start = null;
   for (let k = 0; k <= n; k++) {
@@ -329,7 +338,7 @@ function seaRun(a, b) {
     }
   }
   return best;
-}
+});
 function restIsland(p, q, run) {
   const base = haversineKm(p[0], p[1], q[0], q[1]), most = Math.min(0.2 * run.km, 900);
   let best = null, score = run.km * 0.85;

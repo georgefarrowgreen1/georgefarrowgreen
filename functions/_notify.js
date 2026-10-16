@@ -363,6 +363,50 @@ async function turnNotes(env, D, t, turns) {
   }
   return pushes;
 }
+// By ship (functions/_route.js): its sender and recipient hear when it boards
+// its ship and when it comes ashore (in a group, its recipient), as the other
+// moments of a flight. The ports only with names on (they'd say roughly where
+// its sender is). Only what happened since the last tick: a tick that missed
+// the boarding says just that it's ashore.
+const SHIP_BOARD = 1, SHIP_ASHORE = 2;
+function voyageOf(legs) {
+  let b = []; try { b = JSON.parse(legs || "[]").filter((l) => l[3] === "b"); } catch (_) {}
+  return b.length >= 3 ? { from: b[0][4] || null, off: b[1][2], to: b.at(-1)[4] || null, ashore: b.at(-1)[2] } : null;
+}
+// (and not long ago: one missed for hours goes untold)
+const SHIP_STALE = 2 * HOUR;
+const shipEv = (v, t, since0, told) => { const since = Math.max(since0, t - SHIP_STALE), ev = v.ashore <= t && v.ashore > since ? SHIP_ASHORE : v.off <= t && v.off > since && v.ashore > t ? SHIP_BOARD : 0; return ev > (told || 0) ? ev : 0; };
+const shipSay = (p, who, v, ev, deliver) => (ev === SHIP_BOARD
+  ? `${who} boarded a ship${p.names && v.from ? ` at ${v.from}` : ""}. It comes ashore${p.names && v.to ? ` at ${v.to}` : ""} ${whenAt(v.ashore, p.tz)}.`
+  : `${who} came ashore${p.names && v.to ? ` at ${v.to}` : ""} and is flying on. It lands ${whenAt(deliver, p.tz)}.`);
+async function shipTick(env, D, t, since) {
+  let pushes = 0;
+  const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.legs, m.deliver_at, m.ship_told, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
+    JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
+    WHERE m.notified_at IS NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) AND COALESCE(m.ship_told, 0) < 2 AND m.legs LIKE '%"b"%' LIMIT 200`).bind(t).all();
+  for (const m of one) {
+    const v = voyageOf(m.legs), ev = v && shipEv(v, t, since, m.ship_told); if (!ev) continue;
+    const claimed = await D.prepare("UPDATE pg_msgs SET ship_told = ?1 WHERE id = ?2 AND COALESCE(ship_told, 0) < ?1").bind(ev, m.id).run();
+    if (!claimed.meta.changes) continue;
+    const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
+    if (sp.moments && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "InFlight",
+      body: shipSay(sp, "Your pigeon", v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.recipient}` });
+    if (rp.moments && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
+      body: shipSay(rp, `${rp.names ? "Their" : "A"} pigeon to you`, v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.sender}` });
+  }
+  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, gm.muted FROM pg_gdeliv d
+    JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
+    LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
+    WHERE d.notified_at IS NULL AND d.deliver_at > ?1 AND m.sent_at <= ?1 AND (d.lost_at IS NULL OR d.lost_at > ?1) AND COALESCE(d.ship_told, 0) < 2 AND d.legs LIKE '%"b"%' LIMIT 200`).bind(t).all();
+  for (const d of grp) {
+    const v = voyageOf(d.legs), ev = v && shipEv(v, t, since, d.ship_told); if (!ev) continue;
+    const claimed = await D.prepare("UPDATE pg_gdeliv SET ship_told = ?1 WHERE rowid = ?2 AND COALESCE(ship_told, 0) < ?1").bind(ev, d.rid).run();
+    if (!claimed.meta.changes) continue;
+    const p = prefsOf(d); if (!p.moments || isQuiet(p, t) || d.muted) continue;
+    pushes += await pushTo(env, d.user_id, { title: p.names ? d.gname : "InFlight", body: shipSay(p, "A pigeon to you", v, ev, d.deliver_at), tag: "ship-" + d.rid, url: `/pigeon/#open=${d.group_id}` });
+  }
+  return pushes;
+}
 async function reactTick(env, D, t, since) {
   let pushes = 0;
   const { results } = await D.prepare(`SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, gm.muted
@@ -543,6 +587,7 @@ export async function tick(env, origin) {
   pushes += await wxTick(env, D, t, since);
   pushes += await nearTick(env, D, t, since);
   pushes += await flyTick(env, D, t, since);
+  pushes += await shipTick(env, D, t, since).catch((e) => { console.error("pigeon ships", e && e.message); return 0; });
   pushes += await streakTick(env, D, t).catch((e) => { console.error("pigeon streaks", e && e.message); return 0; });
   await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
   await stampPassports(D, t).catch((e) => console.error("pigeon passport", e && e.message));  // the places flights that landed flew over
