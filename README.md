@@ -1016,9 +1016,8 @@ show a friendly "backend not set up" message).
 - Reads are public (it's a bio); only authenticated requests can write.
 - Every page runs only its own scripts (a strict Content-Security-Policy, plus
   HSTS), because the bio shares its origin with InFlight, whose keys live in
-  this origin's storage. The `/blokk` demo, which is mostly inline script, is
-  served sandboxed on an opaque origin of its own, so it can't reach that
-  storage either. `README.md` and `wrangler.toml` aren't served.
+  this origin's storage. `README.md`, `wrangler.toml` and `blokk/` aren't
+  served.
 
 ### InFlight's security model
 
