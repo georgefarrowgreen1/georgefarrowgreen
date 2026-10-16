@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.7";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.0.8";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2237,6 +2237,12 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.0.8", at: Date.UTC(2026, 9, 16), title: "A new home, and InFlight Live", items: [
+    ["globe", "blue", "A new home", "InFlight now lives at chat.georgefarrowgreen.com. Open it in your browser and you’re signed in already; on the Home Screen, add the new one and sign in once."],
+    ["map", "indigo", "InFlight Live", "On a computer, chat.georgefarrowgreen.com/tracker shows every pigeon in the air as rough dots with fading trails, and today’s totals. Never a name or a message."],
+    ["shield", "green", "Your pigeons, your choice", "Privacy & Security → Live Tracker keeps your pigeons off it. One only shows if you and your friend both leave it on."],
+    ["ship", "teal", "The right sea", "A ship’s voyage is named for the sea it really crosses: the North Atlantic, not the English Channel it sails out by."],
+  ] },
   { v: "1.0.7", at: Date.UTC(2026, 9, 16), title: "Coots", items: [
     ["coin", "yellow", "Coots Coins", "Feathers are now Coots Coins, kept at Coots, the bank in Account. Every coin you had is still there."],
   ] },

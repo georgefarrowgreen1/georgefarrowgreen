@@ -146,7 +146,12 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — 1.0.7
+## InFlight (chat.georgefarrowgreen.com) — 1.0.8
+
+**1.0.8** (a new home, and InFlight Live): InFlight moved to
+chat.georgefarrowgreen.com, bringing each phone's sign-in across, and the
+old address says where it went; InFlight Live shows every pigeon in the air
+on a computer, with no one in it.
 
 **1.0.4** (ships, coasts and surer times): standard pigeons cross oceans by
 ship and keep to coasts, fast ones fly over the mountains, finer wind-optimal
