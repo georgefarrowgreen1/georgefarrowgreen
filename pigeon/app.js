@@ -3156,7 +3156,7 @@ function loadNews(force) {
     .catch(() => {}).finally(() => { newsLoading = null; });
   return newsLoading;
 }
-const NEWS_ICON = { country: () => I.globe, postmark: (x) => `<svg viewBox="0 0 24 24" class="ico">${PM_ICON[x.mark?.kind] || PM_ICON.monument}</svg>`, rank: () => I.bird, named: () => I.bird, streak: () => I.flame,
+const NEWS_ICON = { country: () => I.globe, postmark: (x) => `<svg viewBox="0 0 24 24" class="ico">${x.mark ? pmIco(x.mark) : PM_ICON.monument}</svg>`, rank: () => I.bird, named: () => I.bird, streak: () => I.flame,
   item: (x) => `<span class="nemo">${x.emoji || ""}</span>`, season: (x) => `<span class="nemo">${SEASONS.find((s) => s[0] === x.skin)?.[2] || ""}</span>` };
 const NEWS_TINT = { country: "blue", postmark: "red", rank: "orange", named: "orange", streak: "orange", item: "yellow", season: "pink" };
 // news comes to the day (its noon, so it's the right day wherever you are)
@@ -3731,10 +3731,90 @@ const PM_ICON = {
   wall: `<path d="m2 15 4-2 4 1 4-3 4 1 4-2v5l-4 2-4-1-4 3-4-1-4 2ZM6 13v-2M14 11V9"/>`,
   dunes: `<path d="M2 18c3-4 6-4 9 0s6 4 11-1M2 13c3-3 5-3 7-1M14 12c2-2 5-2 8 0"/>`,
 };
+// and each landmark its own drawing (by its id), so Big Ben isn't the Eiffel Tower; the kind's is the fallback
+const pmC = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}"/>`;
+const WATER = "M2 20.5c2 1 4 1 6 0s4-1 6 0 4 1 6 0";
+const VOLCANO = `<path d="M2 20 8 10h8l6 10ZM8 10l2 1.5 2-1 2 1.5 2-2M11 7c-.6-1 .6-2 0-3.2M13.6 7.4c.6-1-.4-2 .4-3.2"/>`;
+const PM_MARK = {
+  // towers and buildings
+  bigben: `<path d="M9 21V9h6v12M8 9h8M9.5 9 12 3.5 14.5 9M12 3.5V2M7 21h10M12 13.6v1.2l.9.6"/>${pmC(12, 14.4, 2)}`,
+  eiffel: PM_ICON.tower,
+  pisa: `<path d="M8.4 21 10.8 4h4L13.6 21ZM9.2 16.5h4.9M9.8 12h4.6M10.4 7.6h4.4M6 21h10"/>`,
+  burjkhalifa: `<path d="M12 2v3M10.9 5h2.2l.7 6h-3.6ZM10.2 11h3.6l.9 10H9.3ZM6.5 21h11M10 16h4"/>`,
+  empirestate: `<path d="M12 2v3M11 5h2v3h-2ZM10 8h4v4h-4ZM9 12h6v9H9ZM7 21h10M12 12v9"/>`,
+  cntower: `<path d="M12 2v6M11 8h2l.6 13h-3.2ZM8.5 10.5h7l-1.2 2.2H9.7ZM7 21h10"/>`,
+  spaceneedle: `<path d="M12 2v3M6 7h12l-2.4 2.2H8.4ZM10.2 9.2 8.2 21M13.8 9.2l2 11.8M9.2 15.5h5.6M6 21h12"/>`,
+  petronas: `<path d="M7 21V8l1.5-4L10 8v13M14 21V8l1.5-4L17 8v13M10 12.5h4M5 21h14M8.5 4V2.5M15.5 4V2.5"/>`,
+  marinabay: `<path d="M2.5 6.2c3-1.6 16-1.6 19 0l-1 1.4h-17ZM6 7.6V21M12 7.6V21M18 7.6V21M3 21h18"/>`,
+  norwichcath: `<path d="M12 2.5 13.8 9h-3.6ZM10.2 9h3.6v12h-3.6ZM4 21v-6.5L10.2 12M20 21v-6.5L13.8 12M3 21h18"/>`,
+  yorkminster: `<path d="M5 21V7h4v14M15 21V7h4v14M9 21v-8.5l3-2 3 2V21M5 7l.6-2.5h2.8L9 7M15 7l.6-2.5h2.8L19 7M3 21h18M12 21v-4"/>`,
+  sagrada: `<path d="M5 21V10l1.5-5L8 10v11M10.5 21V8L12 2.5 13.5 8v13M16 21V10l1.5-5L19 10v11M3 21h18"/>`,
+  belem: `<path d="M8 21V9h8v12M7 9h10M8 9V6.8h2V9M11 9V6.8h2V9M14 9V6.8h2V9M10.6 21v-3.2a1.4 1.4 0 0 1 2.8 0V21M10.5 13h3M4 21h16"/>`,
+  marrakech: `<path d="M9 21V7h6v14M10.5 7V4.5h3V7M12 4.5V2.2M9 11h6M11 14.2h2M7 21h10"/>`,
+  // monuments
+  stonehenge: `<path d="M2 20h20M4.5 20v-7.5M8.5 20v-7.5M3.6 12.5h5.8M15.5 20v-7.5M19.5 20v-7.5M14.6 12.5h5.8M12 20v-4.5"/>`,
+  angelnorth: `<path d="M12 7v14M2.5 9.2 12 11l9.5-1.8M2.5 9.2v1.6L12 12.6l9.5-1.8V9.2M9.5 21h5"/>${pmC(12, 5, 1.6)}`,
+  colosseum: `<path d="M3 9c0-2.2 4-4 9-4s9 1.8 9 4v9.5c0 1.4-4 2.5-9 2.5s-9-1.1-9-2.5ZM3 9c0 2 4 3.4 9 3.4S21 11 21 9M6.2 13.2v6M9.1 13.8v6.6M12 14v7M14.9 13.8v6.6M17.8 13.2v6"/>`,
+  brandenburg: `<path d="M3 8.5h18M4 8.5V6.5h16v2M5 8.5V21M8.5 8.5V21M15.5 8.5V21M19 8.5V21M10.5 8.5V21M13.5 8.5V21M3 21h18M10 6.5l2-2.5 2 2.5"/>`,
+  acropolis: `<path d="M3 9 12 4l9 5ZM4 9h16M5.5 9v10M9 9v10M12.5 9v10M16 9v10M19 9v10M3 19h18M2 21h20"/>`,
+  atomium: `<path d="m7.2 7.2 3.4 3.4M16.8 7.2l-3.4 3.4M7.2 16.8l3.4-3.4M16.8 16.8l-3.4-3.4M12 21v-6.6"/>${pmC(12, 12, 2)}${pmC(6, 6, 1.7)}${pmC(18, 6, 1.7)}${pmC(6, 18, 1.7)}${pmC(18, 18, 1.7)}`,
+  windmills: `<path d="m10 21 1-9h2l1 9M12 12 7 7M12 12l5-5M12 12l-5 5M12 12l5 5M8 21h8M7 7l1.6-.4M17 7l.4 1.6M7 17l-.4-1.6M17 17l-1.6.4"/>`,
+  littlemermaid: `<path d="M3 20.5h18M5 20.5c0-2.4 2.4-4 6-4s5 1.6 5 4M11.5 16.5c1.6-2.4 1.6-5.2-.4-7M11.1 9.5c-1.5 1.5-1.8 3.4-1.2 5M12.6 12.4l2.6 1.2"/>${pmC(11.8, 7.3, 1.6)}`,
+  petra: `<path d="M4 21V4h16v17M7.5 21v-6h9v6M8 15V9.5h8V15M10 9.5V6.5h4v3M12 6.5V5M3 21h18M10.5 21v-3h3v3"/>`,
+  liberty: `<path d="M10 21h4l-.8-9h-2.4ZM12 12V9M12 9l3-4.6M14.4 4.4l.6-1.6 1 1M8 21h8"/>${pmC(12, 7.5, 1.6)}`,
+  christ: `<path d="M12 6.5V21M3 8.5h18M10.6 8.5 10 21h4l-.6-12.5M8 21h8"/>${pmC(12, 4.4, 1.5)}`,
+  operahouse: `<path d="M2 19h20M4 19c1-5.5 3-8.5 6.5-9.5-1 3-1 6.4 0 9.5M10.5 19c1-6.5 4-9.6 7.5-10.6-1 4.2-1 7.4 0 10.6M18 19c.8-3 2-4.8 3.6-5.6"/>`,
+  angkor: `<path d="M3 21h18M5 21v-6h14v6M7 15l1-4h8l1 4M10 11l2-7 2 7M6 15l1-3.4M18 15l-1-3.4M11 21v-3h2v3"/>`,
+  rushmore: `<path d="m2 20 4-8 3-2 3 1 3-2 3 2 4 9Z"/>${pmC(8, 14.2, 1)}${pmC(12, 13.4, 1)}${pmC(16, 14.2, 1)}`,
+  machupicchu: `<path d="M2 20h20M3 20l2-3h14l2 3M6 17l2-3h8l2 3M13 14l3.2-9 3 5 .8 4"/>`,
+  // domes
+  hagiasophia: `<path d="M4 21V8.5M20 21V8.5M4 8.5l.5-3 .5 3M19 8.5l.5-3 .5 3M7 21v-6a5 5 0 0 1 10 0v6M12 10V7.8M3 21h18M10.5 21v-3h3v3"/>`,
+  redsquare: `<path d="M5 21v-6.5M12 21V10.5M19 21v-6.5M5 14.5c-2-1-2-3 0-5 2 2 2 4 0 5ZM12 10.5c-2.5-1.5-2.5-4 0-6.2 2.5 2.2 2.5 4.7 0 6.2ZM19 14.5c-2-1-2-3 0-5 2 2 2 4 0 5ZM3 21h18M12 4.3V2.8"/>`,
+  tajmahal: `<path d="M3 21V9M21 21V9M6 21v-7h12v7M7.8 14c-1-3 1-6 4.2-7.2 3.2 1.2 5.2 4.2 4.2 7.2M12 6.8V4.8M2 21h20M10.6 21v-3.4a1.4 1.4 0 0 1 2.8 0V21"/>`,
+  // castles
+  edinburgh: `<path d="M2 21c2-3.2 4-5 7-6h6c3 1 5 2.8 7 6M8 15V9.5h1.6V8h1.4v1.5h2V8h1.4v1.5H16V15M11 15v-2.4h2V15"/>`,
+  montstmichel: `<path d="M2 20c3-2 5-3 10-3s7 1 10 3M6 17l2-5h8l2 5M10 12l2-9 2 9M9 14.5h6"/>`,
+  alhambra: `<path d="M3 21V10h4v11M17 21V10h4v11M7 21v-7h10v7M3 10V8.2h1.3v1h1.4v-1H7V10M17 10V8.2h1.3v1h1.4v-1H21V10M10.6 21v-3a1.4 1.4 0 0 1 2.8 0v3"/>`,
+  neuschwanstein: `<path d="M6 21V11M10 21V8.5M14 21V6.5M18 21V11.5M5 11l1-4 1 4ZM9 8.5l1-4.2 1 4.2ZM13 6.5l1-4.3 1 4.3ZM17 11.5l1-3.2 1 3.2ZM4 21h16"/>`,
+  prague: `<path d="M2 21h20M3 21v-6h18v6M9 15V8.5l1.5-4.5L12 8.5V15M12.5 15V8.5L14 4l1.5 4.5V15M5.5 15v-2M18.5 15v-2"/>`,
+  forbidden: `<path d="M3 21h18M5 21v-6h14v6M2.5 15l2.5-3h14l2.5 3ZM6 12l2-3h8l2 3ZM12 9V7M10.6 21v-3.4h2.8V21"/>`,
+  // bridges and water
+  towerbridge: `<path d="M2 15h20M6 21V5.5M18 21V5.5M5 5.5l1-2 1 2M17 5.5l1-2 1 2M6 9h12M2 15c2 1 3 3 4 6M22 15c-2 1-3 3-4 6M5 5.5h2M17 5.5h2"/>`,
+  goldengate: PM_ICON.bridge,
+  venice: `<path d="M3 15c3 2 15 2 18-1M5 15 3.6 12M19 14.3l2.2-3.8M9 11v4.2M7.2 11h3.6M${WATER.slice(1)}"/>`,
+  // cliffs and coasts
+  dover: `<path d="M3 13.5c2.5-.8 4-3.5 6.5-3.5s3.5 2 6 2 4-1.6 5.5-3M3 13.5V18h18V9M${WATER.slice(1)}"/>`,
+  causeway: `<path d="M4 20v-6l2-1 2 1v6M8 20v-9l2-1 2 1v9M12 20v-7.5l2-1 2 1V20M16 20v-5l2-1 2 1v5M2 20h20"/>`,
+  santorini: `<path d="M3 20h18M5 20v-5h4v5M10 20v-7h5v7M16 20v-4h3v4M10 13a2.5 2.5 0 0 1 5 0M12.5 10.5V9M12 20v-2.5h1V20"/>`,
+  fjords: `<path d="M2 5c2 3 3 8 5.2 12h9.6C19 13 20 8 22 5M7.2 17c2.4 1 7.2 1 9.6 0M10 14.5h4"/>`,
+  halong: `<path d="M3 17.5c0-4 1-8.5 3-8.5s2 4.5 2 8.5M9 17.5c0-5 1-10.5 3-10.5s3 5.5 3 10.5M15.5 17.5c0-3 1-6.2 2.8-6.2S21 14.5 21 17.5M${WATER.slice(1)}"/>`,
+  milford: `<path d="m3 17.5 4-10 2 4 3-8.5 3 7.5 2-3 4 10M${WATER.slice(1)}"/>`,
+  // mountains
+  matterhorn: `<path d="M3 20 10 8.5l1.2-4.5 2.3 3.5L21 20ZM10 8.5l2 1.2 1.6-2"/>`,
+  vesuvius: VOLCANO, etna: VOLCANO,
+  fuji: `<path d="M2 20 9.2 8h5.6L22 20ZM9.2 8l1.4 2.2 1.4-1.6 1.4 1.6L14.8 8M6 20.5h12"/>`,
+  tablemtn: `<path d="M2 20l3-9h14l3 9ZM5 11h14M8.5 14l-1 6M15.5 14l1 6"/>`,
+  uluru: `<path d="M2 19c1-5 4-7 10-7s9 2 10 7ZM2 19h20M7 14.4l1 4M12 12v6.4M16.6 13l-1.2 5.4"/>`,
+  everest: `<path d="m2 20 7-13 3 4 2-2 8 11ZM9 7V3l3 1-3 1M7.4 10l1.6 1.2 1.2-.8"/>`,
+  kilimanjaro: `<path d="M2 20c3-5 6-9 8-10h4c2 1 5 5 8 10ZM10 10l1.2 2 1.8-1.4 1 1.4"/>`,
+  snowdon: `<path d="m2 20 5-8 3 2 3-6 3 4 6 8ZM13 8l1.4 1.2M7 20l4-4 3 1 3 3"/>`,
+  bennevis: `<path d="M2 20c2-6 6-10 10-10 4.4 0 8 4 10 10ZM9 11.6c1.8-.8 4.2-.8 6 0"/>`,
+  montblanc: `<path d="m2 20 6-9 2 2 2-5 2 3 2-1 6 10ZM8 11l1.2 2.2L12 8M14 11l2-1"/>`,
+  aconcagua: `<path d="m2 20 4-7 2 2 3-8 2 3 2-4 2 5 5 9ZM11 7l.8 2.2L13 10M15 6l.8 1.6"/>`,
+  cliffsmoher: `<path d="M3 20V9c2 0 2.5 2 4.5 2S10 7 12 7s2.5 3 4.5 3S19 8.5 21 8.5V20M7.5 11v9M12 7v13M16.5 10v10"/>`,
+  iceland: `<path d="M2 5.5h7.5V21M22 5.5h-7.5V21M11 5.5c-.6 4 .6 9 0 13M13 5.5c.6 4-.6 9 0 13M8 20.5c2 1.2 6 1.2 8 0"/>`,
+  niagara: `<path d="M3 6.5c3 3 15 3 18 0M5.5 9c-.8 3.5.8 7 0 10M9 10.2c-.8 3.5.8 7 0 10M12 10.6c-.8 3.5.8 7 0 10M15 10.2c-.8 3.5.8 7 0 10M18.5 9c-.8 3.5.8 7 0 10"/>`,
+  victoriafalls: `<path d="M2 6.5h20M4 7.5c-.8 3.5.8 7.5 0 11M8 7.5c-.8 3.5.8 7.5 0 11M12 7.5c-.8 3.5.8 7.5 0 11M16 7.5c-.8 3.5.8 7.5 0 11M20 7.5c-.8 3.5.8 7.5 0 11M2 20.5c2 1 4 1 6 0s4-1 6 0 4 1 6 0"/>`,
+  iguazu: `<path d="M2 6h6M10 4.5h5M17 7h5M4 6c-.6 3 .6 8 0 12M6.5 6c-.6 3 .6 7 0 11M12.5 4.5c-.6 4 .6 9 0 14M19.5 7c-.6 3 .6 7 0 11M2 20.5c2 1 4 1 6 0s4-1 6 0 4 1 6 0"/>`,
+  // the rest
+  pyramids: `<path d="m1.5 20 6-10 6 10M9.5 20l6-12 7 12M1.5 20h21"/>`,
+  chichen: `<path d="M3 20h18M4.5 20v-3h15v3M6.5 17v-3h11v3M8.5 14v-3h7v3M10.5 11V8h3v3M11 20v-6h2v6"/>`,
+};
+const pmIco = (pm) => PM_MARK[pm.id] || PM_ICON[pm.kind] || PM_ICON.monument;
 const pmDay = (t) => { const d = new Date(t); return `${d.getDate()} ${MON[d.getMonth()].toUpperCase()} ${String(d.getFullYear()).slice(2)}`; };
 const pmName = (n) => n.replace(/^the /, "");
 // the round postmark itself: a double ring, the landmark, the day, and the cancellation waves
-const pmSeal = (pm) => `<span class="pmseal pm-${esc(pm.kind)}" aria-hidden="true"><svg viewBox="0 0 24 24" class="ico">${PM_ICON[pm.kind] || PM_ICON.monument}</svg></span>`;
+const pmSeal = (pm) => `<span class="pmseal pm-${esc(pm.kind)}" aria-hidden="true"><svg viewBox="0 0 24 24" class="ico">${pmIco(pm)}</svg></span>`;
 // under a letter that flew past somewhere famous
 function postmarkHtml(m, mine) {
   if (!m.postmarks?.length || m.flying || m.lost) return "";
