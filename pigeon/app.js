@@ -435,6 +435,13 @@ function restingOn(m, t = now()) {
   // (resting with a friend on the way: a stopover)
   return m.via && m.viaAt <= t && t < m.viaOff ? [m.viaPlace || "", m.viaOff, "v"] : null;
 }
+// How the map draws it: flying ("up", "cruise", "down"), at sea on a ship, resting (wings folded: an island, a
+// shelter, a breather, the port, a stopover), landed or lost
+function birdPhase(r) {
+  if (r.lost) return "lost";
+  const rest = restingOn(r)?.[2];
+  return rest === "sail" ? "sail" : rest ? "rest" : flightAt(r).phase;
+}
 // When a pigeon isn't flying (resting on an island, sheltering, a breather, waiting for and sailing on a ship, a
 // stopover with a friend): [from, to] spans. Its speed, and how far along it is, count only the flying.
 function stillSpans(m) {
@@ -841,7 +848,7 @@ function drawMap(cv, m, cardH) {
   const base = cv._base || (cv._base = document.createElement("canvas"));
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
-  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : restingOn(b.r)?.[2] === "sail" ? "sail" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  cv._birds = birds.map((b) => ({ ...b, phase: birdPhase(b.r), color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   // the wind it met, for the streaks: each route still being flown, measured along its length
   cv._snap = { ox, oy, k, globe: false }; cv._seaCol = col("--sea");
   cv._fwd = (lon, lat) => { const L = lon + 360 * Math.round((cx - lon) / 360); return [X(L), Y(mercY(lat))]; };
@@ -1587,7 +1594,7 @@ function drawGlobe(cv, m, cardH, fast) {
   const base = cv._base || (cv._base = document.createElement("canvas"));
   if (base.width !== cv.width || base.height !== cv.height) { base.width = cv.width; base.height = cv.height; }
   base.getContext("2d").drawImage(cv, 0, 0);
-  cv._birds = birds.map((b) => ({ ...b, phase: b.r.lost ? "lost" : restingOn(b.r)?.[2] === "sail" ? "sail" : flightAt(b.r).phase, color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
+  cv._birds = birds.map((b) => ({ ...b, phase: birdPhase(b.r), color: b.r.lost ? col("--label-3") : col("--p-" + kindOf(b.r)) }));
   cv._snap = { globe: true, lon: lon0, lat: lat0, R }; cv._seaCol = col("--bg") || col("--sea");
   cv._fwd = (lon, lat) => { const p = proj(lon, lat); return p[2] ? [p[0], p[1]] : null; };
   cv._inv = (x, y) => {
@@ -6349,16 +6356,17 @@ function airModels() {
     if (r.out) m.out = true;
     m.pts.push({ id: airKey(r), at: r.deliverAt, from: r.sentAt, kind: kindOf(r) });
   }
-  // your own pigeons to the group that have already landed still count
+  // your own pigeons to the group that have already landed still count, and so do the lost (grey, apart)
   for (const m of S.skies?.groups || []) {
     const gm = groups.get(m.gid); if (!gm || m.from !== S.me.id) continue;
-    for (const x of m.flock || []) if (!x.flying && !x.lost && !gm.pts.some((p) => p.id === m.id + ":" + x.to)) gm.pts.push({ id: m.id + ":" + x.to, at: x.deliverAt, from: m.sentAt, kind: kindOf(m) });
+    for (const x of m.flock || []) if (!x.flying && !gm.pts.some((p) => p.id === m.id + ":" + x.to))
+      gm.pts.push({ id: m.id + ":" + x.to, at: x.lost ? x.lostAt || m.sentAt : x.deliverAt, from: m.sentAt, kind: kindOf(m), ...(x.lost ? { lost: x.recalled ? "back" : "lost", end: x.deliverAt } : {}) });
   }
   for (const m of groups.values()) m.at = airNext(m.pts, t);
   return out;
 }
 // when a group's next pigeon lands (or, once they all have, when the last did)
-const airNext = (pts, t) => { const up = pts.filter((p) => p.at > t).map((p) => p.at); return up.length ? Math.min(...up) : Math.max(...pts.map((p) => p.at)); };
+const airNext = (pts, t) => { const up = pts.filter((p) => !p.lost && p.at > t).map((p) => p.at); return up.length ? Math.min(...up) : Math.max(...pts.map((p) => p.at)); };
 function airGroupCard(m) {
   const el = document.createElement("button");
   el.type = "button"; el.className = `acard grp${m.out ? " mine" : ""}`;
@@ -6385,7 +6393,7 @@ function airSync() {
   const want = new Map(list.map((m) => [m.k, m])), have = new Map([...rail.children].map((c) => [c.dataset.k, c]));
   // gone from the sky without landing (called back, or lost): it drops away
   for (const [k, c] of have) if (!want.has(k) && !c.classList.contains("landed") && !c.classList.contains("out")) {
-    if (c._pts ? c._pts.every((p) => p.at <= now()) : +c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
+    if (c._pts ? c._pts.every((p) => p.lost || p.at <= now()) && c._pts.some((p) => !p.lost) : +c.dataset.at <= now()) airLand(c); else { c.classList.add("lost"); airFold(c, 700); }
   }
   const atStart = rail.scrollLeft < 8;
   let i = 0;
@@ -6425,18 +6433,19 @@ function airOrder(rail) {
 function airDots(c, t) {
   const pts = c._pts, track = $(".atrack", c), n = pts.length;
   if (track.children.length !== n || [...track.children].some((d, i) => d.dataset.id !== pts[i].id))
-    track.innerHTML = pts.map((p) => `<span class="adot ${p.kind}${p.at <= t ? " done" : ""}" data-id="${esc(p.id)}"></span>`).join("");
-  const gap = Math.min(0.1, 0.9 / Math.max(1, n)), fs = pts.map((p, i) => ({ i, f: Math.min(1, Math.max(0, (t - p.from) / Math.max(1, p.at - p.from))) })).sort((a, b) => a.f - b.f);
+    track.innerHTML = pts.map((p) => `<span class="adot ${p.kind}${p.lost ? " lost" : p.at <= t ? " done" : ""}" data-id="${esc(p.id)}"></span>`).join("");
+  const gap = Math.min(0.1, 0.9 / Math.max(1, n)), fs = pts.map((p, i) => ({ i, f: Math.min(1, Math.max(0, p.lost ? (p.at - p.from) / Math.max(1, (p.end || p.at) - p.from) : (t - p.from) / Math.max(1, p.at - p.from))) })).sort((a, b) => a.f - b.f);
   fs.forEach((x, j) => { x.x = j ? Math.max(x.f, fs[j - 1].x + gap) : x.f; });
   for (let j = fs.length - 1; j >= 0; j--) fs[j].x = Math.min(fs[j].x, j === fs.length - 1 ? 1 : fs[j + 1].x - gap);
-  let done = 0;
+  let done = 0, lost = 0;
   for (const x of fs) {
-    const d = track.children[x.i], landed = pts[x.i].at <= t;
+    const d = track.children[x.i], p = pts[x.i], landed = !p.lost && p.at <= t;
     d.style.left = (Math.max(0, x.x) * 100).toFixed(2) + "%";
+    if (p.lost) { lost++; d.classList.add("lost"); d.classList.remove("done"); continue; }
     if (landed) done++;
     if (landed && !d.classList.contains("done")) { d.classList.add("done", "pop"); setTimeout(() => d.classList.remove("pop"), 700); if (S.view === "messages" && !document.hidden) haptic("tick"); }
   }
-  return { n, done, next: pts.filter((p) => p.at > t).reduce((a, p) => Math.min(a, p.at), Infinity) };
+  return { n, done, lost, back: lost > 0 && pts.every((p) => !p.lost || p.lost === "back"), next: pts.filter((p) => !p.lost && p.at > t).reduce((a, p) => Math.min(a, p.at), Infinity) };
 }
 function airLand(c) {
   if (c.classList.contains("landed")) return;
@@ -6462,10 +6471,11 @@ function airTick() {
     if (c._pts) {                                 // a group
       if (c.classList.contains("landed") || c.classList.contains("lost") || c.classList.contains("out")) continue;
       const g = airDots(c, t);
-      $(".asub", c).textContent = `${g.done} of ${g.n} landed`;
-      c.setAttribute("aria-label", `${$(".awho .one", c).textContent}: ${g.n - g.done} pigeon${g.n - g.done === 1 ? "" : "s"} in the air, ${g.done} landed. Open the chat.`);
-      if (g.next === Infinity) { airLand(c); continue; }
-      n += g.n - g.done; c.dataset.at = g.next;
+      const up = g.n - g.done - g.lost, gone = g.lost ? ` · ${g.lost} ${g.back ? "called back" : "lost"}` : "";
+      $(".asub", c).textContent = `${g.done} of ${g.n} landed${gone}`;
+      c.setAttribute("aria-label", `${$(".awho .one", c).textContent}: ${up} pigeon${up === 1 ? "" : "s"} in the air, ${g.done} landed${g.lost ? `, ${g.lost} ${g.back ? "called back" : "lost"}` : ""}. Open the chat.`);
+      if (g.next === Infinity) { if (g.done) airLand(c); else { c.classList.add("lost"); airFold(c, 700); } continue; }
+      n += up; c.dataset.at = g.next;
       $(".acd", c).textContent = airTime(g.next - t);
       c.classList.toggle("soon", g.next - t < 10 * MIN);
       continue;

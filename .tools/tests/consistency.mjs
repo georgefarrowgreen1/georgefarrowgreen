@@ -46,6 +46,8 @@ one(`UPDATE pg_msgs SET via = '${cs.me.id}', via_place = 'Paris', via_at = ${now
 await A.p.reload(); await A.p.waitForSelector('.tabs'); await openChat(A, ds.me.id); await openMap(A, m3.id);
 const c3 = await card(A);
 ok(/Stopover/.test(c3) && !/\d+ mph/.test(c3), 'on a stopover: it says so, and shows no speed', (c3.match(/Stopover/) || ['-'])[0]);
+const ph3 = await A.p.evaluate(() => [...document.querySelectorAll('canvas')].flatMap((c) => (c._birds || []).map((b) => b.phase)));
+ok(ph3.includes('rest') && !ph3.some((x) => x === 'cruise' || x === 'up' || x === 'down'), 'on a stopover: the map’s pigeon has its wings folded, not flapping', JSON.stringify(ph3));
 await closeSheet(A);
 
 // 4. a group pigeon lost all round: the chat list doesn't show what it said as if it had gone
@@ -86,6 +88,20 @@ await A.p.reload(); await A.p.waitForSelector('.tabs'); await openChat(A, ds.me.
 const before = await A.p.locator('.sheet header h2').innerText(); await A.p.waitForTimeout(24000);
 const after = await A.p.locator('.sheet header h2').innerText();
 ok(before === 'Pigeon in Flight' && after === 'The Flight', 'the map’s title follows it down', `${before} → ${after}`);
+
+// 9. a group's pigeons lost in two rounds: the second push (which replaces the first) names both,
+//    and the In the air card counts the lost one (Ben blocked Ann, so it flies to Cal and Dee: "0 of 2 landed · 1 lost")
+await A.p.reload(); await A.p.waitForSelector('.tabs'); await openChat(A, cg.group.id); await say(A, 'standard', 'Round two');
+const g2 = one(`SELECT id FROM pg_gmsgs WHERE sender = '${as.me.id}' ORDER BY sent_at DESC LIMIT 1`)[0];
+one(`UPDATE pg_gdeliv SET lost_at = ${now() - 30e3}, notified_at = NULL WHERE msg_id = '${g2.id}' AND user_id = '${cs.me.id}'`);
+const t9 = now(); await K.tick();
+await A.p.click('[data-act=tab][data-id=messages]'); await A.p.reload(); await A.p.waitForSelector('.tabs'); await A.p.waitForTimeout(1500);
+const sub9 = await A.p.locator('.acard.grp .asub').first().innerText().catch(() => '-');
+ok(/^0 of 2 landed · 1 lost$/.test(sub9.trim()), 'In the air: the group card counts the lost one too', sub9);
+one(`UPDATE pg_gdeliv SET lost_at = ${now()}, notified_at = NULL WHERE msg_id = '${g2.id}' AND user_id = '${ds.me.id}'`); await A.p.waitForTimeout(1000);
+await K.tick();
+const p9 = (await K.allPushes(kA, 'ann', t9)).filter((x) => /didn’t make it/.test(x.body || ''));
+ok(p9.length === 2 && /Cal and Dee|2 of your pigeons/.test(p9[1].body) && !/Ben/.test(p9[1].body), 'lost in two rounds: the later push counts both', p9.map((x) => x.body).join(' | '));
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
 process.exit(0);

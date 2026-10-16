@@ -932,7 +932,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .adot{position:absolute;top:3px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--dot);
   box-shadow:0 0 0 2px var(--cell),inset 0 0 0 1px var(--p-dot-ring,transparent);transition:left 1s linear,background-color .35s}
 .adot.standard{--dot:var(--p-standard)}.adot.swift{--dot:var(--p-swift)}.adot.turbo{--dot:var(--p-turbo)}.adot.rocket{--dot:var(--p-rocket)}.adot.dumb{--dot:var(--p-dumb)}
-.adot.done{--dot:var(--green)}
+.adot.done{--dot:var(--green)}.adot.lost{--dot:var(--label-3)}
 .adot.pop{animation:adot-pop .6s cubic-bezier(.3,1.6,.5,1)}
 @keyframes adot-pop{0%{transform:scale(1)}40%{transform:scale(1.9)}100%{transform:scale(1)}}
 .acard.enter .adot{animation:adot-in .5s cubic-bezier(.3,1.5,.5,1) calc(var(--i, 0) * 70ms + .25s) both}

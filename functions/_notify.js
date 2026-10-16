@@ -301,7 +301,7 @@ async function groupTick(env, D, t, since) {
       }
     }
   }
-  const { results: lost } = await allRows(D, `SELECT d.rowid AS rid, m.sender, m.group_id, g.name AS gname, u.notify_prefs, r.name, gm.muted
+  const { results: lost } = await allRows(D, `SELECT d.rowid AS rid, d.msg_id, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, r.name, gm.muted
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = m.sender JOIN pg_users r ON r.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = m.sender
     WHERE d.notified_at IS NULL AND d.lost_at IS NOT NULL AND d.lost_at <= ?1 AND d.lost_at > ?2`, [t, since], "d", "lost_at");
@@ -310,10 +310,17 @@ async function groupTick(env, D, t, since) {
     const p = prefsOf(d); if (isQuiet(p, t)) continue;
     const c = await D.prepare("UPDATE pg_gdeliv SET notified_at = ? WHERE rowid = ? AND notified_at IS NULL").bind(t, d.rid).run();
     if (!c.meta.changes || !p.lost || d.muted) continue;
-    const k = d.sender + "|" + d.group_id, x = lostBy.get(k) || { d, p, names: [] }; x.names.push(firstName(d.name)); lostBy.set(k, x);
+    const k = d.sender + "|" + d.group_id, x = lostBy.get(k) || { d, p, names: [], msgs: new Set(), ids: new Set() };
+    x.names.push(firstName(d.name)); x.msgs.add(d.msg_id); x.ids.add(d.msg_id + "|" + d.user_id); lostBy.set(k, x);
   }
-  // (one push for each of yours, however many of its pigeons were lost this round: they share a tag)
-  for (const { d, p, names } of lostBy.values()) {
+  // (one push for each of yours, however many of its pigeons were lost this round: they share a tag. A new one
+  // replaces the last on the phone, so it names the earlier rounds' too: every pigeon of the same message lost so far)
+  for (const { d, p, names, msgs, ids } of lostBy.values()) {
+    const m = [...msgs].slice(0, 50), { results: before } = await D.prepare(`SELECT d.msg_id, d.user_id, r.name FROM pg_gdeliv d JOIN pg_users r ON r.id = d.user_id
+      WHERE d.msg_id IN (${m.map(() => "?").join(",")}) AND d.lost_at IS NOT NULL AND d.lost_at <= ? AND d.recalled = 0 AND d.notified_at IS NOT NULL AND d.notified_at < ? ORDER BY d.lost_at`)
+      .bind(...m, t, t).all().catch(() => ({ results: [] }));
+    const earlier = before.filter((b) => !ids.has(b.msg_id + "|" + b.user_id)).map((b) => firstName(b.name));
+    names.splice(0, 0, ...earlier);
     const who = names.length > 2 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names.join(" and ");
     pushes += await pushTo(env, d.sender, { title: "Pigeon lost", body: !p.names ? (names.length > 1 ? `${names.length} of your pigeons didn’t make it.` : "One of your pigeons didn’t make it.")
       : `Your pigeon${names.length > 1 ? "s" : ""} to ${who} in ${d.gname} didn’t make it.`, tag: "lost-" + d.group_id, url: `/pigeon/#open=${d.group_id}` });
