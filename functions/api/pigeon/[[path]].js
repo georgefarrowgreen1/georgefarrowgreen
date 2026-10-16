@@ -25,6 +25,7 @@ import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
+import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
@@ -100,7 +101,7 @@ async function signup({ request, env, waitUntil }) {
   try {
     await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, notify_prefs)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, handle, name, email, pub, b.salt, hex(await sha256(fromB64url(b.proof))), vault, SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
+    .bind(id, handle, name, email, pub, b.salt, await proofHash(env, b.proof), await lockVault(env, id, vault), SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
   } catch (e) {
     if (claimed) await D.prepare("UPDATE pg_invites SET used_at = NULL, used_by = NULL WHERE hash = ? AND used_by = ?").bind(claimed, id).run();
     throw e;
@@ -167,12 +168,11 @@ async function login({ request, env }) {
   const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(acct).first();
   if (held && held.reset_at > now0 && held.count >= 30) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
-  const given = hex(await sha256(fromB64url(b.proof)));
-  if (!u || !safeEqual(given, u.proof_hash)) {
+  if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
     await limit(env, acct, 30, 60 * 60e3).catch(() => {});
     throw new HttpError(401, "That email and password don’t match an account.");
   }
-  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), vault: u.vault });
+  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
 }
 
 async function logout({ request, env }) {
@@ -186,7 +186,7 @@ async function logout({ request, env }) {
 async function vault({ request, env }) {
   const u = await requireUser(request, env);
   requireFresh(u);
-  return json({ vault: u.vault, salt: u.salt });
+  return json({ vault: await openVault(env, u.id, u.vault), salt: u.salt });
 }
 // The same, for a phone that has just been given the password (change
 // password, linking a passkey): the password's proof is the check.
@@ -194,9 +194,9 @@ async function vaultByProof({ request, env }) {
   const u = await requireUser(request, env);
   await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
   const b = await body(request);
-  if (!safeEqual(hex(await sha256(fromB64url(String(b.proof || "")))), u.proof_hash)) throw new HttpError(401, "That password isn’t right.", "password");
+  if (!(await proofOk(env, b.proof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
   await (await db(env)).prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
-  return json({ vault: u.vault, salt: u.salt });
+  return json({ vault: await openVault(env, u.id, u.vault), salt: u.salt });
 }
 
 function waitText(ms) {
@@ -476,7 +476,7 @@ async function reauth({ request, env }) {
   await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
   const b = await body(request), D = await db(env);
   let ok = false;
-  if (b.proof) ok = safeEqual(hex(await sha256(fromB64url(String(b.proof)))), u.proof_hash);
+  if (b.proof) ok = await proofOk(env, b.proof, u.proof_hash);
   else if (b.authenticatorData) {
     await checkClientData(env, request, b, "webauthn.get", "login");
     const cred = await D.prepare("SELECT * FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id || ""), u.id).first();
@@ -494,7 +494,7 @@ async function passkeyVault({ request, env }) {
   const b = await body(request);
   const v = String(b.vault || "");
   if (v.length < 20 || v.length > 4000) throw new HttpError(400, "That key copy wasn’t valid.");
-  const r = await (await db(env)).prepare("UPDATE pg_passkeys SET vault = ? WHERE id = ? AND user_id = ?").bind(v, String(b.id), u.id).run();
+  const r = await (await db(env)).prepare("UPDATE pg_passkeys SET vault = ? WHERE id = ? AND user_id = ?").bind(await lockVault(env, u.id, v), String(b.id), u.id).run();
   if (!r.meta.changes) throw new HttpError(404, "That passkey isn’t on your account.");
   return json({ ok: true });
 }
@@ -510,7 +510,7 @@ async function passkeyLogin({ request, env }) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();
   if (!u) throw new HttpError(401, "This account no longer exists.");
   await D.prepare("UPDATE pg_passkeys SET used_at = ? WHERE id = ?").bind(Date.now(), cred.id).run();
-  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), pkVault: cred.vault, vault: u.vault, salt: u.salt });
+  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt });
 }
 
 async function passkeyDelete({ request, env }) {
@@ -1075,11 +1075,11 @@ async function changePassword({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
   const b = await body(request);
-  if (!safeEqual(hex(await sha256(fromB64url(b.oldProof))), u.proof_hash)) throw new HttpError(401, "Your current password isn’t right.", "current");
+  if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "Your current password isn’t right.", "current");
   const vault = checkNewSecret(b);
   const D = await db(env);
   await D.batch([
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ?").bind(b.salt, hex(await sha256(fromB64url(b.proof))), vault, u.id),
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
@@ -1118,6 +1118,7 @@ async function resetCheck({ request, env }) {
   const { reset, user: u } = await findReset(env, (await body(request)).token);
   // Passkey copies of the key are sealed with each passkey's own secret, so they're safe to give the link holder.
   const { results } = await (await db(env)).prepare("SELECT id, vault FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
+  for (const r of results) r.vault = await openVault(env, u.id, r.vault);
   return json({ name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results, kx: results.length ? await resetKx(env, reset.hash) : null });
 }
 
@@ -1135,7 +1136,7 @@ async function resetComplete({ request, env, waitUntil }) {
   const used = await D.prepare("UPDATE pg_resets SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, reset.hash).run();
   if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
   const steps = [
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ? WHERE id = ?").bind(b.salt, hex(await sha256(fromB64url(b.proof))), vault, pub, u.id),
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), pub, u.id),
     // a link that came by email shows the address is theirs too
     ...(reset.created_by !== "admin-link" ? [D.prepare("UPDATE pg_users SET email_ok = COALESCE(email_ok, ?) WHERE id = ?").bind(t, u.id)] : []),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),

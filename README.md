@@ -986,6 +986,12 @@ show a friendly "backend not set up" message).
 
 ### InFlight's security model
 
+- **A copy of the database alone is no use:** each password's proof hash and
+  the private key it locks are locked again with `PIGEON_PEPPER`, a secret set
+  in Cloudflare (Settings → Variables and Secrets) and never stored in the
+  database (`functions/_atrest.js`). Accounts from before lock themselves
+  within a minute of it being set. **Once set, never change or lose it:**
+  every password would stop working.
 - **Two addresses, kept apart:** chat.georgefarrowgreen.com serves only
   InFlight's own pages (the app, the tracker) and its own API (`/api/pigeon/`);
   the site's API, its owner's sign-in and InFlight's admin stay on
