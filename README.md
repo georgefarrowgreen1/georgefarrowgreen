@@ -986,6 +986,11 @@ show a friendly "backend not set up" message).
 
 ### InFlight's security model
 
+- **Passwords are stretched with Argon2id** (64 MiB, 3 passes, on the phone;
+  `pigeon/argon2.js` is hash-wasm 4.12.0, MIT, checked against npm's integrity
+  hash), so guessing with graphics cards is slow. Its salt is marked `a2:`; an
+  account from before (PBKDF2-SHA256, 600,000 rounds) moves on quietly at its
+  next password sign-in. The page's CSP allows `'wasm-unsafe-eval'` for this.
 - **Leaked passwords are refused** at sign-up, password change and reset: the
   phone asks Pwned Passwords (through `/api/pigeon/pwned`, padded) with only
   the first 5 characters of the password's SHA-1 and checks the answers

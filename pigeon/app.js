@@ -1833,11 +1833,11 @@ function nightSky(cv) {
 async function createAccount(v) {
   const { privJwk, pub } = await (onb.id || E2E.newIdentity());
   S.making = 1; if (S.view === "making") render();
-  const ready = onb.pw?.pw === v.password ? onb.pw : null, salt = ready ? ready.salt : rand(16);
+  const ready = onb.pw?.pw === v.password ? onb.pw : null, salt = ready ? ready.salt : E2E.newSalt();
   const { lockKey, proof } = await (ready ? ready.p : E2E.fromPassword(v.password, salt));
   const vault = await E2E.lock(lockKey, { ecdh: privJwk });
   S.making = 2; if (S.view === "making") render();
-  const r = await api("signup", { method: "POST", body: { name: v.name, handle: v.handle, email: v.email, salt: b64url(salt), proof, vault, pub, invite: S.invite || undefined } });
+  const r = await api("signup", { method: "POST", body: { name: v.name, handle: v.handle, email: v.email, salt, proof, vault, pub, invite: S.invite || undefined } });
   setInvite(null);
   S.making = 3; if (S.view === "making") render();
   await useKeys(r.token, r.me, privJwk);
@@ -1845,17 +1845,22 @@ async function createAccount(v) {
 }
 async function signInPassword(email, password) {
   const { salt } = await api("salt", { method: "POST", body: { email } });
-  const { lockKey, proof } = await E2E.fromPassword(password, fromB64url(salt));
+  const { lockKey, proof } = await E2E.fromPassword(password, salt);
   const r = await api("login", { method: "POST", body: { email, proof } });
   let ecdh;
   try { ({ ecdh } = await E2E.unlock(lockKey, r.vault)); }
   catch (_) { throw new Error("Signed in, but your password couldn’t unlock your key. Try again."); }
   await useKeys(r.token, r.me, ecdh);
+  // an account from before Argon2id: stretched again the new way, now that the password's here
+  if (!E2E.isCurrent(salt)) (async () => {
+    const ns = E2E.newSalt(), nw = await E2E.fromPassword(password, ns);
+    await api("password-upgrade", { method: "POST", body: { oldProof: proof, salt: ns, proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
+  })().catch((e) => console.warn("upgrade", e));
 }
 // The password-locked key, fetched with the password itself (its proof is the check)
 async function vaultWith(password) {
   const { salt } = await api("salt", { method: "POST", body: { email: S.me.email } });
-  const { lockKey, proof } = await E2E.fromPassword(password || "", fromB64url(salt));
+  const { lockKey, proof } = await E2E.fromPassword(password || "", salt);
   const { vault } = await api("vault", { method: "POST", body: { proof } });
   return { vault, salt, lockKey, proof };
 }
@@ -1908,7 +1913,7 @@ async function signInPasskey() {
 }
 async function unlockWithPassword(password) {
   const r = S.pendingUnlock;
-  const { lockKey } = await E2E.fromPassword(password, fromB64url(r.salt));
+  const { lockKey } = await E2E.fromPassword(password, r.salt);
   let ecdh;
   try { ({ ecdh } = await E2E.unlock(lockKey, r.vault)); }
   catch (_) { throw Object.assign(new Error("That password didn’t unlock your key."), { field: "password" }); }
@@ -4492,11 +4497,11 @@ async function resetWith(mode, btn) {
     } else {
       ({ privJwk: ecdh, pub } = await E2E.newIdentity());
     }
-    const salt = rand(16);
+    const salt = E2E.newSalt();
     const { lockKey, proof } = await E2E.fromPassword(pw, salt);
     const vault = await E2E.lock(lockKey, { ecdh });
     const keyProof = pub ? undefined : await E2E.keyProof(await E2E.importPriv(ecdh), S.resetInfo.kx, "reset|" + hexOf(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(S.resetToken))));
-    const r = await api("reset-complete", { method: "POST", body: { token: S.resetToken, salt: b64url(salt), proof, vault, ...(pub ? { pub } : { keyProof }) } });
+    const r = await api("reset-complete", { method: "POST", body: { token: S.resetToken, salt, proof, vault, ...(pub ? { pub } : { keyProof }) } });
     S.resetToken = null; S.resetInfo = null;
     const from = S.resetFrom; S.resetFrom = null;
     if (from) {
@@ -4786,7 +4791,7 @@ function onbInput(e) {
     if (st) { st.className = `gfoot pwstat${n <= 0 ? " ok" : ""}`; st.innerHTML = n > 0 ? (pw ? `${n} more character${n === 1 ? "" : "s"}.` : "At least 10 characters. It also locks your encryption key.") : `${I.ok}Good. It also locks your encryption key.`; }
     // stretch the password in the background once it's long enough and you pause
     clearTimeout(onb.pwTimer);
-    if (n <= 0) onb.pwTimer = setTimeout(() => { const salt = rand(16); onb.pw = { pw, salt, p: E2E.fromPassword(pw, salt) }; }, 450);
+    if (n <= 0) onb.pwTimer = setTimeout(() => { const salt = E2E.newSalt(); onb.pw = { pw, salt, p: E2E.fromPassword(pw, salt) }; }, 450);
   }
 }
 /* ---------- Add Friend: look them up as you type ---------- */
@@ -6995,8 +7000,8 @@ async function submitForm(e, form, kind) {
         let ecdh;
         try { ({ ecdh } = await E2E.unlock(old.lockKey, vault)); }
         catch (_) { throw Object.assign(new Error("Your current password isn’t right."), { field: "current" }); }
-        const ns = rand(16), nw = await E2E.fromPassword(v.password, ns);
-        await api("password", { method: "POST", body: { oldProof: old.proof, salt: b64url(ns), proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
+        const ns = E2E.newSalt(), nw = await E2E.fromPassword(v.password, ns);
+        await api("password", { method: "POST", body: { oldProof: old.proof, salt: ns, proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
         S.secretJwk = ecdh;
       });
       S.sheet = null; renderSheet();
@@ -7007,7 +7012,7 @@ async function submitForm(e, form, kind) {
     try {
       await busyBtn(btn, "Checking…", async () => {
         const { salt } = await api("salt", { method: "POST", body: { email: S.me.email } });
-        const { proof } = await E2E.fromPassword(v.password, fromB64url(salt));
+        const { proof } = await E2E.fromPassword(v.password, salt);
         await api("reauth", { method: "POST", body: { proof } });
       });
       const s = S.sheet; S.sheet = s.back || null; renderSheet(); haptic("success"); s.resolve(true);

@@ -78,7 +78,7 @@ async function signup({ request, env, waitUntil }) {
   const email = String(b.email || "").trim().toLowerCase();
   if (!HANDLE_RE.test(handle)) throw new HttpError(400, "Use 3 to 20 letters, numbers or underscores.", "handle");
   if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
-  if (fromB64url(b.salt).length !== 16 || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
+  if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
   const vault = String(b.vault || "");
   if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
   const pub = cleanPub(b.pub);
@@ -155,7 +155,7 @@ async function salt({ request, env }) {
   const email = String((await body(request)).email || "").trim().toLowerCase();
   const u = await (await db(env)).prepare("SELECT salt FROM pg_users WHERE email = ?").bind(email).first();
   const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);       // (worked out either way, so the time taken says nothing)
-  return json({ salt: u ? u.salt : b64url(fake.slice(0, 16)) });
+  return json({ salt: u ? u.salt : "a2:" + b64url(fake.slice(0, 16)) });
 }
 
 async function login({ request, env, waitUntil }) {
@@ -1049,8 +1049,14 @@ async function getPhoto({ request, env }, id) {
    The password locks the private key, so a reset can only keep someone's
    scrolls if their phone unlocks the key another way (a passkey with PRF).
    Otherwise the phone makes a new key pair and old scrolls stay sealed. */
+// A password's salt as the phone sends it: "a2:" and 16 bytes for Argon2id (every
+// new one), or a bare 16 bytes for PBKDF2 (accounts from before, until they move on).
+function saltOk(s) {
+  const m = /^(a2:)?([A-Za-z0-9_-]{22})$/.exec(String(s || ""));
+  return !!m && fromB64url(m[2]).length === 16;
+}
 function checkNewSecret(b) {
-  if (fromB64url(b.salt).length !== 16 || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
+  if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
   const vault = String(b.vault || "");
   if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
   return vault;
@@ -1112,6 +1118,22 @@ async function pwned({ request, env }) {
   const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.georgefarrowgreen.com)" } }).catch(() => null);
   const text = r?.ok ? await r.text() : "";                 // (not reachable: the phone carries on without the check)
   return new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+}
+
+// An account from before Argon2id, moved on at its next password sign-in: the same
+// password, stretched the new way (the phone sends the old proof as the check).
+// Not a password change: no email, and no one is signed out.
+async function passwordUpgrade({ request, env }) {
+  const u = await requireUser(request, env);
+  await limit(env, "pwupgrade:" + u.id, 5, 60 * 60e3);
+  const b = await body(request);
+  if (String(u.salt).startsWith("a2:")) return json({ ok: true });              // (already)
+  if (!(await proofOk(env, b.oldProof, u.proof_hash))) throw new HttpError(401, "That password isn’t right.", "password");
+  const vault = checkNewSecret(b);
+  if (!String(b.salt).startsWith("a2:")) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
+  await (await db(env)).prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ? AND salt = ?")
+    .bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id, u.salt).run();
+  return json({ ok: true });
 }
 
 async function changePassword({ request, env, waitUntil }) {
@@ -1428,7 +1450,7 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "GET pwned": pwned, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
+  "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
   "POST admin-test-email": adminTestEmail,

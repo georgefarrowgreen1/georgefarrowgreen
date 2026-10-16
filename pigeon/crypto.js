@@ -4,10 +4,13 @@
 // both of them the same shared secret (ECDH), which HKDF turns into a fresh
 // AES-256-GCM key per scroll. The server only ever holds public keys.
 //
-// Password: PBKDF2 stretches it into 64 bytes. The first half locks the
-// private key ("vault") before it is uploaded; the second half is the proof
-// the server checks at sign-in (it stores only a hash of it). So the server
-// can verify a password without being able to unlock anything with it.
+// Password: stretched into 64 bytes. The first half locks the private key
+// ("vault") before it is uploaded; the second half is the proof the server
+// checks at sign-in (it stores only a hash of it). So the server can verify a
+// password without being able to unlock anything with it. The stretching is
+// Argon2id (64 MiB, 3 passes: memory-hard, so guessing on graphics cards is
+// slow) for a salt marked "a2:"; an account from before (a bare salt) uses
+// PBKDF2-SHA256 at 600,000 rounds until its next password sign-in moves it on.
 //
 // Passkeys: WebAuthn's PRF extension gives the phone a secret per passkey,
 // which locks a second copy of the private key for password-free recovery.
@@ -35,6 +38,10 @@ export function uuid() {
 }
 
 const PBKDF2_ITER = 600000;
+const ARGON = { m: 65536, t: 3 };                // 64 MiB, 3 passes, one lane
+// (hash-wasm's Argon2id, loaded only when a password is stretched)
+let argon = null;
+const loadArgon = () => (argon ||= import("./argon2.js").then((m) => m?.argon2id || m?.default?.argon2id || globalThis.hashwasm.argon2id).catch((e) => { argon = null; throw e; }));
 const ECDH = { name: "ECDH", namedCurve: "P-256" };
 const aesKey = (raw, uses) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, uses);
 
@@ -48,9 +55,19 @@ export const E2E = {
   importPriv(jwk) {
     return crypto.subtle.importKey("jwk", { ...jwk, ext: true, key_ops: ["deriveBits"] }, ECDH, false, ["deriveBits"]);
   },
+  // a new salt (as the server keeps it: "a2:" and 16 random bytes)
+  newSalt: () => "a2:" + b64url(rand(16)),
+  isCurrent: (salt) => String(salt || "").startsWith("a2:"),
   async fromPassword(password, salt) {
-    const base = await crypto.subtle.importKey("raw", te.encode(password.normalize("NFKC")), "PBKDF2", false, ["deriveBits"]);
-    const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITER }, base, 512));
+    const pw = te.encode(String(password).normalize("NFKC"));
+    let bits;
+    if (E2E.isCurrent(salt)) {
+      const argon2id = await loadArgon();
+      bits = await argon2id({ password: pw, salt: fromB64url(salt.slice(3)), parallelism: 1, iterations: ARGON.t, memorySize: ARGON.m, hashLength: 64, outputType: "binary" });
+    } else {
+      const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveBits"]);
+      bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: typeof salt === "string" ? fromB64url(salt) : salt, iterations: PBKDF2_ITER }, base, 512));
+    }
     return { lockKey: await aesKey(bits.slice(0, 32), ["encrypt", "decrypt"]), proof: b64url(bits.slice(32)) };
   },
   async fromSecret(secret) {
