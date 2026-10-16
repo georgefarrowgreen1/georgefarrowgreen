@@ -11,7 +11,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.0.6";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.0.7";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -247,6 +247,7 @@ const I = {
   leaf: ico(`<path d="M5 19c0-8 5-14 15-14 0 9-5 14-13 14"/><path d="M5 19 13 11"/>`),
   snowflake: ico(`<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6l2.5-1.5M9.5 19.5 12 18l2.5 1.5"/>`),
   blossom: ico(`<circle cx="12" cy="12" r="2.2"/><path d="M12 9.8C10 6 13.5 3.5 14.6 6.3c1 2.6-1.2 3.6-2.6 3.5ZM14.1 11.3c3.7-1.8 6 1.8 3.2 2.8-2.6.9-3.5-1.3-3.2-2.8ZM13.3 14c1.6 3.8-2.2 5.8-3 2.9-.7-2.7 1.6-3.4 3-2.9ZM10.6 13.9c-3.9 1.4-5.6-2.5-2.7-3.1 2.8-.6 3.4 1.7 2.7 3.1Z"/>`),
+  coin: ico(`<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6.6" stroke-width="1" stroke-dasharray="1.2 1.6"/><path transform="translate(5.8 6.3) scale(.52)" fill="currentColor" stroke="none" d="${BIRD}"/>`),     // a Coots Coin: a bird on its face
   feather: ico(`<path d="M20.2 3.8C14 3.6 8.4 7.4 6.6 13.6L5 19"/><path d="M20.2 3.8c.6 6-2.6 11.3-8.4 13.2L6.6 13.6"/><path d="M11 9.6l3.3 1.2M9.4 12.4l3.3 1.3"/><path d="M5 19l-1.4 1.4"/>`),
   flame: ico(`<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-2.6 1.4-4.6 3-6.3.3 1.7 1.2 2.9 2.4 3.4-.4-3.3 1-6.1 3.4-8.4.2 2.8 1.6 4.4 2.9 6 1 1.3 1.8 2.9 1.8 4.9 0 4-2.6 6.6-6.5 6.6Z"/><path d="M12 21c-1.7 0-2.8-1.2-2.8-2.8 0-1.6 1.2-2.6 2.2-3.8.2 1 .8 1.6 1.5 1.8.1-.9.6-1.6 1.1-2.2.7 1 1 2.1 1 3.2 0 2.2-1.3 3.8-3 3.8Z"/>`),
   bird: `<svg viewBox="0 0 24 24" class="bird" aria-hidden="true"><path d="${BIRD}"/></svg>`,
@@ -2223,6 +2224,9 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.0.7", at: Date.UTC(2026, 9, 16), title: "Coots", items: [
+    ["coin", "yellow", "Coots Coins", "Feathers are now Coots Coins, kept at Coots, the bank in Account. Every coin you had is still there."],
+  ] },
   { v: "1.0.6", at: Date.UTC(2026, 9, 16), title: "A real passport", items: [
     ["globe", "red", "Your passport, as a passport", "Open it from your Flight Log: a photo page with how far your pigeons have flown, then visa pages filling up with rubber stamps, a journey at a time."],
     ["map", "green", "Every country’s own stamp", "Each in its own ink with the country’s outline inside; seas crossed, and “Arrived by sea” after a voyage."],
@@ -3216,7 +3220,7 @@ function vAccount() {
     <div class="ghead">Your Loft</div>
     <div class="group">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
       ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles, passport, badges and looks", chev: true })}
-      ${cell({ act: "feathers", icon: I.feather, tile: "yellow", label: "Feathers", sub: "Spend them in the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
+      ${cell({ act: "feathers", icon: I.coin, tile: "yellow", label: "Coots", sub: "Your Coots Coins, for the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
     <div class="ghead">Flying</div>
     <div class="group">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
@@ -4004,7 +4008,7 @@ function skinsHtml(list, mine) {
     <div class="badges skins">${tile(null, "Usual", true, "Every pigeon")}${seas.map((k) => tile(k.id, k.name, k.open, ssub(k))).join("")}${rare.map((k) => tile(k.id, k.name, k.open, k.open ? "Unlocked" : `Earn ${esc(SKINS[k.id]?.badge || "its badge")}`)).join("")}</div>
     <div class="gfoot">Your friends see the look on every pigeon you send. Its colour still says what kind it is.</div>`;
 }
-/* ---------- feathers ---------- */
+/* ---------- Coots: the bank, and its Coots Coins (called feathers in the code and the database) ---------- */
 async function walletData() { try { const r = await api("feathers"); S.feathers = r.feathers; return r; } catch (err) { if (S.sheet?.type === "feathers") S.sheet.err = err.message; else toast(esc(err.message)); return null; } }
 // what a sheet shows when what it needed didn't come (no signal, a hiccup): why, and a way to try again
 const loadFail = (msg, act, id) => `<p class="empty"><b>Couldn’t load this</b>${esc(msg || "Try again in a moment.")}</p><div class="stack"><button type="button" class="btn small plain" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""}>Try Again</button></div>`;
@@ -4927,13 +4931,13 @@ function drawSheet(refresh) {
       return;
     case "feathers": {
       const w = s.data;
-      if (!w) { $layer.innerHTML = sheetHtml("Feathers", s.err ? loadFail(s.err, "feathers") : `<p class="empty">Counting feathers…</p>`); return; }
+      if (!w) { $layer.innerHTML = sheetHtml("Coots", s.err ? loadFail(s.err, "feathers") : `<p class="empty">Counting your Coots Coins…</p>`); return; }
       const named = S.birds.length > 0;
       const item = (x) => `<div class="cell has-icon shopi${x.owned ? " owned" : ""}"><span class="tile emo" aria-hidden="true">${x.emoji}</span>
-        <span class="ctext"><span>${esc(x.name)}</span><span class="csub">${x.owned ? (x.on ? `On ${esc(x.on.name)}` : "Yours") : `${x.price} feathers`}</span></span>
+        <span class="ctext"><span>${esc(x.name)}</span><span class="csub">${x.owned ? (x.on ? `On ${esc(x.on.name)}` : "Yours") : `${x.price} Coots Coins`}</span></span>
         ${x.owned ? (named ? `<button type="button" class="btn small plain" data-act="wearitem" data-id="${esc(x.id)}">${x.on ? "Move" : "Put On"}</button>` : "")
-          : `<button type="button" class="btn small" data-act="buyitem" data-id="${esc(x.id)}"${w.feathers >= x.price ? "" : " disabled"}>${I.feather}${x.price}</button>`}</div>`;
-      $layer.innerHTML = sheetHtml("Feathers", `<div class="fhead"><span class="fico">${I.feather}</span><b>${w.feathers.toLocaleString("en-GB")}</b><span>feathers</span></div>
+          : `<button type="button" class="btn small" data-act="buyitem" data-id="${esc(x.id)}"${w.feathers >= x.price ? "" : " disabled"} aria-label="Buy for ${x.price} Coots Coins">${I.coin}${x.price}</button>`}</div>`;
+      $layer.innerHTML = sheetHtml("Coots", `<div class="fhead"><span class="fico">${I.coin}</span><b>${w.feathers.toLocaleString("en-GB")}</b><span>Coots Coin${w.feathers === 1 ? "" : "s"}</span></div>
         <div class="ghead">Shop</div><div class="group">${w.items.map(item).join("")}</div>
         <div class="gfoot">${named ? "Accessories go on your named pigeons, and everyone they fly to sees them." : "Accessories go on your named pigeons. Name one in Your Pigeons first."}</div>
         <div class="ghead">How to Earn Them</div>

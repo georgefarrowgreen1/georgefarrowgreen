@@ -79,7 +79,7 @@ async function buy({ request, env }) {
   ]);
   if (!(await D.prepare("SELECT 1 FROM pg_kit WHERE user_id = ? AND item = ?").bind(u.id, id).first())) {
     const have = await balanceOf(D, u.id);
-    throw new HttpError(409, `The ${it[1].toLowerCase()} is ${it[2]} feathers. You have ${have}.`);
+    throw new HttpError(409, `The ${it[1].toLowerCase()} is ${it[2]} Coots Coins. You have ${have}.`);
   }
   return json(await walletFor(D, u.id, t));
 }

@@ -146,7 +146,7 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (/pigeon) — 1.0.6
+## InFlight (/pigeon) — 1.0.7
 
 **1.0.4** (ships, coasts and surer times): standard pigeons cross oceans by
 ship and keep to coasts, fast ones fly over the mountains, finer wind-optimal
@@ -622,6 +622,11 @@ that collected new stamps ("New in your passport: Kazakhstan, Mongolia and 3
 more"), and Globetrotter is earned at 25 countries. Only your own pigeons that
 landed count, and in a group only those to your friends; nobody else sees your
 passport (`functions/_passport.js`).
+
+**Coots.** The bank: Coots Coins are earned as your pigeons fly (1 to 6 a landing,
+3 a new country or sea, 10 a new postmark, 10 to 100 for a streak) and spent in its
+shop on accessories for your named pigeons. (In the code and the database they're
+still called feathers: `functions/_feathers.js`, `pg_feathers`.)
 
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
