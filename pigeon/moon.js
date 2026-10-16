@@ -1,148 +1,38 @@
-// InFlight — the Moon, on the phone: its sites, how far away it is today, how a lunar pigeon
-// goes, and the pictures of it (the map to pick a spot on, and a pigeon on its way).
-// The server works the same numbers out in functions/_moon.js; these only draw and explain.
+// InFlight — space, on the phone: the pictures (the Moon and Mars to pick a spot on, and a
+// pigeon on its way: to the Moon, across it, by laser to Mars, or round the Earth in orbit).
+// The numbers are pigeon/space.js, shared with the server (functions/_moon.js).
 import { LAND } from "./land.js";
-
-const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
-export const MOON_R = 1737.4, EARTH_R = 6371, MEAN_KM = 384400;
-// [name, lat, lon] (selenographic degrees, east positive): the same list as the server's
-export const SITES = [
-  ["Tranquility Base", 0.67, 23.47], ["Sea of Tranquility", 8.5, 31.4], ["Tycho", -43.31, -11.36], ["Copernicus", 9.62, -20.08],
-  ["Shackleton", -89.67, 129.78], ["Sea of Rains", 32.8, -15.6], ["Sea of Serenity", 28.0, 17.5], ["Ocean of Storms", 18.4, -57.4],
-  ["Hadley Rille", 26.13, 3.63], ["Taurus–Littrow", 20.19, 30.77], ["Plato", 51.6, -9.4], ["Kepler", 8.1, -38.0],
-  ["Aristarchus", 23.7, -47.4], ["Sea of Crises", 17.0, 59.1], ["Fra Mauro", -3.65, -17.47], ["Descartes Highlands", -8.97, 15.5],
-  ["Sea of Nectar", -15.2, 35.5], ["Sea of Clouds", -21.3, -16.6], ["Sea of Fertility", -7.8, 51.3], ["Sea of Cold", 56.0, 1.4],
-  ["Von Kármán", -44.4, 176.2], ["Tsiolkovskiy", -20.4, 129.1], ["Sea of Moscow", 27.3, 147.9], ["Daedalus", -5.9, 179.4],
-  ["Apollo Basin", -36.1, -151.8], ["Korolev", -4.0, -157.4], ["Hertzsprung", 2.6, -129.2], ["Peary", 88.6, 33.0],
-];
-// what each is, in a few words (the picker's list)
-export const ABOUT = {
-  "Tranquility Base": "Apollo 11, 1969", "Tycho": "A bright young crater", "Copernicus": "The crater on every map", "Shackleton": "The south pole, in shadow",
-  "Hadley Rille": "Apollo 15, by a winding valley", "Taurus–Littrow": "Apollo 17, the last visit", "Plato": "A dark, flat-floored crater", "Fra Mauro": "Apollo 14",
-  "Descartes Highlands": "Apollo 16", "Aristarchus": "The brightest spot on the Moon", "Von Kármán": "Chang’e 4, first on the far side", "Tsiolkovskiy": "A dark crater, far side",
-  "Sea of Moscow": "A far-side sea", "Daedalus": "Dead centre of the far side", "Korolev": "A huge far-side basin", "Peary": "Near the north pole",
-};
-export const farSide = (lon) => Math.abs(lon) > 90;
+import { SITES, MARS_SITES, ABOUT, BODIES, MEAN_KM, EARTH_R, MOON_R, farSide, lunarKm, surfaceKm, distAt, arc, orbitWhere, orbitAt, ORBIT, inShadow } from "./space.js";
+export * from "./space.js";
 const rad = Math.PI / 180;
-function hav(aLat, aLon, bLat, bLon, R) {
-  const dLat = (bLat - aLat) * rad, dLon = (bLon - aLon) * rad;
-  const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(Math.min(1, s)));
-}
-export const lunarKm = (aLat, aLon, bLat, bLon) => hav(aLat, aLon, bLat, bLon, MOON_R);
-export function siteName(lat, lon) {
-  let best = null, d = Infinity;
-  for (const s of SITES) { const k = lunarKm(lat, lon, s[1], s[2]); if (k < d) { d = k; best = s; } }
-  return d <= 120 ? best[0] : `Near ${best[0]}`;
-}
 
-/* ---- where the Moon is (Meeus ch. 47, the larger terms) ---- */
-const cos = (d) => Math.cos(d * rad), sin = (d) => Math.sin(d * rad);
-function args(t) {
-  const T = (t / 864e5 + 2440587.5 - 2451545) / 36525;
-  return { D: 297.8501921 + 445267.1114034 * T, M: 357.5291092 + 35999.0502909 * T, Mp: 134.9633964 + 477198.8675055 * T, F: 93.2720950 + 483202.0175233 * T };
-}
-export function moonKm(t) {
-  const { D, M, Mp, F } = args(t);
-  return 385000.56 + (-20905355 * cos(Mp) - 3699111 * cos(2 * D - Mp) - 2955968 * cos(2 * D) - 569925 * cos(2 * Mp) + 48888 * cos(M) - 3149 * cos(2 * F)
-    + 246158 * cos(2 * D - 2 * Mp) - 152138 * cos(2 * D - M - Mp) - 170733 * cos(2 * D + Mp) - 204586 * cos(2 * D - M) - 129620 * cos(M - Mp)
-    + 108743 * cos(D) + 104755 * cos(M + Mp)) / 1000;
-}
-// how much of it is lit, and what that's called
-export function moonPhase(t) {
-  const { D, M, Mp } = args(t);
-  const i = 180 - (((D % 360) + 360) % 360) - 6.289 * sin(Mp) + 2.1 * sin(M) - 1.274 * sin(2 * D - Mp) - 0.658 * sin(2 * D) - 0.214 * sin(2 * Mp) - 0.11 * sin(D);
-  const lit = (1 + cos(i)) / 2, waxing = (((D % 360) + 360) % 360) < 180;
-  const name = lit < 0.03 ? "New Moon" : lit > 0.97 ? "Full Moon" : lit < 0.47 ? (waxing ? "Waxing Crescent" : "Waning Crescent")
-    : lit <= 0.53 ? (waxing ? "First Quarter" : "Last Quarter") : waxing ? "Waxing Gibbous" : "Waning Gibbous";
-  return { lit, waxing, name };
-}
-// is the Moon close or far today (it swings between about 356,000 and 406,000 km)
-export const nearFar = (km) => (km < 365000 ? "close this week" : km > 400000 ? "far away this week" : "");
-
-/* ---- lunar pigeons ---- */
-export const LUNAR = {
-  lunar: { name: "Lunar", trip: 3 * DAY, kmh: 160, max: 3, what: "About 3 days, like Apollo" },
-  lunarx: { name: "Lunar Express", trip: DAY, kmh: 480, max: 1, what: "About a day" },
-};
-// how long a lunar pigeon takes, leaving at t (as the server works it out)
-export function lunarMs(kind, from, to, t, speed = 1) {
-  const p = LUNAR[kind];
-  if (!from || !to) return p.trip;
-  if (from.b === "moon" && to.b === "moon") return Math.max(10 * MIN, (lunarKm(from.lat, from.lon, to.lat, to.lon) / (p.kmh * speed)) * HOUR);
-  return (p.trip * moonKm(t)) / MEAN_KM / speed;
-}
-// how far along the way it is (0 to 1) a fraction f of the time in: quick away from Earth,
-// slowing as Earth's pull holds it back (and the other way round coming home)
-const P = 1.45;
-export const distAt = (mn, f) => (mn.k === "surface" ? f : mn.from.b === "earth" ? 1 - (1 - f) ** P : f ** P);
-const timeAt = (mn, s) => (mn.k === "surface" ? s : mn.from.b === "earth" ? 1 - (1 - s) ** (1 / P) : s ** (1 / P));
-
-// The moments of the trip, in order: { at, done, icon, text }
-export function moonMoments(mn, sentAt, deliverAt, t) {
-  const T = deliverAt - sentAt, at = (f) => sentAt + Math.max(0, Math.min(1, f)) * T, out = [];
-  const add = (f, icon, text) => out.push({ at: at(f), icon, text });
-  const where = (e) => (e?.place ? e.place.replace(/, the Moon$/, "") : e?.b === "moon" ? "the Moon" : "Earth");
-  if (mn.k === "surface") {
-    add(0, "up", `Bounded off from ${where(mn.from)}`);
-    const pts = arc(mn.from, mn.to, 48), seen = new Set([where(mn.from), where(mn.to)]);
-    let side = farSide(mn.from.lon);
-    for (let i = 1; i < pts.length - 1; i++) {
-      const [la, lo] = pts[i], f = i / (pts.length - 1);
-      if (farSide(lo) !== side) { side = farSide(lo); add(f, side ? "moon" : "globe", side ? "Over the horizon: Earth sets behind it" : "Earthrise: Earth comes up over the horizon"); }
-      for (const s of SITES) if (!seen.has(s[0]) && lunarKm(la, lo, s[1], s[2]) < 90) { seen.add(s[0]); add(f, "pin", `Bounding past ${s[0]}`); }
-    }
-    add(1, "check", `Touchdown at ${where(mn.to)}`);
-  } else if (mn.from.b === "earth") {
-    const d = mn.dist || MEAN_KM;
-    add(0, "up", `Lifted off from ${where(mn.from)}`);
-    add(Math.min(0.02, (10 * MIN) / T), "globe", "Left Earth’s atmosphere");
-    add(timeAt(mn, 36000 / d), "dot", "Past the highest satellites");
-    add(timeAt(mn, 0.5), "dist", "Halfway to the Moon");
-    add(timeAt(mn, 1 - 66000 / d), "moon", "Into the Moon’s pull");
-    if (farSide(mn.to.lon)) add(timeAt(mn, 0.988), "moon", "Behind the Moon: out of touch with Earth");
-    else add(timeAt(mn, 0.992), "moon", "In orbit around the Moon");
-    add(1, "check", `Touchdown at ${where(mn.to)}`);
-  } else {
-    const d = mn.dist || MEAN_KM;
-    add(0, "up", `Lifted off from ${where(mn.from)}`);
-    if (farSide(mn.from.lon)) add(timeAt(mn, 0.012), "moon", "Out from behind the Moon: Earth in sight");
-    add(timeAt(mn, 66000 / d), "moon", "Out of the Moon’s pull");
-    add(timeAt(mn, 0.5), "dist", "Halfway home");
-    add(timeAt(mn, 1 - 36000 / d), "dot", "Past the highest satellites");
-    add(Math.max(0.98, 1 - (15 * MIN) / T), "fire", "Re-entry: a fireball over Earth");
-    add(1, "check", mn.to.place ? `Touchdown in ${where(mn.to)}` : "Touchdown on Earth");
-  }
-  return out.sort((a, b) => a.at - b.at).map((x) => ({ ...x, done: x.at <= t }));
-}
-// Where it is now, in words (in miles, like the rest of the app): "88,400 mi from Earth · 2,400 mph"
+// Where it is now, in words (miles, like the rest of the app): "88,400 mi from Earth · 2,400 mph".
+// where(lat, lon): a name for a spot on Earth
 const MI = 0.621371, mi = (km) => Math.round(km * MI).toLocaleString("en-GB");
-export function moonNow(mn, sentAt, deliverAt, t) {
-  const f = Math.max(0, Math.min(1, (t - sentAt) / (deliverAt - sentAt))), T = (deliverAt - sentAt) / HOUR;
+export function spaceNow(mn, sentAt, deliverAt, t, where = null) {
+  const T = deliverAt - sentAt, f = Math.max(0, Math.min(1, (t - sentAt) / T)), H = T / 3600e3;
+  if (mn.k === "laser") {
+    if (mn.relay) return { f, line: "Bounced off an orbiter overhead" };
+    return { f, line: f >= 1 ? `${mi(mn.dist)} mi in ${Math.round(T / 1000)} seconds` : `${mi(mn.dist * (1 - f))} mi to go · at the speed of light` };
+  }
+  if (mn.k === "orbit") {
+    const [la, lo, ph] = orbitWhere(mn, t - sentAt), over = where ? where(la, lo) : null;
+    if (ph === "climb") return { f, line: "Climbing to orbit" };
+    if (ph === "down") return { f, line: `Coming down${over ? ` over ${over}` : ""}` };
+    const lap = Math.floor((t - sentAt - ORBIT.climb) / mn.T) + 1;
+    return { f, line: `${over ? `Over ${over} · ` : ""}lap ${lap} · 17,100 mph` };
+  }
   if (mn.k === "surface") {
     const km = lunarKm(mn.from.lat, mn.from.lon, mn.to.lat, mn.to.lon);
-    return { f, s: f, line: `${mi(km * (1 - f))} mi to go · ${mi(km / T)} mph` };
+    return { f, line: `${mi(km * (1 - f))} mi to go · ${mi(km / H)} mph` };
   }
   const d = (mn.dist || MEAN_KM) - EARTH_R - MOON_R, s = distAt(mn, f), e = 0.002;
-  const v = (Math.abs(distAt(mn, Math.min(1, f + e)) - distAt(mn, Math.max(0, f - e))) / (Math.min(1, f + e) - Math.max(0, f - e))) * d / T;
+  const v = (Math.abs(distAt(mn, Math.min(1, f + e)) - distAt(mn, Math.max(0, f - e))) / (Math.min(1, f + e) - Math.max(0, f - e))) * d / H;
   const fromEarth = mn.from.b === "earth" ? s * d : (1 - s) * d;
-  return { f, s, line: `${mi(fromEarth)} mi from Earth · ${mi(v)} mph` };
+  return { f, line: `${mi(fromEarth)} mi from Earth · ${mi(v)} mph${inShadow(t) ? " · in Earth’s shadow" : ""}` };
 }
 
-// points along the great circle between two spots on the Moon: [lat, lon]
-function arc(a, b, n) {
-  const v = (la, lo) => [Math.cos(la * rad) * Math.cos(lo * rad), Math.cos(la * rad) * Math.sin(lo * rad), Math.sin(la * rad)];
-  const A = v(a.lat, a.lon), B = v(b.lat, b.lon), w = Math.acos(Math.min(1, Math.max(-1, A[0] * B[0] + A[1] * B[1] + A[2] * B[2]))), out = [];
-  for (let i = 0; i <= n; i++) {
-    const f = i / n; if (w < 1e-9) { out.push([a.lat, a.lon]); continue; }
-    const s1 = Math.sin((1 - f) * w) / Math.sin(w), s2 = Math.sin(f * w) / Math.sin(w);
-    const x = s1 * A[0] + s2 * B[0], y = s1 * A[1] + s2 * B[1], z = s1 * A[2] + s2 * B[2];
-    out.push([Math.atan2(z, Math.hypot(x, y)) / rad, Math.atan2(y, x) / rad]);
-  }
-  return out;
-}
-
-/* ---- drawing ---- */
+/* ---------- drawing ---------- */
 // the dark seas (maria) and a few craters, as [lat, lon, radius°]: enough to know it at a glance
 const MARIA = [[32.8, -15.6, 11], [28, 17.5, 7], [8.5, 31.4, 8], [17, 59.1, 5], [-7.8, 51.3, 6.5], [-15.2, 35.5, 4], [-21.3, -16.6, 7], [18.4, -57.4, 12], [2, -45, 10],
   [32, -52, 8], [-5, -36, 8], [56, -14, 4], [57, 8, 4], [56, 28, 3], [-24.4, -38.6, 4], [13.3, 3.6, 3], [-10, -23, 4], [7.5, -30.9, 4], [20, 2, 3], [-1, 85, 3], [13, 87, 2.5],
@@ -194,6 +84,36 @@ function moonDisc(ctx, cx, cy, R, lat0, lon0, { glow = true } = {}) {
   // light from the upper left
   const sh = ctx.createRadialGradient(cx - R * 0.4, cy - R * 0.45, R * 0.2, cx, cy, R * 1.05);
   sh.addColorStop(0, "rgba(255,255,255,0)"); sh.addColorStop(1, "rgba(0,0,10,.38)");
+  ctx.fillStyle = sh; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+  ctx.restore();
+  return pr;
+}
+// Mars: rust, its dark markings (the ones a telescope shows), Hellas pale, the polar caps, and the
+// Tharsis volcanoes and Valles Marineris; as [lat, lon, radius°]
+const MARS_DARK = [[8, 69, 9], [46, -22, 11], [-25, -40, 11], [-2, -5, 6], [45, 115, 11], [-25, 145, 10], [-35, -150, 10], [-15, 105, 8], [20, 30, 7], [-20, 20, 8], [-50, -80, 9], [10, -140, 6]];
+const MARS_RINGS = [[18.65, -133.8, 3.5], [-8.3, -120.1, 2], [1.5, -112.8, 2], [12, -104, 2], [25, 147.2, 1.8], [18.38, 77.58, 1], [-5.4, 137.8, 1.6], [-14.5, 175.4, 1.6]];
+function marsDisc(ctx, cx, cy, R, lat0, lon0, { glow = true } = {}) {
+  const pr = ortho(lat0, lon0, cx, cy, R);
+  if (glow) halo(ctx, cx, cy, R, "255,140,90", 0.28);
+  ctx.save();
+  const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
+  g.addColorStop(0, "#f0a070"); g.addColorStop(0.65, "#c8613a"); g.addColorStop(1, "#7a3018");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.clip();
+  ctx.fillStyle = "rgba(70,30,20,.35)"; ctx.shadowColor = "rgba(70,30,20,.5)"; ctx.shadowBlur = R * 0.06;
+  for (const [la, lo, r] of MARS_DARK) if (spot(ctx, pr, la, lo, r)) ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,225,190,.28)"; if (spot(ctx, pr, -42.4, 70.5, 9)) ctx.fill();                       // Hellas, pale with frost and dust
+  ctx.fillStyle = "rgba(255,255,255,.88)"; if (spot(ctx, pr, 90, 0, 9)) ctx.fill(); if (spot(ctx, pr, -90, 0, 6)) ctx.fill();   // the polar caps
+  ctx.strokeStyle = "rgba(90,35,20,.5)"; ctx.lineWidth = Math.max(0.8, R / 120);
+  for (const [la, lo, r] of MARS_RINGS) if (spot(ctx, pr, la, lo, r)) ctx.stroke();
+  // Valles Marineris: a long dark gash east of the volcanoes
+  ctx.strokeStyle = "rgba(70,25,15,.55)"; ctx.lineWidth = Math.max(1.2, R / 60); ctx.beginPath(); let any = false;
+  for (let lo = -100; lo <= -35; lo += 2.5) { const [x, y, z] = pr(-8 - ((lo + 100) / 65) * 6, lo); if (z < 0) continue; any ? ctx.lineTo(x, y) : ctx.moveTo(x, y); any = true; }
+  ctx.stroke();
+  const sh = ctx.createRadialGradient(cx - R * 0.4, cy - R * 0.45, R * 0.2, cx, cy, R * 1.05);
+  sh.addColorStop(0, "rgba(255,255,255,0)"); sh.addColorStop(1, "rgba(20,0,0,.42)");
   ctx.fillStyle = sh; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
   ctx.restore();
   return pr;
@@ -263,6 +183,17 @@ const moonImage = (R, lat0, lon0, dpr, glow) => {
   const P = glow ? 1.4 : 1.02, la = Math.round(lat0), lo = Math.round(lon0);
   return cached(`moon|${la}|${lo}|${Math.round(R)}|${glow}`, R * 2 * P, R * 2 * P, dpr, (g) => moonDisc(g, R * P, R * P, R, la, lo, { glow }));
 };
+const marsImage = (R, lat0, lon0, dpr, glow) => {
+  const P = glow ? 1.4 : 1.02, la = Math.round(lat0), lo = Math.round(lon0);
+  return cached(`mars|${la}|${lo}|${Math.round(R)}|${glow}`, R * 2 * P, R * 2 * P, dpr, (g) => marsDisc(g, R * P, R * P, R, la, lo, { glow }));
+};
+const bodyImage = (b, R, lat0, lon0, dpr, glow) => (b === "mars" ? marsImage : moonImage)(R, lat0, lon0, dpr, glow);
+// the world flat (equirectangular), sea and land, 720 × 360: once
+const worldImage = () => cached("world", 720, 360, 1, (g) => {
+  const img = g.createImageData(720, 360), d = img.data, m = landMap();
+  for (let i = 0; i < m.length; i++) { const [r, gg, b] = m[i] ? [61, 122, 77] : [11, 42, 74]; d[i * 4] = r; d[i * 4 + 1] = gg; d[i * 4 + 2] = b; d[i * 4 + 3] = 255; }
+  g.putImageData(img, 0, 0);
+});
 const putAt = (ctx, img, cx, cy, dpr) => ctx.drawImage(img, cx - img.width / dpr / 2, cy - img.height / dpr / 2, img.width / dpr, img.height / dpr);
 function stars(ctx, w, h, seed, dpr) {
   ctx.drawImage(cached(`stars|${seed}`, w, h, dpr, (g) => {
@@ -272,21 +203,23 @@ function stars(ctx, w, h, seed, dpr) {
     g.globalAlpha = 1;
   }), 0, 0, w, h);
 }
-function fit(cv) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+// (size: a picture drawn off the page, as for Share: { w, h, dpr })
+function fit(cv, size) {
+  const dpr = size?.dpr || Math.min(2, window.devicePixelRatio || 1), w = size?.w || cv.clientWidth, h = size?.h || cv.clientHeight;
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, w, h, dpr };
 }
 const pin = (ctx, x, y, col, big) => { ctx.save(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, big ? 6 : 3.5, 0, 2 * Math.PI); ctx.fill(); ctx.restore(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, big ? 6 : 3.5, 0, 2 * Math.PI); ctx.stroke(); };
 
-// The map to pick a spot on: one side of the Moon, its named sites, and your spot.
-// Returns what's needed to turn a tap back into a spot (pickAt).
-export function drawMoonPick(cv, { side = "near", mark = null, focus = null } = {}) {
+// The map to pick a spot on: one side of the Moon (near or far) or Mars (east or west), its named
+// sites, and your spot. Returns what's needed to turn a tap back into a spot (pickAt).
+export const sideLon = (body, side) => (body === "mars" ? (side === "west" ? -90 : 90) : side === "far" ? 180 : 0);
+export function drawPick(cv, { body = "moon", side = "near", mark = null, focus = null } = {}) {
   const { ctx, w, h, dpr } = fit(cv);
   stars(ctx, w, h, 11, dpr);
-  const R = Math.min(w, h) * 0.44, cx = w / 2, cy = h / 2, lon0 = side === "far" ? 180 : 0;
-  putAt(ctx, moonImage(R, 0, lon0, dpr, true), cx, cy, dpr);
+  const R = Math.min(w, h) * 0.44, cx = w / 2, cy = h / 2, lon0 = sideLon(body, side), SITES = BODIES[body].sites;
+  putAt(ctx, bodyImage(body, R, 0, lon0, dpr, true), cx, cy, dpr);
   const pr = ortho(0, lon0, cx, cy, R);
   ctx.font = "600 11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif"; ctx.textAlign = "center";
   // every site a dot; names where they fit, the chosen one first, then the Apollo sites and craters
@@ -308,7 +241,7 @@ export function pickAt(view, x, y) {
   const dx = (x - view.cx) / view.R, dy = -(y - view.cy) / view.R, rr = dx * dx + dy * dy;
   if (rr > 1) return null;
   const z = Math.sqrt(1 - rr), lat = Math.asin(dy) / rad;
-  let lon = Math.atan2(dx, z) / rad + view.lon0; if (lon > 180) lon -= 360;
+  let lon = Math.atan2(dx, z) / rad + view.lon0; if (lon > 180) lon -= 360; if (lon < -180) lon += 360;
   return { lat: Math.round(lat * 10) / 10, lon: Math.round(lon * 10) / 10 };
 }
 
@@ -316,8 +249,8 @@ export function pickAt(view, x, y) {
 // across the Moon's surface. f: how far through the trip (0 to 1).
 // the app's pigeon (index.html's #bird-path: it faces left in its 24 × 24 box)
 const BIRD = typeof Path2D === "function" ? new Path2D("M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z") : null;
-export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
-  const { ctx, w, h, dpr } = fit(cv);
+export function drawTrip(cv, mn, f, t, { lost = false, size = null } = {}) {
+  const { ctx, w, h, dpr } = fit(cv, size);
   stars(ctx, w, h, 5, dpr);
   // the pigeon, heading a (radians), upright whichever way it goes
   const bird = (x, y, a) => {
@@ -327,6 +260,8 @@ export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
     const gl = ctx.createRadialGradient(12, 11, 2, 12, 11, 16); gl.addColorStop(0, lost ? "rgba(255,69,58,.55)" : "rgba(255,209,102,.55)"); gl.addColorStop(1, "rgba(255,209,102,0)");
     ctx.fillStyle = gl; ctx.fillRect(-4, -5, 32, 32); ctx.fillStyle = lost ? "#ff453a" : "#fff"; ctx.fill(BIRD); ctx.restore();
   };
+  if (mn.k === "laser") return drawLaser(ctx, w, h, dpr, mn, f, bird);
+  if (mn.k === "orbit") return drawOrbit(ctx, w, h, dpr, mn, f, bird);
   if (mn.k === "surface") {
     const pts = arc(mn.from, mn.to, 64), mid = pts[32], R = Math.min(w, h) * 0.46;
     putAt(ctx, moonImage(R, mid[0], mid[1], dpr, false), w / 2, h / 2, dpr);
@@ -377,3 +312,60 @@ export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
   // re-entry: a streak of fire as it comes in to Earth
   if (!out && f > 0.97 && f < 1) { ctx.save(); ctx.strokeStyle = "rgba(255,120,0,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 14, by - 10); ctx.stroke(); ctx.restore(); }
 }
+
+// By laser: a beam of light between the two worlds (not to scale), its pulse a fraction f of the way;
+// across Mars, up to an orbiter overhead and back down
+function drawLaser(ctx, w, h, dpr, mn, f, bird) {
+  const beam = (pts, upto) => {
+    let L = 0; const seg = []; for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); L += d; }
+    ctx.strokeStyle = "rgba(255,80,80,.22)"; ctx.lineWidth = 1.5; ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    let left = upto * L, head = pts[0]; ctx.strokeStyle = "rgba(255,90,80,.95)"; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(...pts[0]);
+    for (let i = 1; i < pts.length && left > 0; i++) { const u = Math.min(1, left / seg[i - 1]); head = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * u, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * u]; ctx.lineTo(...head); left -= seg[i - 1]; }
+    ctx.stroke();
+    const g = ctx.createRadialGradient(head[0], head[1], 0, head[0], head[1], 16); g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.3, "rgba(255,110,90,.8)"); g.addColorStop(1, "rgba(255,80,60,0)");
+    ctx.fillStyle = g; ctx.fillRect(head[0] - 16, head[1] - 16, 32, 32);
+    return head;
+  };
+  if (mn.relay) {
+    const R = Math.min(w, h) * 0.62, cx = w / 2, cy = h * 1.08, mid = arc(mn.from, mn.to, 2)[1];
+    putAt(ctx, marsImage(R, mid[0], mid[1], dpr, false), cx, cy, dpr);
+    const pr = ortho(Math.round(mid[0]), Math.round(mid[1]), cx, cy, R), a = pr(mn.from.lat, mn.from.lon), b = pr(mn.to.lat, mn.to.lon), sat = [w / 2, h * 0.16];
+    ctx.fillStyle = "#e5e5ea"; ctx.fillRect(sat[0] - 7, sat[1] - 2, 14, 4); ctx.fillRect(sat[0] - 2, sat[1] - 5, 4, 10);
+    beam([a, sat, b], f); pin(ctx, a[0], a[1], "#8e8e93"); pin(ctx, b[0], b[1], "#30d158");
+    return;
+  }
+  const lx = w * 0.16, rx = w * 0.84, y = h * 0.5, er = Math.min(w * 0.1, h * 0.19), mr = er * 0.55;
+  const draw = (e, x) => {
+    if (e.b === "mars") { putAt(ctx, marsImage(mr, 0, e.lon ?? 0, dpr, true), x, y, dpr); return mr; }
+    if (e.b === "moon") { putAt(ctx, earthImage(er * 0.8, 0, 20, dpr), x, y + er * 0.5, dpr); putAt(ctx, moonImage(er * 0.3, 0, 0, dpr, true), x + (x < w / 2 ? er * 0.9 : -er * 0.9), y - er * 0.7, dpr); return er * 0.3; }
+    putAt(ctx, earthImage(er, e.lon ?? 0, Math.max(-50, Math.min(50, e.lat ?? 20)), dpr), x, y, dpr); return er;
+  };
+  const r1 = draw(mn.from, lx), r2 = draw(mn.to, rx);
+  const a = mn.from.b === "moon" ? [lx + er * 0.9 + r1, y - er * 0.7] : [lx + r1, y], b = mn.to.b === "moon" ? [rx - er * 0.9 - r2, y - er * 0.7] : [rx - r2, y];
+  beam([a, b], f);
+}
+// Round the Earth: the world flat, the orbit's path over the ground (laps and laps of it), and the
+// pigeon on it now; then its glide down to its friend
+function drawOrbit(ctx, w, h, dpr, mn, f, bird) {
+  const mw = w, mh = w / 2, top = (h - mh) / 2, X = (lon) => ((lon + 180) / 360) * mw, Y = (lat) => top + ((90 - lat) / 180) * mh;
+  ctx.drawImage(worldImage(), 0, top, mw, mh);
+  const end = ORBIT.climb + mn.down + (mn.glide || ORBIT.descend), el = f * end;
+  const line = (from, to, style, width) => {
+    ctx.strokeStyle = style; ctx.lineWidth = width; ctx.beginPath(); let last = null;
+    for (let tau = from; tau <= to; tau += 30e3) {
+      const [la, lo] = orbitAt(mn, tau), x = X(lo), y = Y(la);
+      if (!last || Math.abs(x - last) > mw / 2) ctx.moveTo(x, y); else ctx.lineTo(x, y); last = x;
+    }
+    ctx.stroke();
+  };
+  line(0, mn.down, "rgba(255,255,255,.22)", 1.2);
+  if (el > ORBIT.climb) line(0, Math.min(mn.down, el - ORBIT.climb), "rgba(255,209,102,.9)", 2);
+  // the glide down, dashed
+  const [rl, ro] = orbitAt(mn, mn.down);
+  ctx.setLineDash([3, 4]); ctx.strokeStyle = "rgba(255,150,60,.8)"; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(X(ro), Y(rl)); ctx.lineTo(X(mn.to.lon), Y(mn.to.lat)); ctx.stroke(); ctx.setLineDash([]);
+  pin(ctx, X(mn.from.lon), Y(mn.from.lat), "#8e8e93"); pin(ctx, X(mn.to.lon), Y(mn.to.lat), "#30d158");
+  const [la, lo] = orbitWhere(mn, el), [la2, lo2] = orbitWhere(mn, Math.min(end, el + 60e3));
+  let dx = X(lo2) - X(lo); if (Math.abs(dx) > mw / 2) dx -= Math.sign(dx) * mw;
+  bird(X(lo), Y(la), Math.atan2(Y(la2) - Y(la), dx || 0.01));
+}
+export const drawMoonPick = (cv, o) => drawPick(cv, { ...o, body: "moon" });

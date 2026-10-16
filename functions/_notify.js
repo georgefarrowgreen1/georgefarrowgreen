@@ -17,6 +17,7 @@ import { liveTick } from "./_live.js";
 import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
+import { spaceMoments } from "../pigeon/space.js";
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -381,6 +382,27 @@ const shipEv = (v, t, since0, told) => { const since = Math.max(since0, t - SHIP
 const shipSay = (p, who, v, ev, deliver) => (ev === SHIP_BOARD
   ? `${who} boarded a ship${p.names && v.from ? ` at ${v.from}` : ""}. It comes ashore${p.names && v.to ? ` at ${v.to}` : ""} ${whenAt(v.ashore, p.tz)}.`
   : `${who} came ashore${p.names && v.to ? ` at ${v.to}` : ""} and is flying on. It lands ${whenAt(deliver, p.tz)}.`);
+// Off the Earth (functions/_moon.js): a space pigeon's sender hears its big moments as they happen
+// (halfway to the Moon, behind it, re-entry, in orbit, a lunar eclipse on the way), as Mid-air Moments.
+// Only the latest one since the last tick, and only if it's fresh: a missed one goes untold.
+const SPACE_KIND = { lunar: "lunar pigeon", lunarx: "lunar express pigeon", laser: "laser pigeon", orbital: "orbital pigeon" };
+async function spaceTick(env, D, t) {
+  let pushes = 0;
+  const { results } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.pigeon, m.moon, m.moon_told, m.sent_at, m.deliver_at, r.name AS rname, s.notify_prefs FROM pg_msgs m
+    JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
+    WHERE m.moon IS NOT NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) LIMIT 300`).bind(t).all();
+  for (const m of results) {
+    let mn; try { mn = JSON.parse(m.moon); } catch (_) { continue; }
+    const due = spaceMoments(mn, m.sent_at, m.deliver_at, t).filter((x) => x.tell && x.done && x.i > (m.moon_told ?? -1)).at(-1);
+    if (!due) continue;
+    const claimed = await D.prepare("UPDATE pg_msgs SET moon_told = ?1 WHERE id = ?2 AND COALESCE(moon_told, -1) < ?1").bind(due.i, m.id).run();
+    if (!claimed.meta.changes || t - due.at > 2 * HOUR) continue;
+    const p = prefsOf(m); if (!p.moments || isQuiet(p, t)) continue;
+    pushes += await pushTo(env, m.sender, { title: p.names ? `To ${firstName(m.rname)}` : "InFlight", body: `Your ${SPACE_KIND[m.pigeon] || "pigeon"}: ${due.text.replace(/^./, (c) => c.toLowerCase())}.`,
+      tag: "space-" + m.id, url: `/pigeon/#open=${m.recipient}` });
+  }
+  return pushes;
+}
 async function shipTick(env, D, t, since) {
   let pushes = 0;
   const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.legs, m.deliver_at, m.ship_told, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
@@ -592,6 +614,7 @@ export async function tick(env, origin) {
   pushes += await nearTick(env, D, t, since);
   pushes += await flyTick(env, D, t, since);
   pushes += await shipTick(env, D, t, since).catch((e) => { console.error("pigeon ships", e && e.message); return 0; });
+  pushes += await spaceTick(env, D, t).catch((e) => { console.error("pigeon space", e && e.message); return 0; });
   pushes += await streakTick(env, D, t).catch((e) => { console.error("pigeon streaks", e && e.message); return 0; });
   await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
   await stampPassports(D, t).catch((e) => console.error("pigeon passport", e && e.message));  // the places flights that landed flew over

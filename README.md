@@ -146,7 +146,23 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.1.0
+## InFlight (chat.georgefarrowgreen.com) — 1.2.0
+
+**1.2.0** (further out): Mars, as well as the Moon, is somewhere to live (My
+Profile → Location → Go to Mars), and only laser pigeons reach it: pulses of
+light, timed by the real Earth–Mars distance (JPL's Keplerian elements), so 3
+to 22 minutes; across Mars, by an orbiter overhead. Orbital pigeons (2 a day)
+go Earth to Earth by way of low Earth orbit and come down on the first pass
+within gliding reach of the friend: hours, however near or far. A friend on the
+Moon has day and night (a lunar day is 29.5 Earth days) and one on Mars a
+Martian clock, under their name. Space flights' big moments (halfway, behind the
+Moon, re-entry, into orbit, a real lunar eclipse on the way) reach their sender
+as Mid-air Moments. Ten off-Earth postmarks (Tranquility Base, Tycho, Olympus
+Mons, Jezero…), passport stamps for the Moon, Mars and Low Earth Orbit, and
+Supermoon, Through the Shadow, Red Planet and Orbiter badges. Any space trip can
+be replayed with a slider and shared as a postcard or a story. The numbers live
+in `pigeon/space.js`, which the server imports too, so the phone and the server
+always agree.
 
 **1.1.0** (to the Moon): anyone can set themselves on the Moon (My Profile →
 Location → Go to the Moon), at a named site or anywhere on a map of either

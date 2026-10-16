@@ -41,8 +41,9 @@ export const PIGEONS = {
 // Mystery pigeons: one a day, from no loft and on no one's turn, but which kind
 // turns up (and so when it lands) is drawn as it takes off: maybe a rocket, maybe a dumb one.
 export const MYSTERY = { max: 1, every: DAY, col: "mystery", atCol: "mystery_at" };
-// Lunar pigeons (functions/_moon.js): the only ones that reach the Moon, from lofts of their own
-export const LUNAR_LOFTS = { lunar: { max: 3, every: DAY / 3, col: "lunar", atCol: "lunar_at" }, lunarx: { max: 1, every: DAY, col: "lunarx", atCol: "lunarx_at" } };
+// Space pigeons (functions/_moon.js): the only ones off the Earth (and the orbital one round it), from lofts of their own
+export const LUNAR_LOFTS = { lunar: { max: 3, every: DAY / 3, col: "lunar", atCol: "lunar_at" }, lunarx: { max: 1, every: DAY, col: "lunarx", atCol: "lunarx_at" },
+  laser: { max: 5, every: DAY / 5, col: "laser", atCol: "laser_at" }, orbital: { max: 2, every: DAY / 2, col: "orbital", atCol: "orbital_at" } };
 export const MYSTERY_ODDS = [["dumb", 10], ["standard", 32], ["swift", 30], ["turbo", 19], ["rocket", 9]];   // out of 100
 export function drawMystery() {
   const r = (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * 100;
@@ -301,6 +302,11 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN lunar INTEGER", "ALTER TABLE pg_users ADD COLUMN lunar_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN lunarx INTEGER", "ALTER TABLE pg_users ADD COLUMN lunarx_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN moon TEXT", "ALTER TABLE pg_gdeliv ADD COLUMN moon TEXT",
+  // Mars and orbit: laser and orbital lofts, and which of a space flight's moments its sender has been told
+  "ALTER TABLE pg_users ADD COLUMN laser INTEGER", "ALTER TABLE pg_users ADD COLUMN laser_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN orbital INTEGER", "ALTER TABLE pg_users ADD COLUMN orbital_at INTEGER",
+  "ALTER TABLE pg_msgs ADD COLUMN moon_told INTEGER",
+  "CREATE INDEX IF NOT EXISTS pg_msgs_space ON pg_msgs(deliver_at) WHERE moon IS NOT NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

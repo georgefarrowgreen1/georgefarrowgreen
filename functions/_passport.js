@@ -16,6 +16,8 @@ import { placeAt } from "./_placegrid.js";
 import { marksAlong } from "./_landmarks.js";
 import { ensureFeathers, earn, flightFeathers } from "./_feathers.js";
 import { SEAS } from "../pigeon/countries.js";
+import { spaceMarks } from "../pigeon/space.js";
+import { spacePlace } from "./_moon.js";
 
 const EVERY_KM = 20;
 // the seas and oceans (the rest are countries)
@@ -51,7 +53,8 @@ export async function stampPassports(D, t, uid = null, max = 12) {
     WHERE d.deliver_at <= ?1 AND d.lost_at IS NULL AND m.from_lat IS NOT NULL AND d.to_lat IS NOT NULL ${mine}
     AND EXISTS (SELECT 1 FROM pg_links l WHERE l.status = 'ok' AND ((l.a = m.sender AND l.b = d.user_id) OR (l.a = d.user_id AND l.b = m.sender)))
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id) ORDER BY d.deliver_at LIMIT ${max}`).bind(...args).all();
-  // to, from or across the Moon (functions/_moon.js): no countries or seas on the way, just the Moon
+  // off the Earth or round it (functions/_moon.js): no countries or seas on the way, just the Moon, Mars or
+  // Low Earth Orbit, and the postmarks of where it landed (or bounded past)
   const { results: lunar } = await D.prepare(`SELECT m.id, m.sender, m.km, m.sent_at, m.deliver_at, m.moon FROM pg_msgs m
     WHERE m.deliver_at <= ?1 AND m.lost_at IS NULL AND m.moon IS NOT NULL ${mine}
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id) ORDER BY m.deliver_at LIMIT ${max}`).bind(...args).all();
@@ -59,7 +62,7 @@ export async function stampPassports(D, t, uid = null, max = 12) {
   if (flights.length) await ensureFeathers(D);         // (everyone's feathers so far, before any more are earned)
   for (const f of flights) {
     let places = [], marks = [];
-    if (f.lunar) places = ["the Moon"];
+    if (f.lunar) { try { const mn = JSON.parse(f.moon); places = [spacePlace(mn)]; marks = spaceMarks(mn); } catch (_) {} }
     else try { const st = stopsOf(f); places = placesAlong(st); marks = marksAlong(st); } catch (_) {}
     const r = await D.prepare("INSERT OR IGNORE INTO pg_stamped (id, user_id, at, places, marks) VALUES (?, ?, ?, ?, ?)").bind(f.id, f.sender, f.deliver_at, JSON.stringify(places), marks.length ? JSON.stringify(marks) : null).run();
     if (!r.meta.changes) continue;

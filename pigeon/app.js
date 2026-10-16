@@ -6,13 +6,13 @@ import { PLACES, nearestPlace, snapToMile } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
-import { SITES, ABOUT, LUNAR, siteName, lunarKm, moonKm, moonPhase, nearFar, lunarMs, moonMoments, moonNow, drawMoonPick, pickAt, drawTrip, farSide } from "./moon.js";
+import { ABOUT, BODIES, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf } from "./moon.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.1.0";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.0";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -45,11 +45,18 @@ KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 };
 KIND.mystery = { name: "Mystery", speed: 1, max: 1 };        // a secret: start a message with /dumb
 // lunar pigeons (pigeon/moon.js): the only ones to, from or across the Moon, from lofts of their own
 KIND.lunar = { name: "Lunar", speed: 1, max: 3 }; KIND.lunarx = { name: "Lunar Express", speed: 1, max: 1 };
-const LUNAR_KINDS = ["lunar", "lunarx"];
-// someone on the Moon: where (their end of a flight), and whether a chat with them is a lunar one
-const endFor = (p) => (p?.moon ? { b: "moon", lat: p.moon.lat, lon: p.moon.lon, place: p.place } : p?.lat != null ? { b: "earth", lat: p.lat, lon: p.lon, place: p.place } : null);
+// and the rest of the space pigeons (pigeon/space.js): laser to or from Mars, orbital round the Earth
+KIND.laser = { name: "Laser", speed: 1, max: 5 }; KIND.orbital = { name: "Orbital", speed: 1, max: 2 };
+const SPACE_KINDS = ["lunar", "lunarx", "laser", "orbital"];
+// someone off the Earth (the Moon, or Mars): where (their end of a flight), and whether a chat with them is a space one
+const endFor = (p) => (p?.moon ? { b: p.moon.b === "mars" ? "mars" : "moon", lat: p.moon.lat, lon: p.moon.lon, place: p.place } : p?.lat != null ? { b: "earth", lat: p.lat, lon: p.lon, place: p.place } : null);
 const moonChat = (f) => !!f && !!(S.me?.moon || f.moon);
-const moonSpeed = () => (S.me?.risky ? RISKY_SPEED : 1);
+const kindsFor = (f) => spaceKinds(endFor(S.me), endFor(f)) || [];
+const worldOf = (p) => (p?.moon ? (p.moon.b === "mars" ? "mars" : "moon") : p?.offEarth || "earth");
+// how long a space pigeon takes now (Pigeon Death only hurries a lunar one: light and orbits don't)
+const spaceMs = (k, a, b) => spaceFlight(k, a, b, now(), S.me?.risky && k.startsWith("lunar") ? RISKY_SPEED : 1).ms;
+// a name for a spot on Earth, for an orbit's path ("the North Atlantic", "France")
+const whereOnEarth = (la, lo) => { const p = placeAt(la, lo); return p && p !== "land" ? p : null; };
 const DUMB = /^\/dumb(?:\s+|$)/i;
 // Pigeon Death (Account → Pigeons): 1.25× faster, but 1 in 100 is lost on the way
 const RISKY_SPEED = 1.25;
@@ -2186,7 +2193,11 @@ function group(id) { return S.groups.find((g) => g.id === id); }
 const GROUP_MAX = 12;
 const memberKm = (p) => p.lat != null && S.me.lat != null ? haversineKm(S.me.lat, S.me.lon, p.lat, p.lon) : p.km ?? 500;
 // how long a group's pigeon takes to one of them (to or from the Moon: a lunar pigeon, whatever the kind)
-const memberMs = (p, k) => (S.me.moon || p.onMoon || p.moon ? lunarMs("lunar", endFor(S.me), endFor(p), now(), moonSpeed()) : flightMs(memberKm(p), mySpeed(k)));
+const memberMs = (p, k) => {
+  if (!S.me.moon && !p.onMoon && !p.moon) return flightMs(memberKm(p), mySpeed(k));
+  const a = endFor(S.me), b = endFor(p) || { b: worldOf(p), lat: 0, lon: 0 }, sk = spaceKinds(a, b);
+  return sk ? spaceMs(sk[0], a, b) : flightMs(memberKm(p), mySpeed(k));
+};
 const member = (g, id) => g?.members.find((p) => p.id === id);
 const others = (g) => g.members.filter((p) => p.id !== S.me.id);
 async function decryptGroup(g, m, kind = "msg") {
@@ -2303,6 +2314,14 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.0", at: Date.UTC(2026, 9, 17), title: "Further out", items: [
+    ["up", "red", "Live on Mars", "My Profile → Location → Go to Mars. Only laser pigeons reach it: pulses of light, there in 3 to 22 minutes as the planets go round the Sun."],
+    ["globe", "blue", "Orbital pigeons", "Earth to Earth by way of orbit: up 250 miles, round every 92 minutes, and down on the first pass near your friend. Two a day."],
+    ["moon", "indigo", "Day and night up there", "A friend on the Moon has a sunrise every month; on Mars, every 24 hours 39 minutes. Their chat says which, and when it changes."],
+    ["bell", "orange", "Moments from space", "Halfway to the Moon, behind it, re-entry, into orbit, a lunar eclipse on the way: you hear as it happens."],
+    ["map", "teal", "Postmarks out there", "Tranquility Base, Tycho, Olympus Mons, Jezero and more, and Supermoon, Through the Shadow, Red Planet and Orbiter badges."],
+    ["share", "green", "Replay and share a trip", "Scrub through any space trip, and share it as a postcard or a story."],
+  ] },
   { v: "1.1.0", at: Date.UTC(2026, 9, 16), title: "To the Moon", items: [
     ["moon", "indigo", "Live on the Moon", "My Profile → Location → Go to the Moon. Pick a crater or a sea, near side or far side, and your friends see you there. Your spot on Earth isn’t kept while you’re away."],
     ["bird", "gray", "Lunar pigeons", "Only they fly to the Moon and back: about 3 days, like Apollo, or a day by Lunar Express. The trip is as long as the Moon is far away that day."],
@@ -3306,9 +3325,11 @@ function vAccount() {
   // today's pigeons: how many of each are in your loft, and when the next hatches
   const tile = (kind, name, what) => {
     const n = u[kind] || 0, full = n >= KIND[kind].max, next = full ? (kind === "mystery" ? "Ready" : "Full") : n ? `Next in <span data-eta="${u[kind + "NextAt"]}"></span>` : `In <span data-eta="${u[kind + "NextAt"]}"></span>`;
-    return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" || LUNAR_KINDS.includes(kind) ? null : u.skin)}<b>${n}</b></span>
+    return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" || SPACE_KINDS.includes(kind) ? null : u.skin)}<b>${n}</b></span>
       <span class="lname">${name}</span><small>${what}</small><small class="lnext">${next}</small></div>`;
   };
+  // (the Moon's and Mars's pigeons, once you or a friend are there)
+  const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
@@ -3317,8 +3338,9 @@ function vAccount() {
     <div class="ghead">Today’s Pigeons</div>
     <div class="lgrid">${tile("rocket", "Rocket", "9× faster")}${tile("turbo", "Turbo", "3× faster")}${tile("swift", "Swift", "2× faster")}${tile("mystery", "Mystery", "Any pigeon")}</div>
     <div class="gfoot">Every day: 1 rocket, 3 turbo, 9 swift and a mystery pigeon. They fly any time. Standard pigeons are free and fly on your turn.</div>
-    ${u.moon || S.friends.some((f) => f.moon) || S.groups.some((g) => g.members.some((p) => p.onMoon)) ? `<div class="lgrid two">${tile("lunar", "Lunar", "To the Moon, ~3 days")}${tile("lunarx", "Lunar Express", "To the Moon, ~1 day")}</div>
-    <div class="gfoot">Only lunar pigeons fly to the Moon and back: 3 a day, and a Lunar Express.</div>` : ""}
+    <div class="ghead">Space Pigeons</div>
+    <div class="lgrid">${tile("orbital", "Orbital", "Round the Earth")}${on("moon") ? tile("lunar", "Lunar", "To the Moon, ~3 days") + tile("lunarx", "Lunar Express", "To the Moon, ~1 day") : ""}${on("mars") ? tile("laser", "Laser", "To Mars, light speed") : ""}</div>
+    <div class="gfoot">Orbital pigeons go up into orbit and come down near your friend: 2 a day.${on("moon") ? " Only lunar pigeons reach the Moon." : ""}${on("mars") ? " Only laser pigeons reach Mars." : ""}</div>
     <div class="ghead">Your Loft</div>
     <div class="group">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
       ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles, passport, badges and looks", chev: true })}
@@ -3415,14 +3437,22 @@ function cityOptions() {
 /* ---------- Chat ---------- */
 // How far away a friend is, once it's a mile or more ("" when you don't know, or they're near)
 const milesAway = (f) => {
-  if (moonChat(f)) { const a = endFor(S.me), b = endFor(f); return a && b ? fmtMiles(a.b === "moon" && b.b === "moon" ? lunarKm(a.lat, a.lon, b.lat, b.lon) : moonKm(now())) : ""; }
+  if (moonChat(f)) {
+    const a = endFor(S.me), b = endFor(f); if (!a || !b) return "";
+    return fmtMiles(a.b === b.b ? surfaceKm(a.b, a, b) : a.b === "mars" || b.b === "mars" ? marsKm(now()) : moonKm(now()));
+  }
   const km = S.me?.lat != null && f?.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 0; return km >= 1.61 ? fmtMiles(km) : "";
 };
 // Under a friend's name: the time where they are (when it isn't yours), where, and how far
 function chatSub(f) {
   const bits = [];
   let icon = "";
-  if (f.tz && f.tz !== MY_TZ) {
+  // off the Earth: day or night where they are (a lunar day lasts a month; a Martian sol 24h 39m)
+  if (f.moon) {
+    const site = esc((f.place || "").replace(/, (the Moon|Mars)$/, ""));
+    if (f.moon.b === "mars") { const c = marsClock(f.moon.lon, now()); icon = c.day ? I.sun : I.moon; bits.push(`${c.hm} at ${site} · ${c.day ? "sunset" : "sunrise"} in ${fmtDur(c.next - now())}`); }
+    else { const d = lunarDay(f.moon.lat, f.moon.lon, now()); icon = d.day ? I.sun : I.moon; bits.push(`${d.day ? "Day" : "Night"} at ${site} · ${d.day ? "sunset" : "sunrise"} in ${fmtDur(d.next - now())}`); }
+  } else if (f.tz && f.tz !== MY_TZ) {
     try {
       const h = +new Intl.DateTimeFormat("en-GB", { timeZone: f.tz, hour: "2-digit", hourCycle: "h23" }).format(now());
       icon = h >= 19 || h < 6 ? I.moon : I.sun;
@@ -3582,9 +3612,16 @@ function stopCard(f, m) {
    friend's name (yours only if you leave it on). */
 const CARD_FONT = '-apple-system, "SF Pro Display", system-ui, Inter, "Helvetica Neue", Arial, sans-serif';
 const STAMP_INK = { rocket: ["#fbe38a", "#d9a21b", "#a87808"], swift: ["#ff8a80", "#ff3b30", "#b8241b"], turbo: ["#5a5a60", "#1c1c1e", "#000000"],
-  standard: ["#8ee39f", "#34c759", "#1d7f37"], dumb: ["#d8bf9a", "#a2845e", "#6f5636"] };
-const STORY_INK = { rocket: "#f0c04a", swift: "#ff6961", turbo: "#f5f5f7", standard: "#30d158", dumb: "#c4a57e" };
-const shareable = (m) => !!(m?.route && !m.flock && !m.lost && !m.recalled && m.km != null && m.deliverAt <= now());
+  standard: ["#8ee39f", "#34c759", "#1d7f37"], dumb: ["#d8bf9a", "#a2845e", "#6f5636"],
+  lunar: ["#e3e8f3", "#8190b3", "#56607a"], lunarx: ["#b9b8ff", "#5e5ce6", "#3532a8"], laser: ["#ffb3a8", "#e5484d", "#8f1d22"], orbital: ["#9fd0ff", "#0a84ff", "#0b3d91"] };
+const STORY_INK = { rocket: "#f0c04a", swift: "#ff6961", turbo: "#f5f5f7", standard: "#30d158", dumb: "#c4a57e", lunar: "#c9d2e6", lunarx: "#8e8cff", laser: "#ff6961", orbital: "#64b5ff" };
+const shareable = (m) => !!((m?.route || m?.moon) && !m.flock && !m.lost && !m.recalled && m.km != null && m.deliverAt <= now());
+// a space flight's picture, for the cards (the trip as it ended, in its night sky)
+function spaceCard(m, cssW, cssH, dpr = 3) {
+  const cv = document.createElement("canvas");
+  drawTrip(cv, m.moon, m.moon.k === "laser" ? 1 : 0.985, m.deliverAt, { size: { w: cssW, h: cssH, dpr } });
+  return cv;
+}
 // what goes on the card, in the time where it landed
 function flightFacts(m, withName) {
   const mine = m.from === S.me.id, other = friend(mine ? m.to : m.from), flew = Math.max(1, m.deliverAt - m.sentAt), k = kindOf(m), w = m.wind;
@@ -3702,8 +3739,12 @@ async function postcardCard(m, withName) {
   g.textBaseline = "alphabetic";
   // the flight: round the globe if it was a long one (drawn on the paper's own
   // colour, so its labels and air run out onto it), else a flat map like a photo
-  const round = m.km >= GLOBE_KM;
-  if (round) {
+  const round = !m.moon && m.km >= GLOBE_KM;
+  if (m.moon) {
+    const cv = spaceCard(m, 474, 158, 2), x = 66, y = 452, w = 948, h = 316;
+    g.save(); g.shadowColor = "rgba(60,50,30,.18)"; g.shadowBlur = 30; g.shadowOffsetY = 12; g.fillStyle = "#fff"; rrect(g, x - 14, y - 14, w + 28, h + 28, 28); g.fill(); g.restore();
+    g.save(); rrect(g, x, y, w, h, 16); g.clip(); g.drawImage(cv, x, y, w, h); g.restore();
+  } else if (round) {
     const { cv, frame } = await cardMap(m, "light", true, 420, 420), sc = 300 / (frame.R * 3);
     g.drawImage(cv, 404 - frame.cx * 3 * sc, 470 - frame.cy * 3 * sc, cv.width * sc, cv.height * sc);
   } else {
@@ -3747,7 +3788,7 @@ async function storyCard(m, withName) {
   const F = flightFacts(m, withName), W = 1080, H = 1920, BG = "#111113", ink = STORY_INK[F.k] || STORY_INK.standard;
   const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
   g.fillStyle = BG; g.fillRect(0, 0, W, H);
-  const { cv } = await cardMap(m, "dark", false, 360, 427);
+  const { cv } = m.moon ? { cv: spaceCard(m, 360, 427) } : await cardMap(m, "dark", false, 360, 427);
   g.drawImage(cv, 0, 0, 1080, 1281);
   let gr = g.createLinearGradient(0, 0, 0, 300); gr.addColorStop(0, "rgba(17,17,19,.92)"); gr.addColorStop(1, "rgba(17,17,19,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 300);
   gr = g.createLinearGradient(0, 900, 0, 1290); gr.addColorStop(0, "rgba(17,17,19,0)"); gr.addColorStop(0.5, "rgba(17,17,19,.86)"); gr.addColorStop(1, BG); g.fillStyle = gr; g.fillRect(0, 900, W, 391);
@@ -3821,7 +3862,7 @@ async function shareImage() {
 }
 
 /* ---------- achievements (in the Flight Log) ---------- */
-const BADGE_LOOK = { moonshot: ["moon", "indigo"], first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
+const BADGE_LOOK = { moonshot: ["moon", "indigo"], supermoon: ["moon", "orange"], eclipse: ["moon", "red"], redplanet: ["up", "red"], orbiter: ["globe", "blue"], first: ["bird", "green"], frequent: ["up", "blue"], penpal: ["mail", "indigo"], longhaul: ["dist", "teal"], atlantic: ["map", "blue"],
   world: ["loc", "teal"], rocket: ["bird", "rocket"], tailwind: ["wind", "green"], daredevil: ["skull", "red"], homing: ["homing", "indigo"], flock: ["people", "orange"], fleet: ["bird", "turbo"] , globetrotter: ["globe", "teal"] , stormdodger: ["storm", "indigo"], weathered: ["shield", "gray"], jetstream: ["wind", "teal"], migration: ["blossom", "pink"], summer: ["sun", "yellow"], autumn: ["leaf", "orange"], winter: ["snowflake", "blue"]};
 /* ---------- the passport ----------
    Every country and sea your pigeons have flown over (functions/_passport.js),
@@ -3844,6 +3885,12 @@ const PM_ICON = {
   canyon: `<path d="M2 9h5l2 4h6l2-4h5M2 9v11h20V9M9 13l1 7M15 13l-1 7"/>`,
   wall: `<path d="m2 15 4-2 4 1 4-3 4 1 4-2v5l-4 2-4-1-4 3-4-1-4 2ZM6 13v-2M14 11V9"/>`,
   dunes: `<path d="M2 18c3-4 6-4 9 0s6 4 11-1M2 13c3-3 5-3 7-1M14 12c2-2 5-2 8 0"/>`,
+  // off the Earth (pigeon/space.js): a crater, a flag on the Moon, a rover, a lander, a volcano
+  crater: `<circle cx="12" cy="13" r="7.5"/><path d="M5.5 10.5c2.5 2 10.5 2 13 0M8 18.5c1.5-1.2 6.5-1.2 8 0"/><circle cx="12" cy="4" r="1"/>`,
+  flag: `<path d="M8 21V4M8 4h9l-2 3 2 3H8M3 21h18M15 21c0-2 2-3 3-3"/>`,
+  rover: `<path d="M4 15h16v-4H4ZM7 11V8h6v3M15 8h3M16.5 8V5.5"/><circle cx="7" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>`,
+  lander: `<path d="M8 13h8l2-4H6ZM12 9V5M10 5h4M8 13l-3 6M16 13l3 6M3 19h4M17 19h4"/>`,
+  volcano: `<path d="m2 20 6-11h8l6 11ZM8 9l2 1.5 2-1 2 1.5 2-2M12 6V3"/>`,
 };
 // and each landmark its own drawing (by its id), so Big Ben isn't the Eiffel Tower; the kind's is the fallback
 const pmC = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}"/>`;
@@ -3988,7 +4035,10 @@ function ppStamp(p, kind, code) {
   const fit = (n, w) => (n.length * 9.6 > w ? ` textLength="${w}" lengthAdjust="spacingAndGlyphs"` : "");
   // (the Moon: its disc and a few craters, where a country has its outline)
   const moonMark = (x, y, k) => `<g transform="translate(${x + 50 * k} ${y + 50 * k}) scale(${k * 3})"><circle r="11" class="ps"/><circle cx="-3.5" cy="-3" r="3" class="ps"/><circle cx="4" cy="2" r="2.2" class="ps"/><circle cx="-1.5" cy="5.5" r="1.4" class="ps"/><circle cx="5" cy="-5" r="1" class="ps"/></g>`;
-  const land = (x, y, k) => (p.name === "the Moon" ? moonMark(x, y, k) : sh ? `<path d="${sh}" transform="translate(${x} ${y}) scale(${k})" class="pf"/>` : `<g transform="translate(${x + 50 * k} ${y + 50 * k}) scale(${k * 3})" class="pf">${ppBird}</g>`);
+  // (Mars: a disc with its polar cap; Low Earth Orbit: the Earth with a ring round it)
+  const marsMark = (x, y, k) => `<g transform="translate(${x + 50 * k} ${y + 50 * k}) scale(${k * 3})"><circle r="11" class="ps"/><path d="M-6-9a11 11 0 0 1 12 0Z" class="pf"/><path d="M-9 2c4-2 8 2 12 0s5-1 6 0" class="ps"/></g>`;
+  const orbitMark = (x, y, k) => `<g transform="translate(${x + 50 * k} ${y + 50 * k}) scale(${k * 3})"><circle r="8" class="ps"/><ellipse rx="13" ry="4" transform="rotate(-20)" class="ps"/><circle cx="11" cy="-4" r="1.6" class="pf"/></g>`;
+  const land = (x, y, k) => (p.name === "the Moon" ? moonMark(x, y, k) : p.name === "Mars" ? marsMark(x, y, k) : p.name === "Low Earth Orbit" ? orbitMark(x, y, k) : sh ? `<path d="${sh}" transform="translate(${x} ${y}) scale(${k})" class="pf"/>` : `<g transform="translate(${x + 50 * k} ${y + 50 * k}) scale(${k * 3})" class="pf">${ppBird}</g>`);
   const T = (x, y, cls, txt, w) => `<text x="${x}" y="${y}" class="${cls}"${w ? fit(txt, w) : ""}>${esc(txt)}</text>`;
   const id = `pa${ppHash(p.name + p.at)}`;
   switch (kind) {
@@ -4178,9 +4228,9 @@ function reactsHtml(m, mine) {
 function openReactMenu(anchor, id) {
   const mineNow = (S.reacts.get(S.chat) || []).find((r) => r.msg === id && r.from === S.me.id);
   const cur = mineNow && S.plain.get(mineNow.id)?.r, m = (S.msgs.get(S.chat) || []).find((x) => x.id === id);
-  const flight = m && !m.flying && !m.lost && (m.route || m.flock?.some((x) => x.route));
+  const flight = m && !m.flying && !m.lost && (m.route || m.moon || m.flock?.some((x) => x.route || x.moon));
   openMenu(anchor, [{ label: "Reply", icon: I.reply, act: "reply", id },
-    ...(flight ? [{ label: "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: I.map, act: "map", id }] : [])]);
+    ...(flight ? [{ label: m.moon ? "Show the Trip" : "Show the Flight", sub: [m.km != null && !m.flock ? fmtMiles(m.km) : "", KIND[kindOf(m)].name, m.bird ? m.bird.name : ""].filter(Boolean).join(" · "), icon: m.moon ? I.moon : I.map, act: "map", id }] : [])]);
   if (m) {
     const g = group(S.chat), mine = m.from === S.me.id, bits = [`Sent ${fmtShort(m.sentAt)}`];
     if (!m.flying && !m.lost) bits.push(`${g && mine ? "First landed" : "Landed"} ${fmtShort(g && mine ? Math.min(...(m.flock || [{ deliverAt: m.deliverAt }]).map((x) => x.deliverAt || Infinity)) : m.deliverAt)}`);
@@ -4681,22 +4731,24 @@ function composeState() {
   const f = g ? { id: g.id, turn: g.turn, keyChanged: others(g).some((p) => p.keyChanged) } : friend(S.chat);
   if (!f) return null;
   const t = S.turns.get(f.id) || f.turn;
-  // to, from or across the Moon: lunar pigeons only, any time, straight there
+  // off the Earth: space pigeons only (lunar to the Moon, laser to Mars), any time, straight there
   if (!g && moonChat(f)) {
-    const can = { lunar: (S.me.lunar || 0) > 0, lunarx: (S.me.lunarx || 0) > 0 };
-    return { g, f, t, dumb: null, sched: null, via: null, can, kind: can[S.pick] ? S.pick : LUNAR_KINDS.find((k) => can[k]) || null, moon: true };
+    const ks = kindsFor(f), can = Object.fromEntries(ks.map((k) => [k, (S.me[k] || 0) > 0]));
+    return { g, f, t, dumb: null, sched: null, via: null, can, kind: can[S.pick] ? S.pick : ks.find((k) => can[k]) || null, moon: true, kinds: ks };
   }
   const dumb = dumbText();
   // told when to land: one to one only, and standard pigeons can't wait that long for a turn
   const sched = schedFor(S.chat, dumb), via = viaFor(S.chat, dumb);
-  const can = { standard: !!t.free && !sched, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0, mystery: (S.me.mystery || 0) > 0 && !sched };
+  const can = { standard: !!t.free && !sched, swift: (S.me.swift || 0) > 0, turbo: (S.me.turbo || 0) > 0, rocket: (S.me.rocket || 0) > 0, mystery: (S.me.mystery || 0) > 0 && !sched,
+    // by orbit: one to one, between two places on Earth, now and straight there
+    orbital: !g && !sched && !via && f.lat != null && S.me.lat != null && (S.me.orbital || 0) > 0 };
   // your choice if it can fly now, else the slowest that can
   const kind = dumb != null ? (t.free ? "dumb" : null) : can[S.pick] ? S.pick : KINDS.map(([k]) => k).find((k) => can[k]) || null;
-  return { g, f, t, dumb, sched, via, can, kind, moon: !!g && (!!S.me.moon || others(g).some((p) => p.onMoon)) };
+  return { g, f, t, dumb, sched, via, can, kind, moon: !!g && (!!S.me.moon || others(g).some((p) => p.onMoon)), orbit: !g && f.lat != null && S.me.lat != null };
 }
 // How long a pigeon of this kind takes: to the furthest of a group, or by way of a stopover
 function etaMs(c, k) {
-  if (!c.g && c.moon) return lunarMs(k, endFor(S.me), endFor(c.f), now(), moonSpeed());
+  if (!c.g && (c.moon || k === "orbital")) return spaceMs(k, endFor(S.me), endFor(c.f));
   const sp = mySpeed(k);
   if (c.g) return Math.max(0, ...others(c.g).map((p) => memberMs(p, k)));
   if (c.via) { const p = friend(c.via.id); return flightMs(haversineKm(S.me.lat, S.me.lon, p.lat, p.lon), sp) + HOUR + flightMs(haversineKm(p.lat, p.lon, c.f.lat ?? p.lat, c.f.lon ?? p.lon), sp); }
@@ -4728,7 +4780,11 @@ function renderCompose() {
   let stop = "", blocked = true;
   if (f.keyChanged) stop = "Check the new safety number before sending.";
   else if (S.me.lat == null && !S.me.moon) stop = "Set your location in Account before sending.";
-  else if (!kind && c.moon && !g) stop = `Only a lunar pigeon reaches ${S.me.moon && f.moon ? "across the Moon" : S.me.moon ? "Earth from the Moon" : "the Moon"}, and your lunar lofts are empty. The next one hatches in ${fmtDur(Math.min(S.me.lunarNextAt || Infinity, S.me.lunarxNextAt || Infinity) - now())}.`;
+  else if (!kind && c.moon && !g) {
+    const ks = c.kinds || [], mars = ks.includes("laser"), next = fmtDur(Math.min(...ks.map((k) => S.me[k + "NextAt"] || Infinity)) - now());
+    stop = mars ? `Only a laser pigeon reaches ${worldOf(S.me) === "mars" && worldOf(f) === "mars" ? "across Mars" : "Mars or comes from it"}, and your laser loft is empty. The next one hatches in ${next}.`
+      : `Only a lunar pigeon reaches ${S.me.moon && f.moon ? "across the Moon" : S.me.moon ? "Earth from the Moon" : "the Moon"}, and your lunar lofts are empty. The next one hatches in ${next}.`;
+  }
   else if (!kind && sched) stop = `Scheduled pigeons are swift or faster, and your lofts are empty. The next one hatches in ${hatch()}.`;
   else if (!kind && dumb != null) stop = "Dumb pigeons wait their turn.";
   else if (!kind) stop = `It isn’t your turn, and your lofts are empty. The next pigeon hatches in ${hatch()}.`;
@@ -4740,10 +4796,10 @@ function renderCompose() {
   // its pigeon, at the start of the message: the named one carrying it, or its kind
   // (a moment after a chat opens, the planner's times, so the hint says what How It Flies will)
   clearTimeout(planSoon);
-  if (!g && !via && !sched && kind && KIND[kind] && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP))
+  if (!g && !via && !sched && kind && KIND[kind] && !SPACE_KINDS.includes(kind) && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP))
     planSoon = setTimeout(() => { if (S.chat === f.id && S.view === "chat") routePlanFor(f.id, kind); }, 1200);
   const here = S.me.lat != null || !!S.me.moon;
-  const bd = kind && kind !== "dumb" && !LUNAR_KINDS.includes(kind) ? birdFor() : null, hint = kind && !f.keyChanged && here ? landHint(c, kind) : "Message";
+  const bd = kind && kind !== "dumb" && !SPACE_KINDS.includes(kind) ? birdFor() : null, hint = kind && !f.keyChanged && here ? landHint(c, kind) : "Message";
   pill.hidden = !!f.keyChanged || !here;
   pill.disabled = dumb != null;
   const pk = JSON.stringify([kind, bd?.id, bd?.name, bd?.wear, !!sched, !!via, S.me.skin]);
@@ -4754,7 +4810,7 @@ function renderCompose() {
   pill.setAttribute("aria-label", `${kind ? `${KIND[kind].name} pigeon${bd ? `, carried by ${bd.name}` : ""}${kind === "dumb" ? "" : `. ${hint}`}` : "No pigeon can fly yet"}. How it flies`);
   if ($ta.placeholder !== hint) { $ta.placeholder = hint; if (!$ta.value) fitTa(); }
   // the weather along the way, for a pigeon about to leave now (one to one)
-  const wp = $(".wxplan", $compose), plan = !g && !c.moon && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && kind !== "mystery" && f.lat != null && S.me.lat != null;
+  const wp = $(".wxplan", $compose), plan = !g && !c.moon && !blocked && !S.err && !sched && !via && kind && kind !== "dumb" && kind !== "mystery" && kind !== "orbital" && f.lat != null && S.me.lat != null;
   if (plan) planWx(f.id);
   const adv = plan ? wxAdvice(f, kind) : null, wk = adv ? JSON.stringify([adv, kind]) : "";
   if (wp.dataset.k !== wk) { wp.dataset.k = wk; wp.hidden = !adv; wp.classList.toggle("early", !!adv?.early); wp.innerHTML = adv ? wxPlanHtml(adv, kind) : ""; }
@@ -5317,15 +5373,15 @@ function drawSheet(refresh) {
       if (c.moon && !g) return drawLunarFly(c);
       const turn = g ? "Not your turn" : t.state === "outbound" ? "Yours is still on its way" : t.state === "inbound" ? `${who}’s is on its way` : `${who}’s turn first`;
       const when = (k) => (g ? landHint(c, k).replace(/^Lands/, "lands") : `lands ${atTime(sched ? sched.at : now() + plannedMs(c, k))}`);
-      const style = routeStyle(), mapped = !g && !via && !sched && kind && kind !== "mystery" && f.lat != null && S.me.lat != null;
+      const style = routeStyle(), mapped = !g && !via && !sched && kind && kind !== "mystery" && kind !== "orbital" && f.lat != null && S.me.lat != null;
       const plans = mapped ? routePlanFor(f.id, kind)?.plans : null, plan = plans?.[style];
       // the top: when it lands, how long that is, where to, and the weather on the way
       const landAt = !kind || kind === "mystery" || g ? null : sched ? sched.at : now() + plannedMs(c, kind);
       const big = !kind ? "No pigeon free" : kind === "mystery" ? "Who knows when?" : g ? landHint(c, kind) : `Lands ${atTime(landAt)}`;
       const to = g ? `to ${esc(g.name)} · ${others(g).length + 1} people` : `to ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(plan?.km ?? chatKm(f))}` : ""}`;
-      const adv = !g && kind && kind !== "dumb" && !sched && !via ? wxAdvice(f, kind) : null, wxNow = !g && S.wxPlan.get(f.id)?.d?.now;
+      const adv = !g && kind && kind !== "dumb" && kind !== "orbital" && !sched && !via ? wxAdvice(f, kind) : null, wxNow = !g && S.wxPlan.get(f.id)?.d?.now;
       const sure = landAt ? landRange(landAt, now(), { wind: plan?.wind, legs: plan?.legs, sure: plan?.spread }) : null;          // (how sure that is)
-      const wx = adv?.early ? ["early", I.wind, `${fmtDur(adv.early)} early on a tailwind`] : adv?.late ? ["late", I[(adv.wx && WX[adv.wx.k]?.[1]) || "storm"], `${fmtDur(adv.late)} late: ${adv.wx && WX[adv.wx.k] ? WX[adv.wx.k][0] : "rough weather"}`]
+      const wx = kind === "orbital" ? null : adv?.early ? ["early", I.wind, `${fmtDur(adv.early)} early on a tailwind`] : adv?.late ? ["late", I[(adv.wx && WX[adv.wx.k]?.[1]) || "storm"], `${fmtDur(adv.late)} late: ${adv.wx && WX[adv.wx.k] ? WX[adv.wx.k][0] : "rough weather"}`]
         : wxNow ? ["clear", I.sun, "Clear skies"] : null;
       const hero = `<div class="flyhero">${kind ? pg(kind, S.me.skin) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
         <span class="fht"><b class="fhbig">${esc(big)}</b><span class="flyto">${landAt && !sched && sure ? `likely ${esc(rangeText(sure))} · ` : ""}${landAt ? `in ${esc(fmtDur(landAt - now()))} · ` : ""}${to}</span>
@@ -5342,6 +5398,9 @@ function drawSheet(refresh) {
       const myLeft = S.me.mystery || 0, myNext = S.me.mysteryNextAt;
       const mystery = `<button type="button" class="cell kc" role="radio" aria-checked="${kind === "mystery"}" data-act="pigeon" data-id="mystery"${can.mystery ? "" : " disabled"}>${pg("mystery")}
           <span class="ctext"><span>Mystery</span><span class="csub">${esc(sched ? "Can’t be booked ahead" : myLeft ? "1 a day · any pigeon, any time" : `Used today${myNext ? ` · next in ${fmtDur(myNext - now())}` : ""}`)}</span></span><span class="val">?</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
+      // by orbit: up, round the Earth, and down on the first pass near them (hours, however near or far)
+      const orb = c.orbit ? ((ms) => `<button type="button" class="cell kc k-orbital" role="radio" aria-checked="${kind === "orbital"}" data-act="pigeon" data-id="orbital"${can.orbital ? "" : " disabled"}>${pg("orbital")}
+          <span class="ctext"><span>Orbital</span><span class="csub">${esc(sched || via ? "Straight there, now" : S.me.orbital ? `${S.me.orbital} left · ${when("orbital")}` : `None left${S.me.orbitalNextAt ? ` · next in ${fmtDur(S.me.orbitalNextAt - now())}` : ""}`)}</span></span><span class="val">${fmtDur(ms)}</span><span class="ck" aria-hidden="true">${I.check}</span></button>`)(etaMs(c, "orbital")) : "";
       const bd = kind ? birdFor() : null, busy = (b) => (b.state === "flying" ? "Flying" : b.state === "waiting" ? "Booked" : "Resting");
       const carriers = S.birds.length && kind ? `<div class="ghead">Carried By<button type="button" class="gmore" data-act="birds">Your Pigeons</button></div><div class="carriers chiprail" role="radiogroup" aria-label="Carried by">${S.birds.map((b) =>
         `<button type="button" class="cc" role="radio" aria-checked="${bd?.id === b.id}" data-act="birdset" data-id="${esc(b.id)}"${birdReady(b) ? "" : " disabled"}><span class="ccav" aria-hidden="true">${esc([...b.name][0] || "?")}</span><span><b>${esc(b.name)}</b><small>${birdReady(b) ? esc(b.rank) : busy(b)}</small></span></button>`).join("")}
@@ -5381,10 +5440,12 @@ function drawSheet(refresh) {
       const old = $(".sheet .body", $layer), fresh = !$(".flyhero", $layer), top = old && !fresh ? old.scrollTop : 0;
       const rails = fresh ? [] : [...$layer.querySelectorAll(".sheet .chiprail")].map((r) => r.scrollLeft);
       const was = s.shown || {}, nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) };
-      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}</div>${carriers}${landing}${stop}${route}${way}${sea}
+      const orbNote = kind === "orbital" ? (() => { const o = spaceFlight("orbital", endFor(S.me), endFor(f), now()); return `<div class="gfoot">It lifts off into orbit 250 miles up, goes round the Earth every 92 minutes at 17,000 mph, and comes down on the first pass near ${who}: ${((n) => `${n} lap${n === 1 ? "" : "s"}`)(Math.max(1, Math.round(o.laps)))} this time, then a gliding re-entry. Nearer isn’t quicker.</div>`; })() : "";
+      $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}${orb}</div>${orbNote}${kind === "orbital" ? "" : `${carriers}${landing}${stop}${route}${way}${sea}`}
         ${!carriers && (S.birds.length || S.hall.length) ? `<div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true })}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
-        ${c.moon && g ? `<div class="gfoot">${S.me.moon ? "You’re on the Moon, so every pigeon you send here goes as a lunar pigeon: about 3 days to Earth." : `${esc(others(g).filter((p) => p.onMoon).map((p) => first(p.name)).join(" and "))} ${others(g).filter((p) => p.onMoon).length > 1 ? "are" : "is"} on the Moon: theirs goes as a lunar pigeon, about 3 days.`}</div>` : ""}
+        ${c.moon && g ? `<div class="gfoot">${S.me.moon ? (worldOf(S.me) === "mars" ? "You’re on Mars, so every pigeon you send here goes as a laser pigeon, at the speed of light." : "You’re on the Moon, so every pigeon you send here goes as a lunar pigeon: about 3 days to Earth.")
+          : others(g).filter((p) => p.onMoon).map((p) => `${esc(first(p.name))} is on ${worldOf(p) === "mars" ? "Mars: theirs goes as a laser pigeon, in minutes" : "the Moon: theirs goes as a lunar pigeon, about 3 days"}.`).join(" ")}</div>` : ""}
         ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in ${plan?.risk ? Math.round(1 / plan.risk.p) : style === "safe" && !via ? 200 : 100} is lost on the way${plan?.risk && riskWhy(plan.risk) ? ` (this way: ${esc(riskWhy(plan.risk))})` : ""}.</div>` : ""}`);
       const body = $(".sheet .body", $layer); body.classList.add("flysheet"); if (top) body.scrollTop = top;
       // the chip just tapped gives a little bounce
@@ -5499,12 +5560,12 @@ function drawSheet(refresh) {
       $layer.innerHTML = sheetHtml("", `<div class="profile-head">${avatar(f, "xl", true)}<span class="name">${esc(first(f.name))}</span><span class="sub">@${esc(f.handle)}</span></div>
         <div class="group mt">${cell({ act: "loft", id: f.id, icon: I.bird, tile: "indigo", label: `Visit ${esc(first(f.name))}’s Loft`, sub: "Their pigeons, badges and kit", chev: true })}</div>
         <div class="group mt">
-          ${cell({ icon: f.moon ? I.moon : I.pin, tile: f.moon ? "indigo" : "blue", label: f.moon ? "On the Moon" : "Location", val: esc((f.place || "Not set").replace(/, the Moon$/, "")), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
+          ${cell({ icon: f.moon ? I.moon : I.pin, tile: f.moon ? (worldOf(f) === "mars" ? "red" : "indigo") : "blue", label: f.moon ? `On ${BODIES[worldOf(f)].name}` : "Location", val: esc((f.place || "Not set").replace(/, (the Moon|Mars)$/, "")), sub: f.locAt ? `Updated ${agoText(f.locAt)}` : "" })}
           ${km != null ? cell({ icon: I.dist, tile: "teal", label: "Distance", val: fmtMiles(km) }) : ""}
           ${f.streak && (f.streak.n || f.streak.best >= 2) ? cell({ icon: I.flame, tile: "orange", label: "Flight Streak", val: f.streak.n ? `${f.streak.n} day${f.streak.n === 1 ? "" : "s"}` : "None now",
             sub: [f.streak.n && !f.streak.today ? `Send a pigeon in the next ${esc(streakLeft(f.streak))} to keep it` : "", f.streak.best >= 2 ? `Best: ${f.streak.best} days` : ""].filter(Boolean).join(" · ") }) : ""}
           ${f.seenAt ? cell({ icon: I.clock, tile: "green", label: "Last Online", val: isOnline(f) ? '<span class="on-now">Online now</span>' : fmtSeen(f.seenAt) }) : ""}
-          ${moonChat(f) ? LUNAR_KINDS.map((k) => cell({ icon: I.moon, tile: "indigo", label: `${KIND[k].name} Pigeon`, val: fmtDur(lunarMs(k, endFor(S.me), endFor(f), now(), moonSpeed())) })).join("")
+          ${moonChat(f) ? kindsFor(f).map((k) => cell({ icon: k === "laser" ? I.up : I.moon, tile: k === "laser" ? "red" : "indigo", label: `${KIND[k].name} Pigeon`, val: fmtDur(spaceMs(k, endFor(S.me), endFor(f))) })).join("")
             : km != null ? KINDS.slice().reverse().map(([k, name]) => cell({ icon: I.bird, tile: k, label: `${name} Pigeon`, val: fmtDur(flightMs(km, mySpeed(k))) })).join("") : ""}
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", val: isVerified(f) ? "Verified" : "", chev: true })}
@@ -5654,11 +5715,14 @@ function drawSheet(refresh) {
         </form>
         <div class="gfoot mt">Your friends, and people you’ve sent a friend request to, can see your photo.</div>
         <div class="ghead">Location</div>
-        ${u.moon ? `<div class="group">
-          ${cell({ icon: I.moon, tile: "indigo", label: "On the Moon", val: esc((u.place || "").replace(/, the Moon$/, "")), sub: u.locAt ? `Landed ${agoText(u.locAt)}` : "" })}
-          ${cell({ act: "moonpick", icon: I.pin, tile: "indigo", label: "Move on the Moon", chev: true })}
+        ${u.moon ? ((w, d) => `<div class="group">
+          ${cell({ icon: w === "mars" ? I.up : I.moon, tile: w === "mars" ? "red" : "indigo", label: `On ${BODIES[w].name}`, val: esc((u.place || "").replace(/, (the Moon|Mars)$/, "")), sub: d })}
+          ${cell({ act: "moonpick", id: w, icon: I.pin, tile: w === "mars" ? "red" : "indigo", label: `Move on ${BODIES[w].name}`, chev: true })}
+          ${cell({ act: "moonpick", id: w === "mars" ? "moon" : "mars", icon: w === "mars" ? I.moon : I.up, tile: w === "mars" ? "indigo" : "red", label: w === "mars" ? "Go to the Moon" : "Go to Mars", chev: true })}
         </div>
-        <div class="gfoot">Only lunar pigeons reach you here. Your spot on Earth isn’t kept while you’re away.</div>
+        <div class="gfoot">Only ${w === "mars" ? "laser" : "lunar"} pigeons reach you here. Your spot on Earth isn’t kept while you’re away.</div>`)(worldOf(u), worldOf(u) === "mars"
+          ? ((c) => `${c.hm} there · ${c.day ? "sunset" : "sunrise"} in ${fmtDur(c.next - now())}`)(marsClock(u.moon.lon, now()))
+          : ((d) => `${d.day ? "Daytime" : "Night"} · ${d.day ? "sunset" : "sunrise"} in ${fmtDur(d.next - now())} · ${earthPhase(now()).name} in the sky`)(lunarDay(u.moon.lat, u.moon.lon, now()))) + `
         <div class="ghead">Back to Earth</div>
         <div class="group">
           ${cell({ act: "locate", icon: I.loc, tile: "blue", label: "Use Current Location", cls: "action" })}
@@ -5670,7 +5734,8 @@ function drawSheet(refresh) {
           <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City</span></span>${chevSm}
             <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
           ${toggleCell({ act: "autoloc", icon: I.loc, tile: "green", label: "Update Automatically", sub: "Every minute while InFlight is open", on: u.autoLocation })}
-          ${cell({ act: "moonpick", icon: I.moon, tile: "indigo", label: "Go to the Moon", sub: "Only lunar pigeons fly there", chev: true })}
+          ${cell({ act: "moonpick", id: "moon", icon: I.moon, tile: "indigo", label: "Go to the Moon", sub: "Only lunar pigeons fly there", chev: true })}
+          ${cell({ act: "moonpick", id: "mars", icon: I.up, tile: "red", label: "Go to Mars", sub: "Only laser pigeons reach it, at the speed of light", chev: true })}
         </div>`}
         <div class="gfoot">${u.moon ? "Choosing somewhere on Earth brings you home." : "Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile."}</div>
         <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
@@ -5684,20 +5749,25 @@ function drawSheet(refresh) {
       return;
     }
     case "moonpick": {
-      // a spot on the Moon: tap the map, or pick a named place; one side at a time
-      const side = s.side || (S.me.moon && farSide(S.me.moon.lon) ? "far" : "near"), mark = s.mark || S.me.moon || null;
-      const name = mark ? siteName(mark.lat, mark.lon) : null, here = (x) => (side === "far") === farSide(x[2]);
+      // a spot on the Moon (near side or far) or Mars (east or west): tap the map, or pick a named place
+      const body = s.body || "moon", mars = body === "mars", mine = worldOf(S.me) === body ? S.me.moon : null;
+      const side = s.side || (mars ? (mine && mine.lon < 0 ? "west" : "east") : mine && farSide(mine.lon) ? "far" : "near"), mark = s.mark || mine || null;
+      const name = mark ? siteName(mark.lat, mark.lon, body) : null, here = (x) => (mars ? (side === "west") === (x[2] < 0) : (side === "far") === farSide(x[2]));
+      const SITES = BODIES[body].sites, world = BODIES[body].name;
       const chip = (act, id, on, b, small) => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}" data-id="${esc(id)}"><span><b>${esc(b)}</b><small>${esc(small)}</small></span></button>`;
-      const where = mark ? `${Math.abs(mark.lat).toFixed(1)}° ${mark.lat >= 0 ? "N" : "S"}, ${Math.abs(mark.lon).toFixed(1)}° ${mark.lon >= 0 ? "E" : "W"} · ${farSide(mark.lon) ? "far side: Earth is never in the sky" : "near side: Earth hangs in the sky"}` : "";
-      $layer.innerHTML = sheetHtml("On the Moon", `<div class="mpwrap"><canvas class="moonpick" role="img" aria-label="Map of the Moon’s ${side} side. Tap where you’d like to be."></canvas>
-          <div class="mpside carriers" role="radiogroup" aria-label="Side">${chip("moonside", "near", side === "near", "Near Side", "Faces Earth")}${chip("moonside", "far", side === "far", "Far Side", "Faces away")}</div></div>
-        <div class="mpsel" aria-live="polite">${mark ? `<b>${esc(name)}</b><small>${esc(where)}</small>` : `<b>Tap the Moon</b><small>or choose a place below</small>`}</div>
-        <div class="carriers chiprail" role="radiogroup" aria-label="Places">${SITES.filter(here).map((x) => chip("moonsite", x[0], name === x[0], x[0], ABOUT[x[0]] || (x[0].startsWith("Sea") || x[0].startsWith("Ocean") ? "A dark lava plain" : "A crater"))).join("")}</div>
-        <div class="sharego"><button type="button" class="btn wide" data-act="moonland"${mark ? "" : " disabled"}>${I.moon}${S.me.moon ? "Move Here" : "Land Here"}</button></div>
-        <div class="gfoot">Your friends see you on the Moon, at this spot. While you’re there your spot on Earth isn’t kept, and Update Automatically is off. Only lunar pigeons reach you: about 3 days from Earth, or a day by Lunar Express.</div>`,
+      const ll = mark ? `${Math.abs(mark.lat).toFixed(1)}° ${mark.lat >= 0 ? "N" : "S"}, ${Math.abs(mark.lon).toFixed(1)}° ${mark.lon >= 0 ? "E" : "W"}` : "";
+      const where = !mark ? "" : mars ? `${ll} · ${marsClock(mark.lon, now()).hm} there now` : `${ll} · ${farSide(mark.lon) ? "far side: Earth is never in the sky" : "near side: Earth hangs in the sky"}`;
+      const sides = mars ? chip("moonside", "east", side === "east", "East", "Syrtis, Jezero, Hellas") + chip("moonside", "west", side === "west", "West", "Olympus, Valles")
+        : chip("moonside", "near", side === "near", "Near Side", "Faces Earth") + chip("moonside", "far", side === "far", "Far Side", "Faces away");
+      $layer.innerHTML = sheetHtml(`On ${world}`, `<div class="mpwrap"><canvas class="moonpick" role="img" aria-label="Map of ${world}, ${side} side. Tap where you’d like to be."></canvas>
+          <div class="mpside carriers" role="radiogroup" aria-label="Side">${sides}</div></div>
+        <div class="mpsel" aria-live="polite">${mark ? `<b>${esc(name)}</b><small>${esc(where)}</small>` : `<b>Tap ${esc(world)}</b><small>or choose a place below</small>`}</div>
+        <div class="carriers chiprail" role="radiogroup" aria-label="Places">${SITES.filter(here).map((x) => chip("moonsite", x[0], name === x[0], x[0], ABOUT[x[0]] || (/^(Sea|Ocean)/.test(x[0]) ? "A dark lava plain" : mars ? "A plain" : "A crater"))).join("")}</div>
+        <div class="sharego"><button type="button" class="btn wide" data-act="moonland"${mark ? "" : " disabled"}>${mars ? I.up : I.moon}${mine ? "Move Here" : "Land Here"}</button></div>
+        <div class="gfoot">Your friends see you on ${esc(world)}, at this spot. While you’re there your spot on Earth isn’t kept, and Update Automatically is off. ${mars ? "Only laser pigeons reach you: at the speed of light, 3 to 22 minutes from Earth as the planets move." : "Only lunar pigeons reach you: about 3 days from Earth, or a day by Lunar Express."}</div>`,
         { left: { label: "Back", act: "profile" }, right: { label: "Close", act: "close" } });
       const cv = $(".moonpick", $layer);
-      s.view = drawMoonPick(cv, { side, mark, focus: name });
+      s.view = drawPick(cv, { body, side, mark, focus: name });
       cv.addEventListener("click", (e) => {
         const r = cv.getBoundingClientRect(), p = pickAt(s.view, e.clientX - r.left, e.clientY - r.top); if (!p) return;
         s.mark = p; haptic("tick"); renderSheet();
@@ -5713,29 +5783,33 @@ function drawSheet(refresh) {
       return;
   }
 }
-// How It Flies, to, from or across the Moon: the two lunar pigeons, how far away the Moon is
-// today (its trip is as long as that), and what it does on the way
+// How It Flies off the Earth: the space pigeons for it (two lunar ones to the Moon, a laser one to Mars),
+// how far away it is today (its trip is as long as that), and what it does on the way
 function drawLunarFly(c) {
-  const { f, kind, can } = c, who = esc(first(f.name)), a = endFor(S.me), b = endFor(f), t = now();
-  const surface = a?.b === "moon" && b?.b === "moon", km = surface ? lunarKm(a.lat, a.lon, b.lat, b.lon) : moonKm(t), ph = moonPhase(t);
-  const landAt = kind ? t + etaMs(c, kind) : null, most = Math.max(...LUNAR_KINDS.map((k) => etaMs(c, k)));
-  const where = surface ? "across the Moon" : b?.b === "moon" ? `on the Moon` : `in ${esc(f.place || "Earth")}`;
+  const { f, kind, can } = c, ks = c.kinds || [], who = esc(first(f.name)), a = endFor(S.me), b = endFor(f), t = now();
+  const mars = ks.includes("laser"), same = a?.b === b?.b, ph = moonPhase(t);
+  const km = same ? surfaceKm(a.b, a, b) : mars ? marsKm(t) : moonKm(t);
+  const landAt = kind ? t + etaMs(c, kind) : null, most = Math.max(...ks.map((k) => etaMs(c, k)));
+  const where = same ? `across ${BODIES[a.b].name}` : b?.b === "earth" ? `in ${esc(f.place || "Earth")}` : `on ${BODIES[b.b].name}`;
+  const chip = mars ? (same ? "By an orbiter overhead" : `Light takes ${fmtDur(lightMs(km))} to cross`) : same ? "No air, no wind, no weather" : `${ph.name} · ${nearFar(km) ? nearFar(km)[0].toUpperCase() + nearFar(km).slice(1) : "The Moon today"}`;
   const hero = `<div class="flyhero">${kind ? pg(kind) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
-    <span class="fht"><b class="fhbig">${kind ? `Lands ${esc(atTime(landAt))}` : "No lunar pigeon free"}</b><span class="flyto">${landAt ? `in ${esc(fmtDur(landAt - t))} · ` : ""}to ${who} ${where} · ${fmtMiles(km)}</span>
-    <span class="fhwx clear">${I.moon}${surface ? "No air, no wind, no weather" : esc(`${ph.name} · ${nearFar(km) ? nearFar(km)[0].toUpperCase() + nearFar(km).slice(1) : "The Moon today"}`)}</span></span></div>`;
-  const kinds = LUNAR_KINDS.map((k) => {
+    <span class="fht"><b class="fhbig">${kind ? `Lands ${esc(atTime(landAt))}` : "No space pigeon free"}</b><span class="flyto">${landAt ? `in ${esc(fmtDur(landAt - t))} · ` : ""}to ${who} ${where} · ${fmtMiles(km)}</span>
+    <span class="fhwx clear">${mars ? I.up : I.moon}${esc(chip)}</span></span></div>`;
+  const kinds = ks.map((k) => {
     const left = S.me[k] || 0, next = S.me[k + "NextAt"], ms = etaMs(c, k);
     const sub = left ? `${left} left · lands ${atTime(t + ms)}` : `None left${next ? ` · next in ${fmtDur(next - t)}` : ""}`;
     return `<button type="button" class="cell kc k-${k}" role="radio" aria-checked="${k === kind}" data-act="pigeon" data-id="${k}"${can[k] ? "" : " disabled"}>${pg(k)}
       <span class="ctext"><span>${KIND[k].name}</span><span class="csub">${esc(sub)}</span><i class="kdur" data-w="${(ms / most).toFixed(3)}"></i></span><span class="val">${fmtDur(ms)}</span><span class="ck" aria-hidden="true">${I.check}</span></button>`;
   }).join("");
-  const how = surface
-    ? `There’s no air on the Moon to fly in, so it bounds across the surface in the low gravity, straight there.`
+  const how = mars
+    ? (same ? "There’s no seeing across a planet, so it goes up to an orbiter overhead and back down: there in under a second."
+      : `A laser pigeon is a pulse of light: it crosses the ${fmtMiles(km)} between Earth and Mars in ${fmtDur(lightMs(km))}. As the planets go round the Sun that’s anything from 3 to 22 minutes.`)
+    : same ? "There’s no air on the Moon to fly in, so it bounds across the surface in the low gravity, straight there."
     : `${b?.b === "moon" ? "It lifts off from Earth" : "It lifts off from the Moon"} and coasts the ${fmtMiles(km)} between, slowing as ${b?.b === "moon" ? "Earth’s pull holds it back, then speeding up as the Moon’s takes over" : "it climbs out of the Moon’s pull, then falling faster and faster towards Earth"}. The Moon swings between about 221,000 and 252,000 miles away over a month, so the trip is longer or shorter with it.`;
   const fresh = !$(".flyhero", $layer);
   $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}</div>
-    <div class="gfoot">Only lunar pigeons reach ${surface ? "across the Moon" : "the Moon or leave it"}. They fly any time, straight there: no stopovers, no booking ahead and no weather. ${esc(how)}</div>
-    ${S.me.risky ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost in space.</div>` : ""}`);
+    <div class="gfoot">Only ${mars ? "laser pigeons reach Mars or leave it" : `lunar pigeons reach ${same ? "across the Moon" : "the Moon or leave it"}`}. They go any time, straight there: no stopovers, no booking ahead and no weather. ${esc(how)}</div>
+    ${S.me.risky && !mars ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost in space.</div>` : ""}`);
   const body = $(".sheet .body", $layer); body.classList.add("flysheet"); body.classList.toggle("enter", fresh);
   flyBits(body, null);
 }
@@ -5811,31 +5885,46 @@ function moonOf(m) {
   return { mn: x.moon, sentAt: m.sentAt, deliverAt: x.deliverAt, lost: x.lost, lostAt: x.lostAt, to: x.to };
 }
 const MOON_ICON = { up: "up", globe: "globe", dot: "dot", dist: "dist", moon: "moon", check: "check", pin: "pin", fire: "fire" };
+const TRIP_LABEL = { surface: "The pigeon bounding across the Moon", trip: "The pigeon on its way between the Earth and the Moon", laser: "A laser pigeon: a pulse of light between the worlds", orbit: "The pigeon’s path round the Earth in orbit" };
 function drawMoonFlight(s, m) {
   const o = moonOf(m), mine = m.from === S.me.id, g = m.gid ? group(m.gid) : null;
   const other = g ? (mine ? member(g, o.to) : member(g, m.from)) : friend(mine ? m.to : m.from);
   const nm = (p) => (p?.id === S.me.id ? "You" : esc(first(p?.name || "Someone")));
   const flying = o.deliverAt > now() && !o.lost;
   if (!$(".moonsky", $layer)) {
-    $layer.innerHTML = sheetHtml(flying ? "Pigeon in Flight" : "The Flight", `<canvas class="moonsky" role="img" aria-label="${esc(o.mn.k === "surface" ? "The pigeon bounding across the Moon" : "The pigeon on its way between the Earth and the Moon")}"></canvas>
+    $layer.innerHTML = sheetHtml(flying ? "Pigeon in Flight" : "The Flight", `<canvas class="moonsky" role="img" aria-label="${esc(TRIP_LABEL[o.mn.k] || TRIP_LABEL.trip)}"></canvas>
       <div class="mooncard"><div class="mchead">${pg(kindOf(m))}<span class="mct"><b>${mine ? `To ${nm(other)}` : `From ${nm(other)}`}</b><small class="mcwhere"></small></span><span class="mceta"></span></div>
-      <div class="mcnow"></div><div class="mcbar" aria-hidden="true"><i></i></div><ol class="mcsteps"></ol></div>`, { flush: true });
+      <div class="mcnow"></div><div class="mcbar" aria-hidden="true"><i></i></div>
+      <div class="mcplay"><input type="range" class="mcreplay" min="0" max="1000" step="1" aria-label="Replay the trip"><button type="button" class="mclive" data-act="moonlive">Live</button></div>
+      <ol class="mcsteps"></ol>
+      <div class="mcshare" hidden><button type="button" class="btn wide plain" data-act="shareflight" data-id="${esc(m.id)}">${I.share}Share Flight</button></div></div>`, { flush: true });
     $(".sheet .body", $layer).classList.add("moonbody");
+    // scrub through the trip: the picture and where it was then (Live goes back to now)
+    $(".mcreplay", $layer).addEventListener("input", (e) => { S.moonReplay = { id: m.id, f: Number(e.target.value) / 1000 }; tickMoon(m); });
   }
   tickMoon(m);
 }
 function tickMoon(m) {
   const cv = $(".moonsky", $layer); if (!cv) return;
-  const o = moonOf(m), t = now(), f = Math.max(0, Math.min(1, ((o.lost ? Math.min(t, o.lostAt || t) : t) - o.sentAt) / (o.deliverAt - o.sentAt)));
-  drawTrip(cv, o.mn, f, t, { lost: o.lost });
-  const card = $(".mooncard", $layer), place = (e) => (e?.place ? esc(o.mn.k === "surface" ? e.place.replace(/, the Moon$/, "") : e.place) : e?.b === "moon" ? "the Moon" : "Earth");
+  const o = moonOf(m), now0 = now(), end = o.lost ? Math.min(now0, o.lostAt || now0) : now0;
+  const live = Math.max(0, Math.min(1, (end - o.sentAt) / (o.deliverAt - o.sentAt)));
+  // replaying: any moment up to now (or the whole trip, once it's landed)
+  const rp = S.moonReplay?.id === m.id ? Math.min(live, S.moonReplay.f) : null, f = rp ?? live, t = rp == null ? now0 : o.sentAt + f * (o.deliverAt - o.sentAt);
+  drawTrip(cv, o.mn, f, t, { lost: o.lost && rp == null });
+  const card = $(".mooncard", $layer), place = (e) => (e?.place ? esc(o.mn.k === "surface" || (o.mn.k === "laser" && o.mn.relay) ? e.place.replace(/, (the Moon|Mars)$/, "") : e.place) : e?.b === "moon" ? "the Moon" : e?.b === "mars" ? "Mars" : "Earth");
   $(".mcwhere", card).innerHTML = `${place(o.mn.from)} to ${place(o.mn.to)}`;
-  const eta = $(".mceta", card), landed = !o.lost && t >= o.deliverAt;
-  eta.innerHTML = o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.deliverAt - t))}</b><small>lands ${esc(atShort(o.deliverAt))}</small>`;
+  const eta = $(".mceta", card), landed = !o.lost && now0 >= o.deliverAt;
+  eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.deliverAt - now0))}</b><small>lands ${esc(atShort(o.deliverAt))}</small>`;
   const nowEl = $(".mcnow", card);
-  nowEl.textContent = o.lost ? (o.mn.to.b === "earth" ? "It burnt up on the way home: Pigeon Death." : "Lost in space: Pigeon Death.") : landed ? `${o.mn.k === "surface" ? "Bounded" : "Flew"} ${fmtMiles(Number(m.km || 0))}` : moonNow(o.mn, o.sentAt, o.deliverAt, t).line;
+  nowEl.textContent = rp != null ? spaceNow(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth).line
+    : o.lost ? (o.mn.to.b === "earth" ? "It burnt up on the way home: Pigeon Death." : "Lost in space: Pigeon Death.")
+    : landed ? (o.mn.k === "laser" ? `Crossed ${fmtMiles(Number(m.km || o.mn.dist || 0))} at the speed of light` : `${o.mn.k === "surface" ? "Bounded" : "Flew"} ${fmtMiles(Number(m.km || 0))}`)
+    : spaceNow(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth).line;
   $(".mcbar i", card).style.width = `${(f * 100).toFixed(2)}%`;
-  const steps = moonMoments(o.mn, o.sentAt, o.deliverAt, t), key = steps.map((x) => +x.done).join("") + (o.lost ? "l" : "");
+  const slider = $(".mcreplay", card); if (document.activeElement !== slider) slider.value = String(Math.round(f * 1000));
+  $(".mclive", card).hidden = rp == null;
+  $(".mcshare", card).hidden = !(rp == null && shareable(m));
+  const steps = spaceMoments(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth), key = steps.map((x) => +x.done).join("") + (o.lost ? "l" : "");
   const ol = $(".mcsteps", card);
   if (ol.dataset.k !== key) {
     ol.dataset.k = key;
@@ -6169,6 +6258,7 @@ function airCard(r) {
   return airFill(el, r);
 }
 // what a card says (names arrive with the sync; a rerouted pigeon lands at a new time)
+const spaceSub = (mn, from, at) => spaceNow(mn, from, at, now(), whereOnEarth).line.replace(/ · (\d[\d,]* mph|at the speed of light)$/, "").replace(/^Over /, "over ");
 function airFill(el, r) {
   const who = r.label.split(" · ")[0], wx = wxSay(r, true);
   el.dataset.at = r.deliverAt; el.dataset.from = r.sentAt;
@@ -6177,7 +6267,9 @@ function airFill(el, r) {
   const sub = $(".asub", el);
   sub.className = `asub${wx ? (r.delay > 0 ? " late" : " early") : ""}`;
   // yours: when it lands (and where, in a group); theirs: sealed till then
-  sub.innerHTML = wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atShort(r.deliverAt))}`;
+  // (out in space: where it is instead, "142,000 mi from Earth", "over France · lap 3")
+  el._space = r.moon || null; el.classList.toggle("space", !!r.moon);
+  sub.innerHTML = r.moon ? `${r.out ? "" : I.lock}${esc(spaceSub(r.moon, +el.dataset.from, +el.dataset.at))}` : wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atShort(r.deliverAt))}`;
   return el;
 }
 // One card per chat: a group's pigeons, coming and going, share one card.
@@ -6317,6 +6409,7 @@ function airTick() {
     if (at <= t) { airLand(c); continue; }
     n++;
     $(".acd", c).textContent = airTime(at - t);
+    if (c._space) { const sub = $(".asub", c), v = spaceSub(c._space, from, at); if (sub.textContent !== v) sub.lastChild ? (sub.lastChild.textContent = v) : (sub.textContent = v); }
     c.classList.toggle("soon", at - t < 10 * MIN);
     c.classList.toggle("final", at - t < MIN);
   }
@@ -6964,13 +7057,14 @@ async function onClick1(e, t) {
     case "shipset": S.flyTap = t; S.noShip = id === "fly" ? S.chat : null; haptic("tick"); renderSheet(); return renderCompose();
     case "unschedule": S.sched = null; S.sheet = null; renderSheet(); return renderCompose();
     case "autoloc": return setAutoLocation(!S.me.autoLocation, t);
-    case "moonpick": haptic("tick"); S.sheet = { type: "moonpick" }; return renderSheet();
+    case "moonpick": haptic("tick"); S.sheet = { type: "moonpick", body: id === "mars" ? "mars" : "moon" }; return renderSheet();
     case "moonside": if (S.sheet?.type === "moonpick") { S.sheet.side = id; renderSheet(); } return;
-    case "moonsite": { const x = SITES.find((y) => y[0] === id); if (x && S.sheet?.type === "moonpick") { S.sheet.mark = { lat: x[1], lon: x[2] }; renderSheet(); } return; }
+    case "moonsite": { const x = BODIES[S.sheet?.body || "moon"].sites.find((y) => y[0] === id); if (x && S.sheet?.type === "moonpick") { S.sheet.mark = { lat: x[1], lon: x[2] }; renderSheet(); } return; }
+    case "moonlive": S.moonReplay = null; return tickMap();
     case "moonland": {
-      const mk = S.sheet?.mark || S.me.moon; if (!mk) return;
+      const body = S.sheet?.body || "moon", mk = S.sheet?.mark || (worldOf(S.me) === body ? S.me.moon : null); if (!mk) return;
       return busyBtn(t, "Landing…", async () => {
-        try { const r = await api("me", { method: "PATCH", body: { moon: { lat: mk.lat, lon: mk.lon } } }); S.me = r.me; stopLocWatch(); haptic("success"); toast(`You’re on the Moon: ${esc(r.me.place.replace(/, the Moon$/, ""))}.`); S.sheet = { type: "profile" }; render(); renderSheet(); return true; }
+        try { const r = await api("me", { method: "PATCH", body: { moon: { lat: mk.lat, lon: mk.lon, body } } }); S.me = r.me; stopLocWatch(); haptic("success"); toast(`You’re on ${BODIES[body].name}: ${esc(r.me.place.replace(/, (the Moon|Mars)$/, ""))}.`); S.sheet = { type: "profile" }; render(); renderSheet(); return true; }
         catch (err) { toast(esc(err.message)); return false; }
       });
     }

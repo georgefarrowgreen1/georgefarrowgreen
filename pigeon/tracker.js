@@ -157,7 +157,7 @@ function start() {
     // today, as totals
     // the Moon's: only how many (off the map: they're in space)
     $(".tk-moon").hidden = !data?.moon; $(".tk-moonn").textContent = (data?.moon || 0).toLocaleString("en-GB");
-    $(".tk-moonl").textContent = data?.moon === 1 ? "on its way to or from the Moon" : "on their way to or from the Moon";
+    $(".tk-moonl").textContent = "out in space: to the Moon, Mars or round the Earth";
     const td = data?.today;
     if (td) {
       const mi = Math.round((td.km * 0.621371) / 10) * 10;

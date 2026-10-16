@@ -27,7 +27,7 @@ import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
-import { cleanMoon, endOf, isLunar, lunarFlight, LUNAR, moonView } from "../../_moon.js";
+import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
 
@@ -38,9 +38,9 @@ const MAX_CT = 70000;                 // an encrypted scroll (2,000 characters o
 const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 
 function meView(u, t) {
-  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t), ln = loft(u, "lunar", t), lx = loft(u, "lunarx", t);
+  const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t), ln = loft(u, "lunar", t), lx = loft(u, "lunarx", t), lz = loft(u, "laser", t), ob = loft(u, "orbital", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, lunar: ln.count, lunarNextAt: ln.nextAt, lunarx: lx.count, lunarxNextAt: lx.nextAt, moon: moonView(u), avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, lunar: ln.count, lunarNextAt: ln.nextAt, lunarx: lx.count, lunarxNextAt: lx.nextAt, laser: lz.count, laserNextAt: lz.nextAt, orbital: ob.count, orbitalNextAt: ob.nextAt, moon: moonView(u), avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
@@ -332,7 +332,7 @@ async function updateMe({ request, env, waitUntil }) {
   if (b.moon != null && b.lat === undefined) {
     const mn = cleanMoon(b.moon);
     await limit(env, "move:" + u.id, 30, 15 * 60e3);
-    await D.prepare("UPDATE pg_users SET moon = ?, lat = NULL, lon = NULL, place = ?, auto_loc = 0, loc_at = ? WHERE id = ?").bind(JSON.stringify({ lat: mn.lat, lon: mn.lon }), mn.place, t, u.id).run();
+    await D.prepare("UPDATE pg_users SET moon = ?, lat = NULL, lon = NULL, place = ?, auto_loc = 0, loc_at = ? WHERE id = ?").bind(JSON.stringify(mn.b === "mars" ? { b: "mars", lat: mn.lat, lon: mn.lon } : { lat: mn.lat, lon: mn.lon }), mn.place, t, u.id).run();
   }
   if (b.lat !== undefined) {
     if (u.moon) await D.prepare("UPDATE pg_users SET moon = NULL WHERE id = ?").bind(u.id).run();
@@ -792,9 +792,9 @@ async function sendMessage({ request, env, waitUntil }) {
   if (u.lat == null && !u.moon) throw new HttpError(409, "Set your roost in the Roost tab before sending pigeons.");
   if (!(await areFriends(D, u.id, to))) throw new HttpError(403, "You can only send pigeons to your flock.");
   const r = await D.prepare("SELECT lat, lon, place, moon FROM pg_users WHERE id = ?").bind(to).first();
-  // to, from or across the Moon: only a lunar pigeon goes, and it flies none of the Earth's ways
-  if (u.moon || r?.moon) return sendLunar({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta });
-  if (isLunar(meta.pigeon)) throw new HttpError(409, "A lunar pigeon only flies to or from the Moon.");
+  // off the Earth (or round it, by orbit): only a space pigeon goes, and it flies none of the Earth's ways
+  if (u.moon || r?.moon || meta.pigeon === "orbital") return sendSpace({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta });
+  if (isSpace(meta.pigeon)) throw new HttpError(409, "A lunar pigeon only flies to or from the Moon.");
 
   // Standard pigeons are free but only fly when it's your turn. Swift (2×),
   // turbo (3×) and rocket (9×) fly any time, and each one sent leaves the loft.
@@ -901,26 +901,29 @@ async function sendMessage({ request, env, waitUntil }) {
   return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), ...(me ? { me: meView(me, t) } : {}) });
 }
 
-// A pigeon to, from or on the Moon (functions/_moon.js): a lunar pigeon from its loft, timed by
-// how far away the Moon is today (or, across the Moon, how far it bounds). No stopovers, no
-// booking ahead, no named pigeons (they're Earth birds), and none of the Earth's routes or weather.
-async function sendLunar({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }) {
-  const kind = String(meta.pigeon || "");
-  if (!isLunar(kind)) throw new HttpError(409, "Only a lunar pigeon can fly to or from the Moon.");
-  if (meta.landAt != null) throw new HttpError(409, "A lunar pigeon can’t be booked to land at a time.");
-  if (meta.via != null) throw new HttpError(409, "A lunar pigeon can’t stop over on the way.");
-  const from = endOf(u), dest = r && endOf(r);
+// A space pigeon (functions/_moon.js): lunar to, from or across the Moon, laser to or from Mars,
+// orbital round the Earth; from its own loft, timed by where the Moon or Mars is today (or the
+// orbit's passes). No stopovers, no booking ahead, no named pigeons (they're Earth birds), and none
+// of the Earth's routes or weather.
+const SPACE_ONLY = { laser: "Only a laser pigeon reaches Mars, or comes from it.", lunar: "Only a lunar pigeon can fly to or from the Moon." };
+async function sendSpace({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }) {
+  const kind = String(meta.pigeon || ""), from = endOf(u), dest = r && endOf(r);
   if (!from || !dest) throw new HttpError(409, "They haven’t set where they are yet.");
-  const risky = u.risky ? 1 : 0, f = lunarFlight(kind, from, dest, t, risky ? RISKY_SPEED : 1), deliver = t + f.ms;
+  const can = spaceKinds(from, dest) || ["orbital"];
+  if (!can.includes(kind)) throw new HttpError(409, SPACE_ONLY[can[0]] || "An orbital pigeon only flies between two places on Earth.");
+  if (meta.landAt != null) throw new HttpError(409, `A ${SPACE_NAME[kind]} pigeon can’t be booked to land at a time.`);
+  if (meta.via != null) throw new HttpError(409, `A ${SPACE_NAME[kind]} pigeon can’t stop over on the way.`);
+  // (Pigeon Death's speed is for flying: light and orbits don't hurry)
+  const risky = u.risky ? 1 : 0, f = spaceFlight(kind, from, dest, t, risky && kind.startsWith("lunar") ? RISKY_SPEED : 1), deliver = t + f.ms;
   const p = LUNAR_LOFTS[kind], l = loft(u, kind, t);
-  if (l.count <= 0) throw new HttpError(409, `No ${LUNAR[kind].name} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
+  if (l.count <= 0) throw new HttpError(409, `No ${SPACE_NAME[kind]} pigeons left. The next one hatches in ${waitText(l.nextAt - t)}.`);
   const [n, at] = l.count >= p.max ? [l.count - 1, t] : [l.count - 1, l.at + l.hatched * p.every];
   const took = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(n, at, u.id, u[p.col], u[p.atCol]).run();
   if (!took.meta.changes) throw new HttpError(409, "Another pigeon just left. Try again.");
   // Pigeon Death: 1 in 100 is lost in space (or, from the Moon, burns up coming home)
   const roll = crypto.getRandomValues(new Uint32Array(2));
   const lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * f.ms) : null;
-  const moon = JSON.stringify({ k: f.k, from, to: dest, dist: f.dist });
+  const { km: _km, ms: _ms, ...way } = f, moon = JSON.stringify({ ...way, from, to: dest });
   try {
     await D.batch([claimId(D, id, "m", t), D.prepare(`INSERT INTO pg_msgs (id, sender, recipient, ct, photo, photo_size, swift, pigeon, risky, lost_at, km, sent_at, deliver_at, expires_at, from_place, to_place, skin, moon)
       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, u.id, to, ct, photo ? 1 : 0, photo ? photo.size : null, kind, risky, lostAt, f.km, t, deliver,
@@ -938,7 +941,7 @@ async function sendLunar({ env, waitUntil, D, u, to, r, t, id, ct, photo, meta }
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));
-  waitUntil(pigeonSent(env, u, to, deliver, LUNAR[kind].name).catch(() => {}));
+  waitUntil(pigeonSent(env, u, to, deliver, SPACE_NAME[kind]).catch(() => {}));
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ message: msgView(u.id, m, t), streak: await streakBetween(D, u.id, to, t).catch(() => null), me: meView(me, t) });
 }

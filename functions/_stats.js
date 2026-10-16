@@ -6,6 +6,7 @@ import { stampPassports, passportFor } from "./_passport.js";
 import { postmarksFor } from "./_landmarks.js";
 import { SEASONS, SEASON_GOAL, seasonAt, seasonCounts, seasonOpen, nextStart } from "./_seasons.js";
 import { json, db, requireUser } from "./_pigeon.js";
+import { SUPERMOON_KM, eclipseBetween } from "../pigeon/space.js";
 
 // Rare pigeons: a look for your pigeons, each unlocked by an achievement.
 // Only the look changes; the colour still says what kind it is.
@@ -47,15 +48,16 @@ export async function logFor(D, uid, t) {
   const u = { id: uid };
   // one row per pigeon you've sent: one to one, and each of your group pigeons
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
   const received = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
       (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
   // (the Moon's flights count as flights, and for the Moonshot badge; their distances stay out of the Earth's records)
   const landedAll = sent.filter((p) => p.deliver_at <= t && p.lost_at == null), landed = landedAll.filter((p) => !p.lunar);
+  const space = landedAll.filter((p) => p.lunar).map((p) => { try { return { p, mn: JSON.parse(p.moon) }; } catch (_) { return null; } }).filter(Boolean);
   const kinds = {};
   for (const p of sent) kinds[p.pigeon || "standard"] = (kinds[p.pigeon || "standard"] || 0) + 1;
   const longest = landed.reduce((a, p) => (!a || p.km > a.km ? p : a), null);
@@ -92,7 +94,11 @@ export async function logFor(D, uid, t) {
     badge("stormdodger", "Storm Dodger", "Go around storms 5 times", dodged, 5),
     badge("weathered", "Weathered It", "Shelter from storms for 12 hours in all", Math.floor(sheltered), 12),
     badge("jetstream", "Rode the Jet Stream", "Land 2 hours early on the wind", early >= 2 * 3600e3 ? 1 : 0),
-    badge("moonshot", "Moonshot", "A pigeon lands on the Moon, or comes home from it", landedAll.some((p) => p.lunar) ? 1 : 0),
+    badge("moonshot", "Moonshot", "A pigeon lands on the Moon, or comes home from it", space.some((x) => x.mn.k === "trip" || x.mn.k === "surface") ? 1 : 0),
+    badge("supermoon", "Supermoon", "Send a pigeon to or from the Moon while it’s at its closest", space.some((x) => x.mn.k === "trip" && x.mn.dist && x.mn.dist < SUPERMOON_KM) ? 1 : 0),
+    badge("eclipse", "Through the Shadow", "A pigeon on its way to or from the Moon during a lunar eclipse", space.some((x) => x.mn.k === "trip" && eclipseBetween(x.p.sent_at, x.p.deliver_at)) ? 1 : 0),
+    badge("redplanet", "Red Planet", "A laser pigeon reaches Mars, or comes from it", space.some((x) => x.mn.k === "laser") ? 1 : 0),
+    badge("orbiter", "Orbiter", "An orbital pigeon comes back down", space.some((x) => x.mn.k === "orbit") ? 1 : 0),
   ];
   // seasonal: ten pigeons in one season (while it's on, how many so far this time)
   const sc = seasonCounts(sent.map((p) => p.sent_at)), now = seasonAt(t);

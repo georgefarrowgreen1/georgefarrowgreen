@@ -22,7 +22,7 @@ import { stopsOf, posAt } from "./_moments.js";
 import { findGroupFly, dropFly, reflyGroup } from "./_flyover.js";
 import { claimBird } from "./_birds.js";
 import { reactsFor, dropReacts } from "./_reacts.js";
-import { endOf, lunarFlight, isLunar } from "./_moon.js";
+import { endOf, spaceFlight, spaceKinds, isSpace } from "./_moon.js";
 
 export const GROUP_MAX = 12;
 const GROUPS_EACH = 50;            // groups one person can be in
@@ -169,7 +169,7 @@ export async function groupsForSync(env, u, t) {
       const friend = p.user_id === u.id || friends.has(p.user_id);
       if (blocked.has(p.user_id)) return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: null, pub: JSON.parse(p.pub), friend: false, addedBy: p.added_by, km: null };
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
-        onMoon: !!p.moon,                                                      // (where on it, only to friends)
+        onMoon: !!p.moon, offEarth: p.moon ? (/"b":"mars"/.test(p.moon) ? "mars" : "moon") : null,    // off the Earth, and on what (where on it, only to friends)
         ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, moon: p.moon ? JSON.parse(p.moon) : null, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
@@ -332,7 +332,7 @@ async function send({ request, env, waitUntil }) {
   const D = await db(env), t = Date.now(), g = await groupFor(D, u, meta.group);
   if (u.lat == null && !u.moon) throw new HttpError(409, "Set your location in Account before sending pigeons.");
   if (await idTaken(D, id)) throw new HttpError(409, "That message was already sent.");
-  if (isLunar(meta.pigeon)) throw new HttpError(409, "In a group, pigeons to and from the Moon go as lunar pigeons by themselves. Choose any pigeon.");
+  if (isSpace(meta.pigeon)) throw new HttpError(409, "In a group, pigeons to and from the Moon or Mars go as space pigeons by themselves. Choose any pigeon.");
   // everyone in the group right now, you included, needs their own sealed copy of the key
   const members = await membersOf(D, g.id);
   const want = members.map((m) => m.user_id);
@@ -368,10 +368,11 @@ async function send({ request, env, waitUntil }) {
   const me = endOf(u);
   const dels = await Promise.all(to.map(async (r) => {
     if (r.lunar) {
-      const end = endOf(r), f = end && me ? lunarFlight("lunar", me, end, t, risky ? RISKY_SPEED : 1) : null, at = t + (f ? f.ms : 3 * DAY);
+      // (a lunar one to or from the Moon, a laser one to or from Mars)
+      const end = endOf(r), sk = end && me ? spaceKinds(me, end)?.[0] : null, f = sk ? spaceFlight(sk, me, end, t, risky && sk === "lunar" ? RISKY_SPEED : 1) : null, at = t + (f ? f.ms : 3 * DAY);
       const roll = crypto.getRandomValues(new Uint32Array(2)), lostAt = risky && roll[0] / 2 ** 32 < RISKY_LOSS ? Math.round(t + (0.15 + 0.7 * (roll[1] / 2 ** 32)) * (at - t)) : null;
       return { to: r.id, km: f ? f.km : 0, at, lostAt, r: { ...r, lat: null, lon: null, place: end?.place ?? null }, w: { wind: null, f: 1 }, wx: { wx: null, ms: 0, reach: null }, legs: null,
-        moon: f ? JSON.stringify({ k: f.k, from: me, to: end, dist: f.dist }) : null };
+        moon: f ? JSON.stringify({ ...((({ km, ms, ...w }) => w)(f)), from: me, to: end }) : null };
     }
     const w = windOf.get(r.id) || { wind: null, f: 1 };
     const plan = plans.get(r.id) || null, rest = plan ? restOf(plan.way) : 0;

@@ -7,6 +7,7 @@
 
    [id, name, lat, lon, km, kind]: kind picks the postmark's drawing. */
 import { haversineKm } from "./_pigeon.js";
+import { SPACE_MARKS } from "../pigeon/space.js";
 
 export const LANDMARKS = [
   // Britain and Ireland
@@ -84,7 +85,9 @@ export const LANDMARKS = [
   ["iguazu", "the Iguazú Falls", -25.6953, -54.4367, 12, "falls"],
   ["aconcagua", "Aconcagua", -32.6532, -70.0109, 30, "mountain"],
 ];
-const BY = new Map(LANDMARKS.map((l) => [l[0], l]));
+// and off the Earth (pigeon/space.js): the Moon's and Mars's, earned by landing there or bounding past
+const OFF_EARTH = SPACE_MARKS.map(([id, name, , lat, lon, km, kind]) => [id, name, lat, lon, km, kind]);
+const BY = new Map([...LANDMARKS, ...OFF_EARTH].map((l) => [l[0], l]));
 export const landmark = (id) => BY.get(id);
 
 // How close a great-circle leg a→b comes to a point, and how far along it that is (km)
@@ -134,5 +137,5 @@ export const markView = (id, at, n) => { const l = landmark(id); return l ? { id
 // Your collection: each landmark your pigeons have flown past, first time first
 export async function postmarksFor(D, uid) {
   const { results } = await D.prepare("SELECT mark, first_at, n FROM pg_postmarks WHERE user_id = ? ORDER BY first_at DESC").bind(uid).all();
-  return { marks: results.map((r) => markView(r.mark, r.first_at, r.n)).filter(Boolean), of: LANDMARKS.length };
+  return { marks: results.map((r) => markView(r.mark, r.first_at, r.n)).filter(Boolean), of: LANDMARKS.length + OFF_EARTH.length };
 }

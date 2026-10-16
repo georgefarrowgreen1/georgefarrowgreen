@@ -109,8 +109,8 @@ async function today(D, t) {
   return { landed, km: Math.round(km / 10) * 10, seas: [...seas].sort((x, y) => y[1] - x[1]).map(([p]) => p) };
 }
 
-// Pigeons on their way to, from or across the Moon (functions/_moon.js): only how many (where on Earth
-// they left from or are going is someone's home), and only those both ends allow
+// Pigeons out in space, to the Moon or Mars or round the Earth (functions/_moon.js): only how many
+// (where on Earth they left from or are going is someone's home), and only those both ends allow
 async function toTheMoon(D, t) {
   const ok = "COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0";
   const r = await D.prepare(`SELECT
