@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InFlight Live</title>
+  <meta name="description" content="Every pigeon in the air on InFlight, right now. No names, no messages: rough dots, never near home." />
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#060b16" />
+  <link rel="icon" href="/pigeon/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/pigeon/tracker.css" />
+  <script type="module" src="/pigeon/tracker.js"></script>
+</head>
+<body>
+  <main class="tk" aria-labelledby="tk-title">
+    <canvas class="tk-map" role="img" aria-label="World map of pigeons in the air"></canvas>
+    <aside class="tk-panel">
+      <header class="tk-head">
+        <img class="tk-icon" src="/pigeon/icon.svg" alt="" width="40" height="40" />
+        <div><h1 id="tk-title">InFlight Live</h1><p class="tk-sub"><span class="tk-live" aria-hidden="true"></span><span class="tk-when">Looking for pigeons…</span></p></div>
+      </header>
+      <section class="tk-count" aria-live="polite">
+        <b class="tk-n">–</b><span class="tk-nlabel">pigeons in the air</span>
+        <small class="tk-shown"></small>
+      </section>
+      <section class="tk-kinds" aria-label="By kind"></section>
+      <section class="tk-where-wrap"><h2>Where they are</h2><ol class="tk-where"></ol></section>
+      <section class="tk-privacy">
+        <h2>Nobody’s in it</h2>
+        <ul>
+          <li>No names, messages, routes or times. Just roughly where each pigeon is, which way it’s heading and what kind it is.</li>
+          <li>Dots are rough (to about 50 km) and never shown near where a pigeon set off, stops or lands.</li>
+          <li>Short flights and resting pigeons don’t show at all.</li>
+          <li>Anyone can keep their pigeons off: InFlight → Account → Privacy &amp; Security → Live Tracker.</li>
+        </ul>
+      </section>
+      <footer class="tk-foot"><a href="/pigeon/">Open InFlight</a> on your phone</footer>
+    </aside>
+    <div class="tk-zoom" role="group" aria-label="Zoom the map">
+      <button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="reset">Whole World</button>
+    </div>
+    <div class="tk-tip" role="status" hidden></div>
+  </main>
+  <main class="tk-phone" hidden>
+    <img src="/pigeon/icon.svg" alt="" width="88" height="88" />
+    <h1>InFlight Live is made for bigger screens</h1>
+    <p>Open <b class="tk-addr">chat.georgefarrowgreen.com/tracker</b> on a computer to watch every pigeon in the air.</p>
+    <a class="tk-btn" href="/pigeon/">Open InFlight</a>
+  </main>
+</body>
+</html>

@@ -260,6 +260,7 @@ const MIGRATIONS = [
   // mystery pigeons: the loft (null = full) and which messages flew as one
   "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
   "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE pg_users ADD COLUMN hide_tracker INTEGER NOT NULL DEFAULT 0",   // keep my pigeons off the public live tracker (functions/_tracker.js)
   "ALTER TABLE pg_users ADD COLUMN pins TEXT",
   // view-once photos: once = 1 (or null, sent before) means each recipient may download it once; viewed_at = when they did
   "ALTER TABLE pg_msgs ADD COLUMN once INTEGER", "ALTER TABLE pg_msgs ADD COLUMN viewed_at INTEGER",

@@ -5032,9 +5032,11 @@ function drawSheet(refresh) {
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
           ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, ranks and streaks, and your loft, with your friends", on: u.shareNews !== false })}
+          ${toggleCell({ act: "privacy", id: "shareTracker", icon: I.globe, tile: "indigo", label: "Live Tracker", sub: "Your pigeons on the public map, with no names", on: u.shareTracker !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
+        <div class="gfoot">The live tracker (chat.georgefarrowgreen.com/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</div>
         <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
       return;
     }

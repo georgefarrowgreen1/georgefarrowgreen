@@ -628,6 +628,28 @@ passport (`functions/_passport.js`).
 shop on accessories for your named pigeons. (In the code and the database they're
 still called feathers: `functions/_feathers.js`, `pg_feathers`.)
 
+**InFlight Live** (`chat.georgefarrowgreen.com/tracker`, computers only). A
+public world map of every pigeon in the air, made so that nobody is in it. The
+server decides what may be shown (`functions/_tracker.js`, `GET /api/pigeon/tracker`)
+and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
+
+- each dot is a place snapped to a half-degree grid (about 55 km), one of 8
+  headings, the kind of pigeon (a mystery pigeon stays "mystery") and the
+  country or sea it's over: no names, handles, messages, places, routes,
+  times or ids;
+- never within 150 km (up to 400 km on a long flight) of where a pigeon set
+  off or is going, nor of anywhere it stops, and never while it rests; flights
+  under 300 km never show;
+- in a shuffled order with no ids, so a dot now can't be linked to a dot later;
+- a pigeon shows only if both its sender and the person it's flying to leave
+  **Privacy & Security → Live Tracker** on (it's on unless switched off);
+- one answer a minute for everyone, kept at the edge: no sign-in, no cookies,
+  nothing about who looked is stored, and asking more often learns nothing.
+
+The page itself loads nothing from anywhere else, keeps the app's strict
+security headers, can be dragged and zoomed round the world, and on a phone
+says it's made for bigger screens. The "not on a computer" page links to it.
+
 **Share a flight.** A landed pigeon's map has a Share Flight button. It makes
 two pictures on the phone (nothing is sent anywhere to make them): an airmail
 postcard (4:5), with the route round the globe for a long flight or on a flat

@@ -105,6 +105,8 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .na p b{color:var(--label);font-weight:600}
 .na-qr{margin-top:18px;padding:18px 18px 14px;border-radius:26px;background:var(--cell);box-shadow:0 0 0 .5px var(--sep),0 10px 30px -14px rgba(0,0,0,.25);display:flex;flex-direction:column;align-items:center;gap:10px}
 .na-qr[hidden]{display:none}
+.na-live{margin-top:14px;display:inline-flex;align-items:center;gap:9px;padding:12px 20px;border-radius:999px;background:var(--cell);box-shadow:0 0 0 .5px var(--sep);color:var(--tint);font-size:16px;font-weight:600;text-decoration:none}
+.na-livedot{width:8px;height:8px;border-radius:50%;background:#30d158;box-shadow:0 0 0 3px rgba(48,209,88,.2)}
 .na-qr svg{display:block;width:176px;height:176px;border-radius:8px}
 .na-qr small{font-size:13px;color:var(--label-2)}
 /* (not while typing: on some Android browsers the keyboard makes an upright phone look sideways) */
