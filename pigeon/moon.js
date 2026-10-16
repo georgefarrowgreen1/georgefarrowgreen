@@ -376,6 +376,4 @@ export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
   if (!hidden) bird(bx, by, out ? ba : ba + Math.PI);
   // re-entry: a streak of fire as it comes in to Earth
   if (!out && f > 0.97 && f < 1) { ctx.save(); ctx.strokeStyle = "rgba(255,120,0,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 14, by - 10); ctx.stroke(); ctx.restore(); }
-  ctx.font = "500 10px -apple-system, BlinkMacSystemFont, system-ui, sans-serif"; ctx.fillStyle = "rgba(255,255,255,.45)"; ctx.textAlign = "right";
-  ctx.fillText("Not to scale", w - 12, 18);
 }
