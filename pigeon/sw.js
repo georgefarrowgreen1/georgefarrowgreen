@@ -58,7 +58,8 @@ async function file(r) {
 }
 // only the files the newest page uses are kept
 async function prune(c, html) {
-  const want = new Set([...html.matchAll(/\/pigeon\/[\w./-]+\.(?:js|css)\?v=[\w]+/g)].map((m) => m[0]));
+  // (the files under PAGE: "/pigeon/x.js?v=…", or "/x.js?v=…" at chat.georgefarrowgreen.com)
+  const want = new Set([...html.matchAll(new RegExp(PAGE + "[\\w./-]+\\.(?:js|css)\\?v=\\w+", "g"))].map((m) => m[0]));
   for (const req of await c.keys()) {
     const u = new URL(req.url);
     if (u.pathname === PAGE) continue;

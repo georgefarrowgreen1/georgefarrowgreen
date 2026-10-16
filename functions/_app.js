@@ -72,10 +72,12 @@ export async function serveApp(ctx, res, path, chat) {
     const app = vs.some(Boolean) ? hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(vs.join(".")))).slice(0, 12) : "";
     if (app) html = html.replace("<head>", `<head>\n  <meta name="inflight-version" content="${app}" />`);
     if (chat) html = atRoot(html);
-    const out = new Response(head ? null : html, res);
+    const out = withSecurity(new Response(head ? null : html, res));
     out.headers.delete("content-length"); out.headers.delete("etag");
     out.headers.set("Cache-Control", "no-store");
-    return withSecurity(out);
+    // the new address may open the old one's handover page, hidden (pigeon/handover.js)
+    if (chat) out.headers.set("Content-Security-Policy", `${SECURITY["Content-Security-Policy"]}; frame-src ${url.protocol}//${url.host.replace(/^chat\./, "")}`);
+    return out;
   }
 
   if (/\.(js|css)$/.test(path)) {

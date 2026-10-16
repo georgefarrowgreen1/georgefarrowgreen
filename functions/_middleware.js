@@ -11,6 +11,7 @@ export async function onRequest(ctx) {
     return Response.redirect(to.href, 301);
   }
   // everything else is the app: /x is /pigeon/x
+  if (/^\/handover(\.html)?$/.test(url.pathname)) return new Response("Not found.", { status: 404 });   // (the old address's, not this one's)
   const path = "/pigeon" + (url.pathname === "/index.html" ? "/" : url.pathname);
   const res = await ctx.env.ASSETS.fetch(new Request(new URL(path + url.search, url), ctx.request));
   return serveApp(ctx, res, path, true);

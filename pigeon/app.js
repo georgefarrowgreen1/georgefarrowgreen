@@ -7635,6 +7635,35 @@ function notAvailable() {
   box.innerHTML = `${qrSvg(location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
   box.hidden = false;
 }
+// The move to chat.georgefarrowgreen.com: the first time InFlight starts at the new
+// address on a phone, it brings over what the phone kept at the old one (the sign-in,
+// unsent pigeons, trusted keys, settings) from a hidden page there (pigeon/handover.js),
+// so nobody has to sign in again. Once only: signing out here doesn't bring it back.
+const OLD_HOME = /^chat\./.test(location.host) ? `${location.protocol}//${location.host.slice(5)}` : null;
+async function moveIn() {
+  const DONE = "inflight-movedin";
+  try { if (!OLD_HOME || localStorage.getItem(DONE) || await idb.get("session")) return; } catch (_) { return; }
+  const got = await new Promise((res) => {
+    const f = document.createElement("iframe");
+    const done = (v) => { clearTimeout(late); removeEventListener("message", on); f.remove(); res(v); };
+    const on = (e) => { if (e.origin === OLD_HOME && e.source === f.contentWindow && e.data?.inflight === "handover") done(e.data); };
+    const late = setTimeout(() => done(null), 5000);      // (the old address not answering: try again next time)
+    addEventListener("message", on);
+    f.hidden = true; f.title = "InFlight’s old address"; f.src = new URL("pigeon/handover", OLD_HOME + "/").href;   // (written so: the new address rewrites "/pigeon/…" paths to its root)
+    document.body.append(f);
+  });
+  if (!got) return;
+  const kv = got.kv && typeof got.kv === "object" ? got.kv : {}, ls = got.ls && typeof got.ls === "object" ? got.ls : {};
+  // signed in there (with the key it signs in with): that sign-in, and all that goes with it
+  if (kv.session?.token && kv.session.priv instanceof CryptoKey) for (const [k, v] of Object.entries(kv)) await idb.set(k, v);
+  try {
+    // (the old address's note of its push subscription is the old address's; this one makes its own)
+    for (const [k, v] of Object.entries(ls)) if (/^inflight-[\w-]+$/.test(k) && k !== "inflight-pushsub" && typeof v === "string" && localStorage.getItem(k) == null) localStorage.setItem(k, v);
+    localStorage.setItem(DONE, String(Date.now()));
+  } catch (_) {}
+  applyTheme();
+}
+
 async function start() {
   if (document.documentElement.dataset.device === "computer") return notAvailable();
   mount();
@@ -7654,6 +7683,7 @@ async function start() {
   const rs = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (rs) { S.resetToken = rs[1]; history.replaceState(null, "", location.pathname); }
   if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
+  await moveIn();
   const saved = await idb.get("session");
   if (S.resetToken) {
     // whoever is signed in here stays signed in until a new password is actually set
