@@ -4954,6 +4954,9 @@ function drawSheet(refresh) {
         <button type="button" class="cc" role="radio" aria-checked="${!bd}" data-act="birdset" data-id="none"><span class="ccav any" aria-hidden="true">${I.bird}</span><span><b>Any Pigeon</b><small>No name</small></span></button></div>` : "";
       // which way: three to pick from, each with when it would land; then the way itself, as a line with its stops
       const route = via ? "" : `<div class="ghead">Route</div>${routeSeg(style, mapped && plans ? plansNow(now(), kind) : null)}${mapped ? "" : `<div class="gfoot">${esc(ROUTES.find((x) => x[0] === style)[2])}.</div>`}`;
+      const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
+      // when it lands: as soon as it can, or a time worth a tap that it can make (it waits in your loft and leaves in time to land then), or another
+      const chip = (act, id, on, b, small, off, av = "") => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}"${id != null ? ` data-id="${esc(String(id))}"` : ""}${off ? " disabled" : ""}>${av}<span><b>${b}</b><small>${small}</small></span></button>`;
       // by sea: a standard pigeon whose way crosses an ocean takes a ship, unless its sender's in a hurry
       const rd = mapped ? S.routePlan?.data : null, alone = rd?.noShip?.[kind]?.[style], shipped = rd?.kinds?.[kind]?.[style];
       const sh = shipped && shipOf(shipped.legs);
@@ -4961,9 +4964,6 @@ function drawSheet(refresh) {
           ${chip("shipset", "ship", !noShipOn(), "Take a Ship", `${esc(sh.from)} to ${esc(sh.to)} · ${esc(atTime(shipped.deliverAt + now() - rd.at))}`, false, `<span class="ccav when" aria-hidden="true">${I.ship}</span>`)}
           ${chip("shipset", "fly", noShipOn(), "Fly It All the Way", `No ships · ${esc(atTime(alone.deliverAt + now() - rd.at))}`, false, `<span class="ccav when" aria-hidden="true">${I.bird}</span>`)}</div>
           <div class="gfoot">${noShipOn() ? `In a hurry: it flies across ${esc(sh.sea)} itself, a long way with nowhere to land${S.me.risky ? ", and Pigeon Death’s odds go up" : ""}.` : `Too far to fly across ${esc(sh.sea)}, so it rides a ship. In a hurry? It can fly it all the way.`}</div>` : "";
-      const way = !mapped ? "" : plan ? wayCard(plan, S.routePlan.data, style) : `<div class="waycard loading"><span class="wayhd"><b>See the Way</b></span><span class="wayline"><i></i></span><span class="waywords">Looking at the sky ahead…</span></div>`;
-      // when it lands: as soon as it can, or a time worth a tap that it can make (it waits in your loft and leaves in time to land then), or another
-      const chip = (act, id, on, b, small, off, av = "") => `<button type="button" class="cc" role="radio" aria-checked="${on}" data-act="${act}"${id != null ? ` data-id="${esc(String(id))}"` : ""}${off ? " disabled" : ""}>${av}<span><b>${b}</b><small>${small}</small></span></button>`;
       let landing = "", stop = "";
       if (!g) {
         const sk = schedKind(), ms = sk ? flightMs(chatKm(f), mySpeed(sk)) : 0, presets = schedPresets(), cur = sched?.at, other = cur && !presets.some(([, at]) => at === cur);
