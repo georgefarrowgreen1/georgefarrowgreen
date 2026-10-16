@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
+let fails = 0; const ok = (c, l, x = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${x ? '  — ' + x : ''}`); if (!c) fails++; };
+const ctx = await b.newContext({ viewport: { width: 1280, height: 800 } }); const p = await ctx.newPage(); const errs = [];
+p.on('pageerror', (e) => errs.push(String(e))); p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
+await p.goto('http://chat.localhost:8788/admin/');
+ok(p.url() === 'http://localhost:8788/pigeon/admin/', 'the new address’s /admin opens the admin on the site’s own address', p.url());
+await p.waitForSelector('#f-pw', { timeout: 15000 }); await p.fill('#f-pw', 'owner-test-pass'); await p.press('#f-pw', 'Enter');
+ok(await p.waitForFunction(() => !document.querySelector('#f-pw') && document.querySelector('#adm')?.innerText.length > 40, null, { timeout: 15000 }).then(() => true, () => false), 'the owner signs in and the admin loads', (await p.locator('#adm').innerText()).slice(0, 120).replace(/\s+/g, ' '));
+ok(!errs.length, 'no errors', errs.join(' | '));
+console.log(`FAILS ${fails}`); process.exit(0);

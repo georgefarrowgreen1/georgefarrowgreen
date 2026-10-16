@@ -84,7 +84,7 @@ async function signup({ request, env, waitUntil }) {
   if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
   const vault = String(b.vault || "");
   if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
-  const pub = cleanPub(b.pub);
+  const pub = await cleanPub(b.pub);
   const D = await db(env);
   if (await handleTaken(D, handle)) throw new HttpError(409, `@${handle} is taken.`, "handle");
   // (said only to someone with a working invite, and at most a few times an hour: it can't be used to look emails up)
@@ -1313,7 +1313,7 @@ async function resetComplete({ request, env, waitUntil }) {
   const vault = checkNewSecret(b);
   const D = await db(env), t = Date.now();
   const fresh = b.pub !== undefined;
-  const pub = fresh ? cleanPub(b.pub) : u.pub;
+  const pub = fresh ? await cleanPub(b.pub) : u.pub;
   // keeping the key: only a phone that has it (unlocked with a passkey) can
   if (!fresh && !(await keyProofOk(reset, u.pub, b.keyProof))) throw new HttpError(400, "That passkey couldn’t unlock your key. You can start fresh instead.");
   // claim the link first, so two tabs can't both use it

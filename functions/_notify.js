@@ -191,6 +191,24 @@ export async function pigeonRerouted(env, senderId, to, deliverAt) {
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",
     body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${eta}.`, tag: "course-" + to.id, url: `/pigeon/#open=${to.id}` });
 }
+// They went to another world (or somewhere new on one), and your pigeon followed: how (functions/_follow.js)
+const WORLD = { moon: "the Moon", mars: "Mars", earth: "Earth" };
+export async function pigeonFollowed(env, senderId, to, end, x, gid = null) {
+  const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p)) return;
+  if (gid && (await isMuted(env, gid, senderId))) return;
+  const g = gid ? await (await db(env)).prepare("SELECT name FROM pg_groups WHERE id = ?").bind(gid).first() : null;
+  const by = x.moon.pk === "laser" ? "a laser pigeon" : x.moon.pk === "orbital" ? "an orbital pigeon" : "a lunar pigeon", nm = r.p.names && firstName(to.name);
+  const gone = end.b === "earth" ? (nm ? `${nm}’s back on Earth` : "they’re back on Earth") : nm ? `${nm}’s gone to ${WORLD[end.b]}` : `they’ve gone to ${WORLD[end.b]}`;
+  const say = x.how === "hand" ? `Your pigeon was handed to ${by}${r.p.names && x.moon.from?.place ? ` over ${x.moon.from.place}` : ""}: ${gone}.`
+    : x.how === "relay" ? `Your pigeon will be relayed on by ${by.replace(/^an? /, "")}${r.p.names && x.moon.from?.place ? ` from ${x.moon.from.place}` : ""}: ${gone}.`
+    : `Your pigeon is heading for ${r.p.names && end.place ? end.place : "their new spot"} instead.`;
+  await pushTo(env, senderId, { title: r.p.names ? (g ? g.name : `${firstName(to.name)} moved`) : "InFlight", body: `${say} It now lands in ${etaText(x.deliver - Date.now())}.`,
+    tag: "course-" + (gid || to.id), url: `/pigeon/#open=${gid || to.id}` });
+}
+export async function followingYou(env, uid, n, end) {
+  const r = await userPrefs(env, uid); if (!r || !r.p.moments || isQuiet(r.p)) return;
+  await pushTo(env, uid, { title: "InFlight", body: `${n === 1 ? "A pigeon on its way to you is" : `${n} pigeons on their way to you are`} following you to ${WORLD[end.b]}.`, tag: "following", url: "/pigeon/" });
+}
 // A friend has just sent you a pigeon (off unless you turn it on).
 export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") {
   const r = await userPrefs(env, toId); if (!r || !r.p.takeoff || isQuiet(r.p)) return;

@@ -154,11 +154,15 @@ export function eclipseBetween(a, b) {
 // where on the Moon the Sun is overhead: its longitude (it slides west 12° a day; latitude stays within 1.5°)
 const subsolar = (t) => norm(180 - elong(t).e + 180) - 180;
 // Day or night at a spot on the Moon, and when that changes: { day, next }
+// (worked out once a minute for a spot: it changes over days, and chats ask every second)
+const dayKept = new Map();
 export function lunarDay(lat, lon, t) {
+  const key = `${lat},${lon},${Math.floor(t / MIN)}`, kept = dayKept.get(key); if (kept) return kept;
   const la = Math.max(-89.9, Math.min(89.9, lat)), up = (tt) => cos(la) * cos(lon - subsolar(tt)) > 0.0001;     // (at a pole the Sun only skims the horizon)
   const day = up(t);
   let x = t; for (let i = 0; i < 31 * 24 && up(x) === day; i++) x += HOUR;
-  return { day, next: x };
+  if (dayKept.size > 64) dayKept.clear();
+  const out = { day, next: x }; dayKept.set(key, out); return out;
 }
 // Mars: the time of day at a longitude (Mars Coordinated Time, a sol is 24h 39m), and when the Sun next rises or sets
 const SOL = 1.0274912517 * DAY;

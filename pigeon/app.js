@@ -5893,8 +5893,8 @@ function moonOf(m) {
   if (m.moon) return one(m.moon, m.deliverAt, m);
   const fl = (m.flock || []).filter((x) => x.moon);
   if (!fl.length || fl.length !== (m.flock || []).length) return null;               // (a group's, all of them to or from the Moon)
-  const x = fl.find((y) => y.flying) || fl[0];
-  return { ...one(x.moon, x.deliverAt, x), to: x.to };
+  const x = fl.find((y) => y.to === S.moonWho?.[m.id]) || fl.find((y) => y.flying) || fl[0];
+  return { ...one(x.moon, x.deliverAt, x), to: x.to, many: fl.length > 1 };
 }
 const MOON_ICON = { up: "up", globe: "globe", dot: "dot", dist: "dist", moon: "moon", check: "check", pin: "pin", fire: "fire" };
 const TRIP_LABEL = { surface: "The pigeon bounding across the Moon", trip: "The pigeon on its way between the Earth and the Moon", laser: "A laser pigeon: a pulse of light between the worlds", orbit: "The pigeon’s path round the Earth in orbit" };
@@ -5906,6 +5906,7 @@ function drawMoonFlight(s, m) {
   if (!$(".moonsky", $layer)) {
     $layer.innerHTML = sheetHtml(flying ? "Pigeon in Flight" : "The Flight", `<canvas class="moonsky" role="img" aria-label="${esc(TRIP_LABEL[o.mn.k] || TRIP_LABEL.trip)}"></canvas>
       <div class="mooncard"><div class="mchead">${pg(kindOf(m))}<span class="mct"><b>${mine ? `To ${nm(other)}` : `From ${nm(other)}`}</b><small class="mcwhere"></small></span><span class="mceta"></span></div>
+      ${o.many && mine && g ? `<div class="mcwho" role="group" aria-label="Whose pigeon">${m.flock.map((x) => `<button type="button" class="mcw" data-act="moonwho" data-id="${esc(m.id)}|${esc(x.to)}">${esc(first(member(g, x.to)?.name || "Someone"))}</button>`).join("")}</div>` : ""}
       <div class="mcnow"></div><div class="mcbar" aria-hidden="true"><i></i></div>
       <div class="mcplay"><input type="range" class="mcreplay" min="0" max="1000" step="1" aria-label="Replay the trip"><button type="button" class="mclive" data-act="moonlive">Live</button></div>
       <ol class="mcsteps"></ol>
@@ -5926,6 +5927,12 @@ function tickMoon(m) {
   drawTrip(cv, o.mn, f, t, { lost: o.lost && !o.recalled && rp == null });
   const card = $(".mooncard", $layer), place = (e) => (e?.place ? esc(o.mn.k === "surface" || (o.mn.k === "laser" && o.mn.relay) ? e.place.replace(/, (the Moon|Mars)$/, "") : e.place) : e?.b === "moon" ? "the Moon" : e?.b === "mars" ? "Mars" : "Earth");
   $(".mcwhere", card).innerHTML = `${place(o.mn.from)} to ${place(o.mn.to)}`;
+  // a group's: whose is showing (each member's pigeon went its own way)
+  if (o.many && m.gid) {
+    const g = group(m.gid), mine = m.from === S.me.id;
+    if (mine) $(".mct b", card).textContent = `To ${first(member(g, o.to)?.name || "Someone")}`;
+    for (const b of card.querySelectorAll(".mcw")) { const on = b.dataset.id.endsWith("|" + o.to); b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+  }
   const eta = $(".mceta", card), landed = !o.lost && now0 >= o.deliverAt;
   eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.recalled ? `<b>Called back</b>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.endAt - now0))}</b><small>lands ${esc(atShort(o.endAt))}</small>`;
   const nowEl = $(".mcnow", card);
@@ -5941,7 +5948,7 @@ function tickMoon(m) {
   const steps = spaceMoments(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth), key = steps.map((x) => +x.done).join("") + (o.lost ? "l" : "") + (o.then ? "r" : "");
   // followed them to another world: where it was handed on, or relayed from, and where it's relayed on to
   const by = (k) => (k === "laser" ? "a laser pigeon" : `a ${KIND[k]?.name.toLowerCase() || "space"} pigeon`);
-  if (o.mn.hand) steps.unshift({ at: o.sentAt, done: t >= o.sentAt, icon: "up", text: `Handed to ${by(o.mn.pk)}${o.mn.from?.place ? ` over ${o.mn.from.place}` : ""}: they’d left the Earth` });
+  if (o.mn.hand) steps.unshift({ at: o.sentAt, done: t >= o.sentAt, icon: "up", text: `${o.mn.rested ? "After its stopover, handed" : "Handed"} to ${by(o.mn.pk)}${o.mn.from?.place ? ` ${o.mn.rested ? "in" : "over"} ${o.mn.from.place}` : ""}: they’d left the Earth` });
   else if (o.mn.prev) steps.unshift({ at: o.sentAt, done: t >= o.sentAt, icon: "up", text: `Relayed on from ${placeOf(o.mn.from)} by ${by(o.mn.pk)}: they’d moved` });
   if (o.then) steps.push({ at: o.deliverAt, done: false, icon: o.then.pk === "laser" ? "up" : "moon", text: `${o.then.pk === "laser" ? "Relayed by laser" : `Handed to a ${KIND[o.then.pk]?.name.toLowerCase() || "space"} pigeon`} to ${placeOf(o.then.to)}, where they are now` });
   const ol = $(".mcsteps", card);
@@ -7080,6 +7087,7 @@ async function onClick1(e, t) {
     case "moonside": if (S.sheet?.type === "moonpick") { S.sheet.side = id; renderSheet(); } return;
     case "moonsite": { const x = BODIES[S.sheet?.body || "moon"].sites.find((y) => y[0] === id); if (x && S.sheet?.type === "moonpick") { S.sheet.mark = { lat: x[1], lon: x[2] }; renderSheet(); } return; }
     case "moonlive": S.moonReplay = null; return tickMap();
+    case "moonwho": { const [mid, to] = id.split("|"); S.moonWho = { ...(S.moonWho || {}), [mid]: to }; S.moonReplay = null; return tickMap(); }
     case "moonland": {
       const body = S.sheet?.body || "moon", mk = S.sheet?.mark || (worldOf(S.me) === body ? S.me.moon : null); if (!mk) return;
       return busyBtn(t, "Landing…", async () => {

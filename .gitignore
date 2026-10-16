@@ -8,3 +8,7 @@ Thumbs.db
 # Cloudflare / Wrangler
 .wrangler/
 node_modules/
+
+# InFlight tests (.tools/tests)
+.tools/tests/.state/
+.tools/tests/node_modules

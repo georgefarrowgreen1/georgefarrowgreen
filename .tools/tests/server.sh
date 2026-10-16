@@ -1,0 +1,20 @@
+#!/bin/bash
+# The local site for the end-to-end tests: `wrangler pages dev` on :8788 (run.sh calls this).
+#   server.sh fresh    a new, empty database          server.sh keep    the same database, restarted
+#   server.sh stop
+# Needs S (the state folder) and APP_ROOT (the repository) in the environment.
+set -u
+HERE=$(cd "$(dirname "$0")" && pwd)
+kill_tree() { for c in $(pgrep -P "$1"); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
+for p in $(pgrep -f "pages dev . --port 8788"); do kill_tree "$p"; done
+[ "${1:-fresh}" = stop ] && exit 0
+sleep 1
+if [ "${1:-fresh}" = fresh ]; then rm -rf "$S/wrstate"; : > "$S/mailbox.jsonl"; : > "$S/pushbox.jsonl"; : > "$S/weatherlog.jsonl"; fi
+cd "$APP_ROOT"
+nohup "$HERE/node_modules/.bin/wrangler" pages dev . --port 8788 --persist-to "$S/wrstate" \
+  --binding EDIT_PASSWORD=owner-test-pass RESEND_API_KEY=test-key RESEND_API_URL=http://127.0.0.1:8799/emails PIGEON_PUSH_URL=http://127.0.0.1:8798/push \
+    PIGEON_TICK_SECRET=tick-test-secret GIPHY_API_KEY=giphy-test-key GIPHY_API_URL=http://127.0.0.1:8797 GIPHY_MEDIA_URL=http://127.0.0.1:8797 \
+    WEATHER_URL=http://127.0.0.1:8796 MET_URL=http://127.0.0.1:8796 SWPC_URL=http://127.0.0.1:8796 EONET_URL=http://127.0.0.1:8796 ENSEMBLE_URL=http://127.0.0.1:8796 \
+    PIGEON_OPEN_SIGNUP=1 CHAT_HOST=chat.localhost PWNED_URL=http://127.0.0.1:8795 PIGEON_PEPPER=test-pepper-for-local-tests-only >> "$S/wrangler.log" 2>&1 &
+for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8788/pigeon/ && break; sleep 1; done
+curl -s -o /dev/null -X POST http://127.0.0.1:8796/mode -d '{"speed":0,"down":false,"pattern":"","kp":2,"eonet":[]}'   # calm weather unless a test sets its own

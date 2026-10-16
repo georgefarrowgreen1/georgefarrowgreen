@@ -653,10 +653,14 @@ export const holdHandle = (D, handle, userId) =>
   D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) VALUES (?, ?, ?)").bind(handle, userId, Date.now() + 30 * DAY);
 export const snapApprox = (lat, lon) => snapTo(lat, lon, APPROX_KM);
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export function cleanPub(p) {
+// (a real point on the curve, not just the right shape: everyone who writes to them seals to it,
+// and a made-up one would only fail on their friends' phones, one send at a time)
+export async function cleanPub(p) {
   const ok = p && p.kty === "EC" && p.crv === "P-256" && /^[A-Za-z0-9_-]{43}$/.test(p.x || "") && /^[A-Za-z0-9_-]{43}$/.test(p.y || "");
-  if (!ok) throw new HttpError(400, "That public key isn’t valid.");
-  return JSON.stringify({ kty: "EC", crv: "P-256", x: p.x, y: p.y });
+  const jwk = ok && { kty: "EC", crv: "P-256", x: p.x, y: p.y };
+  if (!ok || !(await crypto.subtle.importKey("jwk", jwk, { name: "ECDH", namedCurve: "P-256" }, true, []).then(() => true, () => false)))
+    throw new HttpError(400, "That public key isn’t valid.");
+  return JSON.stringify(jwk);
 }
 // Locations are snapped to a 1-mile grid (about 1.6 km each way, anywhere on
 // Earth): plenty for flight times, too coarse to find someone's street.
