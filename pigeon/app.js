@@ -7867,7 +7867,11 @@ async function send() {
     render();                         // show it now; on a slow connection the sync below can outlast the pop
     await sync();
     offerNotify();
-  } catch (err) { if (here()) S.err = err.message; else toast(esc(err.message)); showUpload(null); }
+  } catch (err) {
+    // (the browser's own errors, a key it can't use, can come with no words: never a silent nothing)
+    const say = err.message || "Couldn’t seal this pigeon. Try again, or check their safety number.";
+    if (here()) S.err = say; else toast(esc(say)); showUpload(null);
+  }
   if (att?.preview && S.attach !== att) URL.revokeObjectURL(att.preview);     // (left behind when you left its chat, and not kept)
   S.busy = false; S.sendingTo = null; S.sending = null; renderCompose();
 }
