@@ -492,8 +492,10 @@ export function wxView(m) {
 // The weather's take on a flight: the worse leg's spot, the time it cost or
 // saved, and when (after take-off) the pigeon reaches it. legs: [start, length]
 // of each leg's flying, in ms after take-off.
+// (the spot it names fits what the weather costs all told: a tailwind only when it's early, else what slowed it)
 export function wxOf(ws, calm, flight, legs = [[0, flight]]) {
-  const i = ws.map((x, j) => j).filter((j) => ws[j]?.wx).sort((a, b) => Math.abs(Math.log(ws[b].f)) - Math.abs(Math.log(ws[a].f)))[0];
+  const early = flight < calm;
+  const i = ws.map((x, j) => j).filter((j) => ws[j]?.wx && (ws[j].wx.k === "tailwind") === early).sort((a, b) => Math.abs(Math.log(ws[b].f)) - Math.abs(Math.log(ws[a].f)))[0];
   if (i == null) return { wx: null, ms: Math.round(flight - calm), reach: null };
   const { at, ...wx } = ws[i].wx, [start, len] = legs[i] || legs[0];
   return { wx: JSON.stringify(wx), ms: Math.round(flight - calm), reach: Math.round(start + (at ?? 0.5) * len) };

@@ -147,6 +147,9 @@ export function worthTurning(now, then, last, t) {
   const soon = last && last[4] === "w" && t - last[2] < TURN_CALM ? 2 : 1;
   return now - then > soon * Math.max(now * LIVE_GAIN, TURN_MIN / HOUR);
 }
+// The weather a flight names should be what it's been all told: a tailwind only while it's early,
+// anything else only while it's late. A new spot that doesn't fit leaves the old one be.
+const fits = (spot, ms) => !!spot && (spot.k === "tailwind" ? ms < 0 : ms > 0);
 // It changes course for the weather: from where it is now, the better way.
 async function turnFor(D, t, x, better, wasW) {
   const r = x.r, way = better.way, w = better.w, [pLat, pLon] = x.path[0], end = x.path[x.path.length - 1];
@@ -166,7 +169,7 @@ async function turnFor(D, t, x, better, wasW) {
   // the weather's part: going around storms, the time it costs is theirs (and the turn's notice has said so already)
   const storm = better.why === "s" && wasW.storm ? { k: sk, lat: wasW.storm.lat, lon: wasW.storm.lon } : null;
   const spot = storm || (w.wx ? (({ at, ...s }) => s)(w.wx) : null);
-  const wx = spot ? JSON.stringify(spot) : r.wx, wxAt = spot ? t : r.wx_at, wxMs = (r.wx_ms || 0) + change;
+  const wxMs = (r.wx_ms || 0) + change, use = fits(spot, wxMs), wx = use ? JSON.stringify(spot) : r.wx, wxAt = use ? t : r.wx_at;
   const q = x.group
     ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = ?9, live_at = ?9, km = ?10
         WHERE msg_id = ?11 AND user_id = ?12 AND deliver_at = ?13 AND legs IS ?14`).bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, r.msg_id, r.user_id, r.deliver_at, r.legs)
@@ -230,9 +233,9 @@ async function retime(env, D, t, x, w) {
   const legs = JSON.stringify(squeeze(x.legs, t, r.deliver_at, deliver));
   const lostAt = r.lost_at == null || r.lost_at <= t ? r.lost_at : Math.round(t + ((r.lost_at - t) * (deliver - t)) / left);
   // the weather's part: what it has cost (or saved) all told, and the worst of it ahead, told once it gets there
-  const wxMs = (r.wx_ms || 0) + change, spot = w.wx ? (({ at, ...s }) => s)(w.wx) : null;
-  const wx = spot ? JSON.stringify(spot) : r.wx;
-  const wxAt = spot ? Math.round(t + x.rest + (w.wx.at ?? 0.5) * (deliver - t - x.rest)) : r.wx_at;
+  const wxMs = (r.wx_ms || 0) + change, spot = w.wx ? (({ at, ...s }) => s)(w.wx) : null, use = fits(spot, wxMs);
+  const wx = use ? JSON.stringify(spot) : r.wx;
+  const wxAt = use ? Math.round(t + x.rest + (w.wx.at ?? 0.5) * (deliver - t - x.rest)) : r.wx_at;
   const retell = change >= WX_TELL;                                  // much later than it was: say so again
   const q = x.group
     ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = CASE WHEN ?9 THEN NULL ELSE wx_told END, live_at = ?10

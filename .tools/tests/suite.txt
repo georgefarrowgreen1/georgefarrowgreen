@@ -23,3 +23,4 @@ feathertest
 movein
 followtest
 lowsev
+wxsay

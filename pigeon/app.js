@@ -959,9 +959,23 @@ function wxWhere(lon, lat) {
   }
   return overWhere(lon, lat);
 }
+// What the weather named should fit what it did: a tailwind only for early, anything else only for late.
+// (One that doesn't: a delay from sheltering or going round storms earlier on, then a tailwind ahead.
+// The storm it stopped for, or went round, is the reason then.)
+function wxCause(m, late) {
+  if (m.wx && WX[m.wx.k] && (m.wx.k === "tailwind") === !late) return m.wx;
+  if (!late) return null;
+  for (const l of [...(m.legs || [])].reverse()) {
+    if (l[3] === "h") return { k: (l.find((x) => x && typeof x === "object")?.k) || "storms", lat: l[0], lon: l[1] };
+    if (l[3] === "r" && l[4] === "s" && l[5]?.storm) return { k: l[5].k || "storms", lat: l[5].storm[0], lon: l[5].storm[1] };
+  }
+  return null;
+}
 function wxSay(m, short) {
   if (!m.delay || m.lost) return null;
-  const late = m.delay > 0, w = m.wx && WX[m.wx.k], landed = !m.flying;
+  const late = m.delay > 0, cause = wxCause(m, late);
+  m = { ...m, wx: cause };
+  const w = cause && WX[cause.k], landed = !m.flying;
   const when = late ? (landed ? `Landed ${fmtDur(m.delay)} late` : `Delayed ${fmtDur(m.delay)}`) : `${fmtDur(-m.delay)} early`;
   if (short) return late ? `${landed ? `${fmtDur(m.delay)} late` : `delayed ${fmtDur(m.delay)}`}${w ? ` by ${w[0]}` : ""}` : `${fmtDur(-m.delay)} early${w ? ` on ${w[0]}` : ""}`;
   // (a wind met higher or lower than usual: it climbed for a tailwind, or kept low out of a headwind;
