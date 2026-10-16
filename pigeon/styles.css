@@ -2058,3 +2058,6 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .mcsteps time{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .sheet:has(.moonbody){background:#03050c}
 .sheet:has(.moonbody) header h2{color:#f5f5f7}
+/* (a flush sheet doesn't scroll, for the Earth's map; a trip to the Moon has its moments below, so it does) */
+.sheet .body.flush.moonbody{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom,0px)}
+.mooncard{flex:none}

@@ -173,8 +173,8 @@ function spot(ctx, pr, la, lo, r) {
 }
 function moonDisc(ctx, cx, cy, R, lat0, lon0, { glow = true } = {}) {
   const pr = ortho(lat0, lon0, cx, cy, R);
+  if (glow) halo(ctx, cx, cy, R, "220,225,240", 0.3);
   ctx.save();
-  if (glow) { ctx.shadowColor = "rgba(220,225,240,.35)"; ctx.shadowBlur = R * 0.25; }
   const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
   g.addColorStop(0, "#e9e8e2"); g.addColorStop(0.7, "#c4c3bd"); g.addColorStop(1, "#8e8d88");
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.fill();
@@ -198,52 +198,96 @@ function moonDisc(ctx, cx, cy, R, lat0, lon0, { glow = true } = {}) {
   ctx.restore();
   return pr;
 }
-function earthDisc(ctx, cx, cy, R, lon0, lat0 = 20) {
-  const pr = ortho(lat0, lon0, cx, cy, R);
-  ctx.save();
-  ctx.shadowColor = "rgba(80,160,255,.55)"; ctx.shadowBlur = R * 0.5;
-  const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
-  g.addColorStop(0, "#5aa8ff"); g.addColorStop(1, "#163e86");
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.fill();
-  ctx.restore();
-  ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.clip();
-  ctx.fillStyle = "#4f9a5e";
-  for (const ring of LAND.split(";")) {
-    const n = ring.split(",").map(Number); ctx.beginPath(); let any = false;
-    for (let i = 0; i < n.length; i += 2) {
-      let [x, y, z] = pr(n[i + 1] / 2, n[i] / 2);
-      if (z < 0) { const dx = x - cx, dy = y - cy, h = Math.hypot(dx, dy) || 1; x = cx + (dx / h) * R; y = cy + (dy / h) * R; }   // round the back: onto the edge
-      if (!any) { ctx.moveTo(x, y); any = true; } else ctx.lineTo(x, y);
-    }
-    ctx.fill();
-  }
-  const sh = ctx.createRadialGradient(cx - R * 0.4, cy - R * 0.45, R * 0.2, cx, cy, R * 1.05);
-  sh.addColorStop(0, "rgba(255,255,255,.12)"); sh.addColorStop(1, "rgba(0,0,20,.45)");
-  ctx.fillStyle = sh; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
-  ctx.restore();
-  return pr;
+// a soft glow round a disc (a gradient: much quicker than a canvas shadow on a phone)
+function halo(ctx, cx, cy, R, rgb, a) {
+  const g = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.35);
+  g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g; ctx.fillRect(cx - R * 1.4, cy - R * 1.4, R * 2.8, R * 2.8);
 }
-function stars(ctx, w, h, seed = 3) {
-  let s = seed; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  ctx.fillStyle = "#03050c"; ctx.fillRect(0, 0, w, h);
-  for (let i = 0; i < (w * h) / 900; i++) { ctx.globalAlpha = 0.25 + r() * 0.75; ctx.fillStyle = "#fff"; const z = r() < 0.08 ? 1.6 : 0.9; ctx.fillRect(r() * w, r() * h, z, z); }
-  ctx.globalAlpha = 1;
+// The land as a 0.5° grid (1: land), from the coastlines: once, the first time it's needed.
+// Rings are joined across the date line and Antarctica closed over its pole, as on InFlight Live.
+let LANDMAP = null;
+function landMap() {
+  if (LANDMAP) return LANDMAP;
+  const W = 720, H = 360, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, W, H); g.fillStyle = "#fff";
+  const rings = LAND.split(";").map((r) => {
+    const a = r.split(",").map((n) => n / 2);
+    for (let i = 2; i < a.length; i += 2) a[i] += Math.round((a[i - 2] - a[i]) / 360) * 360;
+    if (Math.abs(a[a.length - 2] - a[0]) > 180) { const pole = a[1] < 0 ? -90 : 90; a.push(a[a.length - 2], pole, a[0], pole); }
+    return a;
+  });
+  for (const o of [-360, 0, 360]) {
+    g.beginPath();
+    for (const r of rings) { for (let i = 0; i < r.length; i += 2) { const x = (r[i] + o + 180) * 2, y = (90 - r[i + 1]) * 2; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.closePath(); }
+    g.fill("evenodd");
+  }
+  const px = g.getImageData(0, 0, W, H).data, m = new Uint8Array(W * H);
+  for (let i = 0; i < m.length; i++) m[i] = px[i * 4] > 127 ? 1 : 0;
+  return (LANDMAP = m);
+}
+// Pictures that don't change from one second to the next, drawn once (a few kept)
+const CACHE = new Map();
+function cached(key, w, h, dpr, draw) {
+  const k = `${key}|${w}|${h}|${dpr}`;
+  let c = CACHE.get(k);
+  if (!c) {
+    c = document.createElement("canvas"); c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    const g = c.getContext("2d"); g.scale(dpr, dpr); draw(g);
+    CACHE.set(k, c); if (CACHE.size > 12) CACHE.delete(CACHE.keys().next().value);
+  }
+  return c;
+}
+// the Earth seen from space, lon0/lat0 facing you, R (css px) across, lit from the upper left
+function earthImage(R, lon0, lat0, dpr) {
+  const P = 1.4;                                   // (room round it for its glow)
+  return cached(`earth|${Math.round(lon0)}|${Math.round(lat0)}|${Math.round(R)}`, R * 2 * P, R * 2 * P, dpr, (g) => {
+    const c = R * P; halo(g, c, c, R, "80,160,255", 0.45);
+    const n = Math.round(R * 2 * dpr), img = g.createImageData(n, n), d = img.data, mask = landMap();
+    const s0 = Math.sin(lat0 * rad), c0 = Math.cos(lat0 * rad), L = [-0.45, 0.55, 0.7], LN = Math.hypot(...L);
+    for (let py = 0; py < n; py++) for (let px = 0; px < n; px++) {
+      const x = (px + 0.5) / n * 2 - 1, y = 1 - (py + 0.5) / n * 2, rr = x * x + y * y; if (rr > 1) continue;
+      const z = Math.sqrt(1 - rr), lat = Math.asin(z * s0 + y * c0) / rad;
+      let lon = lon0 + Math.atan2(x, z * c0 - y * s0) / rad; lon = ((lon + 540) % 360) - 180;
+      const land = mask[Math.min(359, Math.floor((90 - lat) * 2)) * 720 + Math.min(719, Math.floor((lon + 180) * 2))];
+      const lit = 0.35 + 0.75 * Math.max(0, (x * L[0] + y * L[1] + z * L[2]) / LN), edge = Math.min(1, (1 - rr) * 6);
+      const [r, gg, b] = land ? [79, 154, 94] : [38, 104, 196], i = (py * n + px) * 4;
+      d[i] = Math.min(255, r * lit + 40 * (1 - edge)); d[i + 1] = Math.min(255, gg * lit + 70 * (1 - edge)); d[i + 2] = Math.min(255, b * lit + 120 * (1 - edge)); d[i + 3] = 255;
+    }
+    const t = document.createElement("canvas"); t.width = n; t.height = n; t.getContext("2d").putImageData(img, 0, 0);
+    g.drawImage(t, c - R, c - R, R * 2, R * 2);
+  });
+}
+// (to the nearest degree, so the same picture serves a whole trip; ortho() round the same way)
+const moonImage = (R, lat0, lon0, dpr, glow) => {
+  const P = glow ? 1.4 : 1.02, la = Math.round(lat0), lo = Math.round(lon0);
+  return cached(`moon|${la}|${lo}|${Math.round(R)}|${glow}`, R * 2 * P, R * 2 * P, dpr, (g) => moonDisc(g, R * P, R * P, R, la, lo, { glow }));
+};
+const putAt = (ctx, img, cx, cy, dpr) => ctx.drawImage(img, cx - img.width / dpr / 2, cy - img.height / dpr / 2, img.width / dpr, img.height / dpr);
+function stars(ctx, w, h, seed, dpr) {
+  ctx.drawImage(cached(`stars|${seed}`, w, h, dpr, (g) => {
+    let s = seed; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    g.fillStyle = "#03050c"; g.fillRect(0, 0, w, h); g.fillStyle = "#fff";
+    for (let i = 0; i < (w * h) / 900; i++) { g.globalAlpha = 0.25 + r() * 0.75; const z = r() < 0.08 ? 1.6 : 0.9; g.fillRect(r() * w, r() * h, z, z); }
+    g.globalAlpha = 1;
+  }), 0, 0, w, h);
 }
 function fit(cv) {
-  const dpr = Math.min(3, window.devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+  const dpr = Math.min(2, window.devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { ctx, w, h };
+  return { ctx, w, h, dpr };
 }
-const pin = (ctx, x, y, col, big) => { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, big ? 6 : 3.5, 0, 2 * Math.PI); ctx.fill(); ctx.restore(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, big ? 6 : 3.5, 0, 2 * Math.PI); ctx.stroke(); };
+const pin = (ctx, x, y, col, big) => { ctx.save(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, big ? 6 : 3.5, 0, 2 * Math.PI); ctx.fill(); ctx.restore(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, big ? 6 : 3.5, 0, 2 * Math.PI); ctx.stroke(); };
 
 // The map to pick a spot on: one side of the Moon, its named sites, and your spot.
 // Returns what's needed to turn a tap back into a spot (pickAt).
 export function drawMoonPick(cv, { side = "near", mark = null, focus = null } = {}) {
-  const { ctx, w, h } = fit(cv);
-  stars(ctx, w, h, 11);
+  const { ctx, w, h, dpr } = fit(cv);
+  stars(ctx, w, h, 11, dpr);
   const R = Math.min(w, h) * 0.44, cx = w / 2, cy = h / 2, lon0 = side === "far" ? 180 : 0;
-  const pr = moonDisc(ctx, cx, cy, R, 0, lon0);
+  putAt(ctx, moonImage(R, 0, lon0, dpr, true), cx, cy, dpr);
+  const pr = ortho(0, lon0, cx, cy, R);
   ctx.font = "600 11px -apple-system, BlinkMacSystemFont, system-ui, sans-serif"; ctx.textAlign = "center";
   // every site a dot; names where they fit, the chosen one first, then the Apollo sites and craters
   const shown = SITES.map(([name, la, lo]) => { const [x, y, z] = pr(la, lo); return { name, x, y, z, on: focus === name }; }).filter((p) => p.z >= 0.08);
@@ -253,7 +297,8 @@ export function drawMoonPick(cv, { side = "near", mark = null, focus = null } = 
     const tw = ctx.measureText(p.name).width, b = [p.x - tw / 2 - 3, p.y - 19, p.x + tw / 2 + 3, p.y - 4];
     if (!p.on && boxes.some((o) => b[0] < o[2] && o[0] < b[2] && b[1] < o[3] && o[1] < b[3])) continue;
     boxes.push(b);
-    ctx.fillStyle = p.on ? "#ffd166" : "rgba(255,255,255,.85)"; ctx.shadowColor = "#000"; ctx.shadowBlur = 4; ctx.fillText(p.name, p.x, p.y - 7); ctx.shadowBlur = 0;
+    ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineJoin = "round"; ctx.strokeText(p.name, p.x, p.y - 7);
+    ctx.fillStyle = p.on ? "#ffd166" : "rgba(255,255,255,.9)"; ctx.fillText(p.name, p.x, p.y - 7);
   }
   if (mark) { const [x, y, z] = pr(mark.lat, mark.lon); if (z > 0) pin(ctx, x, y, "#ff9f0a", true); }
   return { cx, cy, R, lon0 };
@@ -272,18 +317,20 @@ export function pickAt(view, x, y) {
 // the app's pigeon (index.html's #bird-path: it faces left in its 24 × 24 box)
 const BIRD = typeof Path2D === "function" ? new Path2D("M3.2 11.6 5 10.6C6.2 9.4 8 9.2 9.4 9.9L12.6 3.6C14.4 3 15.6 4 15.4 5.8L14.2 10.6C16.2 10.6 18.4 10 20.6 8.8L21 9.6C20.2 11.2 19.4 12.2 18.6 12.8L21.4 14.4 17.4 14.6C15.4 16.6 12 17.4 9.4 16.2 7.4 15.3 6.1 13.6 5.4 12.3Z") : null;
 export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
-  const { ctx, w, h } = fit(cv);
-  stars(ctx, w, h, 5);
+  const { ctx, w, h, dpr } = fit(cv);
+  stars(ctx, w, h, 5, dpr);
   // the pigeon, heading a (radians), upright whichever way it goes
   const bird = (x, y, a) => {
     if (!BIRD) return;
     const left = Math.cos(a) < 0;
     ctx.save(); ctx.translate(x, y); ctx.rotate(left ? a + Math.PI : a); ctx.scale(left ? 1.15 : -1.15, 1.15); ctx.translate(-12, -11);
-    ctx.shadowColor = lost ? "#ff453a" : "#ffd166"; ctx.shadowBlur = 14; ctx.fillStyle = lost ? "#ff453a" : "#fff"; ctx.fill(BIRD); ctx.restore();
+    const gl = ctx.createRadialGradient(12, 11, 2, 12, 11, 16); gl.addColorStop(0, lost ? "rgba(255,69,58,.55)" : "rgba(255,209,102,.55)"); gl.addColorStop(1, "rgba(255,209,102,0)");
+    ctx.fillStyle = gl; ctx.fillRect(-4, -5, 32, 32); ctx.fillStyle = lost ? "#ff453a" : "#fff"; ctx.fill(BIRD); ctx.restore();
   };
   if (mn.k === "surface") {
     const pts = arc(mn.from, mn.to, 64), mid = pts[32], R = Math.min(w, h) * 0.46;
-    const pr = moonDisc(ctx, w / 2, h / 2, R, mid[0], mid[1], { glow: false });
+    putAt(ctx, moonImage(R, mid[0], mid[1], dpr, false), w / 2, h / 2, dpr);
+    const pr = ortho(Math.round(mid[0]), Math.round(mid[1]), w / 2, h / 2, R);
     const xy = pts.map(([la, lo]) => pr(la, lo));
     ctx.setLineDash([4, 5]); ctx.strokeStyle = "rgba(255,209,102,.55)"; ctx.lineWidth = 2; ctx.beginPath();
     xy.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); ctx.setLineDash([]);
@@ -306,9 +353,9 @@ export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
   // Earth on the left, the Moon on the right; the way between curves up and, to the far side, round behind it
   const out = mn.from.b === "earth", ex = w * 0.17, ey = h * 0.58, er = Math.min(w * 0.11, h * 0.2), mx = w * 0.82, my = h * 0.42, mr = er * 0.42;
   const earthEnd = out ? mn.from : mn.to, moonEnd = out ? mn.to : mn.from;
-  earthDisc(ctx, ex, ey, er, earthEnd?.lon ?? 0, Math.max(-50, Math.min(50, earthEnd?.lat ?? 20)));
+  putAt(ctx, earthImage(er, earthEnd?.lon ?? 0, Math.max(-50, Math.min(50, earthEnd?.lat ?? 20)), dpr), ex, ey, dpr);
   // the Moon side on: its near side faces Earth (the left), its far side away
-  moonDisc(ctx, mx, my, mr, 0, 90);
+  putAt(ctx, moonImage(mr, 0, 90, dpr, true), mx, my, dpr);
   const far = farSide(moonEnd.lon);
   // the way, Earth to Moon: out and up, over the top of the Moon, and down on its own side
   const land = far ? [mx + mr * 0.98, my + mr * 0.2] : [mx - mr * 0.96, my + mr * 0.25];
@@ -328,7 +375,7 @@ export function drawTrip(cv, mn, f, t, { lost = false } = {}) {
   const [bx, by, ba] = at(q), hidden = far && Math.hypot(bx - mx, by - my) < mr * 1.02 && bx > mx;
   if (!hidden) bird(bx, by, out ? ba : ba + Math.PI);
   // re-entry: a streak of fire as it comes in to Earth
-  if (!out && f > 0.97 && f < 1) { ctx.save(); ctx.shadowColor = "#ff6a00"; ctx.shadowBlur = 16; ctx.strokeStyle = "rgba(255,120,0,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 14, by - 10); ctx.stroke(); ctx.restore(); }
+  if (!out && f > 0.97 && f < 1) { ctx.save(); ctx.strokeStyle = "rgba(255,120,0,.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 14, by - 10); ctx.stroke(); ctx.restore(); }
   ctx.font = "500 10px -apple-system, BlinkMacSystemFont, system-ui, sans-serif"; ctx.fillStyle = "rgba(255,255,255,.45)"; ctx.textAlign = "right";
   ctx.fillText("Not to scale", w - 12, 18);
 }
