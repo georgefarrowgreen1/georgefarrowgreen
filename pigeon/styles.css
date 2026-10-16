@@ -15,7 +15,7 @@
   --tint:#0068e8;                      /* a touch deeper than iOS blue, so white text on it and it as text both read */
   --on-tint:#ffffff;
   --green:#34c759; --orange:#ff9500; --red:#d63129;
-  --green-t:#1d7f37; --orange-t:#a85000; --tint-fill:#0068e8;     /* the same colours for words: darker, so they read */ --indigo:#5856d6; --teal:#30b0c7; --teal-t:#0b7285; --gray:#8e8e93; --yellow:#ffcc00;
+  --green-t:#1d7f37; --orange-t:#a85000; --tint-fill:#0068e8;     /* the same colours for words: darker, so they read */ --indigo:#5856d6; --teal:#30b0c7; --teal-t:#0b7285; --tint-t:#0054c4; --gray:#8e8e93; --yellow:#ffcc00;
   --bubble-in:#ffffff;     /* white bubbles stand out on the grey */
   --glass:rgba(255,255,255,.62);
   --glass-strong:rgba(255,255,255,.9);
@@ -36,7 +36,7 @@
     --bg:#1c1c1f; --bg-plain:#1c1c1f; --cell:#2a2a2e; --cell-2:#343439;
     --fill:rgba(120,120,128,.26); --fill-2:rgba(120,120,128,.36);
     --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
-    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --gray:#98989f; --yellow:#ffd60a;
+    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --tint-t:#5aabff; --gray:#98989f; --yellow:#ffd60a;
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
@@ -48,7 +48,7 @@
     --bg:#1c1c1f; --bg-plain:#1c1c1f; --cell:#2a2a2e; --cell-2:#343439;
     --fill:rgba(120,120,128,.26); --fill-2:rgba(120,120,128,.36);
     --label:#f5f5f7; --label-2:rgba(235,235,245,.62); --label-3:rgba(235,235,245,.32); --sep:rgba(255,255,255,.1);
-    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --gray:#98989f; --yellow:#ffd60a;
+    --tint:#3d9bff; --green:#32d65f; --orange:#ffa31a; --red:#ff5a4f; --green-t:#32d65f; --orange-t:#ffa31a; --tint-fill:#1670e0; --indigo:#7a78ff; --teal:#46c8e0; --teal-t:#46c8e0; --tint-t:#5aabff; --gray:#98989f; --yellow:#ffd60a;
     --bubble-in:#3a3a3f;
     --glass:rgba(62,62,68,.55); --glass-strong:rgba(52,52,58,.94); --glass-hi:rgba(255,255,255,.16); --glass-edge:rgba(255,255,255,.1);
     --glass-shadow:0 10px 30px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3); --scrim:rgba(0,0,0,.4);
@@ -1311,7 +1311,7 @@ svg.fillico{fill:currentColor;stroke:none}
 .cc b{font-size:15px;line-height:19px;font-weight:600}
 .cc small{font-size:12px;line-height:16px;color:var(--label-2)}
 .cc[aria-checked="true"]{box-shadow:inset 0 0 0 1.5px var(--tint)}
-.cc[aria-checked="true"] b{color:var(--tint)}
+.cc[aria-checked="true"] b{color:var(--tint-t)}
 .cc:disabled{opacity:.45;cursor:default}
 
 /* ---------- the rest of the app, in keeping with the chat ----------
@@ -1672,6 +1672,7 @@ html.night .nav-ghost .night{background:none}
 .mapcard.fc .fcs{font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums}
 .mapcard.fc .fct .fcs{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mapcard.fc .fct .fcs b{font-weight:600;color:var(--tint)}
+.mapcard.fc .fchead .fct .fcs{white-space:normal;text-wrap:balance}          /* pulled up, the line under the time wraps: "lands Sat 17:10–17:40" in full */
 .fccoin{flex:none;display:grid;place-items:center;font-size:24px}
 .fccoin .pg{font-size:inherit;margin:0}
 .fccoin.lg{font-size:28px}
@@ -1813,7 +1814,7 @@ html.night .nav-ghost .night{background:none}
 .seg button b{font-size:14px;font-weight:600}
 .seg button small{font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums;white-space:nowrap;transition:color .25s}
 .seg button[aria-checked="true"],.seg button[aria-checked="true"] .ico{color:#fff}
-.seg button[aria-checked="true"] small{color:rgba(255,255,255,.82)}
+.seg button[aria-checked="true"] small{color:rgba(255,255,255,.94)}
 .seg button:active{transform:scale(.96)}
 .waycard{display:flex;flex-direction:column;gap:10px;width:calc(100% - 32px);margin:14px 16px 0;padding:14px 16px 16px;border:0;border-radius:26px;background:var(--cell);color:var(--label);font:inherit;text-align:left;cursor:pointer;transition:transform .45s var(--snappy)}
 .waycard:active{transform:scale(.98)}
