@@ -1638,6 +1638,7 @@ html.night .nav-ghost .night{background:none}
 /* small fixes from the UI audit */
 .compose .kind{max-width:44%}
 @media (max-width:360px){.compose .kind.named .kl{display:none}.bstats{gap:6px;margin-inline:12px}.bstats b{font-size:15px}}
+@media (max-width:360px){.mapcard.fc.fold .big{font-size:19px;letter-spacing:-.4px}.mapcard.fc.fold .big small{font-size:13px}.mapcard.fc.fold .fcpeek{gap:10px}}   /* a small phone: the folded card still says when it lands */
 :root[data-theme="dark"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}
 @media (prefers-color-scheme: dark){:root[data-theme="auto"] .pstamp2{color:color-mix(in srgb,var(--ink) 45%,var(--label))}}
 /* a message held for its menu sinks a little first, as a chat in the list does */
@@ -1814,7 +1815,7 @@ html.night .nav-ghost .night{background:none}
 .seg button b{font-size:14px;font-weight:600}
 .seg button small{font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums;white-space:nowrap;transition:color .25s}
 .seg button[aria-checked="true"],.seg button[aria-checked="true"] .ico{color:#fff}
-.seg button[aria-checked="true"] small{color:rgba(255,255,255,.94)}
+.seg button[aria-checked="true"] small{color:#fff}
 .seg button:active{transform:scale(.96)}
 .waycard{display:flex;flex-direction:column;gap:10px;width:calc(100% - 32px);margin:14px 16px 0;padding:14px 16px 16px;border:0;border-radius:26px;background:var(--cell);color:var(--label);font:inherit;text-align:left;cursor:pointer;transition:transform .45s var(--snappy)}
 .waycard:active{transform:scale(.98)}

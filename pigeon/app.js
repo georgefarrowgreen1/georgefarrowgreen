@@ -406,9 +406,14 @@ function restingOn(m, t = now()) {
 }
 // How far a flight goes, flown and by ship: "8 mi · 3,560 mi by ship"
 function milesOf(km, legs) {
+  const sea = shipKm(legs);
+  return sea > 50 ? `${fmtMiles(km)} · ${fmtMiles(sea)} by ship` : fmtMiles(km);
+}
+// how far it goes by ship (km), 0 if it doesn't
+function shipKm(legs) {
   const b = (legs || []).filter((l) => l[3] === "b");
   let sea = 0; for (let i = 1; i < b.length - 1; i++) sea += haversineKm(b[i][0], b[i][1], b[i + 1][0], b[i + 1][1]);
-  return sea > 50 ? `${fmtMiles(km)} · ${fmtMiles(sea)} by ship` : fmtMiles(km);
+  return sea;
 }
 // A voyage by ship (a standard pigeon across an ocean): where it boards, when the ship
 // sails, the sea it crosses, where and when it comes ashore; null if it doesn't
@@ -437,7 +442,9 @@ function drawVoyages(g, tracks, col, lw, stroke) {
     if (cut > a) { g.lineWidth = lw; stroke(P, a, cut, up); }
     if (cut < b) { g.lineWidth = lw - 0.5; g.setLineDash([0.5, 7]); stroke(P, cut, b, up); g.setLineDash([]); }
     g.restore();
-    ports.push({ at: P[a], vis: !up || up[a], name: sh.from }, { at: P[b], vis: !up || up[b], name: sh.to });
+    // (a port where it takes off or lands already has that end's dot and name)
+    const end = (i) => [P[0], P.at(-1)].some((q) => Math.hypot(q[0] - P[i][0], q[1] - P[i][1]) < 12);
+    ports.push({ at: P[a], vis: (!up || up[a]) && !end(a), name: sh.from }, { at: P[b], vis: (!up || up[b]) && !end(b), name: sh.to });
   }
   for (const p of ports) {
     if (!p.vis) continue;
@@ -5080,7 +5087,7 @@ function drawSheet(refresh) {
           : st === "lost" ? `<span class="ws w-lost">${I.skull}Lost</span>` : `<span class="ws w-back">${I.homing}Called back</span>`;
       };
       const rows = whoOrder(m).map((x) => { const p = member(g, x.to) || { name: "Someone" };
-        return `<div class="cell whorow"><span class="who-av ${whoCls(x)}">${avatar(p, "s")}</span><span class="ctext"><span class="one">${esc(first(p.name))}</span>${x.toPlace ? `<span class="csub one">${esc(x.toPlace)}${x.km ? ` · ${fmtMiles(x.km)}` : ""}</span>` : ""}</span>${status(x)}</div>`; }).join("");
+        return `<div class="cell whorow"><span class="who-av ${whoCls(x)}">${avatar(p, "s")}</span><span class="ctext"><span class="one">${esc(first(p.name))}</span>${x.toPlace ? `<span class="csub one">${esc(x.toPlace)}${x.km ? ` · ${fmtMiles(x.km + shipKm(x.legs))}` : ""}</span>` : ""}</span>${status(x)}</div>`; }).join("");
       const read = m.flock.filter((x) => x.readAt).length;
       $layer.innerHTML = sheetHtml("Who Has It",
         `<div class="whohead">${pgm(m)}<b>${m.flying ? `${c.landed} of ${c.n} landed` : `Landed for ${c.landed} of ${c.n}`}</b><span>${read ? `Read by ${read === c.n ? "everyone" : read}` : "Not read yet"}${m.flying && c.next ? ` · next lands in <span data-eta="${esc(c.next)}">${fmtDur(c.next - now())}</span>` : ""}</span>${whoDots(m)}</div>
