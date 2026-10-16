@@ -637,6 +637,9 @@ and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
   headings, the kind of pigeon (a mystery pigeon stays "mystery") and the
   country or sea it's over: no names, handles, messages, places, routes,
   times or ids;
+- a short fading trail shows where each was over the last two hours (up to
+  600 km back), every point snapped and under the rules below, so a trail
+  stops before it could ever reach home;
 - never within 150 km (up to 400 km on a long flight) of where a pigeon set
   off or is going, nor of anywhere it stops, and never while it rests; flights
   under 300 km never show;

@@ -93,6 +93,20 @@ function start() {
     g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(base, 0, 0); g.scale(dpr, dpr);
     const v = view(), pulse = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : (Math.sin(now / 700) + 1) / 2;
     marks = merge(v);
+    // where they've been: a fading line back along each trail (drawn first, under the dots)
+    g.lineCap = g.lineJoin = "round";
+    for (const p of marks) {
+      if (!p.tr?.length) continue;
+      const c = css(`--k-${p.k}`) || css("--k-standard"), pts = [[p.x, p.y]];
+      let lon = p.lon;
+      for (const [la, lo] of p.tr) { let d = lo - lon; d -= Math.round(d / 360) * 360; lon += d; pts.push([pts.at(-1)[0] + d * v.s, v.cy + (v.lat - la) * v.s]); }
+      const [ex, ey] = pts.at(-1), grad = g.createLinearGradient(p.x, p.y, ex, ey);
+      grad.addColorStop(0, c + "aa"); grad.addColorStop(1, c + "00");
+      g.strokeStyle = grad; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; g.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2); }
+      g.lineTo(ex, ey); g.stroke();
+    }
     for (const p of marks) {
       const { x, y } = p, c = css(`--k-${p.k}`) || css("--k-standard"), r = p.n > 1 ? 5 : 4;
       const glow = g.createRadialGradient(x, y, 0, x, y, r * 4); glow.addColorStop(0, c + "66"); glow.addColorStop(1, c + "00");
@@ -116,7 +130,7 @@ function start() {
     for (const p of shown) {
       const [x, y] = xy(p.lat, p.lon, v);
       const m = out.find((o) => o.k === p.k && Math.hypot(o.x - x, o.y - y) < 11);
-      if (!m) { out.push({ x, y, k: p.k, n: p.n, h: p.h, over: { [p.over]: p.n }, key: `${p.k}|${p.lat}|${p.lon}` }); continue; }
+      if (!m) { out.push({ x, y, k: p.k, n: p.n, h: p.h, lon: p.lon, tr: p.tr, over: { [p.over]: p.n }, key: `${p.k}|${p.lat}|${p.lon}` }); continue; }
       m.x = (m.x * m.n + x * p.n) / (m.n + p.n); m.y = (m.y * m.n + y * p.n) / (m.n + p.n); m.n += p.n;
       if (m.h !== p.h) m.h = null; m.over[p.over] = (m.over[p.over] || 0) + p.n;
     }
@@ -155,7 +169,8 @@ function start() {
       if (!r.ok) throw new Error(r.status);
       const d = await r.json();
       // (only what the page knows how to draw)
-      data = { inAir: Number(d.inAir) || 0, pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000) };
+      data = { inAir: Number(d.inAir) || 0, pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000)
+        .map((p) => ({ ...p, tr: (Array.isArray(p.tr) ? p.tr : []).filter((q) => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).slice(0, 8) })) };
       shown = group(data.pigeons); when = Date.now(); failed = false; base = null; hover = null; tip.hidden = true;
       panel();
     } catch (_) { failed = true; }

@@ -7,7 +7,8 @@
    - Never near either end: not within NEAR_HOME km of where it set off or where it's
      going (more on a long flight), nor of anywhere it stops (a friend on the way, an
      island, a port), and not while it's resting. A pigeon only shows out in the open.
-   - Only roughly: snapped to a GRID° grid (about 55 km) and the nearest of 8 headings.
+   - Only roughly: snapped to a GRID° grid (about 55 km) and the nearest of 8 headings,
+     with a short trail of where it was (TRAIL), every point under these same rules.
      The snapping is the same every time, so watching longer doesn't sharpen it.
    - Short flights (under SHORT km) never show: both ends would be too near.
    - No ids, in a shuffled order: nothing links a dot now to a dot a minute ago.
@@ -31,14 +32,10 @@ function bearing(aLat, aLon, bLat, bLon) {
   return (Math.atan2(y, x) / r + 360) % 360;
 }
 
-// One pigeon as the tracker may show it, or null when it mustn't be shown (yet).
-export function trackerView(f, t) {
+// Where a pigeon may be shown at time t, as [lat, lon] snapped, or null where it mustn't be.
+function spot(f, stops, trip, t) {
   if (!(f.sent_at <= t && t < f.deliver_at) || (f.lost_at != null && f.lost_at <= t)) return null;
-  const stops = stopsOf(f), from = stops[0], to = stops.at(-1);
-  if (from[0] == null || to[0] == null) return null;
-  const trip = haversineKm(from[0], from[1], to[0], to[1]);
-  if (trip < SHORT) return null;
-  const here = posAt(stops, t), ahead = posAt(stops, t + 10 * 60e3);
+  const from = stops[0], to = stops.at(-1), here = posAt(stops, t), ahead = posAt(stops, t + 10 * 60e3);
   if (haversineKm(here[0], here[1], ahead[0], ahead[1]) < 1) return null;          // resting, or waiting for a ship
   // clear of both ends (a long flight keeps further away, up to 400 km) and of every stop on the way
   const keep = Math.max(NEAR_HOME, Math.min(400, trip * 0.1));
@@ -47,9 +44,27 @@ export function trackerView(f, t) {
     const [a, b] = [stops[i], stops[i + 1]];
     if (haversineKm(a[0], a[1], b[0], b[1]) < 1 && haversineKm(here[0], here[1], a[0], a[1]) < NEAR_HOME) return null;
   }
-  const lat = snap(here[0]), lon = snap(((here[1] + 540) % 360) - 180);
-  const h = Math.round(bearing(here[0], here[1], ahead[0], ahead[1]) / 45) % 8;
-  return { lat, lon, h: HEADINGS[h], k: f.mystery ? "mystery" : KINDS.has(f.pigeon) ? f.pigeon : "standard", over: placeName(lat, lon) };
+  return { here, ahead, at: [snap(here[0]), snap(((here[1] + 540) % 360) - 180)] };
+}
+
+// One pigeon as the tracker may show it, or null when it mustn't be shown (yet). Its trail is
+// where it was over the last couple of hours (up to TRAIL_KM back), each point under the same
+// rules: snapped, and only where it could have been shown then, so a trail never reaches home.
+export const TRAIL = [15, 30, 45, 60, 90, 120].map((m) => m * 60e3), TRAIL_KM = 600;
+export function trackerView(f, t) {
+  const stops = stopsOf(f), from = stops[0], to = stops.at(-1);
+  if (from[0] == null || to[0] == null) return null;
+  const trip = haversineKm(from[0], from[1], to[0], to[1]);
+  if (trip < SHORT) return null;
+  const now = spot(f, stops, trip, t); if (!now) return null;
+  const [lat, lon] = now.at, h = Math.round(bearing(now.here[0], now.here[1], now.ahead[0], now.ahead[1]) / 45) % 8;
+  const tr = [];
+  for (const ago of TRAIL) {
+    const was = spot(f, stops, trip, t - ago); if (!was) break;
+    if (haversineKm(lat, lon, was.at[0], was.at[1]) > TRAIL_KM) break;
+    const last = tr.at(-1) || [lat, lon]; if (was.at[0] !== last[0] || was.at[1] !== last[1]) tr.push(was.at);
+  }
+  return { lat, lon, h: HEADINGS[h], k: f.mystery ? "mystery" : KINDS.has(f.pigeon) ? f.pigeon : "standard", over: placeName(lat, lon), tr };
 }
 
 // every pigeon in the air (one to one, and each member's in a group), with whether both ends allow it
