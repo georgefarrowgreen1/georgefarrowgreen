@@ -986,6 +986,13 @@ show a friendly "backend not set up" message).
 
 ### InFlight's security model
 
+- **Two addresses, kept apart:** chat.georgefarrowgreen.com serves only
+  InFlight's own pages (the app, the tracker) and its own API (`/api/pigeon/`);
+  the site's API, its owner's sign-in and InFlight's admin stay on
+  georgefarrowgreen.com (`/admin` there redirects). At either address anything
+  else is "Not found", never the site's home page as a fallback
+  (`functions/_middleware.js`, `functions/_app.js`). The old address's handover
+  page may be framed only by the new address and answers only it.
 - **What the server can't see:** message text, photos and private keys. Phones
   encrypt with AES-256-GCM under keys only the two friends can derive (ECDH
   P-256). The server stores ciphertext, public keys, who's friends with whom,

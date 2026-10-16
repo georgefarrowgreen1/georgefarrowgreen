@@ -65,6 +65,8 @@ export async function serveApp(ctx, res, path, chat) {
   const type = res.headers.get("content-type") || "", head = ctx.request.method === "HEAD";
 
   if (type.includes("text/html")) {
+    // only InFlight's own pages: anything else here would be the site's home page, served as a fallback
+    if (!APP_PAGES.test(path)) return notFound();
     let html = await res.text();
     const refs = [...new Set([...html.matchAll(/(?:src|href)="(\/pigeon\/[\w./-]+\.(?:js|css))"/g)].map((m) => m[1]))];
     const vs = await Promise.all(refs.map((p) => fingerprint(ctx, p, chat)));
@@ -101,6 +103,10 @@ export async function serveApp(ctx, res, path, chat) {
   }
   return withSecurity(res);
 }
+
+// the pages InFlight has (under /pigeon/, as stored)
+const APP_PAGES = /^\/pigeon\/(index(\.html)?|tracker(\.html)?|handover(\.html)?|admin\/(index(\.html)?)?)?$/;
+export const notFound = () => withSecurity(new Response("Not found.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } }));
 
 export function withSecurity(res) {
   const out = new Response(res.body, res);

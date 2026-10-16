@@ -93,14 +93,15 @@ async function today(D, t) {
   const grp = await D.prepare(`SELECT g.from_lat, g.from_lon, d.to_lat, d.to_lon, g.sent_at, d.deliver_at, d.lost_at, d.km, d.legs
     FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id JOIN pg_users a ON a.id = g.sender JOIN pg_users b ON b.id = d.user_id
     WHERE g.sent_at <= ?1 AND d.deliver_at >= ?2 AND (d.lost_at IS NULL OR d.lost_at >= ?2) AND COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0 LIMIT 20000`).bind(t, day0).all();
-  let landed = 0, km = 0; const seas = new Map();
+  let landed = 0, km = 0, budget = 20000; const seas = new Map();      // (at most 20,000 points named in all: a busy day stays quick)
   for (const f of [...one.results, ...grp.results]) {
     const end = Math.min(f.deliver_at, f.lost_at ?? Infinity), a = Math.max(f.sent_at, day0), b = Math.min(t, end);
     if (f.deliver_at <= t && f.deliver_at >= day0 && (f.lost_at == null || f.lost_at > f.deliver_at)) landed++;
     if (!(b > a) || f.from_lat == null || f.to_lat == null) continue;
     const frac = (b - a) / (f.deliver_at - f.sent_at || 1); km += (f.km || 0) * frac;
     // where it flew today: a point every ~100 km of it (at most 40), named from the passport's grid
-    const stops = stopsOf(f), n = Math.min(40, Math.max(2, Math.ceil(((f.km || 0) * frac) / 100)));
+    if (budget <= 0) continue;
+    const stops = stopsOf(f), n = Math.min(40, budget, Math.max(2, Math.ceil(((f.km || 0) * frac) / 100))); budget -= n + 1;
     const seen = new Set();
     for (let i = 0; i <= n; i++) { const [la, lo] = posAt(stops, a + ((b - a) * i) / n), p = placeAt(la, ((lo + 540) % 360) - 180); if (p && isSea(p)) seen.add(p); }
     for (const p of seen) seas.set(p, (seas.get(p) || 0) + 1);
