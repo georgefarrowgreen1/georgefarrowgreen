@@ -22,6 +22,11 @@ function start() {
   const rings = LAND.split(";").map((r) => {
     const a = r.split(",").map((n) => n / 2);
     for (let i = 2; i < a.length; i += 2) a[i] += Math.round((a[i - 2] - a[i]) / 360) * 360;
+    // (then back round to the usual side: Afro-Eurasia starts in Chukotka, past the date line)
+    let lo = Infinity, hi = -Infinity; for (let i = 0; i < a.length; i += 2) { lo = Math.min(lo, a[i]); hi = Math.max(hi, a[i]); }
+    const back = Math.round(-(lo + hi) / 2 / 360) * 360; if (back) for (let i = 0; i < a.length; i += 2) a[i] += back;
+    // one that goes right round the world (Antarctica) closes over its pole
+    if (Math.abs(a[a.length - 2] - a[0]) > 180) { const pole = a[1] < 0 ? -90 : 90; a.push(a[a.length - 2], pole, a[0], pole); }
     return a;
   });
   let data = null, shown = [], marks = [], when = 0, failed = false, W = 0, H = 0, dpr = 1, base = null, hover = null;
@@ -53,14 +58,18 @@ function start() {
     b.save(); b.beginPath(); b.rect(0, yN, W, yS - yN); b.clip();
     b.fillStyle = css("--sea"); b.fillRect(0, 0, W, H);
     // every copy of the world that shows (it wraps)
-    const copies = []; for (let k = -2; k <= 2; k++) { const x0 = v.cx + (-180 - v.lon + k * 360) * v.s; if (x0 < W && x0 + 360 * v.s > 0) copies.push(k * 360); }
+    const copies = []; for (let k = -2; k <= 2; k++) { const x0 = v.cx + (-180 - v.lon + k * 360) * v.s; if (x0 - 30 * v.s < W && x0 + 390 * v.s > 0) copies.push(k * 360); }   // (a little over: coasts reach past the date line)
     const at = (lat, lon, o) => [v.cx + (lon + o - v.lon) * v.s, v.cy + (v.lat - lat) * v.s];
     b.strokeStyle = css("--grid"); b.lineWidth = 1;
     for (const o of copies) for (let lon = -180; lon < 180; lon += 30) { const [x] = at(0, lon, o); b.beginPath(); b.moveTo(x, 0); b.lineTo(x, H); b.stroke(); }
     for (let lat = -60; lat <= 60; lat += 30) { const [, y] = at(lat, 0, 0); b.beginPath(); b.moveTo(0, y); b.lineTo(W, y); b.stroke(); }
-    b.beginPath();
-    for (const o of copies) for (const r of rings) { for (let i = 0; i < r.length; i += 2) { const [x, y] = at(r[i + 1], r[i], o); i ? b.lineTo(x, y) : b.moveTo(x, y); } b.closePath(); }
-    b.fillStyle = css("--land"); b.fill("evenodd"); b.strokeStyle = css("--coast"); b.lineWidth = .8; b.stroke();
+    // each copy filled on its own, so where two copies overlap they don't cancel out
+    b.fillStyle = css("--land"); b.strokeStyle = css("--coast"); b.lineWidth = .8;
+    for (const o of copies) {
+      b.beginPath();
+      for (const r of rings) { for (let i = 0; i < r.length; i += 2) { const [x, y] = at(r[i + 1], r[i], o); i ? b.lineTo(x, y) : b.moveTo(x, y); } b.closePath(); }
+      b.fill("evenodd"); b.stroke();
+    }
     // night: where the sun's below the horizon now
     const t = new Date(), day = (Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) - Date.UTC(t.getUTCFullYear(), 0, 0)) / 864e5;
     const dec = -23.44 * Math.cos((2 * Math.PI / 365) * (day + 10)) * Math.PI / 180;
@@ -125,7 +134,6 @@ function start() {
     const ps = data?.pigeons || [], n = data?.inAir ?? 0;
     $(".tk-n").textContent = n.toLocaleString("en-GB");
     $(".tk-nlabel").textContent = n === 1 ? "pigeon in the air" : "pigeons in the air";
-    $(".tk-shown").textContent = n ? `${ps.length.toLocaleString("en-GB")} shown here. The rest are near home, resting or kept private.` : "";
     const by = Object.fromEntries(KINDS.map(([k]) => [k, 0])); for (const p of ps) by[p.k] = (by[p.k] || 0) + 1;
     const kinds = $(".tk-kinds"); kinds.innerHTML = KINDS.map(([k, name]) => `<div class="tk-kind" data-k="${k}"><span class="tk-dot"></span>${name}<b>${by[k]}</b></div>`).join("");
     kinds.querySelectorAll(".tk-kind").forEach((el) => el.querySelector(".tk-dot").style.setProperty("--c", css(`--k-${el.dataset.k}`)));
