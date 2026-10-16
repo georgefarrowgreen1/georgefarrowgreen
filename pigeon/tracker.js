@@ -154,6 +154,17 @@ function start() {
     const where = new Map(); for (const p of ps) where.set(p.over, (where.get(p.over) || 0) + 1);
     const top = [...where].sort((a, b) => b[1] - a[1]).slice(0, 7);
     $(".tk-where").innerHTML = top.length ? top.map(([w, c]) => `<li><span>Over ${esc(w)}</span><b>${c}</b></li>`).join("") : `<li class="none">None out in the open right now.</li>`;
+    // today, as totals
+    const td = data?.today;
+    if (td) {
+      const mi = Math.round((td.km * 0.621371) / 10) * 10;
+      $(".tk-landed").textContent = td.landed.toLocaleString("en-GB");
+      $(".tk-flown").textContent = `${mi.toLocaleString("en-GB")} mi`;
+      $(".tk-seas").textContent = td.seas.length.toLocaleString("en-GB");
+      const names = td.seas.length ? `Over ${td.seas.slice(0, 12).join(", ")}${td.seas.length > 12 ? ` and ${td.seas.length - 12} more` : ""}` : "None yet today";
+      $(".tk-seas-stat").title = names; $(".tk-seas-stat").setAttribute("aria-label", `${td.seas.length} seas crossed today. ${names}`);
+      $(".tk-today").hidden = false;
+    }
     cv.setAttribute("aria-label", `World map: ${ps.length} pigeons shown${top.length ? `, most over ${top.slice(0, 3).map(([w]) => w).join(", ")}` : ""}`);
   }
   function ago() {
@@ -169,7 +180,9 @@ function start() {
       if (!r.ok) throw new Error(r.status);
       const d = await r.json();
       // (only what the page knows how to draw)
-      data = { inAir: Number(d.inAir) || 0, pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000)
+      const td = d.today && typeof d.today === "object" ? d.today : null;
+      data = { today: td && { landed: Number(td.landed) || 0, km: Number(td.km) || 0, seas: (Array.isArray(td.seas) ? td.seas : []).filter((x) => typeof x === "string").slice(0, 60) },
+        inAir: Number(d.inAir) || 0, pigeons: (Array.isArray(d.pigeons) ? d.pigeons : []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && NAME[p.k]).slice(0, 5000)
         .map((p) => ({ ...p, tr: (Array.isArray(p.tr) ? p.tr : []).filter((q) => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).slice(0, 8) })) };
       shown = group(data.pigeons); when = Date.now(); failed = false; base = null; hover = null; tip.hidden = true;
       panel();

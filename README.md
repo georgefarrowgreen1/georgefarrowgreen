@@ -649,6 +649,10 @@ and the page (`pigeon/tracker.html`, `tracker.js`) only ever gets rough dots:
 - one answer a minute for everyone, kept at the edge: no sign-in, no cookies,
   nothing about who looked is stored, and asking more often learns nothing.
 
+A **Today** strip (top right) adds totals since midnight UTC: pigeons landed,
+miles flown and the seas crossed (seas only, never countries), from the same
+pigeons the map may show, so anyone who switched the tracker off isn't in them.
+
 The page itself loads nothing from anywhere else, keeps the app's strict
 security headers, can be dragged and zoomed round the world, and on a phone
 says it's made for bigger screens. The "not on a computer" page links to it.

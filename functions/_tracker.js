@@ -20,6 +20,8 @@
 import { json, db, haversineKm } from "./_pigeon.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { placeName } from "./_where.js";
+import { placeAt } from "./_placegrid.js";
+import { isSea } from "./_passport.js";
 
 export const NEAR_HOME = 150, SHORT = 300, GRID = 0.5, FRESH = 60e3;
 const KINDS = new Set(["standard", "swift", "turbo", "rocket"]);
@@ -80,13 +82,39 @@ async function inTheAir(D, t) {
   return [...one.results, ...grp.results];
 }
 
+// Today (since midnight UTC), as totals only: pigeons landed, distance flown, seas crossed.
+// Like the map, it leaves out anyone who keeps their pigeons off the tracker.
+async function today(D, t) {
+  const day0 = Math.floor(t / 864e5) * 864e5;
+  const cols = "sent_at, deliver_at, lost_at, km, legs";
+  const one = await D.prepare(`SELECT m.from_lat, m.from_lon, m.to_lat, m.to_lon, m.${cols.split(", ").join(", m.")}
+    FROM pg_msgs m JOIN pg_users a ON a.id = m.sender JOIN pg_users b ON b.id = m.recipient
+    WHERE m.sent_at <= ?1 AND m.deliver_at >= ?2 AND (m.lost_at IS NULL OR m.lost_at >= ?2) AND COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0 LIMIT 20000`).bind(t, day0).all();
+  const grp = await D.prepare(`SELECT g.from_lat, g.from_lon, d.to_lat, d.to_lon, g.sent_at, d.deliver_at, d.lost_at, d.km, d.legs
+    FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id JOIN pg_users a ON a.id = g.sender JOIN pg_users b ON b.id = d.user_id
+    WHERE g.sent_at <= ?1 AND d.deliver_at >= ?2 AND (d.lost_at IS NULL OR d.lost_at >= ?2) AND COALESCE(a.hide_tracker, 0) = 0 AND COALESCE(b.hide_tracker, 0) = 0 LIMIT 20000`).bind(t, day0).all();
+  let landed = 0, km = 0; const seas = new Map();
+  for (const f of [...one.results, ...grp.results]) {
+    const end = Math.min(f.deliver_at, f.lost_at ?? Infinity), a = Math.max(f.sent_at, day0), b = Math.min(t, end);
+    if (f.deliver_at <= t && f.deliver_at >= day0 && (f.lost_at == null || f.lost_at > f.deliver_at)) landed++;
+    if (!(b > a) || f.from_lat == null || f.to_lat == null) continue;
+    const frac = (b - a) / (f.deliver_at - f.sent_at || 1); km += (f.km || 0) * frac;
+    // where it flew today: a point every ~100 km of it (at most 40), named from the passport's grid
+    const stops = stopsOf(f), n = Math.min(40, Math.max(2, Math.ceil(((f.km || 0) * frac) / 100)));
+    const seen = new Set();
+    for (let i = 0; i <= n; i++) { const [la, lo] = posAt(stops, a + ((b - a) * i) / n), p = placeAt(la, ((lo + 540) % 360) - 180); if (p && isSea(p)) seen.add(p); }
+    for (const p of seen) seas.set(p, (seas.get(p) || 0) + 1);
+  }
+  return { landed, km: Math.round(km / 10) * 10, seas: [...seas].sort((x, y) => y[1] - x[1]).map(([p]) => p) };
+}
+
 export async function trackerSnapshot(D, t) {
   const all = await inTheAir(D, t);
   const shown = [];
   for (const f of all) { if (f.hidden) continue; const v = trackerView(f, t); if (v) shown.push(v); }
   // shuffled, so the order says nothing either
   for (let i = shown.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [shown[i], shown[j]] = [shown[j], shown[i]]; }
-  return { at: Math.floor(t / FRESH) * FRESH, inAir: all.length, pigeons: shown };
+  return { at: Math.floor(t / FRESH) * FRESH, inAir: all.length, pigeons: shown, today: await today(D, t) };
 }
 
 // (one copy per server, while it's fresh; and the edge keeps it for everyone near it)
