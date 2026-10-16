@@ -6,13 +6,13 @@ import { PLACES, nearestPlace, snapToMile } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
-import { ABOUT, BODIES, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf } from "./moon.js";
+import { ABOUT, BODIES, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf } from "./moon.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.0";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.1";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2316,6 +2316,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.1", at: Date.UTC(2026, 9, 18), title: "Wherever you go", items: [
+    ["up", "indigo", "Pigeons follow you to other worlds", "Leave for the Moon or Mars and the pigeons already on their way come too: one over Europe is handed to a lunar pigeon there and then; one in space gets to where you were and is relayed on by laser."],
+    ["moon", "gray", "Eclipses to the minute", "The Moon and the Earth’s shadow are worked out properly now, so a lunar eclipse on a pigeon’s trip is when it really is, shallow ones too."],
+    ["shield", "green", "Fixes", "Notifications keep up when lots are flying, pigeons grounded by an unfriending go back in their loft, and wrong passwords elsewhere can’t lock you out."],
+  ] },
   { v: "1.2.0", at: Date.UTC(2026, 9, 17), title: "Further out", items: [
     ["up", "red", "Live on Mars", "My Profile → Location → Go to Mars. Only laser pigeons reach it: pulses of light, there in 3 to 22 minutes as the planets go round the Sun."],
     ["globe", "blue", "Orbital pigeons", "Earth to Earth by way of orbit: up 250 miles, round every 92 minutes, and down on the first pass near your friend. Two a day."],
@@ -5882,12 +5887,14 @@ function tickMap() {
    No map of the Earth: the Earth and the Moon (or the Moon's surface) with
    the pigeon on its way, where it is now, and the moments of its trip. */
 // its two ends, and the times of the one pigeon shown: { mn, sentAt, deliverAt, lost }
+// (one that followed someone to another world: the leg it's on now, and `then`, the one still to come)
 function moonOf(m) {
-  if (m.moon) return { mn: m.moon, sentAt: m.sentAt, deliverAt: m.deliverAt, lost: m.lost, lostAt: m.lostAt, recalled: !!m.recalled, km: m.km };
+  const one = (mn, deliverAt, x) => { const L = legOf(mn, m.sentAt, deliverAt, now()); return { mn: L.mn, sentAt: L.from, deliverAt: L.to, then: L.then, endAt: deliverAt, lost: x.lost, lostAt: x.lostAt, recalled: !!x.recalled, km: x.km }; };
+  if (m.moon) return one(m.moon, m.deliverAt, m);
   const fl = (m.flock || []).filter((x) => x.moon);
   if (!fl.length || fl.length !== (m.flock || []).length) return null;               // (a group's, all of them to or from the Moon)
   const x = fl.find((y) => y.flying) || fl[0];
-  return { mn: x.moon, sentAt: m.sentAt, deliverAt: x.deliverAt, lost: x.lost, lostAt: x.lostAt, recalled: !!x.recalled, km: x.km, to: x.to };
+  return { ...one(x.moon, x.deliverAt, x), to: x.to };
 }
 const MOON_ICON = { up: "up", globe: "globe", dot: "dot", dist: "dist", moon: "moon", check: "check", pin: "pin", fire: "fire" };
 const TRIP_LABEL = { surface: "The pigeon bounding across the Moon", trip: "The pigeon on its way between the Earth and the Moon", laser: "A laser pigeon: a pulse of light between the worlds", orbit: "The pigeon’s path round the Earth in orbit" };
@@ -5909,6 +5916,7 @@ function drawMoonFlight(s, m) {
   }
   tickMoon(m);
 }
+const placeOf = (e) => (e?.place ? e.place : e?.b === "moon" ? "the Moon" : e?.b === "mars" ? "Mars" : "Earth");
 function tickMoon(m) {
   const cv = $(".moonsky", $layer); if (!cv) return;
   const o = moonOf(m), now0 = now(), end = o.lost ? Math.min(now0, o.lostAt || now0) : now0;
@@ -5919,7 +5927,7 @@ function tickMoon(m) {
   const card = $(".mooncard", $layer), place = (e) => (e?.place ? esc(o.mn.k === "surface" || (o.mn.k === "laser" && o.mn.relay) ? e.place.replace(/, (the Moon|Mars)$/, "") : e.place) : e?.b === "moon" ? "the Moon" : e?.b === "mars" ? "Mars" : "Earth");
   $(".mcwhere", card).innerHTML = `${place(o.mn.from)} to ${place(o.mn.to)}`;
   const eta = $(".mceta", card), landed = !o.lost && now0 >= o.deliverAt;
-  eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.recalled ? `<b>Called back</b>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.deliverAt - now0))}</b><small>lands ${esc(atShort(o.deliverAt))}</small>`;
+  eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.recalled ? `<b>Called back</b>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.endAt - now0))}</b><small>lands ${esc(atShort(o.endAt))}</small>`;
   const nowEl = $(".mcnow", card);
   nowEl.textContent = rp != null ? spaceNow(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth).line
     : o.recalled ? "Called back: it turned for home."
@@ -5930,7 +5938,12 @@ function tickMoon(m) {
   const slider = $(".mcreplay", card); if (document.activeElement !== slider) slider.value = String(Math.round(f * 1000));
   $(".mclive", card).hidden = rp == null;
   $(".mcshare", card).hidden = !(rp == null && shareable(m));
-  const steps = spaceMoments(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth), key = steps.map((x) => +x.done).join("") + (o.lost ? "l" : "");
+  const steps = spaceMoments(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth), key = steps.map((x) => +x.done).join("") + (o.lost ? "l" : "") + (o.then ? "r" : "");
+  // followed them to another world: where it was handed on, or relayed from, and where it's relayed on to
+  const by = (k) => (k === "laser" ? "a laser pigeon" : `a ${KIND[k]?.name.toLowerCase() || "space"} pigeon`);
+  if (o.mn.hand) steps.unshift({ at: o.sentAt, done: t >= o.sentAt, icon: "up", text: `Handed to ${by(o.mn.pk)}${o.mn.from?.place ? ` over ${o.mn.from.place}` : ""}: they’d left the Earth` });
+  else if (o.mn.prev) steps.unshift({ at: o.sentAt, done: t >= o.sentAt, icon: "up", text: `Relayed on from ${placeOf(o.mn.from)} by ${by(o.mn.pk)}: they’d moved` });
+  if (o.then) steps.push({ at: o.deliverAt, done: false, icon: o.then.pk === "laser" ? "up" : "moon", text: `${o.then.pk === "laser" ? "Relayed by laser" : `Handed to a ${KIND[o.then.pk]?.name.toLowerCase() || "space"} pigeon`} to ${placeOf(o.then.to)}, where they are now` });
   const ol = $(".mcsteps", card);
   if (ol.dataset.k !== key) {
     ol.dataset.k = key;
@@ -6264,7 +6277,7 @@ function airCard(r) {
   return airFill(el, r);
 }
 // what a card says (names arrive with the sync; a rerouted pigeon lands at a new time)
-const spaceSub = (mn, from, at) => spaceNow(mn, from, at, now(), whereOnEarth).line.replace(/ · (\d[\d,]* mph|at the speed of light)$/, "").replace(/^Over /, "over ");
+const spaceSub = (mn, from, at) => ((L) => spaceNow(L.mn, L.from, L.to, now(), whereOnEarth))(legOf(mn, from, at, now())).line.replace(/ · (\d[\d,]* mph|at the speed of light)$/, "").replace(/^Over /, "over ");
 function airFill(el, r) {
   const who = r.label.split(" · ")[0], wx = wxSay(r, true);
   el.dataset.at = r.deliverAt; el.dataset.from = r.sentAt;

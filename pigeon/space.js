@@ -62,9 +62,11 @@ export function siteName(lat, lon, body = "moon") {
 export const placeOn = (lat, lon, body = "moon") => `${siteName(lat, lon, body)}, ${BODIES[body]?.name || "the Moon"}`;
 
 /* ---------- the Moon ---------- */
+// (in Terrestrial Time, ~69 s ahead of the clock: the Moon moves its own width in an hour, so it counts)
+const centuries = (t) => ((t + 69e3) / 864e5 + 2440587.5 - 2451545) / 36525;
 function args(t) {
-  const T = (t / 864e5 + 2440587.5 - 2451545) / 36525;
-  return { D: 297.8501921 + 445267.1114034 * T, M: 357.5291092 + 35999.0502909 * T, Mp: 134.9633964 + 477198.8675055 * T, F: 93.2720950 + 483202.0175233 * T };
+  const T = centuries(t);
+  return { T, D: 297.8501921 + 445267.1114034 * T, M: 357.5291092 + 35999.0502909 * T, Mp: 134.9633964 + 477198.8675055 * T, F: 93.2720950 + 483202.0175233 * T };
 }
 // centre to centre, km
 export function moonKm(t) {
@@ -73,12 +75,39 @@ export function moonKm(t) {
     + 246158 * cos(2 * D - 2 * Mp) - 152138 * cos(2 * D - M - Mp) - 170733 * cos(2 * D + Mp) - 204586 * cos(2 * D - M) - 129620 * cos(M - Mp)
     + 108743 * cos(D) + 104755 * cos(M + Mp)) / 1000;
 }
+// Where the Moon is on the sky (Meeus, Astronomical Algorithms, ch. 47: the terms down to a few
+// thousandths of a degree) and the Sun (ch. 25), so the Earth's shadow falls where it really does.
+// Each row: multiples of D, M, M′, F, then the size in millionths of a degree.
+const LON = [[0,0,1,0,6288774],[2,0,-1,0,1274027],[2,0,0,0,658314],[0,0,2,0,213618],[0,1,0,0,-185116],[0,0,0,2,-114332],[2,0,-2,0,58793],[2,-1,-1,0,57066],
+  [2,0,1,0,53322],[2,-1,0,0,45758],[0,1,-1,0,-40923],[1,0,0,0,-34720],[0,1,1,0,-30383],[2,0,0,-2,15327],[0,0,1,2,-12528],[0,0,1,-2,10980],[4,0,-1,0,10675],
+  [0,0,3,0,10034],[4,0,-2,0,8548],[2,1,-1,0,-7888],[2,1,0,0,-6766],[1,0,-1,0,-5163],[1,1,0,0,4987],[2,-1,1,0,4036],[2,0,2,0,3994],[4,0,0,0,3861],[2,0,-3,0,3665],
+  [0,1,-2,0,-2689],[2,0,-1,2,-2602],[2,-1,-2,0,2390],[1,0,1,0,-2348],[2,-2,0,0,2236],[0,1,2,0,-2120],[0,2,0,0,-2069],[2,-2,-1,0,2048],[2,0,1,-2,-1773],
+  [2,0,0,2,-1595],[4,-1,-1,0,1215],[0,0,2,2,-1110],[3,0,-1,0,-892],[2,1,1,0,-810],[4,-1,-2,0,759],[0,2,-1,0,-713],[2,2,-1,0,-700],[2,1,-2,0,691],[2,-1,0,-2,596],
+  [4,0,1,0,549],[0,0,4,0,537],[4,-1,0,0,520],[1,0,-2,0,-487],[2,1,0,-2,-399],[0,0,2,-2,-381],[1,1,1,0,351],[3,0,-2,0,-340],[4,0,-3,0,330],[2,-1,2,0,327],
+  [0,2,1,0,-323],[1,1,-1,0,299],[2,0,3,0,294]];
+const LAT = [[0,0,0,1,5128122],[0,0,1,1,280602],[0,0,1,-1,277693],[2,0,0,-1,173237],[2,0,-1,1,55413],[2,0,-1,-1,46271],[2,0,0,1,32573],[0,0,2,1,17198],
+  [2,0,1,-1,9266],[0,0,2,-1,8822],[2,-1,0,-1,8216],[2,0,-2,-1,4324],[2,0,1,1,4200],[2,1,0,-1,-3359],[2,-1,-1,1,2463],[2,-1,0,1,2211],[2,-1,-1,-1,2065],
+  [0,1,-1,-1,-1870],[4,0,-1,-1,1828],[0,1,0,1,-1794],[0,0,0,3,-1749],[0,1,-1,1,-1565],[1,0,0,1,-1491],[0,1,1,1,-1475],[0,1,1,-1,-1410],[0,1,0,-1,-1344],
+  [1,0,0,-1,-1335],[0,0,3,1,1107],[4,0,0,-1,1021],[4,0,-1,1,833]];
+function moonSky(t) {
+  const { T, D, M, Mp, F } = args(t), E = 1 - 0.002516 * T - 0.0000074 * T * T, Lp = 218.3164477 + 481267.88123421 * T;
+  const A1 = 119.75 + 131.849 * T, A2 = 53.09 + 479264.29 * T, A3 = 313.45 + 481266.484 * T;
+  const sum = (rows, f) => rows.reduce((a, [d, m, mp, ff, k]) => a + k * E ** Math.abs(m) * f(d * D + m * M + mp * Mp + ff * F), 0);
+  const l = sum(LON, sin) + 3958 * sin(A1) + 1962 * sin(Lp - F) + 318 * sin(A2);
+  const b = sum(LAT, sin) - 2235 * sin(Lp) + 382 * sin(A3) + 175 * sin(A1 - F) + 175 * sin(A1 + F) + 127 * sin(Lp - Mp) - 115 * sin(Lp + Mp);
+  return { lon: norm(Lp + l / 1e6), lat: b / 1e6 };
+}
+// the Sun: its longitude (as we see it, a moment late with its light) and how far, in AU
+function sunSky(t) {
+  const T = centuries(t), L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T, M = 357.52911 + 35999.05029 * T - 0.0001537 * T * T;
+  const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * sin(M) + (0.019993 - 0.000101 * T) * sin(2 * M) + 0.000289 * sin(3 * M);
+  const e = 0.016708634 - 0.000042037 * T, R = (1.000001018 * (1 - e * e)) / (1 + e * cos(M + C));
+  return { lon: norm(L0 + C - 0.00569), R };
+}
 // how far round from the Sun the Moon is, seen from Earth (0: new, 180: full), and how far above or below its path
 function elong(t) {
-  const { D, M, Mp, F } = args(t);
-  const e = norm(D + 6.289 * sin(Mp) - 2.1 * sin(M) + 1.274 * sin(2 * D - Mp) + 0.658 * sin(2 * D) + 0.214 * sin(2 * Mp) + 0.11 * sin(D));
-  const beta = 5.128 * sin(F) + 0.281 * sin(Mp + F) + 0.278 * sin(Mp - F) + 0.173 * sin(2 * D - F);
-  return { e, beta };
+  const m = moonSky(t), s = sunSky(t);
+  return { e: norm(m.lon - s.lon), beta: m.lat, sun: s };
 }
 export function moonPhase(t) {
   const { e } = elong(t), lit = (1 - cos(e)) / 2, waxing = e < 180;
@@ -94,21 +123,31 @@ export function earthPhase(t) {
 }
 export const nearFar = (km) => (km < 365000 ? "close this week" : km > 400000 ? "far away this week" : "");
 export const SUPERMOON_KM = 362000;
-// In the Earth's shadow (a lunar eclipse): the Moon within about a degree of the point opposite the Sun.
-// (Good to a few tenths of a degree: enough to know there's an eclipse, not whether it's total.)
+// In the Earth's shadow (a lunar eclipse): any of the Moon inside the umbra, the dark core. Its size
+// that night comes from how far off the Moon and the Sun are (with the 2% the air adds, as the
+// almanacs do); then it's whether the Moon's disc reaches into it.
 export function inShadow(t) {
-  const { e, beta } = elong(t);
-  return Math.hypot(180 - e, beta) < 0.99;
+  const { e, beta, sun } = elong(t), km = moonKm(t);
+  const par = Math.asin(6378.14 / km) / rad, moonR = Math.asin(1737.4 / km) / rad;
+  const umbra = 1.02 * (0.99834 * par - 0.26656 / sun.R + 0.002443 / sun.R);
+  const sep = Math.acos(Math.max(-1, Math.min(1, cos(beta) * cos(e - 180)))) / rad;
+  return sep < umbra + moonR;
 }
-// the first moment between a and b the Moon is in the Earth's shadow (looked at every 10 minutes), or null
+// the first moment between a and b the Moon is in the Earth's shadow (to the minute), or null
 export function eclipseBetween(a, b) {
   if (!(b > a)) return null;
   // only near full Moon: skip ahead quickly otherwise
   for (let t = a; t <= b; ) {
     const { e } = elong(t);
     if (Math.abs(180 - e) > 4) { t += Math.max(10 * MIN, ((Math.abs(180 - e) - 3) / 16) * DAY); continue; }     // (the Moon moves under 16° a day)
-    if (inShadow(t)) return { at: t };
-    t += 10 * MIN;
+    if (inShadow(t)) {
+      // (looked at every 5 minutes, the shallowest eclipse lasts an hour; then back to the minute it began)
+      let lo = Math.max(a, t - 5 * MIN), hi = t;
+      if (inShadow(lo)) return { at: lo };
+      while (hi - lo > MIN) { const mid = (lo + hi) / 2; if (inShadow(mid)) hi = mid; else lo = mid; }
+      return { at: Math.round(hi / MIN) * MIN };
+    }
+    t += 5 * MIN;
   }
   return null;
 }
@@ -187,6 +226,16 @@ export function spaceFlight(kind, from, to, t, speed = 1) {
   const dist = Math.round(moonKm(t));
   return { k: "trip", km: Math.round(dist - EARTH_R - MOON_R), ms: Math.round((p.trip * dist) / MEAN_KM / speed), dist };
 }
+
+// A pigeon that followed someone to another world flies in legs (functions/_follow.js): its last leg
+// is `moon` itself (from mn.t0, else when it was sent), and the one before, if any, is mn.prev (to mn.t0).
+// The leg in the air at t, with its own times, and `then`: the leg still to come.
+export function legOf(mn, sentAt, deliverAt, t) {
+  if (mn?.prev && t < mn.t0) return { mn: mn.prev, from: mn.prev.t0 ?? sentAt, to: mn.t0, then: mn };
+  return { mn, from: mn?.t0 ?? sentAt, to: deliverAt, then: null };
+}
+export const spaceLegs = (mn, sentAt, deliverAt) =>
+  mn?.prev ? [{ mn: mn.prev, from: mn.prev.t0 ?? sentAt, to: mn.t0 }, { mn, from: mn.t0, to: deliverAt }] : [{ mn, from: mn?.t0 ?? sentAt, to: deliverAt }];
 
 /* ---------- low Earth orbit ---------- */
 // climb: lift-off to orbit; reach: how far to one side it can glide coming down (as a winged

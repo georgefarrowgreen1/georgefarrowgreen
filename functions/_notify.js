@@ -17,7 +17,7 @@ import { liveTick } from "./_live.js";
 import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
-import { spaceMoments } from "../pigeon/space.js";
+import { spaceMoments, legOf } from "../pigeon/space.js";
 import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -238,12 +238,26 @@ export async function groupRerouted(env, senderId, to, gid, deliverAt) {
     body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${etaText(deliverAt - Date.now())}.`, tag: "course-" + to.id, url: `/pigeon/#open=${gid}` });
 }
 // Group pigeons that landed or were lost since the last tick.
+// Every row a query matches, a page at a time (up to 5,000), in the order of `key` (the column its
+// index runs on, so a page is a short walk along it): rows that can't go yet (in someone's quiet
+// hours, or with nothing due) never hide the ones behind them. The query's own numbered parameters
+// come first; where the page starts is the next two.
+async function allRows(D, sql, binds, alias, key, per = 200, pages = 25) {
+  const results = []; let k = -Infinity, r = -1;
+  const a = binds.length + 1, b = binds.length + 2, col = `${alias}.${key}`;
+  for (let i = 0; i < pages; i++) {
+    const { results: page } = await D.prepare(`${sql.replace(/^SELECT /, `SELECT ${col} AS _k, ${alias}.rowid AS _rid, `)} AND (${col} > ?${a} OR (${col} = ?${a} AND ${alias}.rowid > ?${b})) ORDER BY ${col}, ${alias}.rowid LIMIT ${per}`)
+      .bind(...binds, k === -Infinity ? -1e18 : k, r).all();
+    results.push(...page); if (page.length < per) break; ({ _k: k, _rid: r } = page.at(-1));
+  }
+  return { results };
+}
 async function groupTick(env, D, t, since) {
   let pushes = 0, landedN = 0, held = 0;
-  const { results: due } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, COALESCE(gm.muted, 1) AS muted, s.name AS sname
+  const { results: due } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, COALESCE(gm.muted, 1) AS muted, s.name AS sname
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id JOIN pg_users s ON s.id = m.sender
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
-    WHERE d.notified_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?1 AND d.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
+    WHERE d.notified_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?1 AND d.deliver_at > ?2`, [t, since], "d", "deliver_at");
   const ready = due.filter((d) => !isQuiet(prefsOf(d), t));
   held = due.length - ready.length;
   if (ready.length) {
@@ -267,10 +281,10 @@ async function groupTick(env, D, t, since) {
       }
     }
   }
-  const { results: lost } = await D.prepare(`SELECT d.rowid AS rid, m.sender, m.group_id, g.name AS gname, u.notify_prefs, r.name, gm.muted
+  const { results: lost } = await allRows(D, `SELECT d.rowid AS rid, m.sender, m.group_id, g.name AS gname, u.notify_prefs, r.name, gm.muted
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = m.sender JOIN pg_users r ON r.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = m.sender
-    WHERE d.notified_at IS NULL AND d.lost_at IS NOT NULL AND d.lost_at <= ?1 AND d.lost_at > ?2 LIMIT 200`).bind(t, since).all();
+    WHERE d.notified_at IS NULL AND d.lost_at IS NOT NULL AND d.lost_at <= ?1 AND d.lost_at > ?2`, [t, since], "d", "lost_at");
   for (const d of lost) {
     const p = prefsOf(d); if (isQuiet(p, t)) continue;
     const c = await D.prepare("UPDATE pg_gdeliv SET notified_at = ? WHERE rowid = ? AND notified_at IS NULL").bind(t, d.rid).run();
@@ -388,14 +402,16 @@ const shipSay = (p, who, v, ev, deliver) => (ev === SHIP_BOARD
 const SPACE_KIND = { lunar: "lunar pigeon", lunarx: "lunar express pigeon", laser: "laser pigeon", orbital: "orbital pigeon" };
 async function spaceTick(env, D, t) {
   let pushes = 0;
-  const { results } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.pigeon, m.moon, m.moon_told, m.sent_at, m.deliver_at, r.name AS rname, s.notify_prefs FROM pg_msgs m
+  const { results } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.pigeon, m.moon, m.moon_told, m.sent_at, m.deliver_at, r.name AS rname, s.notify_prefs FROM pg_msgs m
     JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
-    WHERE m.moon IS NOT NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) LIMIT 300`).bind(t).all();
+    WHERE m.moon IS NOT NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1)`, [t], "m", "deliver_at");
   for (const m of results) {
     let mn; try { mn = JSON.parse(m.moon); } catch (_) { continue; }
-    const due = spaceMoments(mn, m.sent_at, m.deliver_at, t).filter((x) => x.tell && x.done && x.i > (m.moon_told ?? -1)).at(-1);
+    // (the leg it's on: a pigeon relayed on to another world has two, its moments told as 0-99, then 100 on)
+    const L = legOf(mn, m.sent_at, m.deliver_at, t), base = mn.prev && !L.then ? 100 : 0;
+    const due = spaceMoments(L.mn, L.from, L.to, t).filter((x) => x.tell && x.done && base + x.i > (m.moon_told ?? -1)).at(-1);
     if (!due) continue;
-    const claimed = await D.prepare("UPDATE pg_msgs SET moon_told = ?1 WHERE id = ?2 AND COALESCE(moon_told, -1) < ?1").bind(due.i, m.id).run();
+    const claimed = await D.prepare("UPDATE pg_msgs SET moon_told = ?1 WHERE id = ?2 AND COALESCE(moon_told, -1) < ?1").bind(base + due.i, m.id).run();
     if (!claimed.meta.changes || t - due.at > 2 * HOUR) continue;
     const p = prefsOf(m); if (!p.moments || isQuiet(p, t)) continue;
     pushes += await pushTo(env, m.sender, { title: p.names ? `To ${firstName(m.rname)}` : "InFlight", body: `Your ${SPACE_KIND[m.pigeon] || "pigeon"}: ${due.text.replace(/^./, (c) => c.toLowerCase())}.`,
@@ -405,9 +421,9 @@ async function spaceTick(env, D, t) {
 }
 async function shipTick(env, D, t, since) {
   let pushes = 0;
-  const { results: one } = await D.prepare(`SELECT m.id, m.sender, m.recipient, m.legs, m.deliver_at, m.ship_told, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
+  const { results: one } = await allRows(D, `SELECT m.id, m.sender, m.recipient, m.legs, m.deliver_at, m.ship_told, s.name AS sname, r.name AS rname, s.notify_prefs AS sp, r.notify_prefs AS rp FROM pg_msgs m
     JOIN pg_users s ON s.id = m.sender JOIN pg_users r ON r.id = m.recipient
-    WHERE m.notified_at IS NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) AND COALESCE(m.ship_told, 0) < 2 AND m.legs LIKE '%"b"%' LIMIT 200`).bind(t).all();
+    WHERE m.notified_at IS NULL AND m.deliver_at > ?1 AND m.sent_at <= ?1 AND (m.lost_at IS NULL OR m.lost_at > ?1) AND COALESCE(m.ship_told, 0) < 2 AND m.legs LIKE '%"b"%'`, [t], "m", "deliver_at");
   for (const m of one) {
     const v = voyageOf(m.legs), ev = v && shipEv(v, t, since, m.ship_told); if (!ev) continue;
     const claimed = await D.prepare("UPDATE pg_msgs SET ship_told = ?1 WHERE id = ?2 AND COALESCE(ship_told, 0) < ?1").bind(ev, m.id).run();
@@ -418,10 +434,10 @@ async function shipTick(env, D, t, since) {
     if (rp.moments && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
       body: shipSay(rp, `${rp.names ? "Their" : "A"} pigeon to you`, v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
-  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
+  const { results: grp } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
     JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
-    WHERE d.notified_at IS NULL AND d.deliver_at > ?1 AND m.sent_at <= ?1 AND (d.lost_at IS NULL OR d.lost_at > ?1) AND COALESCE(d.ship_told, 0) < 2 AND d.legs LIKE '%"b"%' LIMIT 200`).bind(t).all();
+    WHERE d.notified_at IS NULL AND d.deliver_at > ?1 AND m.sent_at <= ?1 AND (d.lost_at IS NULL OR d.lost_at > ?1) AND COALESCE(d.ship_told, 0) < 2 AND d.legs LIKE '%"b"%'`, [t], "d", "deliver_at");
   for (const d of grp) {
     const v = voyageOf(d.legs), ev = v && shipEv(v, t, since, d.ship_told); if (!ev) continue;
     const claimed = await D.prepare("UPDATE pg_gdeliv SET ship_told = ?1 WHERE rowid = ?2 AND COALESCE(ship_told, 0) < ?1").bind(ev, d.rid).run();
@@ -433,10 +449,10 @@ async function shipTick(env, D, t, since) {
 }
 async function reactTick(env, D, t, since) {
   let pushes = 0;
-  const { results } = await D.prepare(`SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, CASE WHEN r.group_id IS NOT NULL AND gm.user_id IS NULL THEN 1 ELSE gm.muted END AS muted
+  const { results } = await allRows(D, `SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, CASE WHEN r.group_id IS NOT NULL AND gm.user_id IS NULL THEN 1 ELSE gm.muted END AS muted
     FROM pg_reacts r JOIN pg_users u ON u.id = r.recipient JOIN pg_users s ON s.id = r.sender
     LEFT JOIN pg_groups g ON g.id = r.group_id LEFT JOIN pg_group_members gm ON gm.group_id = r.group_id AND gm.user_id = r.recipient
-    WHERE r.recipient IS NOT NULL AND r.notified_at IS NULL AND r.deliver_at <= ?1 AND r.deliver_at > ?2 LIMIT 200`).bind(t, since).all();
+    WHERE r.recipient IS NOT NULL AND r.notified_at IS NULL AND r.deliver_at <= ?1 AND r.deliver_at > ?2`, [t, since], "r", "deliver_at");
   for (const r of results) {
     const p = prefsOf(r); if (isQuiet(p, t)) continue;                      // held until quiet hours end
     const c = await D.prepare("UPDATE pg_reacts SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, r.id).run();
@@ -548,8 +564,8 @@ export async function tick(env, origin) {
   await blurOld(D, t).catch((e) => console.error("pigeon blur", e && e.message));
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);
-  const { results: due } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
-    WHERE m.notified_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?1 AND m.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
+  const { results: due } = await allRows(D, `SELECT m.id, m.sender, m.recipient, u.notify_prefs FROM pg_msgs m JOIN pg_users u ON u.id = m.recipient
+    WHERE m.notified_at IS NULL AND m.lost_at IS NULL AND m.deliver_at <= ?1 AND m.deliver_at > ?2`, [t, since], "m", "deliver_at");
   const prefs = new Map(due.map((m) => [m.recipient, prefsOf(m)]));
   const ready = due.filter((m) => !isQuiet(prefs.get(m.recipient), t));       // quiet ones wait
   let landed = [];
@@ -563,9 +579,9 @@ export async function tick(env, origin) {
   }
   let pushes = 0, emails = 0;
   // Pigeon Death: tell the sender when one of theirs is lost on the way
-  const { results: lost } = await D.prepare(`SELECT m.id, m.sender, m.recipient, u.notify_prefs, r.name FROM pg_msgs m
+  const { results: lost } = await allRows(D, `SELECT m.id, m.sender, m.recipient, u.notify_prefs, r.name FROM pg_msgs m
     JOIN pg_users u ON u.id = m.sender JOIN pg_users r ON r.id = m.recipient
-    WHERE m.notified_at IS NULL AND m.lost_at IS NOT NULL AND m.lost_at <= ?1 AND m.lost_at > ?2 LIMIT 200`).bind(t, since).all();
+    WHERE m.notified_at IS NULL AND m.lost_at IS NOT NULL AND m.lost_at <= ?1 AND m.lost_at > ?2`, [t, since], "m", "lost_at");
   for (const m of lost) {
     const p = prefsOf(m); if (isQuiet(p, t)) continue;
     const claimed = await D.prepare("UPDATE pg_msgs SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, m.id).run();

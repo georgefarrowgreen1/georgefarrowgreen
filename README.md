@@ -146,7 +146,9 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.0
+## InFlight (chat.georgefarrowgreen.com) — 1.2.1
+
+**1.2.1** (wherever you go): pigeons on their way follow you off the Earth, back to it and between the Moon and Mars (`functions/_follow.js`). An Earth pigeon in the air is handed to a space pigeon from wherever it is; a space pigeon carries on to where you were and is relayed on (a second leg, `moon.prev`); a new spot on the same world, it heads there instead. Lunar eclipses use Meeus's fuller Moon and Sun series and the umbra's real size that night, so they're found to within a couple of minutes, the shallow ones too. Also: notification rounds page through everything due (along each query's index) instead of stopping at a few hundred; unfriending or blocking puts booked pigeons back in their lofts; sign-in holds count wrong passwords per address (30 an hour), with a much higher bar (300) for the account as a whole; two standard pigeons sent at the same moment can't both take the turn.
 
 **1.2.0** (further out): Mars, as well as the Moon, is somewhere to live (My
 Profile → Location → Go to Mars), and only laser pigeons reach it: pulses of

@@ -69,7 +69,7 @@ export async function stampPassports(D, t, uid = null, max = 12) {
   if (flights.length) await ensureFeathers(D);         // (everyone's feathers so far, before any more are earned)
   for (const f of flights) {
     let places = [], marks = [];
-    if (f.lunar) { try { const mn = JSON.parse(f.moon); places = [spacePlace(mn)]; marks = spaceMarks(mn); } catch (_) {} }
+    if (f.lunar) { try { const mn = JSON.parse(f.moon), legs = mn.prev ? [mn.prev, mn] : [mn]; places = [...new Set(legs.map(spacePlace))]; marks = [...new Set(legs.flatMap(spaceMarks))]; } catch (_) {} }
     else try { const st = stopsOf(f); places = placesAlong(st); marks = marksAlong(st); } catch (_) {}
     const r = await D.prepare("INSERT OR IGNORE INTO pg_stamped (id, user_id, at, places, marks) VALUES (?, ?, ?, ?, ?)").bind(f.id, f.sender, f.deliver_at, JSON.stringify(places), marks.length ? JSON.stringify(marks) : null).run();
     if (!r.meta.changes) continue;

@@ -6,7 +6,7 @@ import { stampPassports, passportFor } from "./_passport.js";
 import { postmarksFor } from "./_landmarks.js";
 import { SEASONS, SEASON_GOAL, seasonAt, seasonCounts, seasonOpen, nextStart } from "./_seasons.js";
 import { json, db, requireUser } from "./_pigeon.js";
-import { SUPERMOON_KM, eclipseBetween } from "../pigeon/space.js";
+import { SUPERMOON_KM, eclipseBetween, spaceLegs } from "../pigeon/space.js";
 
 // Rare pigeons: a look for your pigeons, each unlocked by an achievement.
 // Only the look changes; the colour still says what kind it is.
@@ -57,7 +57,8 @@ export async function logFor(D, uid, t) {
       (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
   // (the Moon's flights count as flights, and for the Moonshot badge; their distances stay out of the Earth's records)
   const landedAll = sent.filter((p) => p.deliver_at <= t && p.lost_at == null), landed = landedAll.filter((p) => !p.lunar);
-  const space = landedAll.filter((p) => p.lunar).map((p) => { try { return { p, mn: JSON.parse(p.moon) }; } catch (_) { return null; } }).filter(Boolean);
+  // (each leg of a space flight: one that followed someone to another world flew two)
+  const space = landedAll.filter((p) => p.lunar).flatMap((p) => { try { return spaceLegs(JSON.parse(p.moon), p.sent_at, p.deliver_at).map((l) => ({ p, ...l })); } catch (_) { return []; } });
   const kinds = {};
   for (const p of sent) kinds[p.pigeon || "standard"] = (kinds[p.pigeon || "standard"] || 0) + 1;
   const longest = landed.reduce((a, p) => (!a || p.km > a.km ? p : a), null);
@@ -96,7 +97,7 @@ export async function logFor(D, uid, t) {
     badge("jetstream", "Rode the Jet Stream", "Land 2 hours early on the wind", early >= 2 * 3600e3 ? 1 : 0),
     badge("moonshot", "Moonshot", "A pigeon lands on the Moon, or comes home from it", space.some((x) => x.mn.k === "trip" || x.mn.k === "surface") ? 1 : 0),
     badge("supermoon", "Supermoon", "Send a pigeon to or from the Moon while it’s at its closest", space.some((x) => x.mn.k === "trip" && x.mn.dist && x.mn.dist < SUPERMOON_KM) ? 1 : 0),
-    badge("eclipse", "Through the Shadow", "A pigeon on its way to or from the Moon during a lunar eclipse", space.some((x) => x.mn.k === "trip" && eclipseBetween(x.p.sent_at, x.p.deliver_at)) ? 1 : 0),
+    badge("eclipse", "Through the Shadow", "A pigeon on its way to or from the Moon during a lunar eclipse", space.some((x) => x.mn.k === "trip" && eclipseBetween(x.from, x.to)) ? 1 : 0),
     badge("redplanet", "Red Planet", "A laser pigeon reaches Mars, or comes from it", space.some((x) => x.mn.k === "laser") ? 1 : 0),
     badge("orbiter", "Orbiter", "An orbital pigeon comes back down", space.some((x) => x.mn.k === "orbit") ? 1 : 0),
   ];

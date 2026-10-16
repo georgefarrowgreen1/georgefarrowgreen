@@ -23,6 +23,7 @@ import { marksFor } from "../../_landmarks.js";
 import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
+import { followMe } from "../../_follow.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
@@ -165,13 +166,18 @@ async function login({ request, env, waitUntil }) {
   const email = String(b.email || "").trim().toLowerCase();
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
   if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
-  // only wrong passwords count against an account, so no one else can lock you out by guessing at it
-  const acct = "loginacct:" + hex(await sha256(email)).slice(0, 32), D = await db(env), now0 = Date.now();
-  const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(acct).first();
-  if (held && held.reset_at > now0 && held.count >= 30) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);
+  // Only wrong passwords count against an account, and only from where they were tried: 30 an hour
+  // from one address holds that address back, and only a spread-out guessing (300 an hour, from
+  // many addresses at once) holds back the account itself. So guessing elsewhere can't lock you out.
+  const em = hex(await sha256(email)).slice(0, 32), D = await db(env), now0 = Date.now();
+  const here = "loginacct:" + em + ":" + hex(await sha256(clientIp(request))).slice(0, 16), acct = "loginacct:" + em;
+  for (const [key, max] of [[here, 30], [acct, 300]]) {
+    const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
+    if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);
+  }
   const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
   if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
-    await limit(env, acct, 30, 60 * 60e3).catch(() => {});
+    await limit(env, here, 30, 60 * 60e3).catch(() => {}); await limit(env, acct, 300, 60 * 60e3).catch(() => {});
     throw new HttpError(401, "That email and password don’t match an account.");
   }
   const token = await issueSession(env, u.id, request);
@@ -215,6 +221,13 @@ function waitText(ms) {
 // at most every 10 minutes, so a drive doesn't send it zig-zagging.
 const TURN_EVERY = 10 * 60e3;
 const FORECAST_AHEAD = 72 * 3600e3;          // a pigeon booked further ahead than this flies whatever it meets
+// Off the Earth, or back: everything on its way follows (functions/_follow.js)
+async function followAll(env, D, u, end, t, waitUntil) {
+  const { results: links } = await D.prepare("SELECT a, b, status FROM pg_links WHERE (a = ?1 OR b = ?1) AND status IN ('ok', 'blocked')").bind(u.id).all();
+  const other = (l) => (l.a === u.id ? l.b : l.a);
+  const friends = new Set(links.filter((l) => l.status === "ok").map(other)), blocked = new Set(links.filter((l) => l.status === "blocked").map(other));
+  await followMe(env, D, u, end, t, waitUntil, friends, blocked).catch((e) => console.error("pigeon follow", e && e.message));
+}
 async function reroute(env, u, p, t, waitUntil) {
   const D = await db(env);
   const { results } = await D.prepare("SELECT * FROM pg_msgs WHERE recipient = ?1 AND deliver_at > ?2 AND to_lat IS NOT NULL AND (lost_at IS NULL OR lost_at > ?2)").bind(u.id, t).all();
@@ -333,6 +346,7 @@ async function updateMe({ request, env, waitUntil }) {
     const mn = cleanMoon(b.moon);
     await limit(env, "move:" + u.id, 30, 15 * 60e3);
     await D.prepare("UPDATE pg_users SET moon = ?, lat = NULL, lon = NULL, place = ?, auto_loc = 0, loc_at = ? WHERE id = ?").bind(JSON.stringify(mn.b === "mars" ? { b: "mars", lat: mn.lat, lon: mn.lon } : { lat: mn.lat, lon: mn.lon }), mn.place, t, u.id).run();
+    await followAll(env, D, u, endOf({ moon: mn, place: mn.place }), t, waitUntil);    // (what's on its way follows, off the Earth too)
   }
   if (b.lat !== undefined) {
     const p = cleanPlace(b, b.approxLocation ?? !!u.loc_approx);
@@ -342,6 +356,8 @@ async function updateMe({ request, env, waitUntil }) {
     // (the time it was last updated moves only when you do: "still here" every few minutes would say when the app was open)
     await D.prepare("UPDATE pg_users SET lat = ?, lon = ?, place = ?, loc_at = CASE WHEN ?4 THEN ?5 ELSE COALESCE(loc_at, ?5) END WHERE id = ?6").bind(p.lat, p.lon, p.place, moved > REROUTE_KM ? 1 : 0, t, u.id).run();
     if (u.lat != null) { await reroute(env, u, p, t, waitUntil); await rerouteGroups(env, u, p, t, waitUntil); }   // also catches up a turn held back by TURN_EVERY
+    // space pigeons on their way follow too (back from the Moon or Mars, or round the Earth by orbit)
+    if (u.moon || moved > REROUTE_KM) await followAll(env, D, u, endOf({ lat: p.lat, lon: p.lon, place: p.place }), t, waitUntil);
   }
   const fresh = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ me: meView(fresh, Date.now()) });
@@ -627,13 +643,14 @@ async function removeFriend({ request, env }) {
   const u = await requireUser(request, env);
   const id = String((await body(request)).id), D = await db(env);
   await groundPhotos(env, D, u.id, id);
-  await D.batch([
+  const res = await D.batch([
     D.prepare("DELETE FROM pg_links WHERE ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)) AND status IN ('ok', 'pending')").bind(u.id, id),
     // cancelling a request they said no to: it goes from your list, but their no stands
     D.prepare("UPDATE pg_links SET asked_at = NULL WHERE a = ?2 AND b = ?1 AND status IN ('declined', 'blocked')").bind(u.id, id),
     D.prepare("DELETE FROM pg_flyover WHERE (sender = ?1 AND user_id = ?2) OR (sender = ?2 AND user_id = ?1)").bind(u.id, id),
     ...grounded(D, u.id, id),
   ]);
+  await refundGrounded(D, res);
   return json({ ok: true });
 }
 // No longer friends: pigeons either of you booked that haven't taken off yet stay home
@@ -642,10 +659,19 @@ async function groundPhotos(env, D, a, b) {
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3 AND photo = 1").bind(a, b, Date.now()).all();
   if (results.length && env.BIO_R2) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`)).catch(() => {});
 }
+// (the last statement says which stayed home: run refundGrounded on the batch's answer)
 const grounded = (D, a, b) => [
   D.prepare("UPDATE pg_birds SET busy_until = ?3 WHERE id IN (SELECT bird FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3)").bind(a, b, Date.now()),
-  D.prepare("DELETE FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3").bind(a, b, Date.now()),
+  D.prepare("DELETE FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3 RETURNING id, sender, pigeon").bind(a, b, Date.now()),
 ];
+// each one back in its sender's loft, as calling it back would
+async function refundGrounded(D, res) {
+  const t = Date.now();
+  for (const m of res?.at(-1)?.results || []) {
+    await dropNear(D, m.id, -Infinity).catch(() => {}); await dropFly(D, m.id, -Infinity).catch(() => {});
+    await refundLoft(D, m.sender, m.pigeon, t).catch((e) => console.error("pigeon refund", e && e.message));
+  }
+}
 // Blocking: no friendship, no requests (theirs look like they're still waiting), no
 // picture or place. They aren't told. Unblocking just lifts it.
 async function block({ request, env }) {
@@ -656,12 +682,13 @@ async function block({ request, env }) {
   const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).first();
   if (l?.status === "blocked" && l.a === id) return json({ ok: true });        // they blocked you first: already apart
   await groundPhotos(env, D, u.id, id);
-  await D.batch([
+  const res = await D.batch([
     D.prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id),
     D.prepare("INSERT INTO pg_links (a, b, status, created_at, asked_at) VALUES (?, ?, 'blocked', ?, ?)")
       .bind(u.id, id, Date.now(), l && l.status === "pending" && l.a === id ? Date.now() : null),
     ...grounded(D, u.id, id),
   ]);
+  await refundGrounded(D, res);
   return json({ ok: true });
 }
 async function unblock({ request, env }) {
@@ -817,7 +844,7 @@ async function sendMessage({ request, env, waitUntil }) {
   // turbo (3×) and rocket (9×) fly any time, and each one sent leaves the loft.
   // A phone that doesn't say which (older versions) sends standard if it can,
   // else swift.
-  const tn = turn(u.id, await lastBetween(D, u.id, to, t), t);
+  const last0 = await lastBetween(D, u.id, to, t), tn = turn(u.id, last0, t);
   // Scheduled: told when to land, it waits in the loft and takes off in time.
   // Standard pigeons can't wait for a turn that far ahead, so it's swift or faster.
   const landAt = meta.landAt == null ? null : Number(meta.landAt);
@@ -891,6 +918,15 @@ async function sendMessage({ request, env, waitUntil }) {
   } catch (e) {
     if (String(e).includes("UNIQUE")) throw new HttpError(409, "That scroll was already sent.");
     throw e;
+  }
+  // a pigeon that waits its turn: if another took off between you at the same moment, the first of them goes
+  if (PIGEONS[kind].waits && !mystery) {
+    const rival = await D.prepare(`SELECT 1 FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND id != ?3 AND id != ?4
+      AND sent_at > ?5 AND (sent_at < ?6 OR (sent_at = ?6 AND id < ?3)) LIMIT 1`).bind(u.id, to, id, last0?.id ?? "", last0?.sent_at ?? -1, off).first();
+    if (rival) {
+      await D.batch([D.prepare("DELETE FROM pg_msgs WHERE id = ?").bind(id), D.prepare("DELETE FROM pg_ids WHERE id = ?").bind(id)]);
+      throw new HttpError(409, "Something just changed: it isn’t your turn now. Send a swift, turbo or rocket pigeon to write now.");
+    }
   }
   // the photo once the row is ours (so two sends of one id can't overwrite each other's)
   if (photo) {
@@ -1022,20 +1058,24 @@ async function carrierOf(D, uid, id, t) {
 
 // A scheduled pigeon that hasn't taken off yet: it never leaves. No one was
 // told about it, so it just goes, and the pigeon goes back in its loft.
+// A pigeon that never took off goes back in its loft
+async function refundLoft(D, uid, kind, t) {
+  const p = PIGEONS[kind] || LUNAR_LOFTS[kind];
+  for (let i = 0; p?.max && i < 3; i++) {
+    const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(uid).first(), l = loft(me, kind, t);
+    if (l.count >= p.max) break;                    // a full loft: it's just home (no more than a day's worth, ever)
+    // one more in the loft; a full loft stops hatching, so its clock restarts from now
+    const at = l.count + 1 >= p.max ? t : l.at + l.hatched * p.every;
+    const ok = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(l.count + 1, at, uid, me[p.col], me[p.atCol]).run();
+    if (ok.meta.changes) break;
+  }
+}
 async function cancelScheduled(env, D, u, m, t) {
   const r = await D.prepare("DELETE FROM pg_msgs WHERE id = ?1 AND sender = ?2 AND sent_at > ?3").bind(m.id, u.id, t).run();
   if (!r.meta.changes) throw new HttpError(409, "It’s just taken off. Try again to call it back.");
   await dropNear(D, m.id, -Infinity); await dropFly(D, m.id, -Infinity); await freeBird(D, m.bird, t);
   if (m.photo === 1 && env.BIO_R2) await env.BIO_R2.delete(`pigeon/${m.id}`);
-  const p = PIGEONS[m.pigeon];
-  for (let i = 0; p?.max && i < 3; i++) {
-    const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first(), l = loft(me, m.pigeon, t);
-    if (l.count >= p.max) break;                    // a full loft: it's just home (no more than a day's worth, ever)
-    // one more in the loft; a full loft stops hatching, so its clock restarts from now
-    const at = l.count + 1 >= p.max ? t : l.at + l.hatched * p.every;
-    const ok = await D.prepare(`UPDATE pg_users SET ${p.col} = ?, ${p.atCol} = ? WHERE id = ? AND ${p.col} IS ? AND ${p.atCol} IS ?`).bind(l.count + 1, at, u.id, me[p.col], me[p.atCol]).run();
-    if (ok.meta.changes) break;
-  }
+  await refundLoft(D, u.id, m.pigeon, t);
   const me = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   return json({ cancelled: m.id, me: meView(me, t) });
 }

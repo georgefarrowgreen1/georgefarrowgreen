@@ -71,7 +71,8 @@ function moonOf(d, friend) {
   // only the region, to 5°: enough to draw the trip, not to name the crater)
   const five = (x) => (x == null ? x : Math.round(x / 5) * 5);
   const strip = (e) => (e.b === "earth" ? { b: "earth", lat: null, lon: null, place: null } : { ...e, lat: five(e.lat), lon: five(e.lon), place: null });
-  return { moon: friend ? mn : { ...mn, from: strip(mn.from), to: strip(mn.to) } };
+  const leg = (x) => ({ ...x, from: strip(x.from), to: strip(x.to) });
+  return { moon: friend ? mn : { ...leg(mn), ...(mn.prev ? { prev: leg(mn.prev) } : {}) } };
 }
 // Your own message: how each pigeon is getting on (friends' routes only).
 function ownView(m, dels, friends, t) {
