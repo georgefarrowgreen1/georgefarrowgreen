@@ -54,7 +54,9 @@ const moonChat = (f) => !!f && !!(S.me?.moon || f.moon);
 const kindsFor = (f) => spaceKinds(endFor(S.me), endFor(f)) || [];
 const worldOf = (p) => (p?.moon ? (p.moon.b === "mars" ? "mars" : "moon") : p?.offEarth || "earth");
 // how long a space pigeon takes now (Pigeon Death only hurries a lunar one: light and orbits don't)
-const spaceMs = (k, a, b) => spaceFlight(k, a, b, now(), S.me?.risky && k.startsWith("lunar") ? RISKY_SPEED : 1).ms;
+// (an Earth end to the half degree, as the server keeps it: an orbit's pass can turn on a few miles)
+const asSent = (e) => (e?.b === "earth" ? { ...e, lat: Math.round(e.lat * 2) / 2, lon: Math.round(e.lon * 2) / 2 } : e);
+const spaceMs = (k, a, b) => spaceFlight(k, asSent(a), asSent(b), now(), S.me?.risky && k.startsWith("lunar") ? RISKY_SPEED : 1).ms;
 // a name for a spot on Earth, for an orbit's path ("the North Atlantic", "France")
 const whereOnEarth = (la, lo) => { const p = placeAt(la, lo); return p && p !== "land" ? p : null; };
 const DUMB = /^\/dumb(?:\s+|$)/i;
@@ -136,7 +138,7 @@ const idb = {
 
 /* ---------------- server ---------------- */
 // fetch can't report upload progress; XMLHttpRequest can, so photo uploads use it
-function xhrFetch(url, { method, headers, body, onProgress }) {
+function xhrFetch(url, { method, headers, body, size, onProgress }) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open(method, url);
@@ -144,11 +146,11 @@ function xhrFetch(url, { method, headers, body, onProgress }) {
     x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     x.onload = () => resolve(new Response(x.responseText, { status: x.status, headers: { "Content-Type": x.getResponseHeader("Content-Type") || "application/json" } }));
     x.onerror = x.onabort = x.ontimeout = () => reject(new TypeError("Network error"));
-    x.timeout = 120000 + (body?.size || 0) / 20;          // a stalled upload gives up (a big one gets longer: ~20 KB/s at worst)
+    x.timeout = 120000 + (size ?? body?.size ?? 0) / 20;          // a stalled upload gives up (a big one gets longer: ~20 KB/s at worst)
     x.send(body);
   });
 }
-async function api(path, { method = "GET", body, form, raw, blob, onProgress } = {}) {
+async function api(path, { method = "GET", body, form, raw, blob, size, onProgress } = {}) {
   const headers = {};
   if (S.token) headers.Authorization = "Bearer " + S.token;
   let payload;
@@ -158,7 +160,7 @@ async function api(path, { method = "GET", body, form, raw, blob, onProgress } =
   let r;
   // nothing waits forever on a weak signal: a reply that hasn't come in 25 s (a minute for anything carrying a file) is treated as no signal
   const quit = !onProgress && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(payload instanceof Blob || payload instanceof FormData ? 90000 : 25000) : undefined;
-  try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload, signal: quit }); }
+  try { r = onProgress ? await xhrFetch("/api/pigeon/" + path, { method, headers, body: payload, size, onProgress }) : await fetch("/api/pigeon/" + path, { method, headers, body: payload, signal: quit }); }
   catch (_) { S.offline = true; renderOffline(); throw Object.assign(new Error("You’re offline. Check your connection and try again."), { offline: true }); }
   if (S.offline) { S.offline = false; renderOffline(); }
   if (raw && r.ok) return r;
@@ -256,7 +258,7 @@ function avatarUrl(p) {
       S.avatars.set(key, URL.createObjectURL(b));
       clearTimeout(avatarRender); avatarRender = setTimeout(() => { render(); if (S.sheet && S.sheet.type !== "map") renderSheet(true); }, 60);
     })
-    .catch(() => {});
+    .catch(() => { setTimeout(() => S.avatars.delete(key), 30e3); });    // (tried again in a while: it may have been the signal)
   return "";
 }
 function haversineKm(aLat, aLon, bLat, bLon) {
@@ -2030,7 +2032,7 @@ async function sync() {
       S.syncSig = sig; S.syncFails = 0; S.lastSync = Date.now();
       if (!same) { S.raw = d; await applySync(d); skiesFollow(); }
       S.started = true;
-      if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat);     // (locked: nothing is opened, or marked read)
+      if (S.view === "chat" && S.chat && !S.locked) await loadChat(S.chat).catch((e) => console.warn("chat", e.message));     // (locked: nothing is opened, or marked read; a slow chat doesn't hold up the rest)
       if (S.token !== tok) return;
       if ((S.sheet?.type === "map" && S.sheet.id === "skies") || S.view === "messages") loadSkies();
       const wasCache = S.fromCache; S.fromCache = false;
@@ -2095,10 +2097,10 @@ async function startScan(p, want) {
   stopScan();
   const v = $(".scanbox video", $layer), say = (t) => { const m = $(".scanmsg", $layer); if (m) m.textContent = t; };
   if (!v) return;
-  const scan = S.scan = { on: true, stream: null };
+  const scan = S.scan = { on: true, stream: null, sheet: S.sheet };
   try { scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
   catch (_) { S.scan = null; return say("InFlight can’t use the camera here. Compare the 60 digits instead."); }
-  if (!scan.on) return stopScan();
+  if (!scan.on || S.scan !== scan) { scan.stream.getTracks().forEach((t) => t.stop()); return; }     // (closed, or another scan began, while asking)
   v.srcObject = scan.stream; await v.play().catch(() => {});
   // the browser's own reader where there is one (Android), else jsQR (loaded only now)
   let det = null;
@@ -2235,7 +2237,7 @@ async function loadChat(fid) {
 // (in a group, by everyone it flew to). The server wipes it within a minute; this hides
 // it at once, even from a copy saved on the phone.
 const vanishSay = (ms) => (ms ? `${ms / DAY} day${ms === DAY ? "" : "s"}` : "off");
-function vanished(m, t = Date.now()) {
+function vanished(m, t = now()) {
   if (!m?.vanish) return false;
   if (m.flock) { const fl = m.flock.filter((x) => !x.lost); return fl.length > 0 && fl.every((x) => x.readAt) && Math.max(...fl.map((x) => x.readAt)) + m.vanish <= t; }
   return !!m.readAt && m.readAt + m.vanish <= t;
@@ -2437,9 +2439,9 @@ async function viewOnce(id) {
     else toast(esc(e.message || "Couldn’t open this photo."));
     return;
   }
-  if (onceOpen !== state) { plain.fill?.(0); return; }           // closed while it was coming
+  if (onceOpen !== state) { new Uint8Array(plain.buffer || plain).fill(0); return; }           // closed while it was coming
   try { state.bmp = await createImageBitmap(new Blob([plain], { type: "image/jpeg" })); } catch (_) {}
-  if (plain.fill) plain.fill(0);                                // the decrypted bytes go straight away
+  new Uint8Array(plain.buffer || plain).fill(0);                                // the decrypted bytes go straight away
   if (!state.bmp || onceOpen !== state) return close();
   const cv = $("canvas", el), dpr = Math.min(3, devicePixelRatio || 1), W = el.clientWidth, H = el.clientHeight;
   const k = Math.min(W / state.bmp.width, H / state.bmp.height), w = Math.round(state.bmp.width * k), h = Math.round(state.bmp.height * k);
@@ -3053,9 +3055,10 @@ function go(view, chat) {
   // what you'd typed stays with its chat, for when you come back
   if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
+  S.chatWas = S.chat;
   S.view = view; S.chat = chat ?? null; S.sheet = null; S.err = ""; S.stick = true;
   if (!same && TABS.some(([id]) => id === view) && S.token && Date.now() - (S.lastSync || 0) > 2000) setTimeout(sync, 0);   // a tab you switch to is up to date
-  if (view !== "chat") clearAttach();
+  if (view !== "chat" || chat !== S.chatWas) clearAttach();      // (a photo you'd picked stays with its chat; one being sent goes on)
   if (!same && $ta) $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || "";
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
@@ -3105,6 +3108,7 @@ function animateNav() {
   for (const el of els) {
     el.classList.remove("nav-push", "nav-pop", "nav-fade"); void el.offsetWidth;
     el.classList.add("nav-" + kind);
+    if (kind === "fade" || STILL.matches) continue;                 // (no animation runs, so nothing would ever end it)
     el.addEventListener("animationend", function done(e) { if (e.target === el) { el.classList.remove("nav-" + kind); el.removeEventListener("animationend", done); } });
   }
 }
@@ -4768,7 +4772,7 @@ function landHint(c, k) {
    +, then the message with its pigeon at the start (tap it for How It Flies)
    and when it would land as the hint, then send. A line above it only when
    something stops it flying. */
-let planSoon = 0;
+let planSoon = 0, planFor = "";
 function renderCompose() {
   const show = S.view === "chat" && !!S.chat && !!(friend(S.chat) || group(S.chat)) && !!S.me;
   $compose.hidden = !show; if (!show) return;
@@ -4795,9 +4799,9 @@ function renderCompose() {
   if (note.textContent !== stop) note.textContent = stop;
   // its pigeon, at the start of the message: the named one carrying it, or its kind
   // (a moment after a chat opens, the planner's times, so the hint says what How It Flies will)
-  clearTimeout(planSoon);
-  if (!g && !via && !sched && kind && KIND[kind] && !SPACE_KINDS.includes(kind) && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP))
-    planSoon = setTimeout(() => { if (S.chat === f.id && S.view === "chat") routePlanFor(f.id, kind); }, 1200);
+  const planKey = !g && !via && !sched && kind && KIND[kind] && !SPACE_KINDS.includes(kind) && f.lat != null && S.me.lat != null && !(S.routePlan?.key === f.id + ":" + (birdFor()?.id || "") && now() - S.routePlan.at < PLAN_KEEP) ? f.id + ":" + kind : "";
+  if (planKey !== planFor) { clearTimeout(planSoon); planSoon = 0; planFor = planKey; }
+  if (planKey && !planSoon) planSoon = setTimeout(() => { planSoon = -1; if (S.chat === f.id && S.view === "chat") routePlanFor(f.id, kind); }, 1200);   // (-1: asked, once, until the chat or pigeon changes)
   const here = S.me.lat != null || !!S.me.moon;
   const bd = kind && kind !== "dumb" && !SPACE_KINDS.includes(kind) ? birdFor() : null, hint = kind && !f.keyChanged && here ? landHint(c, kind) : "Message";
   pill.hidden = !!f.keyChanged || !here;
@@ -4833,7 +4837,7 @@ function renderCompose() {
   a.hidden = !S.attach;
   if (S.attach?.voice && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
-    a.innerHTML = `<span class="vthumb">${I.mic}</span><span class="ainfo"><b>Voice · ${fmtClip(S.attach.ms)}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span>`;
+    a.innerHTML = `<span class="vthumb">${I.mic}</span><span class="ainfo"><b>Voice · ${fmtClip(S.attach.ms)}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove voice pigeon">${I.x}</button>`;
   } else if (S.attach && a.dataset.for !== S.attach.preview) {
     a.dataset.for = S.attach.preview;
     a.innerHTML = `<img src="${S.attach.preview}" alt=""><span class="ainfo"><b>${S.attach.gif ? "GIF" : "Photo"}</b><span class="atext" aria-live="polite">${attachText()}</span><i class="upbar" aria-hidden="true"><b></b></i></span><button type="button" data-act="unattach" aria-label="Remove photo">${I.x}</button>`;
@@ -5013,7 +5017,7 @@ function onInput(e) {
 function sheetHtml(title, body, { left, right = { label: "Done", act: "close" }, flush, plain, name } = {}) {
   const b = (x, cls) => !x ? ""
     : x.form ? `<button type="button" class="nbtn prominent ${cls}" data-act="submit" data-id="${esc(x.form)}" aria-label="${esc(x.label)}">${I.check}</button>`
-    : `<button type="button" class="nbtn ${cls}" data-act="${x.act}" aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
+    : `<button type="button" class="nbtn ${cls}" data-act="${x.act}"${x.id ? ` data-id="${esc(x.id)}"` : ""} aria-label="${esc(x.label)}">${x.act === "close" ? I.x : I.back}</button>`;
   return `<div class="scrim" data-act="close"></div><div class="sheet${plain ? " plainbg" : ""}" role="dialog" aria-modal="true" aria-label="${esc(title || name || "")}"><div class="grab"></div>
     <header><span class="l">${b(left, "l")}</span>${title ? `<h2 tabindex="-1">${esc(title)}</h2>` : `<h2 class="sr" tabindex="-1">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
@@ -5052,7 +5056,7 @@ let shownSheet = null;
 function renderSheet(refresh) {
   if (S.scan && S.sheet?.type !== "scan") stopScan();
   // a question sheet replaced by anything else (a link, the lock, Back): it's answered "no" once this settles
-  if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
+  if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (S.moonReplay && S.sheet?.id !== S.moonReplay.id) S.moonReplay = null; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
   if (!S.sheet) {
     root().classList.remove("sheeted"); sheetType = null;
@@ -5181,7 +5185,7 @@ function drawSheet(refresh) {
       return;
     }
     case "safety": {
-      const nm = esc(first(f?.name || "your friend")), ver = isVerified(f);
+      const f = personById(s.id), nm = esc(first(f?.name || "your friend")), ver = isVerified(f);
       $layer.innerHTML = sheetHtml("Safety Number", `
         <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span>${ver ? `<span class="verified">${I.check}Verified in person</span>` : ""}</div>
         ${f?.keyChanged ? "" : `<div class="safeqr"><div class="qrbox">${qrSvg(safetyCode(s.digits), { title: `Your safety number with ${nm}, as a QR code` })}</div></div>`}
@@ -5191,11 +5195,12 @@ function drawSheet(refresh) {
           : `${cell({ act: "scansafe", id: f.id, icon: I.camera, tile: "blue", label: "Scan Their Code" })}${cell({ act: "verifyok", id: f.id, icon: I.check, tile: "green", label: "Mark as Verified", sub: "The 60 digits match on both phones" })}`}</div>` : ""}
         ${f?.keyChanged ? `<div class="warn sheetwarn"><span>${wasVerified(f) ? `You verified ${nm} in person, and their key has changed since. Don’t trust it until you’ve verified again, together.` : `${esc(first(f.name))}’s key changed. Only trust it once these digits match on both phones.`}</span></div>
           <div class="group mt">${cell({ act: "trustsafe", id: f.id, label: "They Match: Trust New Key", cls: "center action" })}</div>` : ""}`,
-        { left: s.from ? { label: "Back", act: s.from } : null });
+        { left: s.from ? { label: "Back", act: s.from, id: s.backId } : null });
       return;
     }
     case "scan": {
       const p = personById(s.id);
+      if (!s.bad && S.scan?.on && S.scan.sheet === s && $(".scanbox video", $layer)) return;   // already scanning: a redraw leaves the camera be
       $layer.innerHTML = sheetHtml("Scan Their Code", `<div class="scanbox"><video playsinline muted autoplay aria-label="Camera"></video><span class="scanframe" aria-hidden="true"></span></div>
         <p class="gfoot scanmsg" aria-live="polite">${s.bad ? `This isn’t the same safety number. Don’t trust this chat with ${esc(first(p?.name || "them"))} until your codes match.` : `Point your camera at ${esc(first(p?.name || "your friend"))}’s code: Safety Number on their phone.`}</p>
         ${s.bad ? `<div class="group mt">${cell({ act: "scansafe", id: s.id, label: "Try Again", cls: "center action" })}</div>` : ""}`, { left: { label: "Back", act: "scanback" } });
@@ -5440,7 +5445,7 @@ function drawSheet(refresh) {
       const old = $(".sheet .body", $layer), fresh = !$(".flyhero", $layer), top = old && !fresh ? old.scrollTop : 0;
       const rails = fresh ? [] : [...$layer.querySelectorAll(".sheet .chiprail")].map((r) => r.scrollLeft);
       const was = s.shown || {}, nowKey = { kind, style, land: landAt && Math.round(landAt / MIN) };
-      const orbNote = kind === "orbital" ? (() => { const o = spaceFlight("orbital", endFor(S.me), endFor(f), now()); return `<div class="gfoot">It lifts off into orbit 250 miles up, goes round the Earth every 92 minutes at 17,000 mph, and comes down on the first pass near ${who}: ${((n) => `${n} lap${n === 1 ? "" : "s"}`)(Math.max(1, Math.round(o.laps)))} this time, then a gliding re-entry. Nearer isn’t quicker.</div>`; })() : "";
+      const orbNote = kind === "orbital" ? (() => { const o = spaceFlight("orbital", asSent(endFor(S.me)), asSent(endFor(f)), now()); return `<div class="gfoot">It lifts off into orbit 250 miles up, goes round the Earth every 92 minutes at 17,000 mph, and comes down on the first pass near ${who}: ${((n) => `${n} lap${n === 1 ? "" : "s"}`)(Math.max(1, Math.round(o.laps)))} this time, then a gliding re-entry. Nearer isn’t quicker.</div>`; })() : "";
       $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}${mystery}${orb}</div>${orbNote}${kind === "orbital" ? "" : `${carriers}${landing}${stop}${route}${way}${sea}`}
         ${!carriers && (S.birds.length || S.hall.length) ? `<div class="group mt">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", chev: true })}</div>` : ""}
         ${kind === "mystery" ? `<div class="gfoot">Your mystery pigeon could be anything from a rocket to a dumb one. You’ll find out as it takes off.</div>` : ""}
@@ -5790,7 +5795,7 @@ function drawLunarFly(c) {
   const mars = ks.includes("laser"), same = a?.b === b?.b, ph = moonPhase(t);
   const km = same ? surfaceKm(a.b, a, b) : mars ? marsKm(t) : moonKm(t);
   const landAt = kind ? t + etaMs(c, kind) : null, most = Math.max(...ks.map((k) => etaMs(c, k)));
-  const where = same ? `across ${BODIES[a.b].name}` : b?.b === "earth" ? `in ${esc(f.place || "Earth")}` : `on ${BODIES[b.b].name}`;
+  const where = same ? `across ${BODIES[a.b].name}` : !b || b.b === "earth" ? `in ${esc(f.place || "Earth")}` : `on ${BODIES[b.b].name}`;
   const chip = mars ? (same ? "By an orbiter overhead" : `Light takes ${fmtDur(lightMs(km))} to cross`) : same ? "No air, no wind, no weather" : `${ph.name} · ${nearFar(km) ? nearFar(km)[0].toUpperCase() + nearFar(km).slice(1) : "The Moon today"}`;
   const hero = `<div class="flyhero">${kind ? pg(kind) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
     <span class="fht"><b class="fhbig">${kind ? `Lands ${esc(atTime(landAt))}` : "No space pigeon free"}</b><span class="flyto">${landAt ? `in ${esc(fmtDur(landAt - t))} · ` : ""}to ${who} ${where} · ${fmtMiles(km)}</span>
@@ -5878,11 +5883,11 @@ function tickMap() {
    the pigeon on its way, where it is now, and the moments of its trip. */
 // its two ends, and the times of the one pigeon shown: { mn, sentAt, deliverAt, lost }
 function moonOf(m) {
-  if (m.moon) return { mn: m.moon, sentAt: m.sentAt, deliverAt: m.deliverAt, lost: m.lost, lostAt: m.lostAt };
+  if (m.moon) return { mn: m.moon, sentAt: m.sentAt, deliverAt: m.deliverAt, lost: m.lost, lostAt: m.lostAt, recalled: !!m.recalled, km: m.km };
   const fl = (m.flock || []).filter((x) => x.moon);
   if (!fl.length || fl.length !== (m.flock || []).length) return null;               // (a group's, all of them to or from the Moon)
   const x = fl.find((y) => y.flying) || fl[0];
-  return { mn: x.moon, sentAt: m.sentAt, deliverAt: x.deliverAt, lost: x.lost, lostAt: x.lostAt, to: x.to };
+  return { mn: x.moon, sentAt: m.sentAt, deliverAt: x.deliverAt, lost: x.lost, lostAt: x.lostAt, recalled: !!x.recalled, km: x.km, to: x.to };
 }
 const MOON_ICON = { up: "up", globe: "globe", dot: "dot", dist: "dist", moon: "moon", check: "check", pin: "pin", fire: "fire" };
 const TRIP_LABEL = { surface: "The pigeon bounding across the Moon", trip: "The pigeon on its way between the Earth and the Moon", laser: "A laser pigeon: a pulse of light between the worlds", orbit: "The pigeon’s path round the Earth in orbit" };
@@ -5910,15 +5915,16 @@ function tickMoon(m) {
   const live = Math.max(0, Math.min(1, (end - o.sentAt) / (o.deliverAt - o.sentAt)));
   // replaying: any moment up to now (or the whole trip, once it's landed)
   const rp = S.moonReplay?.id === m.id ? Math.min(live, S.moonReplay.f) : null, f = rp ?? live, t = rp == null ? now0 : o.sentAt + f * (o.deliverAt - o.sentAt);
-  drawTrip(cv, o.mn, f, t, { lost: o.lost && rp == null });
+  drawTrip(cv, o.mn, f, t, { lost: o.lost && !o.recalled && rp == null });
   const card = $(".mooncard", $layer), place = (e) => (e?.place ? esc(o.mn.k === "surface" || (o.mn.k === "laser" && o.mn.relay) ? e.place.replace(/, (the Moon|Mars)$/, "") : e.place) : e?.b === "moon" ? "the Moon" : e?.b === "mars" ? "Mars" : "Earth");
   $(".mcwhere", card).innerHTML = `${place(o.mn.from)} to ${place(o.mn.to)}`;
   const eta = $(".mceta", card), landed = !o.lost && now0 >= o.deliverAt;
-  eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.deliverAt - now0))}</b><small>lands ${esc(atShort(o.deliverAt))}</small>`;
+  eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.recalled ? `<b>Called back</b>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.deliverAt - now0))}</b><small>lands ${esc(atShort(o.deliverAt))}</small>`;
   const nowEl = $(".mcnow", card);
   nowEl.textContent = rp != null ? spaceNow(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth).line
-    : o.lost ? (o.mn.to.b === "earth" ? "It burnt up on the way home: Pigeon Death." : "Lost in space: Pigeon Death.")
-    : landed ? (o.mn.k === "laser" ? `Crossed ${fmtMiles(Number(m.km || o.mn.dist || 0))} at the speed of light` : `${o.mn.k === "surface" ? "Bounded" : "Flew"} ${fmtMiles(Number(m.km || 0))}`)
+    : o.recalled ? "Called back: it turned for home."
+    : o.lost ? (o.mn.k === "laser" ? "The signal was lost: Pigeon Death." : o.mn.k === "orbit" ? "It burnt up coming down: Pigeon Death." : o.mn.k === "trip" && o.mn.to.b === "earth" ? "It burnt up on the way home: Pigeon Death." : "Lost in space: Pigeon Death.")
+    : landed ? (o.mn.k === "laser" ? `Crossed ${fmtMiles(Number(o.km || o.mn.dist || 0))} at the speed of light` : o.km ? `${o.mn.k === "surface" ? "Bounded" : "Flew"} ${fmtMiles(Number(o.km))}` : o.mn.k === "surface" ? "Bounded across, and landed." : "Landed safely.")
     : spaceNow(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth).line;
   $(".mcbar i", card).style.width = `${(f * 100).toFixed(2)}%`;
   const slider = $(".mcreplay", card); if (document.activeElement !== slider) slider.value = String(Math.round(f * 1000));
@@ -6594,7 +6600,7 @@ async function busyBtn(btn, label, fn) {
 }
 // Buttons that ask the server for something only go once until it has answered
 // (a double tap can't accept twice, buy twice or send two emails).
-const ONCE_ACTS = new Set(["accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer"]);
+const ONCE_ACTS = new Set(["accept", "declinego", "cancelreq", "unblock", "sessend", "sessothersgo", "confirmsend", "pushtest", "buyitem", "wearon", "birdretirego", "wave", "cheer", "resetkeep", "resetfresh"]);
 const acting = new Set();
 async function onClick(e) {
   const t = e.target.closest("[data-act]");
@@ -6880,7 +6886,7 @@ async function onClick1(e, t) {
     case "mapglobe": { const cv = $(".map", $layer); if (!cv?._m) return; S.sheet.globe = !globeOn(cv._m); S.sheet.view = S.sheet.gview = null; cv._spin = 0; return redrawMap(); }
     case "safety": {
       const f = personById(id); if (!f) return;
-      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : S.sheet?.type === "groupinfo" ? "groupinfo" : null), digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
+      S.sheet = { type: "safety", id, from: t.dataset.from || (S.sheet?.type === "friendinfo" ? "friendinfo" : S.sheet?.type === "groupinfo" ? "groupinfo" : null), backId: S.sheet?.id, digits: await E2E.safety(S.me.id, S.myPub || S.me.pub, f.id, f.pub) };
       return renderSheet();
     }
     case "vanishask": {
@@ -6978,7 +6984,7 @@ async function onClick1(e, t) {
       await api("friends", { method: "DELETE", body: { id } }).catch((err) => toast(esc(err.message)));
       S.sheet = null; await sync(); return go("messages");
     case "share": return shareHandle();
-    case "unattach": return clearAttach();
+    case "unattach": if (S.busy) return; return clearAttach();
     case "toast": { hideToast(); const fn = S.toastFn; S.toastFn = null; return fn && fn(); }
     case "peek": { const inp = t.parentElement.querySelector("input"); const show = inp.type === "password"; inp.type = show ? "text" : "password"; t.setAttribute("aria-label", show ? "Hide password" : "Show password"); return; }
     case "locate": {
@@ -7516,7 +7522,10 @@ async function setAttach(blob) {
   } catch (e) { S.err = e.big ? `That GIF is too big to send. Choose one under ${GIF_MAX / 1024 / 1024} MB.` : "That file couldn’t be opened as a photo."; }
   renderCompose();
 }
-function clearAttach() { if (S.attach) URL.revokeObjectURL(S.attach.preview); S.attach = null; if ($compose) renderCompose(); }
+function clearAttach() {
+  if (S.attach && S.attach === S.sending) { S.attach = null; if ($compose) renderCompose(); return; }    // (send() keeps it, and tidies it)
+  if (S.attach) URL.revokeObjectURL(S.attach.preview); S.attach = null; if ($compose) renderCompose();
+}
 // Upload progress glides: the browser reports progress in uneven jumps, so the
 // shown figure eases towards the real one every frame instead of leaping.
 function smoothProgress(draw) {
@@ -7635,11 +7644,15 @@ function voiceShow() {
 function voiceFrame() { voiceShow(); if (S.player && !S.player.paused) requestAnimationFrame(voiceFrame); }
 
 let rec = null;
+let recAsking = false;
 async function recStart() {
-  if (rec || S.busy) return;
-  let stream;
+  if (rec || recAsking || S.busy) return;
+  let stream; const chat = S.chat;
+  recAsking = true;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
   catch (e) { return toast(e?.name === "NotAllowedError" ? "InFlight needs the microphone for voice pigeons. You can allow it in Settings." : "Couldn’t use the microphone."); }
+  finally { recAsking = false; }
+  if (S.view !== "chat" || S.chat !== chat || S.busy || S.attach) { stream.getTracks().forEach((t) => t.stop()); return; }   // (left, or busy, while it asked)
   const mime = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((m) => window.MediaRecorder.isTypeSupported?.(m)) || "";
   let mr;
   try { mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 48000 } : undefined); }
@@ -7769,7 +7782,7 @@ async function send() {
   S.busy = true; S.err = ""; renderCompose();
   // what's being sent belongs to this chat, even if you leave it before it's gone
   const to = S.chat, att = S.attach, here = () => S.view === "chat" && S.chat === to;
-  S.sendingTo = to;
+  S.sendingTo = to; S.sending = att;
   const tidy = () => {
     if (att) { if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null; }
     if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
@@ -7788,7 +7801,7 @@ async function send() {
     } else if (att) {
       showUpload("seal");
       const sealed = await E2E.sealPhoto(id, att.bytes);
-      payload.p = { k: sealed.k, iv: sealed.iv, w: att.w, h: att.h, ...(S.attach.gif ? { m: "image/gif" } : {}) };
+      payload.p = { k: sealed.k, iv: sealed.iv, w: att.w, h: att.h, ...(att.gif ? { m: "image/gif" } : {}) };
       blob = sealed.data;
     }
     const once = !!blob && !att?.voice && !att?.gif;            // photos are view-once; GIFs and voice pigeons aren't
@@ -7825,7 +7838,7 @@ async function send() {
       form.append("meta", JSON.stringify(meta));
       form.append("photo", new Blob([blob], { type: "application/octet-stream" }), "photo.bin");
       showUpload("send", 0);
-      r = await api(path, { method: "POST", form, onProgress: (f) => showUpload("send", f) });
+      r = await api(path, { method: "POST", form, size: blob?.size ?? blob?.byteLength, onProgress: (f) => showUpload("send", f) });
       showUpload("send", 1); await new Promise((res) => setTimeout(res, 300));   // let the bar finish its glide
       upAnim?.stop(); upAnim = null;
     } else r = await api(path, { method: "POST", body: meta });
@@ -7855,7 +7868,8 @@ async function send() {
     await sync();
     offerNotify();
   } catch (err) { if (here()) S.err = err.message; else toast(esc(err.message)); showUpload(null); }
-  S.busy = false; S.sendingTo = null; renderCompose();
+  if (att?.preview && S.attach !== att) URL.revokeObjectURL(att.preview);     // (left behind when you left its chat, and not kept)
+  S.busy = false; S.sendingTo = null; S.sending = null; renderCompose();
 }
 // Drawn buttons (a passport's stamps: SVG, not <button>) answer Enter and Space too; the passport turns with the arrow keys
 document.addEventListener("keydown", (e) => {

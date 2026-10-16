@@ -45,6 +45,8 @@ function spot(f, stops, trip, t) {
   for (let i = 1; i < stops.length - 1; i++) {
     const [a, b] = [stops[i], stops[i + 1]];
     if (haversineKm(a[0], a[1], b[0], b[1]) < 1 && haversineKm(here[0], here[1], a[0], a[1]) < NEAR_HOME) return null;
+    // where it turned for someone who moved: it may have been nearly at their old home
+    if (!a[3] && haversineKm(here[0], here[1], a[0], a[1]) < NEAR_HOME) return null;
   }
   return { here, ahead, at: [snap(here[0]), snap(((here[1] + 540) % 360) - 180)] };
 }
@@ -60,8 +62,9 @@ export function trackerView(f, t) {
   if (trip < SHORT) return null;
   const now = spot(f, stops, trip, t); if (!now) return null;
   const [lat, lon] = now.at, h = Math.round(bearing(now.here[0], now.here[1], now.ahead[0], now.ahead[1]) / 45) % 8;
-  const tr = [];
+  const tr = [], turned = Math.max(-Infinity, ...stops.slice(1, -1).filter((l) => !l[3]).map((l) => l[2]));
   for (const ago of TRAIL) {
+    if (t - ago < turned) break;                                                   // (nor back along the way it was going before a turn)
     const was = spot(f, stops, trip, t - ago); if (!was) break;
     if (haversineKm(lat, lon, was.at[0], was.at[1]) > TRAIL_KM) break;
     const last = tr.at(-1) || [lat, lon]; if (was.at[0] !== last[0] || was.at[1] !== last[1]) tr.push(was.at);

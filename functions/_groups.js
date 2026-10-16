@@ -67,8 +67,10 @@ const wxFor = (d, friend) => { const w = wxView(d); return friend || !w.delay ? 
 function moonOf(d, friend) {
   let mn = null; try { mn = d.moon ? JSON.parse(d.moon) : null; } catch (_) {}
   if (!mn) return {};
-  // (someone who isn't a friend: no place names, and no spot on Earth at all, however rough)
-  const strip = (e) => (e.b === "earth" ? { b: "earth", lat: null, lon: null, place: null } : { ...e, place: null });
+  // (someone who isn't a friend: no place names, no spot on Earth at all, however rough, and on the Moon or Mars
+  // only the region, to 5°: enough to draw the trip, not to name the crater)
+  const five = (x) => (x == null ? x : Math.round(x / 5) * 5);
+  const strip = (e) => (e.b === "earth" ? { b: "earth", lat: null, lon: null, place: null } : { ...e, lat: five(e.lat), lon: five(e.lon), place: null });
   return { moon: friend ? mn : { ...mn, from: strip(mn.from), to: strip(mn.to) } };
 }
 // Your own message: how each pigeon is getting on (friends' routes only).
@@ -485,7 +487,10 @@ export async function rerouteGroups(env, u, p, t, waitUntil) {
     WHERE d.user_id = ?1 AND d.deliver_at > ?2 AND d.to_lat IS NOT NULL AND (d.lost_at IS NULL OR d.lost_at > ?2)`).bind(u.id, t).all();
   if (!results.length) return;
   const friends = await friendIds(D, u.id);
+  const { results: bl } = await D.prepare("SELECT a, b FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all();
+  const blocked = new Set(bl.map((r) => (r.a === u.id ? r.b : r.a)));
   for (const d0 of results) {
+    if (blocked.has(d0.sender)) continue;                              // (a move isn't followed, so isn't told, across a block)
     const legs = d0.legs ? JSON.parse(d0.legs) : [];
     // a sender who isn't your friend only ever knew your coarse place
     const nf = !friends.has(d0.sender), d = nf ? { ...d0, from_lat: coarse(d0.from_lat), from_lon: coarse(d0.from_lon) } : d0;
@@ -530,6 +535,8 @@ export async function removeFromGroups(env, uid) {
   const { results: photos } = await D.prepare("SELECT id FROM pg_gmsgs WHERE sender = ? AND photo = 1").bind(uid).all();
   if (env.BIO_R2 && photos.length) for (let i = 0; i < photos.length; i += 900) await env.BIO_R2.delete(photos.slice(i, i + 900).map((r) => groupPhotoKey(r.id)));
   await D.batch([
+    // a named pigeon leading a flight to them comes home now (it's settled through their delivery, about to go)
+    D.prepare("UPDATE pg_gmsgs SET bird_done = ? WHERE bird_to = ? AND bird_done IS NULL").bind(Date.now(), uid),
     D.prepare("DELETE FROM pg_gdeliv WHERE user_id = ? OR msg_id IN (SELECT id FROM pg_gmsgs WHERE sender = ?)").bind(uid, uid),
     D.prepare("DELETE FROM pg_gmsgs WHERE sender = ?").bind(uid),
   ]);

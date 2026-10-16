@@ -152,7 +152,7 @@ async function turnFor(D, t, x, better, wasW) {
   const r = x.r, way = better.way, w = better.w, [pLat, pLon] = x.path[0], end = x.path[x.path.length - 1];
   const where = better.why === "s" && wasW.storm ? safeName(wasW.storm.lat, wasW.storm.lon) : null;
   // the bends it makes are for this reason; passes and islands stay what they are
-  const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" || q[2] === "w" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}));
+  const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" || q[2] === "w" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}, q.sail ? { sail: q.sail } : {}));
   const latest = latestOf(r);
   const flying = Math.round((flownKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
   const done = passed(x.legs, t);

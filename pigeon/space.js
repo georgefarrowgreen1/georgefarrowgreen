@@ -116,7 +116,7 @@ export function eclipseBetween(a, b) {
 const subsolar = (t) => norm(180 - elong(t).e + 180) - 180;
 // Day or night at a spot on the Moon, and when that changes: { day, next }
 export function lunarDay(lat, lon, t) {
-  const up = (tt) => cos(lat) * cos(lon - subsolar(tt)) > 0.0001;
+  const la = Math.max(-89.9, Math.min(89.9, lat)), up = (tt) => cos(la) * cos(lon - subsolar(tt)) > 0.0001;     // (at a pole the Sun only skims the horizon)
   const day = up(t);
   let x = t; for (let i = 0; i < 31 * 24 && up(x) === day; i++) x += HOUR;
   return { day, next: x };
@@ -198,7 +198,7 @@ export const orbitPeriod = () => 2 * Math.PI * Math.sqrt((EARTH_R + ORBIT.alt) *
 export function orbitAt(o, tau) {
   const u = o.u0 + (360 * tau) / o.T, la = Math.asin(sin(o.i) * sin(u)) / rad;
   const lo = o.node + Math.atan2(cos(o.i) * sin(u), cos(u)) / rad - (360 * tau) / (SIDEREAL * 1000);
-  return [la, ((lo + 540) % 360) - 180];
+  return [la, ((((lo + 180) % 360) + 360) % 360) - 180];      // (laps drift it far west: always back within ±180°)
 }
 // Launched from one friend (heading north-east into an orbit tilted just enough to pass over both), it
 // comes down on the first pass within reach of the other (one less than 20 minutes in is too soon), and

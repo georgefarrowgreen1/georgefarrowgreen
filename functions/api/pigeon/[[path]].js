@@ -226,7 +226,7 @@ async function reroute(env, u, p, t, waitUntil) {
     const legs = m.legs ? JSON.parse(m.legs) : [];
     if (haversineKm(m.to_lat, m.to_lon, p.lat, p.lon) <= REROUTE_KM) continue;
     // resting with a friend (or on its way to them): it flies on at the same time, to the new spot
-    if (m.via && t < m.via_off) {
+    if (m.via && t < m.via_off && legs.length) {
       const [[vLat, vLon]] = legs, ahead = haversineKm(vLat, vLon, p.lat, p.lon);
       const deliver = m.via_off + Math.round(flightMs(ahead / (m.wind_f || 1), msgSpeed(m)));
       const km = m.km - haversineKm(vLat, vLon, m.to_lat, m.to_lon) + ahead;
@@ -335,8 +335,8 @@ async function updateMe({ request, env, waitUntil }) {
     await D.prepare("UPDATE pg_users SET moon = ?, lat = NULL, lon = NULL, place = ?, auto_loc = 0, loc_at = ? WHERE id = ?").bind(JSON.stringify(mn.b === "mars" ? { b: "mars", lat: mn.lat, lon: mn.lon } : { lat: mn.lat, lon: mn.lon }), mn.place, t, u.id).run();
   }
   if (b.lat !== undefined) {
-    if (u.moon) await D.prepare("UPDATE pg_users SET moon = NULL WHERE id = ?").bind(u.id).run();
     const p = cleanPlace(b, b.approxLocation ?? !!u.loc_approx);
+    if (u.moon) await D.prepare("UPDATE pg_users SET moon = NULL WHERE id = ?").bind(u.id).run();
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
     if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
     // (the time it was last updated moves only when you do: "still here" every few minutes would say when the app was open)
@@ -603,7 +603,9 @@ async function addFriend({ request, env, waitUntil }) {
   // a cap on requests waiting for one person, so no one can bury them
   const waiting = await D.prepare("SELECT COUNT(*) AS n FROM pg_links WHERE b = ? AND status = 'pending'").bind(t.id).first();
   if (waiting.n >= PENDING_MAX) return json({ message: `@${t.handle} has a lot of requests waiting. Try again later.` });
-  await D.prepare("INSERT INTO pg_links (a, b, status, created_at) VALUES (?, ?, 'pending', ?)").bind(u.id, t.id, Date.now()).run();
+  // (only if neither of you has asked in the meantime: two requests crossing make one)
+  const ins = await D.prepare("INSERT INTO pg_links (a, b, status, created_at) SELECT ?1, ?2, 'pending', ?3 WHERE NOT EXISTS (SELECT 1 FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, t.id, Date.now()).run();
+  if (!ins.meta.changes) return json({ message: `Something just changed with @${t.handle}. Try again.` });
   waitUntil(friendRequested(env, linkOrigin(request), u, t.id).catch(() => {}));
   return json({ message: `Request sent to @${t.handle}.` });
 }
@@ -624,6 +626,7 @@ async function respondFriend({ request, env, waitUntil }) {
 async function removeFriend({ request, env }) {
   const u = await requireUser(request, env);
   const id = String((await body(request)).id), D = await db(env);
+  await groundPhotos(env, D, u.id, id);
   await D.batch([
     D.prepare("DELETE FROM pg_links WHERE ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)) AND status IN ('ok', 'pending')").bind(u.id, id),
     // cancelling a request they said no to: it goes from your list, but their no stands
@@ -634,6 +637,11 @@ async function removeFriend({ request, env }) {
   return json({ ok: true });
 }
 // No longer friends: pigeons either of you booked that haven't taken off yet stay home
+// (and the photos they were carrying go from storage first: nothing else would find them)
+async function groundPhotos(env, D, a, b) {
+  const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3 AND photo = 1").bind(a, b, Date.now()).all();
+  if (results.length && env.BIO_R2) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`)).catch(() => {});
+}
 const grounded = (D, a, b) => [
   D.prepare("UPDATE pg_birds SET busy_until = ?3 WHERE id IN (SELECT bird FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3)").bind(a, b, Date.now()),
   D.prepare("DELETE FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sched = 1 AND sent_at > ?3").bind(a, b, Date.now()),
@@ -647,6 +655,7 @@ async function block({ request, env }) {
   if (id === u.id || !(await D.prepare("SELECT 1 FROM pg_users WHERE id = ?").bind(id).first())) throw new HttpError(404, "There’s no one like that to block.");
   const l = await D.prepare("SELECT * FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id).first();
   if (l?.status === "blocked" && l.a === id) return json({ ok: true });        // they blocked you first: already apart
+  await groundPhotos(env, D, u.id, id);
   await D.batch([
     D.prepare("DELETE FROM pg_links WHERE (a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1)").bind(u.id, id),
     D.prepare("INSERT INTO pg_links (a, b, status, created_at, asked_at) VALUES (?, ?, 'blocked', ?, ?)")
@@ -721,6 +730,14 @@ async function sync({ request, env, waitUntil }) {
   const vanishes = await vanishFor(D, u.id);
   const lastBy = new Map();
   for (const m of lasts) { const k = m.sender === u.id ? m.recipient : m.sender, had = lastBy.get(k); if (!had || m.sent_at > had.sent_at) lastBy.set(k, m); }
+  // whose turn it is: from the last pigeon each way, including any whose words have disappeared (as sending checks it)
+  const { results: turnRows } = await D.prepare(`
+    WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
+    SELECT id, sender, recipient, sent_at, deliver_at, lost_at, recalled FROM pg_msgs WHERE id IN (
+      SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
+      UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t).all();
+  const turnBy = new Map();
+  for (const m of turnRows) { const k = m.sender === u.id ? m.recipient : m.sender, had = turnBy.get(k); if (!had || m.sent_at > had.sent_at) turnBy.set(k, m); }
   const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
   const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
@@ -739,7 +756,7 @@ async function sync({ request, env, waitUntil }) {
       friends.push({ ...brief(p), pub: JSON.parse(p.pub), lat: p.lat, lon: p.lon, place: p.place, moon: moonView(p), locAt: u.hide_online || p.hide_online ? null : p.loc_at || null,
         seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null,           // hiding yours hides theirs too
         tz: ((z) => (z && z !== "UTC" ? z : null))(prefsOf(p).tz),                    // their phone's time zone: "lands 08:12 their time"
-        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, last, t), streak: streaks.get(p.id) || null,
+        last: last ? receipts(u, p, msgView(u.id, last, t)) : null, unread: unreadBy.get(p.id) || 0, turn: turn(u.id, turnBy.get(p.id), t), streak: streaks.get(p.id) || null,
         vanish: vanishes.get(p.id) || null });
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
@@ -768,7 +785,7 @@ async function listMessages({ request, env }) {
   for (const v of views) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
   const marks = await marksFor(D, results.filter((m) => m.deliver_at <= t && m.lost_at == null).map((m) => m.id));   // postmarks: on the letter, for both of you
   for (const v of views) if (marks.has(v.id)) v.postmarks = marks.get(v.id);
-  return json({ now: t, messages: views, fly: await flyViews(D, u.id, other), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, results.filter((m) => m.sent_at <= t).at(-1), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  return json({ now: t, messages: views, fly: await flyViews(D, u.id, other), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, await lastBetween(D, u.id, other, t), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -1524,8 +1541,9 @@ const ROUTES = {
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
-  if (!HOSTS.test(url.hostname)) return json({ error: "Not found." }, 404);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
+  // (the scheduled notify job calls the site's .pages.dev address, past the custom domain's bot checks: only that, there)
+  if (!HOSTS.test(url.hostname) && !(parts[0] === "notify-tick" && url.hostname === "georgefarrowgreen.pages.dev")) return json({ error: "Not found." }, 404);
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
   if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));

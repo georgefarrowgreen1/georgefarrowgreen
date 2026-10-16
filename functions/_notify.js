@@ -240,7 +240,7 @@ export async function groupRerouted(env, senderId, to, gid, deliverAt) {
 // Group pigeons that landed or were lost since the last tick.
 async function groupTick(env, D, t, since) {
   let pushes = 0, landedN = 0, held = 0;
-  const { results: due } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, gm.muted, s.name AS sname
+  const { results: due } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, m.sender, m.group_id, g.name AS gname, u.notify_prefs, COALESCE(gm.muted, 1) AS muted, s.name AS sname
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id JOIN pg_users s ON s.id = m.sender
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
     WHERE d.notified_at IS NULL AND d.lost_at IS NULL AND d.deliver_at <= ?1 AND d.deliver_at > ?2 LIMIT 500`).bind(t, since).all();
@@ -321,7 +321,7 @@ async function wxTick(env, D, t, since) {
     if (rp.delays && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
       body: `${rp.names ? "Their" : "A"} pigeon to you flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, rp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
-  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, gm.muted FROM pg_gdeliv d
+  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
     JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
     WHERE d.wx_at IS NOT NULL AND d.wx_told IS NULL AND d.wx_at <= ?1 AND d.wx_at > ?2 AND d.deliver_at > ?1 AND d.wx_ms >= ?3
@@ -349,7 +349,7 @@ async function turnNotes(env, D, t, turns) {
       ? `${who} is sheltering from ${WX_WORDS[x.k] || "storms"}${p.names && x.where ? ` ${x.where}` : ""} until about ${dayClock(x.until, p.tz)}. It now lands ${whenAt(x.deliver, p.tz)}.`
       : `${who} changed course ${why(p)}. It now lands ${whenAt(x.deliver, p.tz)}.`;
     if (x.group) {
-      const g = await D.prepare(`SELECT g.name, u.notify_prefs, gm.muted FROM pg_groups g JOIN pg_users u ON u.id = ?2
+      const g = await D.prepare(`SELECT g.name, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_groups g JOIN pg_users u ON u.id = ?2
         LEFT JOIN pg_group_members gm ON gm.group_id = g.id AND gm.user_id = ?2 WHERE g.id = ?1`).bind(x.r.group_id, x.r.user_id).first();
       const p = g && prefsOf(g); if (!p || !p.delays || isQuiet(p, t) || g.muted) continue;
       pushes += await pushTo(env, x.r.user_id, { title: p.names ? g.name : "InFlight", body: say(p, "A pigeon to you"),
@@ -418,7 +418,7 @@ async function shipTick(env, D, t, since) {
     if (rp.moments && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
       body: shipSay(rp, `${rp.names ? "Their" : "A"} pigeon to you`, v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
-  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, gm.muted FROM pg_gdeliv d
+  const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
     JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = d.user_id
     WHERE d.notified_at IS NULL AND d.deliver_at > ?1 AND m.sent_at <= ?1 AND (d.lost_at IS NULL OR d.lost_at > ?1) AND COALESCE(d.ship_told, 0) < 2 AND d.legs LIKE '%"b"%' LIMIT 200`).bind(t).all();
@@ -433,7 +433,7 @@ async function shipTick(env, D, t, since) {
 }
 async function reactTick(env, D, t, since) {
   let pushes = 0;
-  const { results } = await D.prepare(`SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, gm.muted
+  const { results } = await D.prepare(`SELECT r.id, r.sender, r.recipient, r.group_id, u.notify_prefs, s.name AS sname, g.name AS gname, CASE WHEN r.group_id IS NOT NULL AND gm.user_id IS NULL THEN 1 ELSE gm.muted END AS muted
     FROM pg_reacts r JOIN pg_users u ON u.id = r.recipient JOIN pg_users s ON s.id = r.sender
     LEFT JOIN pg_groups g ON g.id = r.group_id LEFT JOIN pg_group_members gm ON gm.group_id = r.group_id AND gm.user_id = r.recipient
     WHERE r.recipient IS NOT NULL AND r.notified_at IS NULL AND r.deliver_at <= ?1 AND r.deliver_at > ?2 LIMIT 200`).bind(t, since).all();
@@ -610,27 +610,29 @@ export async function tick(env, origin) {
   }
   const live = await liveTick(env, D, t).catch((e) => { console.error("pigeon live", e && e.message); return { turns: [] }; });   // the weather ahead of pigeons in the air
   pushes += await turnNotes(env, D, t, live.turns).catch((e) => { console.error("pigeon live notes", e && e.message); return 0; });
-  pushes += await wxTick(env, D, t, since);
-  pushes += await nearTick(env, D, t, since);
-  pushes += await flyTick(env, D, t, since);
+  pushes += await wxTick(env, D, t, since).catch((e) => { console.error("pigeon wx", e && e.message); return 0; });
+  pushes += await nearTick(env, D, t, since).catch((e) => { console.error("pigeon near", e && e.message); return 0; });
+  pushes += await flyTick(env, D, t, since).catch((e) => { console.error("pigeon fly", e && e.message); return 0; });
   pushes += await shipTick(env, D, t, since).catch((e) => { console.error("pigeon ships", e && e.message); return 0; });
   pushes += await spaceTick(env, D, t).catch((e) => { console.error("pigeon space", e && e.message); return 0; });
   pushes += await streakTick(env, D, t).catch((e) => { console.error("pigeon streaks", e && e.message); return 0; });
   await settleBirds(D, t).catch((e) => console.error("pigeon birds", e && e.message));      // named pigeons' careers, as their flights end
   await stampPassports(D, t).catch((e) => console.error("pigeon passport", e && e.message));  // the places flights that landed flew over
-  const gt = await groupTick(env, D, t, since);
+  const gt = await groupTick(env, D, t, since).catch((e) => { console.error("pigeon groups", e && e.message); return { pushes: 0, landed: 0, held: 0 }; });
   pushes += gt.pushes;
-  pushes += await reactTick(env, D, t, since);
-  const wk = await weeklyTick(env, D, t, origin);
+  pushes += await reactTick(env, D, t, since).catch((e) => { console.error("pigeon reacts", e && e.message); return 0; });
+  const wk = await weeklyTick(env, D, t, origin).catch((e) => { console.error("pigeon weekly", e && e.message); return { pushes: 0, emails: 0, sent: 0 }; });
   pushes += wk.pushes;
   if (emailReady(env)) {
     // everything waiting unread: one-to-one pigeons, and group ones (unless that group is muted)
     const { results: waiting } = await D.prepare(`
       WITH inbox AS (
         SELECT recipient AS to_id, sender, sender AS chat, id, read_at, lost_at, deliver_at FROM pg_msgs
+          WHERE EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'ok' AND ((k.a = recipient AND k.b = sender) OR (k.a = sender AND k.b = recipient)))
         UNION ALL
         SELECT d.user_id, g.sender, g.group_id, d.msg_id, d.read_at, d.lost_at, d.deliver_at FROM pg_gdeliv d JOIN pg_gmsgs g ON g.id = d.msg_id
-          JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0)
+          JOIN pg_group_members gm ON gm.group_id = g.group_id AND gm.user_id = d.user_id WHERE gm.muted = 0
+          AND NOT EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'blocked' AND ((k.a = d.user_id AND k.b = g.sender) OR (k.a = g.sender AND k.b = d.user_id))))
       SELECT u.id, u.email, u.notify_prefs, COUNT(m.id) AS n, GROUP_CONCAT(DISTINCT s.name) AS names, GROUP_CONCAT(DISTINCT m.chat) AS senders
       FROM pg_users u JOIN inbox m ON m.to_id = u.id JOIN pg_users s ON s.id = m.sender
       WHERE u.notify_email = 1 AND u.email_ok IS NOT NULL AND COALESCE(u.email_at, 0) < ?1
@@ -638,6 +640,8 @@ export async function tick(env, origin) {
       GROUP BY u.id LIMIT 50`).bind(t - EMAIL_EVERY, t - EMAIL_AFTER, Math.max(since, t - DAY)).all();
     for (const u of waiting) {
       const p = prefsOf(u); if (!p.landed || isQuiet(p, t)) continue;
+      const claimed = await D.prepare("UPDATE pg_users SET email_at = ?1 WHERE id = ?2 AND COALESCE(email_at, 0) < ?3").bind(t, u.id, t - EMAIL_EVERY).run();
+      if (!claimed.meta.changes) continue;
       const who = String(u.names || "").split(",").map(firstName);
       const list = who.length > 2 ? `${who.slice(0, -1).join(", ")} and ${who.at(-1)}` : who.join(" and ");
       const subject = !p.names ? (u.n > 1 ? `${u.n} pigeons have landed` : "A pigeon has landed")

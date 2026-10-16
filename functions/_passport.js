@@ -23,6 +23,8 @@ const EVERY_KM = 20;
 // the seas and oceans (the rest are countries)
 const SEA = new Set([...SEAS.map((s) => s[0]), "the Arctic Ocean", "the Southern Ocean", "the North Atlantic", "the South Atlantic", "the Indian Ocean", "the North Pacific", "the South Pacific"]);
 export const isSea = (p) => SEA.has(p);
+// the stamps from off the Earth (or round it): in the passport, but not countries
+const OFF_WORLD = new Set(["the Moon", "Mars", "Low Earth Orbit"]);
 
 // the places along a pigeon's way, in order, each once
 export function placesAlong(stops) {
@@ -58,7 +60,12 @@ export async function stampPassports(D, t, uid = null, max = 12) {
   const { results: lunar } = await D.prepare(`SELECT m.id, m.sender, m.km, m.sent_at, m.deliver_at, m.moon FROM pg_msgs m
     WHERE m.deliver_at <= ?1 AND m.lost_at IS NULL AND m.moon IS NOT NULL ${mine}
     AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id) ORDER BY m.deliver_at LIMIT ${max}`).bind(...args).all();
-  const flights = [...one, ...grp, ...lunar.map((f) => ({ ...f, lunar: true }))].sort((a, b) => a.deliver_at - b.deliver_at).slice(0, max);
+  const { results: glunar } = await D.prepare(`SELECT m.id || ':' || d.user_id AS id, m.sender, d.km, m.sent_at, d.deliver_at, d.moon
+    FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
+    WHERE d.deliver_at <= ?1 AND d.lost_at IS NULL AND d.moon IS NOT NULL ${mine}
+    AND EXISTS (SELECT 1 FROM pg_links l WHERE l.status = 'ok' AND ((l.a = m.sender AND l.b = d.user_id) OR (l.a = d.user_id AND l.b = m.sender)))
+    AND NOT EXISTS (SELECT 1 FROM pg_stamped s WHERE s.id = m.id || ':' || d.user_id) ORDER BY d.deliver_at LIMIT ${max}`).bind(...args).all();
+  const flights = [...one, ...grp, ...[...lunar, ...glunar].map((f) => ({ ...f, lunar: true }))].sort((a, b) => a.deliver_at - b.deliver_at).slice(0, max);
   if (flights.length) await ensureFeathers(D);         // (everyone's feathers so far, before any more are earned)
   for (const f of flights) {
     let places = [], marks = [];
@@ -102,7 +109,7 @@ export async function passportFor(D, uid, t) {
       FROM pg_gmsgs m LEFT JOIN pg_groups g ON g.id = m.group_id WHERE m.sender = ? AND m.id IN (${q})`).bind(uid, ...part).all();
     for (const m of grp) trips[m.id] = { from: m.from_place || null, to: m.to_place || null, ship: sailed(m.legs) };
   }
-  return { places, countries: places.filter((p) => !p.sea).length, seas: places.filter((p) => p.sea).length, trips };
+  return { places, countries: places.filter((p) => !p.sea && !OFF_WORLD.has(p.name)).length, seas: places.filter((p) => p.sea).length, trips };
 }
 // For a chat: the stamps each of your flights there was the first to collect, in the order it flew them
 export async function newStamps(D, uid, ids) {

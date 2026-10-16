@@ -46,7 +46,9 @@ async function setPair({ request, env }) {
 export async function vanishSweep(env) {
   const D = await db(env), t = Date.now();
   // one to one
-  const { results: ms } = await D.prepare(`SELECT id, photo FROM pg_msgs WHERE vanish IS NOT NULL AND gone_at IS NULL AND read_at IS NOT NULL AND read_at + vanish <= ? LIMIT 200`).bind(t).all();
+  // (90 at a time: D1 takes at most 100 bound values in a statement. A lost one goes its time after it was lost.)
+  const { results: ms } = await D.prepare(`SELECT id, photo FROM pg_msgs WHERE vanish IS NOT NULL AND gone_at IS NULL
+    AND ((read_at IS NOT NULL AND read_at + vanish <= ?1) OR (lost_at IS NOT NULL AND lost_at + vanish <= ?1)) LIMIT 90`).bind(t).all();
   if (ms.length) {
     const photos = ms.filter((m) => m.photo === 1).map((m) => `pigeon/${m.id}`);
     if (photos.length && env.BIO_R2) await env.BIO_R2.delete(photos).catch(() => {});
@@ -59,7 +61,7 @@ export async function vanishSweep(env) {
   // groups: everyone it flew to has read it (or it was lost), and the time has passed since the last of them did
   const { results: gs } = await D.prepare(`SELECT m.id, m.photo FROM pg_gmsgs m WHERE m.vanish IS NOT NULL AND m.gone_at IS NULL
       AND NOT EXISTS (SELECT 1 FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.read_at IS NULL AND d.lost_at IS NULL)
-      AND (SELECT MAX(d.read_at) FROM pg_gdeliv d WHERE d.msg_id = m.id) + m.vanish <= ? LIMIT 200`).bind(t).all();
+      AND (SELECT MAX(COALESCE(d.read_at, d.lost_at)) FROM pg_gdeliv d WHERE d.msg_id = m.id) + m.vanish <= ? LIMIT 90`).bind(t).all();
   if (gs.length) {
     const photos = gs.filter((m) => m.photo === 1).map((m) => `pigeon-g/${m.id}`);
     if (photos.length && env.BIO_R2) await env.BIO_R2.delete(photos).catch(() => {});

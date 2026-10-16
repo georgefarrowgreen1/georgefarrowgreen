@@ -307,6 +307,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN orbital INTEGER", "ALTER TABLE pg_users ADD COLUMN orbital_at INTEGER",
   "ALTER TABLE pg_msgs ADD COLUMN moon_told INTEGER",
   "CREATE INDEX IF NOT EXISTS pg_msgs_space ON pg_msgs(deliver_at) WHERE moon IS NOT NULL",
+  "CREATE INDEX IF NOT EXISTS pg_gdeliv_space ON pg_gdeliv(deliver_at) WHERE moon IS NOT NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

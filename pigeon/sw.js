@@ -29,13 +29,13 @@ self.addEventListener("fetch", (e) => {
 
 // the page: the network if it answers in time, else last time's copy
 async function page(e, r) {
-  const net = fetch(r).then(async (res) => {
-    if (res.ok && (res.headers.get("Content-Type") || "").includes("text/html")) {
-      const copy = res.clone();
-      e.waitUntil((async () => { const c = await caches.open(SHELL); await c.put(PAGE, copy.clone()); await prune(c, await copy.text()); })().catch(() => {}));
-    }
-    return res;
-  });
+  const net = fetch(r);
+  // keeping this copy outlasts the answer (which may already be last time's): asked for now, while it still can be
+  e.waitUntil(net.then(async (res) => {
+    if (!res.ok || !(res.headers.get("Content-Type") || "").includes("text/html")) return;
+    const copy = res.clone(), c = await caches.open(SHELL);
+    await c.put(PAGE, copy.clone()); await prune(c, await copy.text());
+  }).catch(() => {}));
   try {
     return await Promise.race([net, new Promise((_, no) => setTimeout(() => no(new Error("slow")), WAIT))]);
   } catch (_) {
@@ -91,7 +91,8 @@ self.addEventListener("notificationclick", (e) => {
   if (url.origin !== self.location.origin || !url.pathname.startsWith("/pigeon/")) return;
   e.waitUntil((async () => {
     const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    const app = open.find((c) => new URL(c.url).pathname.startsWith("/pigeon/") && !new URL(c.url).pathname.startsWith("/pigeon/admin"));
+    // the app itself (not the live tracker, nor a page inside another)
+    const app = open.find((c) => c.frameType !== "nested" && [PAGE, PAGE + "index.html"].includes(new URL(c.url).pathname));
     if (app) { app.postMessage({ inflight: "open", hash: url.hash }); return app.focus(); }
     return self.clients.openWindow(url.href);
   })());
