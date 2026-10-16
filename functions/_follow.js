@@ -47,7 +47,7 @@ export function followOne(p, end, t) {
     // the way it flew on Earth first, so its passport still gets the countries it crossed (to 0.01°)
     const r2 = (x) => Math.round(x * 100) / 100, st = stopsOf(p);
     const ground = waiting ? null : [...st.slice(0, -1).filter((s) => s[2] < t0).map((s) => [r2(s[0]), r2(s[1]), s[2]]), [r2(la), r2(lo), t0]];
-    return { how: "hand", moon: { ...bare(f), from, to: end, t0, pk: kind, hand: 1, ...(resting ? { rested: 1 } : {}), ...(ground && ground.length > 1 ? { ground } : {}) },
+    return { how: "hand", later: t0 > t, moon: { ...bare(f), from, to: end, t0, pk: kind, hand: 1, ...(resting ? { rested: 1 } : {}), ...(ground && ground.length > 1 ? { ground } : {}) },
       deliver, km: Math.round(flown + f.km), lostAt: relost(p, t, deliver) };
   }
   const kind = mn.pk || p.pigeon, t0 = mn.t0 ?? p.sent_at;
@@ -79,13 +79,13 @@ export async function followMe(env, D, u, end, t, waitUntil, friends, blocked) {
   for (const m of one) {
     if (!friends.has(m.sender)) continue;                       // (only a friend's follows you, as on Earth)
     const x = followOne(m, end, t); if (!x) continue;
-    const r = await D.prepare(`UPDATE pg_msgs SET moon = ?, deliver_at = ?, km = ?, lost_at = ?, to_place = ?, moon_told = NULL,
+    const r = await D.prepare(`UPDATE pg_msgs SET moon = ?, deliver_at = ?, km = ?, lost_at = ?, to_place = ?, moon_told = CASE WHEN moon IS NULL THEN NULL ELSE moon_told END,
       from_lat = NULL, from_lon = NULL, to_lat = NULL, to_lon = NULL, legs = NULL, wx = NULL, wx_ms = NULL, wx_at = NULL, ship_told = NULL,
-      expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at = ?`)
+      expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at = ? AND recalled = 0`)
       .bind(JSON.stringify(x.moon), x.deliver, x.km, x.lostAt, end.place, (x.lostAt ?? x.deliver) + PHOTO_TTL_MS, m.id, m.deliver_at).run();
     if (!r.meta.changes) continue;
     if (!m.moon) { waitUntil(dropNear(D, m.id, -Infinity).catch(() => {})); waitUntil(dropFly(D, m.id, -Infinity).catch(() => {})); }
-    waitUntil(pigeonFollowed(env, m.sender, { ...u, place: end.place }, end, x).catch(() => {})); n++;
+    waitUntil(pigeonFollowed(env, m.sender, { ...u, place: end.place }, end, x).catch(() => {})); if (x.how !== "same") n++;
   }
   const { results: grp } = await D.prepare(`SELECT d.*, m.sender, m.sent_at, m.from_lat, m.from_lon, m.pigeon, m.risky, m.group_id, m.photo FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
     WHERE d.user_id = ?1 AND d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2) AND (d.moon IS NOT NULL ${away ? "OR d.to_lat IS NOT NULL" : ""})`).bind(u.id, t).all();
@@ -93,12 +93,12 @@ export async function followMe(env, D, u, end, t, waitUntil, friends, blocked) {
     if (blocked.has(d.sender)) continue;                        // (a move isn't followed, so isn't told, across a block)
     const x = followOne(d, end, t); if (!x) continue;
     const r = await D.prepare(`UPDATE pg_gdeliv SET moon = ?, deliver_at = ?, km = ?, lost_at = ?, to_place = ?, to_lat = NULL, to_lon = NULL, legs = NULL, wx = NULL, wx_ms = NULL, wx_at = NULL, ship_told = NULL
-      WHERE msg_id = ? AND user_id = ? AND deliver_at = ?`).bind(JSON.stringify(x.moon), x.deliver, x.km, x.lostAt, end.place, d.msg_id, u.id, d.deliver_at).run();
+      WHERE msg_id = ? AND user_id = ? AND deliver_at = ? AND recalled = 0`).bind(JSON.stringify(x.moon), x.deliver, x.km, x.lostAt, end.place, d.msg_id, u.id, d.deliver_at).run();
     if (!r.meta.changes) continue;
     if (d.photo === 1) await D.prepare("UPDATE pg_gmsgs SET expires_at = MAX(COALESCE(expires_at, 0), ?) WHERE id = ?").bind((x.lostAt ?? x.deliver) + PHOTO_TTL_MS, d.msg_id).run();
     if (!d.moon) waitUntil(reflyGroup(D, d.msg_id, t).catch(() => {}));
     if (friends.has(d.sender)) waitUntil(pigeonFollowed(env, d.sender, { ...u, place: end.place }, end, x, d.group_id).catch(() => {}));
-    n++;
+    if (x.how !== "same") n++;
   }
   // and they hear that what was on its way is coming too (once, however many)
   if (n && end.b !== "earth") waitUntil(followingYou(env, u.id, n, end).catch(() => {}));

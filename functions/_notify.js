@@ -18,7 +18,7 @@ import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
 import { spaceMoments, legOf } from "../pigeon/space.js";
-import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
+import { MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
 import { streakTick } from "./_streaks.js";
@@ -140,6 +140,8 @@ export async function pushTo(env, userId, note) {
   return sent;
 }
 
+// still friends? (a pigeon from someone you've blocked or unfriended lands silently, and nothing on its way is said)
+const pals = async (D, a, b) => !!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(a, b).first());
 /* ---------------- email ---------------- */
 export async function unsubToken(env, userId) {
   const D = await db(env);
@@ -186,8 +188,7 @@ export async function friendAccepted(env, by, toId) {
 // The person you sent a pigeon to moved, so it changed course.
 export async function pigeonRerouted(env, senderId, to, deliverAt) {
   const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p)) return;
-  const ms = deliverAt - Date.now(), h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN));
-  const eta = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`;
+  const eta = etaText(deliverAt - Date.now());
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",
     body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${eta}.`, tag: "course-" + to.id, url: `/pigeon/#open=${to.id}` });
 }
@@ -199,7 +200,8 @@ export async function pigeonFollowed(env, senderId, to, end, x, gid = null) {
   const g = gid ? await (await db(env)).prepare("SELECT name FROM pg_groups WHERE id = ?").bind(gid).first() : null;
   const by = x.moon.pk === "laser" ? "a laser pigeon" : x.moon.pk === "orbital" ? "an orbital pigeon" : "a lunar pigeon", nm = r.p.names && firstName(to.name);
   const gone = end.b === "earth" ? (nm ? `${nm}’s back on Earth` : "they’re back on Earth") : nm ? `${nm}’s gone to ${WORLD[end.b]}` : `they’ve gone to ${WORLD[end.b]}`;
-  const say = x.how === "hand" ? `Your pigeon was handed to ${by}${r.p.names && x.moon.from?.place ? ` over ${x.moon.from.place}` : ""}: ${gone}.`
+  const at = r.p.names && x.moon.from?.place ? ` ${x.later ? "in" : "over"} ${x.moon.from.place}` : "";
+  const say = x.how === "hand" ? (x.later ? `Your pigeon will go on by ${by}${at}: ${gone}.` : `Your pigeon was handed to ${by}${at}: ${gone}.`)
     : x.how === "relay" ? `Your pigeon will be relayed on by ${by.replace(/^an? /, "")}${r.p.names && x.moon.from?.place ? ` from ${x.moon.from.place}` : ""}: ${gone}.`
     : `Your pigeon is heading for ${r.p.names && end.place ? end.place : "their new spot"} instead.`;
   await pushTo(env, senderId, { title: r.p.names ? (g ? g.name : `${firstName(to.name)} moved`) : "InFlight", body: `${say} It now lands in ${etaText(x.deliver - Date.now())}.`,
@@ -212,14 +214,14 @@ export async function followingYou(env, uid, n, end) {
 // A friend has just sent you a pigeon (off unless you turn it on).
 export async function pigeonSent(env, from, toId, deliverAt, kind = "standard") {
   const r = await userPrefs(env, toId); if (!r || !r.p.takeoff || isQuiet(r.p)) return;
-  const ms = deliverAt - Date.now(), h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN));
-  const eta = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`;
+  const eta = etaText(deliverAt - Date.now());
   await pushTo(env, toId, { title: r.p.names ? firstName(from.name) : "InFlight", body: r.p.names ? `Sent you a ${kind === "standard" ? "" : kind + " "}pigeon. It lands in ${eta}.` : `A ${kind === "standard" ? "" : kind + " "}pigeon is on its way to you. It lands in ${eta}.`,
     tag: "from-" + from.id, url: `/pigeon/#open=${from.id}` });
 }
 
 /* ---------- groups: the same events, said with the group's name ---------- */
-const etaText = (ms) => { const h = Math.floor(ms / HOUR), m = Math.max(1, Math.round((ms % HOUR) / MIN)); return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`; };
+// (whole minutes first, so never "1h 60m")
+function etaText(ms) { const all = Math.max(1, Math.round(ms / MIN)), h = Math.floor(all / 60), m = all % 60; return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h ${m}m` : `${m} min`; }
 const isMuted = async (env, gid, uid) => !!(await (await db(env)).prepare("SELECT muted FROM pg_group_members WHERE group_id = ? AND user_id = ?").bind(gid, uid).first())?.muted;
 export async function groupAdded(env, by, ids, g) {
   for (const id of ids) {
@@ -253,7 +255,7 @@ export async function wavedNote(env, toId, by, x) {
 export async function groupRerouted(env, senderId, to, gid, deliverAt) {
   const r = await userPrefs(env, senderId); if (!r || !r.p.rerouted || isQuiet(r.p) || await isMuted(env, gid, senderId)) return;
   await pushTo(env, senderId, { title: r.p.names ? `${firstName(to.name)} moved` : "InFlight",
-    body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${etaText(deliverAt - Date.now())}.`, tag: "course-" + to.id, url: `/pigeon/#open=${gid}` });
+    body: `Your pigeon changed course${r.p.names && to.place ? ` for ${to.place}` : ""}. It now lands in ${etaText(deliverAt - Date.now())}.`, tag: "course-" + gid, url: `/pigeon/#open=${gid}` });
 }
 // Group pigeons that landed or were lost since the last tick.
 // Every row a query matches, a page at a time (up to 5,000), in the order of `key` (the column its
@@ -303,12 +305,18 @@ async function groupTick(env, D, t, since) {
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = m.sender JOIN pg_users r ON r.id = d.user_id
     LEFT JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = m.sender
     WHERE d.notified_at IS NULL AND d.lost_at IS NOT NULL AND d.lost_at <= ?1 AND d.lost_at > ?2`, [t, since], "d", "lost_at");
+  const lostBy = new Map();
   for (const d of lost) {
     const p = prefsOf(d); if (isQuiet(p, t)) continue;
     const c = await D.prepare("UPDATE pg_gdeliv SET notified_at = ? WHERE rowid = ? AND notified_at IS NULL").bind(t, d.rid).run();
     if (!c.meta.changes || !p.lost || d.muted) continue;
-    pushes += await pushTo(env, d.sender, { title: "Pigeon lost", body: p.names ? `Your pigeon to ${firstName(d.name)} in ${d.gname} didn’t make it.` : "One of your pigeons didn’t make it.",
-      tag: "lost-" + d.group_id, url: `/pigeon/#open=${d.group_id}` });
+    const k = d.sender + "|" + d.group_id, x = lostBy.get(k) || { d, p, names: [] }; x.names.push(firstName(d.name)); lostBy.set(k, x);
+  }
+  // (one push for each of yours, however many of its pigeons were lost this round: they share a tag)
+  for (const { d, p, names } of lostBy.values()) {
+    const who = names.length > 2 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names.join(" and ");
+    pushes += await pushTo(env, d.sender, { title: "Pigeon lost", body: !p.names ? (names.length > 1 ? `${names.length} of your pigeons didn’t make it.` : "One of your pigeons didn’t make it.")
+      : `Your pigeon${names.length > 1 ? "s" : ""} to ${who} in ${d.gname} didn’t make it.`, tag: "lost-" + d.group_id, url: `/pigeon/#open=${d.group_id}` });
   }
   return { pushes, landed: landedN, held };
 }
@@ -350,7 +358,7 @@ async function wxTick(env, D, t, since) {
     const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
     if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "InFlight",
       body: `Your pigeon flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, sp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.recipient}` });
-    if (rp.delays && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
+    if (rp.delays && !isQuiet(rp, t) && (await pals(D, m.sender, m.recipient))) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
       body: `${rp.names ? "Their" : "A"} pigeon to you flew into ${k}. It’ll land ${lateBy(m.wx_ms)} late, ${whenAt(m.deliver_at, rp.tz)}.`, tag: "wx-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
   const { results: grp } = await D.prepare(`SELECT d.rowid AS rid, d.user_id, d.wx, d.wx_ms, d.deliver_at, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
@@ -393,7 +401,7 @@ async function turnNotes(env, D, t, turns) {
     const sp = prefsOf(s), rp = prefsOf(r);
     if (sp.delays && !isQuiet(sp, t)) pushes += await pushTo(env, s.id, { title: sp.names ? `To ${firstName(r.name)}` : "InFlight",
       body: say(sp, "Your pigeon"), tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${r.id}` });
-    if (rp.delays && !isQuiet(rp, t)) pushes += await pushTo(env, r.id, { title: rp.names ? firstName(s.name) : "InFlight",
+    if (rp.delays && !isQuiet(rp, t) && (await pals(D, s.id, r.id))) pushes += await pushTo(env, r.id, { title: rp.names ? firstName(s.name) : "InFlight",
       body: say(rp, `${rp.names ? "Their" : "A"} pigeon to you`), tag: "wxturn-" + x.r.id, url: `/pigeon/#open=${s.id}` });
   }
   return pushes;
@@ -432,7 +440,7 @@ async function spaceTick(env, D, t) {
     const claimed = await D.prepare("UPDATE pg_msgs SET moon_told = ?1 WHERE id = ?2 AND COALESCE(moon_told, -1) < ?1").bind(base + due.i, m.id).run();
     if (!claimed.meta.changes || t - due.at > 2 * HOUR) continue;
     const p = prefsOf(m); if (!p.moments || isQuiet(p, t)) continue;
-    pushes += await pushTo(env, m.sender, { title: p.names ? `To ${firstName(m.rname)}` : "InFlight", body: `Your ${SPACE_KIND[m.pigeon] || "pigeon"}: ${due.text.replace(/^./, (c) => c.toLowerCase())}.`,
+    pushes += await pushTo(env, m.sender, { title: p.names ? `To ${firstName(m.rname)}` : "InFlight", body: `Your ${SPACE_KIND[L.mn.pk] || SPACE_KIND[m.pigeon] || "pigeon"}: ${due.text.replace(/^./, (c) => c.toLowerCase())}.`,
       tag: "space-" + m.id, url: `/pigeon/#open=${m.recipient}` });
   }
   return pushes;
@@ -449,7 +457,7 @@ async function shipTick(env, D, t, since) {
     const sp = prefsOf({ notify_prefs: m.sp }), rp = prefsOf({ notify_prefs: m.rp });
     if (sp.moments && !isQuiet(sp, t)) pushes += await pushTo(env, m.sender, { title: sp.names ? `To ${firstName(m.rname)}` : "InFlight",
       body: shipSay(sp, "Your pigeon", v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.recipient}` });
-    if (rp.moments && !isQuiet(rp, t)) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
+    if (rp.moments && !isQuiet(rp, t) && (await pals(D, m.sender, m.recipient))) pushes += await pushTo(env, m.recipient, { title: rp.names ? firstName(m.sname) : "InFlight",
       body: shipSay(rp, `${rp.names ? "Their" : "A"} pigeon to you`, v, ev, m.deliver_at), tag: "ship-" + m.id, url: `/pigeon/#open=${m.sender}` });
   }
   const { results: grp } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.legs, d.deliver_at, d.ship_told, g.name AS gname, m.group_id, u.notify_prefs, COALESCE(gm.muted, 1) AS muted FROM pg_gdeliv d
@@ -590,9 +598,9 @@ export async function tick(env, origin) {
   if (ready.length) {
     // claim them first, so two ticks running at once can't both send
     for (const part of chunks(ready)) {
-      const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${part.map(() => "?").join(",")}) RETURNING sender, recipient`)
+      const { results } = await D.prepare(`UPDATE pg_msgs SET notified_at = ? WHERE notified_at IS NULL AND id IN (${part.map(() => "?").join(",")}) RETURNING sender, recipient, read_at`)
         .bind(t, ...part.map((m) => m.id)).all();
-      landed.push(...results.filter((m) => prefs.get(m.recipient).landed));
+      landed.push(...results.filter((m) => prefs.get(m.recipient).landed && !m.read_at));
     }
   }
   let pushes = 0, emails = 0;
@@ -604,7 +612,9 @@ export async function tick(env, origin) {
     const p = prefsOf(m); if (isQuiet(p, t)) continue;
     const claimed = await D.prepare("UPDATE pg_msgs SET notified_at = ? WHERE id = ? AND notified_at IS NULL").bind(t, m.id).run();
     if (!claimed.meta.changes || !p.lost) continue;
-    pushes += await pushTo(env, m.sender, { title: "Pigeon lost", body: p.names ? `Your pigeon to ${firstName(m.name)} didn’t make it. It’s your turn again.` : "One of your pigeons didn’t make it. It’s your turn again.",
+    const last = await D.prepare("SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 1").bind(m.sender, m.recipient, t).first();
+    const again = turn(m.sender, last, t).free ? " It’s your turn again." : "";      // (not if another of yours, or one of theirs, has flown since)
+    pushes += await pushTo(env, m.sender, { title: "Pigeon lost", body: p.names ? `Your pigeon to ${firstName(m.name)} didn’t make it.${again}` : `One of your pigeons didn’t make it.${again}`,
       tag: "lost-" + m.recipient, url: `/pigeon/#open=${m.recipient}` });
   }
   if (landed.length) {

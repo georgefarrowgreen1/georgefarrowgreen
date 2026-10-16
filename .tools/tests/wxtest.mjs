@@ -144,14 +144,14 @@ ok(asked && asked.q.forecast_hours === '24' && asked.q.timeformat === 'unixtime'
 // ---- the composer says so ----
 await openChat(G, rs.me.id); await G.p.waitForSelector('.wxplan:not([hidden])', { timeout: 8000 }).catch(() => {});
 let plan = await txt(G, '.wxplan').catch(() => '');
-ok(/^Storms over .+: it would land \d+h \d+m late\. Clear by \d\d:00( tomorrow)?: a swift pigeon leaving then lands (today|tomorrow) at \d\d:\d\d\. ?Swift at \d\d:00$/.test(plan), 'a standard pigeon: it would land late, and a swift one could leave when it clears', plan);
+ok(/^Storms over .+: about \d+h \d+m slower than in calm air\. Clear by \d\d:00( tomorrow)?: a swift pigeon leaving then lands (today|tomorrow) at \d\d:\d\d\. ?Swift at \d\d:00$/.test(plan), 'a standard pigeon: slower in this weather, and a swift one could leave when it clears', plan);
 await G.p.screenshot({ path: `${out}/wx-standard.png` });
 const hh = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/London' }).format(new Date(h0 + 6 * 3600e3));
 ok(plan.includes(`Clear by ${hh}:00`), 'clear from the hour the forecast clears', hh);
 // pick swift: the same, for this pigeon
 await pickKind(G.p, 'swift');
 plan = await txt(G, '.wxplan');
-ok(/: it would land \d+h \d+m late\. Clear by \d\d:00( tomorrow)?: leave then and it lands (today|tomorrow) at \d\d:\d\d\. ?Leave at \d\d:00$/.test(plan), 'a swift pigeon: leave then', plan);
+ok(/: about \d+h \d+m slower than in calm air\. Clear by \d\d:00( tomorrow)?: leave then and it lands (today|tomorrow) at \d\d:\d\d\. ?Leave at \d\d:00$/.test(plan), 'a swift pigeon: leave then', plan);
 // ---- leave when it clears ----
 await G.p.click('.wxplan .wxwait'); await G.p.waitForTimeout(400);
 const booked = [await txt(G, '.compose .kind'), await G.p.locator('.compose .kind .ico').count(), await G.p.getAttribute('#msg', 'placeholder')], hidden = await G.p.locator('.wxplan').isHidden();
@@ -169,7 +169,7 @@ await G.p.reload(); await G.p.waitForSelector('.tabs'); await openChat(G, rs.me.
 await G.p.click('.compose .kind'); await G.p.waitForSelector('.sheet .kinds'); if (await G.p.locator('.sheet [data-act=pigeon][data-id=standard]').isEnabled()) await G.p.click('.sheet [data-act=pigeon][data-id=standard]'); await G.p.click('.sheet header [data-act=close]'); await G.p.waitForTimeout(450);
 await G.p.waitForSelector('.wxplan:not([hidden])', { timeout: 8000 }).catch(() => {});
 plan = await txt(G, '.wxplan').catch(() => '');
-ok(/^A tailwind today: it lands in \d+h \d+m, \d+h \d+m early\.$/.test(plan) && await G.p.locator('.wxplan.early').count() === 1, 'a strong tailwind gets a word', plan);
+ok(/^A tailwind today: about (\d+h )?\d+m sooner than in calm air\.$/.test(plan) && await G.p.locator('.wxplan.early').count() === 1, 'a strong tailwind gets a word', plan);
 await G.p.screenshot({ path: `${out}/wx-tailwind.png` });
 // ---- calm: nothing to say; and no forecast: nothing either ----
 await mode({ speed: 0, from: 270, down: false, pattern: '' });

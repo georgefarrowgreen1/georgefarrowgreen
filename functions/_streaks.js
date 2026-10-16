@@ -18,6 +18,7 @@ const firstName = (n) => String(n || "").trim().split(/\s+/)[0] || "Someone";
 // Streaks from before this existed, worked out once from every pigeon so far
 // (runs of consecutive days per pair; each pair keeps its latest and its best).
 let ready = false;
+export async function ensureStreaks(D) { return ensure(D); }
 async function ensure(D) {
   if (ready) return;
   if (!(await D.prepare("SELECT 1 FROM pg_meta WHERE k = 'streaks_v1'").first())) {

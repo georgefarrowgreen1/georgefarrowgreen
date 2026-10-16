@@ -6,7 +6,7 @@ import { PLACES, nearestPlace, snapToMile } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
-import { ABOUT, BODIES, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf } from "./moon.js";
+import { ABOUT, BODIES, EARTH_R, MOON_R, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf } from "./moon.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
@@ -431,8 +431,27 @@ function restingOn(m, t = now()) {
   const i = legs.findIndex((l, k) => (l[3] === "i" || l[3] === "h" || l[3] === "t" || l[3] === "b") && legs[k + 1]?.[3] === l[3] && legs[k + 1][0] === l[0] && legs[k + 1][1] === l[1] && t >= l[2] && t < legs[k + 1][2]);
   if (i >= 0) return [legs[i][4] || (legs[i][3] === "h" ? "" : legs[i][3] === "b" ? "the port" : "an island"), legs[i + 1][2], legs[i][3], SEVERE_WORD[legs[i][5]?.k] || "storms"];
   const sh = shipOf(legs);
-  return sh && t >= sh.off && t < sh.ashore ? [sh.sea, sh.ashore, "sail", sh.to] : null;
+  if (sh && t >= sh.off && t < sh.ashore) return [sh.sea, sh.ashore, "sail", sh.to];
+  // (resting with a friend on the way: a stopover)
+  return m.via && m.viaAt <= t && t < m.viaOff ? [m.viaPlace || "", m.viaOff, "v"] : null;
 }
+// When a pigeon isn't flying (resting on an island, sheltering, a breather, waiting for and sailing on a ship, a
+// stopover with a friend): [from, to] spans. Its speed, and how far along it is, count only the flying.
+function stillSpans(m) {
+  const legs = m.legs || [], out = [];
+  for (let k = 0; k + 1 < legs.length; k++) {
+    const a = legs[k], b = legs[k + 1];
+    if (a[0] === b[0] && a[1] === b[1] && b[2] > a[2] && a[3] === b[3] && ("ihtb".includes(a[3] || "-") || (!a[3] && m.via))) out.push([a[2], b[2]]);
+  }
+  const sh = shipOf(legs); if (sh) out.push([sh.off, sh.ashore]);
+  return out.sort((x, y) => x[0] - y[0]).reduce((acc, x) => { const l = acc.at(-1); if (l && x[0] <= l[1]) l[1] = Math.max(l[1], x[1]); else acc.push([...x]); return acc; }, []);
+}
+// how long it has been still, up to t (all of it, without t)
+const stillMs = (m, t = Infinity) => stillSpans(m).reduce((a, [x, y]) => a + Math.max(0, Math.min(y, t) - Math.max(x, m.sentAt)), 0);
+// how far along it is by its flying (it doesn't creep on while it sits out a storm), 0 to 1
+const flownFrac = (m, t = now()) => Math.min(1, Math.max(0, (t - m.sentAt - stillMs(m, t)) / Math.max(1, m.deliverAt - m.sentAt - stillMs(m))));
+// its average speed in the air, km/h (a crossing by ship, or a night sheltering, isn't flying slowly)
+const avgKmh = (m) => m.km / (Math.max(1, m.deliverAt - m.sentAt - stillMs(m)) / HOUR);
 // How far a flight goes, flown and by ship: "8 mi · 3,560 mi by ship"
 function milesOf(km, legs) {
   const sea = shipKm(legs);
@@ -600,7 +619,7 @@ function flightAt(m, t = now()) {
   const ramp = (x) => (top / q) * (1 - Math.cos(q * x));         // distance covered x into a ramp
   const frac = u < r ? ramp(u) : u > 1 - r ? 1 - ramp(1 - u) : ramp(r) + top * (u - r);
   const pace = u <= 0 || u >= 1 ? 0 : u < r ? Math.sin(q * u) : u > 1 - r ? Math.sin(q * (1 - u)) : 1;
-  return { frac, kmh: (m.km / (dur / HOUR)) * top * pace, phase: u >= 1 ? "landed" : u < r ? "up" : u > 1 - r ? "down" : "cruise", t: m.sentAt + frac * dur };
+  return { frac, kmh: (m.km / (Math.max(1, dur - stillMs(m)) / HOUR)) * top * pace, phase: u >= 1 ? "landed" : u < r ? "up" : u > 1 - r ? "down" : "cruise", t: m.sentAt + frac * dur };
 }
 // Where the pigeon is (at flight-clock time t) along those points, and which way it's heading.
 function pigeonOn(P, pts, t = now()) {
@@ -975,7 +994,7 @@ function wxSay(m, short) {
   if (!m.delay || m.lost) return null;
   const late = m.delay > 0, cause = wxCause(m, late);
   m = { ...m, wx: cause };
-  const w = cause && WX[cause.k], landed = !m.flying;
+  const w = cause && WX[cause.k], landed = !m.flying || m.deliverAt <= now();
   const when = late ? (landed ? `Landed ${fmtDur(m.delay)} late` : `Delayed ${fmtDur(m.delay)}`) : `${fmtDur(-m.delay)} early`;
   if (short) return late ? `${landed ? `${fmtDur(m.delay)} late` : `delayed ${fmtDur(m.delay)}`}${w ? ` by ${w[0]}` : ""}` : `${fmtDur(-m.delay)} early${w ? ` on ${w[0]}` : ""}`;
   // (a wind met higher or lower than usual: it climbed for a tailwind, or kept low out of a headwind;
@@ -1022,8 +1041,10 @@ function birdTip(cv, bird) {
   const tip = $(".birdtip", $layer); if (!tip) return;
   const r = bird.r, f = flightAt(r, r.lost ? r.lostAt : now()), [lon, lat] = pigeonLL(r), left = r.deliverAt - now();
   const who = r.from && r.from !== S.me.id ? `${esc(first(friend(r.from)?.name || member(group(r.gid || S.chat), r.from)?.name || "A friend"))}’s pigeon` : `${KIND[kindOf(r)]?.name || "Your"} pigeon`;
-  const state = r.lost ? "Lost on the way" : f.phase === "landed" ? `Landed ${fmtShort(r.deliverAt)}` : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
-  tip.innerHTML = `<b>${pgm(r)}<span>${who}</span></b><span>${state}</span><span>${r.lost ? "Lost" : f.phase === "landed" ? "At" : "Over"} ${esc(overWhere(lon, lat))}</span>${!r.lost && left > 0 ? `<span class="eta"><span data-eta="${esc(r.deliverAt)}">${fmtDur(left)}</span> to go</span>` : ""}`;
+  const rest = !r.lost && restingOn(r), REST = { h: "Sheltering", i: "Resting", t: "Taking a breather", b: "Waiting for a ship", sail: "At sea", v: "On a stopover" };
+  const state = r.recalled ? "Called back" : r.lost ? "Lost on the way" : f.phase === "landed" ? `Landed ${fmtShort(r.deliverAt)}` : rest ? REST[rest[2]] || "Resting"
+    : `${f.phase === "up" ? "Taking off · " : f.phase === "down" ? "Landing · " : ""}${fmtMph(f.kmh)}`;
+  tip.innerHTML = `<b>${pgm(r)}<span>${who}</span></b><span>${state}</span><span>${r.recalled ? "Turned back over" : r.lost ? "Lost" : f.phase === "landed" ? "At" : rest?.[2] === "sail" ? "Crossing" : "Over"} ${esc(overWhere(lon, lat))}</span>${!r.lost && left > 0 ? `<span class="eta"><span data-eta="${esc(r.deliverAt)}">${fmtDur(left)}</span> to go</span>` : ""}`;
   tip.hidden = false;
   const w = tip.offsetWidth, h = tip.offsetHeight, [x, y] = bird.at;
   tip.style.left = `${Math.max(8, Math.min(cv.clientWidth - w - 8, x - w / 2))}px`; tip.style.top = `${y - h - 26 < 8 ? y + 26 : y - h - 26}px`;
@@ -3238,6 +3259,7 @@ function gpreview(g) {
   const who = l.from === S.me.id ? "You" : esc(first(member(g, l.from)?.name || "Someone"));
   if (l.from === S.me.id && l.recalled && !flockCount(l).landed) return { html: `<span class="homing">${I.homing} You called your pigeons back</span>`, at: l.sentAt };
   if (l.from !== S.me.id && l.recalled) return { html: `<span class="homing">${I.homing} ${who} called their pigeon back</span>`, at: l.lostAt };
+  if (l.from === S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} Your pigeons were lost on the way</span>`, at: l.sentAt };
   if (l.from === S.me.id && l.flying) { const c = flockCount(l); return { html: `<span class="upp">${riderIcon(l)}In the air · ${c.landed} of ${c.n} landed</span>`, at: l.sentAt }; }
   if (l.from !== S.me.id && l.lost) return { html: `<span class="lostp">${I.skull} ${who}’s pigeon was lost on its way</span>`, at: l.lostAt };
   if (l.from !== S.me.id && l.flying) return { html: `<span class="upp">${sealedIcon(l)}${who}: sealed · lands ${atTime(l.deliverAt)}</span>`, at: l.sentAt };
@@ -3605,7 +3627,7 @@ function bubble(f, m, gapTop, g) {
     // a dot for each of them, filling in as their pigeons land (and turning blue once they've read it); tap for who
     const c = flockCount(m), tap = (inner, cls = "") => `<button class="fl flock ${cls}" data-act="whohas" data-id="${esc(m.id)}" aria-label="${esc(whoHasLabel(m))}">${whoDots(m)}${inner}</button>`;
     if (m.flying) meta.push(tap(`${c.landed} of ${c.n} landed${c.lost ? ` · ${c.lost} lost` : ""} · next in <span data-eta="${esc(c.next)}"></span>`, k));
-    else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>`, "done"));
+    else if (c.recalled) meta.push(tap(`Landed for ${c.landed} of ${c.n} · <span class="homing">${I.homing} ${c.recalled} called back</span>${c.lost ? ` · ${I.skull} ${c.lost} lost` : ""}`, "done"));
     else if (c.lost === c.n) meta.push(`<button class="fl lostm" data-act="whohas" data-id="${esc(m.id)}">${I.skull} Lost on the way · Pigeon Death</button>`);
     else if (c.lost) meta.push(tap(`Landed for ${c.landed} of ${c.n} · ${I.skull} ${c.lost} lost`, "done"));
     else if (!quietMeta?.has(m.id)) { const r = (m.flock || []).filter((x) => x.readAt).length; meta.push(tap(`${r === c.n ? `Read by all ${c.n}` : r ? `Landed for all ${c.n} · read by ${r}` : `Landed for all ${c.n}`}`, "done")); }
@@ -3654,8 +3676,8 @@ function flightFacts(m, withName) {
   try { zone = new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, timeZoneName: "short" }).formatToParts(m.deliverAt).find((x) => x.type === "timeZoneName")?.value || ""; } catch (_) {}
   const mph = (kmh) => Math.round(Math.abs(kmh) * 0.621371);
   return {
-    k, from: m.fromPlace || "Somewhere", to: m.toPlace || "Somewhere", miles: fmtMiles(m.km), longMiles: `${Math.round(m.km * 0.621371).toLocaleString("en-GB")} mile${Math.round(m.km * 0.621371) === 1 ? "" : "s"}`,
-    dur: fmtDur(flew), mph: fmtMph(m.km / (flew / HOUR)),
+    k, from: m.fromPlace || "Somewhere", to: m.toPlace || "Somewhere", miles: fmtMiles(m.km + shipKm(m.legs)), longMiles: ((mi) => `${mi.toLocaleString("en-GB")} mile${mi === 1 ? "" : "s"}`)(Math.round((m.km + shipKm(m.legs)) * 0.621371)),
+    dur: fmtDur(flew), mph: fmtMph(avgKmh(m)),
     sky: w == null ? [KIND[k].name, "Pigeon"] : Math.abs(w) < 3 ? ["Calm", "Skies"] : [`${mph(w)} mph`, w > 0 ? "Tailwind" : "Headwind"],
     skyLine: w == null ? "" : Math.abs(w) < 3 ? "calm skies" : `${w > 0 ? "tailwind" : "headwind"} ${mph(w)} mph`,
     time: at({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" }), zone,
@@ -4739,9 +4761,9 @@ function wxAdvice(f, kind) {
   return { late: Math.round(d0 / MIN) * MIN, wx: p.now.wx, clear: clear && { off: clear.at, land: Math.ceil((clear.at + calm(k) / clear.f) / MIN) * MIN, kind: sk } };
 }
 function wxPlanHtml(a, kind) {
-  if (a.early) return `<span class="wxline">${I.wind}<span>A tailwind today: it lands in ${esc(fmtDur(a.eta))}, ${esc(fmtDur(a.early))} early.</span></span>`;
+  if (a.early) return `<span class="wxline">${I.wind}<span>A tailwind today: about ${esc(fmtDur(a.early))} sooner than in calm air.</span></span>`;
   const w = a.wx && WX[a.wx.k], c = a.clear, by = (ts) => (sameDay(ts, now()) ? fmtTime(ts) : `${fmtTime(ts)} tomorrow`);
-  let text = `${w ? `${w[0][0].toUpperCase()}${w[0].slice(1)} over ${wxWhere(a.wx.lon, a.wx.lat)}` : "Rough weather on the way"}: it would land ${fmtDur(a.late)} late.`;
+  let text = `${w ? `${w[0][0].toUpperCase()}${w[0].slice(1)} over ${wxWhere(a.wx.lon, a.wx.lat)}` : "Rough weather on the way"}: about ${fmtDur(a.late)} slower than in calm air.`;
   if (!c) text += " No clear skies in the next day.";
   else if (!c.kind) text += ` Clear by ${by(c.off)}, if you’d rather wait.`;
   else text += ` Clear by ${by(c.off)}: ${c.kind === kind ? "leave then and it lands" : `a ${KIND[c.kind].name.toLowerCase()} pigeon leaving then lands`} ${fmtLand(c.land)}.`;
@@ -5402,7 +5424,7 @@ function drawSheet(refresh) {
       // the top: when it lands, how long that is, where to, and the weather on the way
       const landAt = !kind || kind === "mystery" || g ? null : sched ? sched.at : now() + plannedMs(c, kind);
       const big = !kind ? "No pigeon free" : kind === "mystery" ? "Who knows when?" : g ? landHint(c, kind) : `Lands ${atTime(landAt)}`;
-      const to = g ? `to ${esc(g.name)} · ${others(g).length + 1} people` : `to ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${fmtMiles(plan?.km ?? chatKm(f))}` : ""}`;
+      const to = g ? `to ${esc(g.name)} · ${others(g).length + 1} people` : `to ${who}${f.place ? ` in ${esc(f.place)}` : ""}${S.me.lat != null && f.lat != null ? ` · ${plan?.km != null ? milesOf(plan.km, plan.legs) : fmtMiles(chatKm(f))}` : ""}`;      // (flown, and any stretch by ship)
       const adv = !g && kind && kind !== "dumb" && kind !== "orbital" && !sched && !via ? wxAdvice(f, kind) : null, wxNow = !g && S.wxPlan.get(f.id)?.d?.now;
       const sure = landAt ? landRange(landAt, now(), { wind: plan?.wind, legs: plan?.legs, sure: plan?.spread }) : null;          // (how sure that is)
       const wx = kind === "orbital" ? null : adv?.early ? ["early", I.wind, `${fmtDur(adv.early)} early on a tailwind`] : adv?.late ? ["late", I[(adv.wx && WX[adv.wx.k]?.[1]) || "storm"], `${fmtDur(adv.late)} late: ${adv.wx && WX[adv.wx.k] ? WX[adv.wx.k][0] : "rough weather"}`]
@@ -5812,10 +5834,10 @@ function drawSheet(refresh) {
 function drawLunarFly(c) {
   const { f, kind, can } = c, ks = c.kinds || [], who = esc(first(f.name)), a = endFor(S.me), b = endFor(f), t = now();
   const mars = ks.includes("laser"), same = a?.b === b?.b, ph = moonPhase(t);
-  const km = same ? surfaceKm(a.b, a, b) : mars ? marsKm(t) : moonKm(t);
+  const km = same ? surfaceKm(a.b, a, b) : mars ? marsKm(t) : moonKm(t) - EARTH_R - MOON_R;      // (surface to surface, as the trip is measured)
   const landAt = kind ? t + etaMs(c, kind) : null, most = Math.max(...ks.map((k) => etaMs(c, k)));
   const where = same ? `across ${BODIES[a.b].name}` : !b || b.b === "earth" ? `in ${esc(f.place || "Earth")}` : `on ${BODIES[b.b].name}`;
-  const chip = mars ? (same ? "By an orbiter overhead" : `Light takes ${fmtDur(lightMs(km))} to cross`) : same ? "No air, no wind, no weather" : `${ph.name} · ${nearFar(km) ? nearFar(km)[0].toUpperCase() + nearFar(km).slice(1) : "The Moon today"}`;
+  const chip = mars ? (same ? "By an orbiter overhead" : `Light takes ${fmtDur(lightMs(km))} to cross`) : same ? "No air, no wind, no weather" : `${ph.name} · ${((nf) => (nf ? nf[0].toUpperCase() + nf.slice(1) : "The Moon today"))(nearFar(moonKm(t)))}`;
   const hero = `<div class="flyhero">${kind ? pg(kind) : `<span class="pg none" aria-hidden="true">${I.bird}</span>`}
     <span class="fht"><b class="fhbig">${kind ? `Lands ${esc(atTime(landAt))}` : "No space pigeon free"}</b><span class="flyto">${landAt ? `in ${esc(fmtDur(landAt - t))} · ` : ""}to ${who} ${where} · ${fmtMiles(km)}</span>
     <span class="fhwx clear">${mars ? I.up : I.moon}${esc(chip)}</span></span></div>`;
@@ -5948,6 +5970,7 @@ function tickMoon(m) {
     for (const b of card.querySelectorAll(".mcw")) { const on = b.dataset.id.endsWith("|" + o.to); b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
   }
   const eta = $(".mceta", card), landed = !o.lost && now0 >= o.deliverAt;
+  sheetTitle(o.lost || now0 >= o.endAt ? "The Flight" : "Pigeon in Flight");
   eta.innerHTML = rp != null ? `<b>${esc(atShort(t))}</b><small>replay</small>` : o.recalled ? `<b>Called back</b>` : o.lost ? `<b class="lost">Lost</b>` : landed ? `<b>Landed</b><small>${esc(atShort(o.deliverAt))}</small>` : `<b>${esc(airTime(o.endAt - now0))}</b><small>lands ${esc(atShort(o.endAt))}</small>`;
   const nowEl = $(".mcnow", card);
   nowEl.textContent = rp != null ? spaceNow(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth).line
@@ -6175,18 +6198,21 @@ function fcRow(r) {
     <span class="fcdot ${r.dot || "ev"} ${r.tone || ""}">${r.now ? r.coin : r.dot === "ev" || !r.dot ? r.icon || "" : ""}</span>
     <span class="fcwhat"><span class="fctitle">${r.title}</span>${r.sub ? `<span class="fcs">${r.sub}</span>` : ""}${r.extra || ""}</span></li>`;
 }
+// the sheet's title follows the flight (it opened "Pigeon in Flight"; once it's down, it's "The Flight")
+function sheetTitle(text) { const h = $(".sheet header h2", $layer); if (h && h.textContent !== text) h.textContent = text; }
 function flightCard(card, m) {
   const open = mapOpen(), t = m.lost ? m.lostAt : now(), left = m.deliverAt - now(), f = flightAt(m, t), k = kindOf(m);
   const landed = !m.lost && left <= 0, resting = restingOn(m), flew = m.deliverAt - m.sentAt, note = routeNote(m), wx = wxSay(m);
+  if (S.sheet?.id === m.id) sheetTitle(m.lost || landed ? "The Flight" : "Pigeon in Flight");
   // the first time: it rises in a beat after the sheet
   if (!card.classList.contains("fc")) { card.classList.add("fc", "enter"); setTimeout(() => card.classList.remove("enter"), 900); }
   card.classList.toggle("fold", !open);
   if (!$(".fcfold", card)) card.insertAdjacentHTML("afterbegin", `<button type="button" class="fcfold" data-act="mapfold"><i></i></button>`);
   const fold = $(".fcfold", card), label = open ? "Fold the card away" : "Show the flight’s details";
   if (fold.getAttribute("aria-label") !== label) { fold.setAttribute("aria-label", label); fold.setAttribute("aria-expanded", String(open)); }
-  const coin = m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m), from = esc(m.fromPlace || "?"), to = esc(m.toPlace || "?");
+  const coin = m.recalled ? `<span class="homing">${I.homing}</span>` : m.lost ? `<span class="lostp">${I.skull}</span>` : pgm(m), from = esc(m.fromPlace || "?"), to = esc(m.toPlace || "?");
   const where = !m.lost && !landed && !resting ? esc(overWhere(...pigeonLL(m))) : "";
-  const big = m.lost ? "Lost on the way" : landed ? "Landed" : esc(fmtDur(left));
+  const big = m.recalled ? "Called back" : m.lost ? "Lost on the way" : landed ? "Landed" : esc(fmtDur(left));
   const lands = landsLine(m).replace(/^Lands/, "lands");
   let html;
   if (!open) {
@@ -6197,7 +6223,7 @@ function flightCard(card, m) {
     html = `<span class="fcpeek"><span class="fccoin">${coin}</span><span class="fct"><span class="big">${big}${!m.lost && !landed ? `<small> · ${peek}</small>` : ""}</span><span class="fcs">${sub}</span></span></span>
       <span class="fcbar k-${k}${m.lost ? " lost" : ""}"><i></i></span>`;
   } else {
-    const pill = m.lost ? "" : landed ? ["ok", `${I.check}Landed`] : resting ? (resting[2] === "h" ? ["warn", "Sheltering"] : resting[2] === "b" ? ["teal", "Waiting for a Ship"] : resting[2] === "sail" ? ["teal", "At Sea"] : ["teal", "Resting"])
+    const pill = m.lost ? "" : landed ? ["ok", `${I.check}Landed`] : resting ? (resting[2] === "h" ? ["warn", "Sheltering"] : resting[2] === "b" ? ["teal", "Waiting for a Ship"] : resting[2] === "sail" ? ["teal", "At Sea"] : resting[2] === "v" ? ["teal", "Stopover"] : ["teal", "Resting"])
       : f.phase === "up" ? ["ok", "Taking Off"] : f.phase === "down" ? ["ok", "Landing"] : ["tint", "In Flight"];
     const head = m.lost ? `${from} → ${to}` : landed ? `in ${to} · ${esc(fmtShort(m.deliverAt))}` : `to ${to} · <span class="lands">${lands}</span>`;
     // the rows: took off, what happens on the way, now, lands
@@ -6207,7 +6233,7 @@ function flightCard(card, m) {
     if (!resting) chips.push(`<span class="fcchip speed">${esc(fmtMph(f.kmh))}</span>`);
     if (wx && !landed) chips.push(`<span class="fcchip wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>`);
     else if (m.wind != null && !landed) chips.push(`<span class="fcchip wind ${m.wind >= 3 ? "tail" : m.wind <= -3 ? "head" : ""}">${I.wind}${fmtWind(m.wind)}${Math.abs(m.wind) >= 3 ? ` · ${m.wind > 0 ? "faster" : "slower"} than usual` : ""}</span>`);
-    chips.push(`<span class="fcchip dim">${Math.round(f.frac * 100)}% of the way</span>`);
+    chips.push(`<span class="fcchip dim">${Math.round(flownFrac(m, t) * 100)}% of the way</span>`);
     // (only what it's doing now: a turn for the weather, or a rest; the rest of its way has rows of its own)
     const said = note && /^(Rerouted|Sheltering|Resting on .* until|Waiting for a ship|At sea)/.test(note.text);
     const extra = `<span class="fcchips">${chips.join("")}</span>${said ? `<span class="waynote">${note.icon}${esc(note.text)}</span>` : ""}`;
@@ -6216,9 +6242,10 @@ function flightCard(card, m) {
       if (nr) Object.assign(nr, { coin, extra });
       else rows.push({ at: t, now: true, coin, title: where ? `<span class="over">Over ${where}</span>` : esc(note?.text || "On its way"), extra });
     }
-    if (m.lost) rows.push({ at: t, time: fcAt(t), dot: "ev", tone: "red", icon: I.skull, title: "Lost on the way", sub: m.risky ? "Pigeon Death was on" : "" });
+    if (m.recalled) rows.push({ at: t, time: fcAt(t), dot: "ev", icon: I.homing, title: "Called back", sub: m.from === S.me.id ? "You called it home" : "They called it home" });
+    else if (m.lost) rows.push({ at: t, time: fcAt(t), dot: "ev", tone: "red", icon: I.skull, title: "Lost on the way", sub: m.risky ? "Pigeon Death was on" : "" });
     else rows.push({ at: m.deliverAt, time: fcAt(m.deliverAt), dot: "end", title: `${landed ? "Landed" : "Lands"} in ${to}`,
-      sub: landed ? `Flew ${esc(fmtDur(flew))} · averaged ${esc(fmtMph(m.km / (flew / HOUR)))}` : "", extra: landed && wx ? `<span class="wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>` : "" });
+      sub: landed ? `Flew ${esc(fmtDur(flew))} · averaged ${esc(fmtMph(avgKmh(m)))}${stillMs(m) > HOUR ? " in the air" : ""}` : "", extra: landed && wx ? `<span class="wx ${wx.cls}">${wx.icon}${esc(wx.text)}</span>` : "" });
     rows.sort((a, b) => a.at - b.at || (a.now ? 1 : 0) - (b.now ? 1 : 0));
     rows.forEach((r, i) => { r.done = r.at <= t && !r.now; r.flown = !!rows[i + 1] && rows[i + 1].at <= t; });
     // anything else worth a line: who it flew over, cheers, the weather watch
@@ -6249,7 +6276,7 @@ function flightCard(card, m) {
       fcFades(tl2); if (!tl2._f) { tl2._f = 1; tl2.addEventListener("scroll", () => fcFades(tl2), { passive: true }); }
     }
   }
-  const bar = $(".fcbar i", card); if (bar) bar.style.width = (f.frac * 100).toFixed(2) + "%";
+  const bar = $(".fcbar i", card); if (bar) bar.style.width = (flownFrac(m, t) * 100).toFixed(2) + "%";
   fcAside(card);
 }
 // the timeline fades out at an edge with more to scroll to
@@ -6531,7 +6558,7 @@ function tickFlockMap(m, card, cv) {
   const g = group(S.chat), c = flockCount(m), end = Math.max(...m.flock.map((x) => x.deliverAt));
   const frac = Math.min(1, Math.max(0, (now() - m.sentAt) / Math.max(1, end - m.sentAt)));
   const rows = [...m.flock].sort((a, b) => a.deliverAt - b.deliverAt).map((x) => {
-    const p = member(g, x.to), state = x.lost ? `<span class="lostp">${I.skull} Lost</span>` : x.flying ? `<span data-eta="${esc(x.deliverAt)}">${fmtDur(x.deliverAt - now())}</span>` : "Landed";
+    const p = member(g, x.to), state = x.recalled ? `<span class="homing">${I.homing} Called back</span>` : x.lost ? `<span class="lostp">${I.skull} Lost</span>` : x.flying ? `<span data-eta="${esc(x.deliverAt)}">${fmtDur(x.deliverAt - now())}</span>` : "Landed";
     return `<span class="frow${x.flying ? " flying" : ""}">${avatar(p || { name: "?" }, "xs")}<span class="one">${esc(first(p?.name || "Someone"))}${x.route ? "" : ` <span class="hid">· not on map</span>`}</span><b>${state}</b></span>`;
   }).join("");
   const { share, cheer } = cardShell(card); share.hidden = true; cheerState(cheer, m);

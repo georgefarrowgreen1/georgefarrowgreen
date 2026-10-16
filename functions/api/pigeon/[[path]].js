@@ -1,12 +1,12 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace, snapApprox, deviceOf,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
-import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
+import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor, windsAlong, forecastFor, ensembleFor, spreadOf } from "../../_weather.js";
 import { REACT_ROUTES, reactsFor, dropReacts } from "../../_reacts.js";
@@ -18,7 +18,7 @@ import { CHEER_ROUTES } from "../../_cheers.js";
 import { findFly, dropFly, refly, flyViews, flyOnMine, FLY_ROUTES } from "../../_flyover.js";
 import { BIRD_ROUTES, birdsFor, claimBird, freeBird } from "../../_birds.js";
 import { PASSPORT_ROUTES, newStamps } from "../../_passport.js";
-import { bumpStreak, streaksFor, streakBetween } from "../../_streaks.js";
+import { bumpStreak, streakBetween, streakView, ensureStreaks } from "../../_streaks.js";
 import { marksFor } from "../../_landmarks.js";
 import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
@@ -245,7 +245,7 @@ async function reroute(env, u, p, t, waitUntil) {
       const km = m.km - haversineKm(vLat, vLon, m.to_lat, m.to_lon) + ahead;
       const lostAt = m.lost_at == null || m.lost_at < m.via_off ? m.lost_at : Math.round(m.via_off + ((m.lost_at - m.via_off) / (m.deliver_at - m.via_off)) * (deliver - m.via_off));
       const r = await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, lost_at = ?,
-        expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND via_off > ?`)
+        expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND via_off > ? AND recalled = 0`)
         .bind(p.lat, p.lon, p.place, deliver, km, lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
       if (r.meta.changes) { waitUntil(renear(D, m.id, t).catch(() => {})); waitUntil(refly(D, m.id, t).catch(() => {})); }
       if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
@@ -259,7 +259,7 @@ async function reroute(env, u, p, t, waitUntil) {
       const way = plan.way.length ? JSON.stringify(timeWay([m.from_lat, m.from_lon], plan.way, [p.lat, p.lon], off, flight - rest).legs) : null;
       const lostAt = m.lost_at == null ? null : Math.round(off + ((m.lost_at - m.sent_at) / (m.deliver_at - m.sent_at)) * flight);
       await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, km = ?, sent_at = ?, deliver_at = ?, lost_at = ?, legs = ?,
-        expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND sent_at > ?`)
+        expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND sent_at > ? AND recalled = 0`)
         .bind(p.lat, p.lon, p.place, km, off, deliver, lostAt, way, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
       waitUntil(renear(D, m.id, -Infinity).catch(() => {})); waitUntil(refly(D, m.id, -Infinity).catch(() => {}));
       continue;
@@ -290,7 +290,7 @@ async function reroute(env, u, p, t, waitUntil) {
     // a doomed pigeon is still lost before it would land, now on its new course
     const lostAt = m.lost_at == null ? null : m.lost_at < deliver ? m.lost_at : t + (deliver - t) / 2;
     const r = await D.prepare(`UPDATE pg_msgs SET wx = NULL, wx_ms = NULL, wx_at = NULL, to_lat = ?, to_lon = ?, to_place = ?, deliver_at = ?, km = ?, legs = ?, lost_at = ?,
-      expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ?`)
+      expires_at = CASE WHEN photo = 1 THEN ? ELSE expires_at END WHERE id = ? AND deliver_at > ? AND recalled = 0`)
       .bind(p.lat, p.lon, p.place, deliver, km, JSON.stringify(legs), lostAt, lostAt ?? deliver + PHOTO_TTL, m.id, t).run();
     if (r.meta.changes) { waitUntil(renear(D, m.id, t).catch(() => {})); waitUntil(refly(D, m.id, t).catch(() => {})); }
     if (r.meta.changes) waitUntil(pigeonRerouted(env, m.sender, { ...u, place: p.place }, deliver).catch(() => {}));
@@ -723,8 +723,9 @@ async function areFriends(D, a, b) {
   return !!(await D.prepare("SELECT 1 FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(a, b).first());
 }
 // (a scheduled pigeon still in its loft isn't part of the conversation yet: it doesn't take a turn)
-const lastBetween = (D, a, b, t) => D.prepare(
-  "SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 1").bind(a, b, t).first();
+const lastBetweenQ = (D, a, b, t) => D.prepare(
+  "SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND sent_at <= ?3 ORDER BY sent_at DESC LIMIT 1").bind(a, b, t);
+const lastBetween = (D, a, b, t) => lastBetweenQ(D, a, b, t).first();
 
 // Read receipts go both ways: if either of you has them off, neither sees them.
 // read receipts (and a view-once photo's "Opened") go both ways: either of you with them off shows none
@@ -736,39 +737,47 @@ async function sync({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const D = await db(env), t = Date.now();
   waitUntil(sweepPhotos(env).catch(() => {}));     // photos past their time are deleted promptly (two indexed look-ups)
-  // an open app syncs every 15 s; note it at most once a minute for Last Online
-  if (!(t - (u.seen_at || 0) < SEEN_EVERY)) await D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id).run();
-  const { results: links } = await D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id).all();
+  await ensureStreaks(D).catch((e) => console.error("pigeon streaks", e && e.message));   // (once per copy of the server)
+  // Everything at once, in one trip to the database: an open app asks every 15 s, and each separate
+  // question costs a round trip. Your links and everyone on the other end (one query whatever their
+  // number: an IN list would overflow D1's 100 parameters), the last pigeon each way with each of them
+  // (two index look-ups each, not a read of your whole history), whose turn it is, what's unread,
+  // passkeys, streaks, feathers, named pigeons, and your groups (a fixed set of questions however many)
+  const res = await D.batch([
+    D.prepare("SELECT a, b, status, asked_at FROM pg_links WHERE a = ?1 OR b = ?1").bind(u.id),
+    D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
+      FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id),
+    D.prepare(`
+      WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
+      SELECT * FROM pg_msgs WHERE id IN (
+        SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 1) FROM o
+        UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t),
+    // whose turn it is: from the last pigeon each way, including any whose words have disappeared (as sending checks it)
+    D.prepare(`
+      WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
+      SELECT id, sender, recipient, sent_at, deliver_at, lost_at, recalled FROM pg_msgs WHERE id IN (
+        SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
+        UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t),
+    D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t),
+    D.prepare("SELECT a, b, ms, by, at FROM pg_vanish WHERE (a = ?1 OR b = ?1) AND ms > 0").bind(u.id),
+    D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id),
+    D.prepare("SELECT * FROM pg_streaks WHERE a = ?1 OR b = ?1").bind(u.id),
+    D.prepare("SELECT COALESCE(SUM(n), 0) AS n FROM pg_feathers WHERE user_id = ?").bind(u.id),
+    D.prepare("SELECT 1 AS x FROM pg_birds WHERE owner = ? LIMIT 1").bind(u.id),
+    ...groupQs(D, u, t),
+    // an open app syncs every 15 s; note it at most once a minute for Last Online
+    ...(t - (u.seen_at || 0) < SEEN_EVERY ? [] : [D.prepare("UPDATE pg_users SET seen_at = ? WHERE id = ?").bind(t, u.id)]),
+  ]);
+  const [{ results: links }, { results: peopleRows }, { results: lasts }, { results: turnRows }, { results: unread }, { results: vanishRows }, { results: pks }, { results: streakRows }, { results: [bal] }, { results: hasBirds }] = res;
   const other = (l) => (l.a === u.id ? l.b : l.a);
-  // everyone linked to you, in one query whatever their number (an IN list would
-  // overflow D1's 100 parameters, and others can add rows here by asking)
-  const people = new Map();
-  if (links.length) {
-    const { results } = await D.prepare(`SELECT p.id, p.handle, p.name, p.pub, p.lat, p.lon, p.place, p.moon, p.loc_at, p.seen_at, p.avatar_at, p.hide_online, p.no_receipts, p.notify_prefs
-      FROM pg_links l JOIN pg_users p ON p.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE l.a = ?1 OR l.b = ?1`).bind(u.id).all();
-    for (const p of results) people.set(p.id, p);
-  }
-  // the last pigeon each way with each person you're linked to: two index look-ups each, not a read of your whole history
-  const { results: lasts } = await D.prepare(`
-    WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
-    SELECT * FROM pg_msgs WHERE id IN (
-      SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 1) FROM o
-      UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t).all();
-  const vanishes = await vanishFor(D, u.id);
+  const people = new Map(peopleRows.map((p) => [p.id, p]));
+  const vanishes = new Map(vanishRows.map((r) => [r.a === u.id ? r.b : r.a, { ms: r.ms, by: r.by, at: r.at }]));
+  const streaks = new Map(streakRows.map((r) => [r.a === u.id ? r.b : r.a, streakView(r, t)]));
   const lastBy = new Map();
   for (const m of lasts) { const k = m.sender === u.id ? m.recipient : m.sender, had = lastBy.get(k); if (!had || m.sent_at > had.sent_at) lastBy.set(k, m); }
-  // whose turn it is: from the last pigeon each way, including any whose words have disappeared (as sending checks it)
-  const { results: turnRows } = await D.prepare(`
-    WITH o AS (SELECT CASE WHEN a = ?1 THEN b ELSE a END AS o FROM pg_links WHERE a = ?1 OR b = ?1)
-    SELECT id, sender, recipient, sent_at, deliver_at, lost_at, recalled FROM pg_msgs WHERE id IN (
-      SELECT (SELECT id FROM pg_msgs WHERE sender = ?1 AND recipient = o.o AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o
-      UNION ALL SELECT (SELECT id FROM pg_msgs WHERE sender = o.o AND recipient = ?1 AND sent_at <= ?2 ORDER BY sent_at DESC LIMIT 1) FROM o)`).bind(u.id, t).all();
   const turnBy = new Map();
   for (const m of turnRows) { const k = m.sender === u.id ? m.recipient : m.sender, had = turnBy.get(k); if (!had || m.sent_at > had.sent_at) turnBy.set(k, m); }
-  const { results: unread } = await D.prepare("SELECT sender, COUNT(*) AS n FROM pg_msgs WHERE recipient = ? AND read_at IS NULL AND deliver_at <= ? AND lost_at IS NULL GROUP BY sender").bind(u.id, t).all();
   const unreadBy = new Map(unread.map((r) => [r.sender, r.n]));
-  const { results: pks } = await D.prepare("SELECT id, label, created_at, used_at, vault IS NOT NULL AS unlocks FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all();
-  const streaks = await streaksFor(D, u.id, t).catch((e) => { console.error("pigeon streaks", e && e.message); return new Map(); });   // never what stops a sync
   const brief = (p) => ({ id: p.id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null });
   const friends = [], incoming = [], outgoing = [], blocked = [];
   for (const l of links) {
@@ -788,8 +797,11 @@ async function sync({ request, env, waitUntil }) {
     } else if (l.b === u.id) incoming.push(brief(p));
     else outgoing.push({ id: p.id, handle: p.handle, name: null, avatarAt: null });   // nothing of them until they say yes
   }
-  return json({ now: t, me: { ...meView(u, t), skin: await skinNow(D, u, t) }, feathers: await balanceOf(D, u.id), friends, groups: await groupsForSync(env, u, t), incoming, outgoing, blocked, birds: await birdsFor(D, u.id, t), emailOn: emailReady(env), gifsOn: gifsReady(env),
-    passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) });
+  const groups = groupsFrom(res.slice(10, 10 + GROUP_QS), u, t);
+  return json({ now: t, me: { ...meView(u, t), skin: await skinNow(D, u, t) }, feathers: bal.n, friends, groups, incoming, outgoing, blocked,
+    birds: hasBirds.length ? await birdsFor(D, u.id, t) : { birds: [], hall: [] }, emailOn: emailReady(env), gifsOn: gifsReady(env),
+    passkeys: pks.map((p) => ({ id: p.id, label: p.label, createdAt: p.created_at, usedAt: p.used_at, unlocks: !!p.unlocks })) },
+  );
 }
 
 /* ---------------- messages ---------------- */
@@ -797,22 +809,33 @@ async function listMessages({ request, env }) {
   const u = await requireUser(request, env);
   const other = new URL(request.url).searchParams.get("with") || "";
   const D = await db(env), t = Date.now();
-  if (!(await areFriends(D, u.id, other))) throw new HttpError(403, "You can only read scrolls from your flock.");
-  const them = await D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other).first();
-  // yours waiting to take off show (to you only); theirs only once they're in the air
-  const { results } = await D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3) AND gone_at IS NULL
-    ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t).all();
-  const { results: stops } = await D.prepare("SELECT * FROM pg_msgs WHERE via = ?1 AND sender = ?2 AND sent_at <= ?3 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 50").bind(u.id, other, t).all();
+  // (the app asks every 15 s while a chat's open: whether you're friends, their receipts setting, the chat, stopovers
+  // with you, and the last pigeon between you (whose turn), in one trip; nothing is sent unless you're friends)
+  const [{ results: fr }, { results: [them] }, { results }, { results: stops }, { results: [lastOne] }] = await D.batch([
+    D.prepare("SELECT 1 AS x FROM pg_links WHERE status = 'ok' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, other),
+    D.prepare("SELECT no_receipts FROM pg_users WHERE id = ?").bind(other),
+    // yours waiting to take off show (to you only); theirs only once they're in the air
+    D.prepare(`SELECT * FROM (SELECT * FROM pg_msgs WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) AND (sender = ?1 OR sent_at <= ?3) AND gone_at IS NULL
+      ORDER BY sent_at DESC LIMIT 300) ORDER BY sent_at`).bind(u.id, other, t),
+    D.prepare("SELECT * FROM pg_msgs WHERE via = ?1 AND sender = ?2 AND sent_at <= ?3 AND gone_at IS NULL ORDER BY sent_at DESC LIMIT 50").bind(u.id, other, t),
+    lastBetweenQ(D, u.id, other, t),
+  ]);
+  if (!fr.length) throw new HttpError(403, "You can only read scrolls from your flock.");
   const views = [...results.map((m) => receipts(u, them, msgView(u.id, m, t))), ...stops.map((m) => stopView(u.id, m, t))].sort((a, b) => a.sentAt - b.sentAt);
-  const near = await nearViews(D, u.id, results.map((m) => m.id), t);
-  for (const v of views) if (near.has(v.id)) v.near = near.get(v.id);
-  const over = await flyOnMine(D, u.id, results.filter((m) => m.sender === u.id).map((m) => m.id));     // who yours flew over (yours only)
-  for (const v of views) if (over.has(v.id)) v.fly = over.get(v.id);
-  const stamps = await newStamps(D, u.id, results.filter((m) => m.sender === u.id && m.deliver_at <= t).map((m) => m.id));   // the passport's new stamps (yours only)
-  for (const v of views) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
-  const marks = await marksFor(D, results.filter((m) => m.deliver_at <= t && m.lost_at == null).map((m) => m.id));   // postmarks: on the letter, for both of you
-  for (const v of views) if (marks.has(v.id)) v.postmarks = marks.get(v.id);
-  return json({ now: t, messages: views, fly: await flyViews(D, u.id, other), reacts: await reactsFor(env, u.id, results.map((m) => m.id)), turn: turn(u.id, await lastBetween(D, u.id, other, t), t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
+  const mine = results.filter((m) => m.sender === u.id);
+  // the rest at once: each looks up its own things, none waits on another
+  const [near, over, stamps, marks, fly, reacts] = await Promise.all([nearViews(D, u.id, results.map((m) => m.id), t),
+    flyOnMine(D, u.id, mine.map((m) => m.id)),                                                   // who yours flew over (yours only)
+    newStamps(D, u.id, mine.filter((m) => m.deliver_at <= t).map((m) => m.id)),                  // the passport's new stamps (yours only)
+    marksFor(D, results.filter((m) => m.deliver_at <= t && m.lost_at == null).map((m) => m.id)),   // postmarks: on the letter, for both of you
+    flyViews(D, u.id, other), reactsFor(env, u.id, results.map((m) => m.id))]);
+  for (const v of views) {
+    if (near.has(v.id)) v.near = near.get(v.id);
+    if (over.has(v.id)) v.fly = over.get(v.id);
+    if (stamps.has(v.id)) v.stamps = stamps.get(v.id);
+    if (marks.has(v.id)) v.postmarks = marks.get(v.id);
+  }
+  return json({ now: t, messages: views, fly, reacts, turn: turn(u.id, lastOne, t), swift: swiftState(u, t).count, turbo: loft(u, "turbo", t).count, rocket: loft(u, "rocket", t).count });
 }
 
 async function sendMessage({ request, env, waitUntil }) {
@@ -947,7 +970,7 @@ async function sendMessage({ request, env, waitUntil }) {
   const m = await D.prepare("SELECT * FROM pg_msgs WHERE id = ?").bind(id).first();
   await bumpStreak(D, u.id, to, t).catch((e) => console.error("pigeon streak", e && e.message));   // today counts for your streak
   await noteSeason(D, u.id, t).catch((e) => console.error("pigeon season", e && e.message));       // ten in a season keeps its look
-  if (landAt == null) waitUntil(pigeonSent(env, u, to, deliver, kind).catch(() => {}));       // scheduled: told when it takes off
+  if (landAt == null) waitUntil(pigeonSent(env, u, to, m.deliver_at, kind).catch(() => {}));      // (as it is now: flying with another may have changed it)       // scheduled: told when it takes off
   waitUntil(findNear(D, m).catch((e) => console.error("pigeon near", e && e.message)));        // the pigeons it will pass
   waitUntil(findFly(D, m).catch((e) => console.error("pigeon flyover", e && e.message)));      // and the friends it will fly over
   const me = landAt == null && !mystery ? null : await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
@@ -1589,7 +1612,9 @@ export async function onRequest(ctx) {
   if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));
   try {
     if (!handler) throw new HttpError(404, "Not found.");
-    return await handler(ctx, parts[1]);
+    const trips0 = TRIPS.n, res = await handler(ctx, parts[1]);
+    if (ctx.env.PIGEON_COUNT_DB) try { res.headers.set("X-DB-Trips", String(TRIPS.n - trips0)); } catch (_) {}   // (tests: what it cost)
+    return res;
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, field: e.field }, e.status);
     console.error("pigeon", e && e.stack || e);

@@ -318,7 +318,21 @@ export async function db(env) {
   if (!env.DB) throw new HttpError(503, "InFlight isn’t set up on this server yet (no database).");
   // one setup per copy of the server, shared by every request that arrives while it runs
   await (schemaReady ||= setUp(env).catch((e) => { schemaReady = null; throw e; }));
-  return env.DB;
+  return env.PIGEON_COUNT_DB ? counted(env.DB) : env.DB;
+}
+// Tests only (PIGEON_COUNT_DB): how many trips to the database this copy of the server has made, each
+// query or batch one, so a test can see what a request costs (sync says so in X-DB-Trips)
+export const TRIPS = { n: 0 };
+const real = new WeakMap();
+function counted(D) {
+  const st = (s) => { const p = new Proxy(s, { get(o, k) { const v = o[k]; if (typeof v !== "function") return v;
+    if (k === "bind") return (...a) => st(v.apply(o, a));
+    if (k === "first" || k === "all" || k === "run" || k === "raw") return (...a) => { TRIPS.n++; return v.apply(o, a); };
+    return v.bind(o); } }); real.set(p, s); return p; };
+  return new Proxy(D, { get(o, k) { const v = o[k]; if (typeof v !== "function") return v;
+    if (k === "prepare") return (q) => st(v.call(o, q));
+    if (k === "batch") return (list) => { TRIPS.n++; return v.call(o, list.map((x) => real.get(x) || x)); };
+    return v.bind(o); } });
 }
 async function setUp(env) {
   if ((await env.DB.prepare("SELECT v FROM pg_meta WHERE k = 'schema_fp'").first().catch(() => null))?.v === SCHEMA_FP) return;

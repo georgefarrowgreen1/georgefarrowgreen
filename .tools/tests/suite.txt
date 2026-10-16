@@ -24,3 +24,5 @@ movein
 followtest
 lowsev
 wxsay
+syncperf
+consistency

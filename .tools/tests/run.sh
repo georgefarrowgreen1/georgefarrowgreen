@@ -15,7 +15,7 @@ HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$HERE/../.." && pwd)
 S=${STATE:-$HERE/.state}; mkdir -p "$S/out"; ln -sfn "$HERE" "$S/wr"     # (the tests find their kit at $S/wr)
 export APP_ROOT=$ROOT
 [ -z "${CHROMIUM:-}" ] && [ -x /opt/pw-browsers/chromium ] && export CHROMIUM=/opt/pw-browsers/chromium
-grep -q chat.localhost /etc/hosts || echo "note: add '127.0.0.1 chat.localhost' to /etc/hosts"
+grep -q chat.localhost /etc/hosts || { echo "127.0.0.1 chat.localhost" >> /etc/hosts; } 2>/dev/null || echo "note: add '127.0.0.1 chat.localhost' to /etc/hosts"
 TESTS=${*:-$(cat "$HERE/suite.txt")}
 PIDS=()
 cleanup() { "$HERE/server.sh" stop; for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; }

@@ -99,11 +99,13 @@ const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, vanish: m.
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
 async function visible(D, uid, gid, max = 300) {
-  const { results } = await D.prepare(`SELECT * FROM (
+  return (await visibleQ(D, uid, gid, max).all()).results;
+}
+function visibleQ(D, uid, gid, max = 300) {
+  return D.prepare(`SELECT * FROM (
       SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id, d.moon
       FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
-      WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) AND m.gone_at IS NULL ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max).all();
-  return results;
+      WHERE m.group_id = ?2 AND (m.sender = ?1 OR d.user_id IS NOT NULL) AND m.gone_at IS NULL ORDER BY m.sent_at DESC LIMIT ?3) ORDER BY sent_at`).bind(uid, gid, max);
 }
 async function deliveriesOf(D, ids) {
   const by = new Map(ids.map((id) => [id, []]));
@@ -124,6 +126,9 @@ async function views(D, uid, rows, friends, t) {
     const part = ids.slice(i, i + 90);
     for (const r of (await D.prepare(`SELECT id FROM pg_users WHERE no_receipts = 1 AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results) off.add(r.id);
   }
+  return viewsWith(uid, rows, friends, t, dels, off);
+}
+function viewsWith(uid, rows, friends, t, dels, off) {
   return rows.map((m) => {
     if (m.sender !== uid) return theirView(m, m, friends, t);
     const v = ownView(m, dels.get(m.id), friends, t);
@@ -135,38 +140,72 @@ async function views(D, uid, rows, friends, t) {
 // Standard pigeons wait their turn: you can send one once something someone
 // else sent has landed for you since your own last message.
 async function turnIn(D, uid, gid, t) {
-  const mine = await D.prepare("SELECT id, sent_at FROM pg_gmsgs WHERE group_id = ? AND sender = ? ORDER BY sent_at DESC LIMIT 1").bind(gid, uid).first();
-  const inbound = !!(await D.prepare(`SELECT 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.group_id = ?1 AND d.user_id = ?2
-    AND d.deliver_at > ?3 AND (d.lost_at IS NULL OR d.lost_at > ?3) LIMIT 1`).bind(gid, uid, t).first());
-  if (!mine) {
-    const any = await D.prepare(`SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?2 WHERE m.group_id = ?1 LIMIT 1`).bind(gid, uid).first();
-    return { free: true, state: inbound ? "inbound" : any ? "sill" : "fresh" };
-  }
-  const { results: dels } = await D.prepare("SELECT deliver_at, lost_at, recalled FROM pg_gdeliv WHERE msg_id = ?").bind(mine.id).all();
+  const [r] = await D.batch([turnQ(D, uid, t, gid)]);
+  const dels = r.results[0]?.mine_id ? (await D.prepare("SELECT msg_id, deliver_at, lost_at, recalled FROM pg_gdeliv WHERE msg_id = ?").bind(r.results[0].mine_id).all()).results : [];
+  return turnFrom(r.results[0], dels, t);
+}
+// What decides your turn in a group, for each of your groups (or just one), in one statement: your last
+// pigeon there, and whether one is on its way to you, whether any ever came, and whether one landed since yours
+function turnQ(D, uid, t, gid = null) {
+  const mine = (f) => `(SELECT ${f} FROM pg_gmsgs WHERE group_id = gm.group_id AND sender = ?1 ORDER BY sent_at DESC LIMIT 1)`;
+  return D.prepare(`SELECT gm.group_id, ${mine("id")} AS mine_id, ${mine("sent_at")} AS mine_at,
+      EXISTS (SELECT 1 FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.group_id = gm.group_id AND d.user_id = ?1 AND d.deliver_at > ?2 AND (d.lost_at IS NULL OR d.lost_at > ?2)) AS inbound,
+      EXISTS (SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.group_id = gm.group_id) AS anyd,
+      EXISTS (SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.group_id = gm.group_id AND m.sender != ?1
+        AND m.sent_at > ${mine("sent_at")} AND d.deliver_at <= ?2 AND d.lost_at IS NULL) AS heard
+    FROM pg_group_members gm WHERE gm.user_id = ?1 ${gid ? "AND gm.group_id = ?3" : ""}`).bind(uid, t, ...(gid ? [gid] : []));
+}
+// the deliveries of your last pigeon in each of your groups
+const mineDelsQ = (D, uid) => D.prepare(`SELECT msg_id, deliver_at, lost_at, recalled FROM pg_gdeliv WHERE msg_id IN
+  (SELECT (SELECT id FROM pg_gmsgs WHERE group_id = gm.group_id AND sender = ?1 ORDER BY sent_at DESC LIMIT 1) FROM pg_group_members gm WHERE gm.user_id = ?1)`).bind(uid);
+function turnFrom(r, dels, t) {
+  if (!r?.mine_id) return { free: true, state: r?.inbound ? "inbound" : r?.anyd ? "sill" : "fresh" };
   if (dels.length && dels.every((d) => lostBy(d, t))) return { free: true, state: dels.some((d) => d.recalled) ? "recalled" : "lost" };
-  const heard = await D.prepare(`SELECT 1 FROM pg_gmsgs m JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?2
-    WHERE m.group_id = ?1 AND m.sender != ?2 AND m.sent_at > ?3 AND d.deliver_at <= ?4 AND d.lost_at IS NULL LIMIT 1`).bind(gid, uid, mine.sent_at, t).first();
-  if (heard) return { free: true, state: "sill" };
+  if (r.heard) return { free: true, state: "sill" };
   if (dels.some((d) => inAir(d, t))) return { free: false, state: "outbound" };
-  return { free: false, state: inbound ? "inbound" : "theirs" };
+  return { free: false, state: r.inbound ? "inbound" : "theirs" };
 }
 
 // Everything the Messages list needs about each of this person's groups.
 export async function groupsForSync(env, u, t) {
   const D = await db(env);
-  const { results: gs } = await D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? ORDER BY g.created_at").bind(u.id).all();
+  return groupsFrom(await D.batch(groupQs(D, u, t)), u, t);
+}
+// The questions, for one batch: your groups and what decides your turn in each (one statement for all of them),
+// your friends, who's blocked, everyone in your groups, what's unread, each group's last pigeon you can see, and
+// (for those that are yours) how each of its pigeons is getting on and whose receipts are off
+const lastIds = `SELECT (SELECT m.id FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1
+    WHERE m.group_id = gm.group_id AND (m.sender = ?1 OR d.user_id IS NOT NULL) AND m.gone_at IS NULL ORDER BY m.sent_at DESC LIMIT 1) FROM pg_group_members gm WHERE gm.user_id = ?1`;
+export const GROUP_QS = 9;
+export function groupQs(D, u, t) {
+  return [
+    D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? ORDER BY g.created_at").bind(u.id),
+    turnQ(D, u.id, t), mineDelsQ(D, u.id),
+    D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id, status FROM pg_links WHERE status IN ('ok', 'blocked') AND (a = ?1 OR b = ?1)").bind(u.id),
+    D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.moon, u.loc_at, u.seen_at, u.hide_online
+      FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
+      WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id),
+    D.prepare(`SELECT m.group_id, COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
+      WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL GROUP BY m.group_id`).bind(u.id, t),
+    D.prepare(`SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id, d.moon
+      FROM pg_gmsgs m LEFT JOIN pg_gdeliv d ON d.msg_id = m.id AND d.user_id = ?1 WHERE m.id IN (${lastIds})`).bind(u.id),
+    D.prepare(`SELECT * FROM pg_gdeliv WHERE msg_id IN (SELECT id FROM pg_gmsgs WHERE sender = ?1 AND id IN (${lastIds}))`).bind(u.id),
+    D.prepare(`SELECT id FROM pg_users WHERE no_receipts = 1 AND (id = ?1 OR id IN (SELECT user_id FROM pg_gdeliv WHERE msg_id IN
+      (SELECT id FROM pg_gmsgs WHERE sender = ?1 AND id IN (${lastIds}))))`).bind(u.id),
+  ];
+}
+// …and the answers, as sync sends them
+export function groupsFrom(res, u, t) {
+  const [{ results: gs }, { results: turns }, { results: mineDels }, { results: links }, { results: allMem }, { results: unreads }, { results: lasts }, { results: lastDels }, { results: offRows }] = res;
   if (!gs.length) return [];
-  const friends = await friendIds(D, u.id), out = [];
+  const friends = new Set(links.filter((l) => l.status === "ok").map((l) => l.id));
   // anyone either of you has blocked, in a group you share: their name stays (so you know who wrote), nothing else of them
-  const blocked = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'blocked' AND (a = ?1 OR b = ?1)").bind(u.id).all()).results.map((r) => r.id));
-  // everyone in all your groups, and what's unread in each: one query each, however many groups
-  const { results: allMem } = await D.prepare(`SELECT gm.group_id, gm.user_id, gm.added_by, u.handle, u.name, u.pub, u.avatar_at, u.lat, u.lon, u.place, u.moon, u.loc_at, u.seen_at, u.hide_online
-    FROM pg_group_members gm JOIN pg_users u ON u.id = gm.user_id
-    WHERE gm.group_id IN (SELECT group_id FROM pg_group_members WHERE user_id = ?1) ORDER BY gm.joined_at`).bind(u.id).all();
-  const { results: unreads } = await D.prepare(`SELECT m.group_id, COUNT(*) AS n FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id
-    WHERE d.user_id = ?1 AND d.read_at IS NULL AND d.deliver_at <= ?2 AND d.lost_at IS NULL GROUP BY m.group_id`).bind(u.id, t).all();
-  const unreadIn = new Map(unreads.map((r) => [r.group_id, r.n]));
-  for (const g of gs) {
+  const blocked = new Set(links.filter((l) => l.status === "blocked").map((l) => l.id));
+  const unreadIn = new Map(unreads.map((r) => [r.group_id, r.n])), turnOf = new Map(turns.map((r) => [r.group_id, r]));
+  const lastOf = new Map(lasts.map((m) => [m.group_id, m])), off = new Set(offRows.map((r) => r.id));
+  const dels = new Map(lasts.filter((m) => m.sender === u.id).map((m) => [m.id, []]));
+  for (const d of lastDels) dels.get(d.msg_id)?.push(d);
+  return gs.map((g) => {
     const mem = allMem.filter((p) => p.group_id === g.id);
     const members = mem.map((p) => {
       const friend = p.user_id === u.id || friends.has(p.user_id);
@@ -176,11 +215,11 @@ export async function groupsForSync(env, u, t) {
         ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, moon: p.moon ? JSON.parse(p.moon) : null, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
-    const last = (await visible(D, u.id, g.id, 1))[0];
-    out.push({ id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, members, vanish: g.vanish ? { ms: g.vanish, by: g.vanish_by } : null,
-      last: last ? (await views(D, u.id, [last], friends, t))[0] : null, unread: unreadIn.get(g.id) || 0, turn: await turnIn(D, u.id, g.id, t) });
-  }
-  return out;
+    const last = lastOf.get(g.id), tr = turnOf.get(g.id);
+    return { id: g.id, name: g.name, createdAt: g.created_at, muted: !!g.muted, members, vanish: g.vanish ? { ms: g.vanish, by: g.vanish_by } : null,
+      last: last ? viewsWith(u.id, [last], friends, t, dels, off)[0] : null, unread: unreadIn.get(g.id) || 0,
+      turn: turnFrom(tr, tr?.mine_id ? mineDels.filter((d) => d.msg_id === tr.mine_id) : [], t) };
+  });
 }
 
 // A line in the group's chat for each change to who's in it (and its name).
@@ -286,25 +325,37 @@ async function rename({ request, env }) {
 }
 async function listMessages({ request, env }) {
   const u = await requireUser(request, env);
-  const D = await db(env), g = await groupFor(D, u, new URL(request.url).searchParams.get("id")), t = Date.now();
-  const friends = await friendIds(D, u.id);
-  const rows = await visible(D, u.id, g.id);
-  // the group's changes since you joined
-  const { results: ev } = await D.prepare(`SELECT e.at, e.kind, e.actor, e.actor_name, e.target, e.target_name FROM pg_gevents e
-    JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at LIMIT 500`).bind(g.id, u.id).all();
+  const D = await db(env), gid = String(new URL(request.url).searchParams.get("id") || ""), t = Date.now();
+  if (!UUID_RE.test(gid)) throw new HttpError(404, "That group isn’t there any more.");
+  // (the app asks every 15 s while a chat's open: the group, your friends, what you can see in it and its changes since
+  // you joined, in one trip; none of it is anything you couldn't see, and nothing is sent unless you're in the group)
+  const [{ results: [g] }, { results: fr }, { results: rows }, { results: ev }] = await D.batch([
+    D.prepare("SELECT g.*, m.muted FROM pg_groups g JOIN pg_group_members m ON m.group_id = g.id AND m.user_id = ? WHERE g.id = ?").bind(u.id, gid),
+    D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'ok' AND (a = ?1 OR b = ?1)").bind(u.id),
+    visibleQ(D, u.id, gid),
+    D.prepare(`SELECT e.at, e.kind, e.actor, e.actor_name, e.target, e.target_name FROM pg_gevents e
+      JOIN pg_group_members me ON me.group_id = e.group_id AND me.user_id = ?2 WHERE e.group_id = ?1 AND e.at >= me.joined_at ORDER BY e.at LIMIT 500`).bind(gid, u.id),
+  ]);
+  if (!g) throw new HttpError(404, "That group isn’t there any more.");
+  const friends = new Set(fr.map((r) => r.id));
   const events = ev.map((e) => ({ at: e.at, kind: e.kind, by: { id: e.actor, name: e.actor_name },
     ...(said(e.kind) ? { name: e.target_name } : e.target ? { who: { id: e.target, name: e.target_name } } : {}) }));
-  const vs = await views(D, u.id, rows, friends, t), stamps = await newStamps(D, u.id, rows.filter((m) => m.sender === u.id).map((m) => m.id));
-  for (const v of vs) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);      // the passport's new stamps (yours only)
-  // postmarks: on yours, every landmark any of its pigeons passed; on theirs, the ones the pigeon to you did
-  const marks = await marksFor(D, rows.filter((m) => m.sender !== u.id).map((m) => `${m.id}:${u.id}`));
   const mine = new Set(rows.filter((m) => m.sender === u.id).map((m) => m.id));
-  if (mine.size) {
-    // (looked up by this chat's own pigeons, each delivery's id: "<message>:<member>")
-    const dids = [];
+  // (looked up by this chat's own pigeons, each delivery's id: "<message>:<member>")
+  const stampedOf = async () => {
+    const dids = [], out = [];
     for (const part of chunks([...mine])) dids.push(...(await D.prepare(`SELECT msg_id || ':' || user_id AS id FROM pg_gdeliv WHERE msg_id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results.map((r) => r.id));
-    const results = [];
-    for (const part of chunks(dids)) results.push(...(await D.prepare(`SELECT id, at, marks FROM pg_stamped WHERE marks IS NOT NULL AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results);
+    for (const part of chunks(dids)) out.push(...(await D.prepare(`SELECT id, at, marks FROM pg_stamped WHERE marks IS NOT NULL AND id IN (${part.map(() => "?").join(",")})`).bind(...part).all()).results);
+    return out;
+  };
+  // the rest at once: each looks up its own things, none waits on another
+  const [vs, stamps, marks, stamped, reacts, tn] = await Promise.all([views(D, u.id, rows, friends, t), newStamps(D, u.id, [...mine]),
+    // postmarks: on yours, every landmark any of its pigeons passed; on theirs, the ones the pigeon to you did
+    marksFor(D, rows.filter((m) => m.sender !== u.id).map((m) => `${m.id}:${u.id}`)), mine.size ? stampedOf() : [],
+    reactsFor(env, u.id, rows.map((m) => m.id)), turnIn(D, u.id, g.id, t)]);
+  for (const v of vs) if (stamps.has(v.id)) v.stamps = stamps.get(v.id);      // the passport's new stamps (yours only)
+  if (mine.size) {
+    const results = stamped;
     for (const r of results) {
       const mid = r.id.split(":")[0]; if (!mine.has(mid)) continue;
       const have = marks.get(mid) || [];
@@ -313,7 +364,7 @@ async function listMessages({ request, env }) {
     }
   }
   for (const v of vs) { const k = marks.get(v.from === u.id ? v.id : `${v.id}:${u.id}`); if (k?.length) v.postmarks = k; }
-  return json({ now: t, messages: vs, events, reacts: await reactsFor(env, u.id, rows.map((m) => m.id)), turn: await turnIn(D, u.id, g.id, t) });
+  return json({ now: t, messages: vs, events, reacts, turn: tn });
 }
 
 async function send({ request, env, waitUntil }) {

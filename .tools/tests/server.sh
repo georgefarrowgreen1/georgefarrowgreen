@@ -15,6 +15,6 @@ nohup "$HERE/node_modules/.bin/wrangler" pages dev . --port 8788 --persist-to "$
   --binding EDIT_PASSWORD=owner-test-pass RESEND_API_KEY=test-key RESEND_API_URL=http://127.0.0.1:8799/emails PIGEON_PUSH_URL=http://127.0.0.1:8798/push \
     PIGEON_TICK_SECRET=tick-test-secret GIPHY_API_KEY=giphy-test-key GIPHY_API_URL=http://127.0.0.1:8797 GIPHY_MEDIA_URL=http://127.0.0.1:8797 \
     WEATHER_URL=http://127.0.0.1:8796 MET_URL=http://127.0.0.1:8796 SWPC_URL=http://127.0.0.1:8796 EONET_URL=http://127.0.0.1:8796 ENSEMBLE_URL=http://127.0.0.1:8796 \
-    PIGEON_OPEN_SIGNUP=1 CHAT_HOST=chat.localhost PWNED_URL=http://127.0.0.1:8795 PIGEON_PEPPER=test-pepper-for-local-tests-only >> "$S/wrangler.log" 2>&1 &
+    PIGEON_OPEN_SIGNUP=1 CHAT_HOST=chat.localhost PWNED_URL=http://127.0.0.1:8795 PIGEON_PEPPER=test-pepper-for-local-tests-only PIGEON_COUNT_DB=1 >> "$S/wrangler.log" 2>&1 &
 for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8788/pigeon/ && break; sleep 1; done
 curl -s -o /dev/null -X POST http://127.0.0.1:8796/mode -d '{"speed":0,"down":false,"pattern":"","kp":2,"eonet":[]}'   # calm weather unless a test sets its own

@@ -53,7 +53,7 @@ async function cheer({ request, env, waitUntil }) {
     const p = plan([m.from_lat, m.from_lon, m.sent_at], m, t); by[u.id] = (by[u.id] || 0) + 1;
     // only if no one else cheered it (or it changed course) at the same moment
     const r = await D.prepare(`UPDATE pg_msgs SET deliver_at = ?1, legs = ?2, lost_at = ?3, cheer_by = ?4, cheer_ms = COALESCE(cheer_ms, 0) + ?5,
-      expires_at = CASE WHEN photo = 1 THEN ?6 ELSE expires_at END WHERE id = ?7 AND deliver_at = ?8 AND cheer_by IS ?9 AND legs IS ?10`)
+      expires_at = CASE WHEN photo = 1 THEN ?6 ELSE expires_at END WHERE id = ?7 AND deliver_at = ?8 AND cheer_by IS ?9 AND legs IS ?10 AND recalled = 0`)
       .bind(p.deliver, p.legs, p.lostAt, JSON.stringify(by), p.cut, (p.lostAt ?? p.deliver) + PHOTO_TTL, id, m.deliver_at, m.cheer_by, m.legs).run();
     if (!r.meta.changes) continue;
     waitUntil(renear(D, id, t).catch(() => {}));                    // the pigeons it will pass, at its new pace
@@ -88,7 +88,7 @@ async function groupCheer({ request, env, waitUntil }) {
       const fr = friends.has(d.user_id), start = [fr ? m.from_lat : coarse(m.from_lat), fr ? m.from_lon : coarse(m.from_lon), m.sent_at];
       const p = plan(start, d, t); by[u.id] = (by[u.id] || 0) + 1;
       const r = await D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, cheer_by = ?4, cheer_ms = COALESCE(cheer_ms, 0) + ?5
-        WHERE msg_id = ?6 AND user_id = ?7 AND deliver_at = ?8 AND cheer_by IS ?9 AND legs IS ?10`)
+        WHERE msg_id = ?6 AND user_id = ?7 AND deliver_at = ?8 AND cheer_by IS ?9 AND legs IS ?10 AND recalled = 0`)
         .bind(p.deliver, p.legs, p.lostAt, JSON.stringify(by), p.cut, id, d.user_id, d.deliver_at, d.cheer_by, d.legs).run();
       if (!r.meta.changes) continue;
       cut = Math.max(cut, p.cut); done.push({ to: d.user_id, deliverAt: p.deliver, cut: p.cut });

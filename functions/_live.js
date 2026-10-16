@@ -158,6 +158,7 @@ async function turnFor(D, t, x, better, wasW) {
   const pts = way.p.slice(1, -1).map((q) => Object.assign(q[2] === "s" || q[2] === "w" ? [q[0], q[1], better.why, ...(where && better.why === "s" ? [where] : [])] : [...q], q.rest ? { rest: q.rest } : {}, q.sail ? { sail: q.sail } : {}));
   const latest = latestOf(r);
   const flying = Math.round((flownKm(way.p) / (x.kmh * w.f)) * HOUR), deliver = Math.min(latest, t + flying + way.rest);
+  if (better.why === "w" && deliver >= r.deliver_at) return null;           // (a better wind than it has now, but not sooner than it was going to land)
   const done = passed(x.legs, t);
   // the turn keeps the way it was going (and where the storms were), for the map
   const was = x.path.slice(1).filter((q, i, a) => !i || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]).slice(-12).map((q) => [round2(q[0]), round2(q[1])]);
@@ -172,9 +173,9 @@ async function turnFor(D, t, x, better, wasW) {
   const wxMs = (r.wx_ms || 0) + change, use = fits(spot, wxMs), wx = use ? JSON.stringify(spot) : r.wx, wxAt = use ? t : r.wx_at;
   const q = x.group
     ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = ?9, live_at = ?9, km = ?10
-        WHERE msg_id = ?11 AND user_id = ?12 AND deliver_at = ?13 AND legs IS ?14`).bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, r.msg_id, r.user_id, r.deliver_at, r.legs)
+        WHERE msg_id = ?11 AND user_id = ?12 AND deliver_at = ?13 AND legs IS ?14 AND recalled = 0`).bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, r.msg_id, r.user_id, r.deliver_at, r.legs)
     : D.prepare(`UPDATE pg_msgs SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = ?9, live_at = ?9, km = ?10,
-        expires_at = CASE WHEN photo = 1 THEN ?11 ELSE expires_at END WHERE id = ?12 AND deliver_at = ?13 AND legs IS ?14`)
+        expires_at = CASE WHEN photo = 1 THEN ?11 ELSE expires_at END WHERE id = ?12 AND deliver_at = ?13 AND legs IS ?14 AND recalled = 0`)
       .bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, t, km, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
   if (!(await q.run()).meta.changes) return null;
   await after(D, t, x, lostAt ?? deliver);
@@ -192,7 +193,7 @@ async function shelter(D, t, x, w, sky) {
   const later = (l) => [l[0], l[1], l[2] + hold, ...l.slice(3)];
   let legs, where;
   if (onIsle) {
-    const isle = x.legs[x.restAt][4]; where = isle ? `on ${isle}` : null;
+    const isle = x.legs[x.restAt][4]; where = !isle ? null : /^(on|in|near|at) /.test(isle) ? isle : `on ${isle}`;
     const h = (l, at) => [l[0], l[1], at, "h", ...(where || kx.length ? [where] : []), ...kx];
     legs = x.legs.map((l, i) => (i < x.restAt ? l : i === x.restAt ? h(l, l[2]) : i === x.restAt + 1 ? h(l, l[2] + hold) : later(l)));
   } else {
@@ -204,9 +205,9 @@ async function shelter(D, t, x, w, sky) {
   const wx = w.storm ? JSON.stringify({ k: sk, lat: w.storm.lat, lon: w.storm.lon }) : r.wx, wxMs = (r.wx_ms || 0) + hold, json = JSON.stringify(legs);
   const q = x.group
     ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wx = ?4, wx_ms = ?5, wx_at = ?6, wx_told = ?6, live_at = ?6
-        WHERE msg_id = ?7 AND user_id = ?8 AND deliver_at = ?9 AND legs IS ?10`).bind(deliver, json, lostAt, wx, wxMs, t, r.msg_id, r.user_id, r.deliver_at, r.legs)
+        WHERE msg_id = ?7 AND user_id = ?8 AND deliver_at = ?9 AND legs IS ?10 AND recalled = 0`).bind(deliver, json, lostAt, wx, wxMs, t, r.msg_id, r.user_id, r.deliver_at, r.legs)
     : D.prepare(`UPDATE pg_msgs SET deliver_at = ?1, legs = ?2, lost_at = ?3, wx = ?4, wx_ms = ?5, wx_at = ?6, wx_told = ?6, live_at = ?6,
-        expires_at = CASE WHEN photo = 1 THEN ?7 ELSE expires_at END WHERE id = ?8 AND deliver_at = ?9 AND legs IS ?10`)
+        expires_at = CASE WHEN photo = 1 THEN ?7 ELSE expires_at END WHERE id = ?8 AND deliver_at = ?9 AND legs IS ?10 AND recalled = 0`)
       .bind(deliver, json, lostAt, wx, wxMs, t, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
   if (!(await q.run()).meta.changes) return null;
   await after(D, t, x, lostAt ?? deliver);
@@ -239,9 +240,9 @@ async function retime(env, D, t, x, w) {
   const retell = change >= WX_TELL;                                  // much later than it was: say so again
   const q = x.group
     ? D.prepare(`UPDATE pg_gdeliv SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = CASE WHEN ?9 THEN NULL ELSE wx_told END, live_at = ?10
-        WHERE msg_id = ?11 AND user_id = ?12 AND deliver_at = ?13 AND legs IS ?14`).bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, retell ? 1 : 0, t, r.msg_id, r.user_id, r.deliver_at, r.legs)
+        WHERE msg_id = ?11 AND user_id = ?12 AND deliver_at = ?13 AND legs IS ?14 AND recalled = 0`).bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, retell ? 1 : 0, t, r.msg_id, r.user_id, r.deliver_at, r.legs)
     : D.prepare(`UPDATE pg_msgs SET deliver_at = ?1, legs = ?2, lost_at = ?3, wind = ?4, wind_f = ?5, wx = ?6, wx_ms = ?7, wx_at = ?8, wx_told = CASE WHEN ?9 THEN NULL ELSE wx_told END, live_at = ?10,
-        expires_at = CASE WHEN photo = 1 THEN ?11 ELSE expires_at END WHERE id = ?12 AND deliver_at = ?13 AND legs IS ?14`)
+        expires_at = CASE WHEN photo = 1 THEN ?11 ELSE expires_at END WHERE id = ?12 AND deliver_at = ?13 AND legs IS ?14 AND recalled = 0`)
       .bind(deliver, legs, lostAt, w.wind, w.f, wx, wxMs, wxAt, retell ? 1 : 0, t, (lostAt ?? deliver) + PHOTO_TTL, r.id, r.deliver_at, r.legs);
   const res = await q.run();
   if (!res.meta.changes) return false;
