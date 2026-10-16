@@ -71,6 +71,13 @@ const $ = (sel, root = document) => root.querySelector(sel);
 // passkeys belong to georgefarrowgreen.com, at either of InFlight's addresses (as the server has it: rpIdFor)
 const RP_ID = /(^|\.)georgefarrowgreen\.com$/.test(location.hostname) ? "georgefarrowgreen.com" : location.hostname;
 // where InFlight is, as you'd type it: "georgefarrowgreen.com/pigeon" or "chat.georgefarrowgreen.com"
+// InFlight lives at chat.georgefarrowgreen.com now. At its old address (georgefarrowgreen.com/pigeon)
+// this is where it went; null at the new address. (Locally, tests turn the old address on.)
+const NEW_HOME = (() => {
+  if (/^chat\./.test(location.host)) return null;
+  let test = false; try { test = location.hostname === "localhost" && !!localStorage.getItem("inflight-test-moved"); } catch (_) {}
+  return location.hostname === "georgefarrowgreen.com" || test ? `${location.protocol}//chat.${location.host}` : null;
+})();
 const HERE = () => `${location.host}${location.pathname.replace(/\/(index\.html)?$/, "").replace(/\/+$/, "")}`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -3220,6 +3227,7 @@ function vAccount() {
     <h1 class="large">Account</h1>
     <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
       <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)}${u.place ? ` · ${esc(u.place)}` : ""}</span><span class="csub one">Edit Profile</span></span>${chevSm}</button></div>
+    ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "InFlight Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
     <div class="ghead">Today’s Pigeons</div>
     <div class="lgrid">${tile("rocket", "Rocket", "9× faster")}${tile("turbo", "Turbo", "3× faster")}${tile("swift", "Swift", "2× faster")}${tile("mystery", "Mystery", "Any pigeon")}</div>
     <div class="gfoot">Every day: 1 rocket, 3 turbo, 9 swift and a mystery pigeon. They fly any time. Standard pigeons are free and fly on your turn.</div>
@@ -4762,7 +4770,7 @@ function onbInput(e) {
   }
 }
 /* ---------- Add Friend: look them up as you type ---------- */
-const myLink = () => `${location.origin}/pigeon/#add=${S.me.handle}`;
+const myLink = () => `${NEW_HOME ? NEW_HOME + "/" : location.origin + "/pigeon/"}#add=${S.me.handle}`;
 let addTimer = 0;
 function addLookup() {
   clearTimeout(addTimer);
@@ -5403,6 +5411,28 @@ function drawSheet(refresh) {
     case "view":
       $layer.innerHTML = `<div class="viewer" data-act="close" role="dialog" aria-label="Photo"><img src="${S.photos.get(s.id) || ""}" alt="Photo"><p>Decrypted on this phone. Tap to close.</p></div>`;
       return;
+    case "moved": {
+      // InFlight's new address, from its old one: in a browser it's one tap (the sign-in comes
+      // too, pigeon/handover.js); a Home Screen app has its own storage, so it's a few steps
+      const home = NEW_HOME.replace(/^https?:\/\//, ""), app = standalone(), ios = isIOS();
+      const row = ([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${esc(title)}</b><small>${esc(sub)}</small></span></div>`;
+      const rows = app ? [
+        ["globe", "blue", `1. Open it in ${ios ? "Safari" : "your browser"}`, home],
+        ["plus", "green", ios ? "2. Add it to your Home Screen" : "2. Install it", ios ? "Tap Share, then Add to Home Screen." : "From the browser’s menu: Install App, or Add to Home Screen."],
+        ["key", "orange", "3. Sign in there", "With Face ID or your password. Your chats and pigeons come with you."],
+        ["bell", "red", "4. Turn notifications on there", "Then delete this InFlight from your Home Screen."],
+      ] : [
+        ["check", "green", "Everything comes with you", "You’ll be signed in, with your chats, pigeons in flight and settings."],
+        ["bell", "red", "Notifications move too", "Turn them on again there, from Account."],
+      ];
+      $layer.innerHTML = sheetHtml("", `<div class="wnhero"><span class="wnlogo" aria-hidden="true">${I.bird}</span><h2>InFlight Has Moved</h2><p>It now lives at <b>${esc(home)}</b></p></div>
+        <div class="wnlist">${rows.map(row).join("")}</div>
+        <div class="wnfoot stack"><a class="btn wide" href="${esc(NEW_HOME)}/"${app ? ` target="_blank" rel="noopener"` : ""} data-act="movego">${app ? `Open ${esc(home)}` : `Go to ${esc(home)}`}</a>
+          ${app ? `<button type="button" class="btn wide plain" data-act="movecopy">Copy the Address</button>` : ""}
+          <button type="button" class="btn wide plain" data-act="close">Not Now</button></div>`, { name: "InFlight Has Moved" });
+      $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
+      return;
+    }
     case "whatsnew": {
       // what's new: every release, newest first
       const list = RELEASES;
@@ -6624,6 +6654,9 @@ async function onClick1(e, t) {
     }
     case "creditsheet": S.sheet = { type: "credits" }; return renderSheet();
     case "whatsnew": S.sheet = { type: "whatsnew" }; return renderSheet();
+    case "moved": return movedNote(true);
+    case "movego": if (!standalone()) { e?.preventDefault?.(); location.href = `${NEW_HOME}/${S.view === "welcome" ? location.hash : ""}`; } return;
+    case "movecopy": try { await navigator.clipboard.writeText(NEW_HOME + "/"); toast("Address copied."); } catch (_) { toast(esc(NEW_HOME.replace(/^https?:\/\//, ""))); } return;
     case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
@@ -7629,10 +7662,10 @@ function textSize() {
 // anything was drawn), with a code to scan that opens this same link on a phone.
 // Nothing else runs: no session, no sync, nothing stored.
 function notAvailable() {
-  const site = $(".na-site"); if (site) site.textContent = HERE();
+  const site = $(".na-site"); if (site) site.textContent = NEW_HOME ? NEW_HOME.replace(/^https?:\/\//, "") : HERE();
   const box = $(".na-qr"); if (!box) return;
-  const link = /#(add|reset|verify|open)=/.test(location.hash);
-  box.innerHTML = `${qrSvg(location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
+  const link = /#(add|reset|verify|open|invite)=/.test(location.hash);
+  box.innerHTML = `${qrSvg(NEW_HOME ? `${NEW_HOME}/${location.hash}` : location.href, { title: link ? "QR code for this link" : "QR code for InFlight" })}<small>${link ? "Scan with your phone’s camera to open this link there." : "Scan with your phone’s camera to open it there."}</small>`;
   box.hidden = false;
 }
 // The move to chat.georgefarrowgreen.com: the first time InFlight starts at the new
@@ -7664,8 +7697,19 @@ async function moveIn() {
   applyTheme();
 }
 
+// At the old address: say where InFlight went (at most once a day, and from Account any time)
+function movedNote(force) {
+  if (!NEW_HOME) return;
+  try { const last = Number(localStorage.getItem("inflight-movednote") || 0); if (!force && Date.now() - last < DAY) return; localStorage.setItem("inflight-movednote", String(Date.now())); } catch (_) {}
+  if (!force && (S.locked || S.sheet)) return;
+  S.sheet = { type: "moved" }; renderSheet();
+}
+
 async function start() {
   if (document.documentElement.dataset.device === "computer") return notAvailable();
+  // at the old address, signed out in a browser: straight to the new one, with whatever link
+  // brought you (an invite, a reset); a Home Screen app stays, to say how to move (movedNote)
+  if (NEW_HOME && !standalone() && !(await idb.get("session"))?.token) return location.replace(`${NEW_HOME}/${location.hash}`);
   mount();
   textSize(); window.addEventListener("focus", textSize);
   if (/#(open=|requests|account\b|flightlog\b)/.test(location.hash)) { S.pendingLink = location.hash; history.replaceState(null, "", location.pathname); }
@@ -7714,9 +7758,9 @@ async function start() {
       if (S.me && S.me.lat == null) go("locpick");
       else if (S.pendingAdd) { S.sheet = { type: "addfriend" }; renderSheet(); }
       else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
-      refreshPush(); autoLocate();
+      refreshPush(); autoLocate(); movedNote();
     } catch (e) { console.error("start", e); }
-  } else go("welcome");
+  } else { go("welcome"); movedNote(); }
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;

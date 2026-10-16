@@ -3,7 +3,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupsForSync, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -122,7 +122,7 @@ async function sendConfirm(env, u, origin) {
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, tap the button to confirm this is your email address for InFlight. It’s where password resets and any notifications you turn on will go.`,
       "If you didn’t sign up for InFlight, ignore this email: nothing more will be sent."],
     rows: [["Account", `@${u.handle}`]],
-    button: { label: "Confirm Email", url: `${origin}/pigeon/#verify=${token}` },
+    button: { label: "Confirm Email", url: appLink(origin, `#verify=${token}`) },
   });
   await sendEmail(env, { to: u.email, subject: "Confirm your email for InFlight", text, html });
   return true;
@@ -1052,7 +1052,7 @@ async function notifyPasskeyAdded(env, u, label, origin) {
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, a new passkey (“${label}”) was just added to your InFlight account. It can sign you in.`,
       "If this wasn’t you, remove it in Privacy & Security → Passkeys and change your password straight away."],
     rows: [["Account", `@${u.handle}`], ["Passkey", label], ["When", ukTime(Date.now())]],
-    button: { label: "Review Your Passkeys", url: `${origin}/pigeon/#account` },
+    button: { label: "Review Your Passkeys", url: appLink(origin, "#account") },
   });
   await sendEmail(env, { to: u.email, subject: "A passkey was added to your InFlight account", text, html }).catch(() => {});
 }
@@ -1064,7 +1064,7 @@ async function notifyPasswordChanged(env, u, how, origin) {
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, the password for your InFlight account was just changed. Your messages are still safe.`,
       "If this wasn’t you, reply to this email straight away."],
     rows: [["Account", `@${u.handle}`], ["Changed", how], ["When", ukTime(Date.now())]],
-    button: { label: "Review Your Account", url: `${origin}/pigeon/#account` },
+    button: { label: "Review Your Account", url: appLink(origin, "#account") },
   });
   await sendEmail(env, { to: u.email, subject: "Your InFlight password was changed", text, html }).catch(() => {});
 }
@@ -1276,7 +1276,7 @@ async function adminInvite({ request, env }) {
   const token = randomToken(32), D = await db(env), t = Date.now(), hash = hex(await sha256(token));
   await D.prepare("INSERT INTO pg_invites (hash, id, note, created_at) VALUES (?, ?, ?, ?)").bind(hash, hash.slice(0, 16), note, t).run();
   await adminLog(env, "invite-made", null, note || "");
-  return json({ url: `${linkOrigin(request)}/pigeon/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
+  return json({ url: appLink(linkOrigin(request), `#invite=${token}`), message: "Invite link made. Copy it now: it isn’t shown again." });
 }
 async function adminInvites({ request, env }) {
   await requireAdmin(request, env, false);

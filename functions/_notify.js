@@ -15,7 +15,7 @@
 
 import { liveTick } from "./_live.js";
 import { stampPassports } from "./_passport.js";
-import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret } from "./_pigeon.js";
+import { MIN, HOUR, DAY, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
 import { streakTick } from "./_streaks.js";
@@ -173,7 +173,7 @@ export async function friendRequested(env, origin, from, toId) {
       preheader: r.p.names ? `@${from.handle} sent you a friend request.` : "Someone sent you a friend request.",
       lines: [r.p.names ? `${firstName(from.name)} sent you a friend request. Accept it to start sending each other pigeons.` : "Someone sent you a friend request. Open InFlight to see who."],
       rows: r.p.names ? [["From", firstName(from.name)], ["Handle", `@${from.handle}`]] : [],
-      button: { label: "See Request", url: `${origin}/pigeon/#requests` },
+      button: { label: "See Request", url: appLink(origin, "#requests") },
     }).catch(() => {});
 }
 export async function friendAccepted(env, by, toId) {
@@ -621,7 +621,7 @@ export async function tick(env, origin) {
           preheader: p.names ? `From ${list}. Open InFlight to read ${u.n > 1 ? "them" : "it"}.` : `Open InFlight to read ${u.n > 1 ? "them" : "it"}.`,
           rows: [...(p.names ? [["From", list]] : []), ...(u.n > 1 ? [["Pigeons", String(u.n)]] : [])],
           // one sender: straight into their chat; several: the Messages list
-          button: { label: u.n > 1 ? "Read Them" : "Read It", url: `${origin}/pigeon/${String(u.senders || "").includes(",") || !u.senders ? "" : `#open=${u.senders}`}` },
+          button: { label: u.n > 1 ? "Read Them" : "Read It", url: appLink(origin, String(u.senders || "").includes(",") || !u.senders ? "" : `#open=${u.senders}`) },
         });
         emails++;
       } catch (e) { console.error("pigeon notify email", e && e.message); }
@@ -671,7 +671,7 @@ async function weeklyTick(env, D, t, origin) {
         if (await notifyEmail(env, origin, u, "Your week in flight", { icon: "bird", title: "Your week in flight", preheader: w.line,
           rows: [...(w.mi ? [["Miles flown", `${w.mi.toLocaleString("en-GB")} mi`]] : []), ["Pigeons sent", String(w.sent)], ["Pigeons received", String(w.got)],
             ...(w.fresh.length ? [["New badges", w.fresh.join(", ")]] : w.next && w.next.progress > 0 ? [["Next badge", `${w.next.name}, ${Math.round(w.next.progress * 100)}% there`]] : [])],
-          button: { label: "Open Your Flight Log", url: `${origin}/pigeon/#flightlog` } })) out.emails++;
+          button: { label: "Open Your Flight Log", url: appLink(origin, "#flightlog") } })) out.emails++;
       } catch (e) { console.error("pigeon weekly email", e && e.message); }
     }
   }

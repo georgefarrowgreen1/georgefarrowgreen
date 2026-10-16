@@ -684,6 +684,10 @@ export function linkOrigin(request) {
   return /^(localhost|127\.0\.0\.1)$/.test(u.hostname) ? u.origin : SITE;
 }
 // "12 Oct 2026, 22:15" in UK time, for "when" rows
+// Where links into the app point: InFlight's address (chat.georgefarrowgreen.com, since the
+// move), or the app under a local test server. `hash` is what to open: "#reset=…", "#open=…".
+export const APP = "https://chat.georgefarrowgreen.com";
+export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;
 export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
 export function emailBody({ title, lines = [], button, icon = "bird", rows = [], footer, unsub, origin = SITE, preheader }) {
   const text = [title, ...lines, ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
@@ -770,7 +774,7 @@ export async function keyProofOk(reset, pubJson, proof) {
     return await crypto.subtle.verify("HMAC", k, fromB64url(proof), new TextEncoder().encode("inflight/key-proof/v1|reset|" + reset.hash));
   } catch (_) { return false; }
 }
-export const resetUrl = (request, token) => `${linkOrigin(request)}/pigeon/#reset=${token}`;
+export const resetUrl = (request, token) => appLink(linkOrigin(request), `#reset=${token}`);
 export function maskEmail(e) {
   const [a, b] = String(e).split("@");
   return `${a.slice(0, 2)}${"•".repeat(Math.max(1, Math.min(6, a.length - 2)))}@${b}`;

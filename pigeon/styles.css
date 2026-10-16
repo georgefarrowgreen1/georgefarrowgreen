@@ -227,6 +227,7 @@ button.cell:active,label.cell:active{background:var(--fill)}
 
 /* ---------- buttons: capsules ---------- */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:52px;padding:0 24px;border:0;border-radius:999px;background:var(--tint-fill);color:var(--on-tint);font-size:17px;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 18px color-mix(in srgb,var(--tint) 32%,transparent)}
+a.btn{text-decoration:none;box-sizing:border-box}
 .btn svg{font-size:20px}
 .btn.wide{width:100%}
 .btn.tinted,.btn.ghost{background:color-mix(in srgb,var(--tint) 15%,transparent);color:var(--tint);box-shadow:none}
