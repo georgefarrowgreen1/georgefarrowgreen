@@ -986,6 +986,14 @@ show a friendly "backend not set up" message).
 
 ### InFlight's security model
 
+- **Leaked passwords are refused** at sign-up, password change and reset: the
+  phone asks Pwned Passwords (through `/api/pigeon/pwned`, padded) with only
+  the first 5 characters of the password's SHA-1 and checks the answers
+  itself, so neither server ever sees the password or its hash.
+- **New sign-ins are announced:** a push to your other phones and an email
+  (device, country, how), saying how to sign it out.
+- **Approximate Location** (Privacy & Security) keeps your spot to a 10 km
+  grid instead of a 1-mile one.
 - **A copy of the database alone is no use:** each password's proof hash and
   the private key it locks are locked again with `PIGEON_PEPPER`, a secret set
   in Cloudflare (Settings → Variables and Secrets) and never stored in the

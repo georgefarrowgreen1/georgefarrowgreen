@@ -4461,9 +4461,23 @@ async function loadReset() {
   catch (e) { S.resetInfo = { error: e.message }; }
   if (S.view === "reset") render();
 }
+// Has this password turned up in a data breach? Asks Pwned Passwords, through InFlight's
+// server, with only the first 5 characters of its SHA-1, and checks the answers here:
+// neither ever sees the password (k-anonymity). Can't ask: carries on without the check.
+async function leakedCount(pw) {
+  try {
+    const h = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+    const r = await fetch(`/api/pigeon/pwned?p=${h.slice(0, 5)}`, { cache: "no-store" });
+    if (!r.ok) return 0;
+    for (const line of (await r.text()).split("\n")) { const [suf, n] = line.trim().split(":"); if (suf === h.slice(5)) return Number(n) || 0; }
+  } catch (_) { /* no answer: no check */ }
+  return 0;
+}
+const leakedSay = (n) => `This password has turned up in ${n === 1 ? "a data breach" : `${n.toLocaleString("en-GB")} data breaches`}, so it’s one of the first anyone would try. Choose another.`;
 async function resetWith(mode, btn) {
   const pw = $("#f-password")?.value || "";
   if (pw.length < 10) return showErr("Use at least 10 characters.", "password");
+  { const n = await leakedCount(pw); if (n) return showErr(leakedSay(n), "password"); }
   await busyBtn(btn, mode === "keep" ? "Waiting for your passkey…" : "Making your new key…", async () => {
     let ecdh, pub;
     if (mode === "keep") {
@@ -5038,6 +5052,7 @@ function drawSheet(refresh) {
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
           ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, ranks and streaks, and your loft, with your friends", on: u.shareNews !== false })}
+          ${toggleCell({ act: "privacy", id: "approxLocation", icon: I.loc, tile: "blue", label: "Approximate Location", sub: "Keep your spot to about 10 km, not a mile", on: !!u.approxLocation })}
           ${toggleCell({ act: "privacy", id: "shareTracker", icon: I.globe, tile: "indigo", label: "Live Tracker", sub: "Your pigeons on the public map, with no names", on: u.shareTracker !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
@@ -6918,6 +6933,7 @@ async function submitForm(e, form, kind) {
     if (!/^[a-z0-9_]{3,20}$/.test(v.handle)) return showErr("Handles use 3 to 20 letters, numbers or underscores.", "handle");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.email)) return showErr("That doesn’t look like an email address.", "email");
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your password.", "password");
+    { const n = await leakedCount(v.password); if (n) return showErr(leakedSay(n), "password"); }
     const keep = { ...v };
     S.making = 0;
     const fe = $(".ferr"); if (fe) { fe.hidden = true; fe.textContent = ""; }                  // the last attempt's error goes
@@ -6970,6 +6986,7 @@ async function submitForm(e, form, kind) {
   } else if (kind === "changepw") {
     if (!v.current) return showErr("Enter your current password.", "current");
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
+    { const n = await leakedCount(v.password); if (n) return showErr(leakedSay(n), "password"); }
     try {
       await busyBtn(btn, "Changing…", async () => {
         let got;

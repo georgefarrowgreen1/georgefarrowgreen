@@ -2,7 +2,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   swiftState, loft, PIGEONS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
-  HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace,
+  HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace, snapApprox, deviceOf,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
@@ -38,7 +38,7 @@ const MAX_PHOTO = 8 * 1024 * 1024;    // encrypted photo blob
 function meView(u, t) {
   const s = swiftState(u, t), tb = loft(u, "turbo", t), rk = loft(u, "rocket", t), my = loft(u, "mystery", t);
   return { id: u.id, handle: u.handle, name: u.name, email: u.email, pub: JSON.parse(u.pub),
-    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, skin: u.skin || null,
+    lat: u.lat, lon: u.lon, place: u.place, swift: s.count, swiftNextAt: s.nextAt, turbo: tb.count, turboNextAt: tb.nextAt, rocket: rk.count, rocketNextAt: rk.nextAt, mystery: my.count, mysteryNextAt: my.nextAt, avatarAt: u.avatar_at || null, notifyEmail: !!u.notify_email, notify: prefsOf(u), appearance: u.appearance || null, autoLocation: !!u.auto_loc, risky: !!u.risky, locAt: u.loc_at || null, showOnline: !u.hide_online, receipts: !u.no_receipts, shareNews: !u.hide_news, shareTracker: !u.hide_tracker, approxLocation: !!u.loc_approx, skin: u.skin || null,
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
@@ -158,7 +158,7 @@ async function salt({ request, env }) {
   return json({ salt: u ? u.salt : b64url(fake.slice(0, 16)) });
 }
 
-async function login({ request, env }) {
+async function login({ request, env, waitUntil }) {
   const b = await body(request);
   const email = String(b.email || "").trim().toLowerCase();
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
@@ -172,7 +172,9 @@ async function login({ request, env }) {
     await limit(env, acct, 30, 60 * 60e3).catch(() => {});
     throw new HttpError(401, "That email and password don’t match an account.");
   }
-  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
+  const token = await issueSession(env, u.id, request);
+  waitUntil(notifySignIn(env, u, request, "Password", linkOrigin(request)).catch(() => {}));
+  return json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
 }
 
 async function logout({ request, env }) {
@@ -317,8 +319,13 @@ async function updateMe({ request, env, waitUntil }) {
   if (b.receipts !== undefined) await D.prepare("UPDATE pg_users SET no_receipts = ? WHERE id = ?").bind(b.receipts ? 0 : 1, u.id).run();
   if (b.shareNews !== undefined) await D.prepare("UPDATE pg_users SET hide_news = ? WHERE id = ?").bind(b.shareNews ? 0 : 1, u.id).run();
   if (b.shareTracker !== undefined) await D.prepare("UPDATE pg_users SET hide_tracker = ? WHERE id = ?").bind(b.shareTracker ? 0 : 1, u.id).run();
+  // Approximate Location: on, the spot already kept becomes approximate at once (off: precise from the next update)
+  if (b.approxLocation !== undefined) {
+    await D.prepare("UPDATE pg_users SET loc_approx = ? WHERE id = ?").bind(b.approxLocation ? 1 : 0, u.id).run();
+    if (b.approxLocation && u.lat != null && b.lat === undefined) { const a = snapApprox(u.lat, u.lon); await D.prepare("UPDATE pg_users SET lat = ?, lon = ? WHERE id = ?").bind(a.lat, a.lon, u.id).run(); }
+  }
   if (b.lat !== undefined) {
-    const p = cleanPlace(b);
+    const p = cleanPlace(b, b.approxLocation ?? !!u.loc_approx);
     const moved = u.lat == null ? Infinity : haversineKm(u.lat, u.lon, p.lat, p.lon);
     if (u.lat != null && moved > 0.1) await limit(env, "move:" + u.id, 30, 15 * 60e3);   // automatic updates check once a minute
     // (the time it was last updated moves only when you do: "still here" every few minutes would say when the app was open)
@@ -499,7 +506,7 @@ async function passkeyVault({ request, env }) {
   return json({ ok: true });
 }
 
-async function passkeyLogin({ request, env }) {
+async function passkeyLogin({ request, env, waitUntil }) {
   await limit(env, "pklogin:" + clientIp(request), 20, 15 * 60e3);
   const b = await body(request);
   await checkClientData(env, request, b, "webauthn.get", "login");
@@ -510,7 +517,9 @@ async function passkeyLogin({ request, env }) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();
   if (!u) throw new HttpError(401, "This account no longer exists.");
   await D.prepare("UPDATE pg_passkeys SET used_at = ? WHERE id = ?").bind(Date.now(), cred.id).run();
-  return json({ token: await issueSession(env, u.id, request), me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt });
+  const token = await issueSession(env, u.id, request);
+  waitUntil(notifySignIn(env, u, request, "Passkey", linkOrigin(request)).catch(() => {}));
+  return json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt });
 }
 
 async function passkeyDelete({ request, env }) {
@@ -1071,6 +1080,40 @@ async function notifyPasswordChanged(env, u, how, origin) {
   await sendEmail(env, { to: u.email, subject: "Your InFlight password was changed", text, html }).catch(() => {});
 }
 
+// A new sign-in: the account's phones are told at once, and its email too, so a sign-in
+// that wasn't you is seen (Account → Privacy & Security → Signed-in Phones signs it out).
+// Roughly where from is the country, as Cloudflare has it; nothing more is kept.
+async function notifySignIn(env, u, request, how, origin) {
+  const device = deviceOf(request) || "a new phone", cc = request.cf?.country;
+  let where = ""; try { where = cc && cc !== "XX" ? new Intl.DisplayNames(["en-GB"], { type: "region" }).of(cc) : ""; } catch (_) {}
+  if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
+  const on = `${device}${where ? ` in ${where}` : ""}`;
+  await pushTo(env, u.id, { title: "New sign-in", body: `Your InFlight account was signed in on ${on}. Not you? Sign it out in Privacy & Security.`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
+  if (!emailReady(env) || !u.email_ok) return;
+  const { text, html } = emailBody({
+    origin, icon: "shield", title: "A new sign-in",
+    preheader: `@${u.handle} was signed in on ${on}.`,
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, your InFlight account was just signed in on ${on}.`,
+      "If this was you, there’s nothing to do. If not, sign it out in Account → Privacy & Security → Signed-in Phones and change your password."],
+    rows: [["Account", `@${u.handle}`], ["On", device], ...(where ? [["Where", where.replace(/^the /, "")]] : []), ["How", how], ["When", ukTime(Date.now())]],
+    button: { label: "Review Your Account", url: appLink(origin, "#account") },
+  });
+  await sendEmail(env, { to: u.email, subject: "A new sign-in to InFlight", text, html }).catch(() => {});
+}
+
+// Has a password turned up in a data breach? Pwned Passwords, asked through here with
+// only the first 5 characters of the password's SHA-1 (k-anonymity): the phone checks
+// the answers itself, so neither this server nor theirs ever sees the password or its
+// hash. Padded, so the answer's size says nothing either. Nothing is kept of the asking.
+async function pwned({ request, env }) {
+  await limit(env, "pwned:" + clientIp(request), 40, 15 * 60e3);
+  const p = new URL(request.url).searchParams.get("p") || "";
+  if (!/^[0-9A-F]{5}$/.test(p)) throw new HttpError(400, "Send the first 5 characters of the hash.");
+  const r = await fetch(`${env.PWNED_URL || "https://api.pwnedpasswords.com"}/range/${p}`, { headers: { "Add-Padding": "true", "User-Agent": "InFlight (chat.georgefarrowgreen.com)" } }).catch(() => null);
+  const text = r?.ok ? await r.text() : "";                 // (not reachable: the phone carries on without the check)
+  return new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+}
+
 async function changePassword({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "pwchange:" + u.id, 10, 60 * 60e3);
@@ -1385,7 +1428,7 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
+  "POST password": changePassword, "GET pwned": pwned, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
   "POST admin-test-email": adminTestEmail,

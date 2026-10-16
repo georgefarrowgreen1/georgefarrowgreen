@@ -260,7 +260,8 @@ const MIGRATIONS = [
   // mystery pigeons: the loft (null = full) and which messages flew as one
   "ALTER TABLE pg_stamped ADD COLUMN marks TEXT",
   "ALTER TABLE pg_users ADD COLUMN hide_news INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE pg_users ADD COLUMN hide_tracker INTEGER NOT NULL DEFAULT 0",   // keep my pigeons off the public live tracker (functions/_tracker.js)
+  "ALTER TABLE pg_users ADD COLUMN hide_tracker INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE pg_users ADD COLUMN loc_approx INTEGER NOT NULL DEFAULT 0",   // keep my spot to about 10 km, not a mile   // keep my pigeons off the public live tracker (functions/_tracker.js)
   "ALTER TABLE pg_users ADD COLUMN pins TEXT",
   // view-once photos: once = 1 (or null, sent before) means each recipient may download it once; viewed_at = when they did
   "ALTER TABLE pg_msgs ADD COLUMN once INTEGER", "ALTER TABLE pg_msgs ADD COLUMN viewed_at INTEGER",
@@ -628,6 +629,7 @@ export async function handleTaken(D, handle, me = null) {
 }
 export const holdHandle = (D, handle, userId) =>
   D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) VALUES (?, ?, ?)").bind(handle, userId, Date.now() + 30 * DAY);
+export const snapApprox = (lat, lon) => snapTo(lat, lon, APPROX_KM);
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function cleanPub(p) {
   const ok = p && p.kty === "EC" && p.crv === "P-256" && /^[A-Za-z0-9_-]{43}$/.test(p.x || "") && /^[A-Za-z0-9_-]{43}$/.test(p.y || "");
@@ -636,19 +638,22 @@ export function cleanPub(p) {
 }
 // Locations are snapped to a 1-mile grid (about 1.6 km each way, anywhere on
 // Earth): plenty for flight times, too coarse to find someone's street.
-const MILE_DEG = 1.609344 / 111.32;            // degrees of latitude in a mile
-export function snapToMile(lat, lon) {
-  const la = Math.max(-90, Math.min(90, Math.round(lat / MILE_DEG) * MILE_DEG));
-  const step = MILE_DEG / Math.max(Math.cos(la * Math.PI / 180), 0.01);
+// (Approximate Location, in Privacy & Security, makes it a 10 km grid instead.)
+const MILE_KM = 1.609344, APPROX_KM = 10;
+export const snapToMile = (lat, lon) => snapTo(lat, lon, MILE_KM);
+export function snapTo(lat, lon, km) {
+  const deg = km / 111.32;                   // degrees of latitude in that many km
+  const la = Math.max(-90, Math.min(90, Math.round(lat / deg) * deg));
+  const step = deg / Math.max(Math.cos(la * Math.PI / 180), 0.01);
   let lo = Math.round(lon / step) * step; if (lo > 180) lo -= 360; if (lo < -180) lo += 360;
   return { lat: Math.round(la * 1e5) / 1e5, lon: Math.round(lo * 1e5) / 1e5 };
 }
-export function cleanPlace(b) {
+export function cleanPlace(b, approx = false) {
   const lat = Number(b.lat), lon = Number(b.lon);
   if (b.lat == null || b.lon == null || b.lat === "" || b.lon === "" || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "That location isn’t valid.");
   // the place name goes into friends' notifications: plain words only
   const place = String(b.place || "").normalize("NFC").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
-  return { ...snapToMile(lat, lon), place: place && !/[@\\<>]|:\/\/|www\./i.test(place) ? place : null };
+  return { ...snapTo(lat, lon, approx ? APPROX_KM : MILE_KM), place: place && !/[@\\<>]|:\/\/|www\./i.test(place) ? place : null };
 }
 
 /* ---------------- email (Resend) ----------------
