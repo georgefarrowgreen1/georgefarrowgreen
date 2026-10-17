@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.4";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.5";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2137,6 +2137,22 @@ const safetyCode = (digits) => `inflight-safety:1:${(digits || []).join("")}`;
 const isVerified = (p) => !!p?.pub && !p.keyChanged && S.pins["v:" + p.id] === keyId(p.pub);
 const wasVerified = (p) => !!p?.keyChanged && !!S.pins["v:" + p.id];         // verified, and their key has changed since
 function setVerified(p, on) { if (on) S.pins["v:" + p.id] = keyId(p.pub); else delete S.pins["v:" + p.id]; savePins(); }
+const safeState = (p) => p?.keyChanged ? "warn" : isVerified(p) ? "ok" : "none";
+// A key you can know at a glance: its fingerprint drawn as a 5×5 pattern, mirrored like a face, in two colours
+// of its own. A different key looks different, without reading 32 characters.
+function keyArt(fp, cls = "") {
+  const b = (fp || "").replace(/\s/g, "").match(/../g)?.map((h) => parseInt(h, 16)) || [];
+  if (b.length < 16) return "";
+  const hue = Math.round(((b[0] << 8 | b[1]) / 65536) * 360), hue2 = (hue + 40 + (b[2] % 80)) % 360;
+  let cells = "";
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++) {
+    const v = b[3 + r * 3 + c];
+    if (v < 100) continue;                                            // about three in five are filled
+    const fill = v & 1 ? `hsl(${hue2} 70% 55%)` : `hsl(${hue} 72% 48%)`;
+    for (const x of c === 2 ? [2] : [c, 4 - c]) cells += `<rect x="${x * 10 + 1}" y="${r * 10 + 1}" width="8" height="8" rx="2.4" fill="${fill}"/>`;
+  }
+  return `<svg class="keyart ${cls}" viewBox="0 0 50 50" role="img" aria-label="Your key, as a pattern"><rect width="50" height="50" rx="12" fill="hsl(${hue} 60% 50% / .12)"/>${cells}</svg>`;
+}
 function stopScan() { if (!S.scan) return; S.scan.on = false; S.scan.stream?.getTracks().forEach((t) => t.stop()); S.scan = null; }
 async function startScan(p, want) {
   stopScan();
@@ -2161,7 +2177,7 @@ async function startScan(p, want) {
     }
     if (text?.startsWith("inflight-safety:")) {
       stopScan();
-      if (text === want) { setVerified(p, true); haptic("success"); toast(`Verified. Your safety numbers match, so only you and ${esc(first(p.name))} can read your messages.`); S.sheet = { ...S.sheet.back }; return renderSheet(); }
+      if (text === want) { setVerified(p, true); haptic("success"); toast(`Verified. Your safety numbers match, so only you and ${esc(first(p.name))} can read your messages.`); S.sheet = { ...S.sheet.back, won: performance.now() }; return renderSheet(); }
       haptic("heavy"); S.sheet = { ...S.sheet, bad: true }; return renderSheet();
     }
     setTimeout(look, 150);
@@ -2366,6 +2382,12 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.5", at: Date.UTC(2026, 9, 22), title: "Safer, at a glance", items: [
+    ["shield", "green", "How protected you are", "Privacy & Security opens with a shield that fills as you confirm your email, add a passkey and lock InFlight, with anything left a tap away."],
+    ["lock", "teal", "What encryption means", "Encryption shows how your pigeons are sealed, your key as a pattern you’d know, and where you stand with each friend: verified, not checked, or their key changed."],
+    ["check", "blue", "Verify together", "A friend’s safety number shows plainly whether you’ve checked, and scanning their code marks it with a moment of its own."],
+    ["key", "indigo", "Passkeys explained", "What a passkey does for you, and when each one was last used."],
+  ] },
   { v: "1.2.4", at: Date.UTC(2026, 9, 21), title: "Look up, closer", items: [
     ["compass", "teal", "Its whole way", "Look Up draws the pigeon’s way across your sky: where it set off, the part it has flown, and the rest of the way to where it lands."],
     ["loc", "blue", "From where you are", "Tap Where I Am to measure from where you are now instead of your profile’s place. It’s used only while Look Up is open and never leaves your phone."],
@@ -5292,16 +5314,28 @@ function drawSheet(refresh) {
       return;
     }
     case "safety": {
-      const f = personById(s.id), nm = esc(first(f?.name || "your friend")), ver = isVerified(f);
+      // Verify in person: who they are and where you stand at the top, then the two ways to check (scan each
+      // other's code, or read out the digits), and a moment of celebration when they match
+      const f = personById(s.id), nm = esc(first(f?.name || "your friend")), st = safeState(f), won = s.won && performance.now() - s.won < 1600;
+      const say = { ok: `<span class="verified">${I.check}Verified in person</span>`, warn: `<span class="safesay">${I.warn}Their key changed</span>`, none: `<span class="safesay">Not verified yet</span>` }[st];
+      const digits = `<div class="group safedig"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div>
+        <button type="button" class="safecopy" data-act="safecopy">Copy</button></div>`;
       $layer.innerHTML = sheetHtml("Safety Number", `
-        <div class="profile-head">${avatar(f, "l")}<span class="name">${esc(first(f?.name || ""))}</span>${ver ? `<span class="verified">${I.check}Verified in person</span>` : ""}</div>
-        ${f?.keyChanged ? "" : `<div class="safeqr"><div class="qrbox">${qrSvg(safetyCode(s.digits), { title: `Your safety number with ${nm}, as a QR code` })}</div></div>`}
-        <div class="group mt-s"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div></div>
-        <div class="gfoot">${f?.keyChanged ? "" : `Together, scan each other’s code, or compare these 60 digits in person or on a call. `}If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>
-        ${!f?.keyChanged ? `<div class="group mt">${ver ? cell({ act: "unverify", id: f.id, label: "Clear Verification", cls: "center destructive" })
-          : `${cell({ act: "scansafe", id: f.id, icon: I.camera, tile: "blue", label: "Scan Their Code" })}${cell({ act: "verifyok", id: f.id, icon: I.check, tile: "green", label: "Mark as Verified", sub: "The 60 digits match on both phones" })}`}</div>` : ""}
+        <div class="profile-head safehero s-${st}${won ? " won" : ""}"><span class="safering">${avatar(f, "l")}<span class="safebadge" aria-hidden="true">${st === "warn" ? I.warn : st === "ok" ? I.check : I.shield}</span>
+          ${won ? `<svg class="safewin" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47"/></svg>` : ""}</span>
+          <span class="name">${esc(first(f?.name || ""))}</span>${say}</div>
         ${f?.keyChanged ? `<div class="warn sheetwarn"><span>${wasVerified(f) ? `You verified ${nm} in person, and their key has changed since. Don’t trust it until you’ve verified again, together.` : `${esc(first(f.name))}’s key changed. Only trust it once these digits match on both phones.`}</span></div>
-          <div class="group mt">${cell({ act: "trustsafe", id: f.id, label: "They Match: Trust New Key", cls: "center action" })}</div>` : ""}`,
+          ${digits}<div class="group mt">${cell({ act: "trustsafe", id: f.id, label: "They Match: Trust New Key", cls: "center action" })}</div>`
+        : st === "ok" ? `<div class="safedone"><span class="tile green" aria-hidden="true">${I.check}</span><span class="wnt"><b>You checked together</b><small>Your safety numbers matched, so only you and ${nm} can read your messages. If ${nm}’s key ever changes, you’ll be told.</small></span></div>
+          <div class="ghead">Your Safety Number</div>${digits}
+          <div class="group mt">${cell({ act: "unverify", id: f.id, label: "Clear Verification", cls: "center destructive" })}</div>`
+        : `<div class="safecard"><div class="safestep"><span class="stepn">1</span><span class="wnt"><b>Scan each other’s code</b><small>Hold your phones up together, or on a video call.</small></span></div>
+            <div class="safeqr"><div class="qrbox">${qrSvg(safetyCode(s.digits), { title: `Your safety number with ${nm}, as a QR code` })}</div></div>
+            <button type="button" class="btn wide" data-act="scansafe" data-id="${esc(f.id)}">${I.camera}Scan ${nm}’s Code</button></div>
+          <div class="safestep out"><span class="stepn">2</span><span class="wnt"><b>Or compare these 60 digits</b><small>Read them out to each other. They’re the same on both phones.</small></span></div>
+          ${digits}
+          <div class="group mt">${cell({ act: "verifyok", id: f.id, icon: I.check, tile: "green", label: "Mark as Verified", sub: "The 60 digits match on both phones" })}</div>
+          <div class="gfoot">If they match, only the two of you can read your messages. Not even the server could swap in a different key.</div>`}`,
         { left: s.from ? { label: "Back", act: s.from, id: s.backId } : null });
       return;
     }
@@ -5315,44 +5349,78 @@ function drawSheet(refresh) {
       return;
     }
     case "security": {
-      const u = S.me;
-      $layer.innerHTML = sheetHtml("Privacy & Security", `<div class="group mt-s">
-          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed yet</span>' : "" })}
-          ${u.emailOk === false && S.emailOn ? cell({ act: "confirmsend", label: "Send Confirm Link Again", cls: "action" }) : ""}
-          ${cell({ act: "encryptionsheet", icon: I.lock, tile: "green", label: "Encryption", val: "On", chev: true })}
-          ${cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || (passkeysSupported() ? "Off" : ""), chev: true })}
+      // How protected you are at a glance, with each thing still to do a tap away; then the settings, grouped
+      const u = S.me, pk = passkeysSupported() || S.passkeys.length, lock = !!lockPrefs();
+      const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
+      const checks = [
+        { ok: true, label: "Messages end-to-end encrypted" },
+        { ok: u.emailOk !== false, label: u.emailOk === false ? "Confirm your email" : "Email confirmed", act: S.emailOn ? "confirmsend" : null, go: "Send Link" },
+        pk && { ok: S.passkeys.length > 0, label: S.passkeys.length ? `Passkey saved${S.passkeys.length > 1 ? ` (${S.passkeys.length})` : ""}` : "Add a passkey", act: "passkeys", go: "Add" },
+        passkeysSupported() && { ok: lock, label: lock ? "InFlight locks on this phone" : "Lock InFlight on this phone", act: "applock", go: "Turn On" },
+      ].filter(Boolean);
+      const todo = checks.filter((c) => !c.ok).length, frac = (checks.length - todo) / checks.length;
+      const row = (c) => `<${c.ok || !c.act ? "div" : `button type="button" data-act="${c.act}"`} class="secrow${c.ok ? " ok" : ""}"><span class="secdot" aria-hidden="true">${c.ok ? I.check : ""}</span><span class="sect">${c.label}</span>${!c.ok && c.act ? `<span class="secgo">${c.go}</span>` : ""}</${c.ok || !c.act ? "div" : "button"}>`;
+      const ring = `<svg viewBox="0 0 64 64" aria-hidden="true"><circle class="trk" cx="32" cy="32" r="28"/><circle class="arc" cx="32" cy="32" r="28" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/></svg>`;
+      $layer.innerHTML = sheetHtml("Privacy & Security", `
+        <div class="secard ${todo ? "todo" : "ok"}">
+          <div class="sectop"><span class="secshield">${ring}${I.shield}</span><span class="wnt"><b>${todo ? `${todo} Thing${todo > 1 ? "s" : ""} to Do` : "Well Protected"}</b><small>${todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on."}</small></span></div>
+          <div class="seclist">${checks.map(row).join("")}</div>
+        </div>
+        <div class="ghead">Account</div>
+        <div class="group">
+          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed</span>' : "" })}
+          ${pk ? cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || "Off", chev: true }) : ""}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
+        </div>
+        <div class="ghead">Encryption</div>
+        <div class="group">
+          <button type="button" class="cell has-icon" data-act="encryptionsheet">${keyArt(S.fp, "tile")}<span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified` : "On for every message"}</span></span>${chevSm}</button>
+        </div>
+        <div class="ghead">This Phone</div>
+        <div class="group">
+          ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : "Face ID, Touch ID or your passkey", on: lock }) : ""}
+          ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
+            <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
           ${cell({ act: "sessionssheet", icon: I.phone, tile: "blue", label: "Signed-In Phones", chev: true })}
         </div>
-        ${passkeysSupported() ? `<div class="ghead">This Phone</div>
-        <div class="group">
-          ${toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: "Face ID, Touch ID or your passkey", on: !!lockPrefs() })}
-          ${lockPrefs() ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
-            <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
-        </div>
-        <div class="gfoot">${lockPrefs() ? "InFlight locks when you leave it, and hides your chats in the app switcher." : "Lock InFlight when you leave it. Unlocking happens on this phone, so it works with no signal too."}</div>` : ""}
-        <div class="ghead">Privacy</div>
+        <div class="ghead">Who Sees What</div>
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
-          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, ranks and streaks, and your loft, with your friends", on: u.shareNews !== false })}
+          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, ranks and streaks, and your loft", on: u.shareNews !== false })}
           ${toggleCell({ act: "privacy", id: "approxLocation", icon: I.loc, tile: "blue", label: "Approximate Location", sub: "Keep your spot to about 10 km, not a mile", on: !!u.approxLocation })}
           ${toggleCell({ act: "privacy", id: "shareTracker", icon: I.globe, tile: "indigo", label: "Live Tracker", sub: "Your pigeons on the public map, with no names", on: u.shareTracker !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
-        <div class="gfoot">The live tracker (chat.georgefarrowgreen.com/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</div>
-        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`);
+        <details class="learn"><summary>How the live tracker works</summary><p>The tracker (chat.georgefarrowgreen.com/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</p></details>`);
       return;
     }
-    case "encryption":
+    case "encryption": {
+      // What end-to-end encryption means here, in three steps; your key as a pattern you'd know; and where you
+      // stand with each friend, a tap from their safety number
+      const st = (f) => safeState(f), order = { warn: 0, none: 1, ok: 2 };
+      const fr = [...S.friends].sort((a, b) => order[st(a)] - order[st(b)] || a.name.localeCompare(b.name)), ver = fr.filter((f) => st(f) === "ok").length;
+      const pill = { ok: `<span class="spill ok">${I.check}Verified</span>`, warn: `<span class="spill bad">${I.warn}Key changed</span>`, none: `<span class="spill">Not checked</span>` };
+      const step = ([ic, tile, title, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${title}</b><small>${sub}</small></span></div>`;
       $layer.innerHTML = sheetHtml("Encryption", `
-        <div class="group mt-s">
-          ${cell({ icon: I.lock, tile: "green", label: "Your Encryption Key", sub: `<span class="mono">${S.fp.split(" ").slice(0, 4).join(" ")}<br>${S.fp.split(" ").slice(4).join(" ")}</span>` })}
-          ${cell({ act: "safetylist", icon: I.shield, tile: "teal", label: "Safety Numbers", chev: true })}
-        </div>
-        <div class="e2e">${I.lock}<span>End-to-end encrypted</span></div>`, { left: { label: "Back", act: "securitysheet" } });
+        <div class="wnhero enchero"><span class="wnlogo" aria-hidden="true">${I.lock}</span><h2>End-to-End Encrypted</h2><p>Only you and the people you write to can read your pigeons. Not InFlight, and no one in between.</p></div>
+        <div class="ghead">How It Works</div>
+        <div class="group encsteps"><div class="wnlist">${[
+          ["key", "indigo", "Your key is made on your phone", "A locked copy lets you sign in on a new phone. Only your password or passkey opens it."],
+          ["lock", "green", "Every pigeon is sealed before it flies", "Messages, photos, voice and reactions. The server only carries sealed scrolls it can’t open."],
+          ["shield", "teal", "Safety numbers prove it’s them", "Compare yours with a friend’s, and no one could have swapped in a different key."],
+        ].map(step).join("")}</div></div>
+        <div class="ghead">Your Key</div>
+        <div class="group"><button type="button" class="cell keycell" data-act="copyfp">${keyArt(S.fp, "big")}<span class="ctext"><span>This account’s key</span><span class="csub mono">${S.fp.split(" ").slice(0, 4).join(" ")}<br>${S.fp.split(" ").slice(4).join(" ")}</span></span><span class="val">Copy</span></button></div>
+        <div class="gfoot">It changes only if you reset your password without a passkey, or make a new account. Your friends are told if it does.</div>
+        ${fr.length ? `<div class="ghead">Friends <span class="gcount">${ver} of ${fr.length} verified</span></div>
+          <div class="group">${fr.map((x) => `<button type="button" class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="encryptionsheet">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${pill[st(x)]}${chevSm}</button>`).join("")}</div>
+          <div class="gfoot">Verify a friend together, in person or on a video call: tap them, then scan their code or compare the digits.</div>`
+        : `<p class="empty"><b>No friends yet</b>Once you add a friend, you can check your safety number with them here.</p>`}`, { left: { label: "Back", act: "securitysheet" } });
+      $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
+    }
     case "safetylist":
       $layer.innerHTML = sheetHtml("Safety Numbers", S.friends.length
         ? `<div class="ghead">Choose a friend</div><div class="group">${S.friends.map((x) => `<button class="cell" data-act="safety" data-id="${esc(x.id)}" data-from="safetylist">${avatar(x, "s")}<span class="ctext"><span class="one">${esc(first(x.name))}</span></span>${chevSm}</button>`).join("")}</div>
@@ -5799,11 +5867,16 @@ function drawSheet(refresh) {
       return;
     }
     case "passkeys":
-      $layer.innerHTML = sheetHtml("Passkeys", `
-        ${S.passkeys.length ? `<div class="ghead">Saved passkeys</div><div class="group">${S.passkeys.map((p) => `<div class="cell has-icon"><span class="tile indigo">${I.key}</span><span class="ctext"><span>${esc(p.label || "Passkey")}</span><span class="csub">Added ${fmtDate(p.createdAt)}</span></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}</div>` : ""}
-        ${passkeysSupported() ? `<div class="group ${S.passkeys.length ? "mt" : "mt-s"}">${cell({ act: "pkadd", icon: I.plus, tile: "indigo", label: "Add a Passkey", cls: "action" })}</div>
-          <div class="gfoot">Passkeys let you sign in with Face ID or your fingerprint. On newer phones they also unlock your messages, so a password reset can keep them.</div>`
-          : `<p class="empty"><b>Not available</b>This browser can’t save passkeys.</p>`}`, { left: { label: "Back", act: "securitysheet" } });
+      $layer.innerHTML = sheetHtml("Passkeys", !passkeysSupported() && !S.passkeys.length ? `<p class="empty"><b>Not available</b>This browser can’t save passkeys.</p>`
+        : S.passkeys.length ? `<div class="ghead">Saved Passkeys</div><div class="group">${S.passkeys.map((p) => `<div class="cell has-icon"><span class="tile indigo">${I.key}</span><span class="ctext"><span>${esc(p.label || "Passkey")}</span><span class="csub">Added ${fmtDate(p.createdAt)}${p.usedAt ? ` · used ${esc(agoText(p.usedAt))}` : ""}${p.unlocks ? " · unlocks messages" : ""}</span></span><button class="link danger" data-act="pkdel" data-id="${esc(p.id)}">Remove</button></div>`).join("")}</div>
+          ${passkeysSupported() ? `<div class="group mt">${cell({ act: "pkadd", icon: I.plus, tile: "indigo", label: "Add Another Passkey", cls: "action" })}</div>` : ""}
+          <div class="gfoot">Sign in with Face ID or your fingerprint. A passkey that unlocks your messages keeps them safe through a password reset.</div>`
+        : `<div class="wnhero pkhero"><span class="wnlogo" aria-hidden="true">${I.face}</span><h2>No Password to Forget</h2><p>Sign in with Face ID or your fingerprint, the way you unlock your phone.</p></div>
+          <div class="wnlist">${[["lock", "green", "Safer than a password", "Nothing to guess, reuse or type into the wrong site."],
+            ["key", "indigo", "Keeps your messages", "On newer phones it also unlocks them, so a password reset doesn’t lose them."],
+            ["face", "teal", "Lets InFlight lock", "Lock InFlight when you leave it, and open it with a glance."]].map(([ic, tile, t, sub], i) => `<div class="wnrow" data-i="${i}"><span class="tile ${tile}" aria-hidden="true">${I[ic]}</span><span class="wnt"><b>${t}</b><small>${sub}</small></span></div>`).join("")}</div>
+          <div class="wnfoot"><button type="button" class="btn wide" data-act="pkadd">${I.plus}Add a Passkey</button></div>`, { left: { label: "Back", act: "securitysheet" } });
+      $layer.querySelectorAll(".wnrow").forEach((el) => el.style.setProperty("--i", el.dataset.i));
       return;
     case "reauth":
       if (!$("#reauth-form", $layer)) $layer.innerHTML = sheetHtml("Confirm It’s You", `<p class="gfoot mt-s">For your safety, enter your password to carry on.</p>
@@ -7290,7 +7363,9 @@ async function onClick1(e, t) {
     }
     case "scansafe": { const back = S.sheet?.type === "scan" ? S.sheet.back : S.sheet; S.sheet = { type: "scan", id, back }; return renderSheet(); }
     case "scanback": { stopScan(); S.sheet = S.sheet?.back ? { ...S.sheet.back } : null; return renderSheet(); }
-    case "verifyok": { const p = personById(id); if (!p) return; setVerified(p, true); haptic("success"); toast(`${esc(first(p.name))} is verified.`); return renderSheet(); }
+    case "verifyok": { const p = personById(id); if (!p) return; setVerified(p, true); haptic("success"); toast(`${esc(first(p.name))} is verified.`); if (S.sheet?.type === "safety") S.sheet.won = performance.now(); return renderSheet(); }
+    case "safecopy": { const d = (S.sheet?.digits || []).join(" "); try { await navigator.clipboard.writeText(d); toast("Safety number copied."); } catch (_) { toast(esc(d)); } return; }
+    case "copyfp": try { await navigator.clipboard.writeText(S.fp); toast("Key copied."); } catch (_) { toast(esc(S.fp)); } return;
     case "unverify": { const p = personById(id); if (!p) return; setVerified(p, false); toast("Verification cleared."); return renderSheet(); }
     case "trustsafe": { await trustNewKey(id); haptic("success"); toast("Trusted. Messages can go to them again."); S.sheet = null; return renderSheet(); }
     case "chatmenu": {

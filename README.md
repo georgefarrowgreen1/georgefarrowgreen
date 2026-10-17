@@ -146,9 +146,11 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.4
+## InFlight (chat.georgefarrowgreen.com) — 1.2.5
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.2.5** (safer, at a glance): Privacy & Security opens with a status card (encryption, email confirmed, a passkey, App Lock on this phone; a ring that fills as each is done, each one left a tap away), then Account, Encryption, This Phone and Who Sees What; the live tracker's small print folds away. Encryption explains the three steps (the key made on the phone and its locked copy, every pigeon sealed, safety numbers), draws your key's fingerprint as a mirrored 5×5 pattern (`keyArt`), and lists each friend as verified, not checked or key changed. Safety Number puts the friend in a ring of that colour, with scan or compare as two steps, a green ring drawn when a scan matches, and a plain "You checked together" once verified. Passkeys explains itself when there are none, and shows when each was last used.
 
 **1.2.4** (look up, closer): Look Up draws the pigeon's whole way across your sky (80 points along its route, each seen from where you are: flown solid, the rest dashed, the ends named); Where I Am measures from the phone's own location instead of the profile's place, only while Look Up is open, never stored or sent (`watchPosition`, cleared on leaving); the camera prefers the plain main back camera over a combined, ultra-wide or telephoto one, and takes the lens's field of view from what it is and any zoom the phone reports.
 
