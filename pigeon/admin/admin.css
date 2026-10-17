@@ -70,3 +70,38 @@ form[data-f=delete] .stack{padding:18px 16px 0}
 .adm-auth .sub{text-align:center;margin:0 28px 24px!important}
 .adm-auth .stack{margin-top:18px;padding:0 16px}
 .adm-auth .btn .ico{font-size:20px}
+
+/* Insights: the figures, a column chart per measure (one per London day), and rows with their share as a bar.
+   The columns' blue is the app's tint, checked against the cell in each theme (lighter steps fail on dark) */
+.admin{--viz:#0068e8;--viz-on:#0054c4}
+:root[data-theme="dark"] .admin{--viz:#2f86f0;--viz-on:#5aabff}
+@media (prefers-color-scheme: dark){:root[data-theme="auto"] .admin{--viz:#2f86f0;--viz-on:#5aabff}}
+.kpis.ins{margin:2px 16px 0}
+.ins-foot{margin-bottom:20px}
+.charts{padding:4px 0}
+.chart{position:relative;padding:14px 18px 12px}
+.chart + .chart::before{content:"";position:absolute;top:0;left:18px;right:0;height:.5px;background:var(--sep)}
+.chead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.chead b{font-size:16px;font-weight:600}
+.chead span{font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.cplot{position:relative;height:96px;border-bottom:1px solid var(--sep);border-top:1px dashed color-mix(in srgb,var(--sep) 80%,transparent)}
+.ctop{position:absolute;left:0;top:3px;font-size:11px;color:var(--label-3);font-variant-numeric:tabular-nums}
+.cbars{position:absolute;inset:0;display:flex;align-items:stretch;gap:2px}
+.cslot{flex:1;min-width:0;display:flex;align-items:flex-end;justify-content:center;cursor:default;touch-action:manipulation}
+.cslot i{display:block;width:100%;max-width:24px;border-radius:4px 4px 0 0;background:var(--viz);transition:background .15s}
+.cslot.now i{background:repeating-linear-gradient(135deg,var(--viz) 0 3px,color-mix(in srgb,var(--viz) 55%,transparent) 3px 6px)}
+.cslot.on i{background:var(--viz-on)}
+.cslot.on{background:color-mix(in srgb,var(--label) 5%,transparent);border-radius:4px}
+.ctip{position:absolute;bottom:calc(100% + 6px);transform:translateX(-50%);padding:6px 10px;border-radius:12px;background:var(--cell);box-shadow:0 4px 18px rgba(0,0,0,.16),0 0 0 .5px var(--sep);white-space:nowrap;font-size:13px;pointer-events:none;z-index:2;display:flex;gap:6px;align-items:baseline}
+.ctip b{font-variant-numeric:tabular-nums}
+.ctip span{color:var(--label-2)}
+.caxis{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--label-3)}
+.meters{padding:6px 0}
+.meter{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;align-items:center;gap:12px;min-height:40px;padding:4px 18px;font-size:15px}
+.meter.none{display:block;color:var(--label-2);padding:10px 18px}
+.ml{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mbar{height:8px;border-radius:4px;background:color-mix(in srgb,var(--viz) 13%,transparent);overflow:hidden}
+.mbar i{display:block;height:100%;border-radius:4px;background:var(--viz)}
+.mv{min-width:7.5ch;text-align:right;font-size:14px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.cell .warnc{color:var(--red);font-weight:600}
+@media (max-width:520px){.meter{grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) auto;gap:10px;font-size:14px}}

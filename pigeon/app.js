@@ -5382,7 +5382,7 @@ function drawSheet(refresh) {
         <div class="ghead">Encryption</div>
         <div class="group">
           <button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
-            ${S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b style="width:${((ver / S.friends.length) * 100).toFixed(1)}%"></b></i>` : ""}</span>${chevSm}</button>
+            ${S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b data-w="${((ver / S.friends.length) * 100).toFixed(1)}"></b></i>` : ""}</span>${chevSm}</button>
         </div>
         <div class="ghead">This Phone</div>
         <div class="group">
@@ -5402,6 +5402,7 @@ function drawSheet(refresh) {
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
         <details class="learn"><summary>How the live tracker works</summary><p>The tracker (chat.georgefarrowgreen.com/tracker, on a computer) shows pigeons in the air as rough dots: never a name, a message, a route, or anywhere near where one set off, stops or lands. A pigeon shows only if both you and your friend leave this on.</p></details>`);
+      const vb = $(".vbar b", $layer); if (vb) vb.style.width = `${vb.dataset.w}%`;     // (set here: the page allows no inline styles)
       return;
     }
     case "encryption": {

@@ -55,6 +55,9 @@ const I = {
   gift: ico(`<rect x="4" y="9" width="16" height="11" rx="2"/><path d="M3.5 9h17M12 9v11M12 9c-1.5-3.5-5.5-4-5.5-1.5S10 9 12 9Zm0 0c1.5-3.5 5.5-4 5.5-1.5S14 9 12 9Z"/>`),
   db: ico(`<ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6M5 12v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-6"/>`),
   plane: ico(`<path d="M20 4 4 10.8l6.9 2.3L13.2 20Z"/>`),
+  chart: ico(`<path d="M5 20V11M10 20V5M15 20v-7M20 20V8"/>`),
+  check: ico(`<path d="m5 12.5 4.5 4.5L19 7.5"/>`),
+  warn: ico(`<path d="M12 4 2.8 19.5h18.4Z"/><path d="M12 10v4.5M12 17.2v.3"/>`),
 };
 
 /* ---------- talking to the server ---------- */
@@ -174,8 +177,9 @@ function render() {
     </div>
     <div class="gfoot">${!A.email ? "Add <b>RESEND_API_KEY</b> in Cloudflare to switch reset emails on. Until then, use “Make a Reset Link” on an account."
       : testSender ? `Emails can only reach your own Resend address until you verify your domain and set PIGEON_FROM. Tests go to ${esc(A.testTo)}.` : `Sent from ${esc(A.from)}.`}</div>
-    <div class="ghead">Storage</div>
-    <div class="group">${cell({ a: "storage", icon: I.db, tile: "indigo", label: "Storage", sub: "What’s kept, and how much", chev: true })}</div>
+    <div class="ghead">Insights &amp; Storage</div>
+    <div class="group">${cell({ a: "insights", icon: I.chart, tile: "blue", label: "Insights", sub: "Who uses it, how often, and what for", chev: true })}
+      ${cell({ a: "storage", icon: I.db, tile: "indigo", label: "Storage", sub: "What’s kept, and how much", chev: true })}</div>
     <div class="ghead">Recent Activity</div>
     <div class="group">${A.log.slice(0, 5).map(logRow).join("") || cell({ label: "Nothing yet", cls: "muted" })}
       ${A.log.length > 5 ? cell({ a: "activity", label: "Show All", chev: true, cls: "blue" }) : ""}</div>
@@ -264,16 +268,108 @@ async function loadStorage() {
   catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); A.storageErr = err.message; }
   if (A.sheet?.type === "storage") drawSheet();
 }
+/* ---------- insights: how InFlight is used, in totals (functions/_insights.js) ---------- */
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const KINDS = { standard: "Standard", swift: "Swift", turbo: "Turbo", rocket: "Rocket", dumb: "Dumb (the secret one)", lunar: "Lunar", laser: "Laser", orbital: "Orbital" };
+const insDay = (i, o = {}) => new Date(A.ins.firstDay + i * 864e5 + 12 * 3600e3).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/London", ...o });
+// a nice round top for a column chart's scale: 1, 2, 5 × 10ⁿ
+const niceTop = (v) => { if (v <= 4) return Math.max(1, v); const p = 10 ** Math.floor(Math.log10(v)); return [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => m >= v); };
+// One measure over the last 30 days as columns (one per London day, today last), each with a tooltip, and the
+// same figures as a table for a screen reader
+function columns(key, title, vals, word) {
+  const top = niceTop(Math.max(...vals)), total = vals.reduce((a, b) => a + b, 0), n = vals.length;
+  return `<div class="chart" data-chart="${key}">
+    <div class="chead"><b>${title}</b><span>${num(total)} in ${n} days</span></div>
+    <div class="cplot"><span class="ctop">${num(top)}</span>
+      <div class="cbars" aria-hidden="true">${vals.map((v, i) => `<span class="cslot${i === n - 1 ? " now" : ""}" data-i="${i}" data-v="${v}" data-w="${esc(word)}"><i data-h="${((v / top) * 100).toFixed(1)}"></i></span>`).join("")}</div>
+      <div class="ctip" hidden></div></div>
+    <div class="caxis" aria-hidden="true"><span>${insDay(0)}</span><span>${insDay(Math.floor(n / 2))}</span><span>Today</span></div>
+    <table class="sr"><caption>${title}, each day</caption><tbody>${vals.map((v, i) => `<tr><th>${insDay(i)}</th><td>${v}</td></tr>`).join("")}</tbody></table></div>`;
+}
+// a row with its share drawn as a bar: label, bar, figure
+const meter = (label, n, of, val) => `<div class="meter"><span class="ml">${label}</span><span class="mbar" aria-hidden="true"><i data-w="${of ? Math.max(n ? 2 : 0, (n / of) * 100).toFixed(1) : 0}"></i></span><span class="mv">${val ?? `${num(n)} · ${pct(n, of)}%`}</span></div>`;
+function vInsights() {
+  const x = A.ins;
+  if (!x) return `<div class="group mt-s">${cell({ label: A.insErr ? esc(A.insErr) : "Counting…", cls: "muted" })}</div>`;
+  const P = x.people, R = x.retention, F = x.features, U = x.adoption, H = x.health, T = P.total;
+  const stat = (n, label, icon, tile) => `<div class="kpi"><span class="tile ${tile}">${icon}</span><b>${n}</b><span>${label}</span></div>`;
+  const kindsN = x.kinds.reduce((a, k) => a + k.n, 0);
+  const wk = (w) => w === 1 ? "1–2 weeks ago" : `${w}–${w + 1} weeks ago`;
+  return `<div class="kpis ins">
+      ${stat(num(P.today), "Today", I.clock, "green")}${stat(num(P.week), "This Week", I.people, "blue")}
+      ${stat(num(P.month), "This Month", I.people, "indigo")}${stat(R.old ? `${pct(R.back, R.old)}%` : "–", "Came Back", I.star, "orange")}
+    </div>
+    <div class="gfoot ins-foot">People whose app checked in. Came back: of accounts over 8 days old, those still using it a week after joining (${num(R.back)} of ${num(R.old)}).</div>
+    <div class="group charts">
+      ${columns("sent", "Pigeons sent", x.days.sent, "pigeon")}
+      ${columns("active", "People active", x.days.active, "person")}
+      ${columns("joined", "New accounts", x.days.joined, "new account")}
+    </div>
+    <div class="gfoot">Active on a day: sent a pigeon or opened one. Tap a day for its figure.</div>
+    <div class="ghead">Coming Back</div>
+    <div class="group meters">${R.weeks.length ? R.weeks.map((w) => meter(`Joined ${wk(w.weeksAgo)}`, w.back, w.joined, `${num(w.back)} of ${num(w.joined)} · ${pct(w.back, w.joined)}%`)).join("") : `<div class="meter none">No one joined 1–7 weeks ago yet</div>`}</div>
+    <div class="gfoot">Of the people who joined each week, how many were still using InFlight a week later.</div>
+    <div class="ghead">Pigeons, Last 30 Days <span class="gcount">${num(F.total)}</span></div>
+    <div class="group meters">${x.kinds.length ? x.kinds.map((k) => meter(esc(KINDS[k.kind] || k.kind[0].toUpperCase() + k.kind.slice(1)), k.n, kindsN)).join("") : `<div class="meter none">None sent yet</div>`}</div>
+    <div class="ghead">Features Used</div>
+    <div class="group meters">
+      ${meter("To a group", F.group, F.total)}${meter("With a photo or voice", F.photo, F.total)}${meter("Mystery pigeon", F.mystery, F.total)}
+      ${meter("Scheduled", F.sched, F.total)}${meter("With a stopover", F.via, F.total)}${meter("Cheered on", F.cheered, F.total)}
+      ${meter("Scenic or safe route", F.styled, F.total)}${meter("To or from space", F.space, F.total)}${meter("Disappearing", F.vanish, F.total)}
+      ${meter("Pigeon Death on", F.risky, F.total)}${meter("Called back", F.recalled, F.total)}
+    </div>
+    <div class="gfoot">Of the pigeons sent in the last 30 days.</div>
+    <div class="ghead">Accounts <span class="gcount">${num(T)}</span></div>
+    <div class="group meters">
+      ${meter("Have a friend", U.friends, T)}${meter("In a group", U.groups, T)}${meter("Notifications on", U.push, T)}${meter("Email confirmed", U.email, T)}
+      ${meter("Passkey", U.passkey, T)}${meter("Named pigeons", U.birds, T)}${meter("Pigeon Death on", U.risky, T)}${meter("Approximate location", U.approx, T)}
+      ${meter("Living in space", U.space, T)}
+    </div>
+    <div class="ghead">Landing on Time</div>
+    <div class="group">
+      ${cell({ icon: I.bird, tile: "orange", label: "In the air now", val: num(H.flying) })}
+      ${cell({ icon: I.check, tile: "green", label: "Landed today", sub: "The last 24 hours", val: num(H.landed) })}
+      ${cell({ icon: I.trash, tile: "gray", label: "Lost to Pigeon Death today", val: num(H.lost) })}
+      ${H.late ? cell({ icon: I.warn, tile: "red", label: `<span class="warnc">${num(H.late)} landing${H.late === 1 ? "" : "s"} not told yet</span>`, sub: "Landed 15 minutes ago or more, with no notice sent: check the tick" })
+        : cell({ icon: I.check, tile: "green", label: "Every landing told on time", sub: "None waiting more than 15 minutes" })}
+    </div>
+    <div class="gfoot">Totals over everyone, never who sent what to whom. Counted ${fmtSeen(x.at)}.</div>
+    <div class="group mt">${cell({ a: "insightsrefresh", label: "Count Again", cls: "blue center" })}</div>`;
+}
+async function loadInsights() {
+  A.ins = null; A.insErr = null; if (A.sheet?.type === "insights") drawSheet();
+  try { A.ins = await call("/api/pigeon/admin-insights"); }
+  catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); A.insErr = err.message; }
+  if (A.sheet?.type === "insights") drawSheet();
+}
+// a column's figure: on hover with a mouse, or a tap
+function colTip(slot) {
+  const plot = slot.closest(".cplot"), tip = $(".ctip", plot), i = +slot.dataset.i, v = +slot.dataset.v, w = slot.dataset.w;
+  plot.querySelectorAll(".cslot.on").forEach((e) => e.classList.remove("on")); slot.classList.add("on");
+  tip.innerHTML = `<b>${num(v)}</b> ${esc(v === 1 ? w : w === "person" ? "people" : w + "s")}<span>${slot.classList.contains("now") ? "Today, so far" : insDay(i, { weekday: "short" })}</span>`;
+  tip.hidden = false;
+  const r = plot.getBoundingClientRect(), s = slot.getBoundingClientRect(), half = tip.offsetWidth / 2;
+  tip.style.left = `${Math.min(r.width - half, Math.max(half, s.left - r.left + s.width / 2))}px`;
+}
+document.addEventListener("pointerover", (e) => { const s = e.target.closest?.(".cslot"); if (s && e.pointerType === "mouse") colTip(s); });
+document.addEventListener("pointerdown", (e) => { const s = e.target.closest?.(".cslot"); if (s) colTip(s); });
+document.addEventListener("pointerout", (e) => {
+  const p = e.target.closest?.(".cplot"); if (!p || e.pointerType !== "mouse" || p.contains(e.relatedTarget)) return;
+  $(".ctip", p).hidden = true; p.querySelectorAll(".cslot.on").forEach((x) => x.classList.remove("on"));
+});
 const vActivity = () => `<div class="group mt-s">${A.log.map(logRow).join("") || cell({ label: "Nothing yet", cls: "muted" })}</div>
   <div class="gfoot">The last 100 admin actions.</div>`;
 function drawSheet() {
   const s = A.sheet, layer = $("#layer");
   const u = s.id && user(s.id);
   if ((s.type === "user" || s.type === "delete") && !u) return closeSheet();
-  const [title, body, back] = s.type === "user" ? [u.name, vUser(u)] : s.type === "delete" ? ["Delete Account", vDelete(u), "deleteback"] : s.type === "storage" ? ["Storage", vStorage()] : ["Admin Activity", vActivity()];
+  const [title, body, back] = s.type === "user" ? [u.name, vUser(u)] : s.type === "delete" ? ["Delete Account", vDelete(u), "deleteback"] : s.type === "storage" ? ["Storage", vStorage()] : s.type === "insights" ? ["Insights", vInsights()] : ["Admin Activity", vActivity()];
   const fresh = !$(".sheet", layer) || layer.dataset.type !== s.type;
   const scroll = $(".sheet .body", layer)?.scrollTop || 0;
   layer.innerHTML = sheetHtml(title, body, back);
+  // bars' sizes, set here: the page allows no inline styles (its Content-Security-Policy)
+  layer.querySelectorAll("[data-h]").forEach((e) => { e.style.height = `${e.dataset.h}%`; });
+  layer.querySelectorAll("i[data-w]").forEach((e) => { e.style.width = `${e.dataset.w}%`; });
   layer.dataset.type = s.type;
   if (!fresh) { layer.querySelectorAll(".sheet,.scrim").forEach((e) => e.classList.add("still")); $(".sheet .body", layer).scrollTop = scroll; }
   else if (A.sheetFrom) { layer.querySelectorAll(".sheet,.scrim").forEach((e) => e.classList.add("still")); $(".sheet .body", layer).classList.add("swap"); }
@@ -339,6 +435,8 @@ document.addEventListener("click", async (e) => {
   if (act === "activity") return openSheet({ type: "activity" });
   if (act === "storage") { openSheet({ type: "storage" }); return loadStorage(); }
   if (act === "storagerefresh") return loadStorage();
+  if (act === "insights") { openSheet({ type: "insights" }); return loadInsights(); }
+  if (act === "insightsrefresh") return loadInsights();
   if (act === "delask") return openSheet({ type: "delete", id });
   if (act === "deleteback") return openSheet({ type: "user", id });
   if (act === "signout") { await fetch("/api/logout", { method: "POST" }); return vSignIn(); }

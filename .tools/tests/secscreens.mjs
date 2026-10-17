@@ -98,7 +98,7 @@ await shot('safety-changed');
 // trusting it (they matched): no warning any more, and Privacy & Security says who to verify next
 await p.click('.sheet [data-act=trustsafe]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 10000 }); await slow(900);
 await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await slow(900);
-ok(/2 of 3 friends verified · Sam next/.test(await txt('.sheet [data-act=encryptionsheet]')) && await p.isVisible('.sheet [data-act=encryptionsheet] .vbar'), 'the Encryption row: 2 of 3 verified, with a bar, and who’s next', await txt('.sheet [data-act=encryptionsheet]'));
+ok(/2 of 3 friends verified · Sam next/.test(await txt('.sheet [data-act=encryptionsheet]')) && await p.evaluate(() => { const b = document.querySelector('.sheet [data-act=encryptionsheet] .vbar'); return Math.abs(b.firstElementChild.offsetWidth / b.offsetWidth - 2 / 3) < 0.03; }), 'the Encryption row: 2 of 3 verified, with a bar two-thirds full, and who’s next', await txt('.sheet [data-act=encryptionsheet]'));
 
 // 4. Passkeys, explained when there are none
 await p.click('.sheet button.secrow[data-act=passkeys]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);

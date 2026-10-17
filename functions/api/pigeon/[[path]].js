@@ -26,6 +26,7 @@ import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
 import { storageReport } from "../../_retention.js";
+import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
@@ -1348,6 +1349,11 @@ async function adminStorage({ request, env }) {
   await requireAdmin(request, env);
   return json(await storageReport(env, await db(env), Date.now()));
 }
+// How InFlight is used, in totals (functions/_insights.js)
+async function adminInsights({ request, env }) {
+  await requireAdmin(request, env);
+  return json(await insights(env, await db(env), Date.now()));
+}
 async function adminUsers({ request, env }) {
   await requireAdmin(request, env);
   const D = await db(env), t = Date.now();
@@ -1568,7 +1574,7 @@ const ROUTES = {
   "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
-  "POST admin-test-email": adminTestEmail, "GET admin-storage": adminStorage,
+  "POST admin-test-email": adminTestEmail, "GET admin-storage": adminStorage, "GET admin-insights": adminInsights,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
