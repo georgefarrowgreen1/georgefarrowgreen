@@ -26,3 +26,4 @@ lowsev
 wxsay
 syncperf
 consistency
+sheetmotion

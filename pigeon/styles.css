@@ -522,8 +522,14 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .layer .still,.poplayer .still{animation:none}
 @keyframes down{to{transform:translateY(105%)}}
 @keyframes fade-out{to{opacity:0}}
-.view,.tabbar,.compose{transition:transform .55s var(--snappy),filter .35s,border-radius .35s}
-.screen.sheeted .view,.screen.sheeted .tabbar,.screen.sheeted .compose{transform:scale(.94);filter:brightness(.92);border-radius:24px}
+/* (only the screen above the sheet shows as it comes up, and it only moves: no filter or corner to repaint each
+   frame, which made the sheet stutter. The scrim does the dimming; the corners round at once and square again
+   once it's back) */
+.view,.tabbar,.compose{transition:transform .55s var(--snappy)}
+.view{transition:transform .55s var(--snappy),border-radius 0s .5s}
+.screen.sheeted .view{transform:scale(.94);border-radius:24px;transition:transform .55s var(--snappy),border-radius 0s}
+/* the spring carries the sheet a little past the top: it reaches further down than the screen, so no gap opens under it */
+.sheet::after{content:"";position:absolute;left:0;right:0;top:calc(100% - 1px);height:80px;background:inherit;pointer-events:none}
 .viewer{animation:fade .3s ease}
 .viewer img{animation:zoomin .5s var(--snappy)}
 .viewer.closing{animation:fade-out .25s ease forwards}

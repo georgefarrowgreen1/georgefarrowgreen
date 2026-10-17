@@ -5070,7 +5070,10 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
     <header><span class="l">${b(left, "l")}</span>${title ? `<h2 tabindex="-1">${esc(title)}</h2>` : `<h2 class="sr" tabindex="-1">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
-let sheetTimer = 0, sheetType = null;
+let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9;
+// A sheet is still coming up (sliding in, its rows growing) for this long after it opens
+const SHEET_IN_MS = 1100;
+const sheetEntering = () => performance.now() - sheetUpAt < SHEET_IN_MS;
 const gliding = new Map();            // switches mid-glide: key → { from, to, at }
 const switchKey = (b) => `${b.dataset.act}:${b.dataset.id || ""}`;
 // Redrawing replaces a switch, which would snap it to its end. Note where each
@@ -5125,7 +5128,16 @@ function renderSheet(refresh) {
   drawSheet(refresh);
   sheetType = S.sheet?.type || null;
   const now = $(".sheet", $layer);
-  if (had && now && now !== old) {
+  if (had && now && now !== old && same && sheetEntering()) {
+    // redrawn as it comes up (its plan or friends arriving): it carries on from where it had got to, rather than
+    // jumping the rest of the way up, and its rows keep growing
+    const late = performance.now() - sheetUpAt;
+    try { for (const a of $layer.getAnimations({ subtree: true })) if (a.animationName !== "fc-pick") a.currentTime = late; } catch (_) {}
+    keepGlides($layer, before); keepTicks($layer, ticked);
+    const body = $(".sheet .body", $layer); if (top && body && !body.scrollTop) body.scrollTop = top;
+    const back = fe && document.getElementById(fe.id);
+    if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
+  } else if (had && now && now !== old) {
     $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
     if (swapped) $(".sheet .body", $layer)?.classList.add("swap");
     keepGlides($layer, before); keepTicks($layer, ticked);
@@ -5135,6 +5147,7 @@ function renderSheet(refresh) {
       if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
     }
   }
+  if (!had && now) sheetUpAt = performance.now();
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
   if (!had && now && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true });
@@ -5504,9 +5517,10 @@ function drawSheet(refresh) {
       // the chip just tapped gives a little bounce
       if (S.flyTap) { const k = S.flyTap; S.flyTap = null; body.querySelector(`.chiprail [data-act="${k.dataset.act}"]${k.dataset.id ? `[data-id="${CSS.escape(k.dataset.id)}"]` : ""}`)?.classList.add("picked"); }
       body.querySelectorAll(".chiprail").forEach((r, i) => { r.scrollLeft = rails[i] || 0; const on = $("[aria-checked=true]", r); if (on && fresh) r.scrollLeft = Math.max(0, on.offsetLeft - 16 - (r.clientWidth - on.offsetWidth) / 3); });
-      body.classList.toggle("enter", fresh);
-      if (!fresh && was.land !== nowKey.land) $(".flyhero", body).classList.add("chg");
-      if (!fresh && (was.style !== style || was.kind !== kind)) $(".waycard", body)?.classList.add("chg");
+      const entering = fresh || sheetEntering();         // (redrawn as it comes up: its rows keep growing, renderSheet keeps their place)
+      body.classList.toggle("enter", entering);
+      if (!entering && was.land !== nowKey.land) $(".flyhero", body).classList.add("chg");
+      if (!entering && (was.style !== style || was.kind !== kind)) $(".waycard", body)?.classList.add("chg");
       s.shown = nowKey;
       flyBits(body, fresh ? null : was.style);
       return;
@@ -5863,7 +5877,7 @@ function drawLunarFly(c) {
   $layer.innerHTML = sheetHtml("How It Flies", `${hero}<div class="group kinds" role="radiogroup" aria-label="Pigeon">${kinds}</div>
     <div class="gfoot">Only ${mars ? "laser pigeons reach Mars or leave it" : `lunar pigeons reach ${same ? "across the Moon" : "the Moon or leave it"}`}. They go any time, straight there: no stopovers, no booking ahead and no weather. ${esc(how)}</div>
     ${S.me.risky && !mars ? `<div class="gfoot">Pigeon Death is on: 1.25× faster, but 1 in 100 is lost in space.</div>` : ""}`);
-  const body = $(".sheet .body", $layer); body.classList.add("flysheet"); body.classList.toggle("enter", fresh);
+  const body = $(".sheet .body", $layer); body.classList.add("flysheet"); body.classList.toggle("enter", fresh || sheetEntering());
   flyBits(body, null);
 }
 // each way's plan for a kind of pigeon as if it left now (the same clock as the card's)
