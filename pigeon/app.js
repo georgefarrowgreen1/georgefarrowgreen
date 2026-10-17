@@ -3116,35 +3116,45 @@ function go(view, chat) {
   if (!same && $ta) fitTa();                                      // (after render: the composer is showing now)
   if (backTop != null) { $view.scrollTop = backTop; S.under = null; }   // back where you were
   if (view === "chat" && chat && !S.msgs.has(chat) && S.chatRaw.has(chat)) applyChat(chat, S.chatRaw.get(chat), false).then(() => { if (S.view === "chat" && S.chat === chat) render(); });
+  const shown = view === "chat" && chat && (S.msgs.get(chat) || []).length > 0;
   if (view === "chat" && chat) loadChat(chat).then(() => {
     // from the In the air strip: straight on to the map
     const id = S.mapNext; S.mapNext = null;
     if (id && S.chat === chat && (S.msgs.get(chat) || []).some((x) => x.id === id)) S.sheet = { type: "map", id };
-    render();
+    // (a chat already on screen gets its fresh copy once it has slid in: redrawing it mid-slide made it stutter)
+    const wait = shown && !S.sheet ? NAV_MS + 20 - (performance.now() - navAt) : 0;
+    if (wait > 0) setTimeout(() => { if (S.view === "chat" && S.chat === chat) render(); }, wait); else render();
   }).catch((e) => { if (!e.offline) toast(esc(e.message)); });    // (offline: the banner says so)
 }
 
 // How the screen changes, as on iPhone: a chat pushes in from the side and pops
-// back; auth steps push forward (back to the start pops); tabs cross-fade.
+// back; auth steps push forward (back to the start pops); tabs slide a touch
+// toward the one you picked as they cross-fade.
 function navKind(from, to) {
   if (!from || from === "loading") return null;
   if (to === "chat") return "push";
   if (from === "chat") return "pop";
   if (AUTH_VIEWS.has(to) && AUTH_VIEWS.has(from)) return to === "welcome" ? "pop" : "push";
+  const a = TABS.findIndex(([id]) => id === from), b = TABS.findIndex(([id]) => id === to);
+  if (a >= 0 && b >= 0) return b > a ? "tab-r" : "tab-l";
   return "fade";
 }
+let navAt = -1e9;                                  // when the last push or pop began (styles.css: .5s)
+const NAV_MS = 500;
 // For a push or pop, the old screen stays for a moment as a lifeless copy: it
 // slides aside under a new chat, or slides away to reveal the screen behind.
 function ghostView() {
-  if (S.nav !== "push" && S.nav !== "pop") return;
+  const tab = S.nav === "tab-r" || S.nav === "tab-l";
+  if (S.nav !== "push" && S.nav !== "pop" && !tab) return;
   if (STILL.matches) return;                       // less motion: no copy left sliding (it would only sit there, frozen)
   $(".nav-ghost", root())?.remove();
-  // the whole old screen: its list or chat, and the tab bar or composer that belongs to it
+  // the whole old screen: its list or chat, and the tab bar or composer that belongs to it (a tab: just its list,
+  // under the new one as it fades in, the tab bar staying where it is)
   const g = document.createElement("div"), v = $view.cloneNode(true), top = $view.scrollTop;
-  g.className = `nav-ghost nav-ghost-${S.nav}${root().classList.contains("plain") ? " plain" : ""}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
-  v.classList.remove("nav-push", "nav-pop", "nav-fade"); g.append(v);
-  if (!$compose.hidden) { const c = $compose.cloneNode(true), t = $("textarea", c); if (t && $ta) t.value = $ta.value; g.append(c); }
-  if (!$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise"); g.append(t); }
+  g.className = `nav-ghost nav-ghost-${tab ? "tab" : S.nav}${root().classList.contains("plain") ? " plain" : ""}`; g.setAttribute("aria-hidden", "true"); g.inert = true;
+  v.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); g.append(v);
+  if (!tab && !$compose.hidden) { const c = $compose.cloneNode(true), t = $("textarea", c); if (t && $ta) t.value = $ta.value; g.append(c); }
+  if (!tab && !$tabbar.hidden) { const t = $tabbar.cloneNode(true); t.classList.remove("rise"); g.append(t); }
   g.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
   g.style.top = `${$view.offsetTop}px`;
   $view.before(g); v.scrollTop = top;
@@ -3155,8 +3165,9 @@ function animateNav() {
   const kind = S.nav; S.nav = null;
   if (!kind) return;
   const els = kind === "push" && S.view === "chat" ? [$view, $compose] : [$view];
+  if (kind === "push" || kind === "pop") navAt = performance.now();
   for (const el of els) {
-    el.classList.remove("nav-push", "nav-pop", "nav-fade"); void el.offsetWidth;
+    el.classList.remove("nav-push", "nav-pop", "nav-fade", "nav-tab-r", "nav-tab-l"); void el.offsetWidth;
     el.classList.add("nav-" + kind);
     if (kind === "fade" || STILL.matches) continue;                 // (no animation runs, so nothing would ever end it)
     el.addEventListener("animationend", function done(e) { if (e.target === el) { el.classList.remove("nav-" + kind); el.removeEventListener("animationend", done); } });
@@ -5073,10 +5084,10 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
     <header><span class="l">${b(left, "l")}</span>${title ? `<h2 tabindex="-1">${esc(title)}</h2>` : `<h2 class="sr" tabindex="-1">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
-let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9, sheetLater = 0;
+let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9, sheetLater = 0, sheetPath = [], sheetOnAt = -1e9;
 // A sheet is still coming up (sliding in, its rows growing) for this long after it opens; the slide itself is the
 // first SHEET_SLIDE_MS (styles.css: .sheet)
-const SHEET_IN_MS = 1100, SHEET_SLIDE_MS = 500;
+const SHEET_IN_MS = 1100, SHEET_SLIDE_MS = 500, SHEET_ON_MS = 420;
 const sheetEntering = () => performance.now() - sheetUpAt < SHEET_IN_MS;
 const gliding = new Map();            // switches mid-glide: key → { from, to, at }
 const switchKey = (b) => `${b.dataset.act}:${b.dataset.id || ""}`;
@@ -5124,8 +5135,9 @@ function renderSheet(refresh) {
   clearTimeout(sheetTimer); clearTimeout(sheetLater);
   // the same sheet redrawn while it slides up (its plan, its friends arriving): that waits until it's up, all in
   // one go. Redrawing is a long moment's work on a phone, and doing it mid-slide made the sheet judder.
-  const slid = performance.now() - sheetUpAt;
-  if (open && !closing && sheetType === S.sheet.type && slid < SHEET_SLIDE_MS) { sheetLater = setTimeout(() => renderSheet(refresh), SHEET_SLIDE_MS - slid + 20); return; }
+  // (and the same for one just gone on to inside it: a friend's loft, say, arriving)
+  const slid = performance.now() - sheetUpAt, on = performance.now() - sheetOnAt, wait = Math.max(SHEET_SLIDE_MS - slid, SHEET_ON_MS - on);
+  if (open && !closing && sheetType === S.sheet.type && wait > 0) { sheetLater = setTimeout(() => renderSheet(refresh), wait + 20); return; }
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
   const before = had ? switchStates($layer) : null, ticked = had ? tickedKeys($layer) : null;
   const old = $(".sheet", $layer);
@@ -5147,7 +5159,12 @@ function renderSheet(refresh) {
     if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
   } else if (had && now && now !== old) {
     $layer.querySelectorAll(".sheet, .scrim").forEach((e) => e.classList.add("still"));
-    if (swapped) $(".sheet .body", $layer)?.classList.add("swap");
+    if (swapped) {
+      // the way you've come through this sheet: one you came from is "back", anything else is "on"
+      const i = sheetPath.indexOf(sheetType), back = i >= 0;
+      sheetPath = back ? sheetPath.slice(0, i + 1) : [...sheetPath, sheetType];
+      now.classList.add(back ? "go-back" : "go-on"); $(".sheet .body", $layer)?.classList.add(back ? "go-back" : "go-on"); sheetOnAt = performance.now();
+    }
     keepGlides($layer, before); keepTicks($layer, ticked);
     if (same) {
       const body = $(".sheet .body", $layer); if (top && body && !body.scrollTop) body.scrollTop = top;
@@ -5155,7 +5172,7 @@ function renderSheet(refresh) {
       if (back && back !== fe && $layer.contains(back)) { back.focus({ preventScroll: true }); if (caret) try { back.setSelectionRange(...caret); } catch (_) {} }
     }
   }
-  if (!had && now) sheetUpAt = performance.now();
+  if (!had && now) { sheetUpAt = performance.now(); sheetPath = [sheetType]; }
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
   if (!had && now && !now.contains(document.activeElement)) setTimeout(() => { if ($layer.contains(now) && !now.classList.contains("closing") && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true }); }, SHEET_SLIDE_MS);

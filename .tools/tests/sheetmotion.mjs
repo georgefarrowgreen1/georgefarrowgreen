@@ -51,6 +51,56 @@ ok(behind.vt === 'none' && behind.vf === 'none' && behind.vr === '0px' && behind
 const focus = await A.p.evaluate(() => document.activeElement?.closest?.('.sheet') ? document.activeElement.tagName : document.activeElement?.tagName);
 ok(focus === 'H2', 'once up, focus is in the sheet (its title)', focus);
 await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(800);
+
+// ---- moving between screens ----
+// every frame of a move: where the new screen is, and the copy of the old one left under it
+const track = (start) => A.p.evaluate((start) => new Promise((done) => {
+  const out = [], t0 = performance.now();
+  (new Function(start))();
+  const step = () => {
+    const v = document.querySelector('#screen > .view'), g = document.querySelector('.nav-ghost'), t = performance.now() - t0;
+    const cs = getComputedStyle(v), m = new DOMMatrix(cs.transform);
+    out.push({ t, x: m.m41, o: +cs.opacity, cls: v.className, ghost: g ? g.className : null, gf: g ? getComputedStyle(g).filter : null, sh: cs.boxShadow });
+    if (t < 700) requestAnimationFrame(step); else done(out);
+  };
+  requestAnimationFrame(step);
+}), start);
+await A.p.evaluate(() => document.querySelector('.view .nbtn.back')?.click()); await A.p.waitForTimeout(900);
+await A.p.evaluate(() => document.querySelector('[data-act=tab][data-id=friends]')?.click()); await A.p.waitForTimeout(900);
+await A.p.waitForSelector(`.view [data-act=open][data-id="${bs.me.id}"]`);
+// 1. into a chat: it slides in from the right on the smooth curve, never past its place, the list sliding aside under it
+const push = await track(`document.querySelector('.view [data-act=open][data-id="${bs.me.id}"]').click()`);
+const px = push.map((f) => f.x), W = await A.p.evaluate(() => innerWidth);
+console.log('push', push.filter((_, j) => j % 3 === 0).map((f) => `${Math.round(f.t)}:${Math.round(f.x)}`).join(' '));
+ok(push.some((f) => /nav-push/.test(f.cls)) && Math.max(...px) > W * 0.3, 'into a chat: it slides in from the right', `${Math.round(Math.max(...px))} of ${W}px`);
+ok(Math.min(...px) > -1 && Math.abs(px.at(-1)) < 1, 'it never goes past its place (no bounce), and ends exactly there', String(Math.round(Math.min(...px))));
+ok(push.some((f) => /nav-ghost-push/.test(f.ghost || '')) && push.every((f) => !f.gf || f.gf === 'none'), 'the list slides aside under it, dimmed by a shade (no filter to repaint)', JSON.stringify([...new Set(push.map((f) => f.gf))]));
+const pSteps = px.slice(1).map((x, i) => px[i] - x);
+ok(Math.max(...pSteps) < W * 0.35, 'no frame jumps a big part of the way', `${Math.round(Math.max(...pSteps))}px`);
+// 2. back: the chat slides away to the right and the list slides back in
+await A.p.waitForTimeout(600);
+const pop = await track(`document.querySelector('.view .nbtn.back').click()`);
+ok(pop.some((f) => /nav-pop/.test(f.cls)) && pop.some((f) => /nav-ghost-pop/.test(f.ghost || '')) && Math.abs(pop.at(-1).x) < 1, 'back: the chat slides away and the list slides back', `${Math.round(Math.min(...pop.map((f) => f.x)))} → ${Math.round(pop.at(-1).x)}`);
+await A.p.waitForTimeout(600);
+// 3. tabs: they slide a touch toward the one picked as they fade in, the old one under it (no blank frame)
+const tabL = await track(`document.querySelector('[data-act=tab][data-id=messages]').click()`);
+await A.p.waitForTimeout(400);
+const tabR = await track(`document.querySelector('[data-act=tab][data-id=friends]').click()`);
+ok(tabR.some((f) => /nav-tab-r/.test(f.cls)) && tabR.some((f) => /nav-ghost-tab/.test(f.ghost || '')) && tabR.some((f) => f.x > 4) && Math.abs(tabR.at(-1).x) < 1 && tabR.at(-1).o === 1, 'to a tab on the right: it slides in from the right as it fades in, over the old one', `${Math.round(Math.max(...tabR.map((f) => f.x)))}px`);
+ok(tabL.some((f) => /nav-tab-l/.test(f.cls)) && tabL.some((f) => f.x < -4) && Math.abs(tabL.at(-1).x) < 1, 'back to one on the left: from the left', `${Math.round(Math.min(...tabL.map((f) => f.x)))}px`);
+ok(tabR.concat(tabL).every((f) => f.ghost || f.o > 0.02 || f.t > 300), 'no blank frame: the old tab is there until the new one has come in', '');
+await A.p.waitForTimeout(600);
+// 4. inside a sheet: on to another slides in from the right, back from the left
+await openChat(A, bs.me.id); await A.p.waitForTimeout(800);
+await A.p.evaluate((id) => { const b = document.createElement('button'); b.hidden = true; b.dataset.act = 'friendinfo'; b.dataset.id = id; document.querySelector('#screen').append(b); b.click(); b.remove(); }, bs.me.id);
+await A.p.waitForTimeout(800);
+await A.p.click('.sheet [data-act=loft]'); await A.p.waitForTimeout(80);
+const on = await A.p.evaluate(() => [document.querySelector('.sheet .body')?.className, getComputedStyle(document.querySelector('.sheet .body')).animationName]);
+await A.p.waitForTimeout(1200);
+await A.p.click('.sheet header [data-act=loftback]').catch(() => {}); await A.p.waitForTimeout(80);
+const back = await A.p.evaluate(() => [document.querySelector('.sheet .body')?.className, getComputedStyle(document.querySelector('.sheet .body')).animationName]);
+ok(/go-on/.test(on[0]) && on[1] === 'sheet-on', 'in a sheet, on to another: it slides in from the right', JSON.stringify(on));
+ok(/go-back/.test(back[0]) && back[1] === 'sheet-back', 'and back: from the left', JSON.stringify(back));
 await A.p.screenshot({ path: `${out}/after.png` });
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);

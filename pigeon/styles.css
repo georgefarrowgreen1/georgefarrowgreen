@@ -534,7 +534,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .viewer.closing{animation:fade-out .25s ease forwards}
 @keyframes zoomin{from{transform:scale(.85);opacity:.4}}
 
-.sheet .body.swap{animation:tab-in .35s var(--smooth)}
 
 /* ---- menus grow out of the button that opened them, and shrink back ---- */
 .menu-pop{animation:menu-in .45s var(--bouncy)}
@@ -550,24 +549,44 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .toast.out{animation:lift .35s cubic-bezier(.4,0,1,1) forwards}
 @keyframes lift{to{transform:translateY(-140%);opacity:0}}
 
-/* ---- moving between screens ---- */
-.view.nav-push,.compose.nav-push{animation:push .55s var(--snappy)}
-.view.nav-pop{animation:pop-back .5s var(--snappy)}
-.view.nav-fade{animation:none}   /* tabs switch at once, as on iPhone (a fade showed a blank frame) */
+/* ---- moving between screens ----
+   On the curve iOS uses (quick, then a long settle, never past the end), and only moving and fading: a shadow or a
+   filter changing every frame meant repainting the whole screen, and stutter on a phone.
+   - a chat pushes in from the right over the screen you were on, which slides a little aside and dims;
+   - back, it slides away to the right and the screen behind slides back in;
+   - tabs slide a touch toward the tab you picked as they cross-fade (the old one stays under: no blank frame);
+   - inside a sheet, going on to another slides in from the right, and back from the left. */
+:root{--nav:cubic-bezier(.32,.72,0,1)}
+.view.nav-push,.compose.nav-push{animation:push .5s var(--nav)}
+.view.nav-push{box-shadow:-16px 0 36px rgba(0,0,0,.14)}
+.view.nav-pop{animation:pop-back .5s var(--nav)}
+.view.nav-fade{animation:none}
+.view.nav-tab-r{animation:tab-r .34s var(--nav)}
+.view.nav-tab-l{animation:tab-l .34s var(--nav)}
 .nav-ghost{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;overflow:hidden;pointer-events:none;background:var(--bg)}
 .nav-ghost > .view{flex:1;min-height:0;overflow:hidden}
 .nav-ghost > .compose{flex:none}
-.nav-ghost-push{z-index:0;animation:ghost-under .55s var(--snappy) forwards}
-.nav-ghost-pop{z-index:7;animation:ghost-away .5s var(--snappy) forwards;box-shadow:-20px 0 40px rgba(0,0,0,.12)}   /* over the tab bar, which waits underneath */
+.nav-ghost-push{z-index:0;animation:ghost-under .5s var(--nav) forwards}
+.nav-ghost-push::after{content:"";position:absolute;inset:0;background:#000;opacity:0;animation:ghost-dim .5s var(--nav) forwards}
+.nav-ghost-pop{z-index:7;animation:ghost-away .5s var(--nav) forwards;box-shadow:-16px 0 36px rgba(0,0,0,.14)}   /* over the tab bar, which waits underneath */
+.nav-ghost-tab{z-index:0;animation:fade-out .3s ease forwards}
 .nav-ghost.plain{background:var(--bg-plain)}
-.view.nav-push,.view.nav-pop{position:relative;z-index:1}
-.view.nav-push{background:var(--bg)}
-.screen.plain .view.nav-push{background:var(--bg-plain)}
-@keyframes ghost-under{to{transform:translateX(-28%);filter:brightness(.92)}}
+.view.nav-push,.view.nav-pop,.view.nav-tab-r,.view.nav-tab-l{position:relative;z-index:1}
+.view.nav-push,.view.nav-tab-r,.view.nav-tab-l{background:var(--bg)}
+.screen.plain .view.nav-push,.screen.plain .view.nav-tab-r,.screen.plain .view.nav-tab-l{background:var(--bg-plain)}
+@keyframes ghost-under{to{transform:translateX(-28%)}}
+@keyframes ghost-dim{to{opacity:.14}}
 @keyframes ghost-away{to{transform:translateX(100%)}}
-@keyframes push{from{transform:translateX(100%);box-shadow:-20px 0 40px rgba(0,0,0,.12)}}
-@keyframes pop-back{from{transform:translateX(-28%);opacity:.6}}
+@keyframes push{from{transform:translateX(100%)}}
+@keyframes pop-back{from{transform:translateX(-28%);opacity:.7}}
+@keyframes tab-r{from{transform:translateX(22px);opacity:0}}
+@keyframes tab-l{from{transform:translateX(-22px);opacity:0}}
 @keyframes tab-in{from{opacity:0;transform:scale(.985)}}
+.sheet .body.go-on{animation:sheet-on .42s var(--nav)}
+.sheet .body.go-back{animation:sheet-back .42s var(--nav)}
+.sheet.go-on > header h2,.sheet.go-back > header h2{animation:fade .3s ease}
+@keyframes sheet-on{from{transform:translateX(30%);opacity:0}}
+@keyframes sheet-back{from{transform:translateX(-30%);opacity:0}}
 
 /* ---- messages pop out of the composer, or in from the sky when they land ---- */
 .b.fresh,.fly.fresh{animation:bubble-in .6s var(--bouncy);transform-origin:bottom left}
