@@ -114,6 +114,10 @@ export async function passportFor(D, uid, t) {
     const { results: grp } = await D.prepare(`SELECT m.id, m.from_place, g.name AS to_place, (SELECT d.legs FROM pg_gdeliv d WHERE d.msg_id = m.id AND d.legs LIKE '%"b"%' LIMIT 1) AS legs
       FROM pg_gmsgs m LEFT JOIN pg_groups g ON g.id = m.group_id WHERE m.sender = ? AND m.id IN (${q})`).bind(uid, ...part).all();
     for (const m of grp) trips[m.id] = { from: m.from_place || null, to: m.to_place || null, ship: sailed(m.legs) };
+    // (a journey whose message has gone, after a month: its line, kept)
+    const { results: kept } = await D.prepare(`SELECT f.msg_id, f.from_place, CASE WHEN f.grp = 1 THEN g.name ELSE f.to_place END AS to_place, MAX(f.ship) AS ship
+      FROM pg_flights f LEFT JOIN pg_groups g ON g.id = f.group_id WHERE f.sender = ? AND f.msg_id IN (${q}) GROUP BY f.msg_id`).bind(uid, ...part).all();
+    for (const m of kept) trips[m.msg_id] ||= { from: m.from_place || null, to: m.to_place || null, ship: !!m.ship };
   }
   return { places, countries: places.filter((p) => !p.sea && !OFF_WORLD.has(p.name)).length, seas: places.filter((p) => p.sea).length, trips };
 }

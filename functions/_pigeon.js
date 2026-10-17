@@ -163,6 +163,15 @@ const SCHEMA = [
 // Ids the phones choose (messages, group messages, reactions) share one
 // space: a reaction can't take a message's id, nor a group message a direct one.
 SCHEMA.push("CREATE TABLE IF NOT EXISTS pg_ids (id TEXT PRIMARY KEY, kind TEXT NOT NULL, at INTEGER NOT NULL)");
+// What each pigeon did, kept after its message has gone (functions/_retention.js)
+SCHEMA.push(
+  `CREATE TABLE IF NOT EXISTS pg_flights (id TEXT PRIMARY KEY, msg_id TEXT NOT NULL, sender TEXT NOT NULL, recipient TEXT, grp INTEGER NOT NULL DEFAULT 0,
+    group_id TEXT, pigeon TEXT, km REAL, sent_at INTEGER NOT NULL, deliver_at INTEGER, lost_at INTEGER, recalled INTEGER, wind REAL, from_place TEXT,
+    to_place TEXT, risky INTEGER, from_lon REAL, to_lon REAL, wx_ms INTEGER, dodged INTEGER, shelter_ms INTEGER, ship INTEGER, moon TEXT)`,
+  "CREATE INDEX IF NOT EXISTS pg_flights_sender ON pg_flights(sender, sent_at)",
+  "CREATE INDEX IF NOT EXISTS pg_flights_to ON pg_flights(recipient)",
+  "CREATE INDEX IF NOT EXISTS pg_flights_msg ON pg_flights(msg_id)",
+);
 // The passport (functions/_passport.js): every place each person's pigeons have flown over, and each flight stamped once
 SCHEMA.push(`CREATE TABLE IF NOT EXISTS pg_passport (user_id TEXT NOT NULL, place TEXT NOT NULL, first_at INTEGER NOT NULL, first_id TEXT, first_ord INTEGER, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (user_id, place))`);
 SCHEMA.push("CREATE INDEX IF NOT EXISTS pg_passport_first ON pg_passport(first_id)");
@@ -308,6 +317,8 @@ const MIGRATIONS = [
   "ALTER TABLE pg_msgs ADD COLUMN moon_told INTEGER",
   "CREATE INDEX IF NOT EXISTS pg_msgs_space ON pg_msgs(deliver_at) WHERE moon IS NOT NULL",
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_space ON pg_gdeliv(deliver_at) WHERE moon IS NOT NULL",
+  // an account unused for almost a year: when it was told it would be deleted (functions/_retention.js)
+  "ALTER TABLE pg_users ADD COLUMN warned_at INTEGER",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to

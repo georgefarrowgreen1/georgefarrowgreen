@@ -48,13 +48,17 @@ export async function logFor(D, uid, t) {
   const u = { id: uid };
   // one row per pigeon you've sent: one to one, and each of your group pigeons
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon, NULL AS dodged, NULL AS shelter_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2`).bind(u.id, t).all();
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon, NULL, NULL FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2
+    UNION ALL
+    -- (and those whose messages have gone, after a month: what they did, kept: functions/_retention.js)
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, grp, NULL, wx_ms, moon IS NOT NULL, moon, dodged, shelter_ms FROM pg_flights WHERE sender = ?1 AND sent_at <= ?2`).bind(u.id, t).all();
   const received = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
-      (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
+      (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) +
+      (SELECT COUNT(*) FROM pg_flights WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL) AS n`).bind(u.id, t).first();
   // (the Moon's flights count as flights, and for the Moonshot badge; their distances stay out of the Earth's records)
   const landedAll = sent.filter((p) => p.deliver_at <= t && p.lost_at == null), landed = landedAll.filter((p) => !p.lunar);
   // (each leg of a space flight: one that followed someone to another world flew two)
@@ -71,8 +75,8 @@ export async function logFor(D, uid, t) {
   // the weather's part: flights that went around storms (planned, or changing course on the way), hours spent
   // sheltering from them, and the most a wind brought one in early
   const legsOf = (p) => { try { return p.legs ? JSON.parse(p.legs) : []; } catch (_) { return []; } };
-  const dodged = sent.filter((p) => legsOf(p).some((l) => l[3] === "s" || (l[3] === "r" && l[4] === "s"))).length;
-  const sheltered = sent.reduce((ms, p) => { const ls = legsOf(p); for (let i = 0; i < ls.length - 1; i++) if (ls[i][3] === "h" && ls[i + 1][3] === "h" && ls[i][0] === ls[i + 1][0]) ms += ls[i + 1][2] - ls[i][2]; return ms; }, 0) / 3600e3;
+  const dodged = sent.filter((p) => p.dodged || legsOf(p).some((l) => l[3] === "s" || (l[3] === "r" && l[4] === "s"))).length;
+  const sheltered = sent.reduce((ms, p) => { ms += p.shelter_ms || 0; const ls = legsOf(p); for (let i = 0; i < ls.length - 1; i++) if (ls[i][3] === "h" && ls[i + 1][3] === "h" && ls[i][0] === ls[i + 1][0]) ms += ls[i + 1][2] - ls[i][2]; return ms; }, 0) / 3600e3;
   const early = Math.max(0, ...landed.filter((p) => p.wind > 0).map((p) => -(p.wx_ms || 0)));
   // Achievements: earned, or how close you are (0-1)
   const atlantic = (p) => p.from_lon != null && p.to_lon != null && ((p.from_lon < -40 && p.to_lon > -20) || (p.to_lon < -40 && p.from_lon > -20));

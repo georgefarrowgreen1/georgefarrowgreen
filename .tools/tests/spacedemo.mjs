@@ -107,6 +107,8 @@ await tick();
 ok((await allPushes(gk, 'george', since)).filter((x) => /halfway/.test(x.body || '')).length === 1, 'and only once');
 
 // ---- 7. a lunar trip through a real eclipse (28 Aug 2026), and postmarks and badges once it lands ----
+// (that's over a month ago, when its message would be let go: the clean-up waits while this test looks at it)
+sql("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('keep_at', '99999999999999')");
 const E0 = Date.parse('2026-08-26T12:00:00Z'), E1 = Date.parse('2026-08-29T13:00:00Z');
 sql(`UPDATE pg_msgs SET sent_at = ${E0}, deliver_at = ${E1}, moon = json_set(moon, '$.dist', 358500) WHERE id = '${n1.id}'`);
 await tick();

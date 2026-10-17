@@ -21,6 +21,7 @@ import { spaceMoments, legOf } from "../pigeon/space.js";
 import { MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
+import { housekeeping } from "./_retention.js";
 import { streakTick } from "./_streaks.js";
 
 const enc = new TextEncoder();
@@ -594,6 +595,9 @@ export async function tick(env, origin) {
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
     D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR),
     D.prepare("DELETE FROM pg_handles_held WHERE until < ?").bind(t)]).catch(() => {});
+  // messages over a month old (their pigeons' lines kept), stray files, accounts unused for a year (functions/_retention.js):
+  // before the blur below, which would otherwise clear a month-old flight's way before its line could note what it did
+  await housekeeping(env, D, t, origin).catch((e) => console.error("pigeon housekeeping", e && e.message));
   await blurOld(D, t).catch((e) => console.error("pigeon blur", e && e.message));
   await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('notify_since', ?)").bind(String(t)).run();
   const since = Math.max(Number((await D.prepare("SELECT v FROM pg_meta WHERE k = 'notify_since'").first()).v), t - LOOKBACK);

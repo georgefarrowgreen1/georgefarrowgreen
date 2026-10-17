@@ -27,3 +27,4 @@ wxsay
 syncperf
 consistency
 sheetmotion
+storage

@@ -24,6 +24,8 @@ import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
+import { removeAccount, avatarKey } from "../../_accounts.js";
+import { storageReport } from "../../_retention.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
@@ -368,7 +370,6 @@ async function updateMe({ request, env, waitUntil }) {
    they're only served to the owner, their friends, people in a group with
    them, and people they've sent a friend request to. Asking to be someone's friend shows you nothing of
    them until they say yes. */
-const avatarKey = (id) => `pigeon-avatars/${id}`;
 async function putAvatar({ request, env }) {
   const u = await requireUser(request, env);
   if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
@@ -403,39 +404,6 @@ async function getAvatar({ request, env }, id) {
   return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
 }
 
-// Shared by "Delete my account" and the admin's delete.
-async function removeAccount(env, id) {
-  await dropReacts(env, { user: id });
-  await removeFromGroups(env, id);
-  const D = await db(env);
-  if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));
-  const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(id).all();
-  if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`));
-  await D.batch([
-    D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(id),
-    D.prepare("DELETE FROM pg_flyover WHERE sender = ?1 OR user_id = ?1").bind(id),
-    D.prepare("DELETE FROM pg_birds WHERE owner = ?").bind(id),
-    D.prepare("UPDATE pg_msgs SET via_ct = '', via_note = NULL, via_place = NULL, legs = NULL WHERE via = ?1").bind(id),     // a stopover with them: their copy, and where they were, go
-    D.prepare("DELETE FROM pg_passport WHERE user_id = ?1").bind(id),
-    D.prepare("DELETE FROM pg_postmarks WHERE user_id = ?1").bind(id),
-    D.prepare("DELETE FROM pg_stamped WHERE user_id = ?1").bind(id),
-    D.prepare("DELETE FROM pg_feathers WHERE user_id = ?1").bind(id),
-    D.prepare("DELETE FROM pg_kit WHERE user_id = ?1").bind(id),
-    D.prepare("DELETE FROM pg_streaks WHERE a = ?1 OR b = ?1").bind(id),
-    D.prepare("UPDATE pg_invites SET used_by = NULL WHERE used_by = ?1").bind(id),
-    D.prepare("UPDATE pg_gevents SET actor_name = 'A deleted account' WHERE actor = ?1").bind(id),
-    D.prepare("UPDATE pg_gevents SET target_name = 'A deleted account' WHERE target = ?1").bind(id),
-    D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
-    D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
-    D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
-    D.prepare("DELETE FROM pg_push WHERE user_id = ?").bind(id),
-    D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
-    // their handle is held for 30 days, for no one, so no one can pose as them to their friends
-    D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
-    D.prepare("DELETE FROM pg_handles_held WHERE user_id = ?").bind(id),
-    D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
-  ]);
-}
 async function deleteMe({ request, env }) {
   const u = await requireUser(request, env);
   requireFresh(u);
@@ -1375,6 +1343,11 @@ async function adminStatus({ request, env }) {
   return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined,
     from: authed ? emailFrom(env) : undefined, testTo: authed ? ownerEmail(env) : undefined });
 }
+// What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
+async function adminStorage({ request, env }) {
+  await requireAdmin(request, env);
+  return json(await storageReport(env, await db(env), Date.now()));
+}
 async function adminUsers({ request, env }) {
   await requireAdmin(request, env);
   const D = await db(env), t = Date.now();
@@ -1595,7 +1568,7 @@ const ROUTES = {
   "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
-  "POST admin-test-email": adminTestEmail,
+  "POST admin-test-email": adminTestEmail, "GET admin-storage": adminStorage,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,

@@ -146,9 +146,11 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.1
+## InFlight (chat.georgefarrowgreen.com) — 1.2.2
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.2.2** (lighter): messages are kept for 30 days after they land (or are lost), then deleted for everyone, with their photos, reactions and moments (`functions/_retention.js`, run from the tick every ten minutes). What each pigeon did stays as one line in `pg_flights` (distance, times, kind, how it fared, storms gone round, hours sheltering, a ship, its space legs; never its words or its exact way), so the Flight Log, badges, rare pigeons, seasons and passport trips read the same; a flight is stamped and a named pigeon's career settled first (one that can't be waits up to 45 days). A group's history goes after 30 days, the admin log after 180. Files in storage that nothing points to (over a day old) are found a page at a time and deleted. An account nobody has used for a year is deleted, after an email a week before; signing in, or the app checking in, keeps it. Admin → Storage shows rows per table, the database's size, files by kind and what's waiting to go. Also: sheets slide up without a judder (a redraw waits until a sheet is up), screens push and pop on the same curve, tabs glide, and moving between sheets slides like pages (`.tools/tests/sheetmotion.mjs`).
 
 **1.2.1** (wherever you go): pigeons on their way follow you off the Earth, back to it and between the Moon and Mars (`functions/_follow.js`). An Earth pigeon in the air is handed to a space pigeon from wherever it is; a space pigeon carries on to where you were and is relayed on (a second leg, `moon.prev`); a new spot on the same world, it heads there instead. Lunar eclipses use Meeus's fuller Moon and Sun series and the umbra's real size that night, so they're found to within a couple of minutes, the shallow ones too. Also: notification rounds page through everything due (along each query's index) instead of stopping at a few hundred; unfriending or blocking puts booked pigeons back in their lofts; sign-in holds count wrong passwords per address (30 an hour), with a much higher bar (300) for the account as a whole; two standard pigeons sent at the same moment can't both take the turn.
 
@@ -1031,6 +1033,10 @@ show a friendly "backend not set up" message).
   photo or voice pigeon, stopover note and reactions (in a group, once everyone
   it flew to has read it), and phones stop showing it at once, even from their
   saved copy. The flight itself stays for the Flight Log (`functions/_vanish.js`).
+- **Nothing is kept for long**: every message is deleted for everyone 30 days
+  after it lands, whatever its chat's setting; only a line of what its pigeon
+  did is kept, for the Flight Log (`functions/_retention.js`). An account
+  unused for a year is deleted, a week after an email saying so.
 - **Passwords are stretched with Argon2id** (64 MiB, 3 passes, on the phone;
   `pigeon/argon2.js` is hash-wasm 4.12.0, MIT, checked against npm's integrity
   hash), so guessing with graphics cards is slow. Its salt is marked `a2:`; an

@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.1";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.2";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2282,12 +2282,17 @@ async function loadChat(fid) {
 // (in a group, by everyone it flew to). The server wipes it within a minute; this hides
 // it at once, even from a copy saved on the phone.
 const vanishSay = (ms) => (ms ? `${ms / DAY} day${ms === DAY ? "" : "s"}` : "off");
+// Messages are kept for 30 days after they land (or are lost), then go for everyone (functions/_retention.js)
+const KEEP_MS = 30 * DAY, KEEP_SAY = "Messages are kept for 30 days after they land, then deleted for everyone. Your Flight Log, passport and badges keep every flight.";
+const kept = (m, t = now()) => { const end = m.lost ? m.lostAt || m.deliverAt : m.deliverAt; return !!end && end + KEEP_MS < t && !(m.flock || []).some((x) => !x.lost && x.deliverAt + KEEP_MS >= t); };
 function vanished(m, t = now()) {
   if (!m?.vanish) return false;
   if (m.flock) { const fl = m.flock.filter((x) => !x.lost); return fl.length > 0 && fl.every((x) => x.readAt) && Math.max(...fl.map((x) => x.readAt)) + m.vanish <= t; }
   return !!m.readAt && m.readAt + m.vanish <= t;
 }
 async function applyChat(fid, d, live) {
+  // (a copy kept on this phone may have messages the server has since let go, after a month; a fresh one is as the server keeps it)
+  if (!live && d.messages?.some((m) => kept(m))) d = { ...d, messages: d.messages.filter((m) => !kept(m)) };
   if (d.messages?.some((m) => vanished(m))) {
     for (const m of d.messages) if (vanished(m)) { S.plain.delete(m.id); S.pctx.delete(m.id); }
     d = { ...d, messages: d.messages.filter((m) => !vanished(m)) };
@@ -2361,6 +2366,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.2", at: Date.UTC(2026, 9, 19), title: "Lighter", items: [
+    ["clock", "indigo", "Messages are kept for a month", "Each message is deleted for everyone 30 days after it lands, photos and all. Your Flight Log, passport, badges and rare pigeons keep every flight."],
+    ["person", "gray", "Unused accounts", "An account nobody has signed in to for a year is deleted, with an email a week before. Opening InFlight keeps it."],
+    ["bird", "blue", "Smoother", "Sheets slide up without a judder, chats slide in and out more smoothly, tabs glide, and moving between sheets slides like pages."],
+  ] },
   { v: "1.2.1", at: Date.UTC(2026, 9, 18), title: "Wherever you go", items: [
     ["up", "indigo", "Pigeons follow you to other worlds", "Leave for the Moon or Mars and the pigeons already on their way come too: one over Europe is handed to a lunar pigeon there and then; one in space gets to where you were and is relayed on by laser."],
     ["moon", "gray", "Eclipses to the minute", "The Moon and the Earth’s shadow are worked out properly now, so a lunar eclipse on a pigeon’s trip is when it really is, shallow ones too."],
@@ -5386,6 +5396,7 @@ function drawSheet(refresh) {
           ${cell({ act: "grouprename", id: g.id, icon: I.compose, tile: "gray", label: "Group Name", val: esc(g.name), chev: true })}
           ${cell({ act: "vanishask", id: g.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: g.vanish ? vanishSay(g.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}
         </div>
+        <div class="gfoot">${KEEP_SAY}</div>
         <div class="group mt">${cell({ act: "groupleaveask", id: g.id, label: "Leave Group", cls: "center destructive" })}</div>`, { name: `${g.name}: group info` });
       return;
     }
@@ -5662,6 +5673,7 @@ function drawSheet(refresh) {
         </div>
         <div class="group mt">${cell({ act: "safety", id: f.id, icon: I.shield, tile: "teal", label: "Safety Number", val: isVerified(f) ? "Verified" : "", chev: true })}
           ${cell({ act: "vanishask", id: f.id, icon: I.clock, tile: "indigo", label: "Disappearing Messages", val: f.vanish ? vanishSay(f.vanish.ms).replace(/^./, (c) => c.toUpperCase()) : "Off", chev: true })}</div>
+        <div class="gfoot">${KEEP_SAY}</div>
         <div class="group mt">${cell({ act: "unfriendask", id: f.id, label: "Remove Friend", cls: "center destructive" })}${cell({ act: "blockask", id: f.id, label: `Block @${esc(f.handle)}`, cls: "center destructive" })}</div>`, { name: `${f.name}: contact info` });
       return;
     }

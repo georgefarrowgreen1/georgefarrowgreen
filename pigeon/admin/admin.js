@@ -53,6 +53,7 @@ const I = {
   link: ico(`<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>`),
   trash: ico(`<path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6"/>`),
   gift: ico(`<rect x="4" y="9" width="16" height="11" rx="2"/><path d="M3.5 9h17M12 9v11M12 9c-1.5-3.5-5.5-4-5.5-1.5S10 9 12 9Zm0 0c1.5-3.5 5.5-4 5.5-1.5S14 9 12 9Z"/>`),
+  db: ico(`<ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6M5 12v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-6"/>`),
   plane: ico(`<path d="M20 4 4 10.8l6.9 2.3L13.2 20Z"/>`),
 };
 
@@ -86,6 +87,7 @@ const LOG = {
   "pigeons-added": ["Pigeons given", "gift", "orange"], "test-email": ["Test email sent", "mail", "blue"],
   "reset-emailed": ["Reset link emailed", "mail", "blue"], "reset-link": ["Reset link made", "link", "indigo"],
   "reset-used": ["Password reset", "key", "green"], "signed-out": ["Signed out everywhere", "out", "gray"], deleted: ["Account deleted", "trash", "red"],
+  "idle-warned": ["Unused account warned", "mail", "gray"], "idle-deleted": ["Unused account deleted", "trash", "gray"],
 };
 const logRow = (l) => { const [label, icon, tile] = LOG[l.action] || [l.action, "clock", "gray"];
   return cell({ icon: I[icon], tile, label: esc(label), sub: `${esc(l.detail || "")}${l.detail ? " · " : ""}${fmtSeen(l.at)}` }); };
@@ -172,6 +174,8 @@ function render() {
     </div>
     <div class="gfoot">${!A.email ? "Add <b>RESEND_API_KEY</b> in Cloudflare to switch reset emails on. Until then, use “Make a Reset Link” on an account."
       : testSender ? `Emails can only reach your own Resend address until you verify your domain and set PIGEON_FROM. Tests go to ${esc(A.testTo)}.` : `Sent from ${esc(A.from)}.`}</div>
+    <div class="ghead">Storage</div>
+    <div class="group">${cell({ a: "storage", icon: I.db, tile: "indigo", label: "Storage", sub: "What’s kept, and how much", chev: true })}</div>
     <div class="ghead">Recent Activity</div>
     <div class="group">${A.log.slice(0, 5).map(logRow).join("") || cell({ label: "Nothing yet", cls: "muted" })}
       ${A.log.length > 5 ? cell({ a: "activity", label: "Show All", chev: true, cls: "blue" }) : ""}</div>
@@ -227,13 +231,46 @@ const vDelete = (u) => `<div class="profile-head">${avatar(u, "l")}<span class="
     <p class="gfoot bad" role="alert" hidden></p>
     <div class="stack"><button class="btn wide danger" type="submit">Delete Account</button></div>
   </form>`;
+// What's kept, and how much: loaded when it's opened (counting the files takes a moment)
+const bytes = (n) => (n == null ? "–" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
+const num = (n) => Number(n || 0).toLocaleString("en-GB");
+const FILES = { "pigeon/": "Photos and voice", "pigeon-g/": "Group photos", "pigeon-avatars/": "Profile pictures", "bg/": "Site backgrounds" };
+function vStorage() {
+  const s = A.storage;
+  if (!s) return `<div class="group mt-s">${cell({ label: A.storageErr ? esc(A.storageErr) : "Counting…", cls: "muted" })}</div>`;
+  const files = s.files.reduce((a, f) => ({ n: a.n + f.n, b: a.b + f.bytes }), { n: 0, b: 0 });
+  return `<div class="group mt-s">
+      ${cell({ icon: I.db, tile: "indigo", label: "Database", val: bytes(s.dbBytes) })}
+      ${cell({ icon: I.gift, tile: "orange", label: "Files", val: `${num(files.n)} · ${bytes(files.b)}` })}
+      ${cell({ icon: I.bubble, tile: "blue", label: "Message words", sub: "Encrypted, as stored", val: bytes(s.words) })}
+      ${cell({ icon: I.plane, tile: "teal", label: "Flight paths", val: bytes(s.ways) })}
+    </div>
+    <div class="ghead">Cleaning up</div>
+    <div class="group">
+      ${cell({ icon: I.clock, tile: "green", label: "Last run", val: s.keptAt ? fmtSeen(s.keptAt) : "Not yet" })}
+      ${cell({ icon: I.trash, tile: "gray", label: `Messages over ${s.keepDays} days`, sub: "Waiting to go (a few hundred go each run)", val: num(s.due) })}
+      ${cell({ icon: I.mail, tile: "gray", label: "Unused accounts warned", sub: `No sign-in for almost ${s.idleDays} days`, val: num(s.warned) })}
+    </div>
+    <div class="gfoot">Messages go ${s.keepDays} days after they land, for everyone (each pigeon’s distance and times stay, for the flight log and badges). Accounts nobody has used for a year go too, a week after an email. Files nothing points to are found and deleted.</div>
+    <div class="ghead">Files</div>
+    <div class="group">${s.files.map((f) => cell({ label: esc(FILES[f.prefix] || f.prefix), val: `${num(f.n)}${f.more ? "+" : ""} · ${bytes(f.bytes)}` })).join("") || cell({ label: "No file storage", cls: "muted" })}</div>
+    <div class="ghead">Rows</div>
+    <div class="group">${s.tables.map((x) => cell({ label: `<code>${esc(x.name)}</code>`, val: num(x.rows) })).join("")}</div>
+    <div class="group mt">${cell({ a: "storagerefresh", label: "Count Again", cls: "blue center" })}</div>`;
+}
+async function loadStorage() {
+  A.storage = null; A.storageErr = null; if (A.sheet?.type === "storage") drawSheet();
+  try { A.storage = await call("/api/pigeon/admin-storage"); }
+  catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); A.storageErr = err.message; }
+  if (A.sheet?.type === "storage") drawSheet();
+}
 const vActivity = () => `<div class="group mt-s">${A.log.map(logRow).join("") || cell({ label: "Nothing yet", cls: "muted" })}</div>
   <div class="gfoot">The last 100 admin actions.</div>`;
 function drawSheet() {
   const s = A.sheet, layer = $("#layer");
   const u = s.id && user(s.id);
   if ((s.type === "user" || s.type === "delete") && !u) return closeSheet();
-  const [title, body, back] = s.type === "user" ? [u.name, vUser(u)] : s.type === "delete" ? ["Delete Account", vDelete(u), "deleteback"] : ["Admin Activity", vActivity()];
+  const [title, body, back] = s.type === "user" ? [u.name, vUser(u)] : s.type === "delete" ? ["Delete Account", vDelete(u), "deleteback"] : s.type === "storage" ? ["Storage", vStorage()] : ["Admin Activity", vActivity()];
   const fresh = !$(".sheet", layer) || layer.dataset.type !== s.type;
   const scroll = $(".sheet .body", layer)?.scrollTop || 0;
   layer.innerHTML = sheetHtml(title, body, back);
@@ -300,6 +337,8 @@ document.addEventListener("click", async (e) => {
   if (act === "close") return closeSheet();
   if (act === "open") return openSheet({ type: "user", id: b.dataset.id });
   if (act === "activity") return openSheet({ type: "activity" });
+  if (act === "storage") { openSheet({ type: "storage" }); return loadStorage(); }
+  if (act === "storagerefresh") return loadStorage();
   if (act === "delask") return openSheet({ type: "delete", id });
   if (act === "deleteback") return openSheet({ type: "user", id });
   if (act === "signout") { await fetch("/api/logout", { method: "POST" }); return vSignIn(); }
