@@ -933,11 +933,14 @@ function drawNight(g, W, H, ox, oy, k) {
   return spots;
 }
 /* ---------- when it lands, in your time and your friend's ---------- */
+// Date formatters, made once per zone and style (making one is slow: a sheet full of times made hundreds)
+const DTF = new Map();
+const dtf = (o) => { const k = JSON.stringify(o); let f = DTF.get(k); if (!f) { f = new Intl.DateTimeFormat("en-GB", o); DTF.set(k, f); } return f; };
 const MY_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (_) { return null; } })();
 // "08:12", or "Sat 08:12" when that's not today there
 function clockIn(ts, tz) {
   try {
-    const f = (t, o) => new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, ...o }).format(t), ymd = { year: "numeric", month: "numeric", day: "numeric" };
+    const f = (t, o) => dtf({ timeZone: tz || undefined, ...o }).format(t), ymd = { year: "numeric", month: "numeric", day: "numeric" };
     const time = f(ts, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     return f(ts, ymd) === f(now(), ymd) ? time : `${f(ts, { weekday: "short" })} ${time}`;
   } catch (_) { return fmtShort(ts); }
@@ -3506,7 +3509,7 @@ function chatSub(f) {
     else { const d = lunarDay(f.moon.lat, f.moon.lon, now()); icon = d.day ? I.sun : I.moon; bits.push(`${d.day ? "Day" : "Night"} at ${site} · ${d.day ? "sunset" : "sunrise"} in ${fmtDur(d.next - now())}`); }
   } else if (f.tz && f.tz !== MY_TZ) {
     try {
-      const h = +new Intl.DateTimeFormat("en-GB", { timeZone: f.tz, hour: "2-digit", hourCycle: "h23" }).format(now());
+      const h = +dtf({ timeZone: f.tz, hour: "2-digit", hourCycle: "h23" }).format(now());
       icon = h >= 19 || h < 6 ? I.moon : I.sun;
       bits.push(`<span data-clock="${esc(f.tz)}">${esc(clockIn(now(), f.tz))}</span>${f.place ? ` in ${esc(f.place)}` : " there"}`);
     } catch (_) {}
@@ -3678,9 +3681,9 @@ function spaceCard(m, cssW, cssH, dpr = 3) {
 function flightFacts(m, withName) {
   const mine = m.from === S.me.id, other = friend(mine ? m.to : m.from), flew = Math.max(1, m.deliverAt - m.sentAt), k = kindOf(m), w = m.wind;
   const tz = mine ? other?.tz : MY_TZ;
-  const at = (o) => { try { return new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, ...o }).format(m.deliverAt); } catch (_) { return new Intl.DateTimeFormat("en-GB", o).format(m.deliverAt); } };
+  const at = (o) => { try { return dtf({ timeZone: tz || undefined, ...o }).format(m.deliverAt); } catch (_) { return dtf(o).format(m.deliverAt); } };
   let zone = "";
-  try { zone = new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, timeZoneName: "short" }).formatToParts(m.deliverAt).find((x) => x.type === "timeZoneName")?.value || ""; } catch (_) {}
+  try { zone = dtf({ timeZone: tz || undefined, timeZoneName: "short" }).formatToParts(m.deliverAt).find((x) => x.type === "timeZoneName")?.value || ""; } catch (_) {}
   const mph = (kmh) => Math.round(Math.abs(kmh) * 0.621371);
   return {
     k, from: m.fromPlace || "Somewhere", to: m.toPlace || "Somewhere", miles: fmtMiles(m.km + shipKm(m.legs)), longMiles: ((mi) => `${mi.toLocaleString("en-GB")} mile${mi === 1 ? "" : "s"}`)(Math.round((m.km + shipKm(m.legs)) * 0.621371)),
@@ -5070,9 +5073,10 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
     <header><span class="l">${b(left, "l")}</span>${title ? `<h2 tabindex="-1">${esc(title)}</h2>` : `<h2 class="sr" tabindex="-1">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
-let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9;
-// A sheet is still coming up (sliding in, its rows growing) for this long after it opens
-const SHEET_IN_MS = 1100;
+let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9, sheetLater = 0;
+// A sheet is still coming up (sliding in, its rows growing) for this long after it opens; the slide itself is the
+// first SHEET_SLIDE_MS (styles.css: .sheet)
+const SHEET_IN_MS = 1100, SHEET_SLIDE_MS = 500;
 const sheetEntering = () => performance.now() - sheetUpAt < SHEET_IN_MS;
 const gliding = new Map();            // switches mid-glide: key → { from, to, at }
 const switchKey = (b) => `${b.dataset.act}:${b.dataset.id || ""}`;
@@ -5117,7 +5121,11 @@ function renderSheet(refresh) {
     clearTimeout(sheetTimer); sheetTimer = setTimeout(() => { if (!S.sheet) $layer.innerHTML = ""; }, 330);
     return;
   }
-  clearTimeout(sheetTimer);
+  clearTimeout(sheetTimer); clearTimeout(sheetLater);
+  // the same sheet redrawn while it slides up (its plan, its friends arriving): that waits until it's up, all in
+  // one go. Redrawing is a long moment's work on a phone, and doing it mid-slide made the sheet judder.
+  const slid = performance.now() - sheetUpAt;
+  if (open && !closing && sheetType === S.sheet.type && slid < SHEET_SLIDE_MS) { sheetLater = setTimeout(() => renderSheet(refresh), SHEET_SLIDE_MS - slid + 20); return; }
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
   const before = had ? switchStates($layer) : null, ticked = had ? tickedKeys($layer) : null;
   const old = $(".sheet", $layer);
@@ -5150,7 +5158,7 @@ function renderSheet(refresh) {
   if (!had && now) sheetUpAt = performance.now();
   root().classList.toggle("sheeted", !!$(".sheet", $layer));
   // a sheet that has just come up: a screen reader starts in it (not on the screen behind), unless a field has already taken focus
-  if (!had && now && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true });
+  if (!had && now && !now.contains(document.activeElement)) setTimeout(() => { if ($layer.contains(now) && !now.classList.contains("closing") && !now.contains(document.activeElement)) $("h2", now)?.focus({ preventScroll: true }); }, SHEET_SLIDE_MS);
 }
 function drawSheet(refresh) {
   const s = S.sheet;

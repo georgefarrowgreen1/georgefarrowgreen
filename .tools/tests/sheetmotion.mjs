@@ -1,5 +1,5 @@
-// Sheets come up smoothly: How It Flies is redrawn as its plan arrives, and it carries on sliding up from where it
-// had got to (it used to jump the rest of the way), its rows keep growing, and the screen behind only moves.
+// Sheets come up smoothly: How It Flies is redrawn as its plan arrives, but only once it's up (a redraw mid-slide made
+// it jump, then judder), it never overshoots, its rows keep growing, and the screen behind stays put.
 import { kit } from './lib.mjs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -30,23 +30,27 @@ for (let i = 0; i < 3; i++) {
   await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(900);
 }
 const redrawn = runs.find((m) => m.some((x) => !x.same)) || runs[0];
-const jumps = redrawn.slice(1).map((x, i) => ({ t: Math.round(x.t), d: Math.round(x.y - redrawn[i].y), y: Math.round(x.y) }));
-const worst = jumps.reduce((a, b) => (b.d < a.d ? b : a), { d: 0 });
-const swapAt = redrawn.findIndex((x) => !x.same);
+const swapAt = redrawn.findIndex((x) => !x.same), h = redrawn.at(-1).h;
 console.log('frames', redrawn.length, 'redrawn at frame', swapAt, swapAt > 0 ? `(${Math.round(redrawn[swapAt].t)}ms, y ${Math.round(redrawn[swapAt - 1].y)} → ${Math.round(redrawn[swapAt].y)})` : '');
-ok(redrawn.some((x) => !x.same), 'How It Flies is redrawn as it comes up (its plan arriving)', `frame ${swapAt}`);
-const h = redrawn.at(-1).h;
-ok(swapAt < 0 || Math.abs(redrawn[swapAt].y - redrawn[swapAt - 1].y) < h * 0.12, 'redrawn mid-slide: it carries on from where it was, no jump', swapAt > 0 ? `${Math.round(redrawn[swapAt - 1].y)} → ${Math.round(redrawn[swapAt].y)} of ${h}` : '-');
+console.log('path', redrawn.filter((_, j) => j % 3 === 0).map((x) => `${Math.round(x.t)}:${Math.round(x.y)}`).join(' '));
+ok(swapAt > 0, 'How It Flies is redrawn with its plan', `frame ${swapAt}`);
+// the redraw waits until it's up: while it's still sliding it's the same sheet, moving a little every frame
+const sliding = redrawn.filter((x) => x.y > 1);
+ok(sliding.every((x) => x.same), 'no redraw while it slides up (that made it judder)', `redrawn at ${Math.round(redrawn[swapAt]?.t)}ms, y ${Math.round(redrawn[swapAt]?.y)}`);
+const steps = redrawn.slice(1).map((x, i) => redrawn[i].y - x.y), worst = Math.max(...steps);
+ok(worst < h * 0.35, 'no frame jumps a big part of the way', `${Math.round(worst)} of ${h}px`);
+ok(Math.min(...redrawn.map((x) => x.y)) > -1, 'it never goes past the top and back (no bounce)', String(Math.round(Math.min(...redrawn.map((x) => x.y)))));
 ok(Math.abs(redrawn.at(-1).y) < 1, 'and it ends up exactly in place', String(redrawn.at(-1).y));
 // the bars grow on after the redraw, rather than snapping to full
 const b0 = redrawn[swapAt]?.bars?.[0], bEnd = redrawn.at(-1).bars?.[0];
-ok(swapAt < 0 || b0 == null || bEnd == null || b0 < bEnd * 0.98 || redrawn[swapAt].t > 900, 'its bars keep growing through the redraw', `${b0?.toFixed?.(1)} → ${bEnd?.toFixed?.(1)} at ${Math.round(redrawn[swapAt]?.t || 0)}ms`);
-// the screen behind: it moves, but no filter or animated corner (the repaints that made it stutter)
-const behind = await A.p.evaluate(() => { document.querySelector('.compose .kind').click(); return new Promise((r) => setTimeout(() => { const v = getComputedStyle(document.querySelector('.view')), c = getComputedStyle(document.querySelector('.compose')); r({ vt: v.transform, vf: v.filter, ct: c.transform, tr: v.transitionProperty }); }, 700)); });
-ok(behind.vt !== 'none' && behind.vf === 'none' && behind.ct === 'none' && !/filter/.test(behind.tr), 'the screen behind only moves (no filter, the composer left alone)', JSON.stringify(behind));
+ok(swapAt < 0 || b0 == null || bEnd == null || b0 < bEnd * 0.98, 'its bars keep growing through the redraw', `${b0?.toFixed?.(1)} → ${bEnd?.toFixed?.(1)} at ${Math.round(redrawn[swapAt]?.t || 0)}ms`);
+// the screen behind stays put: no shrinking, filter or corners (repaints of the whole chat, every frame)
+const behind = await A.p.evaluate(() => { document.querySelector('.compose .kind').click(); return new Promise((r) => setTimeout(() => { const v = getComputedStyle(document.querySelector('.view')), c = getComputedStyle(document.querySelector('.compose')); r({ vt: v.transform, vf: v.filter, vr: v.borderTopLeftRadius, ct: c.transform }); }, 700)); });
+ok(behind.vt === 'none' && behind.vf === 'none' && behind.vr === '0px' && behind.ct === 'none', 'the screen behind stays put (the scrim dims it)', JSON.stringify(behind));
+// a screen reader is taken into it once it's up
+const focus = await A.p.evaluate(() => document.activeElement?.closest?.('.sheet') ? document.activeElement.tagName : document.activeElement?.tagName);
+ok(focus === 'H2', 'once up, focus is in the sheet (its title)', focus);
 await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(800);
-const after = await A.p.evaluate(() => [getComputedStyle(document.querySelector('.view')).transform, getComputedStyle(document.querySelector('.view')).borderTopLeftRadius]);
-ok(after[0] === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(after[0]), 'closed: the screen is back as it was', JSON.stringify(after));
 await A.p.screenshot({ path: `${out}/after.png` });
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);
