@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.3";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.4";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2366,6 +2366,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.4", at: Date.UTC(2026, 9, 21), title: "Look up, closer", items: [
+    ["compass", "teal", "Its whole way", "Look Up draws the pigeon’s way across your sky: where it set off, the part it has flown, and the rest of the way to where it lands."],
+    ["loc", "blue", "From where you are", "Tap Where I Am to measure from where you are now instead of your profile’s place. It’s used only while Look Up is open and never leaves your phone."],
+    ["camera", "gray", "Sharper through the camera", "On phones with several cameras it picks the main one, and allows for zoom, so the drawing sits on the real view."],
+  ] },
   { v: "1.2.3", at: Date.UTC(2026, 9, 20), title: "Look up", items: [
     ["compass", "teal", "Which way is it?", "Open a pigeon in the air and tap Look Up, then hold your phone up and turn: it shows the sky ahead with your pigeon where it really is, how far, and over where. Most are far past the curve of the Earth, below the horizon."],
     ["camera", "gray", "Through the camera", "Tap Camera to see it over the real view ahead. The picture stays on your phone, and the camera goes off as soon as you leave."],
@@ -6629,23 +6634,42 @@ function cheerState(btn, m) {
 const lookState = (btn, m) => { const on = !!lookAt(m); if (btn.hidden === on) btn.hidden = !on; btn.dataset.id = m.id; };
 // where a pigeon in the air is from here: { az, el, km, over?, sky?, orbit? }, or null (landed, lost, not on the map,
 // or you're not on the Earth)
+// where you're looking from: where you are now, if you've asked (Where I Am; kept on this phone, only while Look Up is
+// open), or where your profile says
+const lookFrom = () => (look.here ? look.here : S.me?.lat != null && !S.me.moon ? { lat: S.me.lat, lon: S.me.lon } : null);
 function lookAt(m, t = now()) {
-  if (S.me?.lat == null || S.me.moon) return null;
+  const me = lookFrom(); if (!me) return null;
   const o = moonOf(m);
   if (o) {
     if (o.lost || o.deliverAt <= t || t < o.sentAt) return null;
     if (o.mn.k === "orbit") {
       const [la, lo, phase] = orbitWhere(o.mn, t - o.sentAt);
-      return { ...lookTo(S.me.lat, S.me.lon, la, lo, phase === "orbit" ? ORBIT.alt : 3), over: overWhere(lo, la), orbit: phase };
+      return { ...lookTo(me.lat, me.lon, la, lo, phase === "orbit" ? ORBIT.alt : 3), over: overWhere(lo, la), orbit: phase };
     }
     const mars = bodyOf(o.mn.from) === "mars" || bodyOf(o.mn.to) === "mars", f = (t - o.sentAt) / Math.max(1, o.deliverAt - o.sentAt);
     const out = bodyOf(o.mn.from) === "earth" ? distAt(o.mn, f) : bodyOf(o.mn.to) === "earth" ? 1 - distAt(o.mn, f) : 1;     // (how far out from the Earth)
-    return { ...(mars ? marsLook(t, S.me.lat, S.me.lon) : moonLook(t, S.me.lat, S.me.lon)), km: out * (mars ? marsKm(t) : moonKm(t)), sky: mars ? "Mars" : "the Moon",
+    return { ...(mars ? marsLook(t, me.lat, me.lon) : moonLook(t, me.lat, me.lon)), km: out * (mars ? marsKm(t) : moonKm(t)), sky: mars ? "Mars" : "the Moon",
       home: bodyOf(o.mn.to) === "earth", surface: o.mn.k === "surface" };
   }
   if (m.flock || m.lost || m.deliverAt <= t || t < m.sentAt || !routesOf(m).length) return null;
   const [lon, lat] = pigeonLL(m);
-  return { ...lookTo(S.me.lat, S.me.lon, lat, lon, 0.12), over: overWhere(lon, lat) };
+  return { ...lookTo(me.lat, me.lon, lat, lon, 0.12), over: overWhere(lon, lat) };
+}
+// Its whole way across your sky, from where it set off to where it lands: a line through points along it, each as it
+// would look from here (most of it under the horizon, past the curve of the Earth), the part flown solid
+function lookArc(m) {
+  if (m.flock || moonOf(m) || !m.route) return null;
+  const me = lookFrom(), pts = routePts(m), step = Math.max(1, Math.floor(pts.length / 80));
+  const arc = pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map((p) => ({ ...lookTo(me.lat, me.lon, latOf(p.y), p.x, 0.12), t: p.t }));
+  return { arc, from: m.fromPlace || "where it set off", to: m.toPlace || "where it lands" };
+}
+async function lookHere(on) {
+  const b = $(".lookhere", $layer);
+  if (!on) { if (look.watch != null) navigator.geolocation?.clearWatch(look.watch); look.watch = null; look.here = null; look.tg = null; b?.setAttribute("aria-pressed", "false"); return; }
+  if (!navigator.geolocation) return toast("This phone can’t say where it is, so Look Up uses where your profile says.");
+  b?.setAttribute("aria-pressed", "true");
+  look.watch = navigator.geolocation.watchPosition((p) => { look.here = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }; look.tg = null; },
+    () => { lookHere(false); toast("Couldn’t find where you are, so Look Up uses where your profile says."); }, { enableHighAccuracy: true, maximumAge: 30e3, timeout: 20e3 });
 }
 const look = { heading: null, pitch: 0, denied: false, raf: 0, tg: null, tgAt: 0, said: "", on: false, stars: null };
 const POINTS = ["north", "north-north-east", "north-east", "east-north-east", "east", "east-south-east", "south-east", "south-south-east",
@@ -6674,18 +6698,37 @@ function lookStart() {
   if (!look.stars) { let x = 7; const r = () => ((x = (x * 16807) % 2147483647) / 2147483647); look.stars = Array.from({ length: 220 }, () => [r() * 360, Math.asin(r()) / (Math.PI / 180), 0.4 + r() * 1.2]); }
   look.raf = requestAnimationFrame(lookLoop);
 }
+// What the lens takes in, corner to corner: a phone's main camera about 75°, an ultra-wide about 120°, a telephoto
+// about 30°; zoomed in, less (where the phone says how far)
+function lensFov(track) {
+  const label = String(track?.label || "").toLowerCase(), st = track?.getSettings?.() || {};
+  let fov = /ultra|0\.5/.test(label) ? 120 : /tele/.test(label) ? 30 : 75;
+  if (st.zoom > 1) fov = (2 * Math.atan(Math.tan((fov * Math.PI) / 360) / st.zoom) * 360) / Math.PI;
+  return fov;
+}
+// (a phone with several back cameras may hand over a combined, ultra-wide or zoomed one: the plain main one, if there is
+// one, lines the sky up best)
+async function mainCamera(stream) {
+  const tr = stream.getVideoTracks()[0], odd = /ultra|tele|triple|dual|0\.5/i;
+  if (!tr || !odd.test(tr.label || "")) return stream;
+  const cams = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((d) => d.kind === "videoinput" && /back|rear|environment/i.test(d.label) && !odd.test(d.label));
+  if (!cams.length) return stream;
+  try { const s2 = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: cams[0].deviceId }, width: { ideal: 1280 } }, audio: false }); stream.getTracks().forEach((x) => x.stop()); return s2; }
+  catch (_) { return stream; }
+}
 // Through the camera: the real sky ahead, with the pigeon drawn where it is. The picture stays on this phone (nothing
 // is kept or sent), and the camera goes off as soon as you leave.
 async function lookCamera(on) {
   const v = $(".lookvid", $layer), b = $(".lookcam", $layer); if (!v || !b) return;
   if (!on) { look.stream?.getTracks().forEach((x) => x.stop()); look.stream = null; v.srcObject = null; v.hidden = true; b.setAttribute("aria-pressed", "false"); return; }
-  try { look.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false }); }
+  try { look.stream = await mainCamera(await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false })); }
   catch (_) { b.hidden = true; return toast("The camera isn’t available, so here’s the sky drawn instead."); }
+  look.fov = lensFov(look.stream.getVideoTracks()[0]);
   if (S.sheet?.type !== "lookup") { look.stream.getTracks().forEach((x) => x.stop()); look.stream = null; return; }
   v.srcObject = look.stream; v.hidden = false; v.play().catch(() => {}); b.setAttribute("aria-pressed", "true");
 }
 function lookStop() {
-  lookCamera(false);
+  lookCamera(false); lookHere(false); look.way = null;
   look.on = false; cancelAnimationFrame(look.raf);
   removeEventListener("deviceorientationabsolute", lookSensor); removeEventListener("deviceorientation", lookSensor);
 }
@@ -6694,8 +6737,9 @@ function drawLook(s) {
   if (!m) { S.sheet = null; return renderSheet(); }
   if ($(".lookcv", $layer)) return;
   $layer.innerHTML = sheetHtml("Look Up", `<div class="look"><video class="lookvid" playsinline muted autoplay hidden></video><canvas class="lookcv" role="img" aria-label="The sky ahead of you, with the pigeon where it is"></canvas>
-    <button type="button" class="lookcam" data-act="lookcam" aria-pressed="false" hidden>${I.camera || I.globe}<span>Camera</span></button>
-    <div class="lookhud"><div class="lkwho"></div><div class="lkbig"></div><div class="lkwhere"></div><div class="lkhow" aria-live="polite"></div></div></div>`, { flush: true, left: { label: "Back", act: "lookback" } });
+    <div class="lookbar"><button type="button" class="lookhere" data-act="lookhere" aria-pressed="false" aria-label="Use where I am now (it stays on this phone)">${I.loc}<span>Where I Am</span></button>
+    <button type="button" class="lookcam" data-act="lookcam" aria-pressed="false" hidden>${I.camera || I.globe}<span>Camera</span></button></div>
+    <div class="lookhud"><div class="lkwho"></div><div class="lkbig"></div><div class="lkwhere"></div><div class="lkhow" aria-live="polite"></div><div class="lksrc"></div></div></div>`, { flush: true, left: { label: "Back", act: "lookback" } });
   $(".sheet", $layer).classList.add("looksheet");
   // (the camera only helps with a compass to line it up)
   const cam = $(".lookcam", $layer); cam.hidden = !navigator.mediaDevices?.getUserMedia;
@@ -6707,7 +6751,12 @@ function lookLoop() {
   const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id);
   if (!m) return lookStop();
   const t = now();
-  if (!look.tg || t - look.tgAt > 500) { look.tg = lookAt(m, t); look.tgAt = t; look.sun = sunLook(t, S.me.lat ?? 0, S.me.lon ?? 0); look.moon = moonLook(t, S.me.lat ?? 0, S.me.lon ?? 0); }
+  if (!look.tg || t - look.tgAt > 500) {
+    const me = lookFrom() || { lat: 0, lon: 0 };
+    look.tg = lookAt(m, t); look.tgAt = t; look.sun = sunLook(t, me.lat, me.lon); look.moon = moonLook(t, me.lat, me.lon);
+    if (!look.way || t - look.wayAt > 5000 || look.wayFrom !== `${me.lat},${me.lon}`) { look.way = lookArc(m); look.wayAt = t; look.wayFrom = `${me.lat},${me.lon}`;
+      cv.setAttribute("aria-label", `The sky ahead of you, with the pigeon where it is${look.way ? `, and its way from ${look.way.from} to ${look.way.to}` : ""}`); }
+  }
   if (!look.tg) { lookHud(m, null); return lookStop(); }       // landed while you looked
   lookDraw(cv, m); lookHud(m, look.tg);
   look.raf = requestAnimationFrame(lookLoop);
@@ -6732,7 +6781,7 @@ function lookDraw(cv, m) {
   // pixels per degree: a drawn sky shows 62° across; the camera, what its lens sees (a phone's main camera takes in about
   // 75° corner to corner), filling the screen
   let ppd = W / 62;
-  if (cam) { const vw = v.videoWidth, vh = v.videoHeight, fit = Math.max(W / vw, H / vh), fov = 2 * Math.atan(Math.tan(37.5 * Math.PI / 180) * vw / Math.hypot(vw, vh)) / (Math.PI / 180); ppd = (fit * vw) / fov; }
+  if (cam) { const vw = v.videoWidth, vh = v.videoHeight, fit = Math.max(W / vw, H / vh), fov = 2 * Math.atan(Math.tan(((look.fov || 75) / 2) * Math.PI / 180) * vw / Math.hypot(vw, vh)) / (Math.PI / 180); ppd = (fit * vw) / fov; }
   const hd = look.heading, hy = H * 0.5 + look.pitch * ppd;
   const X = (az) => W / 2 + turnBy(hd, az) * ppd, Y = (el) => hy - el * ppd;
   if (!day && !cam) for (const [az, el, r] of look.stars) { const x = X(az), y = Y(el); if (x > -4 && x < W + 4 && y > -4 && y < hy) { g.fillStyle = `rgba(255,255,255,${dusk ? 0.35 : 0.8})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
@@ -6750,9 +6799,31 @@ function lookDraw(cv, m) {
     g.beginPath(); g.moveTo(x, hy); g.lineTo(x, hy + (a % 45 ? 6 : 12)); g.stroke();
     if (!(a % 45)) g.fillText(["N", "NE", "E", "SE", "S", "SW", "W", "NW"][a / 45], x, hy + 28);
   }
+  // its way: where it set off to where it lands, the part flown solid, the rest dashed, the two ends named
+  if (look.way) {
+    const ft = flightAt(m).t, pts = look.way.arc.map((p) => ({ x: X(p.az), y: Y(p.el), done: p.t <= ft }));
+    g.lineWidth = 2.5; g.lineCap = "round"; g.lineJoin = "round";
+    // (each part one line, so its dashes run on; broken where it goes round the back of you)
+    for (const done of [true, false]) {
+      g.strokeStyle = done ? col : "rgba(255,255,255,.85)"; g.setLineDash(done ? [] : [8, 7]); g.beginPath();
+      let on = false;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        if (b.done !== done || Math.abs(b.x - a.x) > W * 0.6) { on = false; continue; }
+        if (!on) { g.moveTo(a.x, a.y); on = true; }
+        g.lineTo(b.x, b.y);
+      }
+      g.stroke();
+    }
+    g.setLineDash([]); g.font = "600 13px -apple-system, system-ui, sans-serif"; g.textAlign = "left";
+    for (const [p, name] of [[pts[0], look.way.from], [pts[pts.length - 1], look.way.to]]) {
+      if (p.x < 0 || p.x > W || p.y < 20 || p.y > H - 20) continue;
+      g.fillStyle = "#fff"; g.beginPath(); g.arc(p.x, p.y, 5, 0, 7); g.fill(); g.fillText(name, p.x + 10, p.y + 4);
+    }
+  }
   // the pigeon: under the horizon a line up to the point on it to face; off to the side, an arrow at the edge
   const x = X(tg.az), y = Y(tg.el), inX = x > 24 && x < W - 24, inY = y > 24 && y < H - 24;
-  if (tg.el < 0 && inX) { g.setLineDash([3, 4]); g.strokeStyle = "rgba(255,255,255,.7)"; g.beginPath(); g.moveTo(x, hy); g.lineTo(x, Math.min(y, H - 30)); g.stroke(); g.setLineDash([]); }
+  if (tg.el < 0 && inX && !look.way) { g.setLineDash([3, 4]); g.strokeStyle = "rgba(255,255,255,.7)"; g.beginPath(); g.moveTo(x, hy); g.lineTo(x, Math.min(y, H - 30)); g.stroke(); g.setLineDash([]); }
   if (inX && inY) {
     const pulse = 1 + 0.12 * Math.sin(performance.now() / 300);
     g.fillStyle = col; g.strokeStyle = "#fff"; g.lineWidth = 3; g.shadowColor = col; g.shadowBlur = 16;
@@ -6797,6 +6868,8 @@ function lookHud(m, tg) {
   const how = live ? (look.aligned ? `There it is: ${up}.` : `Turn ${turn > 0 ? "right" : "left"} about ${Math.abs(turn) || 5}°. It’s ${up}.`)
     : `Face ${compassWord(tg.az)} (${Math.round(tg.az)}°). It’s ${up}.${look.denied ? " (Allow motion and orientation for the live compass.)" : ""}`;
   if (look.said !== how) { $(".lkhow", hud).textContent = how; look.said = how; }
+  const src = look.here ? `From where you are now${look.here.acc ? ` (to within ${look.here.acc < 1000 ? `${Math.max(5, Math.round(look.here.acc / 5) * 5)} m` : `${(look.here.acc / 1609).toFixed(1)} mi`})` : ""}` : `From ${S.me.place || "where your profile says"}`;
+  if ($(".lksrc", hud).textContent !== src) $(".lksrc", hud).textContent = src;
 }
 // "12 minutes", "1h 4m", "a few seconds"
 const soonerText = (ms) => (ms < MIN ? "a few seconds" : ms < HOUR ? `${Math.round(ms / MIN)} minute${Math.round(ms / MIN) === 1 ? "" : "s"}` : fmtDur(ms));
@@ -6989,6 +7062,7 @@ async function onClick1(e, t) {
     }
     case "lookup": return openLook(id);
     case "lookcam": return lookCamera(!look.stream);
+    case "lookhere": return lookHere(look.watch == null);
     case "lookback": S.sheet = { type: "map", id: S.sheet?.id }; return renderSheet();
     case "cheer": {
       const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m || !cheerable(m).can) return;

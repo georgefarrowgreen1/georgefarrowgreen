@@ -43,6 +43,25 @@ const h3 = await hud();
 ok(/There it is/.test(h3), 'facing it: “There it is”', h3.match(/There[^.]*\./)?.[0] || h3);
 await A.p.screenshot({ path: `${out}/look-facing.png` });
 
+// its whole way across the sky, from where it set off to where it lands
+const aria = await A.p.locator('.lookcv').getAttribute('aria-label');
+ok(/its way from London to New York/.test(aria), 'its way across the sky, from London to New York', aria);
+ok(/From London/.test(await hud()), 'measured from where your profile says', (await hud()).match(/From [^.]*$/)?.[0] || '');
+
+// Where I Am: from where you really are (here, Halifax, Nova Scotia: a third of the way over from London, the pigeon is
+// further from there, and to the east)
+await A.ctx.grantPermissions(['notifications', 'geolocation'], { origin: K.BASE }); await A.ctx.setGeolocation({ latitude: 44.65, longitude: -63.57, accuracy: 12 });
+const km0 = Number((await hud()).match(/([\d,]+) mi away/)[1].replace(/,/g, ''));
+await A.p.click('.lookhere'); await A.p.waitForTimeout(1500);
+const h4 = await hud(), km1 = Number((h4.match(/([\d,]+) mi away/) || [, '0'])[1].replace(/,/g, ''));
+ok(/From where you are now \(to within 10 m\)/.test(h4) && km1 > km0 + 300, 'Where I Am: measured from where you are now instead', `${km0} → ${km1} mi · ${h4.match(/From [^.]*$/)?.[0]}`);
+ok(/Turn (left|right)/.test(h4) && !/There it is/.test(h4), 'and from there it’s another way to face', h4.match(/Turn[^.]*\./)?.[0] || h4);
+const turn4 = Number((h4.match(/Turn (left|right) about (\d+)/) || [])[2] || 0) * (/Turn left/.test(h4) ? -1 : 1);
+await face(az + turn4, 85); await A.p.waitForTimeout(700); await A.p.screenshot({ path: `${out}/look-here.png` });
+await A.p.click('.lookhere'); await A.p.waitForTimeout(800);
+ok(/From London/.test(await hud()), 'off again: back to where your profile says');
+await A.p.screenshot({ path: `${out}/look-route.png` });
+
 // 3. through the camera (a stand-in camera: a plain picture): the drawing goes see-through over it, and the camera
 // goes off on leaving
 await A.ctx.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { const c = document.createElement('canvas'); c.width = 720; c.height = 960;

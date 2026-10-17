@@ -146,9 +146,11 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.3
+## InFlight (chat.georgefarrowgreen.com) — 1.2.4
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.2.4** (look up, closer): Look Up draws the pigeon's whole way across your sky (80 points along its route, each seen from where you are: flown solid, the rest dashed, the ends named); Where I Am measures from the phone's own location instead of the profile's place, only while Look Up is open, never stored or sent (`watchPosition`, cleared on leaving); the camera prefers the plain main back camera over a combined, ultra-wide or telephoto one, and takes the lens's field of view from what it is and any zoom the phone reports.
 
 **1.2.3** (look up): a pigeon in the air's map has Look Up: hold the phone up and turn, and the sky ahead shows the pigeon where it really is from where you've said you are (a great circle's bearing, and its elevation with the Earth's curve: a pigeon 120 m up sinks below the horizon about 40 km off), how far, and over where; facing it, "There it is" and a tap. Space pigeons: the Moon or Mars where they are in your sky (Meeus's Moon, Mars from its orbit, through local sidereal time), an orbital one from its orbit 400 km up. The phone's compass and tilt (`deviceorientationabsolute`, or Safari's `webkitCompassHeading` after it asks); with a compass, Camera puts the back camera's picture under it all, at the lens's own scale (a phone's main camera takes in about 75° corner to corner; the picture stays on the phone and the camera stops on leaving); without one, a dial and which way to face in words (`pigeon/space.js` lookTo, moonLook, marsLook; `.tools/tests/lookup.mjs`, `unit/look.test.mjs`).
 
