@@ -2368,6 +2368,7 @@ async function openNote(id, from, to, ct) {
 const RELEASES = [
   { v: "1.2.3", at: Date.UTC(2026, 9, 20), title: "Look up", items: [
     ["compass", "teal", "Which way is it?", "Open a pigeon in the air and tap Look Up, then hold your phone up and turn: it shows the sky ahead with your pigeon where it really is, how far, and over where. Most are far past the curve of the Earth, below the horizon."],
+    ["camera", "gray", "Through the camera", "Tap Camera to see it over the real view ahead. The picture stays on your phone, and the camera goes off as soon as you leave."],
     ["moon", "indigo", "In space too", "A lunar pigeon: the Moon, where it is in your sky right now. A laser pigeon: Mars. An orbital one: going over, 250 miles up."],
   ] },
   { v: "1.2.2", at: Date.UTC(2026, 9, 19), title: "Lighter", items: [
@@ -6673,7 +6674,18 @@ function lookStart() {
   if (!look.stars) { let x = 7; const r = () => ((x = (x * 16807) % 2147483647) / 2147483647); look.stars = Array.from({ length: 220 }, () => [r() * 360, Math.asin(r()) / (Math.PI / 180), 0.4 + r() * 1.2]); }
   look.raf = requestAnimationFrame(lookLoop);
 }
+// Through the camera: the real sky ahead, with the pigeon drawn where it is. The picture stays on this phone (nothing
+// is kept or sent), and the camera goes off as soon as you leave.
+async function lookCamera(on) {
+  const v = $(".lookvid", $layer), b = $(".lookcam", $layer); if (!v || !b) return;
+  if (!on) { look.stream?.getTracks().forEach((x) => x.stop()); look.stream = null; v.srcObject = null; v.hidden = true; b.setAttribute("aria-pressed", "false"); return; }
+  try { look.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false }); }
+  catch (_) { b.hidden = true; return toast("The camera isn’t available, so here’s the sky drawn instead."); }
+  if (S.sheet?.type !== "lookup") { look.stream.getTracks().forEach((x) => x.stop()); look.stream = null; return; }
+  v.srcObject = look.stream; v.hidden = false; v.play().catch(() => {}); b.setAttribute("aria-pressed", "true");
+}
 function lookStop() {
+  lookCamera(false);
   look.on = false; cancelAnimationFrame(look.raf);
   removeEventListener("deviceorientationabsolute", lookSensor); removeEventListener("deviceorientation", lookSensor);
 }
@@ -6681,9 +6693,12 @@ function drawLook(s) {
   const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id);
   if (!m) { S.sheet = null; return renderSheet(); }
   if ($(".lookcv", $layer)) return;
-  $layer.innerHTML = sheetHtml("Look Up", `<div class="look"><canvas class="lookcv" role="img" aria-label="The sky ahead of you, with the pigeon where it is"></canvas>
+  $layer.innerHTML = sheetHtml("Look Up", `<div class="look"><video class="lookvid" playsinline muted autoplay hidden></video><canvas class="lookcv" role="img" aria-label="The sky ahead of you, with the pigeon where it is"></canvas>
+    <button type="button" class="lookcam" data-act="lookcam" aria-pressed="false" hidden>${I.camera || I.globe}<span>Camera</span></button>
     <div class="lookhud"><div class="lkwho"></div><div class="lkbig"></div><div class="lkwhere"></div><div class="lkhow" aria-live="polite"></div></div></div>`, { flush: true, left: { label: "Back", act: "lookback" } });
   $(".sheet", $layer).classList.add("looksheet");
+  // (the camera only helps with a compass to line it up)
+  const cam = $(".lookcam", $layer); cam.hidden = !navigator.mediaDevices?.getUserMedia;
   look.tg = null; lookStart();
 }
 function lookLoop() {
@@ -6704,20 +6719,30 @@ function lookDraw(cv, m) {
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const tg = look.tg, day = look.sun.el > -4, dusk = look.sun.el > -12 && !day, col = col0(kindOf(m));
-  const sky = g.createLinearGradient(0, 0, 0, H);
-  if (day) { sky.addColorStop(0, "#2f78d6"); sky.addColorStop(1, "#9fcaf2"); } else if (dusk) { sky.addColorStop(0, "#14204a"); sky.addColorStop(1, "#c9724a"); }
-  else { sky.addColorStop(0, "#03050f"); sky.addColorStop(1, "#16224a"); }
-  g.fillStyle = sky; g.fillRect(0, 0, W, H);
-  const live = look.heading != null && !look.denied;
+  const live = look.heading != null && !look.denied, v = $(".lookvid", $layer), cam = live && !!look.stream && v?.videoWidth > 0;
+  $(".lookcam", $layer).hidden = !live || !navigator.mediaDevices?.getUserMedia;
+  if (cam) g.clearRect(0, 0, W, H);
+  else {
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    if (day) { sky.addColorStop(0, "#2f78d6"); sky.addColorStop(1, "#9fcaf2"); } else if (dusk) { sky.addColorStop(0, "#14204a"); sky.addColorStop(1, "#c9724a"); }
+    else { sky.addColorStop(0, "#03050f"); sky.addColorStop(1, "#16224a"); }
+    g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  }
   if (!live) return lookDial(g, W, H, tg, col);
-  const ppd = W / 62, hd = look.heading, hy = H * 0.5 + look.pitch * ppd;
+  // pixels per degree: a drawn sky shows 62° across; the camera, what its lens sees (a phone's main camera takes in about
+  // 75° corner to corner), filling the screen
+  let ppd = W / 62;
+  if (cam) { const vw = v.videoWidth, vh = v.videoHeight, fit = Math.max(W / vw, H / vh), fov = 2 * Math.atan(Math.tan(37.5 * Math.PI / 180) * vw / Math.hypot(vw, vh)) / (Math.PI / 180); ppd = (fit * vw) / fov; }
+  const hd = look.heading, hy = H * 0.5 + look.pitch * ppd;
   const X = (az) => W / 2 + turnBy(hd, az) * ppd, Y = (el) => hy - el * ppd;
-  if (!day) for (const [az, el, r] of look.stars) { const x = X(az), y = Y(el); if (x > -4 && x < W + 4 && y > -4 && y < hy) { g.fillStyle = `rgba(255,255,255,${dusk ? 0.35 : 0.8})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
+  if (!day && !cam) for (const [az, el, r] of look.stars) { const x = X(az), y = Y(el); if (x > -4 && x < W + 4 && y > -4 && y < hy) { g.fillStyle = `rgba(255,255,255,${dusk ? 0.35 : 0.8})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
   // the Moon (and the Sun, by day), where they are
-  if (look.moon.el > -1) { const x = X(look.moon.az), y = Y(look.moon.el); g.fillStyle = "#f4f1e6"; g.shadowColor = "rgba(255,255,230,.8)"; g.shadowBlur = 18; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); g.shadowBlur = 0; }
-  if (day) { const x = X(look.sun.az), y = Y(look.sun.el), gl = g.createRadialGradient(x, y, 0, x, y, 60); gl.addColorStop(0, "rgba(255,250,220,.95)"); gl.addColorStop(1, "rgba(255,250,220,0)"); g.fillStyle = gl; g.fillRect(x - 60, y - 60, 120, 120); }
+  if (cam) g.shadowColor = "rgba(0,0,0,.6)", g.shadowBlur = 4;          // (lines and words readable on any picture)
+  if (look.moon.el > -1 && cam) { const x = X(look.moon.az), y = Y(look.moon.el); g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 16, 0, 7); g.stroke(); g.font = "600 12px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText("The Moon", x, y - 24); }
+  else if (look.moon.el > -1) { const x = X(look.moon.az), y = Y(look.moon.el); g.fillStyle = "#f4f1e6"; g.shadowColor = "rgba(255,255,230,.8)"; g.shadowBlur = 18; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); g.shadowBlur = 0; }
+  if (day && !cam) { const x = X(look.sun.az), y = Y(look.sun.el), gl = g.createRadialGradient(x, y, 0, x, y, 60); gl.addColorStop(0, "rgba(255,250,220,.95)"); gl.addColorStop(1, "rgba(255,250,220,0)"); g.fillStyle = gl; g.fillRect(x - 60, y - 60, 120, 120); }
   // the ground, and the points of the compass along the horizon
-  g.fillStyle = day ? "#3f5a3a" : "#0b0f1c"; g.fillRect(0, hy, W, H - hy);
+  if (!cam) { g.fillStyle = day ? "#3f5a3a" : "#0b0f1c"; g.fillRect(0, hy, W, H - hy); }
   g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, hy); g.lineTo(W, hy); g.stroke();
   g.font = "600 13px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(255,255,255,.9)";
   for (let a = 0; a < 360; a += 15) {
@@ -6731,6 +6756,7 @@ function lookDraw(cv, m) {
   if (inX && inY) {
     const pulse = 1 + 0.12 * Math.sin(performance.now() / 300);
     g.fillStyle = col; g.strokeStyle = "#fff"; g.lineWidth = 3; g.shadowColor = col; g.shadowBlur = 16;
+    if (tg.el < 0 && cam) { g.font = "600 12px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(`${fmtMiles(tg.km)} away, past the horizon`, x, y + 32); g.fillStyle = col; }
     g.beginPath(); g.arc(x, y, 15 * pulse, 0, 7); g.fill(); g.shadowBlur = 0; g.stroke();
     g.save(); g.translate(x - 10, y - 9.5); g.scale(0.84, 0.84); g.fillStyle = "#fff"; g.fill(birdAt(0.9)); g.restore();      // (the pigeon in it)
   } else {
@@ -6739,6 +6765,7 @@ function lookDraw(cv, m) {
     g.beginPath(); g.moveTo(12, 0); g.lineTo(-8, -11); g.lineTo(-8, 11); g.closePath(); g.fill(); g.stroke(); g.restore();
   }
   // facing it: the screen says so, and the phone taps once
+  g.shadowBlur = 0;
   const on = Math.abs(turnBy(hd, tg.az)) < 6;
   if (on && !look.aligned) haptic("success");
   look.aligned = on;
@@ -6961,6 +6988,7 @@ async function onClick1(e, t) {
       return;
     }
     case "lookup": return openLook(id);
+    case "lookcam": return lookCamera(!look.stream);
     case "lookback": S.sheet = { type: "map", id: S.sheet?.id }; return renderSheet();
     case "cheer": {
       const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m || !cheerable(m).can) return;

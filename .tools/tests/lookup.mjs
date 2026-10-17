@@ -1,5 +1,6 @@
 // Look up: from a pigeon's map, which way it is from here. Without a compass, a dial says which way to face; with
-// one (simulated: the phone's orientation), the sky ahead, turning to it, and "There it is" when facing it.
+// one (simulated: the phone's orientation), the sky ahead, turning to it, and "There it is" when facing it; and the
+// camera's picture under it all.
 import { kit } from './lib.mjs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -42,7 +43,25 @@ const h3 = await hud();
 ok(/There it is/.test(h3), 'facing it: “There it is”', h3.match(/There[^.]*\./)?.[0] || h3);
 await A.p.screenshot({ path: `${out}/look-facing.png` });
 
-// 3. back to its map; and a pigeon that has landed has no Look Up
+// 3. through the camera (a stand-in camera: a plain picture): the drawing goes see-through over it, and the camera
+// goes off on leaving
+await A.ctx.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { const c = document.createElement('canvas'); c.width = 720; c.height = 960;
+  const g = c.getContext('2d'); const draw = () => { g.fillStyle = '#4a7f3a'; g.fillRect(0, 0, 720, 960); requestAnimationFrame(draw); }; draw(); window.__cam = c.captureStream(30); return window.__cam; }; });
+await A.p.click('.looksheet header [data-act=lookback]'); await A.p.waitForTimeout(700);
+await A.p.reload(); await A.p.waitForSelector('.tabs'); await openChat(A, bs.me.id); await openMap(A, m.id);
+await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud'); await face(az); await A.p.waitForTimeout(500);
+ok(await A.p.locator('.lookcam').isVisible(), 'with a compass, a Camera button');
+await A.p.click('.lookcam'); await face(az); await A.p.waitForTimeout(900);
+const cam = await A.p.evaluate(() => { const v = document.querySelector('.lookvid'), cv = document.querySelector('.lookcv');
+  const px = cv.getContext('2d').getImageData(4, 4, 1, 1).data[3]; return { on: !!v.srcObject && !v.hidden && v.videoWidth > 0, pressed: document.querySelector('.lookcam').getAttribute('aria-pressed'), corner: px }; });
+ok(cam.on && cam.pressed === 'true' && cam.corner === 0, 'the camera’s picture under the drawing, which goes see-through (no painted sky)', JSON.stringify(cam));
+ok(/There it is/.test(await hud()), 'and still lines the pigeon up');
+await A.p.screenshot({ path: `${out}/look-camera.png` });
+await A.p.click('.looksheet header [data-act=close]'); await A.p.waitForTimeout(700);
+ok(await A.p.evaluate(() => window.__cam.getTracks().every((t) => t.readyState === 'ended')), 'closed: the camera is off');
+
+// 4. back to its map; and a pigeon that has landed has no Look Up
+await openMap(A, m.id); await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud');
 await A.p.click('.looksheet header [data-act=lookback]'); await A.p.waitForTimeout(900);
 ok(await A.p.locator('.mapcard').isVisible(), 'Back: its map again');
 one(`UPDATE pg_msgs SET deliver_at = ${now() - 60e3} WHERE id = '${m.id}'`);
