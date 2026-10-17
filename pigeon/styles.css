@@ -2196,3 +2196,19 @@ details.learn p{margin:6px 0 0}
 .safedone{margin:18px 16px 0;padding:16px 18px;border-radius:26px;display:flex;align-items:flex-start;gap:14px;background:color-mix(in srgb,var(--green) 12%,var(--cell))}
 .safedone .tile{width:36px;height:36px;border-radius:50%;font-size:19px}
 .safedone .tile .ico{stroke-width:2.8}
+
+/* Signed-In Phones: how many places, this phone, any others (a new one marked) */
+.sesshero .wnlogo{position:relative;background:linear-gradient(160deg,color-mix(in srgb,var(--green) 65%,#fff),var(--green));box-shadow:0 8px 22px color-mix(in srgb,var(--green) 35%,transparent)}
+.sesshero.alert .wnlogo{background:linear-gradient(160deg,color-mix(in srgb,var(--orange) 65%,#fff),var(--orange));box-shadow:0 8px 22px color-mix(in srgb,var(--orange) 35%,transparent)}
+.sesshero .wnlogo b{position:absolute;right:-6px;top:-6px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;display:grid;place-items:center;background:var(--tint-fill);color:#fff;font-size:14px;font-weight:700;box-shadow:0 0 0 3px var(--bg)}
+.sesshero p{max-width:30ch;text-wrap:balance}
+.sessrow{align-items:flex-start}
+.sessrow .tile{margin-top:2px}
+.sessrow .csub + .csub{margin-top:1px}
+.sessrow .link{align-self:center}
+.sessrow.fresh{background:color-mix(in srgb,var(--orange) 8%,transparent)}
+.newtag{display:inline-block;vertical-align:2px;margin-left:4px;padding:1px 7px;border-radius:999px;background:var(--orange);color:#fff;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.sessnone .csub{margin-top:1px}
+/* how many friends you've verified, under the Encryption row */
+.vbar{display:block;height:4px;margin-top:7px;border-radius:2px;background:color-mix(in srgb,var(--green) 16%,transparent);overflow:hidden}
+.vbar b{display:block;height:100%;border-radius:2px;background:var(--green)}

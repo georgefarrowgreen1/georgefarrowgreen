@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.5";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.6";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2382,6 +2382,11 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.6", at: Date.UTC(2026, 9, 23), title: "Where you’re signed in", items: [
+    ["phone", "green", "Signed-In Phones, clearer", "How many places your account is signed in, this phone with how and since when, and every other one with roughly where it is."],
+    ["warn", "orange", "A new one stands out", "A phone that signed in today is marked New, so one that wasn’t you is easy to spot and sign out."],
+    ["lock", "teal", "Who to verify next", "Privacy & Security shows how many friends you’ve verified, with a bar, and who to check next."],
+  ] },
   { v: "1.2.5", at: Date.UTC(2026, 9, 22), title: "Safer, at a glance", items: [
     ["shield", "green", "How protected you are", "Privacy & Security opens with a shield that fills as you confirm your email, add a passkey and lock InFlight, with anything left a tap away."],
     ["lock", "teal", "What encryption means", "Encryption shows how your pigeons are sealed, your key as a pattern you’d know, and where you stand with each friend: verified, not checked, or their key changed."],
@@ -5352,6 +5357,8 @@ function drawSheet(refresh) {
       // How protected you are at a glance, with each thing still to do a tap away; then the settings, grouped
       const u = S.me, pk = passkeysSupported() || S.passkeys.length, lock = !!lockPrefs();
       const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
+      const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
+      const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
       const checks = [
         { ok: true, label: "Messages end-to-end encrypted" },
         { ok: u.emailOk !== false, label: u.emailOk === false ? "Confirm your email" : "Email confirmed", act: S.emailOn ? "confirmsend" : null, go: "Send Link" },
@@ -5374,22 +5381,23 @@ function drawSheet(refresh) {
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">
-          <button type="button" class="cell has-icon" data-act="encryptionsheet">${keyArt(S.fp, "tile")}<span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified` : "On for every message"}</span></span>${chevSm}</button>
+          <button type="button" class="cell has-icon" data-act="encryptionsheet"><span class="tile green">${I.lock}</span><span class="ctext"><span>Encryption &amp; Safety Numbers</span><span class="csub${changed ? " warnc" : ""}">${changed ? `${changed} key${changed > 1 ? "s" : ""} changed: check ${changed > 1 ? "them" : "it"}` : S.friends.length ? `${ver} of ${S.friends.length} friend${S.friends.length > 1 ? "s" : ""} verified${nextUp ? ` · ${esc(first(nextUp.name))} next` : ""}` : "On for every message"}</span>
+            ${S.friends.length && !changed ? `<i class="vbar" aria-hidden="true"><b style="width:${((ver / S.friends.length) * 100).toFixed(1)}%"></b></i>` : ""}</span>${chevSm}</button>
         </div>
         <div class="ghead">This Phone</div>
         <div class="group">
-          ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : "Face ID, Touch ID or your passkey", on: lock }) : ""}
+          ${passkeysSupported() ? toggleCell({ act: "applock", icon: I.face, tile: "green", label: "Lock InFlight", sub: lock ? "Hides your chats in the app switcher too" : S.passkeys.length ? `Ready · ${unlockBy[0].toUpperCase()}${unlockBy.slice(1).replace(/^Your /, "")}` : `Unlock with ${unlockBy}`, on: lock }) : ""}
           ${lock ? `<label class="cell"><span class="ctext"><span>Lock</span></span><span class="val">${LOCK_AFTER.find(([ms]) => ms === (lockPrefs().after || 0))?.[1] || "Immediately"}</span>${chevSm}
             <select class="overlay" data-act="lockafter" aria-label="When to lock">${LOCK_AFTER.map(([ms, l]) => `<option value="${ms}"${ms === (lockPrefs().after || 0) ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
-          ${cell({ act: "sessionssheet", icon: I.phone, tile: "blue", label: "Signed-In Phones", chev: true })}
+          ${cell({ act: "sessionssheet", icon: I.phone, tile: "blue", label: "Signed-In Phones", val: S.sessN || null, chev: true })}
         </div>
         <div class="ghead">Who Sees What</div>
         <div class="group">
           ${toggleCell({ act: "privacy", id: "showOnline", icon: I.clock, tile: "green", label: "Show When I’m Online", on: u.showOnline !== false })}
           ${toggleCell({ act: "privacy", id: "receipts", icon: I.check, tile: "blue", label: "Read Receipts", on: u.receipts !== false })}
-          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "New countries, ranks and streaks, and your loft", on: u.shareNews !== false })}
-          ${toggleCell({ act: "privacy", id: "approxLocation", icon: I.loc, tile: "blue", label: "Approximate Location", sub: "Keep your spot to about 10 km, not a mile", on: !!u.approxLocation })}
-          ${toggleCell({ act: "privacy", id: "shareTracker", icon: I.globe, tile: "indigo", label: "Live Tracker", sub: "Your pigeons on the public map, with no names", on: u.shareTracker !== false })}
+          ${toggleCell({ act: "privacy", id: "shareNews", icon: I.people, tile: "teal", label: "Share My News", sub: "Ranks, streaks, new countries", on: u.shareNews !== false })}
+          ${toggleCell({ act: "privacy", id: "approxLocation", icon: I.loc, tile: "blue", label: "Approximate Location", sub: "About 10 km, not exact", on: !!u.approxLocation })}
+          ${toggleCell({ act: "privacy", id: "shareTracker", icon: I.globe, tile: "indigo", label: "Live Tracker", sub: "On the public map, no names", on: u.shareTracker !== false })}
           ${cell({ act: "blockedsheet", icon: I.block, tile: "red", label: "Blocked", val: S.blocked.length || "None", chev: true })}
         </div>
         <div class="gfoot">Online, read receipts and news work both ways: turn one off and you won’t see other people’s either.</div>
@@ -5782,13 +5790,33 @@ function drawSheet(refresh) {
       return;
     }
     case "sessions": {
+      // Who's signed in: this phone, with how and since when, then any others (a new one marked), each a tap from
+      // signing out, and what happens when there's a new one
       const list = s.list;
       const since = (at) => { const d = new Date(at); return `${d.getDate()} ${MON[d.getMonth()]}${d.getFullYear() === new Date(now()).getFullYear() ? "" : ` ${d.getFullYear()}`}`; };
-      $layer.innerHTML = sheetHtml("Signed-In Phones", !list ? (s.err ? loadFail(s.err, "sessionssheet") : `<p class="empty">Looking…</p>`) : `<div class="group mt-s">${list.map((x) => `<div class="cell has-icon"><span class="tile ${x.current ? "green" : "blue"}">${/^(Mac|Windows|Linux|Chromebook)/.test(x.label) ? I.laptop : I.phone}</span>
-          <span class="ctext"><span>${esc(x.label)}</span><span class="csub">${x.current ? "This phone" : `Active ${esc(agoText(x.seenAt))} · since ${esc(since(x.createdAt))}`}</span></span>
-          ${x.current ? "" : `<button class="link danger" data-act="sessend" data-id="${esc(x.id)}" aria-label="Sign out ${esc(x.label)}">Sign Out</button>`}</div>`).join("")}</div>
-        ${list.length > 1 ? `<div class="group mt">${cell({ act: "sessothers", label: "Sign Out All Other Phones", cls: "center destructive" })}</div>` : ""}
-        <div class="gfoot">If you don’t recognise one, sign it out and change your password.</div>`, { left: { label: "Back", act: "securitysheet" } });
+      const kind = (l) => /^(Mac|Windows|Linux|Chromebook)/.test(l) ? "laptop" : /^iPad/.test(l) ? "tablet" : "phone";
+      const icon = (x, tile) => `<span class="tile ${tile}">${kind(x.label) === "laptop" ? I.laptop : I.phone}</span>`;
+      const near = (x) => x.place ? ` · near ${esc(x.place)}` : "";
+      const ago = (at) => { const m = Math.round((now() - at) / MIN), h = Math.round(m / 60), d = Math.round(m / 1440); return m < 2 ? "just now" : m < 60 ? `${m} min ago` : h < 24 ? `${h} hour${h > 1 ? "s" : ""} ago` : `${d} day${d > 1 ? "s" : ""} ago`; };
+      if (!list) { $layer.innerHTML = sheetHtml("Signed-In Phones", s.err ? loadFail(s.err, "sessionssheet") : `<p class="empty">Looking…</p>`, { left: { label: "Back", act: "securitysheet" } }); return; }
+      const me = list.find((x) => x.current), others = list.filter((x) => !x.current), fresh = (x) => now() - x.createdAt < DAY;
+      const n = list.length, newOnes = others.filter(fresh).length;
+      $layer.innerHTML = sheetHtml("Signed-In Phones", `
+        <div class="wnhero sesshero${newOnes ? " alert" : ""}"><span class="wnlogo" aria-hidden="true">${I.phone}${n > 1 ? `<b>${n}</b>` : ""}</span><h2>${n > 1 ? `${n} Places Signed In` : "Only This Phone"}</h2>
+          <p>${newOnes ? `${newOnes === 1 ? "One is" : `${newOnes} are`} new today. If it wasn’t you, sign it out.` : n > 1 ? "Your account is signed in on each of these." : "Your account isn’t signed in anywhere else."}</p></div>
+        ${me ? `<div class="ghead">This Phone</div>
+        <div class="group"><div class="cell has-icon sessrow">${icon(me, "green")}<span class="ctext"><span>${esc(me.label)}</span>
+          <span class="csub"><span class="on-now">Active now</span> · ${standalone() ? "Home Screen app" : "In the browser"}</span>
+          <span class="csub">Signed in ${esc(since(me.createdAt))}${near(me)}</span></span></div></div>` : ""}
+        <div class="ghead">Other Phones${others.length ? ` <span class="gcount">${others.length}</span>` : ""}</div>
+        <div class="group">${others.length ? others.map((x) => `<div class="cell has-icon sessrow${fresh(x) ? " fresh" : ""}">${icon(x, fresh(x) ? "orange" : "blue")}<span class="ctext"><span>${esc(x.label)}${fresh(x) ? ` <span class="newtag">New</span>` : ""}</span>
+            <span class="csub">Active ${ago(x.seenAt)}${near(x)}</span><span class="csub">Signed in ${esc(since(x.createdAt))}</span></span>
+            <button class="link danger" data-act="sessend" data-id="${esc(x.id)}" aria-label="Sign out ${esc(x.label)}">Sign Out</button></div>`).join("")
+          : `<div class="cell sessnone"><span class="ctext"><span>None</span><span class="csub">Sign in anywhere else and it shows up here.</span></span></div>`}</div>
+        ${others.length > 1 ? `<div class="group mt">${cell({ act: "sessothers", label: "Sign Out All Other Phones", cls: "center destructive" })}</div>` : ""}
+        <div class="gfoot">A new sign-in is announced on your phones${S.me.emailOk === false ? "" : " and by email"}. Don’t know one? Sign it out and change your password. Places are the nearest town, never closer.</div>
+        <div class="group mt">${cell({ act: "lockout", label: "Sign Out of This Phone", cls: "center destructive" })}</div>`,
+        { left: { label: "Back", act: "securitysheet" } });
       return;
     }
     case "blocked":
@@ -7235,7 +7263,18 @@ async function onClick1(e, t) {
     case "requests": S.sheet = { type: "requests" }; return renderSheet();
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
-    case "securitysheet": keepProfileDraft(); S.sheet = { type: "security" }; return renderSheet();
+    case "securitysheet": {
+      keepProfileDraft(); S.sheet = { type: "security" }; renderSheet();
+      // how many places you're signed in, for its row (quietly: the row just has no number if this fails)
+      // (put straight into its row, not a redraw: that would replace the sheet under your finger)
+      api("sessions").then(({ sessions }) => {
+        S.sessN = sessions.length;
+        const row = S.sheet?.type === "security" && $('.sheet [data-act=sessionssheet]', $layer); if (!row) return;
+        const v = $(".val", row) || row.insertBefore(Object.assign(document.createElement("span"), { className: "val" }), $(".chev", row));
+        v.textContent = S.sessN;
+      }).catch(() => {});
+      return;
+    }
     case "encryptionsheet": S.sheet = { type: "encryption" }; return renderSheet();
     case "passkeys": S.sheet = { type: "passkeys" }; return renderSheet();
     case "friendinfo": S.sheet = { type: "friendinfo", id: id || S.chat }; return renderSheet();

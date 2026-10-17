@@ -261,6 +261,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_sessions ADD COLUMN label TEXT",           // what it's signed in on ("iPhone · Safari"), for the list of signed-in phones
+  "ALTER TABLE pg_sessions ADD COLUMN place TEXT",           // roughly where it signed in ("London, United Kingdom", as Cloudflare has it), for the same list
   // cheers (functions/_cheers.js): who cheered it on, how many times each (JSON), and the time it saved
   "ALTER TABLE pg_msgs ADD COLUMN cheer_by TEXT",
   "ALTER TABLE pg_msgs ADD COLUMN cheer_ms INTEGER",
@@ -426,10 +427,18 @@ export function deviceOf(request) {
   const app = /Edg\//.test(ua) ? "Edge" : /Firefox\/|FxiOS/.test(ua) ? "Firefox" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
   return app ? `${dev} · ${app}` : dev;
 }
+// A country's name from Cloudflare's two-letter code ("" if it doesn't know)
+export function regionOf(cc) { try { return cc && cc !== "XX" && cc !== "T1" ? new Intl.DisplayNames(["en-GB"], { type: "region" }).of(cc) || "" : ""; } catch (_) { return ""; } }
+// Roughly where a sign-in came from: the city and country Cloudflare puts its address in (often the nearest big
+// town, never closer), kept with that sign-in only so you'd know one that wasn't you, and gone when it's signed out
+export function placeOf(request) {
+  const cf = request?.cf || {}, country = regionOf(cf.country), city = String(cf.city || "").slice(0, 60);
+  return [city, country].filter(Boolean).join(", ") || null;
+}
 export async function issueSession(env, userId, request) {
   const token = randomToken(32), t = Date.now();
-  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request)).run();
+  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request)).run();
   return token;
 }
 // The few things a stolen sign-in mustn't be enough for (adding a passkey,

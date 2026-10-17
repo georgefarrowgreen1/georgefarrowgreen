@@ -146,9 +146,11 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.5
+## InFlight (chat.georgefarrowgreen.com) — 1.2.6
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.2.6** (where you're signed in): Signed-In Phones says how many places the account is signed in ("Only This Phone"), shows this phone as active now, Home Screen app or browser, and since when, and lists the others with when each was last active, a New mark on any from the last day, and Sign Out; Sign Out of This Phone is at the bottom. Each sign-in keeps roughly where it was made (`pg_sessions.place`: the city and country Cloudflare puts its address in, never closer), gone when it's signed out. Privacy & Security counts the places signed in, shows the friends verified as a bar with who's next, and has shorter lines.
 
 **1.2.5** (safer, at a glance): Privacy & Security opens with a status card (encryption, email confirmed, a passkey, App Lock on this phone; a ring that fills as each is done, each one left a tap away), then Account, Encryption, This Phone and Who Sees What; the live tracker's small print folds away. Encryption explains the three steps (the key made on the phone and its locked copy, every pigeon sealed, safety numbers), draws your key's fingerprint as a mirrored 5×5 pattern (`keyArt`), and lists each friend as verified, not checked or key changed. Safety Number puts the friend in a ring of that colour, with scan or compare as two steps, a green ring drawn when a scan matches, and a plain "You checked together" once verified. Passkeys explains itself when there are none, and shows when each was last used.
 

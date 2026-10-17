@@ -2,7 +2,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
-  HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace, snapApprox, deviceOf,
+  HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace, snapApprox, deviceOf, regionOf,
   emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
@@ -443,8 +443,8 @@ async function passkeyRegister({ request, env, waitUntil }) {
 // Where you're signed in, and signing the others out.
 async function sessionsList({ request, env }) {
   const u = await requireUser(request, env);
-  const { results } = await (await db(env)).prepare("SELECT hash, label, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all();
-  return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
+  const { results } = await (await db(env)).prepare("SELECT hash, label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all();
+  return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
 }
 // The keys you've trusted, sealed on your phone to your own key (the server can't
 // read or change them): kept so a new phone still notices a key that was swapped.
@@ -1198,10 +1198,10 @@ async function notifyPasswordChanged(env, u, how, origin) {
 
 // A new sign-in: the account's phones are told at once, and its email too, so a sign-in
 // that wasn't you is seen (Account → Privacy & Security → Signed-in Phones signs it out).
-// Roughly where from is the country, as Cloudflare has it; nothing more is kept.
+// Roughly where from is the country, as Cloudflare has it (the sign-in itself keeps its city too, for Signed-In Phones).
 async function notifySignIn(env, u, request, how, origin) {
-  const device = deviceOf(request) || "a new phone", cc = request.cf?.country;
-  let where = ""; try { where = cc && cc !== "XX" ? new Intl.DisplayNames(["en-GB"], { type: "region" }).of(cc) : ""; } catch (_) {}
+  const device = deviceOf(request) || "a new phone";
+  let where = regionOf(request.cf?.country);
   if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
   const on = `${device}${where ? ` in ${where}` : ""}`;
   await pushTo(env, u.id, { title: "New sign-in", body: `Your InFlight account was signed in on ${on}. Not you? Sign it out in Privacy & Security.`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
