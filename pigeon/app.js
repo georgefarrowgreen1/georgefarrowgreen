@@ -6,13 +6,13 @@ import { PLACES, nearestPlace, snapToMile } from "./places.js";
 import { COUNTRIES, RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
-import { ABOUT, BODIES, EARTH_R, MOON_R, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf } from "./moon.js";
+import { ABOUT, BODIES, EARTH_R, MOON_R, lunarKm, surfaceKm, moonKm, marsKm, lightMs, moonPhase, earthPhase, nearFar, spaceKinds, spaceFlight, spaceMoments, spaceNow, legOf, drawPick, sideLon, pickAt, drawTrip, farSide, siteName, lunarDay, marsClock, bodyOf, lookTo, moonLook, marsLook, sunLook, orbitWhere, ORBIT, distAt } from "./moon.js";
 
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.2";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.3";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2366,6 +2366,10 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.3", at: Date.UTC(2026, 9, 20), title: "Look up", items: [
+    ["compass", "teal", "Which way is it?", "Open a pigeon in the air and tap Look Up, then hold your phone up and turn: it shows the sky ahead with your pigeon where it really is, how far, and over where. Most are far past the curve of the Earth, below the horizon."],
+    ["moon", "indigo", "In space too", "A lunar pigeon: the Moon, where it is in your sky right now. A laser pigeon: Mars. An orbital one: going over, 250 miles up."],
+  ] },
   { v: "1.2.2", at: Date.UTC(2026, 9, 19), title: "Lighter", items: [
     ["clock", "indigo", "Messages are kept for a month", "Each message is deleted for everyone 30 days after it lands, photos and all. Your Flight Log, passport, badges and rare pigeons keep every flight."],
     ["person", "gray", "Unused accounts", "An account nobody has signed in to for a year is deleted, with an email a week before. Opening InFlight keeps it."],
@@ -5193,6 +5197,7 @@ function drawSheet(refresh) {
   if (!s) { $layer.innerHTML = ""; return; }
   const f = s.id ? friend(s.id) : null;
   switch (s.type) {
+    case "lookup": return drawLook(s);
     case "map": {
       const mm = s.id === "skies" || s.id === "preview" ? null : (S.msgs.get(S.chat) || []).find((x) => x.id === s.id);
       if (mm && moonOf(mm)) return drawMoonFlight(s, mm);
@@ -5969,10 +5974,10 @@ function tickMap() {
   const way = JSON.stringify((m.legs || []).filter((l) => l[3] !== "c" && l[3] !== "f").map((l) => [l[3], l[0], l[1]]));
   if (s.way != null && s.way !== way && !m.lost && m.deliverAt > now()) { const n = routeNote(m); toast(esc(n ? `Its way just changed: ${n.text[0].toLowerCase()}${n.text.slice(1)}.` : `Its way just changed: it now lands ${atTime(m.deliverAt)}.`)); haptic("tick"); }
   s.way = way;
-  const { share, cheer } = cardShell(card), canShare = shareable(m);
+  const { share, cheer, look } = cardShell(card), canShare = shareable(m);
   if (share.hidden === canShare) share.hidden = !canShare;
   share.dataset.id = m.id;
-  cheerState(cheer, m);
+  cheerState(cheer, m); lookState(look, m);
   flightCard(card, m);
   drawMap(cv, m, card.offsetHeight + 14);
   smoothMap(m);
@@ -6004,6 +6009,7 @@ function drawMoonFlight(s, m) {
       <div class="mcnow"></div><div class="mcbar" aria-hidden="true"><i></i></div>
       <div class="mcplay"><input type="range" class="mcreplay" min="0" max="1000" step="1" aria-label="Replay the trip"><button type="button" class="mclive" data-act="moonlive">Live</button></div>
       <ol class="mcsteps"></ol>
+      <div class="mclook" hidden><button type="button" class="btn wide plain lookbtn" data-act="lookup" data-id="${esc(m.id)}">${I.compass}Look Up</button></div>
       <div class="mcshare" hidden><button type="button" class="btn wide plain" data-act="shareflight" data-id="${esc(m.id)}">${I.share}Share Flight</button></div></div>`, { flush: true });
     $(".sheet .body", $layer).classList.add("moonbody");
     // scrub through the trip: the picture and where it was then (Live goes back to now)
@@ -6040,6 +6046,7 @@ function tickMoon(m) {
   const slider = $(".mcreplay", card); if (document.activeElement !== slider) slider.value = String(Math.round(f * 1000));
   $(".mclive", card).hidden = rp == null;
   $(".mcshare", card).hidden = !(rp == null && shareable(m));
+  $(".mclook", card).hidden = !(rp == null && lookAt(m));
   const steps = spaceMoments(o.mn, o.sentAt, o.deliverAt, t, whereOnEarth), key = steps.map((x) => +x.done).join("") + (o.lost ? "l" : "") + (o.then ? "r" : "");
   // followed them to another world: where it was handed on, or relayed from, and where it's relayed on to
   const by = (k) => (k === "laser" ? "a laser pigeon" : `a ${KIND[k]?.name.toLowerCase() || "space"} pigeon`);
@@ -6595,8 +6602,8 @@ function tickSkies(card, cv) {
 // A map's card: its words (redrawn every tick) and its buttons, kept (one
 // redrawn under a finger never gets its tap): cheer it on while it flies, share it once it lands.
 function cardShell(card) {
-  if (!$(".mcb", card)) card.innerHTML = `<div class="mcb"></div><button type="button" class="btn wide plain cheerbtn" data-act="cheer" hidden>${I.wind}<span></span></button><button type="button" class="btn wide shareflight" data-act="shareflight" hidden>${I.share}Share Flight</button>`;
-  return { share: $(".shareflight", card), cheer: $(".cheerbtn", card) };
+  if (!$(".mcb", card)) card.innerHTML = `<div class="mcb"></div><button type="button" class="btn wide plain lookbtn" data-act="lookup" hidden>${I.compass}Look Up</button><button type="button" class="btn wide plain cheerbtn" data-act="cheer" hidden>${I.wind}<span></span></button><button type="button" class="btn wide shareflight" data-act="shareflight" hidden>${I.share}Share Flight</button>`;
+  return { share: $(".shareflight", card), cheer: $(".cheerbtn", card), look: $(".lookbtn", card) };
 }
 // Cheer it on: each cheer takes a little off the time it has left, up to three
 // from each of you (twelve in all). Yours in the air, or the one flying to you.
@@ -6613,6 +6620,157 @@ function cheerState(btn, m) {
   if (btn.dataset.k === key) return;
   btn.dataset.k = key; btn.dataset.id = m.id; btn.hidden = !c.flying; btn.disabled = !c.can; $("span", btn).textContent = label;
 }
+/* ---------- Look up: which way your pigeon is, right now ----------
+   Hold the phone up and turn: the sky ahead of you, with the pigeon where it really is (most often far past the
+   curve of the Earth, so below the horizon), how far, and over where. A space pigeon: the Moon or Mars, where it is
+   in your sky, or an orbital one going over. It uses where you've told InFlight you are, and the phone's compass
+   (iPhone asks first); without a compass, a dial says which way to face. */
+const lookState = (btn, m) => { const on = !!lookAt(m); if (btn.hidden === on) btn.hidden = !on; btn.dataset.id = m.id; };
+// where a pigeon in the air is from here: { az, el, km, over?, sky?, orbit? }, or null (landed, lost, not on the map,
+// or you're not on the Earth)
+function lookAt(m, t = now()) {
+  if (S.me?.lat == null || S.me.moon) return null;
+  const o = moonOf(m);
+  if (o) {
+    if (o.lost || o.deliverAt <= t || t < o.sentAt) return null;
+    if (o.mn.k === "orbit") {
+      const [la, lo, phase] = orbitWhere(o.mn, t - o.sentAt);
+      return { ...lookTo(S.me.lat, S.me.lon, la, lo, phase === "orbit" ? ORBIT.alt : 3), over: overWhere(lo, la), orbit: phase };
+    }
+    const mars = bodyOf(o.mn.from) === "mars" || bodyOf(o.mn.to) === "mars", f = (t - o.sentAt) / Math.max(1, o.deliverAt - o.sentAt);
+    const out = bodyOf(o.mn.from) === "earth" ? distAt(o.mn, f) : bodyOf(o.mn.to) === "earth" ? 1 - distAt(o.mn, f) : 1;     // (how far out from the Earth)
+    return { ...(mars ? marsLook(t, S.me.lat, S.me.lon) : moonLook(t, S.me.lat, S.me.lon)), km: out * (mars ? marsKm(t) : moonKm(t)), sky: mars ? "Mars" : "the Moon",
+      home: bodyOf(o.mn.to) === "earth", surface: o.mn.k === "surface" };
+  }
+  if (m.flock || m.lost || m.deliverAt <= t || t < m.sentAt || !routesOf(m).length) return null;
+  const [lon, lat] = pigeonLL(m);
+  return { ...lookTo(S.me.lat, S.me.lon, lat, lon, 0.12), over: overWhere(lon, lat) };
+}
+const look = { heading: null, pitch: 0, denied: false, raf: 0, tg: null, tgAt: 0, said: "", on: false, stars: null };
+const POINTS = ["north", "north-north-east", "north-east", "east-north-east", "east", "east-south-east", "south-east", "south-south-east",
+  "south", "south-south-west", "south-west", "west-south-west", "west", "west-north-west", "north-west", "north-north-west"];
+const compassWord = (az) => POINTS[Math.round(az / 22.5) % 16];
+const turnBy = (from, to) => ((to - from + 540) % 360) - 180;           // the shortest way round: + right, - left
+function openLook(id) {
+  // (an iPhone asks before it shares its compass, and only from a tap: this one)
+  const ask = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
+  const go = () => { S.sheet = { type: "lookup", id, chat: S.chat }; renderSheet(); };
+  if (!ask) return go();
+  DeviceOrientationEvent.requestPermission().then((r) => { look.denied = r !== "granted"; go(); }, () => { look.denied = true; go(); });
+}
+function lookSensor(e) {
+  let h = typeof e.webkitCompassHeading === "number" ? e.webkitCompassHeading : e.absolute && e.alpha != null ? 360 - e.alpha : null;
+  if (h == null) return;
+  h = (h + (screen.orientation?.angle || 0) + 360) % 360;
+  // smoothed, the shortest way round (a compass jitters)
+  look.heading = look.heading == null ? h : (look.heading + turnBy(look.heading, h) * 0.2 + 360) % 360;
+  if (typeof e.beta === "number") look.pitch += (Math.max(-60, Math.min(80, e.beta - 90)) - look.pitch) * 0.2;   // upright: the horizon ahead
+}
+function lookStart() {
+  if (look.on) return;
+  look.on = true; look.heading = null; look.said = "";
+  addEventListener("deviceorientationabsolute", lookSensor); addEventListener("deviceorientation", lookSensor);
+  if (!look.stars) { let x = 7; const r = () => ((x = (x * 16807) % 2147483647) / 2147483647); look.stars = Array.from({ length: 220 }, () => [r() * 360, Math.asin(r()) / (Math.PI / 180), 0.4 + r() * 1.2]); }
+  look.raf = requestAnimationFrame(lookLoop);
+}
+function lookStop() {
+  look.on = false; cancelAnimationFrame(look.raf);
+  removeEventListener("deviceorientationabsolute", lookSensor); removeEventListener("deviceorientation", lookSensor);
+}
+function drawLook(s) {
+  const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id);
+  if (!m) { S.sheet = null; return renderSheet(); }
+  if ($(".lookcv", $layer)) return;
+  $layer.innerHTML = sheetHtml("Look Up", `<div class="look"><canvas class="lookcv" role="img" aria-label="The sky ahead of you, with the pigeon where it is"></canvas>
+    <div class="lookhud"><div class="lkwho"></div><div class="lkbig"></div><div class="lkwhere"></div><div class="lkhow" aria-live="polite"></div></div></div>`, { flush: true, left: { label: "Back", act: "lookback" } });
+  $(".sheet", $layer).classList.add("looksheet");
+  look.tg = null; lookStart();
+}
+function lookLoop() {
+  const s = S.sheet, cv = $(".lookcv", $layer);
+  if (s?.type !== "lookup" || !cv || document.hidden) { if (s?.type !== "lookup") return lookStop(); look.raf = requestAnimationFrame(lookLoop); return; }
+  const m = (S.msgs.get(s.chat) || []).find((x) => x.id === s.id);
+  if (!m) return lookStop();
+  const t = now();
+  if (!look.tg || t - look.tgAt > 500) { look.tg = lookAt(m, t); look.tgAt = t; look.sun = sunLook(t, S.me.lat ?? 0, S.me.lon ?? 0); look.moon = moonLook(t, S.me.lat ?? 0, S.me.lon ?? 0); }
+  if (!look.tg) { lookHud(m, null); return lookStop(); }       // landed while you looked
+  lookDraw(cv, m); lookHud(m, look.tg);
+  look.raf = requestAnimationFrame(lookLoop);
+}
+// the sky ahead (a compass): the horizon tilting as you tip the phone, its points, the stars or the day, the Moon,
+// and the pigeon; or (no compass) a dial with it on, north up
+function lookDraw(cv, m) {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const tg = look.tg, day = look.sun.el > -4, dusk = look.sun.el > -12 && !day, col = col0(kindOf(m));
+  const sky = g.createLinearGradient(0, 0, 0, H);
+  if (day) { sky.addColorStop(0, "#2f78d6"); sky.addColorStop(1, "#9fcaf2"); } else if (dusk) { sky.addColorStop(0, "#14204a"); sky.addColorStop(1, "#c9724a"); }
+  else { sky.addColorStop(0, "#03050f"); sky.addColorStop(1, "#16224a"); }
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  const live = look.heading != null && !look.denied;
+  if (!live) return lookDial(g, W, H, tg, col);
+  const ppd = W / 62, hd = look.heading, hy = H * 0.5 + look.pitch * ppd;
+  const X = (az) => W / 2 + turnBy(hd, az) * ppd, Y = (el) => hy - el * ppd;
+  if (!day) for (const [az, el, r] of look.stars) { const x = X(az), y = Y(el); if (x > -4 && x < W + 4 && y > -4 && y < hy) { g.fillStyle = `rgba(255,255,255,${dusk ? 0.35 : 0.8})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
+  // the Moon (and the Sun, by day), where they are
+  if (look.moon.el > -1) { const x = X(look.moon.az), y = Y(look.moon.el); g.fillStyle = "#f4f1e6"; g.shadowColor = "rgba(255,255,230,.8)"; g.shadowBlur = 18; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill(); g.shadowBlur = 0; }
+  if (day) { const x = X(look.sun.az), y = Y(look.sun.el), gl = g.createRadialGradient(x, y, 0, x, y, 60); gl.addColorStop(0, "rgba(255,250,220,.95)"); gl.addColorStop(1, "rgba(255,250,220,0)"); g.fillStyle = gl; g.fillRect(x - 60, y - 60, 120, 120); }
+  // the ground, and the points of the compass along the horizon
+  g.fillStyle = day ? "#3f5a3a" : "#0b0f1c"; g.fillRect(0, hy, W, H - hy);
+  g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, hy); g.lineTo(W, hy); g.stroke();
+  g.font = "600 13px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.fillStyle = "rgba(255,255,255,.9)";
+  for (let a = 0; a < 360; a += 15) {
+    const x = X(a); if (x < -20 || x > W + 20) continue;
+    g.beginPath(); g.moveTo(x, hy); g.lineTo(x, hy + (a % 45 ? 6 : 12)); g.stroke();
+    if (!(a % 45)) g.fillText(["N", "NE", "E", "SE", "S", "SW", "W", "NW"][a / 45], x, hy + 28);
+  }
+  // the pigeon: under the horizon a line up to the point on it to face; off to the side, an arrow at the edge
+  const x = X(tg.az), y = Y(tg.el), inX = x > 24 && x < W - 24, inY = y > 24 && y < H - 24;
+  if (tg.el < 0 && inX) { g.setLineDash([3, 4]); g.strokeStyle = "rgba(255,255,255,.7)"; g.beginPath(); g.moveTo(x, hy); g.lineTo(x, Math.min(y, H - 30)); g.stroke(); g.setLineDash([]); }
+  if (inX && inY) {
+    const pulse = 1 + 0.12 * Math.sin(performance.now() / 300);
+    g.fillStyle = col; g.strokeStyle = "#fff"; g.lineWidth = 3; g.shadowColor = col; g.shadowBlur = 16;
+    g.beginPath(); g.arc(x, y, 15 * pulse, 0, 7); g.fill(); g.shadowBlur = 0; g.stroke();
+    g.save(); g.translate(x - 10, y - 9.5); g.scale(0.84, 0.84); g.fillStyle = "#fff"; g.fill(birdAt(0.9)); g.restore();      // (the pigeon in it)
+  } else {
+    const dx = turnBy(hd, tg.az), ex = dx > 0 ? W - 22 : 22, ey = Math.max(40, Math.min(H - 40, inY ? y : hy));
+    g.save(); g.translate(ex, ey); g.rotate(dx > 0 ? 0 : Math.PI); g.fillStyle = col; g.strokeStyle = "#fff"; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(12, 0); g.lineTo(-8, -11); g.lineTo(-8, 11); g.closePath(); g.fill(); g.stroke(); g.restore();
+  }
+  // facing it: the screen says so, and the phone taps once
+  const on = Math.abs(turnBy(hd, tg.az)) < 6;
+  if (on && !look.aligned) haptic("success");
+  look.aligned = on;
+}
+const COL0 = new Map(), col0 = (k) => COL0.get(k) || (COL0.set(k, cssVar(document.documentElement, "--p-" + k) || "#3d9bff"), COL0.get(k));
+function lookDial(g, W, H, tg, c) {
+  const cx = W / 2, cy = H * 0.42, R = Math.min(W, H) * 0.32;
+  g.strokeStyle = "rgba(255,255,255,.35)"; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+  g.font = "600 14px -apple-system, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "rgba(255,255,255,.9)";
+  ["N", "E", "S", "W"].forEach((p, i) => { const a = (i * 90 - 90) * Math.PI / 180; g.fillText(p, cx + Math.cos(a) * (R + 18), cy + Math.sin(a) * (R + 18)); });
+  const a = (tg.az - 90) * Math.PI / 180;
+  g.strokeStyle = c; g.lineWidth = 4; g.lineCap = "round"; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * (R - 16), cy + Math.sin(a) * (R - 16)); g.stroke();
+  g.fillStyle = c; g.strokeStyle = "#fff"; g.lineWidth = 3; g.beginPath(); g.arc(cx + Math.cos(a) * R, cy + Math.sin(a) * R, 11, 0, 7); g.fill(); g.stroke();
+  g.textBaseline = "alphabetic";
+}
+function lookHud(m, tg) {
+  const hud = $(".lookhud", $layer); if (!hud) return;
+  const mine = m.from === S.me.id || m.out, other = friend(mine ? m.to : m.from) || (m.gid ? member(group(m.gid), mine ? m.to : m.from) : null);
+  const who = `${pgm(m)}<span>${mine ? "Your pigeon to" : "From"} ${esc(first(other?.name || "a friend"))}</span>`;
+  if ($(".lkwho", hud)._h !== who) { $(".lkwho", hud).innerHTML = who; $(".lkwho", hud)._h = who; }
+  if (!tg) { $(".lkbig", hud).textContent = "It’s landed"; $(".lkwhere", hud).textContent = ""; $(".lkhow", hud).textContent = ""; return; }
+  const live = look.heading != null && !look.denied;
+  $(".lkbig", hud).textContent = tg.sky ? (tg.surface ? `On ${tg.sky}` : `${fmtMiles(tg.km)} out`) : `${fmtMiles(tg.km)} away`;
+  $(".lkwhere", hud).textContent = tg.sky ? (tg.surface ? "Across its surface, up there" : tg.home ? `On its way home from ${tg.sky}` : `On its way to ${tg.sky}`)
+    : tg.orbit === "orbit" ? `In orbit, ${Math.round(ORBIT.alt * 0.621371)} miles up, over ${tg.over}` : `Over ${tg.over}`;
+  const up = tg.el > 2 ? `${Math.round(tg.el)}° up` : tg.el < -1 ? (tg.sky ? "below the horizon just now" : "below the horizon, past the curve of the Earth") : "on the horizon";
+  // (said again only when it changes enough to matter, so a screen reader isn't talking all the time)
+  const turn = live ? Math.round(turnBy(look.heading, tg.az) / 10) * 10 : null;
+  const how = live ? (look.aligned ? `There it is: ${up}.` : `Turn ${turn > 0 ? "right" : "left"} about ${Math.abs(turn) || 5}°. It’s ${up}.`)
+    : `Face ${compassWord(tg.az)} (${Math.round(tg.az)}°). It’s ${up}.${look.denied ? " (Allow motion and orientation for the live compass.)" : ""}`;
+  if (look.said !== how) { $(".lkhow", hud).textContent = how; look.said = how; }
+}
 // "12 minutes", "1h 4m", "a few seconds"
 const soonerText = (ms) => (ms < MIN ? "a few seconds" : ms < HOUR ? `${Math.round(ms / MIN)} minute${Math.round(ms / MIN) === 1 ? "" : "s"}` : fmtDur(ms));
 function tickFlockMap(m, card, cv) {
@@ -6622,7 +6780,7 @@ function tickFlockMap(m, card, cv) {
     const p = member(g, x.to), state = x.recalled ? `<span class="homing">${I.homing} Called back</span>` : x.lost ? `<span class="lostp">${I.skull} Lost</span>` : x.flying ? `<span data-eta="${esc(x.deliverAt)}">${fmtDur(x.deliverAt - now())}</span>` : "Landed";
     return `<span class="frow${x.flying ? " flying" : ""}">${avatar(p || { name: "?" }, "xs")}<span class="one">${esc(first(p?.name || "Someone"))}${x.route ? "" : ` <span class="hid">· not on map</span>`}</span><b>${state}</b></span>`;
   }).join("");
-  const { share, cheer } = cardShell(card); share.hidden = true; cheerState(cheer, m);
+  const { share, cheer, look } = cardShell(card); share.hidden = true; look.hidden = true; cheerState(cheer, m);
   $(".mcb", card).innerHTML = `<span class="big">${pgm(m)}<span>${c.next ? `${c.landed} of ${c.n} landed` : c.lost === c.n ? "All lost" : `Landed for ${c.landed} of ${c.n}`}</span></span>
     ${c.next ? `<span class="speed">Next lands in ${fmtDur(c.next - now())}</span>` : ""}${birdLine(m)}
     <span class="prog k-${kindOf(m)}"><i>${I.bird}</i></span><span class="frows">${rows}</span>`;
@@ -6802,6 +6960,8 @@ async function onClick1(e, t) {
       } catch (err) { toast(esc(err.message)); t.disabled = false; }
       return;
     }
+    case "lookup": return openLook(id);
+    case "lookback": S.sheet = { type: "map", id: S.sheet?.id }; return renderSheet();
     case "cheer": {
       const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m || !cheerable(m).can) return;
       if (t.classList.contains("cheerbtn")) t.disabled = true;

@@ -381,3 +381,33 @@ export function spaceMarks(mn) {
   }
   return hits;
 }
+
+/* ---------- where to look (Look up, pigeon/app.js) ----------
+   Which way to face, and how high, to see something from a spot on the Earth: degrees, the bearing clockwise
+   from north, the elevation above the horizon (below 0: under it). */
+const obliq = (t) => 23.4393 - 0.0130 * centuries(t);
+// a point on the sky (ecliptic longitude and latitude) seen from lat, lon at time t
+function skyLook(lam, beta, t, lat, lon) {
+  const e = obliq(t);
+  const ra = Math.atan2(sin(lam) * cos(e) - Math.tan(beta * rad) * sin(e), cos(lam)) / rad;
+  const dec = Math.asin(sin(beta) * cos(e) + cos(beta) * sin(e) * sin(lam)) / rad;
+  const H = norm(280.46061837 + 360.98564736629 * (t / 864e5 + 2440587.5 - 2451545) + lon - ra);   // its hour angle there
+  const el = Math.asin(sin(lat) * sin(dec) + cos(lat) * cos(dec) * cos(H)) / rad;
+  const az = norm(Math.atan2(-sin(H) * cos(dec), sin(dec) * cos(lat) - cos(dec) * cos(H) * sin(lat)) / rad);
+  return { az, el };
+}
+export function moonLook(t, lat, lon) { const m = moonSky(t); return skyLook(m.lon, m.lat, t, lat, lon); }
+export function sunLook(t, lat, lon) { return skyLook(sunSky(t).lon, 0, t, lat, lon); }
+export function marsLook(t, lat, lon) {
+  const a = helio("earth", t), b = helio("mars", t), v = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  return skyLook(norm(Math.atan2(v[1], v[0]) / rad), Math.atan2(v[2], Math.hypot(v[0], v[1])) / rad, t, lat, lon);
+}
+// something at lat, lon and h km up, seen from the ground at lat0, lon0: the Earth's curve hides one far enough off
+// (a pigeon 120 m up sinks below the horizon about 40 km away); km: the distance round the Earth to under it
+export function lookTo(lat0, lon0, lat, lon, h = 0) {
+  const dl = (lon - lon0) * rad, p1 = lat0 * rad, p2 = lat * rad;
+  const az = norm(Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) / rad);
+  const c = Math.acos(Math.max(-1, Math.min(1, Math.sin(p1) * Math.sin(p2) + Math.cos(p1) * Math.cos(p2) * Math.cos(dl))));
+  const r = EARTH_R + h;
+  return { az, el: Math.atan2(r * Math.cos(c) - EARTH_R, r * Math.sin(c)) / rad, km: EARTH_R * c };
+}
