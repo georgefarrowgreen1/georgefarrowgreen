@@ -75,13 +75,22 @@
           <h2 class="card-title" id="radar-title"><span class="ct-icon" data-g="radar"></span>Rain radar</h2>
           <button class="icon-btn small radar-full" type="button" aria-label="Full screen" data-on="0"></button>
         </div>
-        <div class="radar-map" role="region" aria-label="Rain radar map"></div>
+        <p class="radar-note"></p>
+        <div class="radar-wrap">
+          <div class="radar-map" role="region" aria-label="Rain radar map"></div>
+          <span class="radar-chip" aria-hidden="true">Radar</span>
+          <span class="radar-hint" hidden>Tap to explore</span>
+        </div>
         <div class="radar-bar">
           <button class="icon-btn small radar-play" type="button" aria-label="Play" data-on="0"></button>
-          <input class="radar-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
-          <span class="radar-time" aria-live="off"></span>
+          <div class="radar-track">
+            <input class="radar-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
+            <div class="radar-scale" aria-hidden="true"></div>
+          </div>
         </div>
-        <p class="chart-note radar-status">The last two hours of radar, every 10 minutes. Brighter is heavier. Where there's no radar network, the map stays clear.</p>
+        <p class="radar-time" aria-live="off"></p>
+        <div class="radar-legend" aria-label="What the colours mean"></div>
+        <p class="chart-note radar-status">Up to now: radar, every 10 minutes. After now: the weather models' rain, every 15 minutes, inside the dashed box. Where there's no radar network, the radar stays clear.</p>
       </section>
 
       <section class="card" id="daily" aria-labelledby="daily-title">

@@ -314,12 +314,34 @@ fieldset.opt input[type="radio"] { accent-color: #fff; }
 /* ---------- radar ---------- */
 .icon-btn.small { width: 34px; height: 34px; }
 [data-on="1"] > .g-off, [data-on="0"] > .g-on, :not([data-on]) > .g-on { display: none; }
-.radar-map { height: 300px; margin-top: 10px; border-radius: 12px; overflow: hidden; background: #0e1420; }
-.radar-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.radar-slider { flex: 1; accent-color: #9fd0ff; min-width: 0; }
-.radar-time { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 9.5em; text-align: right; }
-.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: flex; flex-direction: column; padding: calc(10px + env(safe-area-inset-top)) var(--pad) calc(12px + env(safe-area-inset-bottom)); background: rgba(10, 16, 28, 0.96); }
+.radar-note { margin: 8px 0 0; font-size: 15px; font-weight: 560; }
+.radar-note:empty { display: none; }
+.radar-wrap { position: relative; margin-top: 10px; }
+.radar-map { height: 320px; border-radius: 12px; overflow: hidden; background: #0e1420; }
+.radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; background: rgba(10, 16, 28, 0.78); color: #fff; }
+.radar-chip[data-kind="model"] { background: rgba(255, 214, 138, 0.92); color: #2a1d00; }
+.radar-hint { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px; background: rgba(10, 16, 28, 0.78); }
+.radar-bar { display: flex; align-items: flex-start; gap: 12px; margin-top: 12px; }
+.radar-track { flex: 1; min-width: 0; padding-top: 6px; }
+.radar-slider { width: 100%; accent-color: #9fd0ff; margin: 0; display: block; }
+.radar-scale { position: relative; height: 26px; margin: 4px 8px 0; }
+.rs-future { position: absolute; top: 0; height: 3px; border-radius: 2px; background: repeating-linear-gradient(90deg, rgba(255, 214, 138, 0.9) 0 5px, transparent 5px 9px); }
+.rs-l { position: absolute; top: 7px; transform: translateX(-50%); font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.rs-start { transform: none; left: 0 !important; }
+.rs-end { transform: translateX(-100%); }
+.rs-now { color: #fff; font-weight: 700; }
+.radar-time { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.radar-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 10px 0 0; font-size: 12px; color: var(--text-2); }
+.radar-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.radar-legend i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18); }
+.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: flex; flex-direction: column; padding: calc(10px + env(safe-area-inset-top)) var(--pad) calc(12px + env(safe-area-inset-bottom)); background: rgba(10, 16, 28, 0.96); overflow-y: auto; }
+.radar.radar-big .radar-wrap { flex: 1; display: flex; min-height: 280px; }
 .radar.radar-big .radar-map { flex: 1; height: auto; }
+.radar.radar-big .radar-status { display: none; }
+.radar .leaflet-layer, .radar .fc-frame { transition: opacity 0.25s linear; }
+@media (prefers-reduced-motion: reduce) { .radar .leaflet-layer, .radar .fc-frame { transition: none; } }
+.radar-centre { width: 34px; height: 34px; display: grid; place-items: center; background: rgba(22, 30, 46, 0.92); color: #fff; border: 1px solid rgba(255, 255, 255, 0.14) !important; border-radius: 4px; cursor: pointer; padding: 0; }
+.radar .leaflet-control-scale-line { background: rgba(10, 16, 28, 0.7); color: var(--text-2); border-color: rgba(255, 255, 255, 0.5); }
 body.no-scroll { overflow: hidden; }
 .radar .leaflet-container { background: #0e1420; font: inherit; }
 /* OpenStreetMap's map, turned dark (the radar above it keeps its colours) */

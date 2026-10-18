@@ -97,7 +97,7 @@ async function go(force = false) {
   $("refresh-btn").disabled = true;
   showPlace();
   if (!S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon)) { S.wx = S.base = null; S.allInsights = false; render(); }
-  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000) });
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph" });
   else S.radar.place(p.lat, p.lon);
   try {
     await load(p, (wx, how) => {
@@ -206,6 +206,9 @@ function hero(wx, now) {
 
 function nowcast(wx, now) {
   const f = S.f, nc = I.nowcast(wx, now, f), box = $("nowcast");
+  // the radar says it in a line too
+  const quarters = (wx.minutely || []).filter((x) => x.t + 15 * 60e3 > now).length;
+  S.radar?.note(nc ? nc.text : quarters >= 4 ? `No rain expected here for the next ${Math.round(quarters / 4)} hours.` : "");
   if (!nc || (!nc.now && nc.startsAt - now > 2 * HOUR)) { box.hidden = true; return; }
   box.hidden = false;
   $("nowcast-text").textContent = nc.text;

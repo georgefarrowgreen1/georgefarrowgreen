@@ -2,8 +2,8 @@
 // answers within a few seconds, from here when it doesn't. The forecast itself
 // is kept by the page (data.js), never here. And its notifications: rain
 // alerts and the morning briefing (functions/_wxpush.js).
-const CACHE = "wx-2";
-const SHELL = ["./", "./styles.css", "./app.js", "./data.js", "./insights.js", "./format.js", "./codes.js", "./climate.js", "./sky.js", "./charts.js", "./icons.js", "./skill.js", "./radar.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png"];
+const CACHE = "wx-3";
+const SHELL = ["./", "./styles.css", "./app.js", "./data.js", "./insights.js", "./format.js", "./codes.js", "./climate.js", "./sky.js", "./charts.js", "./icons.js", "./skill.js", "./radar.js", "./rainmap.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}).then(() => self.skipWaiting()));

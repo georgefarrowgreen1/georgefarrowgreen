@@ -24,6 +24,12 @@ function previousRuns(url) {
   }
   return { latitude: 51.5, longitude: 0.05, timezone: 'UTC', utc_offset_seconds: 0, hourly: h };
 }
+// the models' next two hours of rain on the radar's 9 × 9 grid: a band of rain over the western half
+function modelGrid(url) {
+  const n = new URL(url).searchParams.get('latitude').split(',').length, q0 = Math.floor(Date.now() / 900e3) * 900e3;
+  const time = Array.from({ length: 9 }, (_, k) => new Date(q0 + k * 900e3).toISOString().slice(0, 16));
+  return Array.from({ length: n }, (_, i) => ({ minutely_15: { time, precipitation: time.map((_, k) => (i % 9 < 4 ? 0.3 + k * 0.1 : 0)), snowfall: time.map(() => 0) } }));
+}
 // the stand-in for Open-Meteo (the server's notifications) and the Aviation Weather Center (its airport reports)
 let wxScenario = { rainIn: 30 };
 http.createServer((req, res) => {
@@ -65,6 +71,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('geocoding')) return j({ results: [{ name: 'Edinburgh', latitude: 55.95, longitude: -3.19, country: 'United Kingdom', admin1: 'Scotland', country_code: 'GB' }] });
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
     if (u.includes('previous-runs-api')) return j(previousRuns(u));
+    if (u.includes('forecast_minutely_15=9')) return j(modelGrid(u));
     if (u.includes('models=')) return j(F.models(now));
     return j(F.forecast(now, sc));
   });
@@ -119,12 +126,20 @@ ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says wh
 // the radar
 await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
-await p.waitForFunction(() => document.querySelector('#radar .radar-slider').max === '12', null, { timeout: 15000 });
-await p.waitForTimeout(800);
-ok(/latest|min ago/.test(await p.textContent('#radar .radar-time')) && tiles.radar > 0 && tiles.map > 0, 'the radar: 13 frames over the map', `${tiles.radar} radar tiles, ${tiles.map} map tiles`);
+await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 });
+ok(/starting in about/.test(await p.textContent('#radar .radar-note')), 'with the next few hours in a line above it', await p.textContent('#radar .radar-note'));
+ok((await p.locator('#radar .radar-legend span').count()) === 7 && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend, and a timeline marked Now');
+ok(await p.locator('#radar .radar-centre').count() === 1 && await p.locator('#radar .leaflet-control-scale').count() === 1, 'a button back to the place, and a scale');
 const was = await p.getAttribute('#radar .radar-play', 'data-on');
 await p.click('#radar .radar-play');
 ok(was === '1' && (await p.getAttribute('#radar .radar-play', 'data-on')) === '0', 'it plays by itself, and pauses');
+await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = '12'; s.dispatchEvent(new Event('input')); });
+ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await p.textContent('#radar .radar-chip')) === 'Radar' && tiles.radar > 0 && tiles.map > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles, ${tiles.map} map tiles; ${await p.textContent('#radar .radar-time')}`);
+// the next two hours, from the models
+await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
+ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() >= 7, 'then the forecast\'s rain, marked as forecast', await p.textContent('#radar .radar-time'));
+const painted = await p.evaluate(() => { const img = [...document.querySelectorAll('#radar .fc-frame')].pop(); return img && img.src.startsWith('data:image/png') && img.src.length > 500; });
+ok(painted, 'painted in the radar\'s colours');
 await p.click('#radar .radar-full');
 ok(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big')), 'full screen');
 await p.screenshot({ path: `${out}/wx-radar.png` });

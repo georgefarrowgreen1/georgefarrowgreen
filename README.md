@@ -182,11 +182,20 @@ so there's nothing to set up beyond the address.
   between which hours. Plus drying washing outside (dry hours, thirsty air, a
   breeze, sun), stargazing (dark, clear, the Moon out of the way) and a
   colourful sunset or sunrise (high and mid cloud, no low cloud in the way).
-- **Rain radar**: the last two hours of radar, every 10 minutes, animated, from
-  RainViewer's free mosaic of the world's radars, over OpenStreetMap's map
-  turned dark (`weather/radar.js`, Leaflet 1.9.4 vendored in `weather/vendor/`
-  and checked against npm's integrity hash, loaded only when the card comes
-  into view). Full screen to pan and zoom.
+- **Rain radar**: the last two hours of radar, every 10 minutes, from
+  RainViewer's free mosaic of the world's radars, then the next two hours as
+  the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9 grid
+  about 330 km across, blended between the points and painted in the radar's
+  own colours, inside a dashed box and marked Forecast), animated on one
+  timeline marked Now, over OpenStreetMap's map turned dark. A line above it
+  says what's coming ("Rain starting in about 40 min"); below it, a legend
+  (RainViewer's Universal Blue colours, from their published table, rain rate
+  to reflectivity by Marshall and Palmer), and a scale and a button back to the
+  place on the map. On a phone a tap opens it full screen to pan and zoom (the
+  page scrolls past it otherwise). Leaflet 1.9.4 is vendored in `weather/vendor/`
+  (checked against npm's integrity hash) and loaded only when the card comes
+  into view; with reduced motion it doesn't play by itself (`weather/radar.js`,
+  `weather/rainmap.js`).
 - **Forecast accuracy here, and a forecast tuned by it**: the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation
   Weather Center keeps only about a week, so each day's high and low is kept in
@@ -238,7 +247,7 @@ directly, so a branch can be tried before it's merged.
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
 | Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are. Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
-| Radar | `weather/radar.js`, `weather/vendor/leaflet.js`, `leaflet.css` (BSD-2-Clause) |
+| Radar | `weather/radar.js`, `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/vendor/leaflet.js`, `leaflet.css` (BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
 | Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`) |
@@ -263,7 +272,10 @@ a day per device (each phone asks for itself; a refresh is a few calls). The
 30-year history is one large request per place, so it's fetched once and kept
 for a year; if the archive is busy the card says so and tries again later.
 RainViewer's free radar is the past two hours only, to zoom 7 (closer in it's
-enlarged), and OpenStreetMap's tiles are for light use like this. CARTO's dark
+enlarged), so the next two hours are the models' rain: smoother than radar
+(points about 40 km apart), and only inside the box around the place; each
+look at the radar asks Open-Meteo about 81 points (kept for 15 minutes).
+OpenStreetMap's tiles are for light use like this. CARTO's dark
 tiles now need an API key, so they're not used. GitHub runs scheduled
 workflows late when it's busy, so a rain alert can come later than the hour's
 notice it aims for. Accuracy needs an airport within 40 km that reports round
@@ -273,7 +285,8 @@ thumb from the forecast, not official warnings.
 **Tests.** `.tools/tests/unit/wxinsights.test.mjs` and `wxnext.test.mjs` (in
 CI: units, the Sun and Moon, climate, each insight on forecasts made up to show
 it, accuracy and tuning, airport reports, activities and their limits, when a
-rain alert or briefing is due and what it says) and `.tools/tests/wxapp.mjs`
+rain alert or briefing is due and what it says; and `wxradar.test.mjs`, the
+radar's colours, grid, painting and timeline) and `.tools/tests/wxapp.mjs`
 (end to end: the page, warnings, models, climate, the radar, accuracy and the
 tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
