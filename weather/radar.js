@@ -4,7 +4,8 @@
 // grid about 220 km across around the place, painted in the radar's own colours), over
 // OpenStreetMap's map turned dark to sit with the app (a filter in styles.css).
 // RainViewer's free tiles go to zoom 7 (about a county across a tile), so
-// closer in, they're enlarged.
+// closer in, they're enlarged: smoothly, read back into reflectivity and
+// blended (rainmap.js resample), rather than as squares.
 //
 // Leaflet (vendor/leaflet.js: 1.9.4, BSD-2-Clause, checked against npm's
 // integrity hash) is loaded only when the card first comes into view.
@@ -74,10 +75,24 @@ function tileCodes(url) {
   if (codes.size > 400) codes.delete(codes.keys().next().value);
   return p;
 }
-// (proposals: how the radar is drawn closer in than its tiles go)
-const LOOK = new URLSearchParams(location.search).get("radarlook") || "smooth";
-const LOOKS = { smooth: { edge: [0.22, 0.45], soft: 0.4 }, glow: { edge: [0.04, 0.6], soft: 2.5 } };
-// The radar, smoothed: each tile drawn from the radar's own (zoom 7 at most), blended (rainmap.js resample)
+// How the radar is smoothed (rainmap.js resample): crisp edges in the radar's own bands, soft edges with
+// colours that flow, or (as here) clean edges with flowing colour
+const LOOKS = { contours: { edge: [0.22, 0.45], soft: 0.4 }, gradient: { edge: [0.04, 0.6], soft: 2.5 }, both: { edge: [0.16, 0.5], soft: 1.4 } };
+const LOOK = LOOKS.both;
+// The smoothing, a few tiles at a time so the page keeps moving, the frame on show first
+const jobs = [];
+let working = false;
+function work() {
+  const until = performance.now() + 12;
+  while (jobs.length && performance.now() < until) {
+    const k = Math.max(0, jobs.findIndex((j) => j.shown()));
+    jobs.splice(k, 1)[0].run();
+  }
+  working = jobs.length > 0;
+  if (working) setTimeout(work, 0);
+}
+function queue(job) { jobs.push(job); if (!working) { working = true; setTimeout(work, 0); } }
+// The radar, smoothed: each tile drawn from the radar's own (zoom 7 at most)
 function smoothRadar(L, base, look, opts) {
   const Layer = L.GridLayer.extend({
     createTile(c, done) {
@@ -90,19 +105,27 @@ function smoothRadar(L, base, look, opts) {
       for (const dy of [-1, 0, 1]) for (const dx of [-1, 0, 1]) {
         if ((dx || dy) && (!dx || edge[dx][0]) && (!dy || edge[dy][1]) && py + dy >= 0 && py + dy < n) need.push([dx, dy]);
       }
-      Promise.all(need.map(([dx, dy]) => tileCodes(url(px + dx, py + dy)))).then((got) => {
-        const own = got[0], next = new Map(need.map(([dx, dy], i) => [dx * 3 + dy, got[i]]));
-        if (own) {
-          const code = (x, y) => {
-            const dx = x < 0 ? -1 : x > 255 ? 1 : 0, dy = y < 0 ? -1 : y > 255 ? 1 : 0, t = dx || dy ? next.get(dx * 3 + dy) : own;
-            return t ? t[(y - dy * 256) * 256 + (x - dx * 256)] : own[Math.min(255, Math.max(0, y)) * 256 + Math.min(255, Math.max(0, x))];
-          };
-          const ctx = tile.getContext("2d"), img = ctx.createImageData(256, 256);
-          resample(img.data, 256, code, x0, y0, span, look);
-          ctx.putImageData(img, 0, 0);
-        }
-        done(null, tile);
-      });
+      Promise.all(need.map(([dx, dy]) => tileCodes(url(px + dx, py + dy)))).then((got) => queue({
+        shown: () => this.options.opacity > 0,
+        run: () => {
+          const own = got[0], next = new Map(need.map(([dx, dy], i) => [dx * 3 + dy, got[i]]));
+          // (gone already, scrolled away; or nothing to draw)
+          if (own && tile.isConnected) {
+            const code = (x, y) => {
+              const dx = x < 0 ? -1 : x > 255 ? 1 : 0, dy = y < 0 ? -1 : y > 255 ? 1 : 0, t = dx || dy ? next.get(dx * 3 + dy) : own;
+              return t ? t[(y - dy * 256) * 256 + (x - dx * 256)] : own[Math.min(255, Math.max(0, y)) * 256 + Math.min(255, Math.max(0, x))];
+            };
+            let wet = false;
+            for (let y = Math.floor(y0) - 2; y < y0 + span + 2 && !wet; y++) for (let x = Math.floor(x0) - 2; x < x0 + span + 2; x++) if (code(x, y)) { wet = true; break; }
+            if (wet) {
+              const ctx = tile.getContext("2d"), img = ctx.createImageData(256, 256);
+              resample(img.data, 256, code, x0, y0, span, look);
+              ctx.putImageData(img, 0, 0);
+            }
+          }
+          done(null, tile);
+        },
+      }));
       return tile;
     },
   });
@@ -173,8 +196,7 @@ export function radar(card, { lat, lon, time, miles = false }) {
     const tl = timeline(past.map((f) => f.time * 1000), model ? model.times : []);
     frames = tl.frames; nowAt = past.length ? tl.now : 0;
     layers = frames.map((f) => (f.kind === "radar"
-      ? (LOOKS[LOOK] ? smoothRadar(L, `${rv.value.host}${past[f.k].path}/256`, LOOKS[LOOK], { opacity: 0, zIndex: 300, maxZoom: 10, attribution: ATTR_RADAR, className: "rv-tiles" })
-        : L.tileLayer(`${rv.value.host}${past[f.k].path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, zIndex: 300, maxNativeZoom: NATIVE, maxZoom: 10, attribution: ATTR_RADAR, className: `rv-tiles rv-${LOOK}` }))
+      ? smoothRadar(L, `${rv.value.host}${past[f.k].path}/256`, LOOK, { opacity: 0, zIndex: 300, maxZoom: 10, attribution: ATTR_RADAR, className: "rv-tiles" })
       : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame", attribution: ATTR_MODEL })).addTo(map));
     if (box) map.removeLayer(box);
     box = L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map);

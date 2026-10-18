@@ -7,10 +7,19 @@
 import { chromium } from 'playwright';
 import { readFileSync } from 'fs';
 import http from 'http';
+import { deflateSync, crc32 } from 'zlib';
 import * as F from './mocks/wxappdata.mjs';
 const [,, S, out] = process.argv;
 const H = 3600e3, D = 864e5;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+// a radar tile: 256 × 256, clear but for a block of 30 dBZ rain in the radar's own blue in the middle
+const RADAR_PNG = (() => {
+  const raw = Buffer.alloc(256 * (1 + 256 * 4));
+  for (let y = 0; y < 256; y++) for (let x = 96; x < 160; x++) if (y >= 96 && y < 160) raw.set([0x00, 0x55, 0x88, 0xff], y * 1025 + 1 + x * 4);
+  const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data]))); return Buffer.concat([len, Buffer.from(type), data, crc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(256, 0); ihdr.writeUInt32BE(256, 4); ihdr.set([8, 6, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+})();
 // the same day every day at the airport: 5° at 3am, 15° at 3pm
 const curve = (h) => 10 + 5 * Math.sin(((h - 9) / 24) * 2 * Math.PI);
 // what each model said a day ahead: ECMWF half a degree warm, GFS two degrees warm, GEM two and a half cold…
@@ -78,7 +87,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   // the radar's frames and tiles, and the map's
   await p.route(/api\.rainviewer\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify({ host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }) }));
-  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { tiles[/rainviewer/.test(r.request().url()) ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
+  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { const rv = /rainviewer/.test(r.request().url()); tiles[rv ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: rv ? RADAR_PNG : PNG }); });
   const res = await p.goto(url);
   await p.waitForSelector('.day-row', { timeout: 20000 });
   // everything in: the last to arrive is the thirty years of climate
@@ -136,6 +145,20 @@ await p.click('#radar .radar-play');
 ok(was === '1' && (await p.getAttribute('#radar .radar-play', 'data-on')) === '0', 'it plays by itself, and pauses');
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = '12'; s.dispatchEvent(new Event('input')); });
 ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await p.textContent('#radar .radar-chip')) === 'Radar' && tiles.radar > 0 && tiles.map > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles, ${tiles.map} map tiles; ${await p.textContent('#radar .radar-time')}`);
+// closer in than the radar's tiles go, it's smoothed: drawn in its own blue, with an edge that fades rather than steps
+await p.click('#radar .leaflet-control-zoom-in'); await p.click('#radar .leaflet-control-zoom-in');
+const smoothed = () => [...document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 200));
+await p.waitForFunction(smoothed, null, { timeout: 15000, polling: 250 }).catch(() => {});
+await p.waitForTimeout(500);
+const drawn = await p.evaluate(() => {
+  let rain = 0, soft = 0, blue = 0;
+  for (const c of document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < d.length; i += 4) { if (d[i] > 200) { rain++; if (d[i - 1] > d[i - 3]) blue++; } else if (d[i] > 0) soft++; }
+  }
+  return { rain, soft, blue, tiles: document.querySelectorAll('#radar .rv-tiles canvas').length };
+});
+ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));
 // the next two hours, from the models
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
 ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() >= 7, 'then the forecast\'s rain, marked as forecast', await p.textContent('#radar .radar-time'));

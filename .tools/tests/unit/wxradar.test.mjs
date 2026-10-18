@@ -1,8 +1,9 @@
 // The radar's sums (weather/rainmap.js): rain rate to reflectivity, the radar's own colours, the grid the
-// forecast's frames are made from, painting one, and the timeline of radar then forecast.
+// forecast's frames are made from, painting one, the timeline of radar then forecast, and smoothing the
+// radar's own tiles where they're enlarged.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -60,4 +61,45 @@ test("the timeline: two hours of radar, then the forecast after the latest frame
   // no radar: the forecast alone, from now
   const only = timeline([], model, now);
   assert.equal(only.frames[0].kind, "model"); assert.equal(only.now, 0);
+});
+
+test("reading a radar tile back: each colour to its dBZ, rain or snow", () => {
+  const px = (...cs) => new Uint8ClampedArray(cs.flat());
+  // clear, 20 dBZ rain, 15 dBZ rain (between the table's steps of 2), 37 dBZ, 20 dBZ snow
+  const c = decode(px([0, 0, 0, 0], [0x00, 0xa3, 0xe0, 0xff], [0x88, 0xdd, 0xee, 0xff], [0xff, 0xd2, 0x00, 0xff], [0x7f, 0xbf, 0xff, 0xff]));
+  assert.deepEqual([...c], [0, 31, 26, 48, 131]);
+  // a colour not in the table: the nearest rain colour
+  assert.equal(decode(px([0x01, 0xa2, 0xe1, 0xff]))[0], 31);
+});
+test("the colour ramp: the radar's own colours, or flowing between them", () => {
+  const r = ramp(false), at = (t, dbz) => [...t.slice((dbz + 10) * 16, (dbz + 10) * 16 + 4)];
+  assert.deepEqual(at(r, 20), [0x00, 0xa3, 0xe0, 0xff]);
+  assert.deepEqual(at(r, 36), [0xff, 0xe0, 0x00, 0xff]);
+  assert.deepEqual(at(ramp(true), 20), [0x7f, 0xbf, 0xff, 0xff], "snow in blues");
+  // soft: the jump from deep blue (34) to yellow (35) becomes a blend, and the blues stay blue
+  const s = ramp(false, 1.4), mid = at(s, 35);
+  assert.ok(mid[0] > 0x80 && mid[0] < 0xff && mid[2] > 0, `blended: ${mid}`);
+  assert.ok(at(s, 24)[2] > at(s, 24)[0], "blue stays blue");
+});
+test("smoothing an enlarged tile: a shower becomes round, its edge soft, the dry stays clear", () => {
+  // a 4 × 4 block of 30 dBZ rain in a dry tile, enlarged 8 times (as at zoom 10)
+  const codes = new Uint8Array(256 * 256);
+  for (let y = 10; y < 14; y++) for (let x = 10; x < 14; x++) codes[y * 256 + x] = 30 + 11;
+  const code = (x, y) => (x < 0 || y < 0 || x > 255 || y > 255 ? 0 : codes[y * 256 + x]);
+  const W = 128, out = resample(new Uint8ClampedArray(W * W * 4), W, code, 8, 8, 8, { edge: [0.16, 0.5], soft: 1.4 });
+  const a = (x, y) => out[(y * W + x) * 4 + 3];
+  // the block covers source x 10-14 → output 32-96: rain in the middle, clear at the tile's corners
+  assert.ok(a(64, 64) > 200 && a(2, 2) === 0 && a(125, 125) === 0);
+  assert.deepEqual([...out.slice((64 * W + 64) * 4, (64 * W + 64) * 4 + 3)], [...ramp(false, 1.4).slice(40 * 16, 40 * 16 + 3)], "the middle in 30 dBZ's colour");
+  // round, not square: the block's corner is cut away, while the middle of its edge is rain
+  assert.ok(a(34, 34) < a(34, 64), `corner ${a(34, 34)} vs edge ${a(34, 64)}`);
+  // its edge fades over a few pixels rather than stepping from clear to rain
+  const row = Array.from({ length: 30 }, (_, k) => a(18 + k, 64)), between = row.filter((v) => v > 0 && v < 200);
+  assert.ok(between.length >= 2, `a soft edge: ${row.join(",")}`);
+  // nothing in, nothing out
+  const dry = resample(new Uint8ClampedArray(W * W * 4), W, () => 0, 0, 0, 32);
+  assert.ok(dry.every((v, k) => k % 4 !== 3 || v === 0));
+  // snow: snow's blues
+  const snow = (x, y) => (code(x, y) ? 30 + 111 : 0), sn = resample(new Uint8ClampedArray(W * W * 4), W, snow, 8, 8, 8);
+  assert.ok(sn[(64 * W + 64) * 4 + 2] === 255 && sn[(64 * W + 64) * 4] < 0x80, "snow in blues");
 });
