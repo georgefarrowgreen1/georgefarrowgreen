@@ -1,7 +1,7 @@
 // The rain radar: the last two hours of radar, every ten minutes, from
 // RainViewer's free mosaic of the world's weather radars, then the next two
 // hours as the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9
-// grid around the place, painted in the radar's own colours), over
+// grid about 220 km across around the place, painted in the radar's own colours), over
 // OpenStreetMap's map turned dark to sit with the app (a filter in styles.css).
 // RainViewer's free tiles go to zoom 7 (about a county across a tile), so
 // closer in, they're enlarged.
@@ -15,8 +15,8 @@ const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
 const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTR_MAP = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-const ATTR_RADAR = 'Radar <a href="https://www.rainviewer.com/">RainViewer</a>';
-const ATTR_MODEL = 'Forecast <a href="https://open-meteo.com/">Open-Meteo</a>';
+const ATTR_RADAR = '<a href="https://www.rainviewer.com/">RainViewer</a>';
+const ATTR_MODEL = '<a href="https://open-meteo.com/">Open-Meteo</a>';
 const NATIVE = 7, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
 const CENTRE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 

@@ -27,11 +27,11 @@ export const LEGEND = [
   { label: "Drizzle", dbz: 12 }, { label: "Light", dbz: 20 }, { label: "Moderate", dbz: 28 },
   { label: "Heavy", dbz: 38 }, { label: "Very heavy", dbz: 47 }, { label: "Extreme", dbz: 58 },
 ].map((x) => ({ ...x, mmh: mmhOf(x.dbz) }));
-export const MIN_RATE = 0.1;            // mm/h: lighter than this isn't drawn
+export const MIN_RATE = 0.15, SOFT = 0.35;     // mm/h: lighter than MIN_RATE isn't drawn; up to SOFT it fades in
 
-// The grid the forecast's frames are made from: n × n points, about 330 km across, around a place
-// (rows from north to south, each from west to east)
-export function grid(lat, lon, n = 9, halfLat = 1.5) {
+// The grid the forecast's frames are made from: n × n points, about 220 km across (points about
+// 28 km apart), around a place (rows from north to south, each from west to east)
+export function grid(lat, lon, n = 9, halfLat = 1) {
   const halfLon = Math.min(4, halfLat / Math.max(0.25, Math.cos((lat * Math.PI) / 180)));
   const north = Math.min(85, lat + halfLat), south = Math.max(-85, lat - halfLat), west = lon - halfLon, east = lon + halfLon;
   const lats = [], lons = [];
@@ -43,15 +43,18 @@ export function grid(lat, lon, n = 9, halfLat = 1.5) {
 }
 
 // Paint one frame into an RGBA buffer (w × h, laid over the grid's box on a Web Mercator map):
-// each pixel's rain rate is the blend of the four points around it. rates and snow: one per point.
+// each pixel's rain rate is the blend of the four points around it (eased, so a lone wet point makes a
+// round shower rather than a diamond), and the lightest rain fades out rather than ending in a ring.
+// rates and snow: one per point.
+const ease = (t) => t * t * (3 - 2 * t);
 const merc = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 export function paint(buf, w, h, g, rates, snow = null) {
   const yN = merc(g.north), yS = merc(g.south), n = g.n;
   for (let y = 0; y < h; y++) {
     const my = yN + ((yS - yN) * (y + 0.5)) / h, lat = (360 / Math.PI) * Math.atan(Math.exp(my)) - 90;
-    const fy = Math.min(n - 1, Math.max(0, ((g.north - lat) / (g.north - g.south)) * (n - 1))), r0 = Math.min(n - 2, Math.floor(fy)), ty = fy - r0;
+    const fy = Math.min(n - 1, Math.max(0, ((g.north - lat) / (g.north - g.south)) * (n - 1))), r0 = Math.min(n - 2, Math.floor(fy)), ty = ease(fy - r0);
     for (let x = 0; x < w; x++) {
-      const fx = ((x + 0.5) / w) * (n - 1), c0 = Math.min(n - 2, Math.floor(fx)), tx = fx - c0;
+      const fx = ((x + 0.5) / w) * (n - 1), c0 = Math.min(n - 2, Math.floor(fx)), tx = ease(fx - c0);
       const at = (r, c) => rates[r * n + c] || 0;
       const v = (at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx) * (1 - ty) + (at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx) * ty;
       const o = (y * w + x) * 4;
@@ -59,7 +62,7 @@ export function paint(buf, w, h, g, rates, snow = null) {
       // snow where the nearest point says so
       const near = Math.round(fy) * n + Math.round(fx), col = rgbaFor(dbzOf(v), !!(snow && snow[near]));
       if (!col) { buf[o + 3] = 0; continue; }
-      buf[o] = col[0]; buf[o + 1] = col[1]; buf[o + 2] = col[2]; buf[o + 3] = col[3];
+      buf[o] = col[0]; buf[o + 1] = col[1]; buf[o + 2] = col[2]; buf[o + 3] = v < SOFT ? Math.round(col[3] * ((v - MIN_RATE) / (SOFT - MIN_RATE))) : col[3];
     }
   }
   return buf;

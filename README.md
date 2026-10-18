@@ -185,13 +185,14 @@ so there's nothing to set up beyond the address.
 - **Rain radar**: the last two hours of radar, every 10 minutes, from
   RainViewer's free mosaic of the world's radars, then the next two hours as
   the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9 grid
-  about 330 km across, blended between the points and painted in the radar's
+  about 220 km across, blended between the points and painted in the radar's
   own colours, inside a dashed box and marked Forecast), animated on one
   timeline marked Now, over OpenStreetMap's map turned dark. A line above it
   says what's coming ("Rain starting in about 40 min"); below it, a legend
   (RainViewer's Universal Blue colours, from their published table, rain rate
   to reflectivity by Marshall and Palmer), and a scale and a button back to the
-  place on the map. On a phone a tap opens it full screen to pan and zoom (the
+  place on the map, all in the app's own colours (Leaflet's credits and scale
+  restyled to match). On a phone a tap opens it full screen to pan and zoom (the
   page scrolls past it otherwise). Leaflet 1.9.4 is vendored in `weather/vendor/`
   (checked against npm's integrity hash) and loaded only when the card comes
   into view; with reduced motion it doesn't play by itself (`weather/radar.js`,
@@ -273,7 +274,7 @@ a day per device (each phone asks for itself; a refresh is a few calls). The
 for a year; if the archive is busy the card says so and tries again later.
 RainViewer's free radar is the past two hours only, to zoom 7 (closer in it's
 enlarged), so the next two hours are the models' rain: smoother than radar
-(points about 40 km apart), and only inside the box around the place; each
+(points about 28 km apart), and only inside the box around the place; each
 look at the radar asks Open-Meteo about 81 points (kept for 15 minutes).
 OpenStreetMap's tiles are for light use like this. CARTO's dark
 tiles now need an API key, so they're not used. GitHub runs scheduled

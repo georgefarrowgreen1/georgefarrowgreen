@@ -19,11 +19,11 @@ test("the radar's own colours (Universal Blue)", () => {
   assert.equal(rgbaFor(-20), null);
   assert.equal(hexFor(50), "rgba(193,0,0,1.00)");
 });
-test("the grid: 9 × 9 points about 330 km across, north-west to south-east", () => {
+test("the grid: 9 × 9 points about 220 km across, north-west to south-east", () => {
   const g = grid(51.5, -0.12);
   assert.equal(g.lats.length, 81);
-  assert.deepEqual([g.lats[0], g.lons[0]], [53, Math.round((-0.12 - 1.5 / Math.cos(51.5 * Math.PI / 180)) * 100) / 100]);
-  assert.deepEqual([g.lats[80], g.lons[80]], [50, Math.round((-0.12 + 1.5 / Math.cos(51.5 * Math.PI / 180)) * 100) / 100]);
+  assert.deepEqual([g.lats[0], g.lons[0]], [52.5, Math.round((-0.12 - 1 / Math.cos(51.5 * Math.PI / 180)) * 100) / 100]);
+  assert.deepEqual([g.lats[80], g.lons[80]], [50.5, Math.round((-0.12 + 1 / Math.cos(51.5 * Math.PI / 180)) * 100) / 100]);
   assert.ok(g.east - g.west > g.north - g.south, "wider in longitude, so it's square on the ground");
   // across the date line, longitudes stay in range
   const p = grid(-17, 179.5);
@@ -42,6 +42,9 @@ test("painting a frame: rain where the points say, nothing where they don't", ()
   const mid = paint(new Uint8ClampedArray(W * H * 4), W, H, g, one);
   const px = (x, y) => [...mid.slice((y * W + x) * 4, (y * W + x) * 4 + 4)];
   assert.ok(px(20, 20)[3] > 0 && px(0, 0)[3] === 0 && px(39, 39)[3] === 0);
+  // its edge fades rather than ending in a hard ring
+  const alphas = Array.from({ length: 20 }, (_, k) => px(20 + k, 20)[3]).filter((a) => a > 0);
+  assert.ok(alphas.at(-1) < alphas[0], `fades: ${alphas.join(",")}`);
   // snow there: snow's colours
   const snow = Array(81).fill(0); snow[40] = 1;
   const sn = paint(new Uint8ClampedArray(W * H * 4), W, H, g, one, snow);
