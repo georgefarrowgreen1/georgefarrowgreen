@@ -146,6 +146,91 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
+## Weather (weather.georgefarrowgreen.com)
+
+A forecast that explains itself, in `weather/`: no build step, no keys, no
+database. Your phone asks [Open-Meteo](https://open-meteo.com/) (free, CC BY
+4.0) for the forecast and works the insights out itself (`weather/insights.js`),
+so there's nothing to set up beyond the address.
+
+**What it tells you**
+
+- **A briefing** for the next day or so, in words ("Cloudy until about 16:00,
+  then rain until around 20:00. High 14°"), and each day of the fortnight
+  described part by part (morning, afternoon, evening, overnight).
+- **The next four hours**, by the quarter hour: rain starting or stopping, how
+  long it lasts and how heavy.
+- **Warnings** worked out from the forecast: thunderstorms, heavy rain, gales,
+  snow, icy patches (freezing on wet ground), frost and ground frost (clear,
+  calm, cold nights), fog, heat and warm nights, bitter cold, high UV (with how
+  long fair skin takes to burn), poor air and high pollen.
+- **Tips**: whether to take an umbrella, what to wear (from the feels-like range
+  of your waking hours, with wind and rain), and your weekday commute (Settings).
+- **How sure the forecast is**, day by day: six global models side by side
+  (ECMWF, Met Office, GFS, ICON, Météo-France, GEM) and ECMWF's 51-run ensemble.
+  Days the models disagree on are marked uncertain, with why; the temperature
+  chart shades how far it could go either way.
+- **This time of year**: thirty years of the place's own days (ERA5, through
+  Open-Meteo's archive) put each forecast in context: the normal high and low,
+  how unusual a day is (its percentile), near-record warmth or cold, a wet or dry
+  week against normal, this day last year.
+- **Best times** in the next two days for a run, a walk, a ride, drying washing
+  outside (dry hours, thirsty air, a breeze, sun), stargazing (dark, clear, the
+  Moon out of the way) and a colourful sunset or sunrise (high and mid cloud to
+  catch the light, no low cloud in the way).
+- **Context**: warmer or cooler than yesterday, a big change coming ("Turning
+  colder from Friday"), the barometer rising or falling, the best and worst day of
+  the week, the weekend, daylight gained or lost, and **what's changed since you
+  last looked** ("Saturday looks drier: rain chance 70% → 20%").
+- **Right now**: feels like (and why), wind with a compass and Beaufort name,
+  humidity and dew-point comfort, rain in the last and next 24 hours, pressure
+  trend, visibility, UV, air quality and pollen, the Sun's arc with golden hour,
+  and the Moon (phase, rise and set, next full and new moon), all worked out on
+  the phone (`weather/sky.js`: Meeus's Moon, checked against real sunrises and
+  full moons in the tests).
+
+Places (search, or Use My Location) and settings (°C/°F, mph/km/h/m/s/knots,
+mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on
+roughly where you are, from your connection (`GET /api/weather/where`,
+Cloudflare's city-level guess; nothing kept), or on your location if you've
+already allowed it. It works offline with what it last fetched, can be added to
+the Home Screen, and refreshes itself every 10 minutes while open. Share a place
+with `?lat=…&lon=…&name=…`.
+
+**Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen`
+project → Custom domains → Set up a custom domain → `weather.georgefarrowgreen.com`.
+The zone is already on Cloudflare, so it adds the DNS record itself. That's all:
+no variables, secrets or bindings. georgefarrowgreen.com/weather sends you to
+the new address; preview deployments (`*.pages.dev/weather/`) serve the app
+directly, so a branch can be tried before it's merged.
+
+| Part | Where |
+| --- | --- |
+| Page, styles | `weather/index.html`, `weather/styles.css` (glass cards over a sky that follows the weather and the time of day) |
+| Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
+| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, place search; BigDataCloud names where you are. Kept in `localStorage` (the climate for a year per place) |
+| Thinking | `weather/insights.js`, `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
+| Offline | `weather/sw.js`, `weather/manifest.webmanifest` |
+| Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
+
+**Its own address.** At weather.georgefarrowgreen.com only the app and its own
+API answer (anything else is "Not found"), so its storage is kept apart from the
+site's and InFlight's. Its Content-Security-Policy runs only its own scripts and
+lets it fetch only from Open-Meteo and BigDataCloud; it's the only place, with
+InFlight, that may ask for your location.
+
+**Limits.** Open-Meteo's free API is for non-commercial use, about 10,000 calls
+a day per device (each phone asks for itself; a refresh is a few calls). The
+30-year history is one large request per place, so it's fetched once and kept
+for a year; if the archive is busy the card says so and tries again later.
+The insights are rules of thumb from the forecast, not official warnings.
+
+**Tests.** `.tools/tests/unit/wxinsights.test.mjs` (in CI: units, the Sun and
+Moon, climate, and each insight on forecasts made up to show it) and
+`.tools/tests/wxapp.mjs` (end to end: the page, warnings, models, climate,
+settings, search, the address's limits and accessibility, against made-up
+forecasts for the time it runs).
+
 ## InFlight (chat.georgefarrowgreen.com) — 1.2.6
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.

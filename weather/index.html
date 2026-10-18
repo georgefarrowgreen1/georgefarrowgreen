@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Weather</title>
+  <meta name="description" content="A forecast that explains itself: a daily briefing, what to wear, the best times to get outside, how unusual the weather is for the time of year, and how sure the forecast is." />
+  <meta name="theme-color" content="#2b5d96" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Weather" />
+  <meta property="og:title" content="Weather" />
+  <meta property="og:description" content="A forecast that explains itself." />
+  <meta property="og:type" content="website" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon-180.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module" src="./app.js"></script>
+</head>
+<body data-sky="cloudy-day">
+  <div class="sky" aria-hidden="true"><div class="sky-fx"></div></div>
+
+  <header class="top">
+    <button class="place" id="place-btn" type="button" aria-haspopup="dialog" aria-controls="places">
+      <span class="place-name" id="place-name">Weather</span>
+      <span class="place-sub" id="place-sub"></span>
+    </button>
+    <div class="top-actions">
+      <button class="icon-btn" id="locate-btn" type="button" aria-label="Use my location" title="Use my location"></button>
+      <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-controls="settings"></button>
+    </div>
+  </header>
+
+  <main id="main" aria-busy="true">
+    <div class="col col-a">
+      <section class="hero" aria-labelledby="now-temp">
+        <h1 class="sr-only">Weather for <span id="sr-place">your place</span></h1>
+        <div class="hero-row">
+          <div class="hero-temp" id="now-temp">–</div>
+          <div class="hero-icon" id="now-icon"></div>
+        </div>
+        <div class="hero-cond" id="now-cond">Loading the forecast…</div>
+        <div class="hero-hl" id="now-hl"></div>
+        <p class="brief" id="brief" aria-live="polite"></p>
+        <p class="status" id="status" role="status"></p>
+      </section>
+
+      <section class="card nowcast" id="nowcast" hidden aria-labelledby="nowcast-title">
+        <h2 class="card-title" id="nowcast-title"><span class="ct-icon" data-g="rain"></span>Next 4 hours</h2>
+        <p class="nowcast-text" id="nowcast-text"></p>
+        <div id="nowcast-chart"></div>
+        <p class="chart-note" id="nowcast-note"></p>
+      </section>
+
+      <section class="stack" id="alerts" aria-label="Warnings"></section>
+
+      <section class="card" id="hourly" aria-labelledby="hourly-title">
+        <div class="card-head">
+          <h2 class="card-title" id="hourly-title"><span class="ct-icon" data-g="clock"></span>Next 48 hours</h2>
+          <div class="seg" role="tablist" aria-label="Chart" id="hourly-seg">
+            <button role="tab" type="button" data-mode="temp" aria-selected="true">Temp</button>
+            <button role="tab" type="button" data-mode="rain" aria-selected="false">Rain</button>
+            <button role="tab" type="button" data-mode="wind" aria-selected="false">Wind</button>
+          </div>
+        </div>
+        <div class="strip" id="hourly-strip" tabindex="0" aria-label="Hour by hour"></div>
+        <div id="hourly-chart" role="tabpanel"></div>
+        <p class="chart-note" id="hourly-note"></p>
+      </section>
+
+      <section class="card" id="daily" aria-labelledby="daily-title">
+        <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
+        <ol class="days" id="days"></ol>
+      </section>
+    </div>
+
+    <div class="col col-b">
+      <section aria-labelledby="insights-title">
+        <h2 class="section-title" id="insights-title">Insights</h2>
+        <div class="insights" id="insights"></div>
+      </section>
+
+      <section class="card" id="windows" aria-labelledby="windows-title">
+        <h2 class="card-title" id="windows-title"><span class="ct-icon" data-g="star"></span>Best times</h2>
+        <div class="win-grid" id="win-grid"></div>
+      </section>
+
+      <section class="card" id="climate" aria-labelledby="climate-title">
+        <h2 class="card-title" id="climate-title"><span class="ct-icon" data-g="chart"></span>This time of year</h2>
+        <div id="climate-body"><p class="muted">Gathering thirty years of this place's weather…</p></div>
+      </section>
+
+      <section aria-labelledby="details-title">
+        <h2 class="section-title" id="details-title">Right now</h2>
+        <div class="tiles" id="tiles"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot"><div class="foot-in">
+    <p><button class="link" id="refresh-btn" type="button">Refresh</button> · <span id="updated"></span></p>
+    <p>Forecasts by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (ECMWF, Met Office, NOAA, DWD, Météo-France, ECCC; CC BY 4.0), climate from ERA5 (Copernicus), place names by <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a>. Insights are worked out on your phone; your places stay on it.</p>
+  </div></footer>
+
+  <dialog class="sheet" id="places" aria-labelledby="places-title">
+    <div class="sheet-head">
+      <h2 id="places-title">Places</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <form class="search" id="search-form" role="search">
+      <label class="sr-only" for="search">Search for a place</label>
+      <input id="search" type="search" placeholder="Search for a city or town" autocomplete="off" enterkeyhint="search" />
+    </form>
+    <ul class="results" id="results" aria-live="polite"></ul>
+    <button class="row-btn" id="use-location" type="button"></button>
+    <h3 class="sheet-sub">Saved</h3>
+    <ul class="saved" id="saved"></ul>
+  </dialog>
+
+  <dialog class="sheet" id="settings" aria-labelledby="settings-title">
+    <div class="sheet-head">
+      <h2 id="settings-title">Settings</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <form id="settings-form">
+      <fieldset class="opt"><legend>Temperature</legend>
+        <label><input type="radio" name="temp" value="c" /> °C</label><label><input type="radio" name="temp" value="f" /> °F</label>
+      </fieldset>
+      <fieldset class="opt"><legend>Wind</legend>
+        <label><input type="radio" name="wind" value="mph" /> mph</label><label><input type="radio" name="wind" value="kmh" /> km/h</label><label><input type="radio" name="wind" value="ms" /> m/s</label><label><input type="radio" name="wind" value="kn" /> knots</label>
+      </fieldset>
+      <fieldset class="opt"><legend>Rain</legend>
+        <label><input type="radio" name="precip" value="mm" /> mm</label><label><input type="radio" name="precip" value="in" /> inches</label>
+      </fieldset>
+      <fieldset class="opt"><legend>Pressure</legend>
+        <label><input type="radio" name="pressure" value="hpa" /> hPa</label><label><input type="radio" name="pressure" value="inhg" /> inHg</label><label><input type="radio" name="pressure" value="mmhg" /> mmHg</label>
+      </fieldset>
+      <fieldset class="opt"><legend>Clock</legend>
+        <label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label>
+      </fieldset>
+      <fieldset class="opt commute"><legend>Commute check</legend>
+        <label class="switch"><input type="checkbox" name="commute" /> Tell me about my weekday commute</label>
+        <div class="times">
+          <label>Leave <input type="time" name="am" value="08:00" /></label>
+          <label>Return <input type="time" name="pm" value="17:30" /></label>
+        </div>
+      </fieldset>
+    </form>
+    <p class="muted small" id="about-app">Your settings and places are kept on this device only.</p>
+  </dialog>
+
+  <dialog class="sheet day-sheet" id="day" aria-labelledby="day-title">
+    <div class="sheet-head">
+      <h2 id="day-title">Day</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div id="day-body"></div>
+  </dialog>
+</body>
+</html>

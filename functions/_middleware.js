@@ -1,6 +1,8 @@
 // chat.georgefarrowgreen.com: InFlight's new address, the app at the site's root.
+// weather.georgefarrowgreen.com: Weather, the same way (functions/_wxapp.js).
 // Every other address carries straight on (the site, and InFlight at /pigeon/).
 import { serveApp, isChat, notFound } from "./_app.js";
+import { isWeather, weatherHost } from "./_wxapp.js";
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
@@ -8,6 +10,7 @@ export async function onRequest(ctx) {
   // They aren't part of the site. The asset server decodes and tidies a path before it looks, so this
   // checks the same path it will look for (/%62lokk/, //blokk/ and /%2Etools/ all mean the real thing).
   if (PRIVATE.test(plainPath(url.pathname))) return notFound();
+  if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (!isChat(url, ctx.env)) return ctx.next();
   // here, only InFlight's own API: the site's (its owner's sign-in, its content) stays on georgefarrowgreen.com
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/pigeon/") ? ctx.next() : notFound();

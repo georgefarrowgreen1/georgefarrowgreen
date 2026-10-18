@@ -39,3 +39,12 @@
 /pigeon/map/*
   ! Cache-Control
   Cache-Control: public, max-age=604800
+
+# Weather (/weather/, served at weather.georgefarrowgreen.com): location for "Use my location",
+# and the forecast fetched from Open-Meteo in the browser. functions/_wxapp.js sets the same.
+/weather/*
+  ! Permissions-Policy
+  Permissions-Policy: geolocation=(self), microphone=(), camera=()
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.open-meteo.com https://ensemble-api.open-meteo.com https://air-quality-api.open-meteo.com https://archive-api.open-meteo.com https://geocoding-api.open-meteo.com https://api.bigdatacloud.net https://cloudflareinsights.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
+  Cache-Control: no-cache

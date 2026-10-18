@@ -31,3 +31,4 @@ storage
 lookup
 secscreens
 insights
+wxapp

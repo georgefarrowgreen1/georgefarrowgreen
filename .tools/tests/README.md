@@ -24,4 +24,8 @@ Each test prints `PASS`/`FAIL` lines and ends with `FAILS n`; `run.sh` sums them
 screen and sheet in light and dark at 390 and 320 wide, checked for overlap, clipping and
 accessibility (axe).
 
+`wxapp.mjs` is the Weather app's (weather/), at weather.localhost (Chromium finds `*.localhost` by itself), against
+made-up Open-Meteo answers for the time it runs (`mocks/wxappdata.mjs`); its reasoning has unit tests of its own
+(`unit/wxinsights.test.mjs`).
+
 This folder is part of the repository but not the site: `/.tools/*` is turned away in `_redirects`.
