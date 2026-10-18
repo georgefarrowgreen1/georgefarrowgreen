@@ -33,7 +33,7 @@
     </div>
   </header>
 
-  <main id="main" aria-busy="true">
+  <main id="main" aria-busy="true" data-empty="loading">
     <div class="col col-a">
       <section class="hero" aria-labelledby="now-temp">
         <h1 class="sr-only">Weather for <span id="sr-place">your place</span></h1>
@@ -45,7 +45,13 @@
         <div class="hero-hl" id="now-hl"></div>
         <p class="brief" id="brief" aria-live="polite"></p>
         <p class="status" id="status" role="status"></p>
+        <button class="pill-btn retry" id="retry-btn" type="button" hidden>Try again</button>
       </section>
+
+      <div class="skeleton" aria-hidden="true">
+        <div class="card sk"><i class="sk-l w35"></i><div class="sk-hours"><i></i><i></i><i></i><i></i><i></i><i></i></div><i class="sk-chart"></i></div>
+        <div class="card sk"><i class="sk-l w30"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l w80"></i></div>
+      </div>
 
       <section class="card nowcast" id="nowcast" hidden aria-labelledby="nowcast-title">
         <h2 class="card-title" id="nowcast-title"><span class="ct-icon" data-g="rain"></span>Next 4 hours</h2>
@@ -101,6 +107,11 @@
     </div>
 
     <div class="col col-b">
+      <div class="skeleton" aria-hidden="true">
+        <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
+        <div class="card sk sk-ins"><i class="sk-l w30"></i><i class="sk-l w80"></i></div>
+        <div class="sk-tiles"><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div></div>
+      </div>
       <section aria-labelledby="insights-title">
         <h2 class="section-title" id="insights-title">Insights</h2>
         <div class="insights" id="insights"></div>
@@ -129,7 +140,7 @@
   </main>
 
   <footer class="foot"><div class="foot-in">
-    <p><button class="link" id="refresh-btn" type="button">Refresh</button> · <span id="updated"></span></p>
+    <p class="foot-refresh"><button class="link" id="refresh-btn" type="button">Refresh</button> · <span id="updated"></span></p>
     <p>Forecasts by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (ECMWF, Met Office, NOAA, DWD, Météo-France, ECCC; CC BY 4.0), climate from ERA5 (Copernicus), place names by <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a>, radar by <a href="https://www.rainviewer.com/" rel="noopener">RainViewer</a> over <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a>, observations from the <a href="https://aviationweather.gov/" rel="noopener">Aviation Weather Center</a>. Insights are worked out on your phone; your places stay on it.</p>
   </div></footer>
 

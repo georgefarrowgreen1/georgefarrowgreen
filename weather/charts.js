@@ -82,12 +82,15 @@ function draw(host) {
     svg.append(el("line", { x1: L, x2: L + iw, y1: Y(v), y2: Y(v), class: "c-grid" }));
     svg.append(el("text", { x: L - 6, y: Y(v) + 3.5, class: "c-ytick", "text-anchor": "end" }, o.y?.fmt ? o.y.fmt(v) : String(v)));
   }
-  // the hours along the bottom: a label every few hours, the day's name at midnight
-  const every = [1, 2, 3, 4, 6, 12, 24].find((n) => (iw / ((t1 - t0) / step)) * n >= 34) || 24;
-  for (let t = Math.ceil(t0 / step) * step; t < t1 + 1; t += step) {
+  // the hours along the bottom: a label every few hours, the day's name at midnight; as far apart as the
+  // labels need ("8:15pm" more than "20"), and on the clock's own marks (on the hour, the half hour)
+  const first = Math.ceil(t0 / step) * step, sample = o.x?.hour ? String(o.x.hour(first + step)) : "00";
+  const need = Math.max(34, sample.length * 6.6 + 12), per = iw / ((t1 - t0) / step);
+  const every = (step === HOUR ? [1, 2, 3, 4, 6, 12, 24] : [1, 2, 4, 8, 16]).find((n) => per * n >= need) || 24;
+  for (let t = first; t < t1 + 1; t += step) {
     const d = new Date(t), h = d.getUTCHours();
     if (step === HOUR && h % every !== 0) continue;
-    if (step !== HOUR && Math.round((t - t0) / step) % every !== 0) continue;
+    if (step !== HOUR && Math.round(t / step) % every !== 0) continue;
     const x = X(t) + (cols ? (X(t + step) - X(t)) / 2 : 0);
     if (x < L - 1 || x > L + iw + 1) continue;
     const day = step === HOUR && h === 0 && o.x?.day;

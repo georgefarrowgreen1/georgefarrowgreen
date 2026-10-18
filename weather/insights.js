@@ -230,8 +230,10 @@ export function nowcast(wx, now, f) {
     for (let i = 1; i < m.length - 1; i++) if (!wet(m[i]) && !wet(m[i + 1])) { endsAt = m[i].t; break; }
     if (endsAt == null) return { now: true, endsAt: null, peak, kind: what, text: `${cap(what)} for at least the next ${Math.round(span / 60)} hours.` };
     const again = m.findIndex((x, i) => x.t > endsAt + 15 * 60e3 && wet(x) && i > 0);
-    const back = again > 0 ? ` Starting again in about ${mins(m[again].t)} min.` : "";
-    return { now: true, endsAt, peak, kind: what, text: `${cap(what)} stopping in about ${Math.max(5, mins(endsAt))} min.${back}` };
+    // (an hour or more in hours: "in about 3h", not "in about 175 min")
+    const about = (n) => (n < 60 ? `${n} min` : f.dur(Math.round(n / 15) * 15 * 60));
+    const back = again > 0 ? ` Starting again in about ${about(mins(m[again].t))}.` : "";
+    return { now: true, endsAt, peak, kind: what, text: `${cap(what)} stopping in about ${about(Math.max(5, mins(endsAt)))}.${back}` };
   }
   const i = m.findIndex(wet), startsAt = m[i].t;
   let j = i; while (j < m.length && (wet(m[j]) || (m[j + 1] && wet(m[j + 1])))) j++;

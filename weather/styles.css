@@ -176,6 +176,33 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; }
 .status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1em; }
 .status.warn { color: #ffd68a; }
+.retry { margin-top: 14px; }
+main[data-empty] ~ .foot .foot-refresh { display: none; }
+
+/* before there's a forecast: glass placeholders that shimmer (or, if it couldn't be had, just the hero's message);
+   the cards that would be empty wait out of sight */
+.skeleton { display: none; }
+main[data-empty="loading"] .skeleton { display: grid; gap: 14px; }
+main[data-empty] .col > :not(.hero):not(.skeleton), main[data-empty="error"] .skeleton { display: none !important; }
+main[data-empty="error"] .hero-row { display: none; }
+main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height: 84px; margin: 8px 0; border-radius: 22px; }
+.sk { display: flex; flex-direction: column; gap: 12px; }
+.sk i, main[data-empty="loading"] .hero-temp { display: block; background: linear-gradient(100deg, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.07) 70%) 0 0 / 300% 100%; animation: sk 1.6s ease-in-out infinite; }
+.sk-l { height: 12px; border-radius: 6px; width: 100%; }
+.sk-l.w30 { width: 30%; } .sk-l.w35 { width: 35%; } .sk-l.w40 { width: 40%; } .sk-l.w50 { width: 50%; } .sk-l.w80 { width: 80%; } .sk-l.w90 { width: 90%; }
+.sk-hours { display: flex; gap: 10px; }
+.sk-hours i { flex: 1; height: 86px; border-radius: 999px; }
+.sk-chart { height: 120px; border-radius: 14px; }
+.sk-big { height: 40px; width: 60%; border-radius: 10px; }
+.sk-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sk-tiles .card { border-radius: 24px; min-height: 136px; }
+@keyframes sk { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* when the forecast arrives, the hero eases up into place (only what's on screen: an animation on a card still
+   off it can leave it unpainted; backwards fill, so nothing's left behind) */
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
+@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sk i, main[data-empty="loading"] .hero-temp { animation: none; } }
 
 /* ---------- cards ---------- */
 .card { border-radius: var(--r-card); padding: 16px var(--card-x) 18px; min-width: 0; }
@@ -281,9 +308,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (min-width: 640px) and (max-width: 979px) { .win-grid { grid-template-columns: repeat(3, 1fr); } }
 .win { border-radius: var(--r-inner); padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.win-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.win-name { font-weight: 650; font-size: 14.5px; display: flex; gap: 6px; align-items: center; }
-.win-rate { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+/* the name and its rating side by side, the rating on a line of its own when the name needs the room */
+.win-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 6px; }
+.win-name { font-weight: 650; font-size: 14.5px; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.win-name > span:first-child { display: inline-flex; flex: none; }
+.win-rate { flex: none; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .win-rate[data-r="Great"] { background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; }
 .win-rate[data-r="Good"] { background-color: rgba(93, 178, 255, 0.34); color: #e1f0ff; }
 .win-rate[data-r="Poor"] { color: var(--text-2); background-color: rgba(255, 255, 255, 0.06); }
@@ -327,6 +356,9 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .sunarc .done { fill: none; stroke: #ffd166; stroke-width: 2; }
 .sunarc .hz { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; }
 .sunarc .sun { fill: #ffd166; stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+.sunarc .under { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.sunarc .sun.down { fill: #ffd166; opacity: 0.55; }
+.sun-next { margin: -2px 0 8px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .moon-row { display: flex; align-items: center; gap: 10px; margin: 2px 0; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 13px; color: var(--text-2); margin: 0; }
 .kv dt { color: var(--text-3); }
@@ -470,6 +502,7 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .radar.radar-big .radar-wrap { flex: 1; display: flex; min-height: 280px; }
 .radar.radar-big .radar-map { flex: 1; height: auto; }
 .radar.radar-big .radar-status { display: none; }
+.radar.said-above:not(.radar-big) .radar-note { display: none; }
 .radar .leaflet-layer, .radar .fc-frame { transition: opacity 0.25s linear; }
 @media (prefers-reduced-motion: reduce) { .radar .leaflet-layer, .radar .fc-frame { transition: none; } }
 body.no-scroll { overflow: hidden; }

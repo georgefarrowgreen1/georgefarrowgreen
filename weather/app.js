@@ -149,10 +149,13 @@ function render() {
   showPlace();
   if (S.base) S.wx = tuned(S.base);
   const wx = S.wx;
+  // nothing to show yet: placeholders while it loads, or the hero's message and a way to try again
+  if (wx) delete $("main").dataset.empty; else $("main").dataset.empty = S.error ? "error" : "loading";
+  $("retry-btn").hidden = !!wx || !S.error;
   if (!wx) {
     $("now-temp").textContent = "–"; $("now-icon").replaceChildren();
     $("now-cond").textContent = S.error ? "Couldn't get the forecast" : "Loading the forecast…";
-    $("now-hl").textContent = S.error ? "Check your connection and try again." : "";
+    $("now-hl").textContent = S.error ? "You may be offline, or the forecast service didn't answer." : "";
     $("brief").textContent = "";
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
     $("nowcast").hidden = true;
@@ -174,7 +177,7 @@ function render() {
 function status() {
   const wx = S.wx, el = $("status");
   el.classList.remove("warn");
-  if (!wx) { el.textContent = S.loading ? "" : S.error ? "Offline or the forecast service didn't answer." : ""; $("updated").textContent = ""; return; }
+  if (!wx) { el.textContent = ""; $("updated").textContent = ""; return; }
   const mins = Math.round((Date.now() - wx.fetchedAt) / 60e3);
   const ago = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.floor(mins / 60)} h ago` : `${Math.floor(mins / 1440)} days ago`;
   if ((S.error || S.stale) && !S.loading && mins > 15) { el.textContent = `Couldn't refresh: showing the forecast from ${ago}.`; el.classList.add("warn"); }
@@ -214,7 +217,10 @@ function nowcast(wx, now) {
   // the radar says it in a line too
   const quarters = (wx.minutely || []).filter((x) => x.t + 15 * 60e3 > now).length;
   S.radar?.note(nc ? nc.text : quarters >= 4 ? `No rain expected here for the next ${Math.round(quarters / 4)} hours.` : "");
-  if (!nc || (!nc.now && nc.startsAt - now > 2 * HOUR)) { box.hidden = true; return; }
+  // (the radar's line only where the card above isn't saying it already: when it's hidden, or the radar's full screen)
+  const shown = !(!nc || (!nc.now && nc.startsAt - now > 2 * HOUR));
+  $("radar").classList.toggle("said-above", shown);
+  if (!shown) { box.hidden = true; return; }
   box.hidden = false;
   $("nowcast-text").textContent = nc.text;
   const m = wx.minutely.filter((x) => x.t + 15 * 60e3 > now);
@@ -423,9 +429,19 @@ function tiles(wx, now) {
     const arc = (k) => { const a = Math.PI * (1 - k); return [100 + 80 * Math.cos(a), 70 - 56 * Math.sin(a)]; };
     const [sx, sy] = arc(frac), up = now > rise && now < set;
     let done = ""; for (let k = 0; k <= frac + 1e-9; k += 0.02) { const [x, yy] = arc(Math.min(k, frac)); done += `${done ? "L" : "M"}${x.toFixed(1)} ${yy.toFixed(1)}`; }
-    const svg = `<svg class="sunarc" viewBox="0 0 200 84" aria-hidden="true"><line class="hz" x1="6" y1="70" x2="194" y2="70"/><path class="arc" d="M20 70A80 56 0 0 1 180 70"/>${up ? `<path class="done" d="${done}"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>` : ""}</svg>`;
+    // at night, the sun goes on under the horizon, from where it set to where it'll rise
+    const next = wx.daily[wx.daily.indexOf(d) + 1], setBefore = y?.sunset ?? (rise ? rise - 12 * HOUR : null);
+    const [n0, n1] = now >= set ? [set, next?.sunrise] : [setBefore, rise];
+    const night = !up && n0 && n1 ? Math.min(1, Math.max(0, (now - n0) / (n1 - n0))) : null;
+    const below = night != null ? [100 + 80 * Math.cos(Math.PI * night), 70 + 11 * Math.sin(Math.PI * night)] : null;
+    const svg = `<svg class="sunarc" viewBox="0 0 200 84" aria-hidden="true"><line class="hz" x1="6" y1="70" x2="194" y2="70"/><path class="arc" d="M20 70A80 56 0 0 1 180 70"/>${
+      up ? `<path class="done" d="${done}"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>`
+        : below ? `<path class="under" d="M180 70A80 11 0 0 1 20 70"/><circle class="sun down" cx="${below[0].toFixed(1)}" cy="${below[1].toFixed(1)}" r="5"/>` : ""}</svg>`;
+    const until = (t) => f.dur(Math.max(300, Math.round((t - now) / 300e3) * 300));
+    const sunNext = up ? `Sunset in ${until(set)}` : night != null ? `Sunrise in ${until(n1)}` : null;
     const change = y?.daylight && d.daylight ? d.daylight - y.daylight : null;
     out.push(h("section", { class: "tile wide" }, h("h3", {}, h("span", { svg: glyph("sunrise", 14) }), "Sun"), h("div", { svg }),
+      sunNext ? h("p", { class: "sun-next" }, sunNext) : null,
       h("dl", { class: "kv" },
         h("dt", {}, "Sunrise"), h("dd", {}, f.time(rise)), h("dt", {}, "Sunset"), h("dd", {}, f.time(set)),
         sk?.goldenPm?.[0] ? [h("dt", {}, "Golden hour"), h("dd", {}, `${f.time(sk.goldenPm[0])}–${f.time(set)}`)] : null,
@@ -725,6 +741,7 @@ function wire() {
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="g-off">${glyph("play", 16)}</span><span class="g-on">${glyph("pause", 16)}</span>`;
   for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="g-off">${glyph("expand", 16)}</span><span class="g-on">${glyph("shrink", 16)}</span>`;
   $("refresh-btn").addEventListener("click", () => go(true));
+  $("retry-btn").addEventListener("click", () => go(true));
   $("hourly-seg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-mode]"); if (!b) return;
     S.mode = b.dataset.mode;

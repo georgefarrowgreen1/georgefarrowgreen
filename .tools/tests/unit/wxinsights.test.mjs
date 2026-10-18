@@ -144,6 +144,10 @@ test("nowcast: rain starting soon, and rain stopping", () => {
   wx = makeWx(() => ({}), { minutely: quarter(now, (k) => (k < 3 ? 1.2 : 0)) });
   n = I.nowcast(wx, now, f);
   assert.equal(n.now, true); assert.match(n.text, /^Heavy rain stopping in about 45 min/);
+  // starting again later: in hours, not "175 min"
+  wx = makeWx(() => ({}), { minutely: quarter(now, (k) => (k < 2 || k >= 12 ? 0.4 : 0)) });
+  n = I.nowcast(wx, now, f);
+  assert.match(n.text, /stopping in about 30 min\. Starting again in about 3h\.$/, n.text);
   wx = makeWx(() => ({}), { minutely: quarter(now, () => 0) });
   assert.equal(I.nowcast(wx, now, f), null);
 });

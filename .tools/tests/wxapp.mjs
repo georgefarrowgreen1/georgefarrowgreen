@@ -137,7 +137,7 @@ ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says wh
 await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
 await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 });
-ok(/starting in about/.test(await p.textContent('#radar .radar-note')), 'with the next few hours in a line above it', await p.textContent('#radar .radar-note'));
+ok(/starting in about/.test(await p.textContent('#radar .radar-note')) && !(await p.isVisible('#radar .radar-note')), 'with the next few hours in a line above it, for full screen (the card above says it otherwise)', await p.textContent('#radar .radar-note'));
 ok((await p.locator('#radar .radar-legend span').count()) === 7 && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend, and a timeline marked Now');
 ok(await p.locator('#radar .radar-centre').count() === 1 && await p.locator('#radar .leaflet-control-scale').count() === 1, 'a button back to the place, and a scale');
 const was = await p.getAttribute('#radar .radar-play', 'data-on');
