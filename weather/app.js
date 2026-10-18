@@ -263,7 +263,9 @@ function hero(wx, now) {
     if (tEl.dataset.shown && !calm.matches) { tEl.classList.remove("roll-up", "roll-down"); void tEl.offsetWidth; tEl.classList.add(warmer ? "roll-up" : "roll-down"); }
     tEl.dataset.shown = "1";
   }
-  $("now-icon").innerHTML = weatherIcon(iconOf(c.code, c.isDay), 76);
+  // (only when it changes: it's moving, and drawn again it would start over)
+  const icon = iconOf(c.code, c.isDay), iconEl = $("now-icon");
+  if (iconEl.dataset.icon !== icon || !iconEl.firstChild) { iconEl.innerHTML = weatherIcon(icon, 76); iconEl.dataset.icon = icon; }
   $("now-cond").textContent = label(c.code, c.isDay);
   $("place-now").textContent = `${f.temp(c.temp)} · ${label(c.code, c.isDay)}`;
   $("place-temp").textContent = f.temp(c.temp);
@@ -287,7 +289,7 @@ function nowcast(wx, now) {
   // (a square root within light, so drizzle still shows; the amounts are in the readout)
   const band = (mmh) => (mmh <= 0 ? 0 : mmh < 0.6 ? Math.sqrt(mmh / 0.6) : mmh < 4 ? 1 + Math.log(mmh / 0.6) / Math.log(4 / 0.6) : Math.min(3, 2 + Math.log(mmh / 4) / Math.log(4)));
   timeChart($("nowcast-chart"), {
-    kind: "columns", height: 120, color: COLOR.rain,
+    kind: "columns", height: 120, color: COLOR.rain, key: cell(wx.place.lat, wx.place.lon),
     points: m.map((x) => ({ t: x.t, v: band(x.precip * 4), mm: x.precip })),
     y: { min: 0, max: 3, ticks: [1, 2, 3], fmt: (v) => ["", "Light", "Moderate", "Heavy"][v], inside: true },
     x: { step: 15 * 60e3, hour: (t) => f.time(t) },
@@ -351,7 +353,7 @@ function drawHourChart(wx, now, hrs, host, mode, showNow) {
   for (const x of hrs) { if (!x.isDay) { if (!run) run = [x.t, x.t + HOUR]; else run[1] = x.t + HOUR; } else if (run) { nights.push(run); run = null; } }
   if (run) nights.push(run);
   const ens = new Map((wx.ensemble?.hourly || []).map((e) => [e.t, e]));
-  const common = { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights, now: showNow ? now : null, height: 170 };
+  const common = { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights, now: showNow ? now : null, height: 170, key: `${cell(wx.place.lat, wx.place.lon)}:${mode}` };
   const when = (v) => `${f.day(v, now)} ${f.time(v)}`;
   if (mode === "temp") {
     // the ensemble's spread, around the forecast shown (its own middle can sit a little apart, on its coarser grid)
@@ -390,7 +392,7 @@ function daily(wx, now) {
   const conf = I.confidence(wx);
   const lo = Math.min(...days.map((d) => d.tmin)), hi = Math.max(...days.map((d) => d.tmax)), span = Math.max(1, hi - lo);
   const curT = wx.current?.temp;
-  $("days").replaceChildren(...days.map((d, i) => {
+  const rows = days.map((d, i) => {
     const left = (d.tmin - lo) / span, width = Math.max(0.03, (d.tmax - d.tmin) / span);
     const fill = h("i", { class: "d-fill" });
     fill.style.left = `${left * 100}%`; fill.style.width = `${width * 100}%`;
@@ -405,7 +407,9 @@ function daily(wx, now) {
       h("span", { class: "d-name" }, name, h("small", { class: unsure ? "unsure" : "" }, unsure ? "Uncertain" : f.date(d.date))),
       h("span", { class: "d-icon" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 30) }), h("span", { class: "d-pop" }, pop)),
       h("span", { class: "d-lo" }, f.temp(d.tmin)), bar, h("span", { class: "d-hi" }, f.temp(d.tmax))));
-  }));
+  });
+  $("days").replaceChildren(...rows);
+  motion("days", ...rows);
 }
 
 function windows(wx, now) {
@@ -453,7 +457,7 @@ function tiles(wx, now) {
     h("p", { class: "sub" }, diff <= -2 ? ((c.wind ?? 0) >= 12 ? `Wind makes it feel ${f.delta(diff)} colder.` : `Feels ${f.delta(diff)} colder.`) : diff >= 2 ? `Humidity makes it feel ${f.delta(diff)} warmer.` : "Close to the actual temperature.")));
   // wind
   const bf = beaufort(c.wind ?? 0), dir = c.dir ?? 0;
-  const comp = `<svg class="compass" viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="33"/>${[0, 90, 180, 270].map((a) => `<line class="tick" x1="40" y1="6" x2="40" y2="11" transform="rotate(${a} 40 40)"/>`).join("")}<text x="40" y="20" text-anchor="middle">N</text><text x="62" y="43" text-anchor="middle">E</text><text x="40" y="66" text-anchor="middle">S</text><text x="18" y="43" text-anchor="middle">W</text><path class="needle" transform="rotate(${(dir + 180) % 360} 40 40)" d="M40 14l6 30h-12z"/><circle cx="40" cy="40" r="3" fill="#fff"/></svg>`;
+  const comp = `<svg class="compass" viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="33"/>${[0, 90, 180, 270].map((a) => `<line class="tick" x1="40" y1="6" x2="40" y2="11" transform="rotate(${a} 40 40)"/>`).join("")}<text x="40" y="20" text-anchor="middle">N</text><text x="62" y="43" text-anchor="middle">E</text><text x="40" y="66" text-anchor="middle">S</text><text x="18" y="43" text-anchor="middle">W</text><g class="needle-g"><path class="needle" transform="rotate(${(dir + 180) % 360} 40 40)" d="M40 14l6 30h-12z"/></g><circle cx="40" cy="40" r="3" fill="#fff"/></svg>`;
   out.push(tile("Wind", "wind", h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, String(f.windNum(c.wind)), h("small", {}, f.windUnit)), h("p", {}, `Gusts ${f.windNum(c.gust)}`)), h("div", { svg: comp })),
     h("p", { class: "sub" }, `${bf.name}, from the ${compassWord(dir)}.`)));
   // humidity
@@ -497,7 +501,7 @@ function tiles(wx, now) {
     const night = !up && n0 && n1 ? Math.min(1, Math.max(0, (now - n0) / (n1 - n0))) : null;
     const below = night != null ? [100 + 80 * Math.cos(Math.PI * night), 70 + 11 * Math.sin(Math.PI * night)] : null;
     const svg = `<svg class="sunarc" viewBox="0 0 200 84" aria-hidden="true"><line class="hz" x1="6" y1="70" x2="194" y2="70"/><path class="arc" d="M20 70A80 56 0 0 1 180 70"/>${
-      up ? `<path class="done" d="${done}"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>`
+      up ? `<path class="done" pathLength="1" d="${done}"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>`
         : below ? `<path class="under" d="M180 70A80 11 0 0 1 20 70"/><circle class="sun down" cx="${below[0].toFixed(1)}" cy="${below[1].toFixed(1)}" r="5"/>` : ""}</svg>`;
     const until = (t) => f.dur(Math.max(300, Math.round((t - now) / 300e3) * 300));
     const sunNext = up ? `Sunset in ${until(set)}` : night != null ? `Sunrise in ${until(n1)}` : null;
@@ -521,6 +525,7 @@ function tiles(wx, now) {
     }
   }
   $("tiles").replaceChildren(...out);
+  motion("tiles", ...out);
 }
 
 /* ---------- one day, in full ---------- */
@@ -785,6 +790,37 @@ function addAct() {
   if (id === "custom") editAct(S.settings.activities.length - 1);
 }
 
+/* ---------- motion ---------- */
+// Small things that move once, as they first come into view for a place: the 16 days' bars sweep out from
+// each low to its high, the compass needle swings round to the wind, the sun's path is traced, the UV and air
+// knobs slide to their reading (styles.css, .pre and .play). Not again on the 10-minute refresh, and not at
+// all with Reduce Motion. (The cards settling in as they're scrolled to are all styles.css.)
+// (The page is drawn again as each part of the forecast arrives: each new row or tile takes over from the
+// one it replaces: still waiting to be seen, it waits; moving, it carries on from where that one had got to.)
+const drawn = new Map();                                 // place:what → the rows or tiles last drawn
+const seen = typeof IntersectionObserver === "function" && new IntersectionObserver((es) => {
+  let n = 0;
+  for (const e of es) {
+    if (!e.isIntersecting) continue;
+    seen.unobserve(e.target);
+    e.target.style.setProperty("--i", String(n++));      // (those seen together, one after another)
+    e.target.classList.replace("pre", "play");
+    e.target._t0 = performance.now();
+  }
+}, { threshold: 0.6 });
+function motion(key, ...els) {
+  if (!seen || calm.matches || !S.wx) return;
+  const k = `${cell(S.wx.place.lat, S.wx.place.lon)}:${key}`, old = drawn.get(k);
+  drawn.set(k, els);
+  els.forEach((e, i) => {
+    const o = old?.[i];
+    if (o) seen.unobserve(o);
+    if (!old || !o || o.classList.contains("pre")) { e.classList.add("pre"); seen.observe(e); return; }
+    const gone = performance.now() - (o._t0 ?? -1e9);
+    if (gone < 1800) { e.classList.add("play"); e._t0 = o._t0; e.style.setProperty("--i", o.style.getPropertyValue("--i") || "0"); e.style.setProperty("--t0", `${-Math.round(gone)}ms`); }
+  });
+}
+
 /* ---------- sheets ---------- */
 // They rise over the page, which steps back; they slide away when closed (×, a tap outside, Escape),
 // or when swiped down. With Reduce Motion, they simply come and go.
@@ -900,6 +936,7 @@ function wire() {
     ticking = 0;
     const c = Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = Math.min(1, Math.max(0, (c - 0.55) / 0.35));
     heroEl.style.setProperty("--c", c.toFixed(3)); top.style.setProperty("--cs", (cs * cs * (3 - 2 * cs)).toFixed(3));
+    heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     top.classList.toggle("scrolled", scrollY > 8);
   };
   addEventListener("scroll", () => { ticking ||= requestAnimationFrame(onScroll); }, { passive: true });

@@ -2,23 +2,25 @@
 // (one colour, the text's). Nothing is loaded from anywhere else.
 
 const SUN = "#FFC53D", MOON = "#F4E7C1", CLOUD = "#EEF3F9", DARK = "#B4C0CF", STORM = "#8E9AAB", RAIN = "#5DB2FF", BOLT = "#FFD43B", SNOW = "#FFFFFF";
+// (each part named, so the big icon at the top can move it: styles.css, .hero-icon)
 const cloud = (fill = CLOUD, dx = 0, dy = 0, s = 1) =>
-  `<path transform="translate(${dx} ${dy}) scale(${s})" fill="${fill}" d="M19 47h28a10.5 10.5 0 0 0 1.6-20.9A14.5 14.5 0 0 0 21 23.2 12 12 0 0 0 19 47z"/>`;
+  `<g class="wi-cloud"><path transform="translate(${dx} ${dy}) scale(${s})" fill="${fill}" d="M19 47h28a10.5 10.5 0 0 0 1.6-20.9A14.5 14.5 0 0 0 21 23.2 12 12 0 0 0 19 47z"/></g>`;
 const sun = (cx = 32, cy = 32, r = 11, rays = true) => {
-  let s = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${SUN}"/>`;
+  let s = `<circle class="wi-sun" cx="${cx}" cy="${cy}" r="${r}" fill="${SUN}"/>`;
+  if (rays) s += '<g class="wi-rays">';
   if (rays) for (let k = 0; k < 8; k++) {
     const a = (k * Math.PI) / 4, x1 = cx + Math.cos(a) * (r + 5), y1 = cy + Math.sin(a) * (r + 5), x2 = cx + Math.cos(a) * (r + 10), y2 = cy + Math.sin(a) * (r + 10);
     s += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${SUN}" stroke-width="3.5" stroke-linecap="round"/>`;
   }
-  return s;
+  return rays ? `${s}</g>` : s;
 };
-const moon = (cx = 32, cy = 30, r = 15) => `<path fill="${MOON}" d="M${cx + r * 0.35} ${cy - r}a${r} ${r} 0 1 0 ${r * 0.65} ${r * 1.55}A${r * 0.95} ${r * 0.95} 0 0 1 ${cx + r * 0.35} ${cy - r}z"/>`;
+const moon = (cx = 32, cy = 30, r = 15) => `<path class="wi-moon" fill="${MOON}" d="M${cx + r * 0.35} ${cy - r}a${r} ${r} 0 1 0 ${r * 0.65} ${r * 1.55}A${r * 0.95} ${r * 0.95} 0 0 1 ${cx + r * 0.35} ${cy - r}z"/>`;
 const drops = (n, color = RAIN, y = 51, len = 7) => {
   const xs = n === 2 ? [27, 38] : n === 3 ? [23, 32, 41] : [20, 28, 36, 44];
-  return xs.map((x) => `<line x1="${x}" y1="${y}" x2="${x - 3}" y2="${y + len}" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>`).join("");
+  return `<g class="wi-drops">${xs.map((x) => `<line x1="${x}" y1="${y}" x2="${x - 3}" y2="${y + len}" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/>`).join("")}</g>`;
 };
-const dots = (color = RAIN) => [23, 32, 41].map((x, i) => `<circle cx="${x - 1}" cy="${54 + (i % 2) * 4}" r="2.2" fill="${color}"/>`).join("");
-const flakes = (xs = [24, 40], y = 55) => xs.map((x) => `<g stroke="${SNOW}" stroke-width="2.4" stroke-linecap="round"><line x1="${x}" y1="${y - 5}" x2="${x}" y2="${y + 5}"/><line x1="${x - 4.3}" y1="${y - 2.5}" x2="${x + 4.3}" y2="${y + 2.5}"/><line x1="${x - 4.3}" y1="${y + 2.5}" x2="${x + 4.3}" y2="${y - 2.5}"/></g>`).join("");
+const dots = (color = RAIN) => `<g class="wi-drops">${[23, 32, 41].map((x, i) => `<circle cx="${x - 1}" cy="${54 + (i % 2) * 4}" r="2.2" fill="${color}"/>`).join("")}</g>`;
+const flakes = (xs = [24, 40], y = 55) => `<g class="wi-flakes">${xs.map((x) => `<g stroke="${SNOW}" stroke-width="2.4" stroke-linecap="round"><line x1="${x}" y1="${y - 5}" x2="${x}" y2="${y + 5}"/><line x1="${x - 4.3}" y1="${y - 2.5}" x2="${x + 4.3}" y2="${y + 2.5}"/><line x1="${x - 4.3}" y1="${y + 2.5}" x2="${x + 4.3}" y2="${y - 2.5}"/></g>`).join("")}</g>`;
 
 const WEATHER = {
   sun: () => sun(),
@@ -28,15 +30,15 @@ const WEATHER = {
   "partly-sun": () => sun(23, 22, 10) + cloud(CLOUD, 4, 6, 0.95),
   "partly-moon": () => moon(24, 20, 12) + cloud(CLOUD, 4, 6, 0.95),
   cloud: () => cloud(DARK, -6, -4, 0.9) + cloud(CLOUD, 4, 4, 0.95),
-  fog: () => cloud(DARK, 0, -6) + [40, 47, 54].map((y, i) => `<line x1="${12 + i * 3}" y1="${y}" x2="${52 - i * 3}" y2="${y}" stroke="${CLOUD}" stroke-width="3.2" stroke-linecap="round"/>`).join(""),
+  fog: () => cloud(DARK, 0, -6) + `<g class="wi-fog">${[40, 47, 54].map((y, i) => `<line x1="${12 + i * 3}" y1="${y}" x2="${52 - i * 3}" y2="${y}" stroke="${CLOUD}" stroke-width="3.2" stroke-linecap="round"/>`).join("")}</g>`,
   drizzle: () => cloud(CLOUD, 0, -6) + dots(),
   rain: () => cloud(CLOUD, 0, -8) + drops(3),
   "heavy-rain": () => cloud(DARK, 0, -8) + drops(4, RAIN, 47, 11),
   "showers-sun": () => sun(22, 20, 9) + cloud(CLOUD, 4, -2, 0.9) + drops(2, RAIN, 49),
   "showers-moon": () => moon(23, 18, 11) + cloud(CLOUD, 4, -2, 0.9) + drops(2, RAIN, 49),
-  sleet: () => cloud(CLOUD, 0, -8) + `<line x1="26" y1="50" x2="23" y2="58" stroke="${RAIN}" stroke-width="3.2" stroke-linecap="round"/>` + flakes([40], 54),
+  sleet: () => cloud(CLOUD, 0, -8) + `<g class="wi-drops"><line x1="26" y1="50" x2="23" y2="58" stroke="${RAIN}" stroke-width="3.2" stroke-linecap="round"/></g>` + flakes([40], 54),
   snow: () => cloud(CLOUD, 0, -8) + flakes([24, 40], 53),
-  storm: () => cloud(STORM, 0, -8) + `<path fill="${BOLT}" d="M33 38l-9 13h7l-4 11 12-15h-7l4-9z"/>`,
+  storm: () => cloud(STORM, 0, -8) + `<path class="wi-bolt" fill="${BOLT}" d="M33 38l-9 13h7l-4 11 12-15h-7l4-9z"/>`,
 };
 export function weatherIcon(name, size = 32, label = "") {
   const body = (WEATHER[name] || WEATHER.cloud)();

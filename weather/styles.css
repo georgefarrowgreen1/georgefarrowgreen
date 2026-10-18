@@ -136,7 +136,46 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
   background-size: 120px 120px; animation: rain 0.7s linear infinite;
 }
 @keyframes rain { to { transform: translateY(120px); } }
-@media (prefers-reduced-motion: reduce) { .sky-fx { animation: none !important; } .sky { transition: none; } }
+/* the sky lives a little: clouds drift slowly over, stars twinkle, snow falls (two layers, the nearer
+   faster), lightning lights the cloud now and then (soft and rare: at most two flickers, every eleven seconds) */
+.sky-clouds { position: absolute; inset: -12% -50% auto; height: 75%; opacity: 0; transition: opacity 1.2s var(--ease); pointer-events: none;
+  background: radial-gradient(26% 16% at 18% 32%, rgba(255, 255, 255, 0.13), transparent 70%), radial-gradient(20% 12% at 40% 18%, rgba(255, 255, 255, 0.1), transparent 70%),
+    radial-gradient(30% 18% at 66% 36%, rgba(255, 255, 255, 0.12), transparent 70%), radial-gradient(18% 11% at 88% 22%, rgba(255, 255, 255, 0.09), transparent 70%);
+  animation: clouds 80s ease-in-out infinite alternate; }
+body[data-sky^="partly"] .sky-clouds { opacity: 0.55; }
+body[data-sky^="cloudy"] .sky-clouds, body[data-sky="fog"] .sky-clouds { opacity: 1; }
+body[data-sky^="rain"] .sky-clouds, body[data-sky^="snow"] .sky-clouds, body[data-sky="storm"] .sky-clouds { opacity: 0.8; }
+body[data-sky$="night"]:not([data-sky="clear-night"]) .sky-clouds { opacity: 0.4; }
+body[data-sky="fog"] .sky-clouds { inset: 20% -50% auto; height: 90%; animation-duration: 50s; }
+@keyframes clouds { from { transform: translateX(-9%); } to { transform: translateX(9%); } }
+body[data-sky="clear-night"] .sky-fx::before, body[data-sky="clear-night"] .sky-fx::after, body[data-sky="partly-night"] .sky-fx::before {
+  content: ""; position: absolute; inset: 0; animation: twinkle 3.6s ease-in-out infinite alternate;
+  background-image: radial-gradient(1.4px 1.4px at 17% 12%, #fff 50%, transparent), radial-gradient(1px 1px at 38% 28%, #fff 50%, transparent),
+    radial-gradient(1.2px 1.2px at 52% 9%, #fff 50%, transparent), radial-gradient(1px 1px at 71% 33%, #fff 50%, transparent),
+    radial-gradient(1.5px 1.5px at 84% 16%, #fff 50%, transparent), radial-gradient(1px 1px at 5% 26%, #fff 50%, transparent), radial-gradient(1.1px 1.1px at 60% 47%, #fff 50%, transparent); }
+body[data-sky="clear-night"] .sky-fx::after { animation-duration: 5.2s; animation-delay: -2.4s;
+  background-image: radial-gradient(1.2px 1.2px at 24% 21%, #fff 50%, transparent), radial-gradient(1px 1px at 46% 14%, #fff 50%, transparent),
+    radial-gradient(1.4px 1.4px at 66% 24%, #fff 50%, transparent), radial-gradient(1px 1px at 93% 30%, #fff 50%, transparent),
+    radial-gradient(1px 1px at 12% 48%, #fff 50%, transparent), radial-gradient(1.2px 1.2px at 79% 42%, #fff 50%, transparent); }
+@keyframes twinkle { from { opacity: 0.15; } to { opacity: 1; } }
+body[data-sky^="snow"] .sky-fx::before, body[data-sky^="snow"] .sky-fx::after {
+  content: ""; position: absolute; inset: -240px 0 0; opacity: 0.75;
+  background-image: radial-gradient(2.4px 2.4px at 30px 40px, #fff 60%, transparent), radial-gradient(2px 2px at 150px 90px, #fff 60%, transparent),
+    radial-gradient(2.8px 2.8px at 90px 170px, #fff 60%, transparent), radial-gradient(2px 2px at 200px 210px, #fff 60%, transparent), radial-gradient(2.2px 2.2px at 220px 20px, #fff 60%, transparent);
+  background-size: 240px 240px; animation: snow-near 11s linear infinite, sway 5s ease-in-out infinite alternate; }
+body[data-sky^="snow"] .sky-fx::after { inset: -160px 0 0; opacity: 0.45; background-size: 160px 160px;
+  background-image: radial-gradient(1.4px 1.4px at 20px 30px, #fff 60%, transparent), radial-gradient(1.2px 1.2px at 110px 70px, #fff 60%, transparent),
+    radial-gradient(1.6px 1.6px at 60px 130px, #fff 60%, transparent), radial-gradient(1.2px 1.2px at 140px 150px, #fff 60%, transparent);
+  animation: snow-far 13s linear infinite, sway 7s ease-in-out -3s infinite alternate; }
+@keyframes snow-near { to { translate: 0 240px; } }
+@keyframes snow-far { to { translate: 0 160px; } }
+@keyframes sway { from { transform: translateX(-12px); } to { transform: translateX(12px); } }
+.sky-flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(55% 40% at 72% 14%, rgba(214, 206, 255, 0.55), transparent 72%); }
+body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
+@keyframes lightning { 0%, 84%, 100% { opacity: 0; } 85% { opacity: 0.32; } 86% { opacity: 0.06; } 87.5% { opacity: 0.22; } 90% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sky-fx, .sky-fx::before, .sky-fx::after, .sky-clouds, .sky-flash { animation: none !important; } .sky, .sky-clouds { transition: none; }
+}
 
 /* ---------- the top bar: floating glass ---------- */
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; min-height: 70px; }
@@ -187,6 +226,27 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .hero-row { display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
 .hero-icon .wi { width: 78px; height: 78px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22)); }
+/* and lives a little: the sun's rays turn, clouds drift, rain and snow fall, the lightning flickers */
+.hero-icon .wi-rays, .hero-icon .wi-flakes > * { transform-box: fill-box; transform-origin: 50% 50%; }
+.hero-icon .wi-rays { animation: wi-turn 30s linear infinite; }
+.hero-icon .wi-cloud { animation: wi-drift 7s ease-in-out infinite alternate; }
+.hero-icon .wi-cloud + .wi-cloud { animation-duration: 5.4s; animation-direction: alternate-reverse; }
+.hero-icon .wi-drops > * { animation: wi-fall 1.3s cubic-bezier(0.5, 0, 0.9, 0.6) infinite; }
+.hero-icon .wi-drops > :nth-child(2) { animation-delay: -0.45s; }
+.hero-icon .wi-drops > :nth-child(3) { animation-delay: -0.9s; }
+.hero-icon .wi-drops > :nth-child(4) { animation-delay: -0.25s; }
+.hero-icon .wi-flakes > * { animation: wi-flake 3.4s ease-in-out infinite; }
+.hero-icon .wi-flakes > :nth-child(2) { animation-delay: -1.7s; }
+.hero-icon .wi-fog > * { animation: wi-drift 6s ease-in-out infinite alternate; }
+.hero-icon .wi-fog > :nth-child(2) { animation-direction: alternate-reverse; animation-duration: 7.5s; }
+.hero-icon .wi-bolt { animation: wi-flicker 4.6s linear infinite; }
+@keyframes wi-turn { to { transform: rotate(360deg); } }
+@keyframes wi-drift { from { transform: translateX(-2.2px); } to { transform: translateX(2.2px); } }
+@keyframes wi-fall { 0% { transform: translate(1px, -4px); opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-1.5px, 5px); opacity: 0; } }
+@keyframes wi-flake { 0% { transform: translate(0, -4px) rotate(0deg); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(1.5px, 5px) rotate(60deg); opacity: 0; } }
+@keyframes wi-flicker { 0%, 78%, 100% { opacity: 1; } 80% { opacity: 0.3; } 83% { opacity: 1; } 86% { opacity: 0.45; } 89% { opacity: 1; } }
+.hero.away .hero-icon .wi * { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
 .hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
 .hero-hl { font-size: 16px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; }
@@ -235,7 +295,7 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
 .dots i.gps.on { color: #fff; }
 .dots i svg { display: block; }
-@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, main:not([data-empty]) .hero.swap-in, .hero-temp.roll-up, .hero-temp.roll-down, .seg.moving::before, .ins.rise { animation: none; } .hero { transition: none; } }
+@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, main:not([data-empty]) .hero.swap-in, .hero-temp.roll-up, .hero-temp.roll-down, .ins.rise { animation: none; } .hero { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .sk i, main[data-empty="loading"] .hero-temp { animation: none; } }
 
 /* ---------- cards ---------- */
@@ -257,6 +317,7 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 /* moving, the thumb stretches like a drop of glass, then settles */
 .seg.moving::before { animation: seg-stretch 0.55s ease-out; }
 @keyframes seg-stretch { 35% { scale: 1.16 0.9; } 70% { scale: 0.97 1.03; } }
+@media (prefers-reduced-motion: reduce) { .seg.moving::before { animation: none; } }     /* (after the rule it undoes) */
 .seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 34px; }
 .seg button[aria-selected="true"] { color: #fff; }
 .seg button:active { transform: scale(0.94); }
@@ -293,6 +354,67 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .c-nowtext { fill: rgba(255, 255, 255, 0.85); font-size: 10.5px; font-weight: 650; }
 .c-label { fill: #fff; font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: rgba(10, 16, 28, 0.55); stroke-width: 3px; }
 .c-dot, .c-crossdot { stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+/* a new chart draws in (charts.js): the line traced from the left, its range fading in behind it, columns
+   growing from the baseline one after another with a little spring, then the labels */
+/* (--t0: drawn again part way through, it carries on from there) */
+.c-enter .c-line { stroke-dasharray: 1 1; animation: c-draw 1.1s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.c-enter .c-band { animation: c-fade 0.9s ease-out backwards; animation-delay: calc(0.3s + var(--t0, 0ms)); }
+.c-enter .c-col { transform-box: fill-box; transform-origin: 50% 100%; animation: c-grow 0.6s var(--spring) backwards; animation-delay: calc(var(--k, 0) * 14ms + var(--t0, 0ms)); }
+.c-enter .c-dot, .c-enter .c-label { transform-box: fill-box; transform-origin: 50% 50%; animation: c-pop 0.45s var(--spring) backwards; animation-delay: calc(0.8s + var(--t0, 0ms)); }
+@keyframes c-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes c-fade { from { opacity: 0; } }
+@keyframes c-grow { from { transform: scaleY(0); } }
+@keyframes c-pop { from { opacity: 0; transform: scale(0.5); } }
+
+/* ---------- motion, once, as things come into view (app.js motion()) ---------- */
+/* the 16 days: each bar sweeps out from the low to the high, row after row; today's dot lands after */
+.pre .d-fill { transform: scaleX(0); transform-origin: 0 50%; }
+.play .d-fill { transform-origin: 0 50%; animation: sweep 0.8s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 50ms + var(--t0, 0ms)); }
+.pre .d-now { opacity: 0; }
+.play .d-now { animation: land 0.5s var(--spring) backwards; animation-delay: calc(0.5s + var(--i, 0) * 50ms + var(--t0, 0ms)); }
+/* the compass needle swings round to the wind and settles, as a real one does */
+.compass .needle-g { transform-box: view-box; transform-origin: 40px 40px; }
+.pre .compass .needle-g { transform: rotate(-150deg); }
+.play .compass .needle-g { animation: swing 1.4s cubic-bezier(0.3, 1.45, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+/* the sun's path traced from sunrise to now, then the sun; at night, the sun below the horizon */
+.pre .sunarc .done { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
+.play .sunarc .done { stroke-dasharray: 1 1; animation: c-draw 1.3s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.pre .sunarc .sun, .pre .sunarc .under { opacity: 0; }
+.sunarc .sun { transform-box: fill-box; transform-origin: 50% 50%; }
+.play .sunarc .sun { animation: c-pop 0.5s var(--spring) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
+.play .sunarc .under { animation: c-fade 0.8s ease-out backwards; animation-delay: var(--t0, 0ms); }
+.play .sunarc .sun.down { animation-delay: calc(0.35s + var(--t0, 0ms)); }
+/* the UV and air knobs slide along to their reading */
+.pre .meter i { opacity: 0; }
+.play .meter i { animation: knob 1s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+@keyframes sweep { from { transform: scaleX(0); } }
+@keyframes land { from { opacity: 0; scale: 0.3; } }
+@keyframes swing { from { transform: rotate(-150deg); } }
+@keyframes knob { from { left: 0%; opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .pre .d-fill, .pre .compass .needle-g { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i { opacity: 1; } .pre .sunarc .done { stroke-dashoffset: 0; }
+  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i { animation: none; }
+}
+
+/* ---------- the cards settle into place as they're scrolled up into view ---------- */
+/* (tied to the scroll itself, so nothing waits or is left behind; only where scroll-linked animation is
+   understood in full, and not with Reduce Motion) */
+@supports (animation-timeline: view()) and (animation-range: entry 0% entry 160px) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* (not the radar while it's full screen: fixed in place, there's no scroll for it to follow) */
+    main .card:not(.radar-big), main .ins, main .tile, .foot-in {
+      animation: settle cubic-bezier(0.2, 0.7, 0.3, 1) both; animation-timeline: view(); animation-range: entry 0% entry 160px;
+    }
+  }
+}
+@keyframes settle { from { opacity: 0.2; transform: translateY(28px) scale(0.965); } }
+/* a day's sheet: the parts of the day come in one after another as it rises */
+dialog.day-sheet[open] .part { animation: rise 0.55s var(--spring) backwards; }
+dialog.day-sheet[open] .part:nth-child(2) { animation-delay: 0.05s; }
+dialog.day-sheet[open] .part:nth-child(3) { animation-delay: 0.1s; }
+dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
+@media (prefers-reduced-motion: reduce) { dialog.day-sheet[open] .part { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .c-enter .c-line, .c-enter .c-band, .c-enter .c-col, .c-enter .c-dot, .c-enter .c-label { animation: none; } }
 .c-crossline { stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; }
 .c-hit { cursor: crosshair; }
 .c-tip { position: absolute; z-index: 3; pointer-events: none; --tint: rgba(14, 22, 38, 0.72); border-radius: 14px; padding: 7px 11px; font-size: 12.5px; white-space: nowrap; }

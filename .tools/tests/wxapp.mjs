@@ -253,6 +253,25 @@ await ctx.close();
   ok(!v2.length, 'nor in the credits window', v2.join('; '));
   await ctx.close();
 }
+// motion: a new chart draws in once it's on screen; and with Reduce Motion, nothing moves at all
+{
+  const { ctx, p } = await open({ rainIn: 30 });
+  await p.locator('#hourly-seg [data-mode="rain"]').evaluate((e) => e.click());
+  const before = await p.locator('#hourly-chart svg.c-enter').count();
+  await p.locator('#hourly-chart').scrollIntoViewIfNeeded();
+  await p.waitForSelector('#hourly-chart svg.c-enter', { timeout: 3000 }).catch(() => {});
+  ok(!before && await p.locator('#hourly-chart svg.c-enter').count() === 1, 'a new chart draws in (columns growing, a line traced), once it\'s on screen', `before ${before}`);
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await p.reload(); await p.waitForSelector('.day-row');
+  await p.waitForFunction(() => /warmer than/i.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
+  for (let y = 0; y < 7000; y += 700) { await p.evaluate((y) => scrollTo(0, y), y); await p.waitForTimeout(120); }
+  await p.locator('#hourly-seg [data-mode="wind"]').evaluate((e) => e.click());
+  await p.locator('.day-row').nth(2).evaluate((e) => e.click()); await p.waitForSelector('#day[open]'); await p.waitForTimeout(300);
+  const moving = await p.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSAnimation && a.playState === 'running').map((a) => `${a.animationName} on ${a.effect?.target?.className?.baseVal ?? a.effect?.target?.className}`));
+  ok(!moving.length, 'with Reduce Motion, nothing moves: no drawing in, no settling, no sky', moving.slice(0, 5).join('; '));
+  ok(!(await p.locator('.pre, svg.c-enter').count()), 'and nothing is left waiting to move (all drawn in full)');
+  await ctx.close();
+}
 // its own address only (asked of the local server directly, by name)
 const get = (host, path) => new Promise((done, fail) => http.get({ host: '127.0.0.1', port: 8788, path, headers: { Host: host } }, (r) => {
   let body = ''; r.on('data', (c) => (body += c)); r.on('end', () => done({ status: r.statusCode, body }));

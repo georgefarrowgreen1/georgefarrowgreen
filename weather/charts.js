@@ -42,18 +42,46 @@ function colPath(x, y, w, h, r = 4) {
  *   tip(p)    → { title, rows: [[value, label]] }
  *   summary   what the chart shows, for screen readers
  *   table     { head: [..], rows: [[..]] }
+ *   key       what it shows (a place, a view): a new one draws in; the same one, redrawn or refreshed, doesn't
  */
 export function timeChart(host, opts) {
+  const fresh = !host._chart || (opts.key ?? null) !== (host._chart.key ?? null);
   host._chart = opts;
   if (!host._ro && typeof ResizeObserver !== "undefined") {
     let w = 0;
     host._ro = new ResizeObserver(() => { if (Math.abs(host.clientWidth - w) > 2) { w = host.clientWidth; draw(host); } });
     host._ro.observe(host);
   }
-  draw(host);
+  draw(host, fresh);
 }
 
-function draw(host) {
+// Drawing in: the line traced from the left, its range fading in behind, columns growing from the baseline
+// one after another, the labels last (styles.css, .c-enter). Started once the chart's on screen, so it's seen.
+const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)");
+const waiting = new WeakMap();
+const watch = typeof IntersectionObserver === "function" && new IntersectionObserver((es) => {
+  for (const e of es) {
+    if (!e.isIntersecting) continue;
+    watch.unobserve(e.target);
+    waiting.get(e.target)?.classList.add("c-enter");
+    waiting.delete(e.target);
+    e.target._enterAt = performance.now();
+  }
+}, { threshold: 0.3 });
+function enter(host, svg) {
+  if (still?.matches) return;
+  const r = host.getBoundingClientRect();
+  if (!watch || (r.bottom > 0 && r.top < innerHeight - 40)) { svg.classList.add("c-enter"); host._enterAt = performance.now(); return; }
+  waiting.set(host, svg); watch.observe(host);
+}
+// drawn again (more of the forecast in, a new size) while it's still drawing in: it carries on from there
+function carryOn(host, svg) {
+  if (waiting.has(host)) { waiting.set(host, svg); return; }
+  const gone = performance.now() - (host._enterAt ?? -1e9);
+  if (gone < 1600) { svg.classList.add("c-enter"); svg.style.setProperty("--t0", `${-Math.round(gone)}ms`); }
+}
+
+function draw(host, fresh = false) {
   const o = host._chart; if (!o) return;
   const pts = o.points.filter((p) => p.v != null);
   host.replaceChildren();
@@ -103,9 +131,10 @@ function draw(host) {
   // the data
   if (cols) {
     const slot = iw / ((t1 - t0) / step), w = Math.max(1, Math.min(24, slot - 2));
+    let k = 0;
     for (const p of pts) {
       const x = X(p.t) + (slot - w) / 2, y = Y(Math.max(ys.lo, p.v)), h = Y(ys.lo) - y;
-      if (h > 0.4) svg.append(el("path", { d: colPath(x, y, w, h), fill: p.color || o.color, class: "c-col" }));
+      if (h > 0.4) { const c = el("path", { d: colPath(x, y, w, h), fill: p.color || o.color, class: "c-col" }); c.style.setProperty("--k", String(k++)); svg.append(c); }
     }
   } else {
     const band = pts.filter((p) => p.lo != null && p.hi != null);
@@ -118,7 +147,7 @@ function draw(host) {
       if (p.v == null) { gap = true; continue; }
       d += `${gap ? "M" : "L"}${X(p.t).toFixed(1)} ${Y(p.v).toFixed(1)}`; gap = false;
     }
-    svg.append(el("path", { d, stroke: o.color, class: "c-line" }));
+    svg.append(el("path", { d, stroke: o.color, class: "c-line", pathLength: 1 }));
   }
   // now
   if (o.now != null && o.now >= t0 && o.now <= t1) {
@@ -143,6 +172,7 @@ function draw(host) {
   const hit = el("rect", { x: L, y: 0, width: iw, height: Hh, fill: "transparent", class: "c-hit" });
   svg.append(hit);
   host.append(svg);
+  if (fresh) enter(host, svg); else carryOn(host, svg);
   const tip = document.createElement("div");
   tip.className = "c-tip"; tip.hidden = true; tip.setAttribute("aria-hidden", "true");
   host.append(tip);
