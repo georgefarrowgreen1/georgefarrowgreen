@@ -475,6 +475,8 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 body.no-scroll { overflow: hidden; }
 .radar .leaflet-container { background: #0e1420; font: inherit; }
 /* OpenStreetMap's map, turned dark (the radar above it keeps its colours) */
+/* the radar's tiles, enlarged smoothly (Leaflet asks Safari to keep tiles crisp, which turns enlarged pixels into squares) */
+.radar .rv-tiles .leaflet-tile { image-rendering: auto; }
 .radar .base-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.85) saturate(0.35); }
 /* the map's own controls, in glass (Leaflet's stylesheet loads later, so these carry .leaflet-container to win) */
 .radar .leaflet-container .leaflet-bar { border: 0; border-radius: 22px; overflow: hidden; background-color: rgba(14, 22, 38, 0.42); }

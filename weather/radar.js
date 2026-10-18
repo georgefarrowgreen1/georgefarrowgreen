@@ -9,7 +9,7 @@
 // Leaflet (vendor/leaflet.js: 1.9.4, BSD-2-Clause, checked against npm's
 // integrity hash) is loaded only when the card first comes into view.
 
-import { grid, paint, timeline, LEGEND, hexFor } from "./rainmap.js";
+import { grid, paint, timeline, LEGEND, hexFor, decode, resample } from "./rainmap.js";
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
@@ -53,6 +53,61 @@ const canvasFor = (g, rates, snow) => {
   paint(img.data, PX, PX, g, rates, snow); ctx.putImageData(img, 0, 0);
   return c.toDataURL("image/png");
 };
+// A radar tile's pixels, read back into reflectivity once (a few hundred kept)
+const codes = new Map();
+function tileCodes(url) {
+  if (codes.has(url)) return codes.get(url);
+  const p = new Promise((ok) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas"); c.width = c.height = 256;
+        const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0);
+        ok(decode(x.getImageData(0, 0, 256, 256).data));
+      } catch (_) { ok(null); }
+    };
+    img.onerror = () => ok(null);
+    img.src = url;
+  });
+  codes.set(url, p);
+  if (codes.size > 400) codes.delete(codes.keys().next().value);
+  return p;
+}
+// (proposals: how the radar is drawn closer in than its tiles go)
+const LOOK = new URLSearchParams(location.search).get("radarlook") || "smooth";
+const LOOKS = { smooth: { edge: [0.22, 0.45], soft: 0.4 }, glow: { edge: [0.04, 0.6], soft: 2.5 } };
+// The radar, smoothed: each tile drawn from the radar's own (zoom 7 at most), blended (rainmap.js resample)
+function smoothRadar(L, base, look, opts) {
+  const Layer = L.GridLayer.extend({
+    createTile(c, done) {
+      const tile = document.createElement("canvas"); tile.width = tile.height = 256;
+      const nz = Math.min(c.z, NATIVE), f = 2 ** (c.z - nz), span = 256 / f, n = 2 ** nz;
+      const px = Math.floor(c.x / f), py = Math.floor(c.y / f), x0 = (c.x - px * f) * span, y0 = (c.y - py * f) * span;
+      const url = (x, y) => `${base}/${nz}/${((x % n) + n) % n}/${y}/2/1_1.png`;
+      // its own pixels, and its neighbours' where the blend reaches over the edge
+      const edge = { "-1": [x0 < 2, y0 < 2], 1: [x0 + span > 254, y0 + span > 254] }, need = [[0, 0]];
+      for (const dy of [-1, 0, 1]) for (const dx of [-1, 0, 1]) {
+        if ((dx || dy) && (!dx || edge[dx][0]) && (!dy || edge[dy][1]) && py + dy >= 0 && py + dy < n) need.push([dx, dy]);
+      }
+      Promise.all(need.map(([dx, dy]) => tileCodes(url(px + dx, py + dy)))).then((got) => {
+        const own = got[0], next = new Map(need.map(([dx, dy], i) => [dx * 3 + dy, got[i]]));
+        if (own) {
+          const code = (x, y) => {
+            const dx = x < 0 ? -1 : x > 255 ? 1 : 0, dy = y < 0 ? -1 : y > 255 ? 1 : 0, t = dx || dy ? next.get(dx * 3 + dy) : own;
+            return t ? t[(y - dy * 256) * 256 + (x - dx * 256)] : own[Math.min(255, Math.max(0, y)) * 256 + Math.min(255, Math.max(0, x))];
+          };
+          const ctx = tile.getContext("2d"), img = ctx.createImageData(256, 256);
+          resample(img.data, 256, code, x0, y0, span, look);
+          ctx.putImageData(img, 0, 0);
+        }
+        done(null, tile);
+      });
+      return tile;
+    },
+  });
+  return new Layer(opts);
+}
 const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min % 60} min ` : ""}ago` : `${min} min ago`);
 
 /**
@@ -118,7 +173,8 @@ export function radar(card, { lat, lon, time, miles = false }) {
     const tl = timeline(past.map((f) => f.time * 1000), model ? model.times : []);
     frames = tl.frames; nowAt = past.length ? tl.now : 0;
     layers = frames.map((f) => (f.kind === "radar"
-      ? L.tileLayer(`${rv.value.host}${past[f.k].path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, zIndex: 300, maxNativeZoom: NATIVE, maxZoom: 10, attribution: ATTR_RADAR })
+      ? (LOOKS[LOOK] ? smoothRadar(L, `${rv.value.host}${past[f.k].path}/256`, LOOKS[LOOK], { opacity: 0, zIndex: 300, maxZoom: 10, attribution: ATTR_RADAR, className: "rv-tiles" })
+        : L.tileLayer(`${rv.value.host}${past[f.k].path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, zIndex: 300, maxNativeZoom: NATIVE, maxZoom: 10, attribution: ATTR_RADAR, className: `rv-tiles rv-${LOOK}` }))
       : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame", attribution: ATTR_MODEL })).addTo(map));
     if (box) map.removeLayer(box);
     box = L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map);
