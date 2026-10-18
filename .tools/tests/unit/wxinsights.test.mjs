@@ -40,6 +40,7 @@ const card = (cards, id) => cards.find((c) => c.id === id);
 test("units convert, and times read as the place's own clock", () => {
   const us = makeFormat({ temp: "f", wind: "kmh", precip: "in", clock: "12", pressure: "inhg" });
   assert.equal(f.temp(21.4), "21°"); assert.equal(us.temp(20), "68°"); assert.equal(us.delta(5), "9°");
+  assert.equal(f.temp(-3.4), "−3°"); assert.equal(f.temp(-0.4), "0°");     // (a true minus sign; never "−0°")
   assert.equal(f.wind(100), "62 mph"); assert.equal(us.wind(100), "100 km/h");
   assert.equal(f.precip(0.04), "0 mm"); assert.equal(f.precip(3.26), "3.3 mm"); assert.equal(f.precip(12.6), "13 mm"); assert.equal(us.precip(25.4), "1.0 in");
   assert.equal(us.pressure(1013.25), "29.92 inHg");
@@ -188,7 +189,7 @@ test("describeDay: part by part, with rain and wind", () => {
 test("frost, ground frost and ice", () => {
   const frost = makeWx((i, t, hh) => (i >= 24 && i < 31 ? { temp: -2, feels: -4 } : {}));
   const c = I.insights(frost, DAY0 + 15 * H, f);
-  assert.equal(card(c, "frost").title, "Frost"); assert.match(card(c, "frost").text, /Down to -2° overnight/);
+  assert.equal(card(c, "frost").title, "Frost"); assert.match(card(c, "frost").text, /Down to −2° overnight/);
   const ground = makeWx((i, t, hh) => (i >= 24 && i < 31 ? { temp: 2, cloud: 5, wind: 4 } : {}));
   assert.equal(card(I.insights(ground, DAY0 + 15 * H, f), "frost").title, "Ground frost possible");
   const ice = makeWx((i) => (i >= 20 && i < 23 ? { precip: 1, code: 63, pop: 90 } : i >= 23 && i < 30 ? { temp: -1 } : {}));

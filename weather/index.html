@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#2b5d96" />
   <meta name="color-scheme" content="dark" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <meta property="og:title" content="Weather" />
@@ -18,6 +19,13 @@
   <link rel="apple-touch-icon" href="./icon-180.png" />
   <link rel="stylesheet" href="./styles.css" />
   <script type="module" src="./app.js"></script>
+  <!-- everything app.js needs, asked for at once (rather than found one import at a time), and the forecast's
+       server warmed up while they come -->
+  <link rel="modulepreload" href="./data.js" /><link rel="modulepreload" href="./format.js" /><link rel="modulepreload" href="./insights.js" />
+  <link rel="modulepreload" href="./codes.js" /><link rel="modulepreload" href="./icons.js" /><link rel="modulepreload" href="./charts.js" />
+  <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
+  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" />
+  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
 </head>
 <body data-sky="cloudy-day">
   <div class="sky" aria-hidden="true"><div class="sky-clouds"></div><div class="sky-fx"></div><div class="sky-flash"></div></div>
@@ -246,6 +254,7 @@
       <h2 id="day-title" tabindex="-1">Day</h2>
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
+    <nav class="day-strip" id="day-strip" aria-label="Days"></nav>
     <div class="sheet-body">
       <div id="day-body"></div>
     </div>

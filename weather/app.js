@@ -127,6 +127,7 @@ async function go(force = false) {
   clearTimeout(timer);
   timer = setTimeout(() => { if (document.visibilityState === "visible") go(); }, 10 * 60e3);
 }
+addEventListener("online", () => { if (S.wx && Date.now() - S.wx.fetchedAt > 60e3) go(); });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && S.wx && Date.now() - S.wx.fetchedAt > 10 * 60e3) go();
 });
@@ -164,6 +165,30 @@ function drawDots() {
 }
 // a swipe across the temperature goes to the next or previous saved place, as in iOS Weather (the places
 // sheet is still the way to choose one; this is the shortcut)
+// Pull down past the top and let go, to refresh. (On iPhone the page stretches past its top as it's pulled,
+// its scroll going below zero; a little round button follows it down, turning, and spins while the
+// forecast's fetched. Elsewhere the page doesn't stretch, and Refresh at the foot of it does the same.)
+function pullToRefresh() {
+  const ring = h("div", { class: "ptr", "aria-hidden": "true" }, h("span", { svg: glyph("refresh", 18) }));
+  ring.style.setProperty("--pull", "0.000");
+  document.body.append(ring);
+  const FAR = 80;
+  let touching = false, armed = false, busy = false;
+  const show = () => {
+    const y = Math.max(0, -scrollY), k = Math.min(1, y / FAR);
+    ring.style.setProperty("--pull", k.toFixed(3)); ring.style.setProperty("--y", `${Math.round(Math.min(y, FAR * 1.4))}px`);
+    if (touching && !busy) { if (k >= 1 && !armed) { armed = true; ring.classList.add("armed"); } else if (k < 1 && armed) { armed = false; ring.classList.remove("armed"); } }
+  };
+  addEventListener("touchstart", (e) => { touching = e.touches.length === 1 && scrollY <= 4 && !document.querySelector("dialog[open]") && !$("radar").classList.contains("radar-big"); }, { passive: true });
+  addEventListener("scroll", () => { if (scrollY < 0 || ring.style.getPropertyValue("--pull") !== "0.000") show(); }, { passive: true });
+  addEventListener("touchend", () => {
+    if (!touching) return;
+    touching = false;
+    if (!armed || busy) return;
+    armed = false; busy = true; ring.classList.remove("armed"); ring.classList.add("busy");
+    go(true).finally(() => { busy = false; ring.classList.remove("busy"); show(); });
+  }, { passive: true });
+}
 function placeSwipe() {
   const el = document.querySelector(".hero");
   let x0 = null, y0 = 0, dx = 0, axis = null, t0 = 0;
@@ -208,6 +233,7 @@ function render() {
     $("now-hl").textContent = S.error ? "You may be offline, or the forecast service didn't answer." : "";
     $("brief").textContent = "";
     for (const id of ["alerts", "insights", "hourly-strip", "hourly-chart", "days", "win-grid", "tiles"]) $(id).replaceChildren();
+    $("hourly-strip")._sig = null;
     $("nowcast").hidden = true;
     status(); return;
   }
@@ -235,6 +261,9 @@ function status() {
   $("updated").textContent = `Updated ${ago}`;
 }
 
+// the top of each sky (styles.css), for the browser's bar to match
+const SKY_TOP = { "clear-day": "#1f5fae", "partly-day": "#2c5f99", "cloudy-day": "#43566c", "rain-day": "#303f52", storm: "#1c2130", "snow-day": "#4f6580", fog: "#59626e",
+  "clear-night": "#070d22", "partly-night": "#0c1428", "cloudy-night": "#151b27", "rain-night": "#10151f", "snow-night": "#1b2335", dusk: "#1f2b55", dawn: "#24376a" };
 function sky(wx, now) {
   const c = wx.current || I.hourAt(wx, now) || {}, kind = codeInfo(c.code).kind, day = !!c.isDay, d = I.dayOf(wx, now);
   let s;
@@ -248,6 +277,7 @@ function sky(wx, now) {
   else if (kind === "partly") s = day ? "partly-day" : "partly-night";
   else s = day ? "cloudy-day" : "cloudy-night";
   document.body.dataset.sky = s;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", SKY_TOP[s] || "#2b5d96");
   const top = { "clear-day": "#1f5fae", "partly-day": "#2c5f99", "cloudy-day": "#43566c", "rain-day": "#303f52", storm: "#1c2130", "snow-day": "#4f6580", fog: "#59626e", "clear-night": "#070d22", "partly-night": "#0c1428", "cloudy-night": "#151b27", "rain-night": "#10151f", "snow-night": "#1b2335", dusk: "#1f2b55", dawn: "#24376a" }[s];
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", top);
   document.documentElement.style.backgroundColor = top;      // (what shows when the page is pulled past its ends)
@@ -309,7 +339,7 @@ function insightCard(c) {
 function cards(wx, now) {
   const all = I.insights(wx, now, S.f, { prev: baseline(wx, now), commute: S.settings.commute });
   const warn = all.filter((c) => c.level === "alert" || c.level === "warn"), rest = all.filter((c) => !warn.includes(c));
-  $("alerts").replaceChildren(...warn.map(insightCard));
+  $("alerts").replaceChildren(...(warn.length ? [h("h2", { class: "sr-only" }, warn.length === 1 ? "Warning" : "Warnings"), ...warn.map(insightCard)] : []));
   const shown = S.allInsights ? rest : rest.slice(0, 6);
   const box = $("insights");
   box.replaceChildren(...shown.map(insightCard));
@@ -324,6 +354,10 @@ function cards(wx, now) {
 
 function hourly(wx, now) {
   const f = S.f, hrs = I.hoursFrom(wx, now, 48), strip = $("hourly-strip");
+  // (the strip again only if what it shows has changed: not for every other part of the forecast arriving)
+  const sig = `${cell(wx.place.lat, wx.place.lon)}|${wx.fetchedAt}|${hrs[0]?.t}|${wx.current?.temp}|${wx.current?.code}|${JSON.stringify(f.units)}`;
+  if (strip._sig === sig) { drawHourChart(wx, now, hrs, $("hourly-chart"), S.mode, true); return; }
+  strip._sig = sig;
   const items = [];
   hrs.forEach((x, i) => {
     const isNow = i === 0, c = isNow && wx.current ? wx.current : x;
@@ -360,10 +394,10 @@ function drawHourChart(wx, now, hrs, host, mode, showNow) {
     const pts = hrs.map((x) => { const e = ens.get(x.t); return { t: x.t, v: t(x.temp), lo: e ? t(x.temp + e.p10 - e.p50) : null, hi: e ? t(x.temp + e.p90 - e.p50) : null, x }; });
     const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
     timeChart(host, { ...common, kind: "line", color: COLOR.temp, points: pts,
-      y: { fmt: (v) => `${Math.round(v)}°` },
+      y: { fmt: (v) => f.deg(v) },
       marks: [{ t: hi.t, v: hi.v, text: f.temp(hi.x.temp) }, ...(hi.t !== lo.t ? [{ t: lo.t, v: lo.v, text: f.temp(lo.x.temp) }] : [])],
       summary: `Temperature, hour by hour: from ${f.temp(lo.x.temp)} to ${f.temp(hi.x.temp)}.`,
-      tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.temp), label(p.x.code, p.x.isDay)], [f.temp(p.x.feels), "feels like"], ...(p.lo != null ? [[`${Math.round(p.lo)}–${Math.round(p.hi)}°`, "could be"]] : [])] }),
+      tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.temp), label(p.x.code, p.x.isDay)], [f.temp(p.x.feels), "feels like"], ...(p.lo != null ? [[Math.round(p.lo) < 0 ? `${f.deg(p.lo)} to ${f.deg(p.hi)}` : `${Math.round(p.lo)}–${f.deg(p.hi)}`, "could be"]] : [])] }),
       table: { head: ["Time", "Temperature", "Feels like"], rows: pts.map((p) => [when(p.t), f.temp(p.x.temp), f.temp(p.x.feels)]) } });
   } else if (mode === "rain") {
     const pts = hrs.map((x) => ({ t: x.t, v: x.pop ?? (x.precip >= 0.1 ? 100 : 0), x }));
@@ -445,7 +479,7 @@ function climate(wx, now) {
     ago ? h("li", {}, h("b", {}, `${f.temp(ago.tmax)}, ${ago.rain >= 0.5 ? f.precip(ago.rain) : "dry"}`), "This day last year") : null);
   box.replaceChildren(lede, chart, facts);
   rangeChart(chart, { p10: t(c.tmax.p10), p25: t(c.tmax.p25), p75: t(c.tmax.p75), p90: t(c.tmax.p90), mean: t(c.tmax.mean), value: t(d.tmax), valueLabel: `Today ${f.temp(d.tmax)}`, record: c.recordHigh ? { v: t(c.recordHigh.v), year: c.recordHigh.year } : null,
-    fmt: (v) => `${Math.round(v)}°`, summary: `Today's high ${f.temp(d.tmax)} against the normal range for the date: ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}, normal ${f.temp(c.tmax.mean)}.` });
+    fmt: (v) => f.deg(v), summary: `Today's high ${f.temp(d.tmax)} against the normal range for the date: ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}, normal ${f.temp(c.tmax.mean)}.` });
 }
 
 function tile(title, icon, ...kids) { return h("section", { class: "tile" }, h("h3", {}, h("span", { svg: glyph(icon, 14) }), title), ...kids); }
@@ -546,10 +580,18 @@ function accuracy(wx) {
     s.days < TUNE_DAYS ? h("p", { class: "chart-note" }, `Tuning starts at ${TUNE_DAYS} days.`) : null].filter(Boolean));
 }
 
-function openDay(key) {
+// One day in full, in its sheet; the days along the top to move between (or a swipe sideways, or the arrow keys)
+function openDay(key, dir = 0) {
   const wx = S.wx; if (!wx) return;
   const f = S.f, now = nowWall(wx.place.offset), d = wx.daily.find((x) => x.key === key); if (!d) return;
+  S.dayKey = key;
   $("day-title").textContent = `${f.day(d.date, now)}, ${f.dateLong(d.date)}`;
+  const days = sheetDays(wx, now), strip = $("day-strip"), inStrip = strip.contains(document.activeElement);
+  strip.replaceChildren(...days.map((x, i) => h("button", { type: "button", class: "ds-day", "aria-current": x.key === key ? "true" : null, "aria-label": `${f.day(x.date, now)}, ${f.dateLong(x.date)}`,
+    onclick: () => { if (x.key !== key) openDay(x.key, i > days.indexOf(d) ? 1 : -1); } },
+    h("span", {}, i === 0 ? "Today" : f.dayShort(x.date)), h("b", {}, String(new Date(x.date).getUTCDate())))));
+  const cur = strip.querySelector("[aria-current]");
+  if (cur) { strip.scrollLeft = cur.offsetLeft - (strip.clientWidth - cur.offsetWidth) / 2; if (inStrip) cur.focus({ preventScroll: true }); }
   const body = $("day-body"), parts = I.dayParts(wx, key), conf = I.confidence(wx)[key];
   const kids = [
     h("div", { class: "day-top" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 56) }), h("div", {}, h("div", { class: "dt-main" }, label(d.code)), h("div", { class: "dt-sub" }, `High ${f.temp(d.tmax)} · Low ${f.temp(d.tmin)}`))),
@@ -598,8 +640,10 @@ function openDay(key) {
   }
   body.replaceChildren(...kids.filter(Boolean));
   const dlg = $("day");
-  openSheet(dlg);
+  if (!dlg.open) openSheet(dlg);
   dlg.querySelector(".sheet-body").scrollTop = 0;
+  // (moving to the next day or the one before, it slides in from that side)
+  if (dir && !calm.matches) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
   if (hrs.length > 3) requestAnimationFrame(() => {
     drawHourChart(wx, now, hrs, tChart, "temp", d.key === keyOf(now));
     drawHourChart(wx, now, hrs, rChart, "rain", d.key === keyOf(now));
@@ -640,19 +684,24 @@ function drawSaved() {
   }));
 }
 let searchTimer = null, searchSeq = 0;
-function onSearch() {
+function onSearch(now = false) {
   clearTimeout(searchTimer);
   const q = $("search").value.trim(), out = $("results");
-  if (q.length < 2) { out.replaceChildren(); return; }
+  if (q.length < 2) { out.replaceChildren(); S.pick = S.searching = false; return; }
+  if (now !== true) S.pick = false;
+  S.searching = true;
   searchTimer = setTimeout(async () => {
     const my = ++searchSeq;
     try {
       const list = await searchPlaces(q);
       if (my !== searchSeq) return;
+      S.searching = false;
       out.replaceChildren(...(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => { addPlace(p); $("search").value = ""; out.replaceChildren(); closeSheet($("places")); go(); } },
         h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.region))))) : [h("li", { class: "muted small" }, "No places found.")]));
-    } catch (_) { if (my === searchSeq) out.replaceChildren(h("li", { class: "muted small" }, "Search isn't available right now.")); }
-  }, 280);
+      // (Enter pressed before the places came back: take the first now)
+      if (S.pick && list.length) { S.pick = false; out.querySelector(".row-btn")?.click(); }
+    } catch (_) { if (my === searchSeq) { S.searching = false; out.replaceChildren(h("li", { class: "muted small" }, "Search isn't available right now.")); } }
+  }, now === true ? 0 : 280);
 }
 
 /* ---------- settings ---------- */
@@ -790,6 +839,13 @@ function addAct() {
   if (id === "custom") editAct(S.settings.activities.length - 1);
 }
 
+const sheetDays = (wx, now) => wx.daily.filter((x) => x.date >= dayStart(now)).slice(0, 16);
+function stepDay(n) {
+  if (!S.wx || !$("day").open) return;
+  const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey), next = days[i + n];
+  if (i >= 0 && next) openDay(next.key, n);
+}
+
 /* ---------- motion ---------- */
 // Small things that move once, as they first come into view for a place: the 16 days' bars sweep out from
 // each low to its high, the compass needle swings round to the wind, the sun's path is traced, the UV and air
@@ -895,11 +951,40 @@ function wire() {
   for (const s of document.querySelectorAll(".ct-icon[data-g]")) s.innerHTML = glyph(s.dataset.g, 15);
   // each sheet: closing by Escape or a tap outside, and swiping down
   for (const d of document.querySelectorAll("dialog.sheet")) sheetGestures(d);
+  {
+    const body = $("day").querySelector(".sheet-body");
+    let sx = null, sy = 0, st = 0;
+    body.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1 || e.target.closest(".chart")) { sx = null; return; }     // (a chart's own sideways: its readout)
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = performance.now();
+    }, { passive: true });
+    body.addEventListener("touchend", (e) => {
+      if (sx == null) return;
+      const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy) && performance.now() - st < 700) stepDay(dx < 0 ? 1 : -1);
+    }, { passive: true });
+    $("day").addEventListener("keydown", (e) => {
+      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.target.closest(".chart, input, select")) return;
+      e.preventDefault(); stepDay(e.key === "ArrowRight" ? 1 : -1);
+    });
+  }
   placeSwipe();
+  pullToRefresh();
   $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });
   $("use-location").addEventListener("click", () => { closeSheet($("places")); locate(); });
   $("search").addEventListener("input", onSearch);
-  $("search-form").addEventListener("submit", (e) => { e.preventDefault(); onSearch(); });
+  $("search-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const first = $("results").querySelector(".row-btn");
+    if (first && !S.searching) first.click(); else { S.pick = true; onSearch(true); }
+  });
+  $("places").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const list = [$("search"), ...$("results").querySelectorAll(".row-btn")], i = list.indexOf(document.activeElement);
+    if (i < 0 || list.length < 2) return;
+    e.preventDefault();
+    list[Math.max(0, Math.min(list.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))].focus();
+  });
   $("locate-btn").addEventListener("click", () => locate());
   $("settings-btn").addEventListener("click", () => { drawSettings(); openSheet($("settings")); });
   $("settings-form").addEventListener("change", readSettings);

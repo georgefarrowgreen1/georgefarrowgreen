@@ -135,6 +135,23 @@ const likely = await p.locator('#day .stat span').allTextContents();
 ok(likely.includes('Likely high') && likely.includes('Likely low') && likely.includes('Gusts'), 'the ensemble\'s likely high and low as facts, not a sentence', likely.join(' · '));
 ok(/Low/.test(await p.textContent('#day .conf')), 'and says how sure it is', await p.textContent('#day .conf'));
 await p.screenshot({ path: `${out}/wx-day.png` });
+// the days along its top: another day without closing it (a tap, the arrow keys, a swipe sideways)
+const title0 = await p.textContent('#day-title');
+ok((await p.locator('#day-strip .ds-day').count()) === 16 && (await p.locator('#day-strip .ds-day[aria-current]').count()) === 1, 'the sheet has the days along its top, the one shown marked');
+await p.locator('#day-strip .ds-day').nth(5).evaluate((e) => e.click());
+const title1 = await p.textContent('#day-title');
+await p.locator('#day-title').focus(); await p.keyboard.press('ArrowRight');
+const title2 = await p.textContent('#day-title');
+ok(title1 !== title0 && title2 !== title1 && (await p.evaluate(() => document.getElementById('day').open)), 'another day from the strip, then the next with the arrow key, the sheet staying open', `${title0} → ${title1} → ${title2}`);
+{
+  const cdp = await p.context().newCDPSession(p), box = await p.locator('#day .day-desc').boundingBox();
+  const at = (x) => [{ x, y: box.y + box.height / 2 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(box.x + 280) });
+  for (const x of [240, 190, 130]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(box.x + x) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await p.waitForTimeout(200);
+  ok((await p.textContent('#day-title')) !== title2, 'and a swipe to the left moves on a day', `${title2} → ${await p.textContent('#day-title')}`);
+}
 await p.keyboard.press('Escape');
 // the forecast's track record here, and tuned by it
 const acc = await p.locator('#accuracy-body tr').allTextContents();
@@ -159,6 +176,26 @@ await p.waitForTimeout(600);
 await p.screenshot({ path: `${out}/wx-credits.png` });
 await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('credits').open);
+// the bar at the top: the place as tall as the buttons beside it (a finger's width); warnings under a heading of their own
+ok(Math.round((await p.locator('#place-btn').boundingBox()).height) >= 44, 'the place button is a finger tall', String((await p.locator('#place-btn').boundingBox()).height));
+ok(/^Warnings?$/.test(await p.textContent('#alerts h2.sr-only')), 'warnings under their own heading (not read as part of the card before)');
+ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' || (await p.evaluate(() => document.body.dataset.sky)) === 'partly-day', 'the browser\'s own colour follows the sky', await p.getAttribute('meta[name="theme-color"]', 'content'));
+// pull past the top and let go: it refreshes (the page's scroll below zero, as an iPhone's goes when pulled)
+{
+  const n0 = await p.evaluate(() => performance.getEntriesByType('resource').filter((r) => /api\.open-meteo\.com\/v1\/forecast/.test(r.name)).length);
+  await p.evaluate(() => scrollTo(0, 0));
+  await p.evaluate(async () => {
+    const t = (type) => { const touch = new Touch({ identifier: 1, target: document.body, clientX: 200, clientY: 300 }); window.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [touch], changedTouches: [touch], bubbles: true })); };
+    const real = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    t('touchstart');
+    Object.defineProperty(window, 'scrollY', { get: () => -110, configurable: true }); window.dispatchEvent(new Event('scroll'));
+    t('touchend');
+    if (real) Object.defineProperty(window, 'scrollY', real); else delete window.scrollY;
+    window.dispatchEvent(new Event('scroll'));
+  });
+  await p.waitForFunction((n0) => performance.getEntriesByType('resource').filter((r) => /api\.open-meteo\.com\/v1\/forecast/.test(r.name)).length > n0, n0, { timeout: 8000 }).then(() => true, () => false)
+    .then((x) => ok(x, 'pulled down past the top and let go, it fetches the forecast again'));
+}
 // the radar
 await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
@@ -232,9 +269,10 @@ ok(/^\d+°$/.test(await p.textContent('#now-temp')) && Number((await p.textConte
 await p.reload(); await p.waitForSelector('.day-row');
 ok(Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'and remembers it');
 // search and save a place
-await p.click('#place-btn'); await p.fill('#search', 'Edin'); await p.waitForSelector('#results .row-btn'); await p.click('#results .row-btn');
+await p.click('#place-btn'); await p.fill('#search', 'Edin'); await p.press('#search', 'Enter');
+await p.waitForFunction(() => document.getElementById('place-name').textContent === 'Edinburgh', null, { timeout: 8000 }).catch(() => {});
 await p.waitForTimeout(600);
-ok((await p.textContent('#place-name')) === 'Edinburgh', 'a place found by search');
+ok((await p.textContent('#place-name')) === 'Edinburgh' && !(await p.evaluate(() => document.getElementById('places').open)), 'a place found by search: Enter takes the first found (even before they\'re back)');
 await p.click('#place-btn');
 ok((await p.locator('#saved li').count()) === 2, 'both places saved');
 await p.keyboard.press('Escape');

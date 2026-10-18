@@ -188,7 +188,7 @@ body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
 /* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
 .top .place, .top .icon-btn { transition: background-color 0.3s, transform 0.5s var(--spring), filter 0.25s; }
 .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgba(34, 44, 64, 0.62); }
-.place { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
+.place { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; min-height: 44px; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
 .place-name { font-size: 17px; line-height: 22px; font-weight: 650; display: flex; align-items: center; gap: 0; max-width: 100%; white-space: nowrap; }
 #place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
@@ -203,12 +203,25 @@ body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
    (the pill never changes height) */
 .place.no-sub .place-line { display: none; }
 .place-temp { display: none; }
-.place.no-sub .place-temp { display: inline-block; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
+.place.no-sub .place-temp { display: inline-block; flex: none; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
   max-width: calc(var(--cs, 0) * 3.2em); margin-left: calc(var(--cs, 0) * 7px); opacity: var(--cs, 0); }
 .top-actions { display: flex; gap: 10px; }
+/* pull to refresh: a small glass button that comes down with the page, turning as it's pulled, firming up when
+   letting go would refresh, and spinning while it does */
+.ptr { position: fixed; z-index: 6; top: calc(env(safe-area-inset-top) + 64px); left: 50%; width: 36px; height: 36px; margin-left: -18px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; pointer-events: none; background-color: rgba(34, 44, 64, 0.62);
+  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), 0 6px 18px -6px rgba(0, 0, 0, 0.4);
+  opacity: calc(var(--pull, 0) * 1.2 - 0.2); transform: translateY(calc(var(--y, 0px) * 0.5 - 18px)) scale(calc(0.6 + var(--pull, 0) * 0.4)); }
+.ptr > span { display: grid; transform: rotate(calc(var(--pull, 0) * 300deg)); }
+.ptr.armed { background-color: rgba(10, 132, 255, 0.85); transition: background-color 0.2s; }
+.ptr.busy { opacity: 1; transform: translateY(14px); transition: transform 0.4s var(--spring), opacity 0.2s; }
+.ptr.busy > span { animation: spin 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .ptr.busy > span { animation: none; } .ptr > span { transform: none; } }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
 .icon-btn .g { position: relative; z-index: 3; }
 .icon-btn.small { width: 36px; height: 36px; }
+.icon-btn.small::after, .radar-credit::after { content: ""; position: absolute; inset: -5px; border-radius: inherit; }
+.radar-credit::after { inset: -9px; }
 .icon-btn.busy .g { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -318,7 +331,7 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .seg.moving::before { animation: seg-stretch 0.55s ease-out; }
 @keyframes seg-stretch { 35% { scale: 1.16 0.9; } 70% { scale: 0.97 1.03; } }
 @media (prefers-reduced-motion: reduce) { .seg.moving::before { animation: none; } }     /* (after the rule it undoes) */
-.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 34px; }
+.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; }
 .seg button[aria-selected="true"] { color: #fff; }
 .seg button:active { transform: scale(0.94); }
 
@@ -465,7 +478,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
 .ins[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
 .ins .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
-.more-btn { justify-self: start; border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.more-btn { justify-self: start; border-radius: 999px; padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 /* ---------- best times ---------- */
 .win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -619,6 +632,22 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .notify .switch input[type="time"] { order: 1; margin-left: 4px; }
 
 /* the day */
+/* the days along the top of a day's sheet, as Weather has them: the day, and its date in a circle when it's the one shown */
+.day-strip { flex: none; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 6px 14px 4px; scroll-padding-inline: 14px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent); }
+.day-strip::-webkit-scrollbar { display: none; }
+.ds-day { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 46px; min-height: 52px; padding: 4px 2px; border: 0; background: none; border-radius: 14px; cursor: pointer; color: var(--text-2); }
+.ds-day span { font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-3); }
+.ds-day b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background-color 0.3s, color 0.3s, transform 0.4s var(--spring); }
+.ds-day[aria-current] b { background: #fff; color: #0d1626; transform: scale(1.06); }
+.ds-day[aria-current] span { color: #fff; }
+.ds-day:active b { transform: scale(0.9); }
+/* a day slides in from the side it was moved to */
+#day-body.from-right { animation: from-right 0.45s var(--spring); }
+#day-body.from-left { animation: from-left 0.45s var(--spring); }
+@keyframes from-right { from { opacity: 0; transform: translateX(36px); } }
+@keyframes from-left { from { opacity: 0; transform: translateX(-36px); } }
+@media (prefers-reduced-motion: reduce) { #day-body.from-right, #day-body.from-left { animation: none; } .ds-day b { transition: none; } }
 .day-top { display: flex; align-items: center; gap: 12px; margin: 2px 0 10px; }
 .day-top .wi { width: 58px; height: 58px; }
 .day-top .dt-main { font-size: 18px; font-weight: 650; }
@@ -658,7 +687,8 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 /* the slider: a glass knob on a groove that fills up to it */
 /* the timeline: the past filling blue, a mark at Now, the forecast's stretch in amber dashes (filling amber as it
    plays into it); positions are along the thumb's travel (14px in from each end), so the mark meets the thumb */
-.radar-slider { --f: 1; --nowf: 1; --amber: #ffcf70; -webkit-appearance: none; appearance: none; width: 100%; height: 30px; margin: 0; display: block; background: transparent; cursor: pointer; }
+/* (44 tall to press, in the space of 30: it reaches 7px into the space above and below) */
+.radar-slider { --f: 1; --nowf: 1; --amber: #ffcf70; -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: -7px 0; display: block; background: transparent; cursor: pointer; }
 .radar-slider::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.35), 0 0.5px 0 rgba(255, 255, 255, 0.12);
   --pos: calc(14px + (100% - 28px) * var(--f)); --now: calc(14px + (100% - 28px) * var(--nowf));
   background:
@@ -692,7 +722,8 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .rl-words span:first-child { transform: none; left: 0 !important; }
 .rl-words span:last-child { transform: translateX(-100%); left: 100% !important; }
 .rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
-.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: flex; flex-direction: column; padding: calc(10px + env(safe-area-inset-top)) var(--pad) calc(12px + env(safe-area-inset-bottom)); --tint: rgba(10, 16, 28, 0.9); overflow-y: auto; }
+.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: flex; flex-direction: column; --tint: rgba(10, 16, 28, 0.9); overflow-y: auto;
+  padding: calc(10px + env(safe-area-inset-top)) max(var(--pad), env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(var(--pad), env(safe-area-inset-left)); }
 .radar.radar-big::before { display: none; }
 .radar.radar-big .radar-wrap { flex: 1; display: flex; min-height: 280px; }
 .radar.radar-big .radar-map { flex: 1; height: auto; }

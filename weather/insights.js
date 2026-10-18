@@ -40,7 +40,16 @@ export const T = {
 
 /* ---------- the hours ---------- */
 export const isWet = (h) => h && ((h.precip ?? 0) >= T.WET_MM || (isWetCode(h.code) && (h.pop ?? 0) >= 40));
-export const hourAt = (wx, w) => wx.hourly.find((h) => h.t <= w && w < h.t + HOUR) || null;
+// (straight to it, the hours being an hour apart: this is asked thousands of times a drawing; a step or two
+// either way where the clocks change and an hour is repeated or skipped)
+export const hourAt = (wx, w) => {
+  const hs = wx.hourly, n = hs.length;
+  if (!n) return null;
+  let i = Math.min(n - 1, Math.max(0, Math.floor((w - hs[0].t) / HOUR)));
+  while (i > 0 && hs[i].t > w) i--;
+  while (i < n - 1 && hs[i].t + HOUR <= w) i++;
+  return hs[i].t <= w && w < hs[i].t + HOUR ? hs[i] : null;
+};
 // the hours from the one we're in, for n hours
 export function hoursFrom(wx, w, n) {
   const i = wx.hourly.findIndex((h) => h.t + HOUR > w);
@@ -287,18 +296,21 @@ export function dayScore(d) {
 }
 
 /* ---------- day-by-day UTC offsets (for the Sun and Moon, which run on real time) ---------- */
-function offsets(wx) {
-  const o = {};
-  for (const d of wx.daily) o[d.key] = offsetFor(d.sunrise, wx.place.lat, wx.place.lon, wx.place.offset ?? 0);
-  return o;
-}
+// (kept: working out a day's sky takes a couple of milliseconds, and it's asked for many times a drawing)
+const skies = new Map();
 export function skyFor(wx, key) {
   const d = wx.daily.find((x) => x.key === key);
   if (!d) return null;
-  const off = offsets(wx)[key] ?? wx.place.offset ?? 0, toWall = (t) => (t == null ? null : t + off * 1000);
+  const id = `${wx.place.lat},${wx.place.lon},${key},${d.sunrise},${wx.place.offset ?? 0}`;
+  if (skies.has(id)) return skies.get(id);
+  // (that day's own clock: just this day's, not every day's)
+  const off = offsetFor(d.sunrise, wx.place.lat, wx.place.lon, wx.place.offset ?? 0) ?? wx.place.offset ?? 0;
+  const toWall = (t) => (t == null ? null : t + off * 1000);
   const s = skyDay(d.date - off * 1000, wx.place.lat, wx.place.lon), w = {};
   for (const [k, v] of Object.entries(s)) w[k] = Array.isArray(v) ? v.map(toWall) : typeof v === "number" && v > 1e11 ? toWall(v) : v;
   w.offset = off;
+  skies.set(id, Object.freeze(w));
+  if (skies.size > 120) skies.delete(skies.keys().next().value);
   return w;
 }
 

@@ -29,10 +29,13 @@ export function makeFormat(units = {}) {
   const tNum = (c) => (U.temp === "f" ? c * 9 / 5 + 32 : c);
   const [wk, wl] = WIND[U.wind] || WIND.mph;
   const two = (n) => String(n).padStart(2, "0");
+  // a temperature, with a true minus sign below zero ("−3°", as print has it, not a hyphen)
+  const deg = (v) => { const n = Math.round(v); return `${n < 0 ? "−" : ""}${Math.abs(n)}°`; };
   const f = {
     units: U,
     tempNum: (c) => (c == null || Number.isNaN(c) ? null : Math.round(tNum(c))),
-    temp: (c) => (c == null || Number.isNaN(c) ? "–" : `${Math.round(tNum(c))}°`),
+    temp: (c) => (c == null || Number.isNaN(c) ? "–" : deg(tNum(c))),
+    deg: (v) => deg(v),                                                     // (a number already in the units shown)
     deltaFine: (dc) => { const v = Math.abs(U.temp === "f" ? dc * 9 / 5 : dc); return `${v < 9.95 ? v.toFixed(1) : Math.round(v)}°`; },
     delta: (dc) => `${Math.round(Math.abs(U.temp === "f" ? dc * 9 / 5 : dc))}°`,
     windNum: (kmh) => (kmh == null ? null : Math.round(kmh * wk)),
