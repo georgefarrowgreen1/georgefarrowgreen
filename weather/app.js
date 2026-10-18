@@ -109,7 +109,7 @@ async function go(force = false) {
   $("refresh-btn").disabled = true;
   showPlace();
   if (!S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon)) { S.wx = S.base = null; S.allInsights = false; render(); }
-  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph" });
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map") });
   else S.radar.place(p.lat, p.lon);
   try {
     await load(p, (wx, how) => {
@@ -833,6 +833,14 @@ function sheetGestures(d) {
   d.addEventListener("touchend", end); d.addEventListener("touchcancel", end);
 }
 
+// every source in one place (from the footer, or the map's ©), open at the part that was asked about
+function openCredits(at) {
+  const d = $("credits"), body = d.querySelector(".sheet-body");
+  openSheet(d);
+  // (from the layout, not the screen: the sheet's still rising and scaling as this runs)
+  body.scrollTop = at === "map" ? $("cr-map").offsetTop - body.offsetTop - 12 : 0;
+}
+
 /* ---------- wiring ---------- */
 function wire() {
   $("locate-btn").innerHTML = glyph("locate", 20);
@@ -855,6 +863,8 @@ function wire() {
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="g-off">${glyph("play", 16)}</span><span class="g-on">${glyph("pause", 16)}</span>`;
   for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="g-off">${glyph("expand", 16)}</span><span class="g-on">${glyph("shrink", 16)}</span>`;
   $("refresh-btn").addEventListener("click", () => go(true));
+  for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
+  for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));
   $("retry-btn").addEventListener("click", () => go(true));
   $("hourly-seg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-mode]"); if (!b) return;

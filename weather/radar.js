@@ -15,9 +15,6 @@ import { grid, paint, timeline, LEGEND, hexFor, decode, resample, motion, ramp }
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
 const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ATTR_MAP = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-const ATTR_RADAR = '<a href="https://www.rainviewer.com/">RainViewer</a>';
-const ATTR_MODEL = '<a href="https://open-meteo.com/">Open-Meteo</a>';
 const NATIVE = 7, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
 const CENTRE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
@@ -144,14 +141,13 @@ const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min
  * The radar, in `card` (#radar). time(t) formats a real UTC time (ms) as the place's own clock;
  * miles: show the scale in miles. Returns { place(lat, lon), refresh(), note(text) }.
  */
-export function radar(card, { lat, lon, time, miles = false }) {
+export function radar(card, { lat, lon, time, miles = false, credits = null }) {
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
-  let L = null, map = null, dot = null, box = null, frames = [], layers = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
+  let L = null, map = null, dot = null, box = null, credit = null, frames = [], layers = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // the legend: the radar's colours, and what they mean
   // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
   const bar = (snow, from, to) => {
     const r = ramp(snow, LOOK.soft), stops = [];
@@ -232,12 +228,13 @@ export function radar(card, { lat, lon, time, miles = false }) {
     const ahead = drift ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
     const tl = timeline(past.map((f) => f.time * 1000), ahead);
     frames = tl.frames; nowAt = past.length ? tl.now : 0;
-    const opt = { opacity: 0, zIndex: 300, maxZoom: 10, attribution: ATTR_RADAR, className: "rv-tiles" };
+    const opt = { opacity: 0, zIndex: 300, maxZoom: 10, className: "rv-tiles" };
     layers = frames.map((f) => (f.kind === "radar" ? smoothRadar(L, `${host}${past[f.k].path}/256`, LOOK, opt)
       : drift ? smoothRadar(L, `${host}${past[past.length - 1].path}/256`, LOOK, opt, { vx: drift.vx, vy: drift.vy, lead: (f.t - last) / 60e3 })
-      : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame", attribution: ATTR_MODEL })).addTo(map));
+      : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame" })).addTo(map));
     if (box) map.removeLayer(box);
     box = model ? L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map) : null;
+    credited(["OpenStreetMap", past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
     status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model ? "The next two hours aren't available right now: showing the radar." : "";
     slider.max = String(frames.length - 1);
@@ -248,9 +245,8 @@ export function radar(card, { lat, lon, time, miles = false }) {
   async function start() {
     try {
       L = await loadLeaflet();
-      map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false, dragging: !touch, tap: false, minZoom: 3, maxZoom: 10, zoomSnap: 1 }).setView([here.lat, here.lon], NATIVE);
-      map.attributionControl.setPrefix(false);
-      L.tileLayer(OSM, { maxZoom: 19, attribution: ATTR_MAP, className: "base-tiles" }).addTo(map);
+      map = L.map(el, { zoomControl: true, attributionControl: false, scrollWheelZoom: false, dragging: !touch, tap: false, minZoom: 3, maxZoom: 10, zoomSnap: 1 }).setView([here.lat, here.lon], NATIVE);
+      L.tileLayer(OSM, { maxZoom: 19, className: "base-tiles" }).addTo(map);
       L.control.scale({ position: "bottomleft", metric: !miles, imperial: miles, maxWidth: 90 }).addTo(map);
       const Centre = L.Control.extend({ options: { position: "topleft" }, onAdd() {
         const b = L.DomUtil.create("button", "radar-centre leaflet-bar");
@@ -259,6 +255,16 @@ export function radar(card, { lat, lon, time, miles = false }) {
         return b;
       } });
       new Centre().addTo(map);
+      // the map's credits: in full as it first appears, then folded into a © that opens all of them
+      const Credit = L.Control.extend({ options: { position: "bottomright" }, onAdd() {
+        const b = L.DomUtil.create("button", "radar-credit");
+        b.type = "button"; b.innerHTML = '<span class="rc-c" aria-hidden="true">©</span><span class="rc-t" aria-hidden="true"></span>';
+        L.DomEvent.disableClickPropagation(b); b.addEventListener("click", () => credits?.());
+        return b;
+      } });
+      credit = new Credit().addTo(map).getContainer();
+      credited(["OpenStreetMap", "RainViewer"]);
+      setTimeout(() => credit.classList.add("folded"), 5000);
       dot = L.circleMarker([here.lat, here.lon], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#3B8BE0", fillOpacity: 1, interactive: false }).addTo(map);
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore
       map.on("click", () => { if (touch && !card.classList.contains("radar-big")) big(true); });
@@ -267,6 +273,11 @@ export function radar(card, { lat, lon, time, miles = false }) {
     } catch (e) {
       status.textContent = "The radar isn't available right now.";
     }
+  }
+  function credited(names) {
+    if (!credit) return;
+    credit.querySelector(".rc-t").textContent = ` ${names.join(", ")}`;
+    credit.setAttribute("aria-label", `Map data © ${names.join(", ")}: all the credits`);
   }
   function big(on) {
     card.classList.toggle("radar-big", on);

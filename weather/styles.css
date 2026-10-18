@@ -68,7 +68,7 @@ a { color: inherit; }
 }
 /* controls */
 .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-.radar .leaflet-bar, .radar-centre, .radar .leaflet-container .leaflet-control-attribution {
+.radar .leaflet-bar, .radar-centre, .radar-credit {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint-ctl);
   background-image: var(--sheen), var(--body);
@@ -77,14 +77,14 @@ a { color: inherit; }
 }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
 .card::before, .ins::before, .tile::before, .section-title::before, .foot-in::before, dialog.sheet::before, .c-tip::before,
-.icon-btn::before, .place::before, .pill-btn::before, .more-btn::before, .seg::after, .radar-chip::before, .radar-centre::before, .win-rate::before, .best::before {
+.icon-btn::before, .place::before, .pill-btn::before, .more-btn::before, .seg::after, .radar-chip::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
   background: var(--rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
 /* glass on glass: things inside a panel */
-.win, .stat, .part, .hour.now, .act-edit, .choice, .acts-list:not(:empty) {
+.win, .stat, .part, .hour.now, .act-edit, .choice, .acts-list:not(:empty), .credits {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
@@ -406,8 +406,8 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .foot { max-width: 1180px; margin: 12px auto 0; padding: 0 var(--pad) 28px; font-size: 12.5px; color: var(--text-2); }
 .foot-in { border-radius: var(--r-card); padding: 8px 18px; }
 .foot p { margin: 8px 0; max-width: 80ch; }
-.foot-credits { font-size: 11.5px; line-height: 1.6; color: var(--text-3); }
-.foot-credits a { color: inherit; text-decoration-color: rgba(255, 255, 255, 0.35); text-underline-offset: 2px; }
+.foot-note { color: var(--text-3); }
+.foot-note .link { padding: 4px 0; }
 /* a plain button: tinted text, as on iOS */
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
 .link:active { opacity: 0.55; transition-duration: 0.08s; }
@@ -590,14 +590,34 @@ body.no-scroll { overflow: hidden; }
 .radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50% !important; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
 .radar-centre svg { position: relative; z-index: 3; }
 .radar .leaflet-touch .leaflet-bar, .radar .leaflet-touch .radar-centre { border: 0; }
-/* the scale sits above the credits, so the two never overlap */
-.radar .leaflet-bottom.leaflet-left .leaflet-control-scale { margin-bottom: 30px; margin-left: 10px; }
+.radar .leaflet-bottom.leaflet-left .leaflet-control-scale { margin-bottom: 12px; margin-left: 10px; }
 /* the scale: a bracket drawn on the map, as Maps does */
 .radar .leaflet-container .leaflet-control-scale-line { background: none; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 10.5px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
-.radar .leaflet-container .leaflet-control-attribution { background-color: rgba(14, 22, 38, 0.5); color: var(--text-2); font-size: 10.5px; line-height: 1.5; padding: 3px 10px; border-radius: 999px; margin: 0 8px 8px 0; }
-.radar .leaflet-container .leaflet-control-attribution a { color: #fff; text-decoration: none; }
-.radar .leaflet-container .leaflet-control-attribution a:hover, .radar .leaflet-container .leaflet-control-attribution a:focus-visible { text-decoration: underline; }
+/* the map's credits: in full for a few seconds as it first appears, then a © (that opens them all) */
+.radar .leaflet-bottom.leaflet-right .radar-credit { margin: 0 10px 10px 0; }
+.radar-credit { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 10px; border-radius: 999px; cursor: pointer;
+  color: #fff; font: inherit; font-size: 11px; line-height: 1; background-color: rgba(14, 22, 38, 0.5); transition: padding 0.6s var(--spring), transform 0.5s var(--spring); }
+.radar-credit > span { position: relative; z-index: 3; }
+.radar-credit .rc-c { font-size: 13px; font-weight: 600; }
+.radar-credit .rc-t { white-space: pre; overflow: hidden; max-width: 240px; transition: max-width 0.6s var(--spring), opacity 0.3s; }
+.radar-credit.folded { padding: 0; }
+.radar-credit.folded .rc-t { max-width: 0; opacity: 0; }
+.radar-credit:active { transform: scale(0.9); transition-duration: 0.12s; }
+@media (hover: hover) { .radar-credit.folded:hover, .radar-credit.folded:focus-visible { padding: 0 10px; } .radar-credit.folded:hover .rc-t, .radar-credit.folded:focus-visible .rc-t { max-width: 240px; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .radar-credit, .radar-credit .rc-t { transition: none; } }
+
+/* ---------- credits ---------- */
+/* each source a row in a group, as Settings lists them; out to its site */
+.credits { list-style: none; margin: 0; padding: 0 14px; border-radius: 18px; }
+.credits li + li { border-top: 1px solid var(--line); }
+.credits a { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; color: inherit; text-decoration: none; transition: opacity 0.2s; }
+.credits a:active { opacity: 0.55; transition-duration: 0.08s; }
+.credits a > span { flex: 1; min-width: 0; }
+.credits b { display: block; font-weight: 600; }
+.credits small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--text-3); }
+.credits .cr-out { flex: none; color: var(--text-3); }
+.credits-note { margin: 22px 4px 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
 
 /* ---------- accuracy ---------- */
 .models.acc td { white-space: nowrap; }
@@ -633,13 +653,13 @@ select option { color: #111; }
 /* ---------- when transparency is turned down, or contrast up ---------- */
 @media (prefers-reduced-transparency: reduce) {
   .card, .ins, .tile, .section-title, .foot-in, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-  .radar .leaflet-container .leaflet-bar, .radar-centre, .radar .leaflet-container .leaflet-control-attribution, .top::before {
+  .radar .leaflet-container .leaflet-bar, .radar-centre, .radar-credit, .top::before {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
   .card, .ins, .tile, .section-title, .foot-in, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
   .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
   .icon-btn, .place, .pill-btn, .more-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .radar .leaflet-container .leaflet-bar,
-  .radar .leaflet-container .leaflet-control-attribution { background-color: rgb(52, 62, 80); }
+  .radar-credit { background-color: rgb(52, 62, 80); }
 }
 @media (prefers-contrast: more) {
   :root { --tint: rgba(10, 14, 24, 0.7); --text-2: #fff; --text-3: rgba(255, 255, 255, 0.88); --line: rgba(255, 255, 255, 0.3); }

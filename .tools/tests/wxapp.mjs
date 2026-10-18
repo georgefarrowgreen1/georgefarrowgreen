@@ -142,6 +142,18 @@ const bands = await p.locator('#nowcast-chart text.c-in').allTextContents();
 ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of light, moderate and heavy, in place of mm an hour', bands.join(','));
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
 ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says which model to trust');
+// every source in one window, from one line at the foot of the page
+ok(!(await p.locator('.foot a').count()) && (await p.textContent('.foot-note')).trim() === 'Learn more about weather data and map data.', 'the footer: one line, no list of credits', await p.textContent('.foot-note'));
+await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
+await p.waitForSelector('#credits[open]');
+const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
+ok(links.length === 10 && ['open-meteo.com', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'aviationweather.gov', 'rainviewer.com', 'openstreetmap.org/copyright', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
+  'a credits window: every source, each linked out', `${links.length} links`);
+ok((await p.evaluate(() => document.querySelector('#credits .sheet-body').scrollTop)) === 0 && /national weather service/.test(await p.textContent('#credits .credits-note')), 'open at the weather data, with a notice at its foot');
+await p.waitForTimeout(600);
+await p.screenshot({ path: `${out}/wx-credits.png` });
+await p.keyboard.press('Escape');
+await p.waitForFunction(() => !document.getElementById('credits').open);
 // the radar
 await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
@@ -149,6 +161,16 @@ await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slide
 ok(/starting in about/.test(await p.textContent('#radar .radar-note')) && !(await p.isVisible('#radar .radar-note')), 'with the next few hours in a line above it, for full screen (the card above says it otherwise)', await p.textContent('#radar .radar-note'));
 ok((await p.locator('#radar .radar-legend .rl-bar').count()) === 2 && /Light.*Heavy.*Extreme/.test(await p.textContent('#radar .rl-words')) && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend (the radar\'s colours, light to extreme, and snow\'s), and a timeline marked Now');
 ok(await p.locator('#radar .radar-centre').count() === 1 && await p.locator('#radar .leaflet-control-scale').count() === 1, 'a button back to the place, and a scale');
+// its credits: in full as it appears, then folded into a © that opens them all, at the map's
+const credit = await p.getAttribute('#radar .radar-credit', 'aria-label');
+ok(/^Map data © OpenStreetMap, RainViewer/.test(credit) && !(await p.locator('#radar .leaflet-control-attribution').count()), 'the map credited, on the map', credit);
+await p.waitForFunction(() => document.querySelector('#radar .radar-credit').classList.contains('folded'), null, { timeout: 8000 }).then(() => true, () => false).then((x) => ok(x, 'folding into a © after a few seconds'));
+await p.locator('#radar .radar-credit').evaluate((e) => e.click());
+await p.waitForSelector('#credits[open]');
+const at = await p.evaluate(() => { const b = document.querySelector('#credits .sheet-body'), want = document.getElementById('cr-map').offsetTop - b.offsetTop - 12; return { top: b.scrollTop, want: Math.min(want, b.scrollHeight - b.clientHeight) }; });
+ok(at.top > 0 && Math.abs(at.top - at.want) <= 2 && !(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big'))), 'which opens the credits at the map\'s (not the map full screen)', JSON.stringify(at));
+await p.keyboard.press('Escape');
+await p.waitForFunction(() => !document.getElementById('credits').open);
 const was = await p.getAttribute('#radar .radar-play', 'data-on');
 await p.click('#radar .radar-play');
 ok(was === '1' && (await p.getAttribute('#radar .radar-play', 'data-on')) === '0', 'it plays by itself, and pauses');
@@ -220,6 +242,10 @@ await ctx.close();
   const v = await p.evaluate(async () => (await axe.run(document, { resultTypes: ['violations'] })).violations.map((x) => `${x.id}: ${x.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(' | ')}`));
   ok(!v.length, 'no accessibility violations', v.join('; '));
   ok(!(await p.isVisible('#nowcast')), 'no rain on the way: no nowcast card');
+  await p.locator('.foot-note [data-credits="map"]').evaluate((e) => e.click());
+  await p.waitForSelector('#credits[open]'); await p.waitForTimeout(700);
+  const v2 = await p.evaluate(async () => (await axe.run('#credits', { resultTypes: ['violations'] })).violations.map((x) => `${x.id}: ${x.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(' | ')}`));
+  ok(!v2.length, 'nor in the credits window', v2.join('; '));
   await ctx.close();
 }
 // its own address only (asked of the local server directly, by name)

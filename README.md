@@ -200,8 +200,9 @@ so there's nothing to set up beyond the address.
   says what's coming ("Rain starting in about 40 min"); below it, a legend
   (RainViewer's Universal Blue colours, from their published table, rain rate
   to reflectivity by Marshall and Palmer), and a scale and a button back to the
-  place on the map, all in the app's own colours (Leaflet's credits and scale
-  restyled to match). On a phone a tap opens it full screen to pan and zoom (the
+  place on the map, all in the app's own colours (Leaflet's scale restyled to
+  match; the map's credits in full as it first appears, then folded into a ©
+  that opens the Credits window). On a phone a tap opens it full screen to pan and zoom (the
   page scrolls past it otherwise). Leaflet 1.9.4 is vendored in `weather/vendor/`
   (checked against npm's integrity hash) and loaded only when the card comes
   into view; with reduced motion it doesn't play by itself (`weather/radar.js`,
@@ -232,6 +233,9 @@ so there's nothing to set up beyond the address.
   and the Moon (phase, rise and set, next full and new moon), all worked out on
   the phone (`weather/sky.js`: Meeus's Moon, checked against real sunrises and
   full moons in the tests).
+- **Credits**: every source in one window (who, what for, the licence, a link
+  out), opened from one line at the foot of the page ("Learn more about weather
+  data and map data", as the Weather app has it) or from the map's ©.
 
 Places (search, or Use My Location) and settings (°C/°F, mph/km/h/m/s/knots,
 mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on

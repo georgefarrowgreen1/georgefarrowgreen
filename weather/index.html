@@ -140,7 +140,7 @@
 
   <footer class="foot"><div class="foot-in">
     <p class="foot-refresh"><button class="link" id="refresh-btn" type="button">Refresh</button> · <span id="updated"></span></p>
-    <p class="foot-credits"><a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (CC BY 4.0) · ERA5 (Copernicus) · <a href="https://www.rainviewer.com/" rel="noopener">RainViewer</a> · <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> · <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a> · <a href="https://nominatim.org/" rel="noopener">Nominatim</a> · <a href="https://aviationweather.gov/" rel="noopener">Aviation Weather Center</a></p>
+    <p class="foot-note">Learn more about <button class="link" type="button" data-credits="weather" aria-haspopup="dialog" aria-controls="credits">weather data</button> and <button class="link" type="button" data-credits="map" aria-haspopup="dialog" aria-controls="credits">map data</button>.</p>
   </div></footer>
   </div>
 
@@ -209,6 +209,35 @@
         </fieldset>
       </form>
       <p class="muted small" id="about-app">Settings and places stay on this device.</p>
+    </div>
+  </dialog>
+
+  <dialog class="sheet" id="credits" aria-labelledby="credits-title">
+    <div class="sheet-head">
+      <h2 id="credits-title">Credits</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <h3 class="sheet-sub" id="cr-weather">Weather data</h3>
+      <ul class="credits">
+        <li><a href="https://open-meteo.com/" target="_blank" rel="noopener"><span><b>Open-Meteo</b><small>Forecasts from ECMWF, the Met Office, NOAA, DWD, Météo-France and ECCC · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+        <li><a href="https://climate.copernicus.eu/" target="_blank" rel="noopener"><span><b>ERA5 · Copernicus</b><small>30 years of climate, through Open-Meteo</small></span></a></li>
+        <li><a href="https://atmosphere.copernicus.eu/" target="_blank" rel="noopener"><span><b>CAMS · Copernicus</b><small>Air quality and pollen, through Open-Meteo</small></span></a></li>
+        <li><a href="https://aviationweather.gov/" target="_blank" rel="noopener"><span><b>Aviation Weather Center</b><small>Airport reports, for the forecast's accuracy</small></span></a></li>
+      </ul>
+      <h3 class="sheet-sub" id="cr-map">Map data</h3>
+      <ul class="credits">
+        <li><a href="https://www.rainviewer.com/" target="_blank" rel="noopener"><span><b>RainViewer</b><small>Rain radar</small></span></a></li>
+        <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><span><b>© OpenStreetMap contributors</b><small>The map · ODbL</small></span></a></li>
+        <li><a href="https://leafletjs.com/" target="_blank" rel="noopener"><span><b>Leaflet</b><small>Draws the map · BSD-2-Clause</small></span></a></li>
+      </ul>
+      <h3 class="sheet-sub" id="cr-places">Place names</h3>
+      <ul class="credits">
+        <li><a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener"><span><b>BigDataCloud</b><small>The name of where you are</small></span></a></li>
+        <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><span><b>Nominatim · OpenStreetMap</b><small>Names BigDataCloud doesn't have</small></span></a></li>
+        <li><a href="https://www.geonames.org/" target="_blank" rel="noopener"><span><b>GeoNames</b><small>Search, through Open-Meteo · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+      </ul>
+      <p class="credits-note">Worked out on this device from the data above. Forecasts can be wrong: for warnings, check your national weather service.</p>
     </div>
   </dialog>
 
