@@ -92,7 +92,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   const res = await p.goto(url);
   await p.waitForSelector('.day-row', { timeout: 20000 });
   // everything in: the last to arrive is the thirty years of climate
-  await p.waitForFunction(() => /warmer than/.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
+  await p.waitForFunction(() => /warmer than/i.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
   await p.waitForSelector('#accuracy-body table', { timeout: 20000 });
   await p.waitForTimeout(300);
   return { ctx, p, res };
@@ -116,7 +116,7 @@ const cards = await p.locator('#insights .ins h3').allTextContents();
 ok(cards.some((t) => /is uncertain$/.test(t)), 'the day the models disagree is called uncertain', cards.join(' · '));
 ok(cards.some((t) => /umbrella/i.test(t)), 'an umbrella tip');
 if (new Date(now).getUTCHours() < 13) ok(cards.some((t) => /High UV/.test(t)), 'high UV today');
-ok(/warmer than \d+% of days around/.test(await p.textContent('#climate-body')), 'today against thirty years', (await p.textContent('#climate-body')).slice(0, 90));
+ok(/^Warmer than \d+% of days here since \d{4}\./.test(await p.textContent('#climate-body')), 'today against thirty years', (await p.textContent('#climate-body')).slice(0, 90));
 ok((await p.locator('#win-grid .win').count()) >= 5, 'best times for a run, a walk, a ride, the washing, the stars or the sunset');
 await p.screenshot({ path: `${out}/wx-top.png` });
 await p.screenshot({ path: `${out}/wx-full.png`, fullPage: true });
@@ -124,15 +124,23 @@ await p.screenshot({ path: `${out}/wx-full.png`, fullPage: true });
 await p.locator('.day-row').nth(4).evaluate((e) => e.click());      // (the page redraws as the last of the forecast arrives)
 await p.waitForSelector('#day[open]');
 ok((await p.locator('#day table.models tr').count()) === 8, 'the day compares six models, and the tuned blend', String(await p.locator('#day table.models tr').count()));
-ok(/^Tuned for here from six models/.test(await p.textContent('#day .tuned-note')), 'and says it\'s tuned');
+ok(/^Tuned for here · forecast alone \d+° \/ \d+°$/.test(await p.textContent('#day .tuned-note')), 'and says it\'s tuned', await p.textContent('#day .tuned-note'));
+ok(!/High \d+°, low/.test(await p.textContent('#day .day-desc')), 'in words that don\'t repeat the high and low beside them', await p.textContent('#day .day-desc'));
+const likely = await p.locator('#day .stat span').allTextContents();
+ok(likely.includes('Likely high') && likely.includes('Likely low') && likely.includes('Gusts'), 'the ensemble\'s likely high and low as facts, not a sentence', likely.join(' · '));
 ok(/Low/.test(await p.textContent('#day .conf')), 'and says how sure it is', await p.textContent('#day .conf'));
 await p.screenshot({ path: `${out}/wx-day.png` });
 await p.keyboard.press('Escape');
 // the forecast's track record here, and tuned by it
 const acc = await p.locator('#accuracy-body tr').allTextContents();
-ok(acc.length === 7 && /^ECMWFMost accurate±0\.5°/.test(acc[1]) && /GEM.*2\.5° cold/.test(acc[6]), 'each model scored against the nearest airport, best first', acc.slice(1, 3).join(' | '));
-ok(/London City Airport \(\d+ km away\)/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is');
-ok(/tuned to how each model has done at London City Airport/.test(await p.textContent('#daily-note')), 'the 16 days say they\'re tuned');
+ok(acc.length === 7 && /^ECMWFBest±0\.5°/.test(acc[1]) && /GEM.*2\.5° cold/.test(acc[6]), 'each model scored against the nearest airport, best first', acc.slice(1, 3).join(' | '));
+ok(/^London City Airport \(\d+ km\) · last \d+ days/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is', (await p.textContent('#accuracy-body')).slice(0, 50));
+ok(!/null/.test(await p.textContent('#accuracy-body')), 'with nothing stray under it', (await p.textContent('#accuracy-body')).slice(-60));
+// the design carries it, not notes: no captions under the charts, the next 4 hours on a light, moderate and heavy scale
+ok(!(await p.locator('#nowcast .chart-note, #hourly .chart-note, #daily .chart-note').count()), 'no notes under the charts');
+const bands = await p.locator('#nowcast-chart text.c-in').allTextContents();
+ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of light, moderate and heavy, in place of mm an hour', bands.join(','));
+ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
 ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says which model to trust');
 // the radar
 await p.locator('#radar').scrollIntoViewIfNeeded();

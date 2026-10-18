@@ -171,8 +171,14 @@ test("headline: dry, rain later, raining now", () => {
 test("describeDay: part by part, with rain and wind", () => {
   const wx = makeWx((i) => (i >= 24 && i < 36 ? { cloud: 10 } : i >= 36 && i < 48 ? { precip: 1, code: 63, pop: 90, gust: 55 } : {}));
   const s = I.describeDay(wx, keyOf(DAY0 + D), f);
-  assert.match(s, /^Sunny in the morning, then rain from the afternoon\. Around 12 mm of rain, mostly in the (afternoon|evening)\. Windy, gusts up to 34 mph\. High \d+°, low \d+°/);
-  assert.match(I.describeDay(makeWx(() => ({ cloud: 95 })), keyOf(DAY0), f), /^Cloudy all day\./);
+  assert.match(s, /^Sunny in the morning, then rain from the afternoon\. Around 12 mm of rain, mostly in the (afternoon|evening)\. Windy, gusts up to 34 mph\.$/);
+  assert.match(I.describeDay(makeWx(() => ({ cloud: 95 })), keyOf(DAY0), f), /^Cloudy all day\.$/);
+  // rain over two parts of the day: in both, not "through" the second (which read as only then)
+  const wet = makeWx((i) => (i >= 30 && i < 42 ? { precip: 1, code: 63, pop: 90 } : i >= 42 && i < 48 ? { cloud: 95 } : {}));
+  assert.match(I.describeDay(wet, keyOf(DAY0 + D), f), /^Rain in the morning and afternoon, then cloudy in the evening\./);
+  // the high and low are beside it in the sheet; only how the high will feel, when it's different
+  const raw = makeWx((i, t, hh) => ({ cloud: 95, feels: 12 + 4 * Math.sin((hh - 9) / 24 * 2 * Math.PI) - 5 }));
+  assert.match(I.describeDay(raw, keyOf(DAY0 + D), f), /^Cloudy all day\. The high feels more like \d+°\.$/);
 });
 
 /* ---------- the warnings ---------- */
@@ -236,13 +242,19 @@ test("confidence: models that agree, and ones that don't", () => {
 });
 
 /* ---------- context ---------- */
+test("daylight: the sunset's change in whole minutes", () => {
+  // (makeWx's sunsets come 2 minutes earlier each day)
+  const c = card(I.insights(makeWx(), DAY0 + 9 * H, f), "daylight");
+  assert.equal(c.title, "Shorter days"); assert.match(c.text, /\(2 min earlier than yesterday\)\./);
+});
+
 test("warmer than yesterday, a trend coming, the barometer falling", () => {
   const wx = makeWx((i, t) => {
     const k = Math.floor(i / 24);
     return { temp: (k < 0 ? 8 : k < 4 ? 14 : 6) + (i % 24 === 14 ? 1 : 0), pressure: i >= 6 && i <= 9 ? 1015 - (i - 6) * 2 : 1015 };
   });
   const c = I.insights(wx, DAY0 + 9 * H, f);
-  assert.equal(card(c, "vs").title, "Today: warmer"); assert.match(card(c, "vs").text, /7° warmer than yesterday/);
+  assert.equal(card(c, "vs").title, "Today: warmer"); assert.match(card(c, "vs").text, /^Peaks at \d+°, 7° warmer than yesterday/);
   assert.equal(card(c, "trend").title, "Turning colder"); assert.match(card(c, "trend").text, /^From Friday, highs drop from around 15° to 7°/);
   assert.equal(card(c, "pressure").title, "Pressure falling fast");
 });

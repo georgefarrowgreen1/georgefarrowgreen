@@ -159,7 +159,8 @@ so there's nothing to set up beyond the address.
   then rain until around 20:00. High 14°"), and each day of the fortnight
   described part by part (morning, afternoon, evening, overnight).
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
-  long it lasts and how heavy.
+  long it lasts and how heavy, charted as light, moderate or heavy (the amounts
+  are in the readout as you touch it).
 - **Warnings** worked out from the forecast: thunderstorms, heavy rain, gales,
   snow, icy patches (freezing on wet ground), frost and ground frost (clear,
   calm, cold nights), fog, heat and warm nights, bitter cold, high UV (with how

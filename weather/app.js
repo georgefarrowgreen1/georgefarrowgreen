@@ -1,6 +1,6 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
 import { load, searchPlaces, nameOf, store, peek, cell } from "./data.js";
-import { makeFormat, nowWall, dayStart, keyOf, hourOf, compassWord, beaufort, HOUR, DAY } from "./format.js";
+import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label } from "./codes.js";
 import { weatherIcon, moonIcon, glyph } from "./icons.js";
@@ -283,15 +283,15 @@ function nowcast(wx, now) {
   box.hidden = false;
   $("nowcast-text").textContent = nc.text;
   const m = wx.minutely.filter((x) => x.t + 15 * 60e3 > now);
-  const toRate = (mm) => (f.units.precip === "in" ? (mm * 4) / 25.4 : mm * 4);
-  const peak = Math.max(...m.map((x) => toRate(x.precip)));
-  $("nowcast-note").textContent = `Rain every 15 minutes, in ${f.units.precip === "in" ? "inches" : "mm"} an hour (light under ${f.units.precip === "in" ? "0.02" : "0.5"}, heavy over ${f.units.precip === "in" ? "0.16" : "4"}).`;
+  // on the scale it's felt: light, moderate, heavy (under 0.6 mm an hour, to 4, over), so it needs no units
+  // (a square root within light, so drizzle still shows; the amounts are in the readout)
+  const band = (mmh) => (mmh <= 0 ? 0 : mmh < 0.6 ? Math.sqrt(mmh / 0.6) : mmh < 4 ? 1 + Math.log(mmh / 0.6) / Math.log(4 / 0.6) : Math.min(3, 2 + Math.log(mmh / 4) / Math.log(4)));
   timeChart($("nowcast-chart"), {
     kind: "columns", height: 120, color: COLOR.rain,
-    points: m.map((x) => ({ t: x.t, v: toRate(x.precip), mm: x.precip })),
-    y: { min: 0, max: Math.max(f.units.precip === "in" ? 0.1 : 2, peak), fmt: (v) => (f.units.precip === "in" ? v.toFixed(2) : String(Math.round(v * 10) / 10)) },
+    points: m.map((x) => ({ t: x.t, v: band(x.precip * 4), mm: x.precip })),
+    y: { min: 0, max: 3, ticks: [1, 2, 3], fmt: (v) => ["", "Light", "Moderate", "Heavy"][v], inside: true },
     x: { step: 15 * 60e3, hour: (t) => f.time(t) },
-    now, summary: `Rain, every 15 minutes for the next 4 hours, in ${f.units.precip === "in" ? "inches" : "millimetres"} an hour. ${nc.text}`,
+    now, summary: `Rain, every 15 minutes for the next 4 hours, on a scale of light, moderate and heavy. ${nc.text}`,
     tip: (p) => ({ title: f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? (p.mm * 4 >= 4 ? "heavy" : p.mm * 4 >= 0.6 ? "moderate" : "light") : "dry"]] }),
     table: { head: ["Time", "Rain"], rows: m.map((x) => [f.time(x.t), f.rate(x.precip * 4)]) },
   });
@@ -334,11 +334,11 @@ function hourly(wx, now) {
   });
   strip.setAttribute("role", "list");
   strip.replaceChildren(...items);
-  drawHourChart(wx, now, hrs, $("hourly-chart"), $("hourly-note"), S.mode, true);
+  drawHourChart(wx, now, hrs, $("hourly-chart"), S.mode, true);
 }
 
 // the chart for some hours (the next 48 on the page, or one day's in its sheet)
-function drawHourChart(wx, now, hrs, host, note, mode, showNow) {
+function drawHourChart(wx, now, hrs, host, mode, showNow) {
   const f = S.f, t = T(), wn = W();
   const nights = [];
   let run = null;
@@ -357,7 +357,6 @@ function drawHourChart(wx, now, hrs, host, note, mode, showNow) {
       summary: `Temperature, hour by hour: from ${f.temp(lo.x.temp)} to ${f.temp(hi.x.temp)}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.temp), label(p.x.code, p.x.isDay)], [f.temp(p.x.feels), "feels like"], ...(p.lo != null ? [[`${Math.round(p.lo)}–${Math.round(p.hi)}°`, "could be"]] : [])] }),
       table: { head: ["Time", "Temperature", "Feels like"], rows: pts.map((p) => [when(p.t), f.temp(p.x.temp), f.temp(p.x.feels)]) } });
-    if (note) note.textContent = ens.size ? "Shaded: how far it could go either way (the spread of ECMWF's 51-run ensemble, 10th to 90th percentile)." : "";
   } else if (mode === "rain") {
     const pts = hrs.map((x) => ({ t: x.t, v: x.pop ?? (x.precip >= 0.1 ? 100 : 0), x }));
     const marks = I.spells(hrs).slice(0, 3).map((s) => { const top = s.hours.reduce((a, b) => (b.precip > a.precip ? b : a)); return top.precip >= 0.3 ? { t: top.t, v: Math.min(100, top.pop ?? 100), text: f.precip(top.precip) } : null; }).filter(Boolean);
@@ -366,7 +365,6 @@ function drawHourChart(wx, now, hrs, host, note, mode, showNow) {
       summary: `Chance of rain, hour by hour. ${marks.length ? `Wettest hours: ${marks.map((m) => `${f.time(m.t)} (${m.text})`).join(", ")}.` : "Little or no rain expected."}`,
       tip: (p) => ({ title: when(p.t), rows: [[`${Math.round(p.v)}%`, "chance of rain"], [f.precip(p.x.precip), (p.x.snow ?? 0) > 0 ? "expected (snow)" : "expected"]] }),
       table: { head: ["Time", "Chance", "Amount"], rows: pts.map((p) => [when(p.t), `${Math.round(p.v)}%`, f.precip(p.x.precip)]) } });
-    if (note) note.textContent = "Columns: the chance of rain each hour. Labels: the amount in the wettest hour of each spell.";
   } else {
     const pts = hrs.map((x) => ({ t: x.t, v: wn(x.wind), lo: wn(x.wind), hi: wn(Math.max(x.gust ?? x.wind, x.wind)), x }));
     const top = hrs.reduce((a, b) => ((b.gust ?? 0) > (a.gust ?? 0) ? b : a));
@@ -376,7 +374,6 @@ function drawHourChart(wx, now, hrs, host, note, mode, showNow) {
       summary: `Wind in ${f.windUnit}, hour by hour, with gusts up to ${f.wind(top.gust)}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.wind(p.x.wind), `from the ${compassWord(p.x.dir ?? 0)}`], [f.wind(p.x.gust), "gusts"]] }),
       table: { head: ["Time", "Wind", "Gusts", "From"], rows: pts.map((p) => [when(p.t), f.wind(p.x.wind), f.wind(p.x.gust), compassWord(p.x.dir ?? 0)]) } });
-    if (note) note.textContent = `Line: the average wind (${f.windUnit}). Shaded up to the gusts.`;
   }
 }
 
@@ -384,7 +381,6 @@ function daily(wx, now) {
   const f = S.f, days = wx.daily.filter((d) => d.date >= dayStart(now)).slice(0, 16);
   if (!days.length) return;
   $("daily-n").textContent = `${days.length}-day`;
-  $("daily-note").textContent = days.some((d) => d.tuned) ? `Highs and lows from tomorrow are tuned to how each model has done at ${wx.tunedBy && wx.skill?.station ? wx.skill.station.name : "the nearest weather station"} (see Forecast accuracy).` : "";
   const conf = I.confidence(wx);
   const lo = Math.min(...days.map((d) => d.tmin)), hi = Math.max(...days.map((d) => d.tmax)), span = Math.max(1, hi - lo);
   const curT = wx.current?.temp;
@@ -399,7 +395,7 @@ function daily(wx, now) {
     const c = conf[d.key], unsure = c?.level === "low" && i > 0 && i < 7;
     const pop = (d.popMax ?? 0) >= 20 ? `${Math.round(d.popMax / 10) * 10}%` : "";
     const name = i === 0 ? "Today" : f.dayShort(d.date);
-    return h("li", { class: i === 7 ? "far" : null }, i === 7 ? h("span", { class: "far-note" }, "Further ahead: less certain, best for the general trend") : null, h("button", { class: "day-row", type: "button", onclick: () => openDay(d.key), "aria-label": `${f.day(d.date, now)}: ${label(d.code)}, high ${f.temp(d.tmax)}, low ${f.temp(d.tmin)}${pop ? `, ${pop} chance of rain` : ""}${unsure ? ", uncertain" : ""}` },
+    return h("li", { class: i === 7 ? "far" : null }, i === 7 ? h("span", { class: "far-note" }, "Less certain") : null, h("button", { class: "day-row", type: "button", onclick: () => openDay(d.key), "aria-label": `${f.day(d.date, now)}: ${label(d.code)}, high ${f.temp(d.tmax)}, low ${f.temp(d.tmin)}${pop ? `, ${pop} chance of rain` : ""}${unsure ? ", uncertain" : ""}` },
       h("span", { class: "d-name" }, name, h("small", { class: unsure ? "unsure" : "" }, unsure ? "Uncertain" : f.date(d.date))),
       h("span", { class: "d-icon" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 30) }), h("span", { class: "d-pop" }, pop)),
       h("span", { class: "d-lo" }, f.temp(d.tmin)), bar, h("span", { class: "d-hi" }, f.temp(d.tmax))));
@@ -420,13 +416,13 @@ function climate(wx, now) {
   const f = S.f, t = T(), box = $("climate-body");
   if (!wx.climate) {
     const failed = store.get(`clim:${cell(wx.place.lat, wx.place.lon)}`)?.failedAt;
-    box.replaceChildren(h("p", { class: "muted" }, failed ? "The climate archive is busy right now; this will fill in later." : "Gathering thirty years of this place's weather…"));
+    box.replaceChildren(h("p", { class: "muted small" }, failed ? "The climate archive is busy; this will fill in later." : "Gathering 30 years of weather…"));
     return;
   }
   const d = I.dayOf(wx, now), c = d && climateOn(wx.climate, d.date);
-  if (!c?.tmax) { box.replaceChildren(h("p", { class: "muted" }, "No climate record for this spot.")); return; }
-  const p = rankIn(c.tmax.sorted, d.tmax), yrs = `${wx.climate.years[0]}–${wx.climate.years[1]}`;
-  const lede = h("p", { class: "small" }, `Today's high of ${f.temp(d.tmax)} is warmer than ${Math.round(p)}% of days around ${f.dateLong(d.date)} (${yrs}).`);
+  if (!c?.tmax) { box.replaceChildren(h("p", { class: "muted small" }, "No climate record for this spot.")); return; }
+  const p = rankIn(c.tmax.sorted, d.tmax);
+  const lede = h("p", { class: "small" }, `Warmer than ${Math.round(p)}% of days here since ${wx.climate.years[0]}.`);
   const chart = h("div", { class: "range" });
   const ago = yearsAgo(wx.climate, d.date);
   const facts = h("ul", { class: "facts" },
@@ -434,7 +430,7 @@ function climate(wx, now) {
     h("li", {}, h("b", {}, f.temp(c.tmin.mean)), "Normal low"),
     c.recordHigh ? h("li", {}, h("b", {}, `${f.temp(c.recordHigh.v)} (${c.recordHigh.year})`), `Warmest ${f.dateLong(d.date)}`) : null,
     c.recordLow ? h("li", {}, h("b", {}, `${f.temp(c.recordLow.v)} (${c.recordLow.year})`), `Coldest ${f.dateLong(d.date)} night`) : null,
-    c.wet != null ? h("li", {}, h("b", {}, `${Math.round(c.wet * 100)}%`), "of days get 1 mm+ of rain") : null,
+    c.wet != null ? h("li", {}, h("b", {}, `${Math.round(c.wet * 100)}%`), "Days with rain") : null,
     ago ? h("li", {}, h("b", {}, `${f.temp(ago.tmax)}, ${ago.rain >= 0.5 ? f.precip(ago.rain) : "dry"}`), "This day last year") : null);
   box.replaceChildren(lede, chart, facts);
   rangeChart(chart, { p10: t(c.tmax.p10), p25: t(c.tmax.p25), p75: t(c.tmax.p75), p90: t(c.tmax.p90), mean: t(c.tmax.mean), value: t(d.tmax), valueLabel: `Today ${f.temp(d.tmax)}`, record: c.recordHigh ? { v: t(c.recordHigh.v), year: c.recordHigh.year } : null,
@@ -447,11 +443,11 @@ function tiles(wx, now) {
   // feels like
   const diff = (c.feels ?? c.temp) - c.temp;
   out.push(tile("Feels like", "heat", h("div", { class: "big" }, f.temp(c.feels)),
-    h("p", { class: "sub" }, diff <= -2 ? ((c.wind ?? 0) >= 12 ? `The wind makes it feel ${f.delta(diff)} colder.` : `Feels ${f.delta(diff)} colder.`) : diff >= 2 ? `Humidity makes it feel ${f.delta(diff)} warmer.` : "Close to the actual temperature.")));
+    h("p", { class: "sub" }, diff <= -2 ? ((c.wind ?? 0) >= 12 ? `Wind makes it feel ${f.delta(diff)} colder.` : `Feels ${f.delta(diff)} colder.`) : diff >= 2 ? `Humidity makes it feel ${f.delta(diff)} warmer.` : "Close to the actual temperature.")));
   // wind
   const bf = beaufort(c.wind ?? 0), dir = c.dir ?? 0;
   const comp = `<svg class="compass" viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="33"/>${[0, 90, 180, 270].map((a) => `<line class="tick" x1="40" y1="6" x2="40" y2="11" transform="rotate(${a} 40 40)"/>`).join("")}<text x="40" y="20" text-anchor="middle">N</text><text x="62" y="43" text-anchor="middle">E</text><text x="40" y="66" text-anchor="middle">S</text><text x="18" y="43" text-anchor="middle">W</text><path class="needle" transform="rotate(${(dir + 180) % 360} 40 40)" d="M40 14l6 30h-12z"/><circle cx="40" cy="40" r="3" fill="#fff"/></svg>`;
-  out.push(tile("Wind", "wind", h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, String(f.windNum(c.wind)), h("small", {}, f.windUnit)), h("p", {}, `Gusts ${f.wind(c.gust)}`)), h("div", { svg: comp })),
+  out.push(tile("Wind", "wind", h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, String(f.windNum(c.wind)), h("small", {}, f.windUnit)), h("p", {}, `Gusts ${f.windNum(c.gust)}`)), h("div", { svg: comp })),
     h("p", { class: "sub" }, `${bf.name}, from the ${compassWord(dir)}.`)));
   // humidity
   const dew = c.dew;
@@ -459,14 +455,14 @@ function tiles(wx, now) {
   out.push(tile("Humidity", "drop", h("div", { class: "big" }, `${Math.round(c.rh ?? 0)}%`), h("p", { class: "sub" }, `Dew point ${f.temp(dew)}. ${comfort}.`)));
   // rain: the last day and the next
   const past = I.hoursBetween(wx, now - DAY, now).reduce((a, x) => a + (x.precip || 0), 0), next = I.hoursBetween(wx, now, now + DAY).reduce((a, x) => a + (x.precip || 0), 0);
-  out.push(tile("Rain", "rain", h("div", { class: "big" }, f.precip(next)), h("p", {}, "expected in the next 24 hours"), h("p", { class: "sub" }, `${f.precip(past)} in the last 24 hours.`)));
+  out.push(tile("Rain", "rain", h("div", { class: "big" }, f.precip(next)), h("p", {}, "in the next 24 hours"), h("p", { class: "sub" }, `${f.precip(past)} in the last 24.`)));
   // pressure
   const p3 = I.hourAt(wx, now - 3 * HOUR)?.pressure, dp = c.pressure != null && p3 != null ? c.pressure - p3 : null;
   out.push(tile("Pressure", "gauge", h("div", { class: "big" }, f.pressure(c.pressure).replace(/ (\S+)$/, ""), h("small", {}, f.pressure(c.pressure).split(" ").pop())),
-    h("p", { class: "sub" }, dp == null ? "" : Math.abs(dp) < 1 ? "Steady over the last 3 hours." : `${dp < 0 ? "Falling" : "Rising"} ${f.pressureDelta(dp)} in 3 hours${dp <= -3 ? ": unsettled weather on the way" : dp >= 3 ? ": settling down" : ""}.`)));
+    h("p", { class: "sub" }, dp == null ? "" : Math.abs(dp) < 1 ? "Steady." : `${dp < 0 ? "Falling" : "Rising"} ${f.pressureDelta(dp)} in 3 hours${dp <= -3 ? ": unsettled" : dp >= 3 ? ": settling" : ""}.`)));
   // visibility
   const vis = c.vis;
-  out.push(tile("Visibility", "eye", h("div", { class: "big" }, f.dist(vis)), h("p", { class: "sub" }, vis == null ? "" : vis >= 20000 ? "Excellent: a clear view." : vis >= 10000 ? "Good." : vis >= 4000 ? "Moderate: a little haze." : vis >= 1000 ? "Poor: mist or haze." : "Fog.")));
+  out.push(tile("Visibility", "eye", h("div", { class: "big" }, f.dist(vis)), h("p", { class: "sub" }, vis == null ? "" : vis >= 20000 ? "Excellent." : vis >= 10000 ? "Good." : vis >= 4000 ? "A little haze." : vis >= 1000 ? "Mist or haze." : "Fog.")));
   // UV
   const todayH = I.hoursBetween(wx, dayStart(now), dayStart(now) + DAY), uvPeak = todayH.reduce((a, x) => ((x.uv ?? 0) > (a?.uv ?? -1) ? x : a), null);
   const uv = c.uv ?? 0, uvName = (u) => (u < 3 ? "Low" : u < 6 ? "Moderate" : u < 8 ? "High" : u < 11 ? "Very high" : "Extreme");
@@ -524,19 +520,18 @@ function tiles(wx, now) {
 // how close each model has been here (weather/skill.js, from the nearest airport's reports)
 function accuracy(wx) {
   const f = S.f, box = $("accuracy-body"), k = wx.skill, note = (t) => h("p", { class: "small muted" }, t);
-  if (!k) { box.replaceChildren(note("Checking the forecasts against what actually happened…")); return; }
-  if (!k.station) { box.replaceChildren(note(k.failed ? "Couldn't check the forecasts just now; it'll try again later." : "There's no airport weather station within 40 km to check the forecasts against, so the forecast here isn't tuned.")); return; }
-  const st = k.station, where = `${st.name} (${st.km} km away)`;
-  if (!k.skill) { box.replaceChildren(note(`Recording what actually happens at ${where}: ${k.obsDays} of the ${MIN_DAYS} days needed so far. The record builds up as the days go by.`)); return; }
+  if (!k) { box.replaceChildren(note("Checking…")); return; }
+  if (!k.station) { box.replaceChildren(note(k.failed ? "Couldn't check just now; trying again later." : "No airport weather station within 40 km to check against.")); return; }
+  const st = k.station;
+  if (!k.skill) { box.replaceChildren(note(k.obsDays >= MIN_DAYS ? `Not enough past forecasts to compare with ${st.name}'s reports yet.` : `Recording ${st.name}'s reports: ${k.obsDays} of ${MIN_DAYS} days.`)); return; }
   const s = k.skill;
-  box.replaceChildren(
-    h("p", { class: "small" }, `How far off each model's next-day forecasts have been at ${where}, over the last ${s.days} days.`),
+  box.replaceChildren(...[
+    h("p", { class: "small muted" }, `${st.name} (${st.km} km) · last ${s.days} days`),
     h("table", { class: "models acc" }, h("caption", { class: "sr-only" }, "Each model's average error and lean, next-day forecasts"),
       h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "Highs"), h("th", { scope: "col" }, "Lows"), h("th", { scope: "col" }, "Leans")),
-      ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Most accurate") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
+      ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Best") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
         h("td", {}, m.loMae != null ? `±${f.deltaFine(m.loMae)}` : "–"), h("td", {}, Math.abs(m.hiBias) >= 0.5 ? `${f.deltaFine(m.hiBias)} ${m.hiBias > 0 ? "warm" : "cold"}` : "–")))),
-    h("p", { class: "chart-note" }, s.days < TUNE_DAYS ? `Tuning starts once there are ${TUNE_DAYS} days to go on.` : S.settings.tune !== false
-      ? "From tomorrow, the highs and lows are tuned with this: each model's usual error taken off, the closest counting most." : "Tuning is turned off (Settings)."));
+    s.days < TUNE_DAYS ? h("p", { class: "chart-note" }, `Tuning starts at ${TUNE_DAYS} days.`) : null].filter(Boolean));
 }
 
 function openDay(key) {
@@ -546,7 +541,7 @@ function openDay(key) {
   const body = $("day-body"), parts = I.dayParts(wx, key), conf = I.confidence(wx)[key];
   const kids = [
     h("div", { class: "day-top" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 56) }), h("div", {}, h("div", { class: "dt-main" }, label(d.code)), h("div", { class: "dt-sub" }, `High ${f.temp(d.tmax)} · Low ${f.temp(d.tmin)}`))),
-    d.tuned ? h("p", { class: "small tuned-note" }, `Tuned for here from six models and how each has done at ${wx.skill?.station?.name || "the nearest station"}. The forecast on its own said ${f.temp(d.raw.tmax)} / ${f.temp(d.raw.tmin)}.`) : null,
+    d.tuned ? h("p", { class: "small tuned-note" }, `Tuned for here · forecast alone ${f.temp(d.raw.tmax)} / ${f.temp(d.raw.tmin)}`) : null,
     h("p", { class: "day-desc" }, I.describeDay(wx, key, f)),
     h("div", { class: "parts" }, ...parts.map((p) => h("div", { class: "part" }, h("span", { class: "p-name" }, p.name[0].toUpperCase() + p.name.slice(1)),
       h("span", { svg: weatherIcon(iconOf(p.code, p.isDay), 34) }), h("span", { class: "p-temp" }, f.temp(p.name === "overnight" ? p.tmin : p.tmax)), h("span", { class: "p-pop" }, (p.pop ?? 0) >= 20 ? `${Math.round(p.pop)}%` : "")))),
@@ -558,10 +553,10 @@ function openDay(key) {
   kids.push(h("h3", { class: "day-section" }, "Details"), h("div", { class: "stats" },
     stat("Rain", `${f.precip(d.precip)}${d.precipHours ? ` over ${Math.round(d.precipHours)} h` : ""}`),
     stat("Chance of rain", d.popMax != null ? `${Math.round(d.popMax)}%` : "–"),
-    stat("Wind", `${f.wind(d.windMax)}, gusts ${f.wind(d.gustMax)}`),
-    stat("From the", compassWord(d.dir ?? 0)),
+    stat("Wind", `${f.wind(d.windMax)} ${compass(d.dir ?? 0)}`),
+    stat("Gusts", f.wind(d.gustMax)),
     stat("Feels like", `${f.temp(d.fmin)} to ${f.temp(d.fmax)}`),
-    stat("UV", d.uvMax != null ? `${Math.round(d.uvMax)} max` : "–"),
+    stat("Peak UV", d.uvMax != null ? String(Math.round(d.uvMax)) : "–"),
     stat("Sunshine", d.sunshine != null ? f.dur(d.sunshine) : "–"),
     stat("Sun", `${f.time(d.sunrise)} – ${f.time(d.sunset)}`),
     (d.snow ?? 0) > 0 ? stat("Snow", f.snow(d.snow)) : null));
@@ -569,16 +564,19 @@ function openDay(key) {
   const c = wx.climate && climateOn(wx.climate, d.date);
   if (c?.tmax) {
     const p = rankIn(c.tmax.sorted, d.tmax), an = d.tmax - c.tmax.mean;
-    kids.push(h("h3", { class: "day-section" }, "For the time of year"), h("p", { class: "small" }, `${f.temp(d.tmax)} is ${Math.abs(an) < 1 ? "about normal" : `${f.delta(an)} ${an > 0 ? "above" : "below"} normal`} (normal high ${f.temp(c.tmax.mean)}): warmer than ${Math.round(p)}% of days at this time of year since ${wx.climate.years[0]}.${c.recordHigh ? ` Record: ${f.temp(c.recordHigh.v)} in ${c.recordHigh.year}.` : ""}`));
+    kids.push(h("h3", { class: "day-section" }, "For the time of year"), h("div", { class: "stats" },
+      stat("Against normal", Math.abs(an) < 1 ? "About normal" : `${f.delta(an)} ${an > 0 ? "warmer" : "colder"}`), stat("Normal high", f.temp(c.tmax.mean)),
+      stat("Warmer than", `${Math.round(p)}% of days`), c.recordHigh ? stat("Record", `${f.temp(c.recordHigh.v)} · ${c.recordHigh.year}`) : null));
   }
   // how sure, and what each model says
   if (conf && d.date >= dayStart(now)) {
     const bar = h("span", { class: "conf-bar" }), fill = h("i"); fill.style.width = `${conf.score}%`; bar.append(fill);
-    const why = conf.why.length ? ` The models differ on the ${conf.why.join(" and the ")}.` : "";
+    const why = conf.why.length ? `The models differ on the ${conf.why.join(" and the ")}.` : "";
     kids.push(h("h3", { class: "day-section" }, "Forecast confidence"), h("div", { class: "conf" }, bar, h("b", {}, `${conf.level[0].toUpperCase() + conf.level.slice(1)} (${conf.score})`)),
-      h("p", { class: "small muted" }, `${conf.level === "high" ? "The forecast is unlikely to change much." : conf.level === "medium" ? "Some uncertainty: details could shift." : "Low confidence: this could change a lot."}${why}`));
+      why ? h("p", { class: "small muted" }, why) : null);
+    // (ECMWF's ensemble: where the high and low most likely land, the middle 80% of its runs)
     const ens = wx.ensemble?.days?.[key];
-    if (ens) kids.push(h("p", { class: "small" }, `ECMWF's ${ens.members}-run ensemble: high most likely ${f.temp(ens.tmaxP10)} to ${f.temp(ens.tmaxP90)}${ens.wet != null ? `; ${Math.round(ens.wet * 100)}% of runs bring 1 mm+ of rain` : ""}.`));
+    if (ens) kids.push(h("div", { class: "stats" }, stat("Likely high", `${f.temp(ens.tmaxP10)} to ${f.temp(ens.tmaxP90)}`), stat("Likely low", `${f.temp(ens.tminP10)} to ${f.temp(ens.tminP90)}`)));
     const mods = wx.models?.days?.[key];
     if (mods?.length) kids.push(h("table", { class: "models" }, h("caption", { class: "sr-only" }, "What each weather model forecasts"),
       h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "High"), h("th", { scope: "col" }, "Low"), h("th", { scope: "col" }, "Rain")),
@@ -590,9 +588,9 @@ function openDay(key) {
   openSheet(dlg);
   dlg.querySelector(".sheet-body").scrollTop = 0;
   if (hrs.length > 3) requestAnimationFrame(() => {
-    drawHourChart(wx, now, hrs, tChart, null, "temp", d.key === keyOf(now));
-    drawHourChart(wx, now, hrs, rChart, null, "rain", d.key === keyOf(now));
-    drawHourChart(wx, now, hrs, wChart, null, "wind", d.key === keyOf(now));
+    drawHourChart(wx, now, hrs, tChart, "temp", d.key === keyOf(now));
+    drawHourChart(wx, now, hrs, rChart, "rain", d.key === keyOf(now));
+    drawHourChart(wx, now, hrs, wChart, "wind", d.key === keyOf(now));
   });
 }
 
@@ -672,10 +670,10 @@ function readSettings(e) {
 const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
 // why this phone can't have them, if it can't
 function notifyWhy() {
-  if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site in your browser's settings." : null;
+  if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site (browser settings)." : null;
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-  return ios && !standalone ? "On iPhone and iPad, add Weather to your Home Screen first (Share, then Add to Home Screen) and turn these on from there." : "This browser can't show notifications.";
+  return ios && !standalone ? "Add Weather to your Home Screen first (Share, Add to Home Screen), then turn these on there." : "This browser can't show notifications.";
 }
 async function pushSub(make) {
   const reg = await navigator.serviceWorker.ready;
@@ -715,7 +713,7 @@ async function onNotify() {
     if (why) { st.textContent = why; drawNotify(true); return; }
     // asked straight away, while the tap still counts (Safari won't ask otherwise)
     const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-    if (perm !== "granted") { st.textContent = "Notifications weren't allowed, so nothing can be sent."; drawNotify(true); return; }
+    if (perm !== "granted") { st.textContent = "Notifications weren't allowed."; drawNotify(true); return; }
     if (!(n.rain || n.brief) || !n.place) n.place = hereForNotify();
   }
   Object.assign(n, want);
@@ -730,7 +728,7 @@ async function onNotify() {
 function drawNotify(keepStatus = false) {
   const n = S.settings.notify, form = $("settings-form"), p = place(), on = n.rain || n.brief;
   form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; form.briefAt.value = n.briefAt || "07:00";
-  $("notify-place").textContent = on && n.place ? `For ${n.place.gps ? `My Location (${n.place.name})` : n.place.name}.` : "For the place you're looking at when you turn them on.";
+  $("notify-place").textContent = on && n.place ? `For ${n.place.gps ? `My Location (${n.place.name})` : n.place.name}.` : "For the place on screen when you turn them on.";
   $("notify-here").hidden = !(on && n.place && p && cell(p.lat, p.lon) !== cell(n.place.lat, n.place.lon));
   if (!keepStatus) $("notify-status").textContent = on ? "" : notifyWhy() || "";
 }
@@ -865,7 +863,7 @@ function wire() {
     for (const x of tabs) x.setAttribute("aria-selected", String(x === b));
     $("hourly-seg").style.setProperty("--seg-i", String(tabs.indexOf(b)));
     $("hourly-seg").classList.remove("moving"); void $("hourly-seg").offsetWidth; $("hourly-seg").classList.add("moving");
-    if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), $("hourly-note"), S.mode, true); }
+    if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); }
   });
   $("hourly-seg").addEventListener("keydown", (e) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;

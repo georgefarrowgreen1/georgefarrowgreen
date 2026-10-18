@@ -107,7 +107,8 @@ export function dayParts(wx, key) {
   }).filter(Boolean);
 }
 
-// "Sunny spells in the morning, then rain from the afternoon. Around 6 mm in all. Breezy, gusts to 35 mph. High 14°."
+// "Sunny spells in the morning, then rain from the afternoon. Around 6 mm of rain, mostly in the evening. Breezy at times."
+// (not the high and low: they're beside it already; only how the high will feel, when that's different)
 export function describeDay(wx, key, f) {
   const d = wx.daily.find((x) => x.key === key);
   if (!d) return "";
@@ -119,7 +120,7 @@ export function describeDay(wx, key, f) {
     if (segs.length === 1) out.push(`${cap(segs[0].phrase)} ${parts.length === 1 ? `in the ${parts[0].name}` : "all day"}.`);
     else {
       const bits = segs.map((s, i) => {
-        const span = s.names.length === 1 ? `in the ${s.names[0]}` : i === segs.length - 1 ? `from the ${s.names[0]}` : `through the ${s.names[s.names.length - 1]}`;
+        const span = s.names.length === 1 ? `in the ${s.names[0]}` : i === segs.length - 1 ? `from the ${s.names[0]}` : `in the ${s.names.join(" and ")}`;
         // "mostly cloudy in the afternoon, then mostly cloudy with some drizzle" → "…, then some drizzle"
         const prev = segs[i - 1]?.phrase, ph = prev && s.phrase.startsWith(prev + " with ") ? s.phrase.slice(prev.length + 6) : s.phrase;
         return `${i === 0 ? cap(ph) : (i === segs.length - 1 ? "then " : "") + ph} ${span}`;
@@ -136,10 +137,8 @@ export function describeDay(wx, key, f) {
   if ((d.gustMax ?? 0) >= T.GALE) out.push(`Very windy, gusts up to ${f.wind(d.gustMax)}.`);
   else if ((d.gustMax ?? 0) >= T.WINDY) out.push(`Windy, gusts up to ${f.wind(d.gustMax)}.`);
   else if ((d.gustMax ?? 0) >= 38) out.push(`Breezy at times.`);
-  let temps = `High ${f.temp(d.tmax)}, low ${f.temp(d.tmin)}`;
-  if (d.fmax != null && d.tmax - d.fmax >= 3) temps += `, feeling more like ${f.temp(d.fmax)}`;
-  else if (d.fmax != null && d.fmax - d.tmax >= 3) temps += `, feeling like ${f.temp(d.fmax)} in the humidity`;
-  out.push(temps + ".");
+  if (d.fmax != null && d.tmax - d.fmax >= 3) out.push(`The high feels more like ${f.temp(d.fmax)}.`);
+  else if (d.fmax != null && d.fmax - d.tmax >= 3) out.push(`The high feels like ${f.temp(d.fmax)} in the humidity.`);
   return out.join(" ");
 }
 
@@ -541,8 +540,8 @@ export function insights(wx, now, f, opts = {}) {
   const evening = hourOf(now) >= 17, a = evening ? today : wx.daily[ti - 1], b = evening ? wx.daily[ti + 1] : today;
   if (a && b && a.tmax != null && b.tmax != null) {
     const dt = b.tmax - a.tmax, who = evening ? "Tomorrow" : "Today";
-    if (Math.abs(dt) >= 2) add({ id: "vs", level: "info", icon: dt > 0 ? "up" : "down", title: `${who}: ${dt > 0 ? "warmer" : "cooler"}`, text: `${who} peaks at ${f.temp(b.tmax)}, ${f.delta(dt)} ${dt > 0 ? "warmer" : "cooler"} than ${evening ? "today" : "yesterday"}${Math.abs((b.fmax ?? b.tmax) - (a.fmax ?? a.tmax)) >= 2 ? `, and feels ${f.delta((b.fmax ?? b.tmax) - (a.fmax ?? a.tmax))} ${(b.fmax ?? b.tmax) > (a.fmax ?? a.tmax) ? "warmer" : "colder"}` : ""}.`, score: 50 });
-    else add({ id: "vs", level: "info", icon: "equal", title: `${who}: much the same`, text: `${who} peaks at ${f.temp(b.tmax)}, within ${f.delta(Math.max(1, Math.abs(dt)))} of ${evening ? "today" : "yesterday"}.`, score: 15 });
+    if (Math.abs(dt) >= 2) add({ id: "vs", level: "info", icon: dt > 0 ? "up" : "down", title: `${who}: ${dt > 0 ? "warmer" : "cooler"}`, text: `Peaks at ${f.temp(b.tmax)}, ${f.delta(dt)} ${dt > 0 ? "warmer" : "cooler"} than ${evening ? "today" : "yesterday"}${Math.abs((b.fmax ?? b.tmax) - (a.fmax ?? a.tmax)) >= 2 ? `, and feels ${f.delta((b.fmax ?? b.tmax) - (a.fmax ?? a.tmax))} ${(b.fmax ?? b.tmax) > (a.fmax ?? a.tmax) ? "warmer" : "colder"}` : ""}.`, score: 50 });
+    else add({ id: "vs", level: "info", icon: "equal", title: `${who}: much the same`, text: `Peaks at ${f.temp(b.tmax)}, within ${f.delta(Math.max(1, Math.abs(dt)))} of ${evening ? "today" : "yesterday"}.`, score: 15 });
   }
   // this time of year
   for (const c of climateCards(wx, now, f)) add(c);
@@ -734,7 +733,7 @@ function daylight(wx, now, f) {
   if (!d?.daylight) return null;
   const change = y?.daylight ? d.daylight - y.daylight : null, week = wk?.daylight ? wk.daylight - d.daylight : null;
   const ss = y?.sunset && d.sunset ? ((d.sunset - d.date) - (y.sunset - y.date)) / 1000 : null;
-  const mmss = (s) => { const a = Math.abs(Math.round(s)); return a >= 60 ? `${Math.floor(a / 60)} min ${a % 60} s` : `${a} s`; };
+  const mmss = (s) => { const a = Math.abs(Math.round(s)); return a >= 60 ? `${Math.round(a / 60)} min` : `${a} s`; };     // ("2 min", not "2 min 0 s")
   let text = `${f.dur(d.daylight)} of daylight, sunset at ${f.time(d.sunset)}`;
   if (ss != null && Math.abs(ss) >= 30) text += ` (${mmss(ss)} ${ss < 0 ? "earlier" : "later"} than yesterday)`;
   text += ".";

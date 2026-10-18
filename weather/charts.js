@@ -33,7 +33,8 @@ function colPath(x, y, w, h, r = 4) {
  *   kind      "line" | "columns"
  *   points    [{ t, v, lo?, hi? }]   (lo/hi: a shaded range around the line)
  *   color     the series' colour
- *   y         { min?, max?, ticks?, fmt(v) }   (fixed ends, or worked out from the data)
+ *   y         { min?, max?, ticks?, fmt(v), inside? }   (fixed ends, or worked out from the data; inside: each
+ *             label names the band under its line, in the chart at the end, rather than beside it)
  *   x         { hour(t), day(t), step }          (labels for hours and for the start of each day)
  *   now       a time to mark "Now"
  *   nights    [[from, to]]              (shaded softly)
@@ -59,7 +60,7 @@ function draw(host) {
   host.classList.add("chart");
   if (!pts.length) { host.textContent = "No data"; return; }
   const W = Math.max(260, host.clientWidth || 340), Hh = o.height || 170;
-  const L = 34, R = 10, T = 18, B = 26, iw = W - L - R, ih = Hh - T - B;
+  const L = o.y?.inside ? 8 : 34, R = 10, T = 18, B = 26, iw = W - L - R, ih = Hh - T - B;
   const step = o.x?.step || HOUR, cols = o.kind === "columns";
   const t0 = o.points[0].t, t1 = o.points[o.points.length - 1].t + (cols ? step : 0);
   const X = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * iw;
@@ -77,11 +78,13 @@ function draw(host) {
     if (xb > xa) svg.append(el("rect", { x: xa, y: T, width: xb - xa, height: ih, class: "c-night" }));
   }
   // gridlines and the y-axis
-  for (const v of ys.ticks) {
-    if (v < ys.lo - 1e-9 || v > ys.hi + 1e-9) continue;
+  const shown = ys.ticks.filter((v) => v >= ys.lo - 1e-9 && v <= ys.hi + 1e-9), inside = [];
+  shown.forEach((v, i) => {
     svg.append(el("line", { x1: L, x2: L + iw, y1: Y(v), y2: Y(v), class: "c-grid" }));
-    svg.append(el("text", { x: L - 6, y: Y(v) + 3.5, class: "c-ytick", "text-anchor": "end" }, o.y?.fmt ? o.y.fmt(v) : String(v)));
-  }
+    const text = o.y?.fmt ? o.y.fmt(v) : String(v);
+    if (o.y?.inside) inside.push([(Y(v) + Y(i ? shown[i - 1] : ys.lo)) / 2, text]);
+    else svg.append(el("text", { x: L - 6, y: Y(v) + 3.5, class: "c-ytick", "text-anchor": "end" }, text));
+  });
   // the hours along the bottom: a label every few hours, the day's name at midnight; as far apart as the
   // labels need ("8:15pm" more than "20"), and on the clock's own marks (on the hour, the half hour)
   const first = Math.ceil(t0 / step) * step, sample = o.x?.hour ? String(o.x.hour(first + step)) : "00";
@@ -123,6 +126,8 @@ function draw(host) {
     svg.append(el("line", { x1: x, x2: x, y1: T - 4, y2: T + ih, class: "c-now" }));
     svg.append(el("text", { x: Math.min(Math.max(x, L + 12), L + iw - 12), y: T - 7, class: "c-nowtext", "text-anchor": "middle" }, "Now"));
   }
+  // the y-axis's labels inside the chart: each in the middle of its band, at the end, on top of the data
+  for (const [y, text] of inside) svg.append(el("text", { x: L + iw - 2, y: y + 3.5, class: "c-ytick c-in", "text-anchor": "end" }, text));
   // a few labels, on the marks themselves
   for (const m of o.marks || []) {
     const x = cols ? X(m.t) + (X(m.t + step) - X(m.t)) / 2 : X(m.t), y = Y(m.v);
