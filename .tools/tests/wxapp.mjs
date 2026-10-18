@@ -139,7 +139,7 @@ await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
 await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 });
 ok(/starting in about/.test(await p.textContent('#radar .radar-note')) && !(await p.isVisible('#radar .radar-note')), 'with the next few hours in a line above it, for full screen (the card above says it otherwise)', await p.textContent('#radar .radar-note'));
-ok((await p.locator('#radar .radar-legend span').count()) === 7 && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend, and a timeline marked Now');
+ok((await p.locator('#radar .radar-legend .rl-bar').count()) === 2 && /Light.*Heavy.*Extreme/.test(await p.textContent('#radar .rl-words')) && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend (the radar\'s colours, light to extreme, and snow\'s), and a timeline marked Now');
 ok(await p.locator('#radar .radar-centre').count() === 1 && await p.locator('#radar .leaflet-control-scale').count() === 1, 'a button back to the place, and a scale');
 const was = await p.getAttribute('#radar .radar-play', 'data-on');
 await p.click('#radar .radar-play');
@@ -164,7 +164,7 @@ ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enla
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
 ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() === 0 && await p.locator('#radar .rv-tiles').count() >= 24,
   'then the radar carried on two hours, marked as forecast', `${await p.textContent('#radar .radar-time')}; ${await p.locator('#radar .rv-tiles').count()} frames`);
-ok(/along its own track/.test(await p.textContent('#radar .radar-status')), 'and it says so', await p.textContent('#radar .radar-status'));
+ok(/along its track/.test(await p.textContent('#radar .radar-status')), 'and it says so', await p.textContent('#radar .radar-status'));
 await p.waitForFunction(() => { const l = [...document.querySelectorAll('#radar .rv-tiles')].pop(); return [...l.querySelectorAll('canvas')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 150)); }, null, { timeout: 15000, polling: 250 }).then(() => true, () => false).then((x) => ok(x, 'the last forecast frame drawn from the radar, in its colours'));
 await p.click('#radar .radar-full');
 ok(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big')), 'full screen');

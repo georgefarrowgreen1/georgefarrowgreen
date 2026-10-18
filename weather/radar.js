@@ -10,7 +10,7 @@
 // Leaflet (vendor/leaflet.js: 1.9.4, BSD-2-Clause, checked against npm's
 // integrity hash) is loaded only when the card first comes into view.
 
-import { grid, paint, timeline, LEGEND, hexFor, decode, resample, motion } from "./rainmap.js";
+import { grid, paint, timeline, LEGEND, hexFor, decode, resample, motion, ramp } from "./rainmap.js";
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
@@ -152,14 +152,21 @@ export function radar(card, { lat, lon, time, miles = false }) {
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // the legend: the radar's colours, and what they mean
-  legend.replaceChildren(...LEGEND.map((x) => {
-    const s = document.createElement("span"), sw = document.createElement("i");
-    sw.style.background = hexFor(x.dbz); s.append(sw, x.label);
-    s.title = `About ${x.mmh < 1 ? x.mmh.toFixed(1) : Math.round(x.mmh)} mm an hour`;
-    return s;
-  }));
-  const snowKey = document.createElement("span"), snowSw = document.createElement("i");
-  snowSw.style.background = `linear-gradient(90deg, ${hexFor(10, true)}, ${hexFor(40, true)})`; snowKey.append(snowSw, "Snow"); legend.append(snowKey);
+  // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
+  const bar = (snow, from, to) => {
+    const r = ramp(snow, LOOK.soft), stops = [];
+    for (let d = from; d <= to; d += 2) { const q = (d + 10) * 16; stops.push(`rgba(${r[q]},${r[q + 1]},${r[q + 2]},${(r[q + 3] / 255).toFixed(2)}) ${(((d - from) / (to - from)) * 100).toFixed(1)}%`); }
+    const i = document.createElement("i"); i.className = "rl-bar"; i.style.background = `linear-gradient(90deg, ${stops.join(", ")})`; return i;
+  };
+  const words = document.createElement("div"); words.className = "rl-words";
+  for (const [text, dbz] of [["Light", 12], ["Heavy", 40], ["Extreme", 62]]) {
+    const w = document.createElement("span"); w.textContent = text; w.style.left = `${((dbz - 8) / 56) * 100}%`;
+    const x = LEGEND.reduce((a, l) => (Math.abs(l.dbz - dbz) < Math.abs(a.dbz - dbz) ? l : a));
+    w.title = `About ${x.mmh < 1 ? x.mmh.toFixed(1) : Math.round(x.mmh)} mm an hour`; words.append(w);
+  }
+  const rain = document.createElement("div"); rain.className = "rl-rain"; rain.append(bar(false, 8, 64), words);
+  const snowKey = document.createElement("div"); snowKey.className = "rl-snow"; snowKey.append(bar(true, 5, 45), Object.assign(document.createElement("span"), { textContent: "Snow" }));
+  legend.replaceChildren(rain, snowKey);
 
   const show = (k) => {
     if (!layers.length) return;
@@ -167,8 +174,12 @@ export function radar(card, { lat, lon, time, miles = false }) {
     layers.forEach((l, j) => l.setOpacity(j === i ? SHOW : 0));
     const f = frames[i], mins = Math.round((f.t - Date.now()) / 60e3);
     slider.value = String(i);
-    slider.style.setProperty("--pct", `${(i / Math.max(1, layers.length - 1)) * 100}%`);
-    slider.setAttribute("aria-valuetext", label.textContent = f.kind === "model" ? `${time(f.t)} · in ${Math.max(0, mins)} min · forecast` : i === nowAt ? `${time(f.t)} · latest radar` : `${time(f.t)} · ${ago(-mins)}`);
+    slider.style.setProperty("--f", String(i / Math.max(1, layers.length - 1)));
+    const when = f.kind === "model" ? `in ${Math.max(0, mins)} min · forecast` : i === nowAt ? "latest radar" : ago(-mins);
+    const b = document.createElement("b"), rel = document.createElement("span");
+    b.textContent = time(f.t); rel.textContent = ` · ${when}`; rel.className = f.kind === "model" ? "rt-rel ahead" : "rt-rel";
+    label.replaceChildren(b, rel);
+    slider.setAttribute("aria-valuetext", `${time(f.t)} · ${when}`);
     chip.textContent = f.kind === "model" ? "Forecast" : "Radar";
     chip.dataset.kind = f.kind;
     if (box) box.setStyle({ opacity: f.kind === "model" ? 0.45 : 0 });
@@ -184,7 +195,7 @@ export function radar(card, { lat, lon, time, miles = false }) {
     scale.replaceChildren();
     if (frames.length < 2) return;
     const at = (k) => `${(k / (frames.length - 1)) * 100}%`, mark = (k, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = at(k); scale.append(s); };
-    const fut = document.createElement("i"); fut.className = "rs-future"; fut.style.left = at(nowAt); fut.style.right = "0"; scale.append(fut);
+    slider.style.setProperty("--nowf", String(nowAt / (frames.length - 1)));
     const span = (t) => { const m = Math.round(Math.abs(t - Date.now()) / 60e3); return m >= 90 ? `${Math.round(m / 60)} h` : `${Math.round(m / 10) * 10} min`; };
     mark(0, `${span(frames[0].t)} ago`, "rs-l rs-start");
     mark(nowAt, "Now", "rs-l rs-now");
@@ -228,7 +239,7 @@ export function radar(card, { lat, lon, time, miles = false }) {
     if (box) map.removeLayer(box);
     box = model ? L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map) : null;
     status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model ? "The next two hours aren't available right now: showing the radar." : drift
-      ? "Up to now: radar, every 10 minutes. After now: the latest radar carried on along its own track, fading the further ahead (rain can grow or die out on the way)." : "Up to now: radar, every 10 minutes. After now: the weather models' rain, every 15 minutes, inside the dashed box.";
+      ? "Ahead of now: the latest radar carried along its track, less certain the further it goes." : "Ahead of now: the weather models' rain, inside the dashed box.";
     slider.max = String(frames.length - 1);
     fetched = Date.now();
     drawScale();
