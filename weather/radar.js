@@ -86,7 +86,7 @@ function work() {
   const until = performance.now() + 12;
   while (jobs.length && performance.now() < until) {
     const k = Math.max(0, jobs.findIndex((j) => j.shown()));
-    jobs.splice(k, 1)[0].run();
+    try { jobs.splice(k, 1)[0].run(); } catch (_) { /* one tile's trouble mustn't stop the rest */ }
   }
   working = jobs.length > 0;
   if (working) setTimeout(work, 0);
@@ -108,6 +108,7 @@ function smoothRadar(L, base, look, opts) {
       Promise.all(need.map(([dx, dy]) => tileCodes(url(px + dx, py + dy)))).then((got) => queue({
         shown: () => this.options.opacity > 0,
         run: () => {
+          if (!this._map) return;          // (its frame was replaced: the radar reloaded)
           const own = got[0], next = new Map(need.map(([dx, dy], i) => [dx * 3 + dy, got[i]]));
           // (gone already, scrolled away; or nothing to draw)
           if (own && tile.isConnected) {

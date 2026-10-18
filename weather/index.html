@@ -22,10 +22,11 @@
 <body data-sky="cloudy-day">
   <div class="sky" aria-hidden="true"><div class="sky-fx"></div></div>
 
+  <div class="page">
   <header class="top">
     <button class="place" id="place-btn" type="button" aria-haspopup="dialog" aria-controls="places">
       <span class="place-name" id="place-name">Weather</span>
-      <span class="place-sub" id="place-sub"></span>
+      <span class="place-line"><span class="place-sub" id="place-sub"></span><span class="place-now" id="place-now" aria-hidden="true"></span></span>
     </button>
     <div class="top-actions">
       <button class="icon-btn" id="locate-btn" type="button" aria-label="Use my location" title="Use my location"></button>
@@ -37,6 +38,7 @@
     <div class="col col-a">
       <section class="hero" aria-labelledby="now-temp">
         <h1 class="sr-only">Weather for <span id="sr-place">your place</span></h1>
+        <div class="dots" id="dots" hidden aria-hidden="true"></div>
         <div class="hero-row">
           <div class="hero-temp" id="now-temp">–</div>
           <div class="hero-icon" id="now-icon"></div>
@@ -143,6 +145,7 @@
     <p class="foot-refresh"><button class="link" id="refresh-btn" type="button">Refresh</button> · <span id="updated"></span></p>
     <p>Forecasts by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (ECMWF, Met Office, NOAA, DWD, Météo-France, ECCC; CC BY 4.0), climate from ERA5 (Copernicus), place names by <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a>, radar by <a href="https://www.rainviewer.com/" rel="noopener">RainViewer</a> over <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a>, observations from the <a href="https://aviationweather.gov/" rel="noopener">Aviation Weather Center</a>. Insights are worked out on your phone; your places stay on it.</p>
   </div></footer>
+  </div>
 
   <dialog class="sheet" id="places" aria-labelledby="places-title">
     <div class="sheet-head">

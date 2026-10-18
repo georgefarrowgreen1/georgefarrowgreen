@@ -149,8 +149,13 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
 .place { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
 .place-name { font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
-.place-sub { font-size: 12px; color: var(--text-3); line-height: 1.2; }
-.place-sub:empty { display: none; }
+/* the line under the name: where it is, and once the big temperature has scrolled away, the temperature and sky
+   (crossfading with the scroll, as iOS Weather's large title collapses) */
+.place-line { display: grid; font-size: 12px; line-height: 1.2; color: var(--text-3); }
+.place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.2s; }
+.place-sub { opacity: calc(1 - var(--cs, 0)); }
+.place-now { opacity: var(--cs, 0); color: var(--text-2); font-weight: 600; }
+.place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
 .top-actions { display: flex; gap: 10px; }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
 .icon-btn .g { position: relative; z-index: 3; }
@@ -167,7 +172,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 }
 
 /* ---------- now ---------- */
-.hero { padding: 20px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); }
+.hero { padding: 20px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); transform-origin: 0 0;
+  opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
 .hero-row { display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
 .hero-icon .wi { width: 78px; height: 78px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22)); }
@@ -201,7 +207,24 @@ main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height
    off it can leave it unpainted; backwards fill, so nothing's left behind) */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
-@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero { animation: none; } }
+/* swiping between places: the hero follows the finger, springs back, or the next place slides in */
+.hero { touch-action: pan-y; transition: translate 0.45s var(--spring); }
+.hero.swiping { transition: none; }
+main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) backwards; }
+@keyframes swap-in { from { translate: var(--from-x, 60px) 0; opacity: 0; } }
+/* a new temperature rolls in */
+.hero-temp.roll-up { animation: roll-up 0.6s var(--spring); }
+.hero-temp.roll-down { animation: roll-down 0.6s var(--spring); }
+@keyframes roll-up { from { transform: translateY(0.28em); opacity: 0; filter: blur(6px); } }
+@keyframes roll-down { from { transform: translateY(-0.28em); opacity: 0; filter: blur(6px); } }
+/* which place, of the saved ones (an arrow for My Location) */
+.dots { display: flex; gap: 7px; align-items: center; margin: 0 0 6px 2px; height: 10px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.35); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.dots i.on { background: #fff; transform: scale(1.15); }
+.dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
+.dots i.gps.on { color: #fff; }
+.dots i svg { display: block; }
+@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, main:not([data-empty]) .hero.swap-in, .hero-temp.roll-up, .hero-temp.roll-down, .seg.moving::before { animation: none; } .hero { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .sk i, main[data-empty="loading"] .hero-temp { animation: none; } }
 
 /* ---------- cards ---------- */
@@ -220,6 +243,9 @@ main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
   transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform 0.55s var(--spring);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.16));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
+/* moving, the thumb stretches like a drop of glass, then settles */
+.seg.moving::before { animation: seg-stretch 0.55s ease-out; }
+@keyframes seg-stretch { 35% { scale: 1.16 0.9; } 70% { scale: 0.97 1.03; } }
 .seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 34px; }
 .seg button[aria-selected="true"] { color: #fff; }
 .seg button:active { transform: scale(0.94); }
@@ -378,11 +404,21 @@ dialog.sheet { position: fixed; --tint: rgba(26, 34, 52, 0.74); padding: 0; colo
   border-radius: 34px; margin: auto 8px 8px; overflow: hidden;
   -webkit-backdrop-filter: blur(34px) saturate(190%); backdrop-filter: blur(34px) saturate(190%);
   box-shadow: var(--edge), 0 30px 80px -10px rgba(0, 0, 0, 0.55); }
-dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-up 0.55s var(--spring); }
-dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.32); }
+dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-up 0.55s var(--spring); transition: transform 0.5s var(--spring); }
+dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.38); }
+/* closing: it slides away (from wherever a finger left it); dragged, it follows the finger */
+dialog.sheet.closing { animation: sheet-down 0.32s cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+dialog.sheet.dragging { transition: none; }
+@keyframes sheet-down { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(105%); } }
+@media (min-width: 700px) { @keyframes sheet-down { to { transform: translateY(40px) scale(0.96); opacity: 0; } } }
+/* while a sheet is up, the page behind steps back */
+.page { transition: transform 0.55s var(--spring); }
+body.sheet-up .page { transform: translateY(calc(var(--recede, 1) * 10px)) scale(calc(1 - var(--recede, 1) * 0.06)); }
+body.sheet-drag .page { transition: none; }
+@media (min-width: 700px) { body.sheet-up .page { transform: scale(calc(1 - var(--recede, 1) * 0.025)); } }
 @keyframes sheet-up { from { transform: translateY(70px) scale(0.97); opacity: 0; } }
 @media (min-width: 700px) { dialog.sheet { margin: auto; max-height: 84vh; } }
-@media (prefers-reduced-motion: reduce) { dialog.sheet[open] { animation: none; } }
+@media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.closing { animation: none; } .page, body.sheet-up .page { transition: none; transform: none; } }
 /* the header stays put; what scrolls up under it fades away (the scroll edge) */
 .sheet-head { position: relative; z-index: 4; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 4px; }
 .sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px calc(20px + env(safe-area-inset-bottom));

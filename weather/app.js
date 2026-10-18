@@ -144,6 +144,47 @@ function showPlace() {
   $("sr-place").textContent = p ? p.name : "your place";
   $("place-sub").textContent = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
   document.title = p ? `${p.name} · Weather` : "Weather";
+  drawDots();
+}
+// the saved places as dots above the temperature, the one showing lit (an arrow for My Location)
+function drawDots() {
+  const box = $("dots"), n = S.places.length;
+  box.hidden = n < 2;
+  if (n < 2) return;
+  box.replaceChildren(...S.places.map((p, i) => h("i", { class: `${i === S.cur ? "on" : ""}${p.gps ? " gps" : ""}`, svg: p.gps ? glyph("here", 9) : null })));
+}
+// a swipe across the temperature goes to the next or previous saved place, as in iOS Weather (the places
+// sheet is still the way to choose one; this is the shortcut)
+function placeSwipe() {
+  const el = document.querySelector(".hero");
+  let x0 = null, y0 = 0, dx = 0, axis = null, t0 = 0;
+  el.addEventListener("touchstart", (e) => {
+    if (S.places.length < 2 || e.touches.length > 1) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; axis = null; t0 = performance.now();
+  }, { passive: true });
+  el.addEventListener("touchmove", (e) => {
+    if (x0 == null) return;
+    const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+    if (!axis && Math.hypot(mx, my) > 10) axis = Math.abs(mx) > Math.abs(my) * 1.2 ? "x" : "y";
+    if (axis !== "x") return;
+    e.preventDefault(); dx = mx;
+    const edge = (dx > 0 && S.cur === 0) || (dx < 0 && S.cur === S.places.length - 1);
+    el.classList.add("swiping"); el.style.translate = `${dx * (edge ? 0.22 : 0.85)}px 0`;
+  }, { passive: false });
+  const end = () => {
+    if (x0 == null) return;
+    x0 = null;
+    if (axis !== "x") return;
+    el.classList.remove("swiping"); el.style.translate = "";
+    const v = Math.abs(dx) / Math.max(1, performance.now() - t0), dir = dx < 0 ? 1 : -1, next = S.cur + dir;
+    if ((Math.abs(dx) > 70 || (Math.abs(dx) > 25 && v > 0.5)) && next >= 0 && next < S.places.length) {
+      S.cur = next; savePlaces();
+      el.style.setProperty("--from-x", `${dir * 70}px`);
+      el.classList.remove("swap-in"); void el.offsetWidth; el.classList.add("swap-in");
+      go();
+    }
+  };
+  el.addEventListener("touchend", end); el.addEventListener("touchcancel", end);
 }
 function render() {
   showPlace();
@@ -205,9 +246,17 @@ function sky(wx, now) {
 
 function hero(wx, now) {
   const f = S.f, c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now);
-  $("now-temp").textContent = f.temp(c.temp);
+  // a new temperature rolls in, up if it's warmer, down if it's cooler (as iOS's numbers do)
+  const tEl = $("now-temp"), t = f.temp(c.temp);
+  if (tEl.textContent !== t) {
+    const warmer = parseFloat(t) >= parseFloat(tEl.textContent);
+    tEl.textContent = t;
+    if (tEl.dataset.shown && !calm.matches) { tEl.classList.remove("roll-up", "roll-down"); void tEl.offsetWidth; tEl.classList.add(warmer ? "roll-up" : "roll-down"); }
+    tEl.dataset.shown = "1";
+  }
   $("now-icon").innerHTML = weatherIcon(iconOf(c.code, c.isDay), 76);
   $("now-cond").textContent = label(c.code, c.isDay);
+  $("place-now").textContent = `${f.temp(c.temp)} · ${label(c.code, c.isDay)}`;
   $("now-hl").textContent = d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}`;
   $("brief").textContent = I.headline(wx, now, f);
 }
@@ -528,7 +577,7 @@ function openDay(key) {
   }
   body.replaceChildren(...kids.filter(Boolean));
   const dlg = $("day");
-  if (!dlg.open) dlg.showModal();
+  openSheet(dlg);
   dlg.querySelector(".sheet-body").scrollTop = 0;
   if (hrs.length > 3) requestAnimationFrame(() => {
     drawHourChart(wx, now, hrs, tChart, null, "temp", d.key === keyOf(now));
@@ -560,7 +609,7 @@ function drawSaved() {
   $("saved").replaceChildren(...S.places.map((p, i) => {
     const k = peek(p);
     return h("li", {},
-      h("button", { class: "row-btn", type: "button", "aria-current": i === S.cur ? "true" : "false", onclick: () => { S.cur = i; savePlaces(); $("places").close(); go(); } },
+      h("button", { class: "row-btn", type: "button", "aria-current": i === S.cur ? "true" : "false", onclick: () => { S.cur = i; savePlaces(); closeSheet($("places")); go(); } },
         k ? h("span", { svg: weatherIcon(iconOf(k.code, k.isDay), 30) }) : null,
         h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.gps && p.name !== "My Location" ? "My Location" : p.region || "")),
         k ? h("span", { class: "rb-temp" }, f.temp(k.temp)) : null),
@@ -579,7 +628,7 @@ function onSearch() {
     try {
       const list = await searchPlaces(q);
       if (my !== searchSeq) return;
-      out.replaceChildren(...(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => { addPlace(p); $("search").value = ""; out.replaceChildren(); $("places").close(); go(); } },
+      out.replaceChildren(...(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => { addPlace(p); $("search").value = ""; out.replaceChildren(); closeSheet($("places")); go(); } },
         h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.region))))) : [h("li", { class: "muted small" }, "No places found.")]));
     } catch (_) { if (my === searchSeq) out.replaceChildren(h("li", { class: "muted small" }, "Search isn't available right now.")); }
   }, 280);
@@ -720,20 +769,77 @@ function addAct() {
   if (id === "custom") editAct(S.settings.activities.length - 1);
 }
 
+/* ---------- sheets ---------- */
+// They rise over the page, which steps back; they slide away when closed (×, a tap outside, Escape),
+// or when swiped down. With Reduce Motion, they simply come and go.
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
+function openSheet(d) {
+  if (!d.open) d.showModal();
+  d.classList.remove("closing"); d.style.transform = "";
+  // (stepping back about the top of what's on screen, not the middle of the whole long page)
+  document.querySelector(".page").style.transformOrigin = `50% ${scrollY}px`;
+  document.body.style.setProperty("--recede", "1");
+  document.body.classList.add("sheet-up");
+}
+function closeSheet(d, from = 0) {
+  if (!d.open || d.classList.contains("closing")) return;
+  if (calm.matches) { d.close(); return; }
+  d.style.setProperty("--from", `${from}px`); d.style.transform = "";
+  d.classList.add("closing");
+  document.body.style.setProperty("--recede", "0");
+  let gone = false;
+  const done = () => { if (gone) return; gone = true; d.classList.remove("closing"); d.close(); };
+  d.addEventListener("animationend", done, { once: true });
+  setTimeout(done, 450);
+}
+function sheetGestures(d) {
+  d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
+  d.addEventListener("close", () => { if (!document.querySelector("dialog[open]")) document.body.classList.remove("sheet-up", "sheet-drag"); });
+  d.addEventListener("click", (e) => { if (e.target === d) closeSheet(d); });
+  // swipe down: from the grabber, or from the content once it's scrolled to the top
+  let y0 = null, dy = 0, t0 = 0, head = false;
+  const body = d.querySelector(".sheet-body");
+  d.addEventListener("touchstart", (e) => {
+    head = !!e.target.closest(".sheet-head");
+    if (e.touches.length > 1 || e.target.closest("input, select, textarea, .leaflet-container") || (!head && body.scrollTop > 0)) { y0 = null; return; }
+    y0 = e.touches[0].clientY; dy = 0; t0 = performance.now();
+  }, { passive: true });
+  d.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0 || (!head && body.scrollTop > 0)) { if (!d.classList.contains("dragging")) y0 = null; else d.style.transform = ""; return; }
+    e.preventDefault();
+    d.classList.add("dragging"); document.body.classList.add("sheet-drag");
+    const pull = dy < 40 ? dy : 40 + (dy - 40) * 0.9;
+    d.style.transform = `translateY(${pull}px)`;
+    document.body.style.setProperty("--recede", String(Math.max(0, 1 - pull / 420)));
+  }, { passive: false });
+  const end = () => {
+    if (y0 == null) return;
+    const v = dy / Math.max(1, performance.now() - t0), dragged = d.classList.contains("dragging");
+    y0 = null; d.classList.remove("dragging"); document.body.classList.remove("sheet-drag");
+    if (!dragged) return;
+    if (dy > 120 || (dy > 30 && v > 0.55)) closeSheet(d, dy);
+    else { d.style.transform = ""; document.body.style.setProperty("--recede", "1"); }
+  };
+  d.addEventListener("touchend", end); d.addEventListener("touchcancel", end);
+}
+
 /* ---------- wiring ---------- */
 function wire() {
   $("locate-btn").innerHTML = glyph("locate", 20);
   $("settings-btn").innerHTML = glyph("gear", 20);
-  for (const b of document.querySelectorAll("[data-close]")) { b.innerHTML = glyph("close", 18); b.addEventListener("click", () => b.closest("dialog").close()); }
+  for (const b of document.querySelectorAll("[data-close]")) { b.innerHTML = glyph("close", 18); b.addEventListener("click", () => closeSheet(b.closest("dialog"))); }
   for (const s of document.querySelectorAll(".ct-icon[data-g]")) s.innerHTML = glyph(s.dataset.g, 15);
-  // a tap on the dimmed backdrop closes a sheet
-  for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
-  $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); $("places").showModal(); });
-  $("use-location").addEventListener("click", () => { $("places").close(); locate(); });
+  // each sheet: closing by Escape or a tap outside, and swiping down
+  for (const d of document.querySelectorAll("dialog.sheet")) sheetGestures(d);
+  placeSwipe();
+  $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });
+  $("use-location").addEventListener("click", () => { closeSheet($("places")); locate(); });
   $("search").addEventListener("input", onSearch);
   $("search-form").addEventListener("submit", (e) => { e.preventDefault(); onSearch(); });
   $("locate-btn").addEventListener("click", () => locate());
-  $("settings-btn").addEventListener("click", () => { drawSettings(); $("settings").showModal(); });
+  $("settings-btn").addEventListener("click", () => { drawSettings(); openSheet($("settings")); });
   $("settings-form").addEventListener("change", readSettings);
   for (const k of ["rain", "brief", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
   $("notify-here").addEventListener("click", () => { S.settings.notify.place = hereForNotify(); saveSettings(); $("notify-status").textContent = "Saving…"; syncNotify().then(() => { $("notify-status").textContent = "Moved to this place."; }, (e) => { $("notify-status").textContent = `Couldn't save that just now (${e.message}).`; }); drawNotify(true); });
@@ -748,6 +854,7 @@ function wire() {
     const tabs = [...$("hourly-seg").children];
     for (const x of tabs) x.setAttribute("aria-selected", String(x === b));
     $("hourly-seg").style.setProperty("--seg-i", String(tabs.indexOf(b)));
+    $("hourly-seg").classList.remove("moving"); void $("hourly-seg").offsetWidth; $("hourly-seg").classList.add("moving");
     if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), $("hourly-note"), S.mode, true); }
   });
   $("hourly-seg").addEventListener("keydown", (e) => {
@@ -758,8 +865,17 @@ function wire() {
   // on a wide screen the climate card joins the left column, under the 16 days, so the columns balance
   const wide = matchMedia("(min-width: 980px)"), dock = () => (wide.matches ? $("daily") : $("windows")).after($("climate"));
   dock(); wide.addEventListener("change", dock);
-  const top = document.querySelector(".top");
-  addEventListener("scroll", () => top.classList.toggle("scrolled", scrollY > 8), { passive: true });
+  // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
+  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero");
+  let ticking = 0;
+  const onScroll = () => {
+    ticking = 0;
+    const c = Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = Math.min(1, Math.max(0, (c - 0.55) / 0.35));
+    heroEl.style.setProperty("--c", c.toFixed(3)); top.style.setProperty("--cs", (cs * cs * (3 - 2 * cs)).toFixed(3));
+    top.classList.toggle("scrolled", scrollY > 8);
+  };
+  addEventListener("scroll", () => { ticking ||= requestAnimationFrame(onScroll); }, { passive: true });
+  onScroll();
   // the glass: Safari only shows a press (:active) once the page listens for touches, and with a mouse
   // a soft light follows the pointer across the panels
   addEventListener("touchstart", () => {}, { passive: true });
