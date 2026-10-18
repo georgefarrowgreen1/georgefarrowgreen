@@ -37,8 +37,9 @@ export function serveWeather(res, path) {
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();
   const out = new Response(res.body, res);
   for (const [k, v] of Object.entries(WX_SECURITY)) out.headers.set(k, v);
-  // small files, always checked for a newer copy (the browser keeps its copy until one appears)
-  if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "no-cache");
+  // small files, always checked for a newer copy (the browser keeps its copy until one appears); private, so
+  // Cloudflare passes them through rather than keeping them and telling browsers to keep them for hours
+  if (res.status === 200 && /\.(html|js|css|webmanifest)$|\/$/.test(path)) out.headers.set("Cache-Control", "private, no-cache");
   if (res.status === 200 && /\.(png|svg)$/.test(path)) out.headers.set("Cache-Control", "public, max-age=86400");
   return out;
 }

@@ -79,7 +79,7 @@ async function start() {
     // a new version: its worker arrives with every file fresh, so if this page has only just opened, start again on it
     const had = !!navigator.serviceWorker.controller, opened = Date.now();
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && Date.now() - opened < 20e3) location.reload(); });
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch(() => {});
   }
 }
 function addPlace(p, makeCurrent = true) {
