@@ -1,19 +1,59 @@
 // Weather (weather/, served at weather.localhost here): the app opens on a place, explains the
 // weather in words, warns about what matters, compares the models, puts the day against thirty
-// years of climate, and answers only at its own address. Open-Meteo is stood in for by made-up
-// forecasts for the time the test runs (mocks/wxappdata.mjs).
+// years of climate, shows the radar, scores each model against the nearest airport's reports and
+// tunes the forecast with it, plans your own activities, sends rain alerts and a morning briefing
+// (pushed, encrypted, and read back here), and answers only at its own address. Open-Meteo, the
+// radar, the map and the airport reports are stood in for (mocks/wxappdata.mjs, and below).
 import { chromium } from 'playwright';
 import { readFileSync } from 'fs';
 import http from 'http';
 import * as F from './mocks/wxappdata.mjs';
 const [,, S, out] = process.argv;
+const H = 3600e3, D = 864e5;
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+// the same day every day at the airport: 5° at 3am, 15° at 3pm
+const curve = (h) => 10 + 5 * Math.sin(((h - 9) / 24) * 2 * Math.PI);
+// what each model said a day ahead: ECMWF half a degree warm, GFS two degrees warm, GEM two and a half cold…
+const LEAN = { ecmwf_ifs025: 0.5, ukmo_seamless: -0.8, gfs_seamless: 2, icon_seamless: -1.5, meteofrance_seamless: 1, gem_seamless: -2.5 };
+function previousRuns(url) {
+  const back = Number(new URL(url).searchParams.get('past_days') || 10), start = Math.floor(Date.now() / D) * D - back * D, h = { time: [] };
+  for (let t = start; t < start + (back + 1) * D; t += H) h.time.push(new Date(t).toISOString().slice(0, 16));
+  for (const [id, lean] of Object.entries(LEAN)) {
+    h[`temperature_2m_previous_day1_${id}`] = h.time.map((x) => curve(+x.slice(11, 13)) + lean);
+    h[`temperature_2m_previous_day3_${id}`] = h.time.map((x) => curve(+x.slice(11, 13)) + lean * 1.5);
+  }
+  return { latitude: 51.5, longitude: 0.05, timezone: 'UTC', utc_offset_seconds: 0, hourly: h };
+}
+// the stand-in for Open-Meteo (the server's notifications) and the Aviation Weather Center (its airport reports)
+let wxScenario = { rainIn: 30 };
+http.createServer((req, res) => {
+  const u = new URL(req.url, 'http://x'), send = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
+  if (u.pathname === '/v1/forecast') { const n = (u.searchParams.get('latitude') || '').split(',').length, one = F.forecast(Date.now(), wxScenario); return send(n > 1 ? Array(n).fill(one) : one); }
+  if (u.pathname === '/api/data/stationinfo') return send([{ icaoId: 'EGLC', site: 'London City Arpt', lat: 51.505, lon: 0.055, siteType: ['METAR', 'TAF'] }, { icaoId: 'EGKB', site: 'London/Biggin Hill Arpt', lat: 51.33, lon: 0.033, siteType: ['METAR'] }]);
+  if (u.pathname === '/api/data/metar') {
+    const reports = [], t0 = Math.floor(Date.now() / H) * H;
+    for (let k = 0; k < 9 * 24; k++) { const t = t0 - k * H; reports.push({ icaoId: 'EGLC', obsTime: t / 1000, temp: Math.round(curve(new Date(t).getUTCHours())) }); }
+    return send(reports);
+  }
+  res.writeHead(404); res.end();
+}).listen(8794, '127.0.0.1');
+const tiles = { radar: 0, map: 0 };
 const HOST = 'http://weather.localhost:8788', SITE = 'http://localhost:8788';
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
 const now = Date.now();
-async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon=-0.1276&name=London` } = {}) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale, serviceWorkers: 'block', bypassCSP: !!sc.axe, isMobile: true, hasTouch: true });
+async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon=-0.1276&name=London`, push = null } = {}) {
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale, serviceWorkers: push ? 'allow' : 'block', bypassCSP: !!sc.axe, isMobile: true, hasTouch: true });
+  if (push) {
+    await ctx.grantPermissions(['notifications'], { origin: HOST });
+    // headless Chromium has no push service: a subscription with keys this test holds (as InFlight's tests do)
+    await ctx.addInitScript(({ endpoint, p256dh, auth }) => {
+      const make = () => ({ endpoint, toJSON: () => ({ endpoint, keys: { p256dh, auth } }), unsubscribe: async () => { localStorage.removeItem('fakesub'); return true; } });
+      PushManager.prototype.getSubscription = async function () { return localStorage.getItem('fakesub') ? make() : null; };
+      PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(); };
+    }, push);
+  }
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
@@ -24,13 +64,19 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('archive-api')) return j(F.archive(now));
     if (u.includes('geocoding')) return j({ results: [{ name: 'Edinburgh', latitude: 55.95, longitude: -3.19, country: 'United Kingdom', admin1: 'Scotland', country_code: 'GB' }] });
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
+    if (u.includes('previous-runs-api')) return j(previousRuns(u));
     if (u.includes('models=')) return j(F.models(now));
     return j(F.forecast(now, sc));
   });
+  // the radar's frames and tiles, and the map's
+  await p.route(/api\.rainviewer\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify({ host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }) }));
+  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { tiles[/rainviewer/.test(r.request().url()) ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
   const res = await p.goto(url);
   await p.waitForSelector('.day-row', { timeout: 20000 });
   // everything in: the last to arrive is the thirty years of climate
   await p.waitForFunction(() => /warmer than/.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
+  await p.waitForSelector('#accuracy-body table', { timeout: 20000 });
   await p.waitForTimeout(300);
   return { ctx, p, res };
 }
@@ -59,10 +105,42 @@ await p.screenshot({ path: `${out}/wx-full.png`, fullPage: true });
 // a day, in full: the six models side by side
 await p.locator('.day-row').nth(4).evaluate((e) => e.click());      // (the page redraws as the last of the forecast arrives)
 await p.waitForSelector('#day[open]');
-ok((await p.locator('#day table.models tr').count()) === 7, 'the day compares six models');
+ok((await p.locator('#day table.models tr').count()) === 8, 'the day compares six models, and the tuned blend', String(await p.locator('#day table.models tr').count()));
+ok(/^Tuned for here from six models/.test(await p.textContent('#day .tuned-note')), 'and says it\'s tuned');
 ok(/Low/.test(await p.textContent('#day .conf')), 'and says how sure it is', await p.textContent('#day .conf'));
 await p.screenshot({ path: `${out}/wx-day.png` });
 await p.keyboard.press('Escape');
+// the forecast's track record here, and tuned by it
+const acc = await p.locator('#accuracy-body tr').allTextContents();
+ok(acc.length === 7 && /^ECMWFMost accurate±0\.5°/.test(acc[1]) && /GEM.*2\.5° cold/.test(acc[6]), 'each model scored against the nearest airport, best first', acc.slice(1, 3).join(' | '));
+ok(/London City Airport \(\d+ km away\)/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is');
+ok(/tuned to how each model has done at London City Airport/.test(await p.textContent('#daily-note')), 'the 16 days say they\'re tuned');
+ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says which model to trust');
+// the radar
+await p.locator('#radar').scrollIntoViewIfNeeded();
+await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
+await p.waitForFunction(() => document.querySelector('#radar .radar-slider').max === '12', null, { timeout: 15000 });
+await p.waitForTimeout(800);
+ok(/latest|min ago/.test(await p.textContent('#radar .radar-time')) && tiles.radar > 0 && tiles.map > 0, 'the radar: 13 frames over the map', `${tiles.radar} radar tiles, ${tiles.map} map tiles`);
+const was = await p.getAttribute('#radar .radar-play', 'data-on');
+await p.click('#radar .radar-play');
+ok(was === '1' && (await p.getAttribute('#radar .radar-play', 'data-on')) === '0', 'it plays by itself, and pauses');
+await p.click('#radar .radar-full');
+ok(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big')), 'full screen');
+await p.screenshot({ path: `${out}/wx-radar.png` });
+await p.keyboard.press('Escape');
+ok(!(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big'))), 'and back');
+// your own activities
+await p.click('#settings-btn');
+await p.selectOption('#act-add', 'golf');
+ok((await p.locator('#acts-list .act').count()) === 4, 'golf added to the list');
+await p.locator('#acts-list .act').first().locator('button').click();
+await p.fill('.act-edit input[name="tmax"]', '20');
+await p.click('.act-edit .pill-btn');
+ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()), 'a run\'s limits changed', await p.locator('#acts-list .act-lim').first().textContent());
+await p.screenshot({ path: `${out}/wx-settings.png` });
+await p.keyboard.press('Escape');
+ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf'), 'and golf has its best time');
 // units, kept
 await p.click('#settings-btn'); await p.click('input[name="temp"][value="f"]'); await p.keyboard.press('Escape');
 ok(/^\d+°$/.test(await p.textContent('#now-temp')) && Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'switches to °F');
@@ -95,6 +173,48 @@ ok((await get(W, '/api/content')).status === 404 && (await get(W, '/pigeon/')).s
 ok((await get(W, '/weather/app.js')).status === 301 && (await get(L, '/weather')).status === 301 && (await get(L, '/weather/')).status === 200, 'the app\'s old and preview addresses');
 const where = JSON.parse((await get(W, '/api/weather/where')).body || '{}');
 ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you are, from the connection', JSON.stringify(where));
+
+// rain alerts and the morning briefing: turned on, sent by the tick, encrypted to the phone, read back here
+{
+  const wc = globalThis.crypto.subtle, b64u = (u) => Buffer.from(u).toString('base64url'), te = new TextEncoder();
+  const kp = await wc.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const pub = new Uint8Array(await wc.exportKey('raw', kp.publicKey)), authK = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/weather-test-device';
+  const hkdf = async (salt, ikm, info, len) => new Uint8Array(await wc.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, await wc.importKey('raw', ikm, 'HKDF', false, ['deriveBits']), len * 8));
+  async function decrypt(body) {
+    const buf = new Uint8Array(Buffer.from(body, 'base64')), salt = buf.slice(0, 16), idlen = buf[20], asPub = buf.slice(21, 21 + idlen), ct = buf.slice(21 + idlen);
+    const shared = new Uint8Array(await wc.deriveBits({ name: 'ECDH', public: await wc.importKey('raw', asPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []) }, kp.privateKey, 256));
+    const ikm = await hkdf(authK, shared, new Uint8Array([...te.encode('WebPush: info\0'), ...pub, ...asPub]), 32);
+    const cek = await hkdf(salt, ikm, te.encode('Content-Encoding: aes128gcm\0'), 16), nonce = await hkdf(salt, ikm, te.encode('Content-Encoding: nonce\0'), 12);
+    const pt = new Uint8Array(await wc.decrypt({ name: 'AES-GCM', iv: nonce }, await wc.importKey('raw', cek, 'AES-GCM', false, ['decrypt']), ct));
+    let end = pt.length - 1; while (end > 0 && pt[end] === 0) end--;
+    return JSON.parse(new TextDecoder().decode(pt.slice(0, end)));
+  }
+  const mine = async () => Promise.all(readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((x) => x.headers['x-endpoint'] === endpoint).map((x) => decrypt(x.body)));
+  const tick = () => new Promise((done, fail) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (c) => (t += c)); res.on('end', () => done({ status: res.statusCode, ...JSON.parse(t || '{}') })); }); r.on('error', fail); r.end(); });
+  const { ctx, p } = await open({}, { push: { endpoint, p256dh: b64u(pub), auth: b64u(authK) } });
+  await p.evaluate(() => navigator.serviceWorker.ready);
+  await p.click('#settings-btn');
+  const at = new Date(Date.now() - 5 * 60e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
+  await p.fill('input[name="briefAt"]', hhmm);
+  await p.check('input[name="brief"]');
+  await p.check('input[name="rain"]');
+  await p.waitForFunction(() => /^On: rain alerts and a briefing/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
+  ok(/For London\./.test(await p.textContent('#notify-place')), 'notifications on, for London', await p.textContent('#notify-status'));
+  const quiet = (() => { const h = new Date().getUTCHours(); return h >= 22 || h < 7; })();
+  const t1 = await tick();
+  ok(t1.status === 200 && t1.subs === 1 && t1.brief === 1 && t1.rain === (quiet ? 0 : 1), 'the tick sends what\'s due', JSON.stringify(t1));
+  const got = await mine();
+  const brief = got.find((n) => n.tag === 'brief'), rain = got.find((n) => n.tag === 'rain');
+  ok(brief && /^London · \d+° \/ \d+°$/.test(brief.title) && /on the way from about/.test(brief.body), 'the briefing, decrypted', brief && `${brief.title} — ${brief.body}`);
+  if (!quiet) ok(rain && /^Rain in about \d+ min$/.test(rain.title) && /^London: Rain starting in about/.test(rain.body), 'the rain alert, decrypted', rain && `${rain.title} — ${rain.body}`);
+  const t2 = await tick();
+  ok(t2.rain === 0 && t2.brief === 0, 'and neither again straight away', JSON.stringify(t2));
+  await p.uncheck('input[name="rain"]'); await p.uncheck('input[name="brief"]');
+  await p.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
+  ok((await tick()).subs === 0, 'turned off: the server forgets the phone');
+  await ctx.close();
+}
 
 ok(!errs.length, 'no errors on the page', errs.join('; '));
 console.log(`FAILS ${fails}`);

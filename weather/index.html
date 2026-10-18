@@ -70,9 +70,24 @@
         <p class="chart-note" id="hourly-note"></p>
       </section>
 
+      <section class="card radar" id="radar" aria-labelledby="radar-title">
+        <div class="card-head">
+          <h2 class="card-title" id="radar-title"><span class="ct-icon" data-g="radar"></span>Rain radar</h2>
+          <button class="icon-btn small radar-full" type="button" aria-label="Full screen" data-on="0"></button>
+        </div>
+        <div class="radar-map" role="region" aria-label="Rain radar map"></div>
+        <div class="radar-bar">
+          <button class="icon-btn small radar-play" type="button" aria-label="Play" data-on="0"></button>
+          <input class="radar-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
+          <span class="radar-time" aria-live="off"></span>
+        </div>
+        <p class="chart-note radar-status">The last two hours of radar, every 10 minutes. Brighter is heavier. Where there's no radar network, the map stays clear.</p>
+      </section>
+
       <section class="card" id="daily" aria-labelledby="daily-title">
         <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
         <ol class="days" id="days"></ol>
+        <p class="chart-note" id="daily-note"></p>
       </section>
     </div>
 
@@ -85,6 +100,11 @@
       <section class="card" id="windows" aria-labelledby="windows-title">
         <h2 class="card-title" id="windows-title"><span class="ct-icon" data-g="star"></span>Best times</h2>
         <div class="win-grid" id="win-grid"></div>
+      </section>
+
+      <section class="card" id="accuracy" aria-labelledby="accuracy-title">
+        <h2 class="card-title" id="accuracy-title"><span class="ct-icon" data-g="target"></span>Forecast accuracy here</h2>
+        <div id="accuracy-body"><p class="muted small">Checking the forecasts against what actually happened…</p></div>
       </section>
 
       <section class="card" id="climate" aria-labelledby="climate-title">
@@ -101,7 +121,7 @@
 
   <footer class="foot"><div class="foot-in">
     <p><button class="link" id="refresh-btn" type="button">Refresh</button> · <span id="updated"></span></p>
-    <p>Forecasts by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (ECMWF, Met Office, NOAA, DWD, Météo-France, ECCC; CC BY 4.0), climate from ERA5 (Copernicus), place names by <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a>. Insights are worked out on your phone; your places stay on it.</p>
+    <p>Forecasts by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (ECMWF, Met Office, NOAA, DWD, Météo-France, ECCC; CC BY 4.0), climate from ERA5 (Copernicus), place names by <a href="https://www.bigdatacloud.com/" rel="noopener">BigDataCloud</a>, radar by <a href="https://www.rainviewer.com/" rel="noopener">RainViewer</a> over <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a>, observations from the <a href="https://aviationweather.gov/" rel="noopener">Aviation Weather Center</a>. Insights are worked out on your phone; your places stay on it.</p>
   </div></footer>
 
   <dialog class="sheet" id="places" aria-labelledby="places-title">
@@ -139,6 +159,23 @@
       </fieldset>
       <fieldset class="opt"><legend>Clock</legend>
         <label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label>
+      </fieldset>
+      <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
+        <label class="switch"><input type="checkbox" name="rain" /> Rain alerts: a heads-up when rain is about to start (not overnight)</label>
+        <label class="switch"><input type="checkbox" name="brief" /> A morning briefing at <input type="time" name="briefAt" value="07:00" aria-label="Briefing time" /></label>
+        <p class="note" id="notify-place"></p>
+        <button class="pill-btn" type="button" id="notify-here" hidden>Use the place I'm looking at</button>
+        <p class="note" id="notify-status" role="status"></p>
+      </fieldset>
+      <fieldset class="opt"><legend>Forecast</legend>
+        <label class="switch"><input type="checkbox" name="tune" /> Tune highs and lows to how each model has done here</label>
+      </fieldset>
+      <fieldset class="opt acts" id="acts-set"><legend>Best times</legend>
+        <ul class="acts-list" id="acts-list"></ul>
+        <label class="acts-add">Add an activity <select id="act-add"><option value="">Choose…</option></select></label>
+        <label class="switch"><input type="checkbox" name="x_laundry" /> Drying washing outside</label>
+        <label class="switch"><input type="checkbox" name="x_stars" /> Stargazing</label>
+        <label class="switch"><input type="checkbox" name="x_sunset" /> Sunset and sunrise colour</label>
       </fieldset>
       <fieldset class="opt commute"><legend>Commute check</legend>
         <label class="switch"><input type="checkbox" name="commute" /> Tell me about my weekday commute</label>

@@ -12,26 +12,21 @@
 
 import { parseWall, keyOf, HOUR } from "./format.js";
 import { compactClimate, climateSpan } from "./climate.js";
+import { MODELS, shapePrevious, skillFrom, MIN_DAYS } from "./skill.js";
+export { MODELS };
 
 const API = {
   forecast: "https://api.open-meteo.com/v1/forecast",
   ensemble: "https://ensemble-api.open-meteo.com/v1/ensemble",
   air: "https://air-quality-api.open-meteo.com/v1/air-quality",
   archive: "https://archive-api.open-meteo.com/v1/archive",
+  previous: "https://previous-runs-api.open-meteo.com/v1/forecast",
   geocode: "https://geocoding-api.open-meteo.com/v1/search",
   reverse: "https://api.bigdatacloud.net/data/reverse-geocode-client",
 };
 const CURRENT = "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,visibility,uv_index";
 const HOURLY = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,rain,showers,snowfall,snow_depth,weather_code,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day,cape,lifted_index,freezing_level_height,vapour_pressure_deficit,sunshine_duration";
 const DAILY = "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,daylight_duration,sunshine_duration,uv_index_max,precipitation_sum,rain_sum,showers_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,shortwave_radiation_sum,et0_fao_evapotranspiration";
-export const MODELS = [
-  ["ecmwf_ifs025", "ECMWF", "Europe's model, usually the most accurate"],
-  ["ukmo_seamless", "Met Office", "The UK Met Office's global and UK models"],
-  ["gfs_seamless", "GFS", "NOAA's American model"],
-  ["icon_seamless", "ICON", "Germany's DWD model"],
-  ["meteofrance_seamless", "Météo-France", "France's ARPEGE and AROME models"],
-  ["gem_seamless", "GEM", "Environment Canada's model"],
-];
 const MODEL_DAILY = "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max,weather_code";
 
 /* ---------- shaping ---------- */
@@ -139,7 +134,9 @@ async function getJSON(url, ms = 12000, tries = 2) {
 }
 const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v != null)).toString();
 
-export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), current: CURRENT, minutely_15: "precipitation,weather_code", forecast_minutely_15: 16, hourly: HOURLY, daily: DAILY, past_days: 1, forecast_days: 16, timezone: "auto" })}`);
+// the forecast's question (the server asks the same one for notifications: functions/_wxpush.js); lat and lon may be lists
+export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: CURRENT, minutely_15: "precipitation,weather_code", forecast_minutely_15: 16, hourly: HOURLY, daily: DAILY, past_days: 1, forecast_days: days, timezone: "auto" });
+export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${forecastQuery(lat, lon)}`);
 export const fetchModels = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), models: MODELS.map((m) => m[0]).join(","), daily: MODEL_DAILY, forecast_days: 10, timezone: "auto" })}`);
 export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: "ecmwf_ifs025", hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 15000);
 export const fetchAir = (lat, lon) => getJSON(`${API.air}?${qs({ latitude: r4(lat), longitude: r4(lon), current: "european_aqi,us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide", hourly: "european_aqi,us_aqi,pm2_5,pm10,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen", forecast_days: 5, timezone: "auto" })}`);
@@ -189,6 +186,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
     wx.ensemble = raw.ensemble ? raw.ensemble.s || shapeEnsemble(raw.ensemble.j) : null;
     wx.air = raw.air ? shapeAir(raw.air.j) : null;
     wx.climate = climateFor(place);
+    wx.skill = skillKept(place);
     return wx;
   };
   if (raw.forecast) onUpdate(build(), { partial: true, stale: !fresh("forecast") });
@@ -212,6 +210,8 @@ export async function load(place, onUpdate, { force = false } = {}) {
   await extras;
   // the climate, once a year per place, in the background (it's a lot to ask for)
   loadClimate(place).then((c) => { if (c !== null && raw.forecast) onUpdate(build(), { partial: false, stale: false }); });
+  // how the models have done here, twice a day per place, in the background too
+  if (raw.forecast) loadSkill(place, raw.forecast.j.utc_offset_seconds || 0).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); });
   return build();
 }
 // keep only the newest few places' forecasts when the phone's storage fills
@@ -248,6 +248,34 @@ async function loadClimate(place) {
   } catch (_) {
     store.set(k, { ...(kept || {}), failedAt: Date.now() });
     return false;       // (so the page can say it'll try later)
+  }
+}
+
+/* ---------- how the models have done here ---------- */
+// { at, station: { id, name, km } | null, obsDays, skill | null } — kept for 12 hours per place
+const SKILL_TTL = 12 * 3600e3;
+export const skillKept = (place) => store.get(`skill:${cell(place.lat, place.lon)}`);
+async function loadSkill(place, offset) {
+  const k = `skill:${cell(place.lat, place.lon)}`, kept = store.get(k);
+  if (kept && Date.now() - kept.at < (kept.failed ? 3 * 3600e3 : SKILL_TTL)) return null;
+  try {
+    // what happened, at the nearest airport (the server collects and keeps these)
+    const r = await fetch(`/api/weather/obs?${qs({ lat: r4(place.lat), lon: r4(place.lon), off: offset })}`, { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`obs ${r.status}`);
+    const o = await r.json(), n = Object.keys(o.days || {}).length;
+    let skill = null;
+    if (o.station && n >= MIN_DAYS) {
+      // what each model said beforehand, there (past forecasts reach back as far as the reports do)
+      const back = Math.min(60, Math.ceil((Date.now() - Date.parse(Object.keys(o.days).sort()[0])) / 864e5) + 2);
+      const j = await getJSON(`${API.previous}?${qs({ latitude: r4(o.station.lat), longitude: r4(o.station.lon), hourly: "temperature_2m_previous_day1,temperature_2m_previous_day3", models: MODELS.map((m) => m[0]).join(","), past_days: back, forecast_days: 1, timezone: "auto" })}`, 20000, 1);
+      skill = skillFrom(shapePrevious(j), o.days);
+    }
+    const v = { at: Date.now(), station: o.station || null, obsDays: n, skill };
+    store.set(k, v);
+    return v;
+  } catch (_) {
+    store.set(k, { ...(kept || {}), at: Date.now(), failed: true });
+    return null;
   }
 }
 

@@ -1,0 +1,28 @@
+name: Weather notifications
+
+# Rain alerts and morning briefings (functions/_wxpush.js) go out on a timer: this asks
+# the site to send whatever's due, every 10 minutes. It uses the repository secret
+# WEATHER_TICK_SECRET if there is one, else InFlight's INFLIGHT_TICK_SECRET; it must match
+# WEATHER_TICK_SECRET (or, failing that, PIGEON_TICK_SECRET) in Cloudflare.
+on:
+  schedule:
+    - cron: "3-59/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ask the weather app to send what's due
+        env:
+          SECRET: ${{ secrets.WEATHER_TICK_SECRET || secrets.INFLIGHT_TICK_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then echo "No tick secret is set, so there's nothing to do."; exit 0; fi
+          # The site's .pages.dev address: the same deployment, outside the custom domains' bot protection.
+          code=$(curl -sS --max-time 60 -o reply.txt -w "%{http_code}" -X POST https://georgefarrowgreen.pages.dev/api/weather/tick \
+            -H "Authorization: Bearer $SECRET" -H "User-Agent: Weather-Tick/1.0 (+https://weather.georgefarrowgreen.com/)")
+          echo "HTTP $code"; head -c 400 reply.txt; echo
+          if [ "$code" != "200" ]; then echo "::warning::Weather tick got HTTP $code"; fi

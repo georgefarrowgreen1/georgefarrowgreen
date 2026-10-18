@@ -33,6 +33,7 @@ export function makeFormat(units = {}) {
     units: U,
     tempNum: (c) => (c == null || Number.isNaN(c) ? null : Math.round(tNum(c))),
     temp: (c) => (c == null || Number.isNaN(c) ? "–" : `${Math.round(tNum(c))}°`),
+    deltaFine: (dc) => { const v = Math.abs(U.temp === "f" ? dc * 9 / 5 : dc); return `${v < 9.95 ? v.toFixed(1) : Math.round(v)}°`; },
     delta: (dc) => `${Math.round(Math.abs(U.temp === "f" ? dc * 9 / 5 : dc))}°`,
     windNum: (kmh) => (kmh == null ? null : Math.round(kmh * wk)),
     windUnit: wl,

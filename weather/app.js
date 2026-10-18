@@ -7,6 +7,8 @@ import { weatherIcon, moonIcon, glyph } from "./icons.js";
 import { timeChart, rangeChart } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
+import { applyTuning, MIN_DAYS, TUNE_DAYS } from "./skill.js";
+import { radar } from "./radar.js";
 
 const $ = (id) => document.getElementById(id);
 function h(tag, attrs = {}, ...kids) {
@@ -26,7 +28,7 @@ const T = () => (S.f.units.temp === "f" ? (c) => c * 9 / 5 + 32 : (c) => c);
 const W = () => S.f.windNum;
 
 /* ---------- state ---------- */
-const S = { settings: null, f: null, places: [], cur: 0, wx: null, mode: "temp", allInsights: false, loading: false, stale: false, error: null };
+const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, radar: null, mode: "temp", allInsights: false, loading: false, stale: false, error: null };
 function defaults() {
   const lang = (navigator.languages?.[0] || navigator.language || "en-GB");
   if (/^en-US|^en-LR|^my/i.test(lang)) return { temp: "f", wind: "mph", precip: "in", pressure: "inhg", clock: "12" };
@@ -34,7 +36,12 @@ function defaults() {
   return { temp: "c", wind: "kmh", precip: "mm", pressure: "hpa", clock: /^en-(AU|NZ|CA|IN|PH)/i.test(lang) ? "12" : "24" };
 }
 function loadSettings() {
-  S.settings = { ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, ...(store.get("wx:settings") || {}) };
+  S.settings = {
+    ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true,
+    activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
+    notify: { rain: false, brief: false, briefAt: "07:00", place: null },
+    ...(store.get("wx:settings") || {}),
+  };
   S.f = makeFormat(S.settings);
 }
 const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); };
@@ -89,11 +96,13 @@ async function go(force = false) {
   $("main").setAttribute("aria-busy", "true");
   $("refresh-btn").disabled = true;
   showPlace();
-  if (!S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon)) { S.wx = null; S.allInsights = false; render(); }
+  if (!S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon)) { S.wx = S.base = null; S.allInsights = false; render(); }
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000) });
+  else S.radar.place(p.lat, p.lon);
   try {
     await load(p, (wx, how) => {
       if (my !== seq || !wx) return;
-      S.wx = wx; S.stale = !!how.stale;
+      S.base = wx; S.wx = tuned(wx); S.stale = !!how.stale;
       if (how.error) S.error = how.error;
       if (!how.stale && !how.partial) snapshotNow(wx);
       render();
@@ -109,6 +118,9 @@ async function go(force = false) {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && S.wx && Date.now() - S.wx.fetchedAt > 10 * 60e3) go();
 });
+
+// the forecast with its highs and lows tuned to how each model has done here (weather/skill.js), unless that's turned off
+const tuned = (wx) => (wx && S.settings.tune !== false && wx.skill?.skill ? applyTuning(wx, wx.skill.skill, keyOf(nowWall(wx.place.offset))) : wx);
 
 // "since you last looked": a few snapshots of the days ahead, per place
 function snapshotNow(wx) {
@@ -130,6 +142,7 @@ function showPlace() {
 }
 function render() {
   showPlace();
+  if (S.base) S.wx = tuned(S.base);
   const wx = S.wx;
   if (!wx) {
     $("now-temp").textContent = "–"; $("now-icon").replaceChildren();
@@ -148,6 +161,7 @@ function render() {
   hourly(wx, now);
   daily(wx, now);
   windows(wx, now);
+  accuracy(wx);
   climate(wx, now);
   tiles(wx, now);
   status();
@@ -297,6 +311,7 @@ function daily(wx, now) {
   const f = S.f, days = wx.daily.filter((d) => d.date >= dayStart(now)).slice(0, 16);
   if (!days.length) return;
   $("daily-n").textContent = `${days.length}-day`;
+  $("daily-note").textContent = days.some((d) => d.tuned) ? `Highs and lows from tomorrow are tuned to how each model has done at ${wx.tunedBy && wx.skill?.station ? wx.skill.station.name : "the nearest weather station"} (see Forecast accuracy).` : "";
   const conf = I.confidence(wx);
   const lo = Math.min(...days.map((d) => d.tmin)), hi = Math.max(...days.map((d) => d.tmax)), span = Math.max(1, hi - lo);
   const curT = wx.current?.temp;
@@ -319,7 +334,7 @@ function daily(wx, now) {
 }
 
 function windows(wx, now) {
-  const f = S.f, list = I.windows(wx, now, f);
+  const f = S.f, list = I.windows(wx, now, f, { activities: S.settings.activities, extras: S.settings.extras });
   $("win-grid").replaceChildren(...list.map((w) => {
     const when = w.start == null ? [h("span", {}, "Not today or tomorrow")] : [h("span", { class: "ww-day" }, f.day(w.start, now)), " ", h("span", { class: "ww-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`)];
     return h("div", { class: "win" },
@@ -423,6 +438,24 @@ function tiles(wx, now) {
 }
 
 /* ---------- one day, in full ---------- */
+// how close each model has been here (weather/skill.js, from the nearest airport's reports)
+function accuracy(wx) {
+  const f = S.f, box = $("accuracy-body"), k = wx.skill, note = (t) => h("p", { class: "small muted" }, t);
+  if (!k) { box.replaceChildren(note("Checking the forecasts against what actually happened…")); return; }
+  if (!k.station) { box.replaceChildren(note(k.failed ? "Couldn't check the forecasts just now; it'll try again later." : "There's no airport weather station within 40 km to check the forecasts against, so the forecast here isn't tuned.")); return; }
+  const st = k.station, where = `${st.name} (${st.km} km away)`;
+  if (!k.skill) { box.replaceChildren(note(`Recording what actually happens at ${where}: ${k.obsDays} of the ${MIN_DAYS} days needed so far. The record builds up as the days go by.`)); return; }
+  const s = k.skill;
+  box.replaceChildren(
+    h("p", { class: "small" }, `How far off each model's next-day forecasts have been at ${where}, over the last ${s.days} days.`),
+    h("table", { class: "models acc" }, h("caption", { class: "sr-only" }, "Each model's average error and lean, next-day forecasts"),
+      h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "Highs"), h("th", { scope: "col" }, "Lows"), h("th", { scope: "col" }, "Leans")),
+      ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Most accurate") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
+        h("td", {}, m.loMae != null ? `±${f.deltaFine(m.loMae)}` : "–"), h("td", {}, Math.abs(m.hiBias) >= 0.5 ? `${f.deltaFine(m.hiBias)} ${m.hiBias > 0 ? "warm" : "cold"}` : "–")))),
+    h("p", { class: "chart-note" }, s.days < TUNE_DAYS ? `Tuning starts once there are ${TUNE_DAYS} days to go on.` : S.settings.tune !== false
+      ? "From tomorrow, the highs and lows are tuned with this: each model's usual error taken off, the closest counting most." : "Tuning is turned off (Settings)."));
+}
+
 function openDay(key) {
   const wx = S.wx; if (!wx) return;
   const f = S.f, now = nowWall(wx.place.offset), d = wx.daily.find((x) => x.key === key); if (!d) return;
@@ -430,6 +463,7 @@ function openDay(key) {
   const body = $("day-body"), parts = I.dayParts(wx, key), conf = I.confidence(wx)[key];
   const kids = [
     h("div", { class: "day-top" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 56) }), h("div", {}, h("div", { class: "dt-main" }, label(d.code)), h("div", { class: "dt-sub" }, `High ${f.temp(d.tmax)} · Low ${f.temp(d.tmin)}`))),
+    d.tuned ? h("p", { class: "small tuned-note" }, `Tuned for here from six models and how each has done at ${wx.skill?.station?.name || "the nearest station"}. The forecast on its own said ${f.temp(d.raw.tmax)} / ${f.temp(d.raw.tmin)}.`) : null,
     h("p", { class: "day-desc" }, I.describeDay(wx, key, f)),
     h("div", { class: "parts" }, ...parts.map((p) => h("div", { class: "part" }, h("span", { class: "p-name" }, p.name[0].toUpperCase() + p.name.slice(1)),
       h("span", { svg: weatherIcon(iconOf(p.code, p.isDay), 34) }), h("span", { class: "p-temp" }, f.temp(p.name === "overnight" ? p.tmin : p.tmax)), h("span", { class: "p-pop" }, (p.pop ?? 0) >= 20 ? `${Math.round(p.pop)}%` : "")))),
@@ -465,6 +499,7 @@ function openDay(key) {
     const mods = wx.models?.days?.[key];
     if (mods?.length) kids.push(h("table", { class: "models" }, h("caption", { class: "sr-only" }, "What each weather model forecasts"),
       h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "High"), h("th", { scope: "col" }, "Low"), h("th", { scope: "col" }, "Rain")),
+      d.tuned ? h("tr", { class: "tuned-row" }, h("td", {}, "Tuned for here"), h("td", {}, f.temp(d.tmax)), h("td", {}, f.temp(d.tmin)), h("td", {}, "–")) : null,
       ...mods.map((m) => h("tr", {}, h("td", {}, m.name), h("td", {}, f.temp(m.tmax)), h("td", {}, f.temp(m.tmin)), h("td", {}, m.precip != null ? f.precip(m.precip) : "–")))));
   }
   body.replaceChildren(...kids);
@@ -487,6 +522,8 @@ async function locate(quiet = false) {
     const lat = pos.coords.latitude, lon = pos.coords.longitude;
     const name = await nameOf(lat, lon);
     addPlace({ name: name?.name || "My Location", region: name?.region || "", lat, lon, gps: true });
+    const n = S.settings.notify;
+    if ((n.rain || n.brief) && n.place?.gps && cell(n.place.lat, n.place.lon) !== cell(lat, lon)) { n.place = { lat, lon, name: name?.name || "My Location", gps: true }; saveSettings(); syncNotify().catch(() => {}); }
     go();
     return true;
   } catch (e) {
@@ -530,12 +567,133 @@ function drawSettings() {
   for (const k of ["temp", "wind", "precip", "pressure", "clock"]) { const r = form.querySelector(`input[name="${k}"][value="${S.settings[k]}"]`); if (r) r.checked = true; }
   form.commute.checked = !!S.settings.commute?.on;
   form.am.value = S.settings.commute?.am || "08:00"; form.pm.value = S.settings.commute?.pm || "17:30";
+  form.tune.checked = S.settings.tune !== false;
+  for (const k of ["laundry", "stars", "sunset"]) form[`x_${k}`].checked = S.settings.extras?.[k] !== false;
+  drawNotify(); drawActs();
 }
-function readSettings() {
+function readSettings(e) {
+  if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add")) return;     // (their own handlers)
   const form = $("settings-form"), v = (k) => form.querySelector(`input[name="${k}"]:checked`)?.value;
+  const units = ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join();
   for (const k of ["temp", "wind", "precip", "pressure", "clock"]) if (v(k)) S.settings[k] = v(k);
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
-  saveSettings(); render();
+  S.settings.tune = form.tune.checked;
+  S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
+  saveSettings(); render(); drawActs();
+  // notifications speak your units too
+  const n = S.settings.notify;
+  if ((n.rain || n.brief) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
+}
+
+/* ---------- notifications ---------- */
+const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+// why this phone can't have them, if it can't
+function notifyWhy() {
+  if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site in your browser's settings." : null;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  return ios && !standalone ? "On iPhone and iPad, add Weather to your Home Screen first (Share, then Add to Home Screen) and turn these on from there." : "This browser can't show notifications.";
+}
+async function pushSub(make) {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub && make) {
+    const r = await fetch("/api/weather/key");
+    if (!r.ok) throw new Error("no key");
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u((await r.json()).key) });
+  }
+  return sub;
+}
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+// tell the server what this phone wants (or that it wants nothing)
+async function syncNotify() {
+  const n = S.settings.notify;
+  if (!n.rain && !n.brief) {
+    const sub = "serviceWorker" in navigator ? await pushSub(false).catch(() => null) : null;
+    if (sub) { await post("/api/weather/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+    return;
+  }
+  const sub = await pushSub(true), j = sub.toJSON();
+  await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, place: n.place, rain: n.rain, brief: n.brief, briefAt: n.briefAt,
+    units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+}
+const hereForNotify = () => { const p = place(); return p ? { lat: p.lat, lon: p.lon, name: p.name, gps: !!p.gps } : null; };
+const atText = (at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return S.f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };
+async function onNotify() {
+  const form = $("settings-form"), n = S.settings.notify, st = $("notify-status");
+  const want = { rain: form.rain.checked, brief: form.brief.checked, briefAt: form.briefAt.value || "07:00" };
+  if ((want.rain && !n.rain) || (want.brief && !n.brief)) {
+    const why = notifyWhy();
+    if (why) { st.textContent = why; drawNotify(true); return; }
+    // asked straight away, while the tap still counts (Safari won't ask otherwise)
+    const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+    if (perm !== "granted") { st.textContent = "Notifications weren't allowed, so nothing can be sent."; drawNotify(true); return; }
+    if (!(n.rain || n.brief) || !n.place) n.place = hereForNotify();
+  }
+  Object.assign(n, want);
+  saveSettings();
+  st.textContent = "Saving…";
+  try {
+    await syncNotify();
+    st.textContent = n.rain || n.brief ? `On: ${[n.rain ? "rain alerts" : "", n.brief ? `a briefing at ${atText(n.briefAt)}` : ""].filter(Boolean).join(" and ")}.` : "Off.";
+  } catch (err) { st.textContent = `Couldn't save that just now (${err.message}).`; }
+  drawNotify(true);
+}
+function drawNotify(keepStatus = false) {
+  const n = S.settings.notify, form = $("settings-form"), p = place(), on = n.rain || n.brief;
+  form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; form.briefAt.value = n.briefAt || "07:00";
+  $("notify-place").textContent = on && n.place ? `For ${n.place.gps ? `My Location (${n.place.name})` : n.place.name}.` : "For the place you're looking at when you turn them on.";
+  $("notify-here").hidden = !(on && n.place && p && cell(p.lat, p.lon) !== cell(n.place.lat, n.place.lon));
+  if (!keepStatus) $("notify-status").textContent = on ? "" : notifyWhy() || "";
+}
+
+/* ---------- your activities ---------- */
+function saveActs() { saveSettings(); if (S.wx) windows(S.wx, nowWall(S.wx.place.offset)); drawActs(); }
+function drawActs() {
+  const f = S.f, acts = S.settings.activities, have = new Set(acts.map((a) => a.id));
+  $("acts-list").replaceChildren(...acts.map((a, i) => h("li", { class: "act" },
+    h("label", { class: "switch" }, h("input", { type: "checkbox", checked: a.on !== false, onchange: (e) => { a.on = e.target.checked; saveActs(); } }), h("span", { class: "act-icon", svg: glyph(a.icon || "star", 16) }), a.name),
+    h("span", { class: "act-lim" }, I.limitsText(a, f)),
+    h("button", { class: "link", type: "button", "aria-label": `Change ${a.name}`, onclick: () => editAct(i) }, "Change"))));
+  $("act-add").replaceChildren(h("option", { value: "" }, "Choose…"),
+    ...Object.entries(I.ACTIVITIES).filter(([id]) => !have.has(id)).map(([id, a]) => h("option", { value: id }, a.name)), h("option", { value: "custom" }, "Something else…"));
+}
+function editAct(i) {
+  const a = S.settings.activities[i], f = S.f, li = $("acts-list").children[i];
+  const tU = (c) => Math.round(f.units.temp === "f" ? c * 9 / 5 + 32 : c), tM = (v) => (f.units.temp === "f" ? (v - 32) * 5 / 9 : v);
+  const wk = f.windNum(1000) / 1000, wU = (k) => Math.round(k * wk), wM = (v) => v / wk;
+  const num = (name, text, v, unit) => h("label", { class: "fld" }, h("span", {}, text), h("span", { class: "fld-in" }, h("input", { type: "number", name, value: String(v), inputmode: "numeric", step: "1" }), unit ? h("small", {}, unit) : null));
+  const hour = (name, text, v) => h("label", { class: "fld" }, h("span", {}, text), h("select", { name }, ...Array.from({ length: 25 }, (_, k) => h("option", { value: String(k), selected: k === v ? true : null }, k === 24 ? "midnight" : f.time(Date.UTC(2000, 0, 1, k))))));
+  const ed = h("div", { class: "act-edit" },
+    h("label", { class: "fld wide" }, h("span", {}, "Name"), h("input", { type: "text", name: "name", value: a.name, maxlength: "24" })),
+    num("tmin", "Feels like from", tU(a.tmin), "°"), num("tmax", "to", tU(a.tmax), "°"),
+    num("windMin", "Wind at least", wU(a.windMin || 0), f.windUnit), num("windMax", "Wind at most", wU(a.windMax), f.windUnit),
+    num("gustMax", "Gusts at most", wU(a.gustMax), f.windUnit),
+    h("label", { class: "fld" }, h("span", {}, "Rain"), h("select", { name: "rain" }, ...[["dry", "Must be dry"], ["light", "Light rain is fine"], ["any", "Any weather"]].map(([v, t]) => h("option", { value: v, selected: a.rain === v ? true : null }, t)))),
+    num("hours", "For (hours)", a.hours), hour("from", "Between", a.from), hour("to", "and", a.to),
+    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: () => done() }, "Done"), h("button", { class: "link danger", type: "button", onclick: () => { S.settings.activities.splice(i, 1); saveActs(); } }, "Remove")));
+  const val = (k) => ed.querySelector(`[name="${k}"]`).value, n = (k, d) => { const v = parseFloat(val(k)); return Number.isFinite(v) ? v : d; };
+  function done() {
+    Object.assign(a, { name: val("name").trim().slice(0, 24) || a.name, tmin: tM(n("tmin", tU(a.tmin))), tmax: tM(n("tmax", tU(a.tmax))), windMin: Math.max(0, wM(n("windMin", 0))),
+      windMax: Math.max(1, wM(n("windMax", wU(a.windMax)))), gustMax: Math.max(1, wM(n("gustMax", wU(a.gustMax)))), rain: val("rain"), hours: Math.max(1, Math.min(8, Math.round(n("hours", a.hours)))), from: Number(val("from")), to: Number(val("to")) });
+    if (a.tmax < a.tmin) [a.tmin, a.tmax] = [a.tmax, a.tmin];
+    if (a.to <= a.from) a.to = Math.min(24, a.from + a.hours);
+    saveActs();
+  }
+  li.replaceChildren(ed);
+  ed.querySelector("input").focus();
+}
+function addAct() {
+  const id = $("act-add").value; if (!id) return;
+  const a = id === "custom" ? { id: `my${Date.now().toString(36)}`, name: "My activity", icon: "star", tmin: 10, tmax: 22, windMin: 0, windMax: 30, gustMax: 50, rain: "dry", hours: 2, from: 8, to: 20 } : { id, ...I.ACTIVITIES[id] };
+  S.settings.activities.push({ ...a, on: true });
+  saveActs();
+  if (id === "custom") editAct(S.settings.activities.length - 1);
 }
 
 /* ---------- wiring ---------- */
@@ -553,6 +711,11 @@ function wire() {
   $("locate-btn").addEventListener("click", () => locate());
   $("settings-btn").addEventListener("click", () => { drawSettings(); $("settings").showModal(); });
   $("settings-form").addEventListener("change", readSettings);
+  for (const k of ["rain", "brief", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
+  $("notify-here").addEventListener("click", () => { S.settings.notify.place = hereForNotify(); saveSettings(); $("notify-status").textContent = "Saving…"; syncNotify().then(() => { $("notify-status").textContent = "Moved to this place."; }, (e) => { $("notify-status").textContent = `Couldn't save that just now (${e.message}).`; }); drawNotify(true); });
+  $("act-add").addEventListener("change", addAct);
+  for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="g-off">${glyph("play", 16)}</span><span class="g-on">${glyph("pause", 16)}</span>`;
+  for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="g-off">${glyph("expand", 16)}</span><span class="g-on">${glyph("shrink", 16)}</span>`;
   $("refresh-btn").addEventListener("click", () => go(true));
   $("hourly-seg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-mode]"); if (!b) return;

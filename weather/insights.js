@@ -303,36 +303,71 @@ export function skyFor(wx, key) {
 // Each activity scores each daylight hour 0..1; the best stretch of a couple of hours wins.
 function comfortOf(feels, lo, hi) { return feels == null ? 0.5 : feels < lo ? clamp(1 - (lo - feels) * 0.09, 0, 1) : feels > hi ? clamp(1 - (feels - hi) * 0.1, 0, 1) : 1; }
 function dryOf(h) { if (isWet(h)) return 0; const p = h.pop ?? 0; return p < 15 ? 1 : p < 30 ? 0.8 : p < 50 ? 0.55 : 0.3; }
-const ACTS = {
-  run: { name: "Run", icon: "run", len: 1, score: (h) => dryOf(h) * comfortOf(h.feels, 6, 16) * (h.gust > 45 ? 0.6 : h.wind > 25 ? 0.8 : 1) * ((h.uv ?? 0) > 6 ? 0.85 : 1) },
-  walk: { name: "Walk", icon: "walk", len: 2, score: (h) => dryOf(h) * comfortOf(h.feels, 10, 22) * (h.gust > 50 ? 0.6 : 1) * (0.75 + 0.25 * (1 - (h.cloud ?? 50) / 100)) },
-  cycle: { name: "Ride", icon: "bike", len: 2, score: (h, prev) => dryOf(h) * (prev && isWet(prev) ? 0.75 : 1) * comfortOf(h.feels, 9, 22) * (h.wind > 30 || h.gust > 50 ? 0.4 : h.wind > 20 ? 0.75 : 1) },
+// Activities, each with its own limits (yours to change in Settings; all metric):
+//   tmin–tmax   the feels-like range it's best in        windMin–windMax   km/h (sailing needs some)
+//   gustMax     km/h                                     rain   "dry" | "light" (drizzle and showers are fine) | "any"
+//   hours       how long you'll be out                   from–to   the hours of the day it can happen in
+export const ACTIVITIES = {
+  run: { name: "Run", icon: "run", tmin: 6, tmax: 16, windMin: 0, windMax: 25, gustMax: 45, rain: "dry", hours: 1, from: 6, to: 21 },
+  walk: { name: "Walk", icon: "walk", tmin: 10, tmax: 22, windMin: 0, windMax: 30, gustMax: 50, rain: "dry", hours: 2, from: 7, to: 20 },
+  cycle: { name: "Ride", icon: "bike", tmin: 9, tmax: 22, windMin: 0, windMax: 20, gustMax: 45, rain: "dry", hours: 2, from: 6, to: 20 },
+  golf: { name: "Golf", icon: "flag", tmin: 10, tmax: 24, windMin: 0, windMax: 25, gustMax: 40, rain: "dry", hours: 4, from: 7, to: 19 },
+  sail: { name: "Sailing", icon: "sail", tmin: 12, tmax: 26, windMin: 12, windMax: 35, gustMax: 45, rain: "light", hours: 3, from: 8, to: 19 },
+  garden: { name: "Gardening", icon: "leaf", tmin: 8, tmax: 25, windMin: 0, windMax: 30, gustMax: 50, rain: "dry", hours: 2, from: 8, to: 19 },
+  tennis: { name: "Tennis", icon: "tennis", tmin: 10, tmax: 28, windMin: 0, windMax: 20, gustMax: 35, rain: "dry", hours: 1, from: 7, to: 21 },
+  hike: { name: "Hike", icon: "mountain", tmin: 5, tmax: 20, windMin: 0, windMax: 35, gustMax: 55, rain: "light", hours: 4, from: 7, to: 19 },
+  bbq: { name: "Barbecue", icon: "flame", tmin: 15, tmax: 30, windMin: 0, windMax: 25, gustMax: 40, rain: "dry", hours: 3, from: 16, to: 22, anyLight: true },
+  swim: { name: "Outdoor swim", icon: "swim", tmin: 18, tmax: 32, windMin: 0, windMax: 25, gustMax: 40, rain: "light", hours: 1, from: 7, to: 20 },
 };
-export function windows(wx, now, f) {
-  const out = [];
+export const DEFAULT_ACTIVITIES = ["run", "walk", "cycle"].map((id) => ({ id, on: true, ...ACTIVITIES[id] }));
+// How good one hour is for an activity, 0 to 1
+export function activityScore(h, prev, a) {
+  let s = comfortOf(h.feels ?? h.temp, a.tmin, a.tmax);
+  const w = h.wind ?? 0;
+  if (a.windMin > 0 && w < a.windMin) s *= clamp(w / a.windMin, 0.1, 1);
+  if (w > a.windMax) s *= clamp(1 - (w - a.windMax) / 15, 0.2, 1);
+  if ((h.gust ?? 0) > a.gustMax) s *= 0.5;
+  if (a.rain === "dry") s *= dryOf(h) * (prev && isWet(prev) ? 0.85 : 1);
+  else if (a.rain === "light") s *= isWet(h) ? ((h.precip ?? 0) < 1 && codeInfo(h.code).wet < 3 ? 0.75 : 0.2) : 1;
+  if (a.id === "run" && (h.uv ?? 0) > 6) s *= 0.85;
+  return clamp(s, 0, 1);
+}
+const rateOf = (s) => (s >= 0.8 ? "Great" : s >= 0.6 ? "Good" : s >= 0.4 ? "Fair" : "Poor");
+// limits in words: "6–16°, wind under 25 mph, dry"
+export function limitsText(a, f) {
+  const wind = a.windMin > 0 ? `wind ${f.wind(a.windMin).replace(/ \S+$/, "")}–${f.wind(a.windMax)}` : `wind under ${f.wind(a.windMax)}`;
+  return `${f.temp(a.tmin)}–${f.temp(a.tmax)}, ${wind}, ${a.rain === "dry" ? "dry" : a.rain === "light" ? "light rain is fine" : "any weather"}, ${a.hours} h`;
+}
+// opts.activities: your list (Settings); opts.extras: { laundry, stars, sunset } on or off
+export function windows(wx, now, f, opts = {}) {
+  const out = [], acts = (opts.activities || DEFAULT_ACTIVITIES).filter((a) => a.on !== false);
   const horizon = hoursFrom(wx, now, 48).filter((h) => h.t >= now - 30 * 60e3);
-  const light = horizon.filter((h) => h.isDay && hourOf(h.t) >= 6 && hourOf(h.t) <= 21);
   const describe = (hs) => {
     const t = avg(hs, "temp"), w = avg(hs, "wind"), pop = max(hs, "pop") ?? 0;
     const wind = w < 12 ? "light winds" : w < 25 ? "a breeze" : "windy";
     return `${pop < 20 ? "Dry" : `${Math.round(pop)}% chance of rain`}, ${f.temp(t)}, ${wind}`;
   };
-  const rating = (s) => (s >= 0.8 ? "Great" : s >= 0.6 ? "Good" : s >= 0.4 ? "Fair" : "Poor");
-  for (const [id, a] of Object.entries(ACTS)) {
+  for (const a of acts) {
+    const len = Math.max(1, Math.min(8, Math.round(a.hours || 1)));
+    const ok = horizon.filter((h) => { const hh = hourOf(h.t); return hh >= a.from && hh + 1 <= Math.max(a.from + 1, a.to) && (h.isDay || a.anyLight); });
     let best = null;
-    for (let i = 0; i + a.len <= light.length; i++) {
-      const hs = light.slice(i, i + a.len);
-      if (hs[hs.length - 1].t - hs[0].t !== (a.len - 1) * HOUR) continue;     // a stretch without a gap (the night)
-      const s = sum(hs.map((h) => a.score(h, hourAt(wx, h.t - HOUR)))) / hs.length;
+    for (let i = 0; i + len <= ok.length; i++) {
+      const hs = ok.slice(i, i + len);
+      if (hs[hs.length - 1].t - hs[0].t !== (len - 1) * HOUR) continue;     // a stretch without a gap (the night)
+      // the stretch is as good as its average, held back by its worst hour
+      const each = hs.map((h) => activityScore(h, hourAt(wx, h.t - HOUR), a));
+      const s = 0.7 * (sum(each) / each.length) + 0.3 * Math.min(...each);
       // sooner is better, a little: today beats tomorrow at the same score
       const adj = s - (hs[0].t - now) / DAY * 0.04;
       if (!best || adj > best.adj) best = { adj, s, hs };
     }
-    if (best) out.push({ id, name: a.name, icon: a.icon, start: best.hs[0].t, end: best.hs[best.hs.length - 1].t + HOUR, score: best.s, rating: rating(best.s), text: describe(best.hs) });
+    out.push(best ? { id: a.id, name: a.name, icon: a.icon, start: best.hs[0].t, end: best.hs[best.hs.length - 1].t + HOUR, score: best.s, rating: rateOf(best.s), text: describe(best.hs) }
+      : { id: a.id, name: a.name, icon: a.icon, start: null, end: null, score: 0, rating: "Poor", text: "No time in its hours in the next two days" });
   }
-  const dry = drying(wx, now, f); if (dry) out.push(dry);
-  const st = stargazing(wx, now, f); if (st) out.push(st);
-  const sun = sunsets(wx, now, f); if (sun) out.push(sun);
+  const x = opts.extras || {};
+  const dry = x.laundry !== false && drying(wx, now, f); if (dry) out.push(dry);
+  const st = x.stars !== false && stargazing(wx, now, f); if (st) out.push(st);
+  const sun = x.sunset !== false && sunsets(wx, now, f); if (sun) out.push(sun);
   return out;
 }
 // Drying the washing outside: the longest dry daytime stretch, scored by how thirsty the air is (VPD), the breeze and the sun
@@ -470,9 +505,9 @@ export function insights(wx, now, f, opts = {}) {
   // UV
   const uvHours = next24.filter((h) => h.t < dayStart(now) + DAY && (h.uv ?? 0) >= T.UV_SUN);
   const uvPeak = argmax(next24.filter((h) => h.t < dayStart(now) + DAY), "uv");
-  if (uvPeak && uvPeak.uv >= T.UV_HIGH) {
+  if (uvPeak && Math.round(uvPeak.uv) >= T.UV_HIGH) {      // (by the number it says: "UV 6" is high)
     const burn = Math.round(167 / uvPeak.uv / 5) * 5;
-    add({ id: "uv", level: uvPeak.uv >= 8 ? "warn" : "tip", icon: "uv", title: `${uvPeak.uv >= 8 ? "Very high" : "High"} UV`, text: `UV ${Math.round(uvPeak.uv)} around ${f.time(uvPeak.t)}: fair skin can burn in about ${burn} minutes. Sunscreen from ${f.time(uvHours[0].t)} to ${f.time(uvHours[uvHours.length - 1].t + HOUR)}.`, score: 70 });
+    add({ id: "uv", level: Math.round(uvPeak.uv) >= 8 ? "warn" : "tip", icon: "uv", title: `${Math.round(uvPeak.uv) >= 8 ? "Very high" : "High"} UV`, text: `UV ${Math.round(uvPeak.uv)} around ${f.time(uvPeak.t)}: fair skin can burn in about ${burn} minutes. Sunscreen from ${f.time(uvHours[0].t)} to ${f.time(uvHours[uvHours.length - 1].t + HOUR)}.`, score: 70 });
   } else if (uvHours.length) add({ id: "uv", level: "info", icon: "uv", title: "Moderate UV", text: `UV ${Math.round(uvPeak.uv)} at its peak around ${f.time(uvPeak.t)}. Sunscreen if you're out for long between ${f.time(uvHours[0].t)} and ${f.time(uvHours[uvHours.length - 1].t + HOUR)}.`, score: 30 });
   // air and pollen
   if (wx.air) {
@@ -519,6 +554,8 @@ export function insights(wx, now, f, opts = {}) {
   for (const c of weekCards(wx, now, f)) add(c);
   // daylight
   add(daylight(wx, now, f));
+  // which model to trust here
+  add(skillCard(wx, f));
   // what's changed since you last looked
   if (opts.prev) add(changes(opts.prev, wx, now, f));
 
@@ -701,6 +738,17 @@ function daylight(wx, now, f) {
   text += ".";
   if (week != null && Math.abs(week) >= 60) text += ` You'll ${week < 0 ? "lose" : "gain"} ${f.dur(Math.abs(week))} of daylight over the next week.`;
   return { id: "daylight", level: "info", icon: "sunset", title: change != null && change < 0 ? "Shorter days" : "Longer days", text, score: 14 };
+}
+
+// which model has been closest here, from the nearest airport's reports (weather/skill.js)
+function skillCard(wx, f) {
+  const k = wx.skill?.skill, st = wx.skill?.station;
+  if (!k || !st || k.models.length < 2) return null;
+  const best = k.models[0], worst = k.models[k.models.length - 1];
+  const lean = k.models.filter((m) => Math.abs(m.hiBias) >= 1).sort((a, b) => Math.abs(b.hiBias) - Math.abs(a.hiBias))[0];
+  let text = `Its next-day highs have been within ${f.deltaFine(best.hiMae)} on average at ${st.name} over the last ${k.days} days (${worst.name}: ${f.deltaFine(worst.hiMae)}).`;
+  if (lean) text += ` ${lean.name} has run ${f.deltaFine(lean.hiBias)} too ${lean.hiBias > 0 ? "warm" : "cold"}.`;
+  return { id: "skill", level: "info", icon: "target", title: `Most accurate here: ${best.name}`, text, score: 31 };
 }
 
 /* ---------- since you last looked ---------- */

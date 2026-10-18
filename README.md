@@ -174,10 +174,35 @@ so there's nothing to set up beyond the address.
   Open-Meteo's archive) put each forecast in context: the normal high and low,
   how unusual a day is (its percentile), near-record warmth or cold, a wet or dry
   week against normal, this day last year.
-- **Best times** in the next two days for a run, a walk, a ride, drying washing
-  outside (dry hours, thirsty air, a breeze, sun), stargazing (dark, clear, the
-  Moon out of the way) and a colourful sunset or sunrise (high and mid cloud to
-  catch the light, no low cloud in the way).
+- **Best times** in the next two days for your activities, each with its own
+  limits you can change (Settings → Best times): run, walk and ride to start
+  with, and golf, sailing (which needs some wind), gardening, tennis, hiking, a
+  barbecue, an outdoor swim or anything you add: a feels-like range, wind
+  (at least and at most), gusts, whether light rain is fine, how long, and
+  between which hours. Plus drying washing outside (dry hours, thirsty air, a
+  breeze, sun), stargazing (dark, clear, the Moon out of the way) and a
+  colourful sunset or sunrise (high and mid cloud, no low cloud in the way).
+- **Rain radar**: the last two hours of radar, every 10 minutes, animated, from
+  RainViewer's free mosaic of the world's radars, over OpenStreetMap's map
+  turned dark (`weather/radar.js`, Leaflet 1.9.4 vendored in `weather/vendor/`
+  and checked against npm's integrity hash, loaded only when the card comes
+  into view). Full screen to pan and zoom.
+- **Forecast accuracy here, and a forecast tuned by it**: the server collects
+  the nearest airport's weather reports (METAR, within 40 km; the Aviation
+  Weather Center keeps only about a week, so each day's high and low is kept in
+  D1, `wx_obs`, for six weeks), and the phone compares them with what each of
+  the six models forecast a day and three days ahead (Open-Meteo's archive of
+  past forecasts). The card shows each model's average error and lean ("±0.8°,
+  runs 1.2° warm") and which is most accurate here. From 7 days of record, the
+  highs and lows from tomorrow on are tuned: each model's usual error taken
+  off, the closest counting most (`weather/skill.js`; Settings can turn it off).
+- **Notifications** (Settings → Notifications, for one place per phone): a
+  heads-up when rain is about to start within the hour ("Rain in about 20 min",
+  not between 22:00 and 07:00, not twice in three hours), and a morning
+  briefing at a time you choose (the day in a sentence, any warnings, whether
+  to take an umbrella). Sent with Web Push, encrypted to the phone, worded by
+  the app's own code (`weather/alerts.js`) so a notification says what the app
+  would. On iPhone and iPad, add Weather to the Home Screen first.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
@@ -199,8 +224,11 @@ with `?lat=…&lon=…&name=…`.
 
 **Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen`
 project → Custom domains → Set up a custom domain → `weather.georgefarrowgreen.com`.
-The zone is already on Cloudflare, so it adds the DNS record itself. That's all:
-no variables, secrets or bindings. georgefarrowgreen.com/weather sends you to
+The zone is already on Cloudflare, so it adds the DNS record itself. Nothing
+else: notifications are sent by `.github/workflows/weather-tick.yml` every 10
+minutes with InFlight's tick secret (`INFLIGHT_TICK_SECRET` in GitHub,
+`PIGEON_TICK_SECRET` in Cloudflare), unless `WEATHER_TICK_SECRET` is set on
+both sides; they use the site's D1 database and InFlight's push key. georgefarrowgreen.com/weather sends you to
 the new address; preview deployments (`*.pages.dev/weather/`) serve the app
 directly, so a branch can be tried before it's merged.
 
@@ -208,28 +236,48 @@ directly, so a branch can be tried before it's merged.
 | --- | --- |
 | Page, styles | `weather/index.html`, `weather/styles.css` (glass cards over a sky that follows the weather and the time of day) |
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
-| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, place search; BigDataCloud names where you are. Kept in `localStorage` (the climate for a year per place) |
-| Thinking | `weather/insights.js`, `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
-| Offline | `weather/sw.js`, `weather/manifest.webmanifest` |
+| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are. Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
+| Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
+| Radar | `weather/radar.js`, `weather/vendor/leaflet.js`, `leaflet.css` (BSD-2-Clause) |
+| Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
+| Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`) |
 
 **Its own address.** At weather.georgefarrowgreen.com only the app and its own
 API answer (anything else is "Not found"), so its storage is kept apart from the
 site's and InFlight's. Its Content-Security-Policy runs only its own scripts and
-lets it fetch only from Open-Meteo and BigDataCloud; it's the only place, with
+lets it fetch only from Open-Meteo, BigDataCloud and RainViewer, and show map
+tiles only from RainViewer and OpenStreetMap; it's the only place, with
 InFlight, that may ask for your location.
+
+**What the server keeps.** For notifications: the phone's push subscription,
+the place (to two decimal places, about a kilometre) and its name, which
+notifications, the briefing's time and your units, and when it last sent
+each; all of it deleted when they're turned off, or when the push service says
+the phone has gone. Subscribing is only from the app's own pages, the push
+service must be a real one (Apple, Google, Mozilla, Microsoft), and there's a
+cap of 300. For accuracy: airports' daily highs and lows, nothing about you.
 
 **Limits.** Open-Meteo's free API is for non-commercial use, about 10,000 calls
 a day per device (each phone asks for itself; a refresh is a few calls). The
 30-year history is one large request per place, so it's fetched once and kept
 for a year; if the archive is busy the card says so and tries again later.
-The insights are rules of thumb from the forecast, not official warnings.
+RainViewer's free radar is the past two hours only, to zoom 7 (closer in it's
+enlarged), and OpenStreetMap's tiles are for light use like this. CARTO's dark
+tiles now need an API key, so they're not used. GitHub runs scheduled
+workflows late when it's busy, so a rain alert can come later than the hour's
+notice it aims for. Accuracy needs an airport within 40 km that reports round
+the clock, and 5 days of its record (7 to tune). The insights are rules of
+thumb from the forecast, not official warnings.
 
-**Tests.** `.tools/tests/unit/wxinsights.test.mjs` (in CI: units, the Sun and
-Moon, climate, and each insight on forecasts made up to show it) and
-`.tools/tests/wxapp.mjs` (end to end: the page, warnings, models, climate,
-settings, search, the address's limits and accessibility, against made-up
-forecasts for the time it runs).
+**Tests.** `.tools/tests/unit/wxinsights.test.mjs` and `wxnext.test.mjs` (in
+CI: units, the Sun and Moon, climate, each insight on forecasts made up to show
+it, accuracy and tuning, airport reports, activities and their limits, when a
+rain alert or briefing is due and what it says) and `.tools/tests/wxapp.mjs`
+(end to end: the page, warnings, models, climate, the radar, accuracy and the
+tuned forecast, activities, notifications sent by the tick and decrypted, the
+address's limits and accessibility, against stand-ins for every outside
+service, with made-up forecasts for the time it runs).
 
 ## InFlight (chat.georgefarrowgreen.com) — 1.2.6
 
