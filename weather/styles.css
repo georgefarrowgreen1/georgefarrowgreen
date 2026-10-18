@@ -566,6 +566,7 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .radar.radar-big .radar-map { flex: 1; height: auto; }
 .radar.radar-big .radar-status { display: none; }
 .radar-status { margin-top: 8px; }
+.radar-status:empty { display: none; }
 .radar.said-above:not(.radar-big) .radar-note { display: none; }
 .radar .leaflet-layer, .radar .fc-frame { transition: opacity 0.25s linear; }
 @media (prefers-reduced-motion: reduce) { .radar .leaflet-layer, .radar .fc-frame { transition: none; } }

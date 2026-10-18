@@ -238,8 +238,8 @@ export function radar(card, { lat, lon, time, miles = false }) {
       : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame", attribution: ATTR_MODEL })).addTo(map));
     if (box) map.removeLayer(box);
     box = model ? L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map) : null;
-    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model ? "The next two hours aren't available right now: showing the radar." : drift
-      ? "Ahead of now: the latest radar carried along its track, less certain the further it goes." : "Ahead of now: the weather models' rain, inside the dashed box.";
+    // (a line only when something's missing)
+    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model ? "The next two hours aren't available right now: showing the radar." : "";
     slider.max = String(frames.length - 1);
     fetched = Date.now();
     drawScale();
