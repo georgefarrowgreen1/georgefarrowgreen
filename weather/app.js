@@ -53,6 +53,9 @@ async function start() {
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
   S.cur = Math.min(Math.max(0, store.get("wx:cur") || 0), Math.max(0, S.places.length - 1));
+  // My Location first (lists kept from before it was), still showing the same place
+  const g = S.places.findIndex((x) => x.gps);
+  if (g > 0) { const was = place(); S.places.unshift(...S.places.splice(g, 1)); S.cur = S.places.indexOf(was); savePlaces(); }
   wire();
   // a shared link: ?lat=…&lon=…&name=…
   const q = new URLSearchParams(location.search), lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
@@ -75,6 +78,9 @@ async function start() {
   go();
   // keep "My Location" current, quietly, if you've allowed it (what was kept shows meanwhile)
   if (place()?.gps) try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted") locate(true); } catch (_) {}
+  // and if its name couldn't be found when it was saved, try again from where it is (no need to ask for the location)
+  const unnamed = S.places.find((x) => x.gps && x.name === "My Location");
+  if (unnamed) nameOf(unnamed.lat, unnamed.lon).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); showPlace(); } });
   if ("serviceWorker" in navigator) {
     // a new version: its worker arrives with every file fresh, so if this page has only just opened, start again on it
     const had = !!navigator.serviceWorker.controller, opened = Date.now();
@@ -86,6 +92,7 @@ function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
   let i = p.gps ? S.places.findIndex((x) => x.gps) : S.places.findIndex((x) => !x.gps && near(x));
   if (i >= 0) S.places[i] = { ...S.places[i], ...p };
+  else if (p.gps) { S.places.unshift(p); i = 0; if (!makeCurrent) S.cur++; }      // My Location first, as on iOS
   else { S.places.push(p); i = S.places.length - 1; }
   if (makeCurrent) S.cur = i;
   savePlaces();
@@ -142,7 +149,9 @@ function showPlace() {
   const p = place();
   $("place-name").textContent = p ? p.name : "Weather";
   $("sr-place").textContent = p ? p.name : "your place";
-  $("place-sub").textContent = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
+  const sub = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
+  $("place-sub").textContent = sub;
+  $("place-btn").classList.toggle("no-sub", !sub);
   document.title = p ? `${p.name} · Weather` : "Weather";
   drawDots();
 }

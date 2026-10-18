@@ -260,7 +260,8 @@ directly, so a branch can be tried before it's merged.
 **Its own address.** At weather.georgefarrowgreen.com only the app and its own
 API answer (anything else is "Not found"), so its storage is kept apart from the
 site's and InFlight's. Its Content-Security-Policy runs only its own scripts and
-lets it fetch only from Open-Meteo, BigDataCloud and RainViewer, and show map
+lets it fetch only from Open-Meteo, BigDataCloud (and OpenStreetMap's Nominatim
+when BigDataCloud can't name a place) and RainViewer, and show map
 tiles only from RainViewer and OpenStreetMap; it's the only place, with
 InFlight, that may ask for your location.
 

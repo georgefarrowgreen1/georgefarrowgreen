@@ -23,6 +23,7 @@ const API = {
   previous: "https://previous-runs-api.open-meteo.com/v1/forecast",
   geocode: "https://geocoding-api.open-meteo.com/v1/search",
   reverse: "https://api.bigdatacloud.net/data/reverse-geocode-client",
+  reverse2: "https://nominatim.openstreetmap.org/reverse",
 };
 const CURRENT = "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,visibility,uv_index";
 const HOURLY = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,rain,showers,snowfall,snow_depth,weather_code,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day,cape,lifted_index,freezing_level_height,vapour_pressure_deficit,sunshine_duration";
@@ -148,11 +149,18 @@ export async function searchPlaces(name) {
   return (j.results || []).map((r) => ({ name: r.name, region: [r.admin1, r.country].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(", "), country: r.country_code, lat: r.latitude, lon: r.longitude }));
 }
 // A name for where a phone is (BigDataCloud's free lookup, made for exactly this)
+// A place's name from its position: BigDataCloud, or if that doesn't answer (or a blocker stops it),
+// OpenStreetMap's Nominatim (only then, as it asks to be used lightly)
 export async function nameOf(lat, lon) {
   try {
     const j = await getJSON(`${API.reverse}?${qs({ latitude: r4(lat), longitude: r4(lon), localityLanguage: "en" })}`, 6000);
     const name = j.locality && j.city && j.locality.length <= j.city.length + 12 && !/^(City of|Borough of|London Borough)/.test(j.locality) ? j.locality : j.city || j.locality || j.principalSubdivision;
-    return name ? { name, region: [j.city !== name ? j.city : null, j.countryCode === "GB" ? j.principalSubdivision : j.countryName].filter(Boolean).join(", ") } : null;
+    if (name) return { name, region: [j.city !== name ? j.city : null, j.countryCode === "GB" ? j.principalSubdivision : j.countryName].filter(Boolean).join(", ") };
+  } catch (_) { /* the other, below */ }
+  try {
+    const j = await getJSON(`${API.reverse2}?${qs({ format: "jsonv2", lat: r4(lat), lon: r4(lon), zoom: 14, "accept-language": "en" })}`, 8000, 1), a = j.address || {};
+    const name = a.town || a.village || a.hamlet || a.suburb || a.city || a.municipality || a.county;
+    return name ? { name, region: [a.city && a.city !== name ? a.city : null, a.country_code === "gb" ? a.state : a.country].filter(Boolean).join(", ") } : null;
   } catch (_) { return null; }
 }
 

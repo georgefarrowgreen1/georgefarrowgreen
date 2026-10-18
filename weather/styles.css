@@ -139,7 +139,7 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
 @media (prefers-reduced-motion: reduce) { .sky-fx { animation: none !important; } .sky { transition: none; } }
 
 /* ---------- the top bar: floating glass ---------- */
-.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; }
+.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; min-height: 70px; }
 /* where the page scrolls under the bar, it softens (the scroll edge) */
 .top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) 0 -14px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s;
   background: linear-gradient(180deg, rgba(10, 16, 28, 0.4), rgba(10, 16, 28, 0));
@@ -147,15 +147,18 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
   -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent); mask-image: linear-gradient(180deg, #000 45%, transparent); }
 .top.scrolled::before { opacity: 1; }
 .place { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
-.place-name { font-size: 17px; font-weight: 650; display: flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-name { font-size: 17px; line-height: 22px; font-weight: 650; display: flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
 /* the line under the name: where it is, and once the big temperature has scrolled away, the temperature and sky
    (crossfading with the scroll, as iOS Weather's large title collapses) */
-.place-line { display: grid; font-size: 12px; line-height: 1.2; color: var(--text-3); }
+.place-line { display: grid; font-size: 12px; line-height: 15px; color: var(--text-3); }
 .place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.2s; }
 .place-sub { opacity: calc(1 - var(--cs, 0)); }
 .place-now { opacity: var(--cs, 0); color: var(--text-2); font-weight: 600; }
 .place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
+/* with nothing to say under the name, it's one line until the temperature scrolls up into it (the bar keeps its
+   height meanwhile, so nothing below it moves) */
+.place.no-sub .place-line { max-height: calc(var(--cs, 0) * 15px); overflow: hidden; }
 .top-actions { display: flex; gap: 10px; }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
 .icon-btn .g { position: relative; z-index: 3; }
