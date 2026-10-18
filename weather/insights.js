@@ -129,10 +129,12 @@ export function describeDay(wx, key, f) {
     }
   }
   if ((d.precip ?? 0) >= 1) {
-    const wettest = parts.reduce((w, p) => (p.precip > (w?.precip ?? 0) ? p : w), null);
+    // when most of it falls: the parts above, or the small hours before them (which they don't cover)
+    const early = { name: "small hours", precip: sum(hoursBetween(wx, d.date, d.date + 6 * HOUR).map((h) => h.precip ?? 0)) };
+    const wettest = [...parts, early].reduce((w, p) => (p.precip > (w?.precip ?? 0) ? p : w), null);
+    const where = wettest && (parts.length > 1 || wettest === early) ? `, ${wettest.precip >= d.precip * 0.9 ? "" : "mostly "}in the ${wettest.name}` : "";
     const snow = (d.snow ?? 0) >= 0.5;
-    out.push(snow ? `Around ${f.snow ? f.snow(d.snow) : `${Math.round(d.snow)} cm`} of snow${wettest ? `, mostly in the ${wettest.name}` : ""}.`
-      : `Around ${f.precip(d.precip)} of rain${wettest && parts.length > 1 ? `, mostly in the ${wettest.name}` : ""}.`);
+    out.push(snow ? `Around ${f.snow ? f.snow(d.snow) : `${Math.round(d.snow)} cm`} of snow${where}.` : `Around ${f.precip(d.precip)} of rain${where}.`);
   } else if ((d.popMax ?? 0) >= 30) out.push(`${Math.round(d.popMax)}% chance of a shower.`);
   if ((d.gustMax ?? 0) >= T.GALE) out.push(`Very windy, gusts up to ${f.wind(d.gustMax)}.`);
   else if ((d.gustMax ?? 0) >= T.WINDY) out.push(`Windy, gusts up to ${f.wind(d.gustMax)}.`);
@@ -445,7 +447,7 @@ function sunsets(wx, now, f) {
   const s = best.s, h = best.h;
   const why = isWet(h) ? "rain in the way" : (h.cloudLow ?? 0) > 60 ? "low cloud in the way" : ((h.cloudHigh ?? 0) + (h.cloudMid ?? 0)) < 20 ? "clear sky, gentle colours" : "high cloud to catch the light";
   return { id: "sunset", name: best.what === "Sunset" ? "Sunset colour" : "Sunrise colour", icon: best.what === "Sunset" ? "sunset" : "sunrise", start: best.t, end: null, score: s,
-    rating: s >= 0.75 ? "Great" : s >= 0.5 ? "Good" : s >= 0.3 ? "Fair" : "Poor", text: `${best.what} ${f.day(best.t, now).toLowerCase() === "today" ? "" : f.day(best.t, now).toLowerCase() + " "}at ${f.time(best.t)}: ${why}` };
+    rating: s >= 0.75 ? "Great" : s >= 0.5 ? "Good" : s >= 0.3 ? "Fair" : "Poor", text: cap(why) };      // (the card shows the day and time above it)
 }
 
 /* ---------- the cards ---------- */
@@ -668,7 +670,7 @@ function confidenceCard(wx, now, f) {
     if (c.tLo != null && c.tHi - c.tLo >= 3) bits.push(`highs anywhere from ${f.temp(c.tLo)} to ${f.temp(c.tHi)}`);
     if (c.nModels && c.wetModels != null && c.wetModels > 0 && c.wetModels < c.nModels) bits.push(`${c.wetModels} of ${c.nModels} models bring rain`);
     else if (c.ensWet != null && c.ensWet > 0.25 && c.ensWet < 0.75) bits.push(`${Math.round(c.ensWet * 100)}% of ensemble runs bring rain`);
-    return { id: "confidence", level: "info", icon: "dice", title: `${f.day(shaky.date, now)} is uncertain`, text: `The forecast could still change: ${bits.length ? list(bits) : "the models disagree"}. Check back nearer the time.`, score: 52 };
+    return { id: "confidence", level: "info", icon: "dice", title: `${f.day(shaky.date, now)} is uncertain`, text: `${cap(bits.length ? list(bits) : "the models disagree")}. Check back nearer the time.`, score: 52 };
   }
   const sure = ahead.filter((d) => conf[d.key]?.level === "high");
   if (sure.length >= 3 && sure[0] === ahead[0]) {

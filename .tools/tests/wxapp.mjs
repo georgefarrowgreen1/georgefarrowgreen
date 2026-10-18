@@ -118,11 +118,16 @@ ok(cards.some((t) => /umbrella/i.test(t)), 'an umbrella tip');
 if (new Date(now).getUTCHours() < 13) ok(cards.some((t) => /High UV/.test(t)), 'high UV today');
 ok(/^Warmer than \d+% of days here since \d{4}\./.test(await p.textContent('#climate-body')), 'today against thirty years', (await p.textContent('#climate-body')).slice(0, 90));
 ok((await p.locator('#win-grid .win').count()) >= 5, 'best times for a run, a walk, a ride, the washing, the stars or the sunset');
+const wins = await p.locator('#win-grid .win').evaluateAll((ws) => ws.map((w) => [...w.children].map((c) => c.className).join(' ') + (w.querySelector('.win-day .win-rate') ? ' +rate' : '')));
+ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 'each card the same lines (what, when and how good, the hours, why), so they line up', wins[0]);
+const rows = await p.locator('.day-row').evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
+ok(new Set(rows).size === 1, 'the 16 days, every row the same height (rain chance or not)', [...new Set(rows)].join(', '));
 await p.screenshot({ path: `${out}/wx-top.png` });
 await p.screenshot({ path: `${out}/wx-full.png`, fullPage: true });
 // a day, in full: the six models side by side
 await p.locator('.day-row').nth(4).evaluate((e) => e.click());      // (the page redraws as the last of the forecast arrives)
 await p.waitForSelector('#day[open]');
+ok((await p.evaluate(() => document.activeElement?.id)) === 'day-title', 'the sheet opens on its title (said first, no ring on the close button)', await p.evaluate(() => document.activeElement?.id));
 ok((await p.locator('#day table.models tr').count()) === 8, 'the day compares six models, and the tuned blend', String(await p.locator('#day table.models tr').count()));
 ok(/^Tuned for here · forecast alone \d+° \/ \d+°$/.test(await p.textContent('#day .tuned-note')), 'and says it\'s tuned', await p.textContent('#day .tuned-note'));
 ok(!/High \d+°, low/.test(await p.textContent('#day .day-desc')), 'in words that don\'t repeat the high and low beside them', await p.textContent('#day .day-desc'));

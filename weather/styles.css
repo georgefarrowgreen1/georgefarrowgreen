@@ -217,6 +217,7 @@ main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height
    off it can leave it unpainted; backwards fill, so nothing's left behind) */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
+.ins.rise { animation: rise 0.6s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
 /* swiping between places: the hero follows the finger, springs back, or the next place slides in */
 .hero { touch-action: pan-y; transition: translate 0.45s var(--spring); }
 .hero.swiping { transition: none; }
@@ -234,7 +235,7 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
 .dots i.gps.on { color: #fff; }
 .dots i svg { display: block; }
-@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, main:not([data-empty]) .hero.swap-in, .hero-temp.roll-up, .hero-temp.roll-down, .seg.moving::before { animation: none; } .hero { transition: none; } }
+@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, main:not([data-empty]) .hero.swap-in, .hero-temp.roll-up, .hero-temp.roll-down, .seg.moving::before, .ins.rise { animation: none; } .hero { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .sk i, main[data-empty="loading"] .hero-temp { animation: none; } }
 
 /* ---------- cards ---------- */
@@ -309,13 +310,15 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .days li { padding: 0; }
 .days li.far { border-top: 0; }
 .far-note { display: block; font-size: 11.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); padding: 14px 8px 6px; border-bottom: 1px solid var(--line); }
-.day-row { display: grid; grid-template-columns: 4.6em 40px 2.6em 1fr 2.6em; align-items: center; gap: 8px; width: 100%; padding: 9px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 50px; }
+/* (every row the same height, whether or not there's a chance of rain under its icon) */
+.day-row { display: grid; grid-template-columns: 4.6em 40px 2.6em 1fr 2.6em; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 58px; }
 @media (hover: hover) { .day-row:hover { background-color: rgba(255, 255, 255, 0.07); } }
 .day-row:active { background-color: rgba(255, 255, 255, 0.1); }
 .d-name { font-weight: 600; font-size: 16px; line-height: 1.15; }
 .d-name small { display: block; font-size: 11.5px; font-weight: 500; color: var(--text-3); }
 .d-name small.unsure { color: #ffd68a; }
-.d-icon { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.d-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 44px; line-height: 1; }
+.d-icon > span:first-child { display: block; line-height: 0; }
 .d-pop { font-size: 11.5px; font-weight: 650; color: var(--tint-blue); margin-top: 1px; }
 .d-lo { text-align: right; color: var(--text-3); font-weight: 560; font-variant-numeric: tabular-nums; }
 .d-hi { font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -347,15 +350,16 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 @media (min-width: 640px) and (max-width: 979px) { .win-grid { grid-template-columns: repeat(3, 1fr); } }
 .win { border-radius: var(--r-inner); padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 /* the name and its rating side by side, the rating on a line of its own when the name needs the room */
-.win-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 6px; }
+/* the same lines in every card (what, when and how good, the hours, why), so side by side they line up */
 .win-name { font-weight: 650; font-size: 14.5px; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .win-name > span:first-child { display: inline-flex; flex: none; }
 .win-rate { flex: none; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
 .win-rate[data-r="Great"] { background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; }
 .win-rate[data-r="Good"] { background-color: rgba(93, 178, 255, 0.34); color: #e1f0ff; }
+.win-rate[data-r="Fair"] { background-color: rgba(255, 204, 110, 0.24); color: #ffeccb; }
 .win-rate[data-r="Poor"] { color: var(--text-2); background-color: rgba(255, 255, 255, 0.06); }
-.win-when { font-size: 15px; font-weight: 600; margin-top: 4px; line-height: 1.3; }
-.ww-time { white-space: nowrap; }
+.win-day { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.win-time { font-size: 16px; font-weight: 650; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .win-text { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
 
 /* ---------- this time of year ---------- */
@@ -441,6 +445,7 @@ body.sheet-drag .page { transition: none; }
 .sheet-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(255, 255, 255, 0.32); }
 @media (min-width: 700px) { .sheet-head::before { display: none; } }
 .sheet-head h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.sheet-head h2:focus { outline: none; }
 .sheet-sub { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin: 18px 0 6px; }
 /* search: a capsule */
 .search input { width: 100%; padding: 12px 16px 12px 42px; border-radius: 999px; font-size: 16px; background-color: rgba(118, 118, 128, 0.26);

@@ -311,7 +311,13 @@ function cards(wx, now) {
   const shown = S.allInsights ? rest : rest.slice(0, 6);
   const box = $("insights");
   box.replaceChildren(...shown.map(insightCard));
-  if (rest.length > shown.length) box.append(h("button", { class: "more-btn", type: "button", onclick: () => { S.allInsights = true; cards(S.wx, nowWall(S.wx.place.offset)); } }, `Show ${rest.length - shown.length} more`));
+  if (rest.length > shown.length) box.append(h("button", { class: "more-btn", type: "button", onclick: () => {
+    S.allInsights = true; cards(S.wx, nowWall(S.wx.place.offset));
+    // the rest rise in under the six (those on screen: see .hero's), and the first of them has focus (where the button was)
+    const more = [...box.children].slice(6);
+    more.forEach((c, i) => { if (c.getBoundingClientRect().top < innerHeight) { c.classList.add("rise"); c.style.setProperty("--i", String(i)); } });
+    if (more[0]) { more[0].tabIndex = -1; more[0].focus({ preventScroll: true }); }
+  } }, `Show ${rest.length - shown.length} more`));
 }
 
 function hourly(wx, now) {
@@ -405,10 +411,11 @@ function daily(wx, now) {
 function windows(wx, now) {
   const f = S.f, list = I.windows(wx, now, f, { activities: S.settings.activities, extras: S.settings.extras });
   $("win-grid").replaceChildren(...list.map((w) => {
-    const when = w.start == null ? [h("span", {}, "Not today or tomorrow")] : [h("span", { class: "ww-day" }, f.day(w.start, now)), " ", h("span", { class: "ww-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`)];
     return h("div", { class: "win" },
-      h("div", { class: "win-top" }, h("span", { class: "win-name" }, h("span", { svg: glyph(w.icon, 16) }), w.name), h("span", { class: "win-rate", "data-r": w.rating }, w.rating)),
-      h("div", { class: "win-when" }, ...when), h("div", { class: "win-text" }, w.text));
+      h("div", { class: "win-name" }, h("span", { svg: glyph(w.icon, 16) }), w.name),
+      h("div", { class: "win-day" }, h("span", {}, w.start == null ? "Not today or tomorrow" : f.day(w.start, now)), h("span", { class: "win-rate", "data-r": w.rating }, w.rating)),
+      w.start == null ? null : h("div", { class: "win-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`),
+      h("div", { class: "win-text" }, w.text));
   }));
 }
 
@@ -541,7 +548,8 @@ function openDay(key) {
   const body = $("day-body"), parts = I.dayParts(wx, key), conf = I.confidence(wx)[key];
   const kids = [
     h("div", { class: "day-top" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 56) }), h("div", {}, h("div", { class: "dt-main" }, label(d.code)), h("div", { class: "dt-sub" }, `High ${f.temp(d.tmax)} · Low ${f.temp(d.tmin)}`))),
-    d.tuned ? h("p", { class: "small tuned-note" }, `Tuned for here · forecast alone ${f.temp(d.raw.tmax)} / ${f.temp(d.raw.tmin)}`) : null,
+    // (only when the tuning changed what it says)
+    d.tuned && (f.temp(d.tmax) !== f.temp(d.raw.tmax) || f.temp(d.tmin) !== f.temp(d.raw.tmin)) ? h("p", { class: "small tuned-note" }, `Tuned for here · forecast alone ${f.temp(d.raw.tmax)} / ${f.temp(d.raw.tmin)}`) : null,
     h("p", { class: "day-desc" }, I.describeDay(wx, key, f)),
     h("div", { class: "parts" }, ...parts.map((p) => h("div", { class: "part" }, h("span", { class: "p-name" }, p.name[0].toUpperCase() + p.name.slice(1)),
       h("span", { svg: weatherIcon(iconOf(p.code, p.isDay), 34) }), h("span", { class: "p-temp" }, f.temp(p.name === "overnight" ? p.tmin : p.tmax)), h("span", { class: "p-pop" }, (p.pop ?? 0) >= 20 ? `${Math.round(p.pop)}%` : "")))),
@@ -783,6 +791,8 @@ function addAct() {
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 function openSheet(d) {
   if (!d.open) d.showModal();
+  // (the title has focus first, so it's what a screen reader says, and no ring lands on the close button)
+  d.querySelector(".sheet-head h2")?.focus({ preventScroll: true });
   d.classList.remove("closing"); d.style.transform = "";
   // (stepping back about the top of what's on screen, not the middle of the whole long page)
   document.querySelector(".page").style.transformOrigin = `50% ${scrollY}px`;

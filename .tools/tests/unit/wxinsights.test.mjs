@@ -179,6 +179,9 @@ test("describeDay: part by part, with rain and wind", () => {
   // the high and low are beside it in the sheet; only how the high will feel, when it's different
   const raw = makeWx((i, t, hh) => ({ cloud: 95, feels: 12 + 4 * Math.sin((hh - 9) / 24 * 2 * Math.PI) - 5 }));
   assert.match(I.describeDay(raw, keyOf(DAY0 + D), f), /^Cloudy all day\. The high feels more like \d+°\.$/);
+  // rain in the small hours, before the morning the parts start with, is placed there
+  const early = makeWx((i) => (i >= 26 && i < 29 ? { precip: 1, code: 63, pop: 90 } : { cloud: 95 }));
+  assert.match(I.describeDay(early, keyOf(DAY0 + D), f), /^Cloudy all day\. Around 3 mm of rain, in the small hours\.$/);
 });
 
 /* ---------- the warnings ---------- */
@@ -238,7 +241,7 @@ test("confidence: models that agree, and ones that don't", () => {
   assert.equal(c[day(2)].wetModels, 3);
   const cards = I.insights(wx, DAY0 + 9 * H, f);
   assert.equal(card(cards, "confidence").title, "Wednesday is uncertain");
-  assert.match(card(cards, "confidence").text, /highs anywhere from 9° to 17° and 3 of 6 models bring rain/);
+  assert.match(card(cards, "confidence").text, /^Highs anywhere from 9° to 17° and 3 of 6 models bring rain\. Check back nearer the time\.$/);
 });
 
 /* ---------- context ---------- */
@@ -289,6 +292,7 @@ test("windows: a run avoids the rain, the washing needs a dry spell, the sunset 
   assert.ok(w.run.start >= DAY0 + 13 * H, f.time(w.run.start));
   assert.ok(w.laundry.start >= DAY0 + 13 * H && w.laundry.rating !== "Poor");
   assert.equal(w.sunset.name, "Sunset colour"); assert.ok(w.sunset.score >= 0.75, String(w.sunset.score));
+  assert.equal(w.sunset.text, "High cloud to catch the light");     // (the card shows when, above it)
   assert.equal(I.sunsetScore({ precip: 3, code: 63, pop: 90 }), 0.05);
 });
 test("dayScore: a sunny calm mild day beats a wet windy one", () => {
