@@ -12,10 +12,11 @@ import * as F from './mocks/wxappdata.mjs';
 const [,, S, out] = process.argv;
 const H = 3600e3, D = 864e5;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
-// a radar tile: 256 × 256, clear but for a block of 30 dBZ rain in the radar's own blue in the middle
+// a radar tile: 256 × 256, a checkerboard of 30 dBZ rain (the radar's own blue) and clear, 32 pixels a square,
+// so wherever the map is zoomed in to, there's rain on screen and edges to soften
 const RADAR_PNG = (() => {
   const raw = Buffer.alloc(256 * (1 + 256 * 4));
-  for (let y = 0; y < 256; y++) for (let x = 96; x < 160; x++) if (y >= 96 && y < 160) raw.set([0x00, 0x55, 0x88, 0xff], y * 1025 + 1 + x * 4);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) if (((x >> 5) + (y >> 5)) % 2 === 0) raw.set([0x00, 0x55, 0x88, 0xff], y * 1025 + 1 + x * 4);
   const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data]))); return Buffer.concat([len, Buffer.from(type), data, crc]); };
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(256, 0); ihdr.writeUInt32BE(256, 4); ihdr.set([8, 6, 0, 0, 0], 8);
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
@@ -158,7 +159,7 @@ const drawn = await p.evaluate(() => {
   }
   return { rain, soft, blue, tiles: document.querySelectorAll('#radar .rv-tiles canvas').length };
 });
-ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));
+ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));;
 // the next two hours, from the models
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
 ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() >= 7, 'then the forecast\'s rain, marked as forecast', await p.textContent('#radar .radar-time'));

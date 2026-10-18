@@ -141,13 +141,17 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
 /* ---------- the top bar: floating glass ---------- */
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; min-height: 70px; }
 /* where the page scrolls under the bar, it softens (the scroll edge) */
-.top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) 0 -14px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s;
-  background: linear-gradient(180deg, rgba(10, 16, 28, 0.4), rgba(10, 16, 28, 0));
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-  -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent); mask-image: linear-gradient(180deg, #000 45%, transparent); }
+.top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) 0 -26px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: linear-gradient(180deg, rgba(10, 16, 28, 0.62), rgba(10, 16, 28, 0.38) 60%, rgba(10, 16, 28, 0));
+  -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%);
+  -webkit-mask-image: linear-gradient(180deg, #000 58%, transparent); mask-image: linear-gradient(180deg, #000 58%, transparent); }
 .top.scrolled::before { opacity: 1; }
+/* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
+.top .place, .top .icon-btn { transition: background-color 0.3s, transform 0.5s var(--spring), filter 0.25s; }
+.top.scrolled .place, .top.scrolled .icon-btn { background-color: rgba(34, 44, 64, 0.62); }
 .place { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
-.place-name { font-size: 17px; line-height: 22px; font-weight: 650; display: flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-name { font-size: 17px; line-height: 22px; font-weight: 650; display: flex; align-items: center; gap: 0; max-width: 100%; white-space: nowrap; }
+#place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
 /* the line under the name: where it is, and once the big temperature has scrolled away, the temperature and sky
    (crossfading with the scroll, as iOS Weather's large title collapses) */
@@ -156,9 +160,12 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
 .place-sub { opacity: calc(1 - var(--cs, 0)); }
 .place-now { opacity: var(--cs, 0); color: var(--text-2); font-weight: 600; }
 .place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
-/* with nothing to say under the name, it's one line until the temperature scrolls up into it (the bar keeps its
-   height meanwhile, so nothing below it moves) */
-.place.no-sub .place-line { max-height: calc(var(--cs, 0) * 15px); overflow: hidden; }
+/* with nothing to say under the name, it stays one line: the temperature slides in beside the name instead
+   (the pill never changes height) */
+.place.no-sub .place-line { display: none; }
+.place-temp { display: none; }
+.place.no-sub .place-temp { display: inline-block; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
+  max-width: calc(var(--cs, 0) * 3.2em); margin-left: calc(var(--cs, 0) * 7px); opacity: var(--cs, 0); }
 .top-actions { display: flex; gap: 10px; }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
 .icon-btn .g { position: relative; z-index: 3; }
@@ -175,7 +182,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 }
 
 /* ---------- now ---------- */
-.hero { padding: 20px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); transform-origin: 0 0;
+.hero { padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); transform-origin: 0 0;
   opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
 .hero-row { display: flex; align-items: center; gap: 10px; }
 .hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }

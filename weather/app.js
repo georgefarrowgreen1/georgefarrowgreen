@@ -203,7 +203,7 @@ function render() {
   if (wx) delete $("main").dataset.empty; else $("main").dataset.empty = S.error ? "error" : "loading";
   $("retry-btn").hidden = !!wx || !S.error;
   if (!wx) {
-    $("now-temp").textContent = "–"; $("now-icon").replaceChildren();
+    $("now-temp").textContent = "–"; $("now-icon").replaceChildren(); $("place-now").textContent = $("place-temp").textContent = "";
     $("now-cond").textContent = S.error ? "Couldn't get the forecast" : "Loading the forecast…";
     $("now-hl").textContent = S.error ? "You may be offline, or the forecast service didn't answer." : "";
     $("brief").textContent = "";
@@ -266,6 +266,7 @@ function hero(wx, now) {
   $("now-icon").innerHTML = weatherIcon(iconOf(c.code, c.isDay), 76);
   $("now-cond").textContent = label(c.code, c.isDay);
   $("place-now").textContent = `${f.temp(c.temp)} · ${label(c.code, c.isDay)}`;
+  $("place-temp").textContent = f.temp(c.temp);
   $("now-hl").textContent = d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}`;
   $("brief").textContent = I.headline(wx, now, f);
 }
