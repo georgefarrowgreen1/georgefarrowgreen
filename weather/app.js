@@ -75,7 +75,12 @@ async function start() {
   go();
   // keep "My Location" current, quietly, if you've allowed it (what was kept shows meanwhile)
   if (place()?.gps) try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted") locate(true); } catch (_) {}
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    // a new version: its worker arrives with every file fresh, so if this page has only just opened, start again on it
+    const had = !!navigator.serviceWorker.controller, opened = Date.now();
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && Date.now() - opened < 20e3) location.reload(); });
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
 }
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
@@ -137,7 +142,7 @@ function showPlace() {
   const p = place();
   $("place-name").textContent = p ? p.name : "Weather";
   $("sr-place").textContent = p ? p.name : "your place";
-  $("place-sub").textContent = p ? (p.gps ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
+  $("place-sub").textContent = p ? (p.gps && p.name !== "My Location" ? "My Location" : p.approx ? "Roughly where you are" : p.region || "") : "";
   document.title = p ? `${p.name} · Weather` : "Weather";
 }
 function render() {
@@ -541,7 +546,7 @@ function drawSaved() {
     return h("li", {},
       h("button", { class: "row-btn", type: "button", "aria-current": i === S.cur ? "true" : "false", onclick: () => { S.cur = i; savePlaces(); $("places").close(); go(); } },
         k ? h("span", { svg: weatherIcon(iconOf(k.code, k.isDay), 30) }) : null,
-        h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.gps ? "My Location" : p.region || "")),
+        h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.gps && p.name !== "My Location" ? "My Location" : p.region || "")),
         k ? h("span", { class: "rb-temp" }, f.temp(k.temp)) : null),
       S.places.length > 1 ? h("button", { class: "del", type: "button", "aria-label": `Remove ${p.name}`, svg: glyph("trash", 18), onclick: () => {
         const was = place(); S.places.splice(i, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go();

@@ -20,6 +20,7 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --pad: 16px;
+  --card-x: 18px;                /* a card's side margins */
   /* the glass */
   --tint: rgba(14, 22, 38, 0.36);               /* panels: how much the glass darkens what's behind (more over a pale sky) */
   --tint-ctl: rgba(255, 255, 255, 0.12);        /* controls: lighter, clearer glass */
@@ -177,7 +178,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .status.warn { color: #ffd68a; }
 
 /* ---------- cards ---------- */
-.card { border-radius: var(--r-card); padding: 16px 18px 18px; min-width: 0; }
+.card { border-radius: var(--r-card); padding: 16px var(--card-x) 18px; min-width: 0; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .card-title, .section-title { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 0 0 10px; display: flex; align-items: center; gap: 7px; }
 .card-head .card-title { margin: 0; }
@@ -197,7 +198,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .seg button:active { transform: scale(0.94); }
 
 /* hour strip */
-.strip { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x proximity; margin: 12px calc(-1 * var(--pad)) 6px; padding: 2px var(--pad) 8px; scrollbar-width: none; }
+/* the hours: they swipe to the card's edges, fading there, but rest and snap inside its margins
+   (the space at the end is a spacer: browsers differ on padding at the end of a scrolling row) */
+.strip { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x proximity; margin: 12px calc(-1 * var(--card-x)) 6px; padding: 2px 0 8px var(--card-x); scroll-padding-inline: var(--card-x); scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
+.strip::after { content: ""; flex: none; width: calc(var(--card-x) - 4px); }
 .strip::-webkit-scrollbar { display: none; }
 .hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 999px; scroll-snap-align: start; }
 .hour .h-time { font-size: 13px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
