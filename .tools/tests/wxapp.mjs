@@ -88,7 +88,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   // the radar's frames and tiles, and the map's
   await p.route(/api\.rainviewer\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify({ host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }) }));
-  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { const rv = /rainviewer/.test(r.request().url()); tiles[rv ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: rv ? RADAR_PNG : PNG }); });
+  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { const rv = /rainviewer/.test(r.request().url()); tiles[rv ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: rv && !sc.dryRadar ? RADAR_PNG : PNG }); });
   const res = await p.goto(url);
   await p.waitForSelector('.day-row', { timeout: 20000 });
   // everything in: the last to arrive is the thirty years of climate
@@ -160,16 +160,26 @@ const drawn = await p.evaluate(() => {
   return { rain, soft, blue, tiles: document.querySelectorAll('#radar .rv-tiles canvas').length };
 });
 ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));;
-// the next two hours, from the models
+// the next two hours: the latest radar carried along its own track (here it isn't moving), marked as forecast
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
-ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() >= 7, 'then the forecast\'s rain, marked as forecast', await p.textContent('#radar .radar-time'));
-const painted = await p.evaluate(() => { const img = [...document.querySelectorAll('#radar .fc-frame')].pop(); return img && img.src.startsWith('data:image/png') && img.src.length > 500; });
-ok(painted, 'painted in the radar\'s colours');
+ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() === 0 && await p.locator('#radar .rv-tiles').count() >= 24,
+  'then the radar carried on two hours, marked as forecast', `${await p.textContent('#radar .radar-time')}; ${await p.locator('#radar .rv-tiles').count()} frames`);
+ok(/along its own track/.test(await p.textContent('#radar .radar-status')), 'and it says so', await p.textContent('#radar .radar-status'));
+await p.waitForFunction(() => { const l = [...document.querySelectorAll('#radar .rv-tiles')].pop(); return [...l.querySelectorAll('canvas')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 150)); }, null, { timeout: 15000, polling: 250 }).then(() => true, () => false).then((x) => ok(x, 'the last forecast frame drawn from the radar, in its colours'));
 await p.click('#radar .radar-full');
 ok(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big')), 'full screen');
 await p.screenshot({ path: `${out}/wx-radar.png` });
 await p.keyboard.press('Escape');
 ok(!(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big'))), 'and back');
+// with no rain on the radar to follow, the next two hours come from the models instead, inside a box
+{
+  const { ctx: c2, p: p2 } = await open({ rainIn: 30, dryRadar: true });
+  await p2.locator('#radar').scrollIntoViewIfNeeded();
+  await p2.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
+  const fc = await p2.evaluate(() => { const img = [...document.querySelectorAll('#radar .fc-frame')].pop(); return { n: document.querySelectorAll('#radar .fc-frame').length, painted: !!img && img.src.startsWith('data:image/png') && img.src.length > 500 }; });
+  ok(fc.n >= 7 && fc.painted, 'no rain on the radar to follow: the models\' rain, painted in the radar\'s colours', JSON.stringify(fc));
+  await c2.close();
+}
 // your own activities
 await p.click('#settings-btn');
 await p.selectOption('#act-add', 'golf');

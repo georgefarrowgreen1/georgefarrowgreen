@@ -184,9 +184,13 @@ so there's nothing to set up beyond the address.
   colourful sunset or sunrise (high and mid cloud, no low cloud in the way).
 - **Rain radar**: the last two hours of radar, every 10 minutes, from
   RainViewer's free mosaic of the world's radars, then the next two hours as
-  the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9 grid
-  about 220 km across, blended between the points and painted in the radar's
-  own colours, inside a dashed box and marked Forecast), animated on one
+  the latest radar carried on along its own track (how the rain's moving from
+  the last 20 minutes of radar around the place, lined up block by block;
+  every 10 minutes ahead, fading the further it goes, marked Forecast); where
+  there's no track to follow (no radar there, or too little rain to tell), the
+  weather models' rain instead (Open-Meteo's 15-minute rain on a 9 × 9 grid
+  about 220 km across, blended and painted in the radar's own colours, inside
+  a dashed box), animated on one
   timeline marked Now, over OpenStreetMap's map turned dark. Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's
   colour read back into reflectivity, blended with a cubic B-spline (curved
@@ -278,9 +282,12 @@ a day per device (each phone asks for itself; a refresh is a few calls). The
 30-year history is one large request per place, so it's fetched once and kept
 for a year; if the archive is busy the card says so and tries again later.
 RainViewer's free radar is the past two hours only, to zoom 7 (closer in it's
-enlarged and smoothed; its tiles allow being read in the page, CORS), so the next two hours are the models' rain: smoother than radar
-(points about 28 km apart), and only inside the box around the place; each
-look at the radar asks Open-Meteo about 81 points (kept for 15 minutes).
+enlarged and smoothed; its tiles allow being read in the page, CORS), and its
+own nowcast isn't offered, so the next two hours are worked out here: the
+latest frame carried along the rain's measured track (rain doesn't grow or die
+out on the way, hence the fade). Only without a track does the radar ask
+Open-Meteo for its 81 points (kept for 15 minutes): smoother than radar, and
+only inside the box around the place.
 OpenStreetMap's tiles are for light use like this. CARTO's dark
 tiles now need an API key, so they're not used. GitHub runs scheduled
 workflows late when it's busy, so a rain alert can come later than the hour's

@@ -3,7 +3,7 @@
 // radar's own tiles where they're enlarged.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -102,4 +102,27 @@ test("smoothing an enlarged tile: a shower becomes round, its edge soft, the dry
   // snow: snow's blues
   const snow = (x, y) => (code(x, y) ? 30 + 111 : 0), sn = resample(new Uint8ClampedArray(W * W * 4), W, snow, 8, 8, 8);
   assert.ok(sn[(64 * W + 64) * 4 + 2] === 255 && sn[(64 * W + 64) * 4] < 0x80, "snow in blues");
+});
+
+test("how the rain is moving: two frames lined up", () => {
+  // a band of showers (and a cell) moved 17 pixels east and 11 north between frames
+  const W = 768, field = (cx, cy) => {
+    const a = new Uint8Array(W * W);
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const r = Math.hypot(x - cx, y - cy), r2 = Math.hypot(x - cx - 150, y - cy + 90);
+      if (r < 70 || (r2 < 40 && x % 7)) a[y * W + x] = 11 + Math.max(16, Math.round(40 - r / 3));
+    }
+    return a;
+  };
+  const m = motion(field(300, 400), field(317, 389), W, W);
+  assert.ok(Math.abs(m.dx - 17) < 1 && Math.abs(m.dy + 11) < 1 && m.score > 0.9, JSON.stringify(m));
+  const back = motion(field(300, 400), field(260, 425), W, W);
+  assert.ok(Math.abs(back.dx + 40) < 1 && Math.abs(back.dy - 25) < 1, JSON.stringify(back));
+  // still: no movement; nothing on the radar: nothing to go on
+  const still = motion(field(300, 400), field(300, 400), W, W);
+  assert.equal(still.dx, 0); assert.equal(still.dy, 0);
+  assert.equal(motion(new Uint8Array(W * W), new Uint8Array(W * W), W, W), null);
+  // drizzle alone (below 15 dBZ) doesn't steer it
+  const drizzle = new Uint8Array(W * W).fill(11 + 10);
+  assert.equal(motion(drizzle, drizzle, W, W), null);
 });

@@ -110,6 +110,58 @@ export function resample(out, w, code, x0, y0, span, look = { edge: [0.22, 0.45]
   return out;
 }
 
+// How the rain is moving, from two frames of radar (tile codes, w × h, the older first): each boiled down
+// to blocks of `cell` pixels (rain heavier than `min` dBZ, so drizzle and clutter don't steer it), then the
+// shift, up to `reach` blocks each way, that lines them up best (normalised cross-correlation), refined to a
+// fraction of a block. → { dx, dy (pixels, older to newer), score (0-1) }, or null with too little rain to go on
+export function motion(older, newer, w, h, { cell = 6, reach = 9, min = 15 } = {}) {
+  // (each pixel once, into the fine blocks; the coarse ones are four fine ones each)
+  const col = new Int32Array(w); for (let x = 0; x < w; x++) col[x] = (x / cell) | 0;
+  const boil = (codes) => {
+    const W = Math.floor(w / cell), H = Math.floor(h / cell), out = new Float32Array(W * H);
+    for (let y = 0; y < H * cell; y++) {
+      const row = y * w, o = ((y / cell) | 0) * W;
+      for (let x = 0; x < W * cell; x++) {
+        const c = codes[row + x];
+        if (c) { const d = c > 100 ? c - 111 : c - 11; if (d >= min) out[o + col[x]] += d - min + 1; }
+      }
+    }
+    return { W, H, v: out };
+  };
+  const halve = (f) => {
+    const W = f.W >> 1, H = f.H >> 1, out = new Float32Array(W * H);
+    for (let y = 0; y < H * 2; y++) for (let x = 0; x < W * 2; x++) out[(y >> 1) * W + (x >> 1)] += f.v[y * f.W + x];
+    return { W, H, v: out };
+  };
+  const count = (f) => { let n = 0; for (const x of f.v) if (x) n++; return n; };
+  const score = (A, B, dx, dy) => {
+    const { W, H } = A; let s = 0, a2 = 0, b2 = 0;
+    for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y++) {
+      const ra = y * W, rb = (y + dy) * W + dx;
+      for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x++) { const a = A.v[ra + x], b = B.v[rb + x]; s += a * b; a2 += a * a; b2 += b * b; }
+    }
+    return a2 && b2 ? s / Math.sqrt(a2 * b2) : 0;
+  };
+  // coarse first (blocks twice the size), then the fine blocks around the best of those
+  const A = boil(older), B = boil(newer), cA = halve(A), cB = halve(B);
+  if (count(cA) < 6 || count(cB) < 6) return null;
+  const r2 = Math.ceil(reach / 2);
+  let c = { dx: 0, dy: 0, v: -1 };
+  for (let dy = -r2; dy <= r2; dy++) for (let dx = -r2; dx <= r2; dx++) { const v = score(cA, cB, dx, dy); if (v > c.v) c = { dx, dy, v }; }
+  const n = 5, at = new Float64Array(n * n);
+  let best = { dx: 0, dy: 0, v: -1 };
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const dx = c.dx * 2 + i - 2, dy = c.dy * 2 + j - 2, v = Math.abs(dx) <= reach && Math.abs(dy) <= reach ? score(A, B, dx, dy) : 0;
+    at[j * n + i] = v;
+    if (v > best.v) best = { dx, dy, v, i, j };
+  }
+  // a parabola through the best and its neighbours, each way: the shift to a fraction of a block
+  const get = (i, j) => (i >= 0 && j >= 0 && i < n && j < n ? at[j * n + i] : best.v);
+  const frac = (m, mid, p) => { const d = m - 2 * mid + p; return d < 0 ? Math.max(-0.5, Math.min(0.5, (m - p) / (2 * d))) : 0; };
+  const fx = frac(get(best.i - 1, best.j), best.v, get(best.i + 1, best.j)), fy = frac(get(best.i, best.j - 1), best.v, get(best.i, best.j + 1));
+  return { dx: (best.dx + fx) * cell, dy: (best.dy + fy) * cell, score: best.v };
+}
+
 // The grid the forecast's frames are made from: n × n points, about 220 km across (points about
 // 28 km apart), around a place (rows from north to south, each from west to east)
 export function grid(lat, lon, n = 9, halfLat = 1) {
