@@ -244,7 +244,7 @@ directly, so a branch can be tried before it's merged.
 
 | Part | Where |
 | --- | --- |
-| Page, styles | `weather/index.html`, `weather/styles.css` (glass cards over a sky that follows the weather and the time of day) |
+| Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout (translucent, blurred panels with a light-catching rim over a sky that follows the weather and the time of day; capsule controls that give under a finger and spring back, a segmented control whose raised thumb slides, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast) |
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
 | Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are. Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |

@@ -99,7 +99,8 @@ ok(/on the way from about/.test(await p.textContent('#brief')), 'the briefing sa
 const sw = await p.evaluate(() => document.documentElement.scrollWidth);
 ok(sw <= 390, 'nothing wider than the phone (it would zoom the page out)', `${sw}px`);
 const warn = await p.locator('#alerts .ins h3').allTextContents();
-ok(warn.some((t) => /Frost/.test(t)) && warn.some((t) => /Gales/.test(t)), 'warnings: frost and gales', warn.join(' · '));
+// (icy patches instead of frost when the shower falls in the evening before the freezing night)
+ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.test(t)), 'warnings: frost and gales', warn.join(' · '));
 if (await p.locator('#insights .more-btn').count()) await p.locator('#insights .more-btn').evaluate((e) => e.click());
 const cards = await p.locator('#insights .ins h3').allTextContents();
 ok(cards.some((t) => /is uncertain$/.test(t)), 'the day the models disagree is called uncertain', cards.join(' · '));

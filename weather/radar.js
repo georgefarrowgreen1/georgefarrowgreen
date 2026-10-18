@@ -82,6 +82,7 @@ export function radar(card, { lat, lon, time, miles = false }) {
     layers.forEach((l, j) => l.setOpacity(j === i ? SHOW : 0));
     const f = frames[i], mins = Math.round((f.t - Date.now()) / 60e3);
     slider.value = String(i);
+    slider.style.setProperty("--pct", `${(i / Math.max(1, layers.length - 1)) * 100}%`);
     slider.setAttribute("aria-valuetext", label.textContent = f.kind === "model" ? `${time(f.t)} · in ${Math.max(0, mins)} min · forecast` : i === nowAt ? `${time(f.t)} · latest radar` : `${time(f.t)} · ${ago(-mins)}`);
     chip.textContent = f.kind === "model" ? "Forecast" : "Radar";
     chip.dataset.kind = f.kind;

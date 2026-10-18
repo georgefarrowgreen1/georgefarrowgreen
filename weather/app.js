@@ -505,10 +505,10 @@ function openDay(key) {
       d.tuned ? h("tr", { class: "tuned-row" }, h("td", {}, "Tuned for here"), h("td", {}, f.temp(d.tmax)), h("td", {}, f.temp(d.tmin)), h("td", {}, "–")) : null,
       ...mods.map((m) => h("tr", {}, h("td", {}, m.name), h("td", {}, f.temp(m.tmax)), h("td", {}, f.temp(m.tmin)), h("td", {}, m.precip != null ? f.precip(m.precip) : "–")))));
   }
-  body.replaceChildren(...kids);
+  body.replaceChildren(...kids.filter(Boolean));
   const dlg = $("day");
   if (!dlg.open) dlg.showModal();
-  dlg.scrollTop = 0;
+  dlg.querySelector(".sheet-body").scrollTop = 0;
   if (hrs.length > 3) requestAnimationFrame(() => {
     drawHourChart(wx, now, hrs, tChart, null, "temp", d.key === keyOf(now));
     drawHourChart(wx, now, hrs, rChart, null, "rain", d.key === keyOf(now));
@@ -723,7 +723,9 @@ function wire() {
   $("hourly-seg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-mode]"); if (!b) return;
     S.mode = b.dataset.mode;
-    for (const x of $("hourly-seg").children) x.setAttribute("aria-selected", String(x === b));
+    const tabs = [...$("hourly-seg").children];
+    for (const x of tabs) x.setAttribute("aria-selected", String(x === b));
+    $("hourly-seg").style.setProperty("--seg-i", String(tabs.indexOf(b)));
     if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), $("hourly-note"), S.mode, true); }
   });
   $("hourly-seg").addEventListener("keydown", (e) => {
@@ -736,6 +738,16 @@ function wire() {
   dock(); wide.addEventListener("change", dock);
   const top = document.querySelector(".top");
   addEventListener("scroll", () => top.classList.toggle("scrolled", scrollY > 8), { passive: true });
+  // the glass: Safari only shows a press (:active) once the page listens for touches, and with a mouse
+  // a soft light follows the pointer across the panels
+  addEventListener("touchstart", () => {}, { passive: true });
+  if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    let raf = 0, x = 0, y = 0;
+    addEventListener("pointermove", (e) => {
+      x = e.clientX; y = e.clientY;
+      raf ||= requestAnimationFrame(() => { raf = 0; document.documentElement.style.setProperty("--lx", `${x}px`); document.documentElement.style.setProperty("--ly", `${y}px`); });
+    }, { passive: true });
+  }
   // the minute changes things like "in 20 minutes": redraw just what says so (the rest waits for the next forecast)
   setInterval(() => {
     if (!S.wx || document.visibilityState !== "visible") return;

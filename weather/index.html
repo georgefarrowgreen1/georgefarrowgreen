@@ -138,14 +138,16 @@
       <h2 id="places-title">Places</h2>
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
-    <form class="search" id="search-form" role="search">
-      <label class="sr-only" for="search">Search for a place</label>
-      <input id="search" type="search" placeholder="Search for a city or town" autocomplete="off" enterkeyhint="search" />
-    </form>
-    <ul class="results" id="results" aria-live="polite"></ul>
-    <button class="row-btn" id="use-location" type="button"></button>
-    <h3 class="sheet-sub">Saved</h3>
-    <ul class="saved" id="saved"></ul>
+    <div class="sheet-body">
+      <form class="search" id="search-form" role="search">
+        <label class="sr-only" for="search">Search for a place</label>
+        <input id="search" type="search" placeholder="Search for a city or town" autocomplete="off" enterkeyhint="search" />
+      </form>
+      <ul class="results" id="results" aria-live="polite"></ul>
+      <button class="row-btn" id="use-location" type="button"></button>
+      <h3 class="sheet-sub">Saved</h3>
+      <ul class="saved" id="saved"></ul>
+    </div>
   </dialog>
 
   <dialog class="sheet" id="settings" aria-labelledby="settings-title">
@@ -153,48 +155,50 @@
       <h2 id="settings-title">Settings</h2>
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
-    <form id="settings-form">
-      <fieldset class="opt"><legend>Temperature</legend>
-        <label><input type="radio" name="temp" value="c" /> °C</label><label><input type="radio" name="temp" value="f" /> °F</label>
-      </fieldset>
-      <fieldset class="opt"><legend>Wind</legend>
-        <label><input type="radio" name="wind" value="mph" /> mph</label><label><input type="radio" name="wind" value="kmh" /> km/h</label><label><input type="radio" name="wind" value="ms" /> m/s</label><label><input type="radio" name="wind" value="kn" /> knots</label>
-      </fieldset>
-      <fieldset class="opt"><legend>Rain</legend>
-        <label><input type="radio" name="precip" value="mm" /> mm</label><label><input type="radio" name="precip" value="in" /> inches</label>
-      </fieldset>
-      <fieldset class="opt"><legend>Pressure</legend>
-        <label><input type="radio" name="pressure" value="hpa" /> hPa</label><label><input type="radio" name="pressure" value="inhg" /> inHg</label><label><input type="radio" name="pressure" value="mmhg" /> mmHg</label>
-      </fieldset>
-      <fieldset class="opt"><legend>Clock</legend>
-        <label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label>
-      </fieldset>
-      <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
-        <label class="switch"><input type="checkbox" name="rain" /> Rain alerts: a heads-up when rain is about to start (not overnight)</label>
-        <label class="switch"><input type="checkbox" name="brief" /> A morning briefing at <input type="time" name="briefAt" value="07:00" aria-label="Briefing time" /></label>
-        <p class="note" id="notify-place"></p>
-        <button class="pill-btn" type="button" id="notify-here" hidden>Use the place I'm looking at</button>
-        <p class="note" id="notify-status" role="status"></p>
-      </fieldset>
-      <fieldset class="opt"><legend>Forecast</legend>
-        <label class="switch"><input type="checkbox" name="tune" /> Tune highs and lows to how each model has done here</label>
-      </fieldset>
-      <fieldset class="opt acts" id="acts-set"><legend>Best times</legend>
-        <ul class="acts-list" id="acts-list"></ul>
-        <label class="acts-add">Add an activity <select id="act-add"><option value="">Choose…</option></select></label>
-        <label class="switch"><input type="checkbox" name="x_laundry" /> Drying washing outside</label>
-        <label class="switch"><input type="checkbox" name="x_stars" /> Stargazing</label>
-        <label class="switch"><input type="checkbox" name="x_sunset" /> Sunset and sunrise colour</label>
-      </fieldset>
-      <fieldset class="opt commute"><legend>Commute check</legend>
-        <label class="switch"><input type="checkbox" name="commute" /> Tell me about my weekday commute</label>
-        <div class="times">
-          <label>Leave <input type="time" name="am" value="08:00" /></label>
-          <label>Return <input type="time" name="pm" value="17:30" /></label>
-        </div>
-      </fieldset>
-    </form>
-    <p class="muted small" id="about-app">Your settings and places are kept on this device only.</p>
+    <div class="sheet-body">
+      <form id="settings-form">
+        <fieldset class="opt"><legend>Temperature</legend>
+          <div class="choice"><label><input type="radio" name="temp" value="c" /> °C</label><label><input type="radio" name="temp" value="f" /> °F</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Wind</legend>
+          <div class="choice"><label><input type="radio" name="wind" value="mph" /> mph</label><label><input type="radio" name="wind" value="kmh" /> km/h</label><label><input type="radio" name="wind" value="ms" /> m/s</label><label><input type="radio" name="wind" value="kn" /> knots</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Rain</legend>
+          <div class="choice"><label><input type="radio" name="precip" value="mm" /> mm</label><label><input type="radio" name="precip" value="in" /> inches</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Pressure</legend>
+          <div class="choice"><label><input type="radio" name="pressure" value="hpa" /> hPa</label><label><input type="radio" name="pressure" value="inhg" /> inHg</label><label><input type="radio" name="pressure" value="mmhg" /> mmHg</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Clock</legend>
+          <div class="choice"><label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label></div>
+        </fieldset>
+        <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
+          <label class="switch"><input type="checkbox" name="rain" /> Rain alerts: a heads-up when rain is about to start (not overnight)</label>
+          <label class="switch"><input type="checkbox" name="brief" /> A morning briefing at <input type="time" name="briefAt" value="07:00" aria-label="Briefing time" /></label>
+          <p class="note" id="notify-place"></p>
+          <button class="pill-btn" type="button" id="notify-here" hidden>Use the place I'm looking at</button>
+          <p class="note" id="notify-status" role="status"></p>
+        </fieldset>
+        <fieldset class="opt"><legend>Forecast</legend>
+          <label class="switch"><input type="checkbox" name="tune" /> Tune highs and lows to how each model has done here</label>
+        </fieldset>
+        <fieldset class="opt acts" id="acts-set"><legend>Best times</legend>
+          <ul class="acts-list" id="acts-list"></ul>
+          <label class="acts-add">Add an activity <select id="act-add"><option value="">Choose…</option></select></label>
+          <label class="switch"><input type="checkbox" name="x_laundry" /> Drying washing outside</label>
+          <label class="switch"><input type="checkbox" name="x_stars" /> Stargazing</label>
+          <label class="switch"><input type="checkbox" name="x_sunset" /> Sunset and sunrise colour</label>
+        </fieldset>
+        <fieldset class="opt commute"><legend>Commute check</legend>
+          <label class="switch"><input type="checkbox" name="commute" /> Tell me about my weekday commute</label>
+          <div class="times">
+            <label>Leave <input type="time" name="am" value="08:00" /></label>
+            <label>Return <input type="time" name="pm" value="17:30" /></label>
+          </div>
+        </fieldset>
+      </form>
+      <p class="muted small" id="about-app">Your settings and places are kept on this device only.</p>
+    </div>
   </dialog>
 
   <dialog class="sheet day-sheet" id="day" aria-labelledby="day-title">
@@ -202,7 +206,9 @@
       <h2 id="day-title">Day</h2>
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
-    <div id="day-body"></div>
+    <div class="sheet-body">
+      <div id="day-body"></div>
+    </div>
   </dialog>
 </body>
 </html>
