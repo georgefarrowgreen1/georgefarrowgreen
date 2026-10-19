@@ -20,6 +20,9 @@ export const MODELS = [
   ["icon_seamless", "ICON", "Germany's DWD model"],
   ["meteofrance_seamless", "Météo-France", "France's ARPEGE and AROME models"],
   ["gem_seamless", "GEM", "Environment Canada's model"],
+  // (ECMWF's AI model: learned from decades of the weather rather than worked out from physics, and as good or better
+  // on temperature; its forecasts are kept as the others' are, so it's judged here alike)
+  ["ecmwf_aifs025_single", "ECMWF AI", "ECMWF's AI model, AIFS"],
 ];
 export const MIN_DAYS = 5, TUNE_DAYS = 7;
 

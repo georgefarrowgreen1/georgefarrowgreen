@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeFormat, keyOf } from "../../../weather/format.js";
 import { shapePrevious, skillFrom, tuneDay, applyTuning, obsDays, TUNE_DAYS } from "../../../weather/skill.js";
-import { activityScore, ACTIVITIES, windows, limitsText, likely, dryChance, insights } from "../../../weather/insights.js";
+import { activityScore, ACTIVITIES, windows, limitsText, likely, dryChance, insights, confidence } from "../../../weather/insights.js";
 import { shapeEnsemble } from "../../../weather/data.js";
 import { rainAlert, briefDue, briefing, isQuiet } from "../../../weather/alerts.js";
 
@@ -132,6 +132,55 @@ test("the chance a stretch stays dry, counted run by run", () => {
   assert.equal(dryChance(makeWx(), at(37), at(39)), null, "no ensemble yet");
   assert.equal(dryChance({ ensemble: { hourly: wx.ensemble.hourly.map(({ m, ...e }) => e) } }, at(37), at(39)), null, "nor one kept from before");
   assert.equal(dryChance(wx, at(80), at(82)), null, "nor past its end");
+});
+// several ensembles as Open-Meteo gives them in one answer, each column named for its system: systems [{ id, runs,
+// temp(i, k), wet(i, k), until (the last hour it reaches, from DAY0) }]
+function pooled(systems) {
+  const time = [], h = { time };
+  for (let i = -24; i < 72; i++) time.push(new Date(DAY0 + i * H).toISOString().slice(0, 16));
+  for (const s of systems) for (let k = 0; k < s.runs; k++) {
+    const sfx = `${k ? `_member${String(k).padStart(2, "0")}` : ""}_${s.id}`, there = (j) => j - 24 <= (s.until ?? 99);
+    h[`temperature_2m${sfx}`] = time.map((_, j) => (there(j) ? s.temp(j - 24, k) : null));
+    h[`precipitation${sfx}`] = time.map((_, j) => (there(j) ? (s.wet?.(j - 24, k) ? 0.6 : 0) : null));
+  }
+  return shapeEnsemble({ hourly: h });
+}
+test("the ensembles pooled: each system its say, whatever its number of runs", () => {
+  const e = pooled([{ id: "ecmwf_ifs025_ensemble", runs: 51, temp: () => 10 }, { id: "ncep_gefs025", runs: 31, temp: () => 20 }, { id: "ukmo_uk_ensemble_2km", runs: 3, temp: () => 14, until: 40 }]);
+  assert.equal(e.members, 85);
+  assert.deepEqual(e.systems.map((s) => [s.id, s.n, s.say]), [["ecmwf_ifs025_ensemble", 51, 1], ["ncep_gefs025", 31, 1], ["ukmo_uk_ensemble_2km", 3, 0.5]]);
+  const hr = e.hourly.find((x) => x.t === DAY0 + 30 * H);
+  // (51 runs at 10° and 31 at 20° counted run by run would put the middle at 10°: by system, it's between)
+  assert.ok(hr.p10 === 10 && hr.p90 === 20 && hr.p50 > 12 && hr.p50 < 18, JSON.stringify(hr));
+  assert.equal(hr.n, 85);
+  const late = e.hourly.find((x) => x.t === DAY0 + 50 * H);
+  assert.equal(late.n, 82, "past where the UK one reaches, the other two");
+  assert.equal(late.m[2], null);
+  // a day each system reaches right through has them all; one the UK one stops in, not it
+  assert.equal(e.days[new Date(DAY0).toISOString().slice(0, 10)].members, 85);
+  assert.equal(e.days[new Date(DAY0 + 24 * H).toISOString().slice(0, 10)].members, 82);
+});
+test("the chance a stretch stays dry, pooled: each system that reaches through it, by its say", () => {
+  const wx = makeWx(), at = (h) => DAY0 + h * H;
+  // ECMWF dry throughout; GFS: a third of its runs wet at 13:00 tomorrow; the 2 km UK one (half a say) all wet then, and
+  // gone by the day after
+  wx.ensemble = pooled([{ id: "ecmwf_ifs025_ensemble", runs: 51, temp: () => 12 }, { id: "ncep_gefs025", runs: 30, temp: () => 12, wet: (i, k) => i === 37 && k < 10 },
+    { id: "ukmo_uk_ensemble_2km", runs: 3, temp: () => 12, wet: (i) => i === 37, until: 40 }]);
+  const got = dryChance(wx, at(36), at(39)), want = (1 * 1 + 1 * (2 / 3) + 0.5 * 0) / 2.5;
+  assert.ok(Math.abs(got - want) < 1e-9, `${got} vs ${want}`);
+  assert.ok(Math.abs(dryChance(wx, at(38), at(42)) - 1) < 1e-9, "after it, dry in the two that reach through (the UK one doesn't)");
+  assert.equal(dryChance(wx, at(80), at(82)), null, "none reaches that far");
+});
+test("a model that always runs cold here isn't counted as disagreeing (ECMWF's AI one, say)", () => {
+  const wx = makeWx(), key = wx.daily[2].key;
+  // six models within a degree of each other, and the AI one 4° colder
+  const day = [["ecmwf_ifs", 14], ["ukmo_seamless", 14.5], ["gfs_seamless", 13.6], ["icon_seamless", 14.2], ["meteofrance_seamless", 14.4], ["gem_seamless", 13.8], ["ecmwf_aifs025_single", 10]]
+    .map(([id, tmax]) => ({ id, name: id, tmax, tmin: 8, precip: 0 }));
+  wx.models = { list: [], days: { [key]: day } };
+  assert.ok(confidence(wx)[key].why.includes("temperature"), "not knowing its lean: it looks like disagreement");
+  // its usual lean here known (4° cold, from the airport's reports): it agrees after all
+  wx.skill = { skill: { byId: { ecmwf_aifs025_single: { hiBias: -4 } } } };
+  assert.ok(!confidence(wx)[key].why.includes("temperature"), JSON.stringify(confidence(wx)[key]));
 });
 test("best times and the umbrella go by the whole stretch's chance of staying dry", () => {
   const now = DAY0 + 9 * H, only = { laundry: false, stars: false, sunset: false };

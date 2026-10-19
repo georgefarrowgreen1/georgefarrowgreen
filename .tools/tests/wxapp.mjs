@@ -224,9 +224,10 @@ ok((await p.locator('#win-grid .win').count()) >= 5, 'best times for a run, a wa
 const wins = await p.locator('#win-grid .win').evaluateAll((ws) => ws.map((w) => [...w.children].map((c) => c.className).join(' ') + (w.querySelector('.win-day .win-rate') ? ' +rate' : '')));
 ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 'each card the same lines (what, when and how good, the hours, why), so they line up', wins[0]);
 {
-  // (the chance the whole stretch stays dry, from the ensemble's runs: ten of 51 wet throughout the next three days)
+  // (the chance the whole stretch stays dry, from the ensembles' runs pooled: ten of ECMWF's 51 and six of GFS's 31 wet
+  // throughout the next three days, each system its say: 81%)
   const why = await p.locator('#windows .win-text').allTextContents();
-  ok(why.filter((t) => /^80% chance it stays dry, /.test(t)).length >= 3, 'the best times give the chance the whole stretch stays dry', why.slice(0, 3).join(' | '));
+  ok(why.filter((t) => /^81% chance it stays dry, /.test(t)).length >= 3, 'the best times give the chance the whole stretch stays dry', why.slice(0, 3).join(' | '));
 }
 // the briefing: what's coming first, in bold
 {
@@ -523,7 +524,7 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const { ctx: c5, p: p5 } = await open({ radarHere: true });
   await p5.waitForFunction(() => /starting/.test(document.getElementById('nowcast-text')?.textContent || ''), null, { timeout: 20000 }).catch(() => {});
   const said = await p5.textContent('#nowcast-text'), brief = await p5.textContent('#brief');
-  ok(/^Rain starting in about (5|10|15|20|25|30) min/.test(said) && /^Rain on the way from about \d\d:\d\d/.test(brief),
+  ok(/^Rain starting (in about (5|10|15|20|25|30) min|any minute)/.test(said) && /^Rain on the way from about \d\d:\d\d/.test(brief),
     'the next hours from the radar, where it sees: rain coming that the models don\'t have', `${said} | ${brief.slice(0, 60)}`);
   ok(await p5.isVisible('#nowcast-src') && (await p5.textContent('#nowcast-src')).trim() === 'Radar', 'and the card says it\'s the radar\'s timing');
   await c5.close();
@@ -796,7 +797,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     await p2.click('#settings-btn'); await p2.check('input[name="rain"]');
     await p2.waitForFunction(() => /^On: rain alerts/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
     const t3 = await tick(), alert = (await mine(second)).find((n) => n.tag === 'rain');
-    ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in about \d+ min$/.test(alert.title) && /^London: Rain starting in about \d+ min/.test(alert.body),
+    ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in about \d+ min$/.test(alert.title) && /^London: Rain starting (in about \d+ min|any minute)/.test(alert.body),
       'the rain alert from the radar, where it sees: rain coming that the models don\'t have', `${JSON.stringify(t3)} ${alert ? `${alert.title} — ${alert.body}` : 'none'}`);
     await p2.uncheck('input[name="rain"]');
     await p2.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });

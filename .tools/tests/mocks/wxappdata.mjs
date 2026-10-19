@@ -71,11 +71,14 @@ export function models(now, sc = {}) {
 export function ensemble(now) {
   const start = Math.floor(now / D) * D, h = { time: [] };
   for (let t = start; t < start + 10 * D; t += H) h.time.push(iso(t));
-  for (let m = 0; m <= 50; m++) {
-    const sfx = m ? `_member${String(m).padStart(2, "0")}` : "";
-    h[`temperature_2m${sfx}`] = h.time.map((s, i) => 11 + 4 * Math.sin(((i % 24 - 9) / 24) * 2 * Math.PI) + (m - 25) * 0.04 * (1 + i / 48));
-    // (ten of the 51 runs bring a little rain through the next three days: four in five stay dry, whatever the hour)
-    h[`precipitation${sfx}`] = h.time.map((s, i) => (m >= 1 && m <= 10 && i < 72 ? 0.3 : 0));
+  // (two of the ensembles, as Open-Meteo names them asked for together: ECMWF's 51 runs and GFS's 31; ten of ECMWF's and
+  // six of GFS's bring a little rain through the next three days: 41 of 51 and 25 of 31 stay dry, whatever the hour,
+  // which with each system its say is 81%)
+  for (const [sys, runs, wet] of [["ecmwf_ifs025_ensemble", 51, 10], ["ncep_gefs025", 31, 6]]) for (let m = 0; m < runs; m++) {
+    const sfx = `${m ? `_member${String(m).padStart(2, "0")}` : ""}_${sys}`;
+    // (each system's runs spread alike: ±1° now, widening further ahead)
+    h[`temperature_2m${sfx}`] = h.time.map((s, i) => 11 + 4 * Math.sin(((i % 24 - 9) / 24) * 2 * Math.PI) + (m / (runs - 1) - 0.5) * 2 * (1 + i / 48));
+    h[`precipitation${sfx}`] = h.time.map((s, i) => (m >= 1 && m <= wet && i < 72 ? 0.3 : 0));
   }
   return { latitude: LAT, longitude: LON, timezone: "UTC", utc_offset_seconds: 0, hourly: h };
 }

@@ -1042,7 +1042,7 @@ function openDay(key, dir = 0) {
     const why = conf.why.length ? `The models differ on the ${conf.why.join(" and the ")}.` : "";
     kids.push(h("h3", { class: "day-section" }, "Forecast confidence"), h("div", { class: "conf" }, bar, h("b", {}, `${conf.level[0].toUpperCase() + conf.level.slice(1)} (${conf.score})`)),
       why ? h("p", { class: "small muted" }, why) : null);
-    // (ECMWF's ensemble: where the high and low most likely land, the middle 80% of its runs, tuned as the day is)
+    // (the ensembles: where the high and low most likely land, the middle 80% of their runs, tuned as the day is)
     const ens = I.likely(d, wx.ensemble?.days?.[key]), span = (r) => `${f.temp(r[0])} to ${f.temp(r[1])}`;
     if (ens) kids.push(h("div", { class: "stats" }, stat("Likely high", span(ens.hi)), ens.lo ? stat("Likely low", span(ens.lo)) : null));
     const mods = wx.models?.days?.[key];

@@ -72,23 +72,30 @@ export function hoursFrom(wx, w, n) {
   return i < 0 ? [] : wx.hourly.slice(i, i + n);
 }
 export const hoursBetween = (wx, a, b) => wx.hourly.filter((h) => h.t >= a && h.t < b);
-// The chance (0 to 1) it stays dry from a to b: the share of the ensemble's runs dry the whole time (data.js keeps which
-// are wet each hour), which over a long stretch is less than any one hour's own chance says. null where the ensemble
-// doesn't cover it, or isn't in yet
+// The chance (0 to 1) it stays dry from a to b: the share of the ensembles' runs dry the whole time (data.js keeps which
+// are wet each hour), which over a long stretch is less than any one hour's own chance says. Each system that reaches
+// right through the stretch has its say (data.js ENSEMBLES); null where none does, or the ensembles aren't in yet
 const runsAt = new WeakMap();
 const ones = (v) => { let k = 0; for (; v; k++) v &= v - 1; return k; };
 export function dryChance(wx, a, b) {
-  const ens = wx?.ensemble;
-  if (!ens?.hourly?.length || !(b > a)) return null;
+  const ens = wx?.ensemble, sys = ens?.systems;
+  if (!ens?.hourly?.length || !sys?.length || !(b > a)) return null;
   let at = runsAt.get(ens);
   if (!at) { at = new Map(ens.hourly.filter((e) => e.m).map((e) => [e.t, e])); runsAt.set(ens, at); }
-  let x = 0, y = 0, n = 0;
+  // each system's runs wet at some hour of it so far (false: a system that doesn't reach right through)
+  const wet = sys.map(() => null);
   for (let t = Math.floor(a / HOUR) * HOUR; t < b; t += HOUR) {
     const e = at.get(t);
-    if (!e || (n && e.n !== n)) return null;
-    n = e.n; x |= e.m[0]; y |= e.m[1];
+    if (!e) return null;
+    sys.forEach((_, k) => {
+      if (wet[k] === false) return;
+      const m = e.m[k];
+      wet[k] = !m ? false : wet[k] ? wet[k].map((v, i) => v | m[i]) : m.slice();
+    });
   }
-  return n ? 1 - (ones(x) + ones(y)) / n : null;
+  let say = 0, dry = 0;
+  sys.forEach((s, k) => { if (!wet[k]) return; say += s.say; dry += s.say * (1 - wet[k].reduce((x, v) => x + ones(v), 0) / s.n); });
+  return say ? dry / say : null;
 }
 export const dayOf = (wx, w) => wx.daily.find((d) => d.key === keyOf(w)) || null;
 const dayIndex = (wx, w) => wx.daily.findIndex((d) => d.key === keyOf(w));
@@ -301,7 +308,7 @@ export function likely(d, ens) {
   const up = d?.raw ? d.tmax - d.raw.tmax : 0, down = d?.raw ? d.tmin - d.raw.tmin : 0;
   return { hi: [ens.tmaxP10 + up, ens.tmaxP90 + up], lo: ens.tminP10 == null || ens.tminP90 == null ? null : [ens.tminP10 + down, ens.tminP90 + down] };
 }
-// Per day: the ensemble's spread (51 runs of ECMWF's model) and whether the big models agree.
+// Per day: the ensembles' spread (their runs pooled: data.js ENSEMBLES) and whether the big models agree.
 // { [key]: { score 5..98, level: high | medium | low, tLo, tHi, wetModels, nModels, ensWet, why } }
 export function confidence(wx) {
   const out = {};
@@ -309,7 +316,7 @@ export function confidence(wx) {
     const ens = wx.ensemble?.days?.[d.key], mod = wx.models?.days?.[d.key]?.filter((m) => m.tmax != null) || [];
     const lead = Math.max(0, i - 1);
     let score = 96 - lead * 5.5, why = [];
-    let tLo = null, tHi = null, wetModels = null, ensWet = null;
+    let tLo = null, tHi = null, wetModels = null, nModels = null, ensWet = null;
     if (ens && ens.tmaxP90 != null) {
       const spread = ens.tmaxP90 - ens.tmaxP10;
       [tLo, tHi] = likely(d, ens).hi; ensWet = ens.wet;
@@ -317,9 +324,13 @@ export function confidence(wx) {
       if (ensWet != null) score -= (1 - Math.abs(2 * ensWet - 1)) * 30;
     }
     if (mod.length >= 3) {
-      const ts = mod.map((m) => m.tmax), range = Math.max(...ts) - Math.min(...ts);
-      wetModels = mod.filter((m) => (m.precip ?? 0) >= 1).length;
-      const agree = Math.abs(2 * wetModels / mod.length - 1);
+      // (each model's high with its usual lean here taken off, where that's known: one that always runs cold isn't
+      // disagreeing with the others)
+      const lean = wx.skill?.skill?.byId || {}, ts = mod.map((m) => m.tmax - (lean[m.id]?.hiBias ?? 0)), range = Math.max(...ts) - Math.min(...ts);
+      // (of those with a rain figure)
+      const said = mod.filter((m) => m.precip != null);
+      wetModels = said.filter((m) => m.precip >= 1).length; nModels = said.length || null;
+      const agree = said.length ? Math.abs(2 * wetModels / said.length - 1) : 1;
       const mScore = 100 - Math.max(0, range - 1.5) * 8 - (1 - agree) * 30;
       score = ens && ens.tmaxP90 != null ? (score * 0.6 + mScore * 0.4) : mScore - lead * 2;
       if (tLo == null) { tLo = Math.min(...ts); tHi = Math.max(...ts); }
@@ -327,7 +338,7 @@ export function confidence(wx) {
       if (agree < 0.5) why.push("rain");
     } else if (ensWet != null && ensWet > 0.3 && ensWet < 0.7) why.push("rain");
     score = Math.round(clamp(score, 5, 98));
-    out[d.key] = { score, level: score >= 70 ? "high" : score >= 45 ? "medium" : "low", tLo, tHi, wetModels, nModels: mod.length || null, ensWet, why };
+    out[d.key] = { score, level: score >= 70 ? "high" : score >= 45 ? "medium" : "low", tLo, tHi, wetModels, nModels, ensWet, why };
   });
   return out;
 }

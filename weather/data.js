@@ -3,8 +3,8 @@
 // phone so the app opens instantly (and offline) with what it last knew.
 //
 //   forecast     the best forecast for the spot: now, 15-minute rain for 4 hours, hourly, 16 days
-//   models       six of the world's big models side by side, to see if they agree
-//   ensemble     ECMWF's 51-run ensemble: how wide the possibilities are
+//   models       seven of the world's big models side by side, to see if they agree (ECMWF's AI one among them)
+//   ensemble     five ensembles' runs pooled (ECMWF, ICON, GFS, the Met Office's global and UK): how wide the possibilities are
 //   air          air quality and pollen
 //   climate      30 years of this place's days (once per place, kept for a year)
 //   warnings     official warnings, from the place's own weather service (asked by this site's server:
@@ -74,7 +74,7 @@ export function shapeForecast(j, place = {}) {
   };
 }
 
-// six models' daily figures → { list: [[id, name, about]], days: { key: [{ id, name, tmax, tmin, precip, gust, code }] } }
+// the models' daily figures → { list: [[id, name, about]], days: { key: [{ id, name, tmax, tmin, precip, gust, code }] } }
 export function shapeModels(j) {
   const d = j?.daily; if (!d?.time) return null;
   const days = {}, list = MODELS.filter(([id]) => Array.isArray(d[`temperature_2m_max_${id}`]) && d[`temperature_2m_max_${id}`].some((v) => v != null));
@@ -85,36 +85,86 @@ export function shapeModels(j) {
   return list.length ? { list, days } : null;
 }
 
-// the ensemble's runs → the spread of temperature each hour, the share of runs wet each hour, and each day's spread;
-// and which runs are wet each hour (0.2 mm or more: a bit for each run, the first 26 in one number and the rest in
-// another), so the chance of a stretch staying dry is counted run by run (insights.js dryChance)
-const q = (s, p) => { if (!s.length) return null; const i = (s.length - 1) * p, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
+// The ensembles, pooled: ECMWF's (51 runs), Germany's ICON (40), NOAA's GFS (31) and the Met Office's global (18) and
+// 2 km UK one (3 here, and only over the UK), each system an equal say whatever its number of runs (the UK one half:
+// it's three). Systems that go less far drop out further ahead (ICON at about a week, the UK one at about six days).
+export const ENSEMBLES = "ecmwf_ifs025,icon_seamless,gfs025,ukmo_global_ensemble_20km,ukmo_uk_ensemble_2km";
+const SAY = { ukmo_uk_ensemble_2km: 0.5 }, ENS_V = 2;
+// the ensembles' runs → the spread of temperature each hour, the share of runs wet each hour, and each day's spread;
+// and which runs are wet each hour (0.2 mm or more: a bit for each run, 26 to a number, per system), so the chance of
+// a stretch staying dry is counted run by run (insights.js dryChance)
 const RUN_WET = 0.2;
+// a weighted quantile of [value, weight] pairs sorted by value (each weight's middle taken as its place)
+function wq(s, p) {
+  if (!s.length) return null;
+  const want = p * s.reduce((a, x) => a + x[1], 0);
+  let acc = 0, prev = null;
+  for (const [v, w] of s) {
+    const mid = acc + w / 2;
+    if (mid >= want) return prev ? prev[0] + ((v - prev[0]) * (want - prev[1])) / (mid - prev[1] || 1) : v;
+    prev = [v, mid]; acc += w;
+  }
+  return s[s.length - 1][0];
+}
+const byV = (a, b) => a[0] - b[0];
 export function shapeEnsemble(j) {
   const h = j?.hourly; if (!h?.time) return null;
-  const tKeys = Object.keys(h).filter((k) => /^temperature_2m(_member\d+)?$/.test(k)), pKeys = Object.keys(h).filter((k) => /^precipitation(_member\d+)?$/.test(k));
-  if (tKeys.length < 5) return null;
+  // the runs, by system: Open-Meteo names each column variable[_memberNN][_system] (one system's alone, no system)
+  const bySys = new Map();
+  for (const k of Object.keys(h)) {
+    const m = /^temperature_2m(_member\d+)?(?:_([a-z0-9_]+))?$/.exec(k);
+    if (!m || !Array.isArray(h[k])) continue;
+    const id = m[2] || "", rain = `precipitation${m[1] || ""}${m[2] ? `_${m[2]}` : ""}`;
+    if (!bySys.has(id)) bySys.set(id, []);
+    bySys.get(id).push({ t: h[k], p: Array.isArray(h[rain]) ? h[rain] : null });
+  }
+  const systems = [...bySys].filter(([, runs]) => runs.length >= 3).map(([id, runs]) => ({ id, runs, say: SAY[id] ?? 1 }));
+  if (!systems.length || systems.reduce((a, s) => a + s.runs.length, 0) < 5) return null;
   const hourly = [], byDay = {};
   h.time.forEach((t, i) => {
-    const temps = tKeys.map((k) => num(h[k][i])).filter((v) => v != null).sort((a, b) => a - b);
-    const each = pKeys.map((k) => num(h[k][i])), rains = each.filter((v) => v != null);
+    const w = parseWall(t), key = t.slice(0, 10), temps = [], m = [];
+    let wetW = 0, allW = 0, n = 0;
+    for (const s of systems) {
+      const tv = s.runs.map((r) => num(r.t[i])), ok = tv.filter((v) => v != null);
+      // (a system only where nearly all its runs are in)
+      if (ok.length < Math.max(3, s.runs.length * 0.8)) { m.push(null); continue; }
+      for (const v of ok) temps.push([v, s.say / ok.length]);
+      const rv = s.runs.map((r) => (r.p ? num(r.p[i]) : null)), rs = rv.filter((v) => v != null);
+      if (rs.length >= ok.length * 0.8) {
+        wetW += (s.say * rs.filter((v) => v >= 0.1).length) / rs.length; allW += s.say;
+        const bits = new Array(Math.ceil(s.runs.length / 26)).fill(0);
+        rv.forEach((v, k) => { if (v != null && v >= RUN_WET) bits[Math.floor(k / 26)] |= 1 << (k % 26); });
+        m.push(bits);
+      } else m.push(null);
+      n += ok.length;
+      // each run's day: its warmest and coldest hour, and its rain
+      const day = byDay[key] || (byDay[key] = new Map()), d = day.get(s) || (day.set(s, { hours: 0, max: [], min: [], rain: [] }).get(s));
+      d.hours++;
+      tv.forEach((v, k) => { if (v == null) return; d.max[k] = Math.max(d.max[k] ?? -99, v); d.min[k] = Math.min(d.min[k] ?? 99, v); });
+      rv.forEach((v, k) => { if (v != null) d.rain[k] = (d.rain[k] ?? 0) + v; });
+    }
     if (!temps.length) return;
-    const w = parseWall(t), key = t.slice(0, 10), m = [0, 0];
-    each.forEach((v, k) => { if (v != null && v >= RUN_WET && k < 52) m[k < 26 ? 0 : 1] |= 1 << (k % 26); });
-    hourly.push({ t: w, p10: q(temps, 0.1), p50: q(temps, 0.5), p90: q(temps, 0.9), wet: rains.length ? rains.filter((v) => v >= 0.1).length / rains.length : null,
-      m: rains.length && pKeys.length <= 52 ? m : null, n: rains.length });
-    const day = byDay[key] || (byDay[key] = { n: 0, max: {}, min: {}, rain: {} });
-    day.n++;
-    tKeys.forEach((k) => { const v = num(h[k][i]); if (v == null) return; day.max[k] = Math.max(day.max[k] ?? -99, v); day.min[k] = Math.min(day.min[k] ?? 99, v); });
-    pKeys.forEach((k) => { const v = num(h[k][i]); if (v != null) day.rain[k] = (day.rain[k] ?? 0) + v; });
+    temps.sort(byV);
+    hourly.push({ t: w, p10: wq(temps, 0.1), p50: wq(temps, 0.5), p90: wq(temps, 0.9), wet: allW ? wetW / allW : null, m: m.some(Boolean) ? m : null, n });
   });
+  // each day: only the systems with (nearly) all its hours
   const days = {};
-  for (const [key, d] of Object.entries(byDay)) {
-    if (d.n < 4) continue;       // (past six days out the ensemble is 3- then 6-hourly)
-    const mx = Object.values(d.max).sort((a, b) => a - b), mn = Object.values(d.min).sort((a, b) => a - b), rs = Object.values(d.rain).sort((a, b) => a - b);
-    days[key] = { tmaxP10: q(mx, 0.1), tmaxP50: q(mx, 0.5), tmaxP90: q(mx, 0.9), tminP10: q(mn, 0.1), tminP90: q(mn, 0.9), wet: rs.length ? rs.filter((v) => v >= 1).length / rs.length : null, rainP50: q(rs, 0.5), rainP90: q(rs, 0.9), members: mx.length };
+  for (const [key, day] of Object.entries(byDay)) {
+    const mx = [], mn = [], rs = [];
+    let wetW = 0, allW = 0, members = 0;
+    for (const [s, d] of day) {
+      if (d.hours < 18) continue;
+      const hi = d.max.filter((v) => v != null), lo = d.min.filter((v) => v != null), rain = d.rain.filter((v) => v != null);
+      for (const v of hi) mx.push([v, s.say / hi.length]);
+      for (const v of lo) mn.push([v, s.say / lo.length]);
+      if (rain.length) { for (const v of rain) rs.push([v, s.say / rain.length]); wetW += (s.say * rain.filter((v) => v >= 1).length) / rain.length; allW += s.say; }
+      members += hi.length;
+    }
+    if (!mx.length) continue;
+    [mx, mn, rs].forEach((a) => a.sort(byV));
+    days[key] = { tmaxP10: wq(mx, 0.1), tmaxP50: wq(mx, 0.5), tmaxP90: wq(mx, 0.9), tminP10: wq(mn, 0.1), tminP90: wq(mn, 0.9), wet: allW ? wetW / allW : null, rainP50: wq(rs, 0.5), rainP90: wq(rs, 0.9), members };
   }
-  return { hourly, days, members: tKeys.length };
+  return { v: ENS_V, hourly, days, members: systems.reduce((a, s) => a + s.runs.length, 0), systems: systems.map((s) => ({ id: s.id, say: s.say, n: s.runs.length })) };
 }
 
 export function shapeAir(j) {
@@ -153,7 +203,7 @@ export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(l
 export const rainQuery = (lat, lon) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: "precipitation,weather_code", minutely_15: "precipitation,weather_code", forecast_minutely_15: 17, timezone: "auto" });
 export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${forecastQuery(lat, lon)}`);
 export const fetchModels = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), models: MODELS.map((m) => m[0]).join(","), daily: MODEL_DAILY, forecast_days: 10, timezone: "auto" })}`);
-export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: "ecmwf_ifs025", hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 15000);
+export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: ENSEMBLES, hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 20000);
 export const fetchAir = (lat, lon) => getJSON(`${API.air}?${qs({ latitude: r4(lat), longitude: r4(lon), current: "european_aqi,us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide", hourly: "european_aqi,us_aqi,pm2_5,pm10,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen", forecast_days: 5, timezone: "auto" })}`);
 // (ERA5-Land's temperatures, with ERA5 where it has none: one consistent record over the 30 years, rather than the
 // archive's best match, which splices ERA5, ERA5-Land and the 9 km model from 2017 and shifts normals and records)
@@ -210,13 +260,14 @@ const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 
 export async function load(place, onUpdate, { force = false } = {}) {
   const id = cell(place.lat, place.lon), key = `wx:${id}`, stored = store.get(key), kept = stored && typeof stored === "object" ? stored : {};
   const raw = { ...kept };
-  const fresh = (k) => !force && kept[k] && Date.now() - kept[k].at < TTL[k];
+  // (an ensemble summary from before the ensembles were pooled is asked for again)
+  const fresh = (k) => !force && kept[k] && Date.now() - kept[k].at < TTL[k] && (k !== "ensemble" || kept[k].s?.v === ENS_V);
   const build = () => {
     if (!raw.forecast) return null;
     const wx = shapeForecast(raw.forecast.j, place);
     wx.fetchedAt = raw.forecast.at;
     wx.models = raw.models ? shapeModels(raw.models.j) : null;
-    wx.ensemble = raw.ensemble ? raw.ensemble.s || shapeEnsemble(raw.ensemble.j) : null;
+    wx.ensemble = raw.ensemble?.s?.v === ENS_V ? raw.ensemble.s : null;
     wx.air = raw.air ? shapeAir(raw.air.j) : null;
     wx.official = Array.isArray(raw.warnings?.j?.warnings) ? raw.warnings.j.warnings : null;
     wx.climate = climateFor(place);
@@ -226,7 +277,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   // what's kept from before, straight away (unless it's damaged: then it's dropped, and the network's asked)
   if (raw.forecast) {
     let wx = null;
-    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill2:${id}`); }
+    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill3:${id}`); }
     if (wx) onUpdate(wx, { partial: true, stale: !fresh("forecast") });
   }
   const save = () => {
@@ -236,7 +287,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
     if (fresh(k)) return;
     try {
       const j = await fn(place.lat, place.lon);
-      // the ensemble is big (51 runs): only its summary is kept
+      // the ensembles are big (143 runs): only their summary is kept
       raw[k] = k === "ensemble" ? { at: Date.now(), s: shapeEnsemble(j) } : { at: Date.now(), j };
       save(); onUpdate(build(), { partial: k !== "forecast", stale: false });
     }
@@ -263,7 +314,7 @@ function pruneCache(except) {
 }
 
 // (what earlier versions kept, on a record since replaced: cleared once)
-try { for (const k of Object.keys(localStorage)) if (k.startsWith("clim:") || k.startsWith("skill:")) localStorage.removeItem(k); } catch (_) {}
+try { for (const k of Object.keys(localStorage)) if (k.startsWith("clim:") || k.startsWith("skill:") || k.startsWith("skill2:")) localStorage.removeItem(k); } catch (_) {}
 const climateMemo = new Map();
 export function climateFor(place) {
   const id = cell(place.lat, place.lon);
@@ -305,9 +356,9 @@ async function loadClimate(place) {
 /* ---------- how the models have done here ---------- */
 // { at, station: { id, name, km } | null, obsDays, skill | null } — kept for 12 hours per place
 const SKILL_TTL = 12 * 3600e3;
-export const skillKept = (place) => store.get(`skill2:${cell(place.lat, place.lon)}`);
+export const skillKept = (place) => store.get(`skill3:${cell(place.lat, place.lon)}`);
 async function loadSkill(place) {
-  const k = `skill2:${cell(place.lat, place.lon)}`, kept = store.get(k);
+  const k = `skill3:${cell(place.lat, place.lon)}`, kept = store.get(k);
   if (kept && Date.now() - kept.at < (kept.failed ? 3 * 3600e3 : SKILL_TTL)) return null;
   try {
     // what happened, at the nearest airport (the server collects and keeps these)

@@ -199,14 +199,21 @@ so there's nothing to set up beyond the address.
   (a tap opens a row to the rest, and closes it again), and the others under
   "N more".
 - **Tips**: whether to take an umbrella (by the chance of rain at some point
-  while you're up and about, counted across the ensemble's 51 runs: over a whole
+  while you're up and about, counted across the ensembles' runs: over a whole
   day it can be well above any one hour's chance), what to wear (from the
   feels-like range of your waking hours, with wind and rain), and your weekday
   commute (Settings).
-- **How sure the forecast is**, day by day: six global models side by side
-  (ECMWF, Met Office, GFS, ICON, Météo-France, GEM) and ECMWF's 51-run ensemble.
-  Days the models disagree on are marked uncertain, with why; the temperature
-  chart shades how far it could go either way.
+- **How sure the forecast is**, day by day: seven global models side by side
+  (ECMWF, Met Office, GFS, ICON, Météo-France, GEM, and ECMWF's AI model, AIFS)
+  and five ensembles pooled: ECMWF's (51 runs), ICON's (40), GFS's (31) and the
+  Met Office's global (18) and 2 km UK one (3 here, over the UK only), each
+  system an equal say whatever its number of runs (the UK one half), so one
+  system's 51 runs don't drown the rest; each drops out where it stops (ICON
+  at about a week, the UK one at about six days). Days the models disagree on
+  (each one's usual lean here taken off first, where the record has it, so one
+  that always runs cold isn't taken for disagreeing) are marked uncertain, with
+  why; the temperature chart shades how far it could
+  go either way.
 - **This time of year**: thirty years of the place's own days (ERA5-Land, with
   ERA5 where it has none: one consistent record, through Open-Meteo's archive;
   asked for once you've stayed on a place a few seconds) put each forecast in
@@ -219,8 +226,9 @@ so there's nothing to set up beyond the address.
   barbecue, an outdoor swim or anything you add: a feels-like range, wind
   (at least and at most), gusts, whether light rain is fine, how long, and
   between which hours. Each with the chance the whole stretch stays dry
-  ("80% chance it stays dry"): the share of ECMWF's 51 runs dry throughout
-  (`data.js` keeps which are wet each hour), which a longer stretch has less of
+  ("80% chance it stays dry"): the share of the ensembles' runs dry throughout,
+  each system that reaches through the stretch by its say (`data.js` keeps
+  which are wet each hour), which a longer stretch has less of
   than any one hour does, and which its score goes by. Plus drying washing
   outside (dry hours, thirsty air, a breeze, sun), stargazing (dark, clear, the
   Moon out of the way) and a colourful sunset or sunrise (high and mid cloud, no
@@ -276,11 +284,13 @@ so there's nothing to set up beyond the address.
   airport, so each day's high and low is kept in
   D1, `wx_obs`, for six weeks: each day the airport's own, whoever asks, and
   only reports just fetched are written), and the phone compares them with what each of
-  the six models forecast a day and three days ahead (Open-Meteo's archive of
+  the seven models forecast a day and three days ahead (Open-Meteo's archive of
   past forecasts). The card shows each model's average error and lean ("±0.8°,
   runs 1.2° warm") and which is most accurate here. From 7 days of record, the
   highs and lows from tomorrow on are tuned: each model's usual error taken
-  off, the closest counting most, and the hours with them, so a day's chart
+  off, the closest counting most (ECMWF's AI model among them: its hours come
+  6-hourly, so its daily highs and lows run flat, and it counts for as little
+  as its record here earns), and the hours with them, so a day's chart
   peaks at its tuned high (each hour moved by a share of the corrections to the
   highs and lows either side of it; the ensemble's likely range moved as far)
   (`weather/skill.js`; Settings can turn it off).
@@ -365,7 +375,7 @@ directly, so a branch can be tried before it's merged.
 | --- | --- |
 | Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout (translucent, blurred panels with a light-catching rim over a sky that follows the weather and the time of day; capsule buttons that give under a finger and spring back, segmented controls (the chart's, and every choice of one in Settings) whose lens of glass glides to the choice, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. Sheets come up from below on iOS's own curve (quick, then soft, no overshoot; not faded in, which Safari draws unblurred then snaps frosted), the dim with them, and the page behind steps back and holds still while one's up (its glass unblurred, nothing on it or in the sky moving, so the sheet's own glass isn't blurred afresh every frame); the sky holds still too once the page has scrolled on past the top; a choice redraws the page behind only once its lens is gliding; Places keeps one height, so it doesn't jump as results come and go. Buttons' icons sit in their middles; play and pause (and full screen and back) swap as iOS swaps its symbols, one shrinking and blurring away as the other grows in; the map's buttons give under a finger like the rest; and the radar grows from its place to fill the screen and back (a view transition, where the browser has them; its place held meanwhile, so the page under it doesn't move). All of it off with Reduce Motion (checked in the tests) |
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
-| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
+| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
 | Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
