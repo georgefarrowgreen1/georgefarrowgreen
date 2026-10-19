@@ -215,20 +215,22 @@ body:is(.sheet-up, .deep) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-
 .place.no-sub .place-temp { display: inline-block; flex: none; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
   max-width: calc(var(--cs, 0) * 3.2em); margin-left: calc(var(--cs, 0) * 7px); opacity: var(--cs, 0); }
 .top-actions { display: flex; gap: 10px; }
-/* pull to refresh: a small glass button that comes down with the page, turning as it's pulled, firming up when
-   letting go would refresh, and spinning while it does */
-.ptr { position: fixed; z-index: 6; top: calc(env(safe-area-inset-top) + 64px); left: 50%; width: 36px; height: 36px; margin-left: -18px; border-radius: 50%;
-  display: grid; place-items: center; color: #fff; pointer-events: none; background-color: rgba(34, 44, 64, 0.62);
-  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), 0 6px 18px -6px rgba(0, 0, 0, 0.4);
-  opacity: calc(var(--pull, 0) * 1.2 - 0.2); transform: translateY(calc(var(--y, 0px) * 0.5 - 18px)) scale(calc(0.6 + var(--pull, 0) * 0.4)); }
-.ptr > span { display: grid; transform: rotate(calc(var(--pull, 0) * 300deg)); }
-.ptr.armed { background-color: rgba(10, 132, 255, 0.85); transition: background-color 0.2s; }
-.ptr.busy { opacity: 1; transform: translateY(14px); transition: transform 0.4s var(--spring), opacity 0.2s; }
-.ptr.busy > span { animation: spin 0.9s linear infinite; }
-/* (the page scrolled on while it spins: it goes, as if with the page's top; done, or let go of short: it goes too) */
-.ptr.busy.away { opacity: 0; transform: translateY(-6px) scale(0.8); }
-.ptr.leaving { transition: opacity 0.25s, transform 0.3s var(--glide), background-color 0.2s; }
-@media (prefers-reduced-motion: reduce) { .ptr.busy > span { animation: none; } .ptr > span { transform: none; } .ptr.leaving { transition: none; } }
+/* pull to refresh (app.js pullToRefresh): iOS's spinner, in the gap that opens above the bar, its ticks coming in one by
+   one as the page is pulled, a little pop when letting go would refresh, then turning, each tick fainter than the one
+   ahead of it; it eases into its place in the gap the page is held open by, and away as the page glides back up */
+.ptr { position: fixed; z-index: 6; top: env(safe-area-inset-top); left: 50%; width: 28px; height: 28px; margin-left: -14px; pointer-events: none; opacity: 0;
+  transition: transform 0.5s var(--glide), opacity 0.25s ease; }
+.ptr.follow { transition: none; }
+.ptr svg { display: block; overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.3)); }
+.ptr line { stroke: #fff; stroke-width: 2.6; stroke-linecap: round; opacity: clamp(0, calc(var(--pull, 0) * 9 - var(--i)), 1); }
+.ptr.armed svg { animation: ptr-pop 0.42s var(--spring); }
+.ptr.busy line { opacity: var(--o); }
+.ptr.busy svg { animation: ptr-spin 0.8s steps(8) infinite; }
+@keyframes ptr-pop { 40% { transform: scale(1.16); } }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ptr { transition: none; } .ptr.armed svg, .ptr.busy svg { animation: none; } }
+/* (the page held open at its top while it refreshes: as far as the spinner's room in app.js, 56 pixels) */
+.page.held { transform: translateY(56px); }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
 .icon-btn .g { position: relative; z-index: 3; }
 .icon-btn.small { width: 36px; height: 36px; }
@@ -303,11 +305,14 @@ main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
 .ins.rise { animation: rise 0.6s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
-/* swiping between places: the hero follows the finger, springs back, or the next place slides in */
-.hero { touch-action: pan-y; transition: translate 0.45s var(--spring); }
-.hero.swiping { transition: none; }
-main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) backwards; }
-@keyframes swap-in { from { translate: var(--from-x, 60px) 0; opacity: 0; } }
+/* swiping between places (app.js placeSwipe): the page follows the finger, then turns to the next place, its picture
+   carried off as the next one's comes in beside it (each moved by the swipe's own speed: none of the browser's own
+   fades), or springs back */
+.hero { touch-action: pan-y; }
+main.paging > .col { will-change: translate; }
+::view-transition-group(page) { animation: none; }
+::view-transition-image-pair(page) { isolation: auto; }
+::view-transition-old(page), ::view-transition-new(page) { animation: none; mix-blend-mode: normal; }
 /* a new temperature rolls in */
 .hero-temp.roll-up { animation: roll-up 0.6s var(--spring); }
 .hero-temp.roll-down { animation: roll-down 0.6s var(--spring); }
@@ -320,7 +325,7 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
 .dots i.gps.on { color: #fff; }
 .dots i svg { display: block; }
-@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, main:not([data-empty]) .hero.swap-in, .hero-temp.roll-up, .hero-temp.roll-down, .ins.rise { animation: none; } .hero { transition: none; } }
+@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, .hero-temp.roll-up, .hero-temp.roll-down, .ins.rise { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .sk i, main[data-empty="loading"] .hero-temp { animation: none; } }
 
 /* ---------- cards ---------- */
@@ -692,7 +697,8 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .ds-day[aria-current] b { background: #fff; color: #0d1626; transform: scale(1.06); }
 .ds-day[aria-current] span { color: #fff; }
 .ds-day:active b { transform: scale(0.9); }
-/* a day slides in from the side it was moved to */
+/* a day slides in from the side it was moved to (by the arrow keys or the strip; swiped, it follows the finger: app.js) */
+#day-body { touch-action: pan-y; }
 #day-body.from-right { animation: from-right 0.45s var(--spring); }
 #day-body.from-left { animation: from-left 0.45s var(--spring); }
 @keyframes from-right { from { opacity: 0; transform: translateX(36px); } }

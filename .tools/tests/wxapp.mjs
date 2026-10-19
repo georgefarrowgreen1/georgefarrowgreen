@@ -84,6 +84,9 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     window.createImageBitmap = function (src, ...a) { if (src instanceof ImageData && src.width === 256) __tiles.push(look(src.data)); return bitmap.call(this, src, ...a); };
     const put = CanvasRenderingContext2D.prototype.putImageData;
     CanvasRenderingContext2D.prototype.putImageData = function (img, ...a) { if (img.width === 200) __pictures.push(look(img.data)); return put.call(this, img, ...a); };
+    // (and the page turning between places: what it animates in a view transition)
+    window.__turns = []; const animate = Element.prototype.animate;
+    Element.prototype.animate = function (k, o) { if (o && /view-transition/.test(o.pseudoElement || '')) __turns.push(o.pseudoElement); return animate.call(this, k, o); };
     if (noGL) { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/.test(t) ? null : get.call(this, t, ...a); }; }
   }, !!sc.noGL);
   const p = await ctx.newPage();
@@ -194,8 +197,18 @@ ok(title1 !== title0 && title2 !== title1 && (await p.evaluate(() => document.ge
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(box.x + 280) });
   for (const x of [240, 190, 130]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(box.x + x) });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await p.waitForTimeout(200);
-  ok((await p.textContent('#day-title')) !== title2, 'and a swipe to the left moves on a day', `${title2} → ${await p.textContent('#day-title')}`);
+  await p.waitForFunction((t) => document.getElementById('day-title').textContent !== t, title2, { timeout: 1500 }).catch(() => {});
+  ok((await p.textContent('#day-title')) !== title2 && (await p.evaluate(() => document.getElementById('day').open)), 'and a swipe to the left moves on a day (the sheet staying open: sideways isn\'t down)', `${title2} → ${await p.textContent('#day-title')}`);
+  // the day follows the finger, and from a short swipe springs back
+  const box2 = await p.locator('#day .day-desc').boundingBox(), at2 = (x) => [{ x, y: box2.y + box2.height / 2 }], title3 = await p.textContent('#day-title');
+  await p.waitForTimeout(600);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at2(box2.x + 200) });
+  for (const x of [215, 230, 250, 262]) { await p.waitForTimeout(16); await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at2(box2.x + x) }); }
+  await p.waitForTimeout(60);
+  const dayShift = await p.evaluate(() => { const t = getComputedStyle(document.getElementById('day-body')).translate; return t === 'none' ? 0 : Math.round(parseFloat(t)); });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await p.waitForTimeout(600);
+  ok(dayShift === 32 && (await p.textContent('#day-title')) === title3 && (await p.evaluate(() => getComputedStyle(document.getElementById('day-body')).translate)) === 'none', 'the day follows the finger, and from a short swipe springs back', `${dayShift} px for 32 px`);
 }
 await p.keyboard.press('Escape');
 // the forecast's track record here, and tuned by it
@@ -255,7 +268,7 @@ ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' |
     if (real) Object.defineProperty(window, 'scrollY', real); else delete window.scrollY;
     window.dispatchEvent(new Event('scroll'));
   });
-  const ring = () => p.evaluate(() => { const r = document.querySelector('.ptr'); return { busy: r.classList.contains('busy'), seen: +getComputedStyle(r).opacity > 0.05 }; });
+  const ring = () => p.evaluate(() => { const r = document.querySelector('.ptr'), pg = document.querySelector('.page'); return { busy: r.classList.contains('busy'), seen: +getComputedStyle(r).opacity > 0.05, held: Math.round(new DOMMatrix(getComputedStyle(pg).transform).m42) }; });
   const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(500);
   // the forecast a second and a half in coming, the ensemble 20 seconds: it spins until the forecast's in, not the ensemble
@@ -268,8 +281,10 @@ ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' |
   const spinning = await ring();
   await p.waitForFunction(() => !document.querySelector('.ptr').classList.contains('busy'), null, { timeout: 8000 }).catch(() => {});
   const took = Date.now() - t0;
-  await p.waitForTimeout(500);
-  ok(spinning.busy && spinning.seen && took < 6000 && !(await ring()).seen && /^Updated just now/.test(await p.textContent('#updated')), 'pulled to refresh: it spins until the forecast\'s in, then goes (not waiting on everything else, here the ensemble)', `${JSON.stringify([spinning, await ring()])}; ${took} ms`);
+  await p.waitForTimeout(700);
+  const after = await ring();
+  ok(spinning.busy && spinning.seen && took < 6000 && !after.seen && /^Updated just now/.test(await p.textContent('#updated')), 'pulled to refresh: it spins until the forecast\'s in, then goes (not waiting on everything else, here the ensemble)', `${JSON.stringify([spinning, after])}; ${took} ms`);
+  ok(spinning.held === 56 && after.held === 0, 'and meanwhile the page is held open at its top, the spinner in the gap, then glides back up', `${spinning.held} px, then ${after.held}`);
   await p.unroute(/ensemble-api/, slowEnsemble);
   await p.unroute(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, soonForecast);
   // the forecast 4 seconds in coming, and the page scrolled on meanwhile: the spinner goes with it, and back at the top it's there
@@ -277,14 +292,28 @@ ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' |
   await p.route(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, slowForecast);
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
   await pull(); await p.waitForTimeout(300);
-  await p.evaluate(() => scrollTo(0, 700)); await p.waitForTimeout(500);
+  await p.evaluate(() => scrollTo(0, 700)); await p.waitForTimeout(700);
   const scrolled = await ring();
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(500);
   const back = await ring();
   await p.waitForFunction(() => !document.querySelector('.ptr').classList.contains('busy'), null, { timeout: 10000 }).catch(() => {});
   await p.waitForTimeout(500);
-  ok(scrolled.busy && !scrolled.seen && back.busy && back.seen && !(await ring()).seen, 'scrolled on while it spins, it goes (and is back at the top, until the forecast\'s in)', JSON.stringify([scrolled, back, await ring()]));
+  ok(scrolled.busy && !scrolled.seen && !scrolled.held && back.busy && !back.seen && !back.held && !(await ring()).seen, 'scrolled on while it spins, the gap closes and it goes (and stays gone: the page doesn\'t jump back down)', JSON.stringify([scrolled, back, await ring()]));
   await p.unroute(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, slowForecast);
+  // let go of short of refreshing: it goes, and nothing's fetched
+  {
+    const n0 = await p.evaluate(() => performance.getEntriesByType('resource').filter((r) => /api\.open-meteo\.com\/v1\/forecast\?.*current=/.test(r.name)).length);
+    await p.evaluate(() => {
+      const t = (type) => { const touch = new Touch({ identifier: 1, target: document.body, clientX: 200, clientY: 300 }); window.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [touch], changedTouches: [touch], bubbles: true })); };
+      const real = Object.getOwnPropertyDescriptor(window, 'scrollY');
+      t('touchstart'); Object.defineProperty(window, 'scrollY', { get: () => -45, configurable: true }); window.dispatchEvent(new Event('scroll'));
+      window.__half = +getComputedStyle(document.querySelector('.ptr')).opacity;
+      t('touchend'); if (real) Object.defineProperty(window, 'scrollY', real); else delete window.scrollY; window.dispatchEvent(new Event('scroll'));
+    });
+    await p.waitForTimeout(700);
+    const n1 = await p.evaluate(() => performance.getEntriesByType('resource').filter((r) => /api\.open-meteo\.com\/v1\/forecast\?.*current=/.test(r.name)).length);
+    ok(await p.evaluate(() => window.__half) > 0.3 && !(await ring()).seen && !(await ring()).busy && n1 === n0, 'pulled only part way: some of the spinner shows, and let go, it goes without refreshing', `${await p.evaluate(() => window.__half)}; ${n1 - n0} fetched`);
+  }
   // and whatever happens, no more than 15 seconds
   const never = async () => {};
   await p.route(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, never);
@@ -473,6 +502,36 @@ ok((await p.textContent('#place-name')) === 'Edinburgh' && !(await p.evaluate(()
 await p.click('#place-btn');
 ok((await p.locator('#saved li').count()) === 2, 'both places saved');
 await p.keyboard.press('Escape');
+// swipe across the top of the page to the next or previous place: the page follows the finger, and turns to it (a
+// view transition, the page carried off as the next comes in), or gives at the ends, or springs back from a short one
+{
+  await p.waitForFunction(() => !document.getElementById('places').open && !document.body.classList.contains('sheet-up'), null, { timeout: 3000 }).catch(() => {});
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(500);
+  const cdp = await p.context().newCDPSession(p), box = await p.locator('.hero').boundingBox(), y = box.y + 60;
+  const touch = (type, x) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: x == null ? [] : [{ x, y }] });
+  const drag = async (xs) => { await touch('touchStart', xs[0]); for (const x of xs.slice(1)) { await p.waitForTimeout(16); await touch('touchMove', x); } await p.waitForTimeout(60); };
+  // (the page's columns follow the finger, both together)
+  const shift = () => p.evaluate(() => { const [a, b] = [...document.querySelectorAll('#main > .col')].map((c) => { const t = getComputedStyle(c).translate; return t === 'none' ? 0 : Math.round(parseFloat(t)); }); return a === b ? a : NaN; });
+  const name = () => p.textContent('#place-name');
+  // Edinburgh's the last: leftwards it gives, less and less (190 px of swipe, past the 10 it took to tell), and comes back
+  await drag([300, 290, 270, 240, 200, 160, 120, 80]);
+  const gave = await shift();
+  await touch('touchEnd'); await p.waitForTimeout(700);
+  ok(gave < -40 && gave > -110 && (await name()) === 'Edinburgh' && (await shift()) === 0, 'swiped on past the last place: the page gives a little (not with the finger) and springs back', `${gave} px for 190 px`);
+  // a short swipe the other way: the page with the finger, from where the swipe was told (no jump), then back
+  await drag([100, 110, 125, 140, 152]);
+  const followed = await shift();
+  await touch('touchEnd'); await p.waitForTimeout(700);
+  ok(Math.abs(followed - 27) <= 1 && (await name()) === 'Edinburgh' && (await shift()) === 0, 'a short swipe: the page follows the finger exactly, from where it was told from a scroll, and springs back', `${followed} px for 27 px`);
+  // far enough: London, the page turning to it
+  await drag([60, 90, 130, 180, 230, 280, 320]);
+  await touch('touchEnd');
+  const turning = await p.waitForFunction(() => __turns.includes('::view-transition-old(page)') && __turns.includes('::view-transition-new(page)'), null, { timeout: 2000 }).then(() => true, () => false);
+  await p.waitForFunction(() => document.getElementById('place-name').textContent === 'London', null, { timeout: 3000 }).catch(() => {});
+  await p.waitForTimeout(800);
+  const after = await p.evaluate(() => { const m = document.getElementById('main'); return { clean: !m.style.height && !m.style.overflow && !m.style.viewTransitionName && !m.classList.contains('paging'), lit: [...document.querySelectorAll('#dots i')].findIndex((d) => d.classList.contains('on')) }; });
+  ok(turning && (await name()) === 'London' && (await shift()) === 0 && after.clean && after.lit === 0, 'swiped far enough: the page turns to the previous place (carried off as it comes in), its dot lit, nothing left over', JSON.stringify({ turning, ...after }));
+}
 await ctx.close();
 
 // accessibility (axe), with nothing alarming going on

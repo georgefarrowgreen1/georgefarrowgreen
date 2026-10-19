@@ -288,9 +288,17 @@ roughly where you are, from your connection (`GET /api/weather/where`,
 Cloudflare's city-level guess; nothing kept), or on your location if you've
 already allowed it. It works offline with what it last fetched, can be added to
 the Home Screen, and refreshes itself every 10 minutes while open; on a phone,
-pull the page down past its top and let go to refresh it then (its little spinner
-turns until the forecast itself is in, the rest arriving behind it, goes if the
-page is scrolled on meanwhile, and gives up after 15 seconds whatever happens).
+pull the page down past its top and let go to refresh it then. As on iPhone, the
+spinner's spokes appear one by one as you pull, it pops when you've pulled far
+enough, and let go, the page holds open a gap for it to turn in (long enough to
+be seen) until the forecast itself is in, the rest arriving behind it, then
+glides back up. It goes if the page is scrolled on meanwhile, and gives up after
+15 seconds whatever happens. With more than one place saved, swipe across the top
+of the page to go between them: the page follows your finger (giving at the
+first and last), and let go far enough, or flicked, it carries on out at the
+speed you let go at as the next place comes in from the other side (a view
+transition, where the browser has them); not far enough, it springs back. A
+day's details go to the day before or after the same way.
 Share a place with `?lat=…&lon=…&name=…`.
 
 **Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen`
