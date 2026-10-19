@@ -8,7 +8,8 @@ import { timeChart, rangeChart } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
 import { applyTuning, MIN_DAYS, TUNE_DAYS } from "./skill.js";
-import { radar } from "./radar.js";
+import { radar, rainAt } from "./radar.js";
+import { blend } from "./rainmap.js";
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
 
 const $ = (id) => document.getElementById(id);
@@ -124,7 +125,7 @@ async function go(force = false, fresh = null) {
   $("refresh-btn").disabled = true;
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
-  if (moved) { S.wx = S.base = null; S.allInsights = false; }
+  if (moved) { S.wx = S.base = null; S.allInsights = false; S.rain = null; }
   if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map"),
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
@@ -133,13 +134,14 @@ async function go(force = false, fresh = null) {
     const loading = load(p, (wx, how) => {
       if (!how.partial) fresh?.();
       if (my !== seq || !wx) return;
-      S.base = wx; S.wx = tuned(wx); S.stale = !!how.stale;
+      S.base = wx; S.wx = shaped(wx); S.stale = !!how.stale;
       if (how.error) S.error = how.error;
       if (!how.stale && !how.partial) snapshotNow(wx);
       render();
     }, { force });
     // (a new place: what's kept of it is already showing, drawn once; with nothing kept, placeholders meanwhile)
     if (moved && !S.wx) render();
+    radarRain(p, my);
     await loading;
   } catch (e) {
     if (my === seq) { S.error = e; render(); }
@@ -157,6 +159,20 @@ document.addEventListener("visibilitychange", () => {
 
 // the forecast with its highs and lows tuned to how each model has done here (weather/skill.js), unless that's turned off
 const tuned = (wx) => (wx && S.settings.tune !== false && wx.skill?.skill ? applyTuning(wx, wx.skill.skill, keyOf(nowWall(wx.place.offset))) : wx);
+// and its next couple of hours' rain led by the radar, where it sees (rainmap.js blend), while its frame is recent
+const shaped = (wx) => {
+  const t = tuned(wx), r = S.rain;
+  if (!t || !r || r.id !== cell(t.place.lat, t.place.lon) || Date.now() - r.at > 40 * 60e3) return t;
+  return { ...t, minutely: blend(t.minutely, r.steps, r.at, t.place.offset) };
+};
+// The radar's say on the next couple of hours here (radar.js rainAt), asked for with each forecast, and the page drawn
+// again with it (unless the place has changed, or the forecast been asked for again, meanwhile)
+async function radarRain(p, my) {
+  const r = await rainAt(p.lat, p.lon).catch(() => null);
+  if (my !== seq) return;
+  S.rain = r && { ...r, id: cell(p.lat, p.lon) };
+  if (S.base) render();
+}
 
 // "since you last looked": a few snapshots of the days ahead, per place
 function snapshotNow(wx) {
@@ -352,7 +368,7 @@ function placeSwipe() {
 }
 function render() {
   showPlace();
-  if (S.base) S.wx = tuned(S.base);
+  if (S.base) S.wx = shaped(S.base);
   const wx = S.wx;
   // nothing to show yet: placeholders while it loads, or the hero's message and a way to try again
   if (wx) delete $("main").dataset.empty; else $("main").dataset.empty = S.error ? "error" : "loading";
@@ -791,9 +807,9 @@ function openDay(key, dir = 0) {
     const why = conf.why.length ? `The models differ on the ${conf.why.join(" and the ")}.` : "";
     kids.push(h("h3", { class: "day-section" }, "Forecast confidence"), h("div", { class: "conf" }, bar, h("b", {}, `${conf.level[0].toUpperCase() + conf.level.slice(1)} (${conf.score})`)),
       why ? h("p", { class: "small muted" }, why) : null);
-    // (ECMWF's ensemble: where the high and low most likely land, the middle 80% of its runs)
-    const ens = wx.ensemble?.days?.[key];
-    if (ens) kids.push(h("div", { class: "stats" }, stat("Likely high", `${f.temp(ens.tmaxP10)} to ${f.temp(ens.tmaxP90)}`), stat("Likely low", `${f.temp(ens.tminP10)} to ${f.temp(ens.tminP90)}`)));
+    // (ECMWF's ensemble: where the high and low most likely land, the middle 80% of its runs, tuned as the day is)
+    const ens = I.likely(d, wx.ensemble?.days?.[key]), span = (r) => `${f.temp(r[0])} to ${f.temp(r[1])}`;
+    if (ens) kids.push(h("div", { class: "stats" }, stat("Likely high", span(ens.hi)), ens.lo ? stat("Likely low", span(ens.lo)) : null));
     const mods = wx.models?.days?.[key];
     if (mods?.length) kids.push(h("table", { class: "models" }, h("caption", { class: "sr-only" }, "What each weather model forecasts"),
       h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "High"), h("th", { scope: "col" }, "Low"), h("th", { scope: "col" }, "Rain")),

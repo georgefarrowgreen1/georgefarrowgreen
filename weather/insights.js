@@ -16,10 +16,12 @@
 
 import { codeInfo, rank, isWetCode } from "./codes.js";
 import { HOUR, DAY, dayStart, keyOf, hourOf, compassWord } from "./format.js";
-import { climateOn, rankIn } from "./climate.js";
+import { climateOn, rankIn, extremes } from "./climate.js";
 import { skyDay, moonAt, offsetFor } from "./sky.js";
 
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+// "a 39%", but "an 80%" (as the number's said)
+const aPct = (n) => `${/^(8|11|18|8\d)$/.test(String(n)) ? "an" : "a"} ${n}%`;
 const sum = (a) => a.reduce((x, y) => x + (y || 0), 0);
 const max = (a, k) => a.reduce((m, h) => (h[k] != null && (m == null || h[k] > m) ? h[k] : m), null);
 const min = (a, k) => a.reduce((m, h) => (h[k] != null && (m == null || h[k] < m) ? h[k] : m), null);
@@ -37,6 +39,20 @@ export const T = {
   FOG_M: 1000, UV_HIGH: 6, UV_SUN: 3,
   AQI_POOR: 60, AQI_VERY_POOR: 80,
 };
+
+// The thresholds for warnings here: the fixed ones above, which are what's hard on anyone, and where the place's own
+// thirty years are in, what's unusual here too (climate.js extremes), so a summer's ordinary heat in the south of France
+// isn't a warning every day, nor a Canadian winter's cold, nor a monsoon's daily downpour; somewhere cooler, wetter or
+// milder, the fixed ones. hot, veryHot: the air temperatures to reach as well (or null); warmNight, bitter, heavyDay
+export function limitsHere(wx) {
+  const x = wx?.climate ? extremes(wx.climate) : null, half = (v) => Math.round(v * 2) / 2;
+  return {
+    hot: x && x.hot > T.HOT ? half(x.hot) : null, veryHot: x && x.veryHot > T.VERY_HOT ? half(x.veryHot) : null,
+    warmNight: x ? Math.max(T.TROPICAL_NIGHT, half(x.warmNight)) : T.TROPICAL_NIGHT,
+    bitter: x ? Math.min(T.BITTER, half(x.bitter)) : T.BITTER,
+    heavyDay: Math.max(T.HEAVY_DAY + 5, x?.heavyDay != null ? Math.round(x.heavyDay) : 0),
+  };
+}
 
 /* ---------- the hours ---------- */
 export const isWet = (h) => h && ((h.precip ?? 0) >= T.WET_MM || (isWetCode(h.code) && (h.pop ?? 0) >= 40));
@@ -56,6 +72,24 @@ export function hoursFrom(wx, w, n) {
   return i < 0 ? [] : wx.hourly.slice(i, i + n);
 }
 export const hoursBetween = (wx, a, b) => wx.hourly.filter((h) => h.t >= a && h.t < b);
+// The chance (0 to 1) it stays dry from a to b: the share of the ensemble's runs dry the whole time (data.js keeps which
+// are wet each hour), which over a long stretch is less than any one hour's own chance says. null where the ensemble
+// doesn't cover it, or isn't in yet
+const runsAt = new WeakMap();
+const ones = (v) => { let k = 0; for (; v; k++) v &= v - 1; return k; };
+export function dryChance(wx, a, b) {
+  const ens = wx?.ensemble;
+  if (!ens?.hourly?.length || !(b > a)) return null;
+  let at = runsAt.get(ens);
+  if (!at) { at = new Map(ens.hourly.filter((e) => e.m).map((e) => [e.t, e])); runsAt.set(ens, at); }
+  let x = 0, y = 0, n = 0;
+  for (let t = Math.floor(a / HOUR) * HOUR; t < b; t += HOUR) {
+    const e = at.get(t);
+    if (!e || (n && e.n !== n)) return null;
+    n = e.n; x |= e.m[0]; y |= e.m[1];
+  }
+  return n ? 1 - (ones(x) + ones(y)) / n : null;
+}
 export const dayOf = (wx, w) => wx.daily.find((d) => d.key === keyOf(w)) || null;
 const dayIndex = (wx, w) => wx.daily.findIndex((d) => d.key === keyOf(w));
 
@@ -169,14 +203,19 @@ export function headline(wx, now, f) {
   const hours = hoursFrom(wx, now, 18);
   if (!hours.length) return "";
   const end = hours[hours.length - 1].t + HOUR, wets = spells(hours);
-  const nc = nowcast(wx, now, f), out = [];
-  // the quarter-hours, where there are any, know better than the hours whether it's raining yet
+  const nc = nowcast(wx, now, f), out = [], ncKind = nc?.kind.endsWith("snow") ? "snow" : "rain";
+  // the quarter-hours, where there are any, know better than the hours whether it's raining yet (the radar's, where
+  // it sees: app.js); and rain they see coming that the hours don't is a spell of its own
   const quarters = (wx.minutely || []).filter((x) => x.t + 15 * 60e3 > now).length >= 4;
+  if (quarters && nc && !nc.now && nc.startsAt) {
+    const until = nc.endsAt ?? nc.startsAt + HOUR;
+    if (!wets.some((x) => x.start < until && x.end > nc.startsAt)) { wets.push({ start: nc.startsAt, end: until, hours: [], kind: ncKind }); wets.sort((x, y) => x.start - y.start); }
+  }
   const rainingNow = quarters ? !!nc?.now : !!(wets[0] && wets[0].start <= now);
-  const kindOf = (s) => wetKind(s.hours) || "rain";
+  const kindOf = (s) => s.kind || wetKind(s.hours) || "rain";
   const skyAfter = (t) => phrase(hoursBetween(wx, t, t + 4 * HOUR).filter((h) => !isWet(h))) || "drier";
   if (rainingNow) {
-    const s = wets[0] && wets[0].start <= now + HOUR ? wets[0] : null, k = s ? kindOf(s) : "rain";
+    const s = wets[0] && wets[0].start <= now + HOUR ? wets[0] : null, k = s ? kindOf(s) : ncKind;
     const stop = nc?.now && nc.endsAt ? nc.endsAt : s && s.end < end ? s.end : null;
     if (stop) out.push(`${cap(k)} easing ${stop - now <= 45 * 60e3 ? "soon" : `around ${f.time(Math.round(stop / HOUR) * HOUR)}`}, then ${skyAfter(stop)}.`);
     else out.push(`${cap(k)} for the next several hours.`);
@@ -254,6 +293,14 @@ export function nowcast(wx, now, f) {
 }
 
 /* ---------- how sure the forecast is ---------- */
+// Where a day's high and low most likely land: the middle 80% of the ensemble's runs, moved as far as the day's high
+// and low were tuned for here (the same lean taken off), so a tuned high isn't shown outside its own likely range.
+// { hi: [from, to], lo: [from, to] | null }, or null without the ensemble
+export function likely(d, ens) {
+  if (!ens || ens.tmaxP10 == null || ens.tmaxP90 == null) return null;
+  const up = d?.raw ? d.tmax - d.raw.tmax : 0, down = d?.raw ? d.tmin - d.raw.tmin : 0;
+  return { hi: [ens.tmaxP10 + up, ens.tmaxP90 + up], lo: ens.tminP10 == null || ens.tminP90 == null ? null : [ens.tminP10 + down, ens.tminP90 + down] };
+}
 // Per day: the ensemble's spread (51 runs of ECMWF's model) and whether the big models agree.
 // { [key]: { score 5..98, level: high | medium | low, tLo, tHi, wetModels, nModels, ensWet, why } }
 export function confidence(wx) {
@@ -265,7 +312,7 @@ export function confidence(wx) {
     let tLo = null, tHi = null, wetModels = null, ensWet = null;
     if (ens && ens.tmaxP90 != null) {
       const spread = ens.tmaxP90 - ens.tmaxP10;
-      tLo = ens.tmaxP10; tHi = ens.tmaxP90; ensWet = ens.wet;
+      [tLo, tHi] = likely(d, ens).hi; ensWet = ens.wet;
       score = 100 - Math.max(0, spread - 1) * 9;
       if (ensWet != null) score -= (1 - Math.abs(2 * ensWet - 1)) * 30;
     }
@@ -335,14 +382,15 @@ export const ACTIVITIES = {
   swim: { name: "Outdoor swim", icon: "swim", tmin: 18, tmax: 32, windMin: 0, windMax: 25, gustMax: 40, rain: "light", hours: 1, from: 7, to: 20 },
 };
 export const DEFAULT_ACTIVITIES = ["run", "walk", "cycle"].map((id) => ({ id, on: true, ...ACTIVITIES[id] }));
-// How good one hour is for an activity, 0 to 1
-export function activityScore(h, prev, a) {
+// How good one hour is for an activity, 0 to 1 (joint: the stretch's chance of staying dry is reckoned with apart,
+// from the ensemble's runs, so an hour's own chance of rain isn't counted here as well; a wet hour still is)
+export function activityScore(h, prev, a, joint = false) {
   let s = comfortOf(h.feels ?? h.temp, a.tmin, a.tmax);
   const w = h.wind ?? 0;
   if (a.windMin > 0 && w < a.windMin) s *= clamp(w / a.windMin, 0.1, 1);
   if (w > a.windMax) s *= clamp(1 - (w - a.windMax) / 15, 0.2, 1);
   if ((h.gust ?? 0) > a.gustMax) s *= 0.5;
-  if (a.rain === "dry") s *= dryOf(h) * (prev && isWet(prev) ? 0.85 : 1);
+  if (a.rain === "dry") s *= (joint ? (isWet(h) ? 0 : 1) : dryOf(h)) * (prev && isWet(prev) ? 0.85 : 1);
   else if (a.rain === "light") s *= isWet(h) ? ((h.precip ?? 0) < 1 && codeInfo(h.code).wet < 3 ? 0.75 : 0.2) : 1;
   if (a.id === "run" && (h.uv ?? 0) > 6) s *= 0.85;
   return clamp(s, 0, 1);
@@ -357,10 +405,11 @@ export function limitsText(a, f) {
 export function windows(wx, now, f, opts = {}) {
   const out = [], acts = (opts.activities || DEFAULT_ACTIVITIES).filter((a) => a.on !== false);
   const horizon = hoursFrom(wx, now, 48).filter((h) => h.t >= now - 30 * 60e3);
-  const describe = (hs) => {
+  const describe = (hs, dry) => {
     const t = avg(hs, "temp"), w = avg(hs, "wind"), pop = max(hs, "pop") ?? 0;
     const wind = w < 12 ? "light winds" : w < 25 ? "a breeze" : "windy";
-    return `${pop < 20 ? "Dry" : `${Math.round(pop)}% chance of rain`}, ${f.temp(t)}, ${wind}`;
+    const rain = dry != null && !hs.some(isWet) ? (dry >= 0.9 ? "Dry" : `${Math.round(dry * 100)}% chance it stays dry`) : pop < 20 ? "Dry" : `${Math.round(pop)}% chance of rain`;
+    return `${rain}, ${f.temp(t)}, ${wind}`;
   };
   for (const a of acts) {
     const len = Math.max(1, Math.min(8, Math.round(a.hours || 1)));
@@ -369,14 +418,16 @@ export function windows(wx, now, f, opts = {}) {
     for (let i = 0; i + len <= ok.length; i++) {
       const hs = ok.slice(i, i + len);
       if (hs[hs.length - 1].t - hs[0].t !== (len - 1) * HOUR) continue;     // a stretch without a gap (the night)
-      // the stretch is as good as its average, held back by its worst hour
-      const each = hs.map((h) => activityScore(h, hourAt(wx, h.t - HOUR), a));
-      const s = 0.7 * (sum(each) / each.length) + 0.3 * Math.min(...each);
+      // the stretch is as good as its average, held back by its worst hour, and by its chance of rain at any time in it
+      // (where the ensemble's in: how many of its runs stay dry throughout, for what needs it dry or will take light rain)
+      const dry = a.rain === "any" ? null : dryChance(wx, hs[0].t, hs[hs.length - 1].t + HOUR);
+      const each = hs.map((h) => activityScore(h, hourAt(wx, h.t - HOUR), a, dry != null));
+      const s = (0.7 * (sum(each) / each.length) + 0.3 * Math.min(...each)) * (dry == null ? 1 : a.rain === "dry" ? 0.3 + 0.7 * dry : 0.8 + 0.2 * dry);
       // sooner is better, a little: today beats tomorrow at the same score
       const adj = s - (hs[0].t - now) / DAY * 0.04;
-      if (!best || adj > best.adj) best = { adj, s, hs };
+      if (!best || adj > best.adj) best = { adj, s, hs, dry };
     }
-    out.push(best ? { id: a.id, name: a.name, icon: a.icon, start: best.hs[0].t, end: best.hs[best.hs.length - 1].t + HOUR, score: best.s, rating: rateOf(best.s), text: describe(best.hs) }
+    out.push(best ? { id: a.id, name: a.name, icon: a.icon, start: best.hs[0].t, end: best.hs[best.hs.length - 1].t + HOUR, score: best.s, rating: rateOf(best.s), text: describe(best.hs, best.dry) }
       : { id: a.id, name: a.name, icon: a.icon, start: null, end: null, score: 0, rating: "Poor", text: "No time in its hours in the next two days" });
   }
   const x = opts.extras || {};
@@ -475,9 +526,9 @@ export function insights(wx, now, f, opts = {}) {
   const storm = next48.find((h) => codeInfo(h.code).kind === "storm" || ((h.cape ?? 0) >= 800 && (h.li ?? 0) <= -2 && (h.pop ?? 0) >= 40));
   if (storm) add({ id: "storm", level: "warn", icon: "storm", title: "Thunderstorms possible", text: `${cap(f.when(storm.t, now))}, from around ${f.time(storm.t)}. Lightning, downpours and gusty winds are possible.`, score: 95 });
   // heavy rain
-  const wettest = argmax(next48, "precip"), sum24 = sum(next24.map((h) => h.precip));
-  if (wettest && (wettest.precip >= T.VERY_HEAVY_MMH || sum24 >= T.HEAVY_DAY + 5)) {
-    add({ id: "heavyrain", level: sum24 >= 40 ? "alert" : "warn", icon: "rain", title: "Heavy rain", text: `${f.precip(sum24)} in the next 24 hours, heaviest ${f.when(wettest.t, now)} (${f.rate(wettest.precip)}). Surface water and spray on the roads.`, score: 90 });
+  const L = limitsHere(wx), wettest = argmax(next48, "precip"), sum24 = sum(next24.map((h) => h.precip));
+  if (wettest && (wettest.precip >= T.VERY_HEAVY_MMH || sum24 >= L.heavyDay)) {
+    add({ id: "heavyrain", level: sum24 >= L.heavyDay * 1.6 ? "alert" : "warn", icon: "rain", title: "Heavy rain", text: `${f.precip(sum24)} in the next 24 hours, heaviest ${f.when(wettest.t, now)} (${f.rate(wettest.precip)}). Surface water and spray on the roads.`, score: 90 });
   }
   // wind
   const gusty = argmax(next48, "gust");
@@ -494,10 +545,10 @@ export function insights(wx, now, f, opts = {}) {
   // ice: freezing with wet ground (rain in the six hours before, or falling)
   const icy = next48.find((h, i) => (h.temp ?? 9) <= 0.5 && (isWet(h) || next48.slice(Math.max(0, i - 6), i).some((p) => (p.precip ?? 0) >= 0.2)));
   if (icy) add({ id: "ice", level: "warn", icon: "ice", title: "Icy patches", text: `Down to ${f.temp(icy.temp)} on wet ground ${f.when(icy.t, now)}. Pavements and untreated roads could be slippery.`, score: 87 });
-  // frost (tonight, or the next night)
+  // frost (tonight, or the next night), unless nearly every night freezes at this time of year here
   const nights = next48.filter((h) => !h.isDay);
-  const cold = argmin(nights, "temp");
-  if (cold && !icy) {
+  const cold = argmin(nights, "temp"), usual = cold && wx.climate && (climateOn(wx.climate, cold.t)?.frost ?? 0) >= 0.8;
+  if (cold && !icy && !usual) {
     const near = nights.filter((h) => Math.abs(h.t - cold.t) <= 6 * HOUR && h.temp <= cold.temp + 1.5);    // the coldest hours
     const clear = (avg(near, "cloud") ?? 100) < 35, calm = (avg(near, "wind") ?? 20) < 10;
     if (cold.temp <= 0) add({ id: "frost", level: "warn", icon: "frost", title: "Frost", text: `Down to ${f.temp(cold.temp)} ${f.when(cold.t, now)}. Leave time to de-ice the car, and bring tender plants in.`, score: 80 });
@@ -511,12 +562,17 @@ export function insights(wx, now, f, opts = {}) {
     add({ id: "fog", level: "warn", icon: "fog", title: "Fog", text: `Likely ${f.when(foggy.t, now)}, from about ${f.time(foggy.t)}${vis != null && vis < T.FOG_M ? `, visibility down to ${f.dist(Math.max(50, Math.round(vis / 50) * 50))}` : ""}. Allow extra time on the roads.`, score: 78 });
   }
   // heat and cold
-  const hot = argmax(next48, "feels");
-  if (hot && hot.feels >= T.HOT) add({ id: "heat", level: hot.feels >= T.VERY_HOT ? "warn" : "tip", icon: "heat", title: hot.feels >= T.VERY_HOT ? "Very hot" : "Hot", text: `Feels like ${f.temp(hot.feels)} ${f.when(hot.t, now)}. Drink plenty, find shade around midday, and check on anyone vulnerable.`, score: hot.feels >= T.VERY_HOT ? 84 : 66 });
+  // (feeling like the fixed thresholds, and where summers here are hotter, as hot as their warmest days too)
+  const hot = argmax(next48, "feels"), peak = max(next48, "temp") ?? -99;
+  const veryHot = hot && hot.feels >= T.VERY_HOT && (L.veryHot == null || peak >= L.veryHot);
+  if (hot && hot.feels >= T.HOT && (veryHot || L.hot == null || peak >= L.hot)) {
+    const here = veryHot ? (L.veryHot != null ? ", as hot as summer gets here" : "") : L.hot != null ? ", hotter than most summer days here" : "";
+    add({ id: "heat", level: veryHot ? "warn" : "tip", icon: "heat", title: veryHot ? "Very hot" : "Hot", text: `Feels like ${f.temp(hot.feels)} ${f.when(hot.t, now)}${here}. Drink plenty, find shade around midday, and check on anyone vulnerable.`, score: veryHot ? 84 : 66 });
+  }
   const warmNight = nights.length && min(nights.slice(0, 12), "temp");
-  if (warmNight != null && warmNight >= T.TROPICAL_NIGHT) add({ id: "warmnight", level: "tip", icon: "moon", title: "Warm night", text: `It won't drop below ${f.temp(warmNight)} tonight. Open windows on the shady side early, close them as it warms.`, score: 58 });
+  if (warmNight != null && warmNight >= L.warmNight) add({ id: "warmnight", level: "tip", icon: "moon", title: "Warm night", text: `It won't drop below ${f.temp(warmNight)} tonight${L.warmNight > T.TROPICAL_NIGHT ? ", warmer than most summer nights here" : ""}. Open windows on the shady side early, close them as it warms.`, score: 58 });
   const bitter = argmin(next48, "feels");
-  if (bitter && bitter.feels <= T.BITTER) add({ id: "bitter", level: "warn", icon: "cold", title: "Bitterly cold", text: `Feels like ${f.temp(bitter.feels)} ${f.when(bitter.t, now)}. Hat, gloves and layers.`, score: 79 });
+  if (bitter && bitter.feels <= L.bitter) add({ id: "bitter", level: "warn", icon: "cold", title: "Bitterly cold", text: `Feels like ${f.temp(bitter.feels)} ${f.when(bitter.t, now)}${L.bitter < T.BITTER ? ", colder than most winter nights here" : ""}. Hat, gloves and layers.`, score: 79 });
   // UV
   const uvHours = next24.filter((h) => h.t < dayStart(now) + DAY && (h.uv ?? 0) >= T.UV_SUN);
   const uvPeak = argmax(next24.filter((h) => h.t < dayStart(now) + DAY), "uv");
@@ -539,11 +595,16 @@ export function insights(wx, now, f, opts = {}) {
   if (waking.hours.length) {
     const whenDay = waking.tomorrow ? "tomorrow" : "today";
     const wetH = waking.hours.filter(isWet), popMax = max(waking.hours, "pop") ?? 0;
+    // (the chance of rain at some point while you're up and about: from the ensemble's runs where they're in, which over
+    // a whole day can be well above any one hour's chance; else the likeliest hour's)
+    const dry = dryChance(wx, waking.hours[0].t, waking.hours[waking.hours.length - 1].t + HOUR), any = dry == null ? null : 1 - dry;
+    const pct = (p) => Math.round(p * 100);
     if (wetH.length || popMax >= 50) {
       const first = wetH[0] || argmax(waking.hours, "pop");
       add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Take an umbrella", text: `${cap(wetKind(waking.hours) || "rain")} likely ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}% chance)` : ""}${wetH.length ? `, about ${f.precip(sum(waking.hours.map((h) => h.precip)))} in all` : ""}.`, score: 72 });
-    } else if (popMax >= 25) add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Maybe an umbrella", text: `A ${Math.round(popMax)}% chance of a shower ${f.when(argmax(waking.hours, "pop").t, now)}; most of ${whenDay} stays dry.`, score: 45 });
-    else add({ id: "umbrella", level: "good", icon: "umbrella", title: "No umbrella needed", text: `Dry ${whenDay}: no more than a ${Math.round(popMax)}% chance of rain.`, score: 20 });
+    } else if (any != null && any >= 0.7) add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Take an umbrella", text: `${cap(wetKind(waking.hours) || "showers")} likely at some point ${whenDay} (${aPct(pct(any))} chance), though most of it stays dry.`, score: 70 });
+    else if (any != null ? any >= 0.3 : popMax >= 25) add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Maybe an umbrella", text: any != null ? `${cap(aPct(pct(any)))} chance of a shower at some point; most of ${whenDay} stays dry.` : `${cap(aPct(Math.round(popMax)))} chance of a shower ${f.when(argmax(waking.hours, "pop").t, now)}; most of ${whenDay} stays dry.`, score: 45 });
+    else add({ id: "umbrella", level: "good", icon: "umbrella", title: "No umbrella needed", text: `Dry ${whenDay}: ${dry == null ? `no more than ${aPct(Math.round(popMax))} chance of rain` : dry >= 0.97 ? "no rain in sight" : `${aPct(pct(dry))} chance it stays dry`}.`, score: 20 });
     add(wear(waking, now, f));
   }
   // your commute

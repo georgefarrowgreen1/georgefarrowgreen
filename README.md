@@ -160,7 +160,13 @@ so there's nothing to set up beyond the address.
   described part by part (morning, afternoon, evening, overnight).
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
   long it lasts and how heavy, charted as light, moderate or heavy (the amounts
-  are in the readout as you touch it).
+  are in the readout as you touch it). Where there's radar (RainViewer's
+  coverage), the radar leads: the rain on it carried along its own track and
+  read over a circle about the place that widens the further ahead (about 2 km
+  across now, 20 km two hours on), the radar's alone for the first half hour,
+  giving way to the models' 15-minute rain by two hours on (`rainmap.js` along
+  and blend; the radar card's tiles, so the card then has them to hand). Rain it
+  sees coming that the hourly forecast doesn't have is in the briefing too.
 - **Official warnings**, from the place's own weather service: the Met
   Office's for the UK, and those of the other European services that draw
   their warnings' areas (Norway, Sweden, Switzerland, Slovenia, Estonia,
@@ -178,9 +184,18 @@ so there's nothing to set up beyond the address.
   calm, cold nights), fog, heat and warm nights, bitter cold, high UV (with how
   long fair skin takes to burn), poor air and high pollen. Where an official
   warning (in force, or starting within a day and a half) says the same, the
-  app's own stands aside.
-- **Tips**: whether to take an umbrella, what to wear (from the feels-like range
-  of your waking hours, with wind and rain), and your weekday commute (Settings).
+  app's own stands aside. Once the place's thirty years are in, the bars suit
+  it: hot is also as hot as the warmest tenth of its summer days (very hot, the
+  warmest hundredth), a warm night the warmest tenth of its summer nights,
+  bitter cold the coldest tenth of its winter nights, and heavy rain its wettest
+  hundredth of days, never short of the fixed bars (27° and 32° feeling like,
+  20°, −5°, 25 mm) that are hard on anyone; and frost isn't a warning where
+  nearly every night freezes at the time of year (`climate.js` extremes).
+- **Tips**: whether to take an umbrella (by the chance of rain at some point
+  while you're up and about, counted across the ensemble's 51 runs: over a whole
+  day it can be well above any one hour's chance), what to wear (from the
+  feels-like range of your waking hours, with wind and rain), and your weekday
+  commute (Settings).
 - **How sure the forecast is**, day by day: six global models side by side
   (ECMWF, Met Office, GFS, ICON, Météo-France, GEM) and ECMWF's 51-run ensemble.
   Days the models disagree on are marked uncertain, with why; the temperature
@@ -196,9 +211,13 @@ so there's nothing to set up beyond the address.
   with, and golf, sailing (which needs some wind), gardening, tennis, hiking, a
   barbecue, an outdoor swim or anything you add: a feels-like range, wind
   (at least and at most), gusts, whether light rain is fine, how long, and
-  between which hours. Plus drying washing outside (dry hours, thirsty air, a
-  breeze, sun), stargazing (dark, clear, the Moon out of the way) and a
-  colourful sunset or sunrise (high and mid cloud, no low cloud in the way).
+  between which hours. Each with the chance the whole stretch stays dry
+  ("80% chance it stays dry"): the share of ECMWF's 51 runs dry throughout
+  (`data.js` keeps which are wet each hour), which a longer stretch has less of
+  than any one hour does, and which its score goes by. Plus drying washing
+  outside (dry hours, thirsty air, a breeze, sun), stargazing (dark, clear, the
+  Moon out of the way) and a colourful sunset or sunrise (high and mid cloud, no
+  low cloud in the way).
 - **Rain radar**: the last two hours of radar, every 10 minutes, from
   RainViewer's free mosaic of the world's radars, then the next two hours as
   the latest radar carried on along its own track (how the rain's moving from
@@ -248,7 +267,10 @@ so there's nothing to set up beyond the address.
   past forecasts). The card shows each model's average error and lean ("±0.8°,
   runs 1.2° warm") and which is most accurate here. From 7 days of record, the
   highs and lows from tomorrow on are tuned: each model's usual error taken
-  off, the closest counting most (`weather/skill.js`; Settings can turn it off).
+  off, the closest counting most, and the hours with them, so a day's chart
+  peaks at its tuned high (each hour moved by a share of the corrections to the
+  highs and lows either side of it; the ensemble's likely range moved as far)
+  (`weather/skill.js`; Settings can turn it off).
 - **Notifications** (Settings → Notifications, for one place per phone): a
   heads-up when rain is about to start within the hour ("Rain in about 20 min",
   not between 22:00 and 07:00, not twice in three hours), and a morning

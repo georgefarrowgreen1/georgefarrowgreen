@@ -7,7 +7,9 @@
 // Both are daily highs and lows from hourly values, so they compare fairly.
 //
 // The tuned high (and low) for a day is each model's forecast with its usual
-// error here taken off, weighted by how close it has been.
+// error here taken off, weighted by how close it has been; and the hours follow it.
+
+import { keyOf } from "./format.js";
 
 export const MODELS = [
   // (ECMWF's own 9 km model, hourly for the first days: open since October 2025, and finer than the 0.25°, 3-hourly
@@ -87,8 +89,8 @@ export function tuneDay(skill, dayModels) {
   return { tmax: blend("tmax", "hiMae", "hiBias"), tmin: blend("tmin", "loMae", "loBias"), n: use.length };
 }
 
-// The forecast with its highs and lows tuned, from tomorrow on (today's own hours know best how today is going).
-// Each tuned day keeps what it said before as `raw`.
+// The forecast with its highs and lows tuned, from tomorrow on (today's own hours know best how today is going),
+// and its hours with them (shiftHours). Each tuned day keeps what it said before as `raw`.
 export function applyTuning(wx, skill, todayKey) {
   if (!wx?.models || !skill || skill.days < TUNE_DAYS) return wx;
   let changed = false;
@@ -97,9 +99,40 @@ export function applyTuning(wx, skill, todayKey) {
     const t = tuneDay(skill, wx.models.days[d.key]);
     if (!t) return d;
     changed = true;
-    return { ...d, tmax: t.tmax, tmin: Math.min(t.tmin, t.tmax), raw: { tmax: d.tmax, tmin: d.tmin }, tuned: true };
+    const tmin = Math.min(t.tmin, t.tmax), up = t.tmax - d.tmax, down = tmin - d.tmin;
+    return { ...d, tmax: t.tmax, tmin, fmax: d.fmax == null ? d.fmax : d.fmax + up, fmin: d.fmin == null ? d.fmin : d.fmin + down,
+      raw: { tmax: d.tmax, tmin: d.tmin, fmax: d.fmax, fmin: d.fmin }, tuned: true };
   });
-  return changed ? { ...wx, daily, tunedBy: skill } : wx;
+  return changed ? { ...wx, daily, hourly: shiftHours(wx.hourly, daily), tunedBy: skill } : wx;
+}
+
+// The hours of tuned days, moved with them: each day's warmest hour by as much as its high was tuned, its coldest by
+// as much as its low, and the hours between by a share of each, by how near they are (so tonight eases from today's
+// own hours to tomorrow's tuned low). None goes past its day's tuned high or low. Today's hours stay as they are, as
+// do those of a day too far out for the models to tune. (Feeling like moves with them; the ensemble's spread is drawn
+// about whatever's shown.)
+export function shiftHours(hourly, daily) {
+  const byKey = new Map();
+  for (const h of hourly) { const k = keyOf(h.t); byKey.has(k) ? byKey.get(k).push(h) : byKey.set(k, [h]); }
+  const marks = [], tuned = new Map();
+  for (const d of daily) {
+    const hs = byKey.get(d.key);
+    if (!hs) continue;
+    const hi = hs.reduce((a, h) => (h.temp > a.temp ? h : a)), lo = hs.reduce((a, h) => (h.temp < a.temp ? h : a));
+    marks.push({ t: hi.t, by: d.tuned ? d.tmax - hi.temp : 0 }, { t: lo.t, by: d.tuned ? d.tmin - lo.temp : 0 });
+    if (d.tuned) tuned.set(d.key, d);
+  }
+  if (!marks.some((m) => m.by)) return hourly;
+  marks.sort((a, b) => a.t - b.t);
+  let j = 0;
+  return hourly.map((h) => {
+    while (j < marks.length - 1 && marks[j + 1].t <= h.t) j++;
+    const a = marks[j], b = marks[j + 1];
+    const by = h.t <= a.t || !b ? a.by : a.by + ((b.by - a.by) * (h.t - a.t)) / (b.t - a.t);
+    if (!by) return h;
+    const d = tuned.get(keyOf(h.t)), temp = d ? Math.min(d.tmax, Math.max(d.tmin, h.temp + by)) : h.temp + by;
+    return { ...h, temp, feels: h.feels == null ? h.feels : h.feels + by };
+  });
 }
 
 // METAR reports → daily highs and lows, in local time (offset in seconds): { "YYYY-MM-DD": { tmax, tmin, n } }

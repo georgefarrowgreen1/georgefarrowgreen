@@ -85,8 +85,11 @@ export function shapeModels(j) {
   return list.length ? { list, days } : null;
 }
 
-// the ensemble's runs → the spread of temperature each hour, the share of runs wet each hour, and each day's spread
+// the ensemble's runs → the spread of temperature each hour, the share of runs wet each hour, and each day's spread;
+// and which runs are wet each hour (0.2 mm or more: a bit for each run, the first 26 in one number and the rest in
+// another), so the chance of a stretch staying dry is counted run by run (insights.js dryChance)
 const q = (s, p) => { if (!s.length) return null; const i = (s.length - 1) * p, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
+const RUN_WET = 0.2;
 export function shapeEnsemble(j) {
   const h = j?.hourly; if (!h?.time) return null;
   const tKeys = Object.keys(h).filter((k) => /^temperature_2m(_member\d+)?$/.test(k)), pKeys = Object.keys(h).filter((k) => /^precipitation(_member\d+)?$/.test(k));
@@ -94,10 +97,12 @@ export function shapeEnsemble(j) {
   const hourly = [], byDay = {};
   h.time.forEach((t, i) => {
     const temps = tKeys.map((k) => num(h[k][i])).filter((v) => v != null).sort((a, b) => a - b);
-    const rains = pKeys.map((k) => num(h[k][i])).filter((v) => v != null);
+    const each = pKeys.map((k) => num(h[k][i])), rains = each.filter((v) => v != null);
     if (!temps.length) return;
-    const w = parseWall(t), key = t.slice(0, 10);
-    hourly.push({ t: w, p10: q(temps, 0.1), p50: q(temps, 0.5), p90: q(temps, 0.9), wet: rains.length ? rains.filter((v) => v >= 0.1).length / rains.length : null });
+    const w = parseWall(t), key = t.slice(0, 10), m = [0, 0];
+    each.forEach((v, k) => { if (v != null && v >= RUN_WET && k < 52) m[k < 26 ? 0 : 1] |= 1 << (k % 26); });
+    hourly.push({ t: w, p10: q(temps, 0.1), p50: q(temps, 0.5), p90: q(temps, 0.9), wet: rains.length ? rains.filter((v) => v >= 0.1).length / rains.length : null,
+      m: rains.length && pKeys.length <= 52 ? m : null, n: rains.length });
     const day = byDay[key] || (byDay[key] = { n: 0, max: {}, min: {}, rain: {} });
     day.n++;
     tKeys.forEach((k) => { const v = num(h[k][i]); if (v == null) return; day.max[k] = Math.max(day.max[k] ?? -99, v); day.min[k] = Math.min(day.min[k] ?? 99, v); });

@@ -1,9 +1,10 @@
 // The radar's sums (weather/rainmap.js): rain rate to reflectivity, the radar's own colours, the grid the
 // forecast's frames are made from, painting one, the timeline of radar then forecast, and smoothing the
-// radar's own tiles where they're enlarged.
+// radar's own tiles where they're enlarged; and the rain at a place over the next two hours from the radar, led by it
+// and then the models'.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -125,4 +126,54 @@ test("how the rain is moving: two frames lined up", () => {
   // drizzle alone (below 15 dBZ) doesn't steer it
   const drizzle = new Uint8Array(W * W).fill(11 + 10);
   assert.equal(motion(drizzle, drizzle, W, W), null);
+});
+
+/* ---------- the next two hours here, from the radar ---------- */
+// a square of radar 200 pixels across, the place at its middle: a block of rain (30 dBZ: about 2.7 mm an hour) from
+// x0 to x1, the rows y0 to y1; codes as rainmap.js decode gives them (snow: +100)
+const W = 200, square = (x0, x1, y0 = 80, y1 = 120, snow = false) => {
+  const c = new Uint8Array(W * W);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) c[y * W + x] = 30 + 11 + (snow ? 100 : 0);
+  return c;
+};
+const SEEN = new Uint8Array(W * W);
+test("the radar's rain here: carried along its track, read over a circle that widens the further ahead", () => {
+  // rain 20 to 60 pixels west of here, moving east at 2 pixels a minute: its edge here 10 minutes on, gone by 35
+  const steps = along(square(40, 80), SEEN, W, { vx: 2, vy: 0 }, 0, 60);
+  const at = (lead) => steps.find((s) => s.lead === lead);
+  assert.deepEqual(steps.map((s) => s.lead).slice(0, 3), [0, 5, 10]);
+  assert.equal(at(0).mmh, 0, "dry here now");
+  assert.ok(at(20).mmh > 2.5 && at(20).mmh < 2.9, `under it: ${at(20).mmh}`);
+  assert.ok(at(5).mmh === 0 && at(10).mmh > 0 && at(10).mmh < at(20).mmh, "its edge first: some of the circle");
+  assert.equal(at(50).mmh, 0, "and gone");
+  assert.ok(steps.filter((s) => s.lead <= 40).every((s) => s.seen === 1 && !s.snow), "all of it seen, while it's on the square");
+  // left where it is (no track to go on): it stays put; snow is snow
+  assert.ok(along(square(90, 110, 90, 110, true), SEEN, W, null, 0, 30).every((s) => s.mmh > 0 && s.snow));
+  // where the radar can't see, none of it counts
+  const blind = new Uint8Array(W * W).fill(1);
+  assert.ok(along(square(90, 110), blind, W, null, 0, 10).every((s) => s.seen === 0 && s.mmh === 0));
+  // carried off the square: less and less of the circle is seen
+  const off = along(square(0, 0), SEEN, W, { vx: 3, vy: 0 }, 0, 60);
+  assert.ok(off[0].seen === 1 && off[off.length - 1].seen < 0.5, `${off[off.length - 1].seen}`);
+});
+test("the next hours' rain: the radar's for the first half hour, giving way to the models' by two hours on", () => {
+  const at = Date.UTC(2026, 9, 19, 12, 0), offset = 3600, wall = (t) => t + offset * 1000;
+  // the models' quarter hours from 12:00 (real time) for two and a half hours: rain (0.5 mm in each) from 12:15 to 12:45
+  const model = Array.from({ length: 10 }, (_, k) => { const t = wall(at + k * 900e3), wet = k >= 1 && k <= 2; return { t, precip: wet ? 0.5 : 0, code: wet ? 63 : 2 }; });
+  // the radar: dry for the first hour (and seeing), then 2 mm an hour
+  const steps = Array.from({ length: 25 }, (_, k) => ({ lead: k * 5, mmh: k * 5 >= 60 ? 2 : 0, snow: false, seen: 1 }));
+  const out = blend(model, steps, at, offset);
+  assert.equal(out.length, 10);
+  assert.ok(out[1].precip === 0 && out[2].precip < 0.05 && out[1].code === 3 && out[1].radar === 1, "the models' shower: not what the radar sees");
+  // an hour on (its middle 67.5 minutes after the frame): the radar's 2 mm an hour, with a little over half the say
+  const s4 = 1 - (67.5 - 30) / 90;
+  assert.ok(Math.abs(out[4].radar - s4) < 1e-9 && Math.abs(out[4].precip - Math.round(s4 * 0.5 * 100) / 100) < 1e-9 && out[4].code === 61, `the radar's rain, an hour on: ${JSON.stringify(out[4])}`);
+  // 1h37 on: 2 mm an hour from the radar and none from the models, about evenly
+  const mid = out[6], share = 1 - (97.5 - 30) / 90;
+  assert.ok(Math.abs(mid.radar - share) < 1e-9 && Math.abs(mid.precip - Math.round(share * 0.5 * 100) / 100) < 1e-9, JSON.stringify(mid));
+  assert.equal(out[9].radar, undefined, "two hours on: the models' alone");
+  assert.equal(out[9], model[9]);
+  // where the radar can't see: the models' alone throughout
+  assert.deepEqual(blend(model, steps.map((s) => ({ ...s, seen: 0.3 })), at, offset), model);
+  assert.equal(blend(model, null, at, offset), model);
 });

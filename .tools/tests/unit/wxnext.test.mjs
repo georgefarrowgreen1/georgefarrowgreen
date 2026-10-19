@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeFormat, keyOf } from "../../../weather/format.js";
 import { shapePrevious, skillFrom, tuneDay, applyTuning, obsDays, TUNE_DAYS } from "../../../weather/skill.js";
-import { activityScore, ACTIVITIES, windows, limitsText } from "../../../weather/insights.js";
+import { activityScore, ACTIVITIES, windows, limitsText, likely, dryChance, insights } from "../../../weather/insights.js";
+import { shapeEnsemble } from "../../../weather/data.js";
 import { rainAlert, briefDue, briefing, isQuiet } from "../../../weather/alerts.js";
 
 const H = 3600e3, D = 864e5, M = 60e3;
@@ -72,6 +73,31 @@ test("tuning: each model's lean taken off, the closest counting most", () => {
   assert.ok(!today.tuned, "today is left to its own hours");
   assert.equal(wx.daily[2].tuned, undefined, "the original isn't changed");
 });
+test("tuning: the hours follow the tuned high and low, easing between, today's own left alone", () => {
+  const k = skillFrom(shapePrevious(previous(["ecmwf_ifs", "gfs_seamless", "icon_seamless"])), obs);
+  // a day that warms to 14° at 15:00 and cools to 6° at 03:00, every day; tomorrow tuned to 17° and 7° (up 3, up 1)
+  const wx = makeWx((i, t, hh) => { const v = 10 + 4 * Math.sin(((hh - 9) / 24) * 2 * Math.PI); return { temp: v, feels: v - 1 }; });
+  const tk = keyOf(DAY0 + D), at = (w, d = wx) => d.hourly.find((h) => h.t === w);
+  wx.daily.find((d) => d.key === tk).fmax = 13;
+  wx.models = { days: { [tk]: [{ id: "ecmwf_ifs", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }] } };
+  const out = applyTuning(wx, k, keyOf(DAY0)), tom = out.hourly.filter((h) => keyOf(h.t) === tk);
+  const close = (a, b) => Math.abs(a - b) < 0.01;
+  assert.ok(close(Math.max(...tom.map((h) => h.temp)), 17) && close(Math.min(...tom.map((h) => h.temp)), 7), "the day's chart peaks at its tuned high and bottoms at its tuned low");
+  assert.ok(close(at(DAY0 + D + 15 * H, out).temp, 17) && close(at(DAY0 + D + 3 * H, out).temp, 7));
+  assert.ok(close(at(DAY0 + D + 9 * H, out).temp, at(DAY0 + D + 9 * H).temp + 2), "the morning between: half of each");
+  assert.ok(close(at(DAY0 + 12 * H, out).temp, at(DAY0 + 12 * H).temp), "today's own hours as they were");
+  assert.ok(close(at(DAY0 + 21 * H, out).temp, at(DAY0 + 21 * H).temp + 0.5), "tonight easing from today's to tomorrow's");
+  assert.ok(close(at(DAY0 + D + 15 * H, out).feels, at(DAY0 + D + 15 * H).feels + 3), "feeling like moves with it");
+  const day = out.daily.find((d) => d.key === tk);
+  assert.ok(close(day.fmax, 16) && day.raw.fmax === 13, "and the day's own feels-like high");
+  // the ensemble's likely high and low, moved as far as the day was (so the tuned high isn't outside its own range)
+  const ens = { tmaxP10: 12, tmaxP90: 15, tminP10: 5, tminP90: 7 }, r = likely(day, ens);
+  assert.ok(close(r.hi[0], 15) && close(r.hi[1], 18) && close(r.lo[0], 6) && close(r.lo[1], 8), JSON.stringify(r));
+  assert.deepEqual(likely(out.daily.find((d) => d.key === keyOf(DAY0)), ens), { hi: [12, 15], lo: [5, 7] }, "an untuned day's as the ensemble has it");
+  assert.equal(at(DAY0 + D + 15 * H).temp < 14.01, true, "the original hours aren't changed");
+  // nothing tuned: the very same hours
+  assert.equal(applyTuning({ ...wx, models: { days: {} } }, k, keyOf(DAY0)).hourly, wx.hourly);
+});
 test("airport reports → whole days only, in local time", () => {
   const reports = [];
   for (let k = 0; k < 48; k++) reports.push({ obsTime: (Date.UTC(2026, 9, 16, 23) + k * H) / 1000, temp: k % 24 === 14 ? 17 : k % 24 === 4 ? 3 : 10 });
@@ -82,6 +108,51 @@ test("airport reports → whole days only, in local time", () => {
   assert.equal(days["2026-10-17"].tmax, 17); assert.equal(days["2026-10-17"].tmin, 3);
   // today isn't over: left out
   assert.deepEqual(Object.keys(obsDays(reports, 3600, Date.UTC(2026, 9, 18, 12))), ["2026-10-17"]);
+});
+
+/* ---------- the chance a stretch stays dry ---------- */
+// ECMWF's 51 runs as Open-Meteo gives them, through data.js: wet(i, k) says whether run k is wet in hour i (from DAY0)
+function ensembleOf(wet) {
+  const time = [], h = { time };
+  for (let i = -24; i < 72; i++) time.push(new Date(DAY0 + i * H).toISOString().slice(0, 16));
+  for (let k = 0; k <= 50; k++) {
+    const sfx = k ? `_member${String(k).padStart(2, "0")}` : "";
+    h[`temperature_2m${sfx}`] = time.map(() => 12);
+    h[`precipitation${sfx}`] = time.map((_, j) => (wet(j - 24, k) ? 0.6 : 0.05));
+  }
+  return shapeEnsemble({ hourly: h });
+}
+test("the chance a stretch stays dry, counted run by run", () => {
+  const wx = makeWx(), at = (h) => DAY0 + h * H;
+  // ten runs wet from 13:00 to 15:00 tomorrow, five more at 14:00 only (a trace in the rest)
+  wx.ensemble = ensembleOf((i, k) => (i >= 37 && i < 39 && k < 10) || (i === 38 && k >= 40 && k < 45));
+  assert.ok(Math.abs(dryChance(wx, at(37), at(39)) - 36 / 51) < 1e-9, "15 of the 51 runs wet at some time in it");
+  assert.ok(Math.abs(dryChance(wx, at(37), at(38)) - 41 / 51) < 1e-9, "its first hour alone: 10");
+  assert.equal(dryChance(wx, at(30), at(36)), 1);
+  assert.equal(dryChance(makeWx(), at(37), at(39)), null, "no ensemble yet");
+  assert.equal(dryChance({ ensemble: { hourly: wx.ensemble.hourly.map(({ m, ...e }) => e) } }, at(37), at(39)), null, "nor one kept from before");
+  assert.equal(dryChance(wx, at(80), at(82)), null, "nor past its end");
+});
+test("best times and the umbrella go by the whole stretch's chance of staying dry", () => {
+  const now = DAY0 + 9 * H, only = { laundry: false, stars: false, sunset: false };
+  // a different fifth of the runs wet each hour: an hour on its own about 80% dry, two hours together about 60%
+  const wx = makeWx();
+  wx.ensemble = ensembleOf((i, k) => (k + i) % 5 === 0);
+  const [run, walk] = windows(wx, now, f, { activities: [{ id: "run", on: true, ...ACTIVITIES.run }, { id: "walk", on: true, ...ACTIVITIES.walk }], extras: only });
+  const chance = (w) => +/^(\d+)% chance it stays dry, 12°, light winds$/.exec(w.text)?.[1];
+  assert.ok(chance(run) >= 78 && chance(run) <= 80 && chance(walk) >= 58 && chance(walk) <= 61, `${run.text} | ${walk.text}`);
+  assert.ok(run.rating === "Great" && walk.rating === "Good" && walk.score < run.score, `${run.rating} ${walk.rating}`);
+  // the umbrella: today's waking hours, 09:00 to 22:00
+  const umbrella = (wet) => { const w = makeWx(); w.ensemble = ensembleOf(wet); return insights(w, now, f).find((c) => c.id === "umbrella"); };
+  assert.deepEqual([umbrella(() => false).title, umbrella(() => false).text], ["No umbrella needed", "Dry today: no rain in sight."]);
+  const maybe = umbrella((i, k) => i >= 14 && i < 16 && k < 20);
+  assert.deepEqual([maybe.title, maybe.text], ["Maybe an umbrella", "A 39% chance of a shower at some point; most of today stays dry."]);
+  const likely = umbrella((i, k) => i >= 10 && i < 20 && k % 10 === i % 10 && k < 40);
+  assert.deepEqual([likely.title, likely.text], ["Take an umbrella", "Showers likely at some point today (a 78% chance), though most of it stays dry."]);
+  // rain in the forecast itself: as before
+  const wet = makeWx((i) => (i === 17 ? { precip: 2, code: 63, pop: 80 } : {}));
+  wet.ensemble = ensembleOf(() => false);
+  assert.match(insights(wet, now, f).find((c) => c.id === "umbrella").text, /^Rain likely this afternoon \(80% chance\)/);
 });
 
 /* ---------- your activities ---------- */

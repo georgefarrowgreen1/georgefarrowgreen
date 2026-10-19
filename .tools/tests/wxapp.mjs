@@ -13,15 +13,29 @@ import * as OW from './mocks/wxwarnings.mjs';
 const [,, S, out] = process.argv;
 const H = 3600e3, D = 864e5;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
-// a radar tile: 512 × 512 (the size the app asks for), a checkerboard of 30 dBZ rain (the radar's own blue) and clear,
-// 64 pixels a square, so wherever the map is zoomed in to, there's rain on screen and edges to soften
-const RADAR_PNG = (() => {
-  const raw = Buffer.alloc(512 * (1 + 512 * 4));
-  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) if (((x >> 6) + (y >> 6)) % 2 === 0) raw.set([0x00, 0x55, 0x88, 0xff], y * 2049 + 1 + x * 4);
+// a PNG, w × h, from px(x, y): [r, g, b, a], or null for clear
+function pngOf(w, h, px) {
+  const raw = Buffer.alloc(h * (1 + w * 4));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = px(x, y); if (c) raw.set(c, y * (1 + w * 4) + 1 + x * 4); }
   const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data]))); return Buffer.concat([len, Buffer.from(type), data, crc]); };
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(512, 0); ihdr.writeUInt32BE(512, 4); ihdr.set([8, 6, 0, 0, 0], 8);
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr.set([8, 6, 0, 0, 0], 8);
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
-})();
+}
+const BLUE = [0x00, 0x55, 0x88, 0xff];      // (30 dBZ, in the radar's own colours: about 2.7 mm an hour)
+// a radar tile: 512 × 512 (the size the app asks for), a checkerboard of 30 dBZ rain and clear, 64 pixels a square, so
+// wherever the map is zoomed in to, there's rain on screen and edges to soften
+const RADAR_PNG = pngOf(512, 512, (x, y) => (((x >> 6) + (y >> 6)) % 2 === 0 ? BLUE : null));
+// the radar's coverage where it sees (clear: anywhere else, as PNG's tint, it doesn't)
+const SEEN_PNG = pngOf(1, 1, () => null);
+// the radar about London, seeing: a block of rain 80 of zoom 7's pixels wide (about 60 km) and 160 tall, coming east
+// at 2 pixels a minute, its front 60 pixels west of the place in the latest of the 13 frames (here half an hour on)
+const HERE = (() => { const la = (51.5072 * Math.PI) / 180; return { x: ((-0.1276 + 180) / 360) * 32768, y: ((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * 32768 }; })();
+const blocks = new Map();
+const blockTile = (k, tx, ty) => {
+  const key = `${k}/${tx}/${ty}`, front = HERE.x - 60 - 20 * (12 - k);
+  if (!blocks.has(key)) blocks.set(key, pngOf(512, 512, (x, y) => { const X = tx * 512 + x, Y = ty * 512 + y; return X >= front - 80 && X < front && Math.abs(Y - HERE.y) < 80 ? BLUE : null; }));
+  return blocks.get(key);
+};
 // the same day every day at the airport: 5° at 3am, 15° at 3pm
 const curve = (h) => 10 + 5 * Math.sin(((h - 9) / 24) * 2 * Math.PI);
 // what each model said a day ahead: ECMWF half a degree warm, GFS two degrees warm, GEM two and a half cold…
@@ -101,13 +115,19 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
     if (u.includes('previous-runs-api')) return j(previousRuns(u));
     if (u.includes('forecast_minutely_15=9')) { tiles.grid++; return j(modelGrid(u)); }
-    if (u.includes('models=')) return j(F.models(now));
+    if (u.includes('models=')) return j(F.models(now, sc));
     return j(F.forecast(now, sc));
   });
   // the radar's frames and tiles, and the map's
   await p.route(/api\.rainviewer\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify({ host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }) }));
-  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { const rv = /rainviewer/.test(r.request().url()); tiles[rv ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: rv && !sc.dryRadar ? RADAR_PNG : PNG }); });
+  await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => {
+    const u = r.request().url(), rv = /rainviewer/.test(u), f = /\/v2\/radar\/f(\d+)\/512\/6\/(\d+)\/(\d+)\//.exec(u);
+    tiles[rv ? 'radar' : 'map']++;
+    // (where the radar sees: nowhere, unless it's the radar's own say on the next hours being tried)
+    const body = !rv ? PNG : /\/v2\/coverage\//.test(u) ? (sc.radarHere ? SEEN_PNG : PNG) : sc.radarHere && f ? blockTile(+f[1], +f[2], +f[3]) : sc.dryRadar ? PNG : RADAR_PNG;
+    r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body });
+  });
   // OpenFreeMap's: where its tiles are, then the tiles (empty: the map's drawn in its land colour, nothing on it), and
   // its shaded relief (and its fonts, if anything needed naming)
   await ctx.route(/tiles\.openfreemap\.org/, (r) => {
@@ -168,6 +188,11 @@ ok(/^Warmer than \d+% of days here since \d{4}\./.test(await p.textContent('#cli
 ok((await p.locator('#win-grid .win').count()) >= 5, 'best times for a run, a walk, a ride, the washing, the stars or the sunset');
 const wins = await p.locator('#win-grid .win').evaluateAll((ws) => ws.map((w) => [...w.children].map((c) => c.className).join(' ') + (w.querySelector('.win-day .win-rate') ? ' +rate' : '')));
 ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 'each card the same lines (what, when and how good, the hours, why), so they line up', wins[0]);
+{
+  // (the chance the whole stretch stays dry, from the ensemble's runs: ten of 51 wet throughout the next three days)
+  const why = await p.locator('#windows .win-text').allTextContents();
+  ok(why.filter((t) => /^80% chance it stays dry, /.test(t)).length >= 3, 'the best times give the chance the whole stretch stays dry', why.slice(0, 3).join(' | '));
+}
 const rows = await p.locator('.day-row').evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
 ok(new Set(rows).size === 1, 'the 16 days, every row the same height (rain chance or not)', [...new Set(rows)].join(', '));
 await p.screenshot({ path: `${out}/wx-top.png` });
@@ -178,6 +203,13 @@ await p.waitForSelector('#day[open]');
 ok((await p.evaluate(() => document.activeElement?.id)) === 'day-title', 'the sheet opens on its title (said first, no ring on the close button)', await p.evaluate(() => document.activeElement?.id));
 ok((await p.locator('#day table.models tr').count()) === 8, 'the day compares six models, and the tuned blend', String(await p.locator('#day table.models tr').count()));
 ok(/^Tuned for here · forecast alone \d+° \/ \d+°$/.test(await p.textContent('#day .tuned-note')), 'and says it\'s tuned', await p.textContent('#day .tuned-note'));
+{
+  // (the hours tuned with it: the day's chart peaks at the high it gives, not the forecast's own)
+  await p.waitForFunction(() => document.querySelector('#day .day-section + div text.c-label'), null, { timeout: 5000 }).catch(() => {});
+  const hl = /High (-?\d+°) · Low (-?\d+°)/.exec(await p.textContent('#day .dt-sub')) || [];
+  const labels = await p.evaluate(() => { const s = [...document.querySelectorAll('#day h3.day-section')].find((x) => x.textContent === 'Temperature'); return [...(s?.nextElementSibling?.querySelectorAll('text.c-label') || [])].map((t) => t.textContent); });
+  ok(hl[1] && labels[0] === hl[1] && labels.includes(hl[2]), 'and its hours with it: the day\'s chart peaks at the tuned high and bottoms at the tuned low', `${labels.join(', ')} · ${hl.slice(1).join(' / ')}`);
+}
 ok(!/High \d+°, low/.test(await p.textContent('#day .day-desc')), 'in words that don\'t repeat the high and low beside them', await p.textContent('#day .day-desc'));
 const likely = await p.locator('#day .stat span').allTextContents();
 ok(likely.includes('Likely high') && likely.includes('Likely low') && likely.includes('Gusts'), 'the ensemble\'s likely high and low as facts, not a sentence', likely.join(' · '));
@@ -418,6 +450,15 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const fc = await p2.evaluate(() => ({ n: __pictures.length, painted: __pictures.filter((x) => x.rain + x.soft > 500).length }));
   ok(fc.n >= 7 && fc.painted >= 7, 'no rain on the radar to follow: the models\' rain, painted in the radar\'s colours', JSON.stringify(fc));
   await c2.close();
+}
+// the radar's own say on the next hours, where it sees: rain on it coming this way that the models don't have
+{
+  const { ctx: c5, p: p5 } = await open({ radarHere: true });
+  await p5.waitForFunction(() => /starting/.test(document.getElementById('nowcast-text')?.textContent || ''), null, { timeout: 20000 }).catch(() => {});
+  const said = await p5.textContent('#nowcast-text'), brief = await p5.textContent('#brief');
+  ok(/^Rain starting in about (5|10|15|20|25|30) min/.test(said) && /^Rain on the way from about \d\d:\d\d/.test(brief),
+    'the next hours from the radar, where it sees: rain coming that the models don\'t have', `${said} | ${brief.slice(0, 60)}`);
+  await c5.close();
 }
 // a phone that can't draw the vector map (no WebGL 2): the radar on OpenStreetMap's own map, turned dark, with the same controls
 {

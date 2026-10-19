@@ -53,14 +53,15 @@ export function forecast(now, sc = {}) {
     daily,
   };
 }
-export function models(now) {
+export function models(now, sc = {}) {
   const start = Math.floor(now / D) * D, d = { time: [] };
   const ids = ["ecmwf_ifs", "ukmo_seamless", "gfs_seamless", "icon_seamless", "meteofrance_seamless", "gem_seamless"];
   for (let k = 0; k < 10; k++) d.time.push(day(start + k * D));
   ids.forEach((id, j) => {
     // they agree for a few days, then fall apart on day 4
     d[`temperature_2m_max_${id}`] = d.time.map((_, k) => (k === 4 ? 9 + j * 1.6 : 15 + j * 0.1));
-    d[`temperature_2m_min_${id}`] = d.time.map(() => 7);
+    // (and agree with the forecast on a frosty night: it's one of them)
+    d[`temperature_2m_min_${id}`] = d.time.map((_, k) => (sc.frost && k === 1 ? -2 : 7));
     d[`precipitation_sum_${id}`] = d.time.map((_, k) => (k === 4 ? (j % 2 ? 6 : 0) : k === 2 ? 12 : 0));
     d[`wind_gusts_10m_max_${id}`] = d.time.map(() => 30);
     d[`weather_code_${id}`] = d.time.map(() => 3);
@@ -73,7 +74,8 @@ export function ensemble(now) {
   for (let m = 0; m <= 50; m++) {
     const sfx = m ? `_member${String(m).padStart(2, "0")}` : "";
     h[`temperature_2m${sfx}`] = h.time.map((s, i) => 11 + 4 * Math.sin(((i % 24 - 9) / 24) * 2 * Math.PI) + (m - 25) * 0.04 * (1 + i / 48));
-    h[`precipitation${sfx}`] = h.time.map(() => 0);
+    // (ten of the 51 runs bring a little rain through the next three days: four in five stay dry, whatever the hour)
+    h[`precipitation${sfx}`] = h.time.map((s, i) => (m >= 1 && m <= 10 && i < 72 ? 0.3 : 0));
   }
   return { latitude: LAT, longitude: LON, timezone: "UTC", utc_offset_seconds: 0, hourly: h };
 }

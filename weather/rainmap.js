@@ -2,7 +2,10 @@
 // the colours (RainViewer's Universal Blue, from their published table, so the
 // legend and the forecast's frames match the radar's own), turning a rain rate
 // into radar reflectivity (dBZ), the grid of points the forecast's frames are
-// made from, painting a frame of them, and the timeline of frames.
+// made from, painting a frame of them, and the timeline of frames; and the rain
+// at a place over the next two hours from the radar, with the models' after it.
+
+import { isWetCode } from "./codes.js";
 
 // Universal Blue: rain every 2 dBZ from -10 to 66, snow every 5 (hex RGBA)
 const RAIN = "-10:63615914,-8:69665c1e,-6:6f6b5f29,-4:75706234,-2:7c75653e,0:827b6949,2:88806c54,4:8e856f5e,6:9e93756e,8:b6a97e82,10:cec08796,12:d6c88faa,14:ded097be,16:6cd1ebff,18:36bae5ff,20:00a3e0ff,22:0091caff,24:007fb4ff,26:0070a3ff,28:006295ff,30:005588ff,32:004e78ff,34:004768ff,36:ffe000ff,38:ffc500ff,40:ffaa00ff,42:ff9500ff,44:ff8100ff,46:f23600ff,48:d91b00ff,50:c10000ff,52:8f0000ff,54:5d0000ff,56:ff9fffff,58:ff8bffff,60:ff77ffff,62:ff62ffff,64:ff4effff,66:ffffffff";
@@ -208,4 +211,54 @@ export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3
   const last = frames.length ? frames[frames.length - 1].t : now - 10 * 60e3;
   modelTimes.forEach((t, k) => { if (t > last + 60e3 && t <= now + ahead) frames.push({ kind: "model", t, k }); });
   return { frames, now: Math.max(0, radarTimes.length - 1) };
+}
+
+// The rain at a place over the next two hours, from the radar: the latest frame's (codes, w × w, the place at its
+// middle) carried on along its track (drift: zoom-7 pixels a minute; null: left where it is), read over a circle about
+// the place that widens the further ahead (how sure where it'll be: about 2 km across now, 20 km two hours on), every
+// `step` minutes from `from` (minutes after the frame) to `until`. cover: where the radar sees, as codes of
+// RainViewer's coverage over the same square (0 where it sees). → [{ lead (min), mmh (the circle's average rain where
+// the radar sees), snow (most of that rain snow), seen (the share of the circle the radar sees) }]
+export function along(codes, cover, w, drift, from = 0, until = 120, step = 5) {
+  const out = [], mid = w / 2;
+  for (let lead = from; lead <= until; lead += step) {
+    const r = 3 + lead / 5, cx = mid - (drift ? drift.vx * lead : 0), cy = mid - (drift ? drift.vy * lead : 0);
+    let n = 0, seen = 0, sum = 0, wet = 0, snow = 0;
+    for (let y = Math.ceil(cy - r); y <= cy + r; y++) {
+      const half = Math.sqrt(Math.max(0, r * r - (y - cy) ** 2));
+      for (let x = Math.ceil(cx - half); x <= cx + half; x++) {
+        n++;
+        if (x < 0 || y < 0 || x >= w || y >= w || cover[y * w + x]) continue;
+        seen++;
+        const c = codes[y * w + x];
+        if (!c) continue;
+        const mmh = mmhOf(c > 100 ? c - 111 : c - 11);
+        if (mmh < MIN_RATE) continue;
+        sum += mmh; wet++; if (c > 100) snow++;
+      }
+    }
+    out.push({ lead, mmh: seen ? sum / seen : 0, snow: wet > 0 && snow * 2 > wet, seen: n ? seen / n : 0 });
+  }
+  return out;
+}
+
+// The models' rain by the quarter hour (data.js: { t (wall time, its start), precip (mm in it), code }) with the
+// radar's (along's steps, from a frame at `at`, real ms; offset: the place's, seconds) leading where it sees: the
+// radar's alone for the first half hour, giving way to the models' by two hours on, as the rain it can see moves on
+// and new rain the models foresee forms; where it can't see (more than half the circle out of its reach), the models'.
+// Each quarter it had a say in carries `radar`, its share
+export function blend(minutely, steps, at, offset = 0) {
+  if (!steps?.length || !minutely?.length) return minutely;
+  const rate = (mmh, snow) => (snow ? (mmh < 1 ? 71 : mmh < 4 ? 73 : 75) : mmh < 2.5 ? 61 : mmh < 7.6 ? 63 : 65);
+  return minutely.map((q) => {
+    const lead = (q.t - offset * 1000 - at) / 60e3 + 7.5, near = steps.filter((s) => Math.abs(s.lead - lead) <= 7.5);
+    if (!near.length) return q;
+    const share = Math.min(...near.map((s) => s.seen)) < 0.5 ? 0 : lead <= 30 ? 1 : Math.max(0, 1 - (lead - 30) / 90);
+    if (!share) return q;
+    const mmh = near.reduce((a, s) => a + s.mmh, 0) / near.length, snow = near.some((s) => s.snow);
+    const precip = Math.round((share * (mmh / 4) + (1 - share) * (q.precip ?? 0)) * 100) / 100;
+    // (its weather: the models' where they say it's wet too, else the radar's rain or snow; dry, not the models' rain)
+    const code = precip >= 0.05 ? (isWetCode(q.code) ? q.code : rate(precip * 4, snow)) : isWetCode(q.code) && share >= 0.5 ? 3 : q.code;
+    return { ...q, precip, code, radar: share };
+  });
 }

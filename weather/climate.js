@@ -65,7 +65,47 @@ export function climateOn(c, w) {
   }
   if (!hi.length) return null;
   const rainMean = rain.length ? rain.reduce((a, b) => a + b, 0) / rain.length : null;
-  return { years: c.years, tmax: stats(hi), tmin: stats(lo), wet: rainDays ? wetDays / rainDays : null, rainMean, recordHigh: recHi, recordLow: recLo };
+  const frost = lo.length ? lo.filter((v) => v <= 0).length / lo.length : null;       // (the share of nights that freeze)
+  return { years: c.years, tmax: stats(hi), tmin: stats(lo), wet: rainDays ? wetDays / rainDays : null, rainMean, frost, recordHigh: recHi, recordLow: recLo };
+}
+
+// What's unusual here at any time of year, for warnings that suit the place (insights.js): its summer's warmest tenth
+// of days and warmest hundredth (its summer: the warmest 13 weeks of its year, wherever they fall), the warmest tenth
+// of its summer nights, the coldest tenth of its winter nights (its coldest 13 weeks), and its wettest hundredth of
+// days. { hot, veryHot, warmNight, bitter, heavyDay } in °C and mm, worked out once per climate; null without one
+const extremesOf = new WeakMap();
+export function extremes(c) {
+  if (!c) return null;
+  if (extremesOf.has(c)) return extremesOf.get(c);
+  const L = doyList(c);
+  // each day of the year's average, then the 91 days about the warmest (or coldest) of them
+  const byDay = (vals) => {
+    const s = new Float64Array(366), n = new Int32Array(366);
+    for (let i = 0; i < vals.length; i++) if (vals[i] != null) { s[L.doy[i]] += vals[i]; n[L.doy[i]]++; }
+    return Array.from(s, (v, k) => (n[k] ? v / n[k] : null));
+  };
+  const season = (means, warmest) => {
+    let best = null, mid = 0;
+    for (let k = 0; k < 365; k++) {
+      let sum = 0, n = 0;
+      for (let j = -45; j <= 45; j++) { const v = means[(k + j + 365) % 365]; if (v != null) { sum += v; n++; } }
+      if (n && (best == null || (warmest ? sum / n > best : sum / n < best))) { best = sum / n; mid = k; }
+    }
+    return (doy) => { const dd = Math.abs(doy - mid); return Math.min(dd, 365 - dd) <= 45; };
+  };
+  const summer = season(byDay(c.tmax), true), winter = season(byDay(c.tmin), false);
+  const days = [], nights = [], cold = [], rain = [];
+  for (let i = 0; i < c.tmax.length; i++) {
+    if (summer(L.doy[i])) { if (c.tmax[i] != null) days.push(c.tmax[i]); if (c.tmin[i] != null) nights.push(c.tmin[i]); }
+    if (winter(L.doy[i]) && c.tmin[i] != null) cold.push(c.tmin[i]);
+    if (c.rain[i] != null) rain.push(c.rain[i]);
+  }
+  for (const a of [days, nights, cold, rain]) a.sort((x, y) => x - y);
+  const out = days.length && nights.length && cold.length
+    ? { hot: quant(days, 0.9), veryHot: quant(days, 0.99), warmNight: quant(nights, 0.9), bitter: quant(cold, 0.1), heavyDay: rain.length ? quant(rain, 0.99) : null }
+    : null;
+  extremesOf.set(c, out);
+  return out;
 }
 
 // where v falls among sorted values: 0 to 100 (the share below it, ties counted half)

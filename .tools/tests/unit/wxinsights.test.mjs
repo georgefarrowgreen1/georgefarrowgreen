@@ -167,6 +167,12 @@ test("headline: dry, rain later, raining now", () => {
   assert.match(I.headline(now, DAY0 + 9 * H, f), /^Rain easing around 12:00, then/);
   const evening = makeWx(() => ({ cloud: 90 }));
   assert.match(I.headline(evening, DAY0 + 20 * H, f), /Down to \d+° tonight\. Tomorrow: cloudy, \d+°\./);
+  // a shower the quarter hours see coming (the radar's) that the hours don't: said, not "dry"
+  const shower = makeWx(() => ({}), { minutely: quarter(DAY0 + 10 * H, (k) => (k >= 2 && k < 4 ? 0.3 : 0)) });
+  assert.match(I.headline(shower, DAY0 + 10 * H, f), /^Rain on the way from about 10:30, for an hour or two\./);
+  // and raining now by them, though not by the hours: easing, not "dry"
+  const wet = makeWx(() => ({}), { minutely: quarter(DAY0 + 10 * H, (k) => (k < 2 ? 0.4 : 0)) });
+  assert.match(I.headline(wet, DAY0 + 10 * H, f), /^Rain easing soon, then /);
 });
 
 /* ---------- a day in words ---------- */
@@ -211,6 +217,62 @@ test("wind, heavy rain, thunderstorms, snow, fog, heat, UV", () => {
   const hot = I.insights(makeWx((i, t, hh) => (i >= 0 && i < 24 ? { feels: hh > 11 && hh < 17 ? 33 : 22, uv: hh > 10 && hh < 16 ? 8 : 1 } : {})), now, f);
   assert.equal(card(hot, "heat").title, "Very hot");
   assert.match(card(hot, "uv").text, /^UV 8 around 11:00: fair skin can burn in about 20 minutes/);
+});
+/* ---------- warnings that suit the place ---------- */
+// thirty years of a made-up climate: days warming from `winter`° to `summer`° in late July, nights from `cold`° to
+// `night`°, a few degrees either way, now and then a day 5° warmer than that; every third day wet, `rain` mm or up to
+// twice it
+function climateLike({ summer, winter, night, cold, rain = 3 }) {
+  const time = [], tmax = [], tmin = [], precip = [];
+  for (let t = Date.UTC(1996, 0, 1); t <= Date.UTC(2025, 11, 31); t += D) {
+    const d = new Date(t), y = d.getUTCFullYear(), doy = (t - Date.UTC(y, 0, 1)) / D;
+    const k = (Math.sin(((doy - 110) / 365.25) * 2 * Math.PI) + 1) / 2, wobble = (((y * 7 + doy * 13) % 9) - 4) * 0.75;
+    time.push(d.toISOString().slice(0, 10));
+    tmax.push(winter + (summer - winter) * k + wobble + ((y * 3 + doy) % 37 === 0 ? 5 : 0)); tmin.push(cold + (night - cold) * k + wobble);
+    precip.push(doy % 3 === 0 ? rain * (1 + ((y + doy) % 5) / 4) : 0);
+  }
+  return compactClimate({ daily: { time, temperature_2m_max: tmax, temperature_2m_min: tmin, precipitation_sum: precip } });
+}
+test("warnings suit the place: heat and warm nights where summers are hot, by its own warmest days", () => {
+  const south = climateLike({ summer: 31, winter: 12, night: 21, cold: 3 }), now = DAY0 + 9 * H;
+  const L = I.limitsHere({ climate: south });
+  assert.ok(L.hot > 27 && L.hot < 36 && L.warmNight > 20, JSON.stringify(L));
+  // tomorrow afternoon: 2° short of a hot summer's day there, then 1° past it (feeling 1° warmer)
+  const at = (v, climate = south) => makeWx((i, t, hh) => (i >= 24 && i < 48 ? { temp: hh >= 13 && hh <= 16 ? v : 22, feels: hh >= 13 && hh <= 16 ? v + 1 : 22 } : {}), { extra: { climate } });
+  assert.equal(card(I.insights(at(L.hot - 2), now, f), "heat"), undefined, "an ordinary summer's day there");
+  const hot = card(I.insights(at(L.hot + 1), now, f), "heat");
+  assert.equal(hot.title, "Hot"); assert.match(hot.text, /, hotter than most summer days here\. Drink plenty/);
+  const very = card(I.insights(at(L.veryHot + 0.5), now, f), "heat");
+  assert.ok(L.veryHot - L.hot >= 2 && very.title === "Very hot" && /, as hot as summer gets here\./.test(very.text), very.text);
+  // the same day somewhere with cool summers (and no climate yet): hot by the fixed bar
+  const cool = card(I.insights(at(29, null), now, f), "heat");
+  assert.equal(cool.title, "Hot"); assert.doesNotMatch(cool.text, /here/);
+  const uk = makeWx((i, t, hh) => (i >= 24 && i < 48 ? { temp: hh >= 13 && hh <= 16 ? 28 : 18, feels: hh >= 13 && hh <= 16 ? 28 : 18 } : {}), { extra: { climate: compactClimate(fakeArchive()) } });
+  assert.equal(card(I.insights(uk, now, f), "heat").title, "Hot", "a cool climate keeps the fixed bar");
+  // a warm night: short of the warmest tenth of summer nights there, then past it
+  const night = (v) => makeWx((i) => (i >= 12 && i < 36 ? { temp: v, feels: v } : {}), { extra: { climate: south } });
+  assert.equal(card(I.insights(night(L.warmNight - 1), now, f), "warmnight"), undefined);
+  assert.match(card(I.insights(night(L.warmNight + 0.5), now, f), "warmnight").text, /, warmer than most summer nights here\./);
+});
+test("warnings suit the place: bitter cold and frost where winters are hard, heavy rain where it's wet", () => {
+  const north = climateLike({ summer: 24, winter: -10, night: 8, cold: -26 }), now = DAY0 + 15 * H;
+  const L = I.limitsHere({ climate: north });
+  assert.ok(L.bitter < -10, JSON.stringify(L));
+  const feels = (v, climate) => I.insights(makeWx((i) => (i >= 24 && i < 31 ? { temp: v + 4, feels: v } : {}), { extra: { climate } }), now, f);
+  assert.equal(card(feels(-9, north), "bitter"), undefined, "just a winter's night there");
+  assert.match(card(feels(L.bitter - 2, north), "bitter").text, /, colder than most winter nights here\. Hat/);
+  assert.equal(card(feels(-9, compactClimate(fakeArchive())), "bitter").title, "Bitterly cold", "somewhere milder, by the fixed bar");
+  // frost, where nearly every night of the season freezes, isn't news
+  assert.ok(climateOn(north, DAY0).frost >= 0.8 && climateOn(compactClimate(fakeArchive()), DAY0).frost < 0.2);
+  const frosty = (climate) => I.insights(makeWx((i) => (i >= 24 && i < 31 ? { temp: -3, feels: -5 } : {}), { extra: { climate } }), now, f);
+  assert.equal(card(frosty(north), "frost"), undefined);
+  assert.equal(card(frosty(compactClimate(fakeArchive())), "frost").title, "Frost");
+  // 36 mm in a day: heavy rain somewhere it's rarely that wet, not where it often is
+  const wet = climateLike({ summer: 30, winter: 25, night: 24, cold: 20, rain: 30 }), soaked = (climate) => I.insights(makeWx((i) => (i >= 12 && i < 36 ? { precip: 1.5, code: 63, pop: 90 } : {}), { extra: { climate } }), DAY0 + 9 * H, f);
+  assert.ok(I.limitsHere({ climate: wet }).heavyDay > 36);
+  assert.equal(card(soaked(wet), "heavyrain"), undefined);
+  assert.equal(card(soaked(compactClimate(fakeArchive())), "heavyrain").title, "Heavy rain");
+  assert.equal(card(soaked(null), "heavyrain").title, "Heavy rain", "and without a climate yet");
 });
 test("the umbrella: needed, maybe, not needed", () => {
   const now = DAY0 + 9 * H;
