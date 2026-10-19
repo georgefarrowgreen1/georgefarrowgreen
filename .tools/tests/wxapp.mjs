@@ -241,6 +241,59 @@ ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' |
   await p.waitForFunction((n0) => performance.getEntriesByType('resource').filter((r) => /api\.open-meteo\.com\/v1\/forecast/.test(r.name)).length > n0, n0, { timeout: 8000 }).then(() => true, () => false)
     .then((x) => ok(x, 'pulled down past the top and let go, it fetches the forecast again'));
 }
+// its spinner: only until the forecast's in (not everything behind it), gone if the page is scrolled on meanwhile,
+// and no longer than 15 seconds whatever happens
+{
+  const { ctx: c4, p } = await open({ rainIn: 30 }, { settle: false });
+  await p.waitForTimeout(1500);
+  const pull = () => p.evaluate(() => {
+    const t = (type) => { const touch = new Touch({ identifier: 1, target: document.body, clientX: 200, clientY: 300 }); window.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [touch], changedTouches: [touch], bubbles: true })); };
+    const real = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    t('touchstart');
+    Object.defineProperty(window, 'scrollY', { get: () => -110, configurable: true }); window.dispatchEvent(new Event('scroll'));
+    t('touchend');
+    if (real) Object.defineProperty(window, 'scrollY', real); else delete window.scrollY;
+    window.dispatchEvent(new Event('scroll'));
+  });
+  const ring = () => p.evaluate(() => { const r = document.querySelector('.ptr'); return { busy: r.classList.contains('busy'), seen: +getComputedStyle(r).opacity > 0.05 }; });
+  const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(500);
+  // the forecast a second and a half in coming, the ensemble 20 seconds: it spins until the forecast's in, not the ensemble
+  const slowEnsemble = async (r) => { await wait(20000); r.fulfill({ status: 404, body: '{}', headers: { 'Access-Control-Allow-Origin': '*' } }).catch(() => {}); };
+  const soonForecast = async (r) => { await wait(1500); r.fallback().catch(() => {}); };
+  await p.route(/ensemble-api/, slowEnsemble);
+  await p.route(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, soonForecast);
+  const t0 = Date.now();
+  await pull(); await p.waitForTimeout(600);
+  const spinning = await ring();
+  await p.waitForFunction(() => !document.querySelector('.ptr').classList.contains('busy'), null, { timeout: 8000 }).catch(() => {});
+  const took = Date.now() - t0;
+  await p.waitForTimeout(500);
+  ok(spinning.busy && spinning.seen && took < 6000 && !(await ring()).seen && /^Updated just now/.test(await p.textContent('#updated')), 'pulled to refresh: it spins until the forecast\'s in, then goes (not waiting on everything else, here the ensemble)', `${JSON.stringify([spinning, await ring()])}; ${took} ms`);
+  await p.unroute(/ensemble-api/, slowEnsemble);
+  await p.unroute(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, soonForecast);
+  // the forecast 4 seconds in coming, and the page scrolled on meanwhile: the spinner goes with it, and back at the top it's there
+  const slowForecast = async (r) => { await wait(4000); r.fallback().catch(() => {}); };
+  await p.route(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, slowForecast);
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
+  await pull(); await p.waitForTimeout(300);
+  await p.evaluate(() => scrollTo(0, 700)); await p.waitForTimeout(500);
+  const scrolled = await ring();
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(500);
+  const back = await ring();
+  await p.waitForFunction(() => !document.querySelector('.ptr').classList.contains('busy'), null, { timeout: 10000 }).catch(() => {});
+  await p.waitForTimeout(500);
+  ok(scrolled.busy && !scrolled.seen && back.busy && back.seen && !(await ring()).seen, 'scrolled on while it spins, it goes (and is back at the top, until the forecast\'s in)', JSON.stringify([scrolled, back, await ring()]));
+  await p.unroute(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, slowForecast);
+  // and whatever happens, no more than 15 seconds
+  const never = async () => {};
+  await p.route(/api\.open-meteo\.com\/v1\/forecast\?.*current=/, never);
+  await pull(); await p.waitForTimeout(300);
+  const stuck = (await ring()).busy;
+  await p.waitForFunction(() => !document.querySelector('.ptr').classList.contains('busy'), null, { timeout: 17000 }).catch(() => {});
+  ok(stuck && !(await ring()).busy, 'and an answer that never comes keeps it spinning no more than 15 seconds');
+  await c4.close();
+}
 // the radar, on the vector map: OpenFreeMap's, drawn with WebGL in the app's own style, the radar under its names
 await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .maplibregl-canvas', { timeout: 20000 });

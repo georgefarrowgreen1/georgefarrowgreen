@@ -287,8 +287,11 @@ mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on
 roughly where you are, from your connection (`GET /api/weather/where`,
 Cloudflare's city-level guess; nothing kept), or on your location if you've
 already allowed it. It works offline with what it last fetched, can be added to
-the Home Screen, and refreshes itself every 10 minutes while open. Share a place
-with `?lat=…&lon=…&name=…`.
+the Home Screen, and refreshes itself every 10 minutes while open; on a phone,
+pull the page down past its top and let go to refresh it then (its little spinner
+turns until the forecast itself is in, the rest arriving behind it, goes if the
+page is scrolled on meanwhile, and gives up after 15 seconds whatever happens).
+Share a place with `?lat=…&lon=…&name=…`.
 
 **Setup (once).** In Cloudflare, Workers & Pages → the `georgefarrowgreen`
 project → Custom domains → Set up a custom domain → `weather.georgefarrowgreen.com`.

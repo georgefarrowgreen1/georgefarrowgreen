@@ -225,7 +225,10 @@ body:is(.sheet-up, .deep) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-
 .ptr.armed { background-color: rgba(10, 132, 255, 0.85); transition: background-color 0.2s; }
 .ptr.busy { opacity: 1; transform: translateY(14px); transition: transform 0.4s var(--spring), opacity 0.2s; }
 .ptr.busy > span { animation: spin 0.9s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .ptr.busy > span { animation: none; } .ptr > span { transform: none; } }
+/* (the page scrolled on while it spins: it goes, as if with the page's top; done, or let go of short: it goes too) */
+.ptr.busy.away { opacity: 0; transform: translateY(-6px) scale(0.8); }
+.ptr.leaving { transition: opacity 0.25s, transform 0.3s var(--glide), background-color 0.2s; }
+@media (prefers-reduced-motion: reduce) { .ptr.busy > span { animation: none; } .ptr > span { transform: none; } .ptr.leaving { transition: none; } }
 .icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
 .icon-btn .g { position: relative; z-index: 3; }
 .icon-btn.small { width: 36px; height: 36px; }

@@ -115,7 +115,8 @@ function addPlace(p, makeCurrent = true) {
 
 /* ---------- loading ---------- */
 let seq = 0, timer = null;
-async function go(force = false) {
+// (fresh: called once the forecast itself is in, or has failed: the rest comes in behind it)
+async function go(force = false, fresh = null) {
   const p = place(); if (!p) return;
   const my = ++seq;
   S.loading = true; S.error = null;
@@ -129,6 +130,7 @@ async function go(force = false) {
   else S.radar.place(p.lat, p.lon);
   try {
     await load(p, (wx, how) => {
+      if (!how.partial) fresh?.();
       if (my !== seq || !wx) return;
       S.base = wx; S.wx = tuned(wx); S.stale = !!how.stale;
       if (how.error) S.error = how.error;
@@ -138,6 +140,7 @@ async function go(force = false) {
   } catch (e) {
     if (my === seq) { S.error = e; render(); }
   } finally {
+    fresh?.();
     if (my === seq) { S.loading = false; $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status(); }
   }
   clearTimeout(timer);
@@ -184,26 +187,44 @@ function drawDots() {
 // Pull down past the top and let go, to refresh. (On iPhone the page stretches past its top as it's pulled,
 // its scroll going below zero; a little round button follows it down, turning, and spins while the
 // forecast's fetched. Elsewhere the page doesn't stretch, and Refresh at the foot of it does the same.)
+// It spins only until the forecast itself is in (the models, the air and the rest come in behind it), and no more
+// than 15 seconds whatever happens; scrolled on meanwhile, it goes, as iOS's does with the page's top; let go of
+// short of refreshing, it goes too (it follows only a finger, not the page springing back).
 function pullToRefresh() {
   const ring = h("div", { class: "ptr", "aria-hidden": "true" }, h("span", { svg: glyph("refresh", 18) }));
   ring.style.setProperty("--pull", "0.000");
   document.body.append(ring);
   const FAR = 80;
-  let touching = false, armed = false, busy = false;
+  let touching = false, armed = false, busy = false, cap = 0;
   const show = () => {
-    const y = Math.max(0, -scrollY), k = Math.min(1, y / FAR);
+    const y = touching ? Math.max(0, -scrollY) : 0, k = Math.min(1, y / FAR);
     ring.style.setProperty("--pull", k.toFixed(3)); ring.style.setProperty("--y", `${Math.round(Math.min(y, FAR * 1.4))}px`);
     if (touching && !busy) { if (k >= 1 && !armed) { armed = true; ring.classList.add("armed"); } else if (k < 1 && armed) { armed = false; ring.classList.remove("armed"); } }
   };
-  addEventListener("touchstart", (e) => { touching = e.touches.length === 1 && scrollY <= 4 && !document.querySelector("dialog[open]") && !$("radar").classList.contains("radar-big"); }, { passive: true });
-  addEventListener("scroll", () => { if (scrollY < 0 || ring.style.getPropertyValue("--pull") !== "0.000") show(); }, { passive: true });
-  addEventListener("touchend", () => {
+  const done = () => {
+    if (!busy) return;
+    busy = false; clearTimeout(cap);
+    ring.classList.add("leaving"); ring.classList.remove("busy", "away");
+    show();
+  };
+  addEventListener("touchstart", (e) => {
+    touching = e.touches.length === 1 && scrollY <= 4 && !document.querySelector("dialog[open]") && !$("radar").classList.contains("radar-big");
+    if (touching) ring.classList.remove("leaving");
+  }, { passive: true });
+  addEventListener("scroll", () => {
+    if (touching || ring.style.getPropertyValue("--pull") !== "0.000") show();
+    if (busy) ring.classList.toggle("away", scrollY > 24);
+  }, { passive: true });
+  const end = () => {
     if (!touching) return;
     touching = false;
-    if (!armed || busy) return;
+    if (!armed || busy) { ring.classList.add("leaving"); ring.classList.remove("armed"); armed = false; show(); return; }
     armed = false; busy = true; ring.classList.remove("armed"); ring.classList.add("busy");
-    go(true).finally(() => { busy = false; ring.classList.remove("busy"); show(); });
-  }, { passive: true });
+    cap = setTimeout(done, 15000);
+    go(true, done).finally(done);
+  };
+  addEventListener("touchend", end, { passive: true });
+  addEventListener("touchcancel", end, { passive: true });
 }
 function placeSwipe() {
   const el = document.querySelector(".hero");
