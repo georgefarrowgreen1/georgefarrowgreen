@@ -226,7 +226,8 @@ so there's nothing to set up beyond the address.
   there's no track to follow (no radar there, or too little rain to tell), the
   weather models' rain instead (Open-Meteo's 15-minute rain on a 9 × 9 grid
   about 220 km across, blended and painted in the radar's own colours, inside
-  a dashed box; asked for only when rain's expected there soon), animated on one
+  a dashed box; asked for only when rain's expected there soon, or there's rain about on the radar; dry all
+  about, the latest radar held, so the next two hours are always there), animated on one
   timeline marked Now, on a map drawn in the app's own style, after Apple's Maps
   at night: OpenFreeMap's vector map of OpenStreetMap (the OpenMapTiles schema),
   drawn on the phone by MapLibre GL JS, land in a quiet grey with the lie of the

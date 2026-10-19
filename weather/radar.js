@@ -240,27 +240,30 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     g = grid(here.lat, here.lon);
     const rv = await framesNow().catch(() => null);
     const host = rv?.host, past = rv?.radar?.past || [];
-    // the next two hours: the latest radar carried along its own track, every 10 minutes; where there's no
-    // track to follow (no radar here, or too little rain to tell), the models' rain on the grid instead
+    // the next two hours, always: the latest radar carried along its own track, every 10 minutes; where there's no
+    // track to follow (no radar here, or too little rain to tell) but rain's about on the radar or expected here soon,
+    // the models' rain on the grid instead (81 places' forecasts: not asked for to show a dry map); and where it's dry
+    // all about, the latest radar as it is (nothing coming: no more to ask for)
     const drift = past.length >= 3 ? await driftAt(host, past, here.lat, here.lon).catch(() => null) : null;
     const last = past.length ? past[past.length - 1].time * 1000 : 0;
-    // (the models' grid is 81 places' forecasts: only asked for when rain's expected here soon, not to show a dry map)
-    const model = drift || (past.length && !rainSoon()) ? null : await modelRain(g).catch(() => null);
+    const wetAbout = !drift && past.length ? !!(await squareAt(here.lat, here.lon, (x, y) => tileCodes(`${host}${past[past.length - 1].path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`)).catch(() => null))?.some(Boolean) : false;
+    const model = drift || (past.length && !rainSoon() && !wetAbout) ? null : await modelRain(g).catch(() => null);
     if (!past.length && !model) throw new Error("nothing");
-    const ahead = drift ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
+    const held = !drift && !model && past.length > 0 && !rainSoon() && !wetAbout;
+    const ahead = drift || held ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
     const tl = timeline(past.map((f) => f.time * 1000), ahead);
     frames = tl.frames; nowAt = past.length ? tl.now : 0;
     const box = [[g.south, g.west], [g.north, g.east]];
     map.frames(frames.map((f, j) => {
       const shown = () => i === j, from = (k) => `${host}${past[k].path}/${SRC}`;
       if (f.kind === "radar") return { draw: (z, x, y, gone) => radarTile(from(f.k), null, { z, x, y }, shown, gone) };
-      if (drift) return { draw: (z, x, y, gone) => radarTile(from(past.length - 1), { vx: drift.vx, vy: drift.vy, lead: (f.t - last) / 60e3 }, { z, x, y }, shown, gone) };
+      if (drift || held) return { draw: (z, x, y, gone) => radarTile(from(past.length - 1), { vx: drift?.vx ?? 0, vy: drift?.vy ?? 0, lead: (f.t - last) / 60e3 }, { z, x, y }, shown, gone) };
       return { canvas: canvasFor(g, model.rain[f.k], model.snow[f.k]), bounds: box };
     }));
     map.box(model ? box : null);
     credited([...map.credit, past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
-    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && rainSoon() ? "The next two hours aren't available right now: showing the radar." : "";
+    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && !held ? "The next two hours aren't available right now: showing the radar." : "";
     slider.max = String(frames.length - 1);
     fetched = Date.now();
     drawScale();

@@ -132,7 +132,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     const u = r.request().url(), rv = /rainviewer/.test(u), f = /\/v2\/radar\/f(\d+)\/512\/6\/(\d+)\/(\d+)\//.exec(u);
     tiles[rv ? 'radar' : 'map']++;
     // (where the radar sees: nowhere, unless it's the radar's own say on the next hours being tried)
-    const body = !rv ? PNG : /\/v2\/coverage\//.test(u) ? (sc.radarHere ? SEEN_PNG : PNG) : sc.radarHere && f ? blockTile(+f[1], +f[2], +f[3]) : sc.dryRadar ? PNG : RADAR_PNG;
+    const body = !rv ? PNG : /\/v2\/coverage\//.test(u) ? (sc.radarHere ? SEEN_PNG : PNG) : sc.radarHere && f ? blockTile(+f[1], +f[2], +f[3]) : sc.clearRadar ? SEEN_PNG : sc.dryRadar ? PNG : RADAR_PNG;
     r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body });
   });
   // OpenFreeMap's: where its tiles are, then the tiles (empty: the map's drawn in its land colour, nothing on it), and
@@ -466,6 +466,18 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   ok(/^Rain starting in about (5|10|15|20|25|30) min/.test(said) && /^Rain on the way from about \d\d:\d\d/.test(brief),
     'the next hours from the radar, where it sees: rain coming that the models don\'t have', `${said} | ${brief.slice(0, 60)}`);
   await c5.close();
+}
+// the next two hours are always there: no rain anywhere on the radar and none expected, the latest radar held (and no
+// models' grid asked for); rain about on the radar but too scattered to follow, the models' grid, though none's expected here
+for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: the next two hours still there, the radar as it is (no models\' grid asked for)'],
+  [{ dryRadar: true }, true, 'rain about but too little to follow: the next two hours from the models\' grid, though none\'s expected here']]) {
+  const before = tiles.grid, { ctx: c6, p: p6 } = await open(sc);
+  await p6.locator('#radar').scrollIntoViewIfNeeded();
+  await p6.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
+  await p6.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
+  const max = Number(await p6.getAttribute('#radar .radar-slider', 'max')), chip = await p6.textContent('#radar .radar-chip'), end = await p6.textContent('#radar .rs-end').catch(() => '');
+  ok(max >= 18 && chip === 'Forecast' && /^\+/.test(end) && (tiles.grid > before) === grid && !(await p6.textContent('#radar .radar-status')), what, `${max + 1} frames, ${chip}, ${end}, ${tiles.grid - before} grid`);
+  await c6.close();
 }
 // a phone that can't draw the vector map (no WebGL 2): the radar on OpenStreetMap's own map, turned dark, with the same controls
 {
