@@ -73,6 +73,16 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
   map.addImage("room", { width: 20, height: 20, data: new Uint8Array(20 * 20 * 4) });
   map.addSource("here", { type: "geojson", data: spot(lat, lon) });
   map.addLayer({ id: "here", type: "symbol", source: "here", layout: { "icon-image": "room", "icon-allow-overlap": true, "icon-ignore-placement": false } });
+  // and room kept the same way where the map's own controls are over it (radar.js), so no name is half under one: each
+  // a clear picture its size (to the next 8 pixels), at the point under its middle, put back there as the map moves
+  let rooms = [];
+  map.addSource("clear", { type: "geojson", data: NONE });
+  map.addLayer({ id: "clear", type: "symbol", source: "clear", layout: { "icon-image": ["get", "room"], "icon-allow-overlap": true, "icon-ignore-placement": false } });
+  const keep = () => map.getSource("clear").setData({ type: "FeatureCollection", features: rooms.map((r) => {
+    const at = map.unproject([r.x + r.w / 2, r.y + r.h / 2]);
+    return { type: "Feature", properties: { room: r.id }, geometry: { type: "Point", coordinates: [at.lng, at.lat] } };
+  }) });
+  map.on("move", keep);
 
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
@@ -109,6 +119,15 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
       map.setPaintProperty("box", "line-opacity", opacity);
     },
     dot(la, lo) { dot.setLngLat([lo, la]); map.getSource("here").setData(spot(la, lo)); },
+    // the names kept clear of these: [{ x, y, w, h }], pixels from the map's top left
+    clear(rects) {
+      rooms = rects.map(({ x, y, w, h }) => {
+        const W = Math.ceil(w / 8) * 8, H = Math.ceil(h / 8) * 8, id = `room-${W}x${H}`;
+        if (!map.hasImage(id)) map.addImage(id, { width: W, height: H, data: new Uint8Array(W * H * 4) });
+        return { x, y, w, h, id };
+      });
+      keep();
+    },
     view(la, lo, smooth = false) {
       const to = { center: [lo, la], zoom: zoom - 1 };
       smooth && !calm ? map.easeTo({ ...to, duration: 650 }) : map.jumpTo(to);

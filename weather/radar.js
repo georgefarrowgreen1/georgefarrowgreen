@@ -179,7 +179,7 @@ const round = (n) => { const p = 10 ** Math.floor(Math.log10(n)), d = n / p; ret
  * miles: show the scale in miles. Returns { place(lat, lon), refresh(), note(text) }.
  *
  * The map it's drawn on (mapgl.js, or mapleaf.js) is driven through: frames([{ draw(z, x, y, gone) } | { canvas,
- * bounds }]), show(k, opacity), box(bounds | null | undefined, opacity), dot(lat, lon), view(lat, lon, smooth),
+ * bounds }]), show(k, opacity), box(bounds | null | undefined, opacity), dot(lat, lon), clear([{ x, y, w, h }]), view(lat, lon, smooth),
  * zoomBy(±1), explore(on), resize(), state() → { zoom, min, max, mpp }, on("move" | "tap", fn), and credit (its
  * sources' names). Zooms are 256-pixel tiles' (as Leaflet counts them).
  */
@@ -297,6 +297,17 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       ruler.style.width = `${Math.round((n * m) / s.mpp)}px`;
     };
     map.on("move", moved); moved();
+    // the names step aside from all that's over the map (as from the place's dot), measured again once any of it, or
+    // the map, has changed size (a little room round each; not every frame of the © folding away)
+    const over = [top, ruler, credit, hint, chip];
+    let settle = 0;
+    const clear = () => {
+      const b = el.getBoundingClientRect();
+      map.clear(over.map((x) => x.getBoundingClientRect()).filter((r) => r.width && r.height)
+        .map((r) => ({ x: r.left - b.left - 4, y: r.top - b.top - 4, w: r.width + 8, h: r.height + 8 })));
+    };
+    const sizes = new ResizeObserver(() => { clearTimeout(settle); settle = setTimeout(clear, 100); });
+    for (const x of [el, ...over]) sizes.observe(x);
     credited([...map.credit, "RainViewer"]);
     setTimeout(() => { credit.classList.add("folded"); told = true; hint.hidden = !touch || card.classList.contains("radar-big"); }, 5000);
   }

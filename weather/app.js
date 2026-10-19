@@ -460,17 +460,19 @@ function nowcast(wx, now) {
   if (!shown) { box.hidden = true; return; }
   box.hidden = false;
   $("nowcast-text").textContent = nc.text;
-  const m = wx.minutely.filter((x) => x.t + 15 * 60e3 > now);
+  const m = wx.minutely.filter((x) => x.t + 15 * 60e3 > now), led = (x) => (x.radar ?? 0) >= 0.5;
+  // (said where the radar's leading the timing for the first of it: rainmap.js blend)
+  $("nowcast-src").hidden = !led(m[0] || {});
   // on the scale it's felt: light, moderate, heavy (under 0.6 mm an hour, to 4, over), so it needs no units
   // (a square root within light, so drizzle still shows; the amounts are in the readout)
   const band = (mmh) => (mmh <= 0 ? 0 : mmh < 0.6 ? Math.sqrt(mmh / 0.6) : mmh < 4 ? 1 + Math.log(mmh / 0.6) / Math.log(4 / 0.6) : Math.min(3, 2 + Math.log(mmh / 4) / Math.log(4)));
   timeChart($("nowcast-chart"), {
     kind: "columns", height: 120, color: COLOR.rain, key: cell(wx.place.lat, wx.place.lon),
-    points: m.map((x) => ({ t: x.t, v: band(x.precip * 4), mm: x.precip })),
+    points: m.map((x) => ({ t: x.t, v: band(x.precip * 4), mm: x.precip, radar: led(x) })),
     y: { min: 0, max: 3, ticks: [1, 2, 3], fmt: (v) => ["", "Light", "Moderate", "Heavy"][v], inside: true },
     x: { step: 15 * 60e3, hour: (t) => f.time(t) },
     now, summary: `Rain, every 15 minutes for the next 4 hours, on a scale of light, moderate and heavy. ${nc.text}`,
-    tip: (p) => ({ title: f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? (p.mm * 4 >= 4 ? "heavy" : p.mm * 4 >= 0.6 ? "moderate" : "light") : "dry"]] }),
+    tip: (p) => ({ title: p.radar ? `${f.time(p.t)} · radar` : f.time(p.t), rows: [[f.rate(p.mm * 4), p.mm >= 0.05 ? (p.mm * 4 >= 4 ? "heavy" : p.mm * 4 >= 0.6 ? "moderate" : "light") : "dry"]] }),
     table: { head: ["Time", "Rain"], rows: m.map((x) => [f.time(x.t), f.rate(x.precip * 4)]) },
   });
 }

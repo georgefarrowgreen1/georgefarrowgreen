@@ -167,6 +167,8 @@ so there's nothing to set up beyond the address.
   giving way to the models' 15-minute rain by two hours on (`rainmap.js` along
   and blend; the radar card's tiles, so the card then has them to hand). Rain it
   sees coming that the hourly forecast doesn't have is in the briefing too.
+  While the radar's leading, the card says so (Radar, by its title), and each
+  quarter it leads says so in its readout.
 - **Official warnings**, from the place's own weather service: the Met
   Office's for the UK, and those of the other European services that draw
   their warnings' areas (Norway, Sweden, Switzerland, Slovenia, Estonia,
@@ -233,8 +235,9 @@ so there's nothing to set up beyond the address.
   drawn on the phone by MapLibre GL JS, land in a quiet grey with the lie of the
   land faintly shaded (Natural Earth's relief), the sea a deep blue, roads a
   whisper, borders on land only, and the names crisp and white, drawn above the
-  rain so they read through it (and stepping aside from the place's blue dot
-  rather than hiding under it). Where a phone can't draw it (no WebGL 2), the
+  rain so they read through it (and stepping aside from the place's blue dot,
+  and from the buttons, scale and credits over the map, rather than hiding under
+  them, as the map moves too). Where a phone can't draw it (no WebGL 2), the
   radar's on OpenStreetMap's own map turned dark instead (Leaflet), with the same
   controls; either is driven the same way (`mapgl.js`, `mapleaf.js`). Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's

@@ -62,6 +62,8 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
       box?.setStyle({ opacity });
     },
     dot(la, lo) { dot.setLatLng([la, lo]); },
+    // (its names are in its pictures: nothing to keep clear)
+    clear() {},
     view(la, lo, smooth = false) { map.setView([la, lo], zoom, { animate: smooth && !calm }); },
     zoomBy(d) { d > 0 ? map.zoomIn() : map.zoomOut(); },
     explore(yes) {

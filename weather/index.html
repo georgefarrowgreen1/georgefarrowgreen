@@ -64,7 +64,10 @@
       </div>
 
       <section class="card nowcast" id="nowcast" hidden aria-labelledby="nowcast-title">
-        <h2 class="card-title" id="nowcast-title"><span class="ct-icon" data-g="rain"></span>Next 4 hours</h2>
+        <div class="card-head">
+          <h2 class="card-title" id="nowcast-title"><span class="ct-icon" data-g="rain"></span>Next 4 hours</h2>
+          <span class="nc-src" id="nowcast-src" title="Timed by the rain radar" hidden><span class="ct-icon" data-g="radar"></span>Radar</span>
+        </div>
         <p class="nowcast-text" id="nowcast-text"></p>
         <div id="nowcast-chart"></div>
       </section>

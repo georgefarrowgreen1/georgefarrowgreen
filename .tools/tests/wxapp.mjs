@@ -161,6 +161,7 @@ ok((await p.locator('.day-row').count()) === 16 && (await p.textContent('#daily-
 const nc = await p.textContent('#nowcast-text');
 // (rain from 30 minutes on: said from the start of the quarter hour it starts in)
 ok(await p.isVisible('#nowcast') && /starting in about (15|20|25|30) min/.test(nc), 'the next four hours: rain on its way', nc);
+ok(!(await p.isVisible('#nowcast-src')), 'the models\' timing, where the radar has no say: not said to be the radar\'s');
 ok(/on the way from about/.test(await p.textContent('#brief')), 'the briefing says so too', await p.textContent('#brief'));
 const sw = await p.evaluate(() => document.documentElement.scrollWidth);
 ok(sw <= 390, 'nothing wider than the phone (it would zoom the page out)', `${sw}px`);
@@ -466,6 +467,7 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const said = await p5.textContent('#nowcast-text'), brief = await p5.textContent('#brief');
   ok(/^Rain starting in about (5|10|15|20|25|30) min/.test(said) && /^Rain on the way from about \d\d:\d\d/.test(brief),
     'the next hours from the radar, where it sees: rain coming that the models don\'t have', `${said} | ${brief.slice(0, 60)}`);
+  ok(await p5.isVisible('#nowcast-src') && (await p5.textContent('#nowcast-src')).trim() === 'Radar', 'and the card says it\'s the radar\'s timing');
   await c5.close();
 }
 // the next two hours are always there: no rain anywhere on the radar and none expected, the latest radar held (and no
