@@ -6,7 +6,7 @@
 //
 // A tick (.github/workflows/weather-tick.yml, every 10 minutes) looks at each
 // place that needs it: rain alerts outside the quiet hours (22:00 to 07:00 there),
-// briefings around their time. For rain it asks only for the next few hours'
+// briefings around their time (with any official warnings: functions/_wxwarn.js). For rain it asks only for the next few hours'
 // rain (one small request for every place at once); the whole forecast only
 // where a briefing is due; and no more each tick than Open-Meteo's free service
 // allows over a day (the rest wait for the next). Places are kept to two decimal places (about a
@@ -26,6 +26,7 @@ import { HttpError, fromB64url } from "./_pigeon.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf } from "../weather/format.js";
 import { rainAlert, briefDue, briefing, isQuiet } from "../weather/alerts.js";
+import { warningsAt } from "./_wxwarn.js";
 
 const MAX_SUBS = 300, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
 // what Open-Meteo is asked each tick, in its own measure: a place's rain is one call, its whole forecast about seven
@@ -198,6 +199,8 @@ async function notify(env, D, s, j, t, out) {
   if (!got.includes("gone") && s.brief && wx.daily.length && briefDue(now, s.brief_at, s.last_brief)) {
     const key = keyOf(now);
     if (await claim(D, s, "last_brief", key)) {
+      // (with the official warnings for the place, from its weather service, where there are any)
+      wx.official = (await warningsAt(env, s.lat, s.lon, t).catch(() => null))?.warnings || null;
       const r = await pushToSub(env, s, { ...briefing(wx, now, f), url, ttl: 3 * 3600 });
       got.push(r); if (r === "sent") out.brief++; else await giveBack(D, s, "last_brief", key);
     }

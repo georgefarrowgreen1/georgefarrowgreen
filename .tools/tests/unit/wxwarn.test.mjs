@@ -1,0 +1,113 @@
+// Official warnings: the server's reading of MeteoAlarm's and the National Weather Service's feeds
+// (functions/_wxwarn.js), and how the app says them (weather/official.js), on the stand-in feeds the
+// end-to-end test uses too (mocks/wxwarnings.mjs).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { polygon, inside, shapeMeteoalarm, shapeNws, warningsAt } from "../../../functions/_wxwarn.js";
+import { inForce, colourOf, titleOf, badgeOf, spanOf, glyphOf, covered } from "../../../weather/official.js";
+import { briefing } from "../../../weather/alerts.js";
+import { makeFormat } from "../../../weather/format.js";
+import { ukFeed, nwsAlerts, NEW_YORK } from "../mocks/wxwarnings.mjs";
+
+const H = 3600e3, f = makeFormat({});
+const NOW = Date.UTC(2026, 9, 19, 9, 0);          // a Monday, 09:00 UTC
+
+test("a warning's drawn area, and whether a place is in it", () => {
+  const sq = polygon("51.3,-0.5 51.3,0.3 51.7,0.3 51.7,-0.5 51.3,-0.5");
+  assert.deepEqual(sq.b, [51.3, -0.5, 51.7, 0.3]);
+  assert.ok(inside(51.51, -0.13, sq), "London's in it");
+  assert.ok(!inside(51.45, -2.59, sq) && !inside(51.8, -0.13, sq), "Bristol and Luton aren't");
+  // a concave one (an L): its notch is outside
+  const ell = polygon("0,0 0,2 1,2 1,1 2,1 2,0 0,0");
+  assert.ok(inside(0.5, 1.5, ell) && inside(1.5, 0.5, ell) && !inside(1.5, 1.5, ell));
+  assert.equal(polygon("51,0 52,1"), null, "too few points");
+  assert.equal(polygon("51,0 52,x 53,1 51,0"), null, "not numbers");
+  assert.equal(polygon("91,0 52,1 53,1 91,0"), null, "off the globe");
+});
+
+test("MeteoAlarm: only what's in force or to come, yellow and up, with a drawn area, and not replaced", () => {
+  const list = shapeMeteoalarm(ukFeed(NOW), NOW);
+  assert.deepEqual(list.map((w) => w.id), ["ldn-rain", "ldn-storm", "brs-wind"], "not the one over, the green one, the cancelled one, the replaced one or the one without a map");
+  const rain = list[0];
+  assert.equal(rain.issuer, "Met Office"); assert.equal(rain.via, "MeteoAlarm"); assert.equal(rain.level, 2); assert.equal(rain.type, 10);
+  assert.equal(rain.event, "Yellow rain warning"); assert.equal(rain.impacts.length, 2); assert.match(rain.url, /^https:\/\/www\.metoffice\.gov\.uk\//);
+  assert.equal(list[1].level, 3);
+  assert.deepEqual(shapeMeteoalarm(null), []); assert.deepEqual(shapeMeteoalarm({ warnings: [{}, { alert: { status: "Actual", msgType: "Alert", info: [] } }] }), []);
+  // the English one of several languages; capitals calmed; a link that isn't one dropped
+  const multi = shapeMeteoalarm({ warnings: [{ alert: { identifier: "m", status: "Actual", msgType: "Alert", info: [
+    { language: "no", event: "Kraftige vindkast", expires: new Date(NOW + H).toISOString(), parameter: [{ valueName: "awareness_level", value: "2; yellow; Moderate" }], area: [{ polygon: ["60,10 60,11 61,11 60,10"] }] },
+    { language: "en-GB", event: "COASTAL EVENT", senderName: "MET Norway", web: "javascript:alert(1)", expires: new Date(NOW + H).toISOString(), parameter: [{ valueName: "awareness_level", value: "2; yellow; Moderate" }], area: [{ polygon: ["60,10 60,11 61,11 60,10"] }] },
+  ] } }] }, NOW);
+  assert.equal(multi[0].event, "Coastal event"); assert.equal(multi[0].issuer, "MET Norway"); assert.equal(multi[0].url, null);
+});
+
+test("the National Weather Service: in force, real and not cancelled; linked to the point's own page", () => {
+  const list = shapeNws(nwsAlerts(NOW), 40.71, -74.01, NOW);
+  assert.deepEqual(list.map((w) => w.id), ["nws-1"]);
+  assert.equal(list[0].issuer, "National Weather Service"); assert.equal(list[0].via, null);
+  assert.equal(list[0].headline, "West winds 20 to 30 mph with gusts up to 50 mph.", "what's coming, from its description, not its headline in capitals");
+  assert.equal(shapeNws({ features: [{ properties: { ...nwsAlerts(NOW).features[0].properties, description: "Fog this morning." } }] }, 1, 2, NOW)[0].headline, nwsAlerts(NOW).features[0].properties.headline);
+  assert.equal(list[0].url, "https://forecast.weather.gov/MapClick.php?lat=40.71&lon=-74.01");
+});
+
+test("warnings for a place: from the feeds that cover it, worst first, without their areas", async () => {
+  const asked = [], real = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    const u = new URL(url);
+    if (u.pathname === "/api/v1/warnings/feeds-united-kingdom") return new Response(JSON.stringify(ukFeed(NOW)), { status: 200 });
+    if (u.pathname === "/alerts/active") return u.searchParams.get("point") === NEW_YORK ? new Response(JSON.stringify(nwsAlerts(NOW)), { status: 200 }) : new Response("{}", { status: 400 });
+    return new Response("{}", { status: 404 });
+  };
+  try {
+    const env = { METEOALARM_URL: "http://ma.test", NWS_URL: "http://nws.test" };
+    const london = await warningsAt(env, 51.51, -0.13, NOW);
+    assert.deepEqual(london.warnings.map((w) => w.id), ["ldn-storm", "ldn-rain"], "the amber one first");
+    assert.ok(london.warnings.every((w) => !("polys" in w)), "no areas sent to the phone");
+    assert.deepEqual((await warningsAt(env, 51.45, -2.59, NOW)).warnings.map((w) => w.id), ["brs-wind"]);
+    assert.deepEqual((await warningsAt(env, 40.71, -74.01, NOW)).warnings.map((w) => w.id), ["nws-1"]);
+    asked.length = 0;
+    assert.deepEqual(await warningsAt(env, 52.52, 13.4, NOW), { warnings: [] }, "Berlin: no feed with drawn areas");
+    assert.equal(asked.length, 0, "and nothing asked");
+    // outside the Weather Service's map (Toronto's in its box): none
+    assert.deepEqual(await warningsAt(env, 43.65, -79.38, NOW), { warnings: [] });
+    // every source down: an error, so the phone keeps the warnings it had (not told there are none)
+    globalThis.fetch = async () => new Response("", { status: 503 });
+    await assert.rejects(warningsAt(env, 51.51, -0.13, NOW), (e) => e.status === 502);
+  } finally { globalThis.fetch = real; }
+});
+
+test("how the app says them: colour, title, badge, when, icon", () => {
+  const [rain, storm, wind] = shapeMeteoalarm(ukFeed(NOW), NOW);
+  assert.equal(colourOf(rain), "yellow"); assert.equal(colourOf(storm), "amber");
+  assert.equal(colourOf({ level: 3, issuer: "SMHI", event: "Storm" }), "orange", "MeteoAlarm's orange where the issuer doesn't say amber");
+  assert.equal(colourOf({ level: 4, event: "Hurricane Warning" }), "red");
+  assert.equal(titleOf(rain), "Rain warning"); assert.equal(titleOf({ event: "strong wind gusts" }), "Strong wind gusts");
+  assert.equal(badgeOf(storm), "Amber"); assert.equal(badgeOf({ via: null, event: "Wind Advisory", level: 2 }), null, "the US names its kinds instead");
+  assert.equal(glyphOf(rain), "rain"); assert.equal(glyphOf(storm), "storm"); assert.equal(glyphOf(wind), "wind");
+  assert.equal(glyphOf({ event: "Winter Storm Warning" }), "snow"); assert.equal(glyphOf({ event: "Freeze Warning" }), "frost"); assert.equal(glyphOf({ event: "Something else" }), "warning");
+  // on the place's clock (London in October: an hour ahead of UTC)
+  const wall = NOW + 3600e3;
+  assert.equal(spanOf(rain, wall, f, 3600), "Until 15:00");
+  assert.equal(spanOf(storm, wall, f, 3600), "Tomorrow 13:00 to 22:00");
+  assert.equal(spanOf({ onset: new Date(NOW + 10 * H).toISOString(), expires: new Date(NOW + 20 * H).toISOString() }, wall, f, 3600), "Today 20:00 to tomorrow 06:00");
+  assert.equal(spanOf({ onset: new Date(NOW - H).toISOString(), expires: new Date(NOW + 30 * H).toISOString() }, wall, f, 3600), "Until tomorrow 16:00");
+  assert.equal(inForce([rain, { expires: new Date(NOW - 1).toISOString() }], NOW).length, 1);
+  // the app's own warnings an official one says already: wind (in force), not the thunderstorm two days off
+  assert.deepEqual([...covered([wind, rain], NOW)].sort(), ["rain", "wind"]);
+  assert.deepEqual([...covered([storm], NOW - 30 * H)], [], "a thunderstorm warning a day and a half off doesn't stand in for today's");
+});
+
+test("the morning briefing says the official warning, and not the app's own on the same thing", () => {
+  const D = 864e5, DAY0 = Date.UTC(2026, 9, 19);
+  const hourly = [], daily = [];
+  for (let i = 0; i < 72; i++) hourly.push({ t: DAY0 - D + i * H, temp: 12, feels: 11, precip: 0, pop: 5, code: 3, gust: i === 34 ? 80 : 20, wind: 15, dir: 240, cloud: 80, isDay: true, uv: 1, vis: 20000, rh: 70, dew: 6, pressure: 1012 });
+  for (let k = 0; k < 3; k++) daily.push({ key: new Date(DAY0 + (k - 1) * D).toISOString().slice(0, 10), date: DAY0 + (k - 1) * D, tmax: 14, tmin: 8, code: 3, precip: 0, gustMax: k === 1 ? 80 : 20, sunrise: DAY0 + (k - 1) * D + 7 * H, sunset: DAY0 + (k - 1) * D + 18 * H });
+  const wx = { place: { name: "Bristol", offset: 0 }, current: hourly[31], minutely: [], hourly, daily, models: null };
+  const now = DAY0 + 7 * H;
+  assert.match(briefing(wx, now, f).body, /Warning: (damaging gusts|gales)/i, "without an official one: the app's own");
+  wx.official = shapeMeteoalarm(ukFeed(now), now).filter((w) => w.id === "brs-wind");
+  const b = briefing(wx, now, f).body;
+  assert.match(b, /Met Office: yellow wind warning until 15:00\./);
+  assert.doesNotMatch(b, /Warning: (damaging gusts|gales)/i, "the app's own gales warning stands aside");
+});

@@ -24,7 +24,7 @@
   <link rel="modulepreload" href="./data.js" /><link rel="modulepreload" href="./format.js" /><link rel="modulepreload" href="./insights.js" />
   <link rel="modulepreload" href="./codes.js" /><link rel="modulepreload" href="./icons.js" /><link rel="modulepreload" href="./charts.js" />
   <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
-  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" />
+  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./official.js" />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
 </head>
 <body data-sky="cloudy-day">
@@ -232,6 +232,8 @@
         <li><a href="https://www.metoffice.gov.uk/" target="_blank" rel="noopener"><span><b>Met Office</b><small>UK models, through Open-Meteo · CC&nbsp;BY-SA&nbsp;4.0</small></span></a></li>
         <li><a href="https://climate.copernicus.eu/" target="_blank" rel="noopener"><span><b>ERA5 · Copernicus Climate Change Service</b><small>30 years of climate, through Open-Meteo. Contains modified Copernicus Climate Change Service information <span class="this-year">2026</span></small></span></a></li>
         <li><a href="https://atmosphere.copernicus.eu/" target="_blank" rel="noopener"><span><b>CAMS · Copernicus Atmosphere Monitoring Service</b><small>Air quality and pollen (CAMS European air quality forecasts, ENSEMBLE data), through Open-Meteo. Contains modified Copernicus Atmosphere Monitoring Service information <span class="this-year">2026</span></small></span></a></li>
+        <li><a href="https://meteoalarm.org/" target="_blank" rel="noopener"><span><b>MeteoAlarm · EUMETNET</b><small>Official warnings from Europe's weather services (the Met Office's for the UK) · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+        <li><a href="https://www.weather.gov/" target="_blank" rel="noopener"><span><b>National Weather Service</b><small>Official warnings in the US</small></span></a></li>
         <li><a href="https://aviationweather.gov/" target="_blank" rel="noopener"><span><b>Aviation Weather Center</b><small>Airport reports, for the forecast's accuracy</small></span></a></li>
       </ul>
       <h3 class="sheet-sub" id="cr-map">Map data</h3>
@@ -246,7 +248,17 @@
         <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><span><b>Nominatim · OpenStreetMap</b><small>Names BigDataCloud doesn't have</small></span></a></li>
         <li><a href="https://www.geonames.org/" target="_blank" rel="noopener"><span><b>GeoNames</b><small>Search, through Open-Meteo · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
       </ul>
-      <p class="credits-note">Worked out on this device from the data above. Forecasts can be wrong: for warnings, check your national weather service. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains.</p>
+      <p class="credits-note">Worked out on this device from the data above; official warnings are shown as issued, where their weather service maps them (the UK, the US and some others). Forecasts can be wrong: elsewhere, for warnings, check your national weather service. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains.</p>
+    </div>
+  </dialog>
+
+  <dialog class="sheet warning-sheet" id="warning" aria-labelledby="warning-title">
+    <div class="sheet-head">
+      <h2 id="warning-title" tabindex="-1">Warning</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <div id="warning-body"></div>
     </div>
   </dialog>
 

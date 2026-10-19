@@ -7,6 +7,8 @@
 //   ensemble     ECMWF's 51-run ensemble: how wide the possibilities are
 //   air          air quality and pollen
 //   climate      30 years of this place's days (once per place, kept for a year)
+//   warnings     official warnings, from the place's own weather service (asked by this site's server:
+//                functions/_wxwarn.js)
 //
 // Nothing about you is sent beyond the spot asked about (and, to name where you are, your position
 // as your phone gives it: BigDataCloud's free service is for exactly that, and only that). Data by
@@ -152,6 +154,13 @@ export const fetchAir = (lat, lon) => getJSON(`${API.air}?${qs({ latitude: r4(la
 // archive's best match, which splices ERA5, ERA5-Land and the 9 km model from 2017 and shifts normals and records)
 export const fetchClimate = (lat, lon, nowW) => { const s = climateSpan(nowW); return getJSON(`${API.archive}?${qs({ latitude: r4(lat), longitude: r4(lon), start_date: s.start, end_date: s.end, daily: "temperature_2m_max,temperature_2m_min,precipitation_sum", models: "era5_seamless", timezone: "auto" })}`, 30000, 1); };
 
+// Official warnings for a place (this site's server asks its weather service: functions/_wxwarn.js)
+export async function fetchWarnings(lat, lon) {
+  const r = await fetch(`/api/weather/warnings?${qs({ lat: (Math.round(lat * 100) / 100).toFixed(2), lon: (Math.round(lon * 100) / 100).toFixed(2) })}`, { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`warnings ${r.status}`);
+  return r.json();
+}
+
 // Search for a place by name
 export async function searchPlaces(name) {
   const j = await getJSON(`${API.geocode}?${qs({ name, count: 8, language: "en", format: "json" })}`, 8000);
@@ -189,7 +198,7 @@ export function peek(place) {
   return c?.j?.current ? { temp: c.j.current.temperature_2m, code: c.j.current.weather_code, isDay: c.j.current.is_day === 1, at: c.at } : null;
 }
 // how long each kind is good for
-const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3 };
+const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, warnings: 5 * 60e3 };
 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can.
@@ -204,6 +213,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
     wx.models = raw.models ? shapeModels(raw.models.j) : null;
     wx.ensemble = raw.ensemble ? raw.ensemble.s || shapeEnsemble(raw.ensemble.j) : null;
     wx.air = raw.air ? shapeAir(raw.air.j) : null;
+    wx.official = Array.isArray(raw.warnings?.j?.warnings) ? raw.warnings.j.warnings : null;
     wx.climate = climateFor(place);
     wx.skill = skillKept(place);
     return wx;
@@ -229,7 +239,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   };
   // the forecast first (the page needs it); the rest alongside
   const main = get("forecast", fetchForecast);
-  const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir)]);
+  const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir), get("warnings", fetchWarnings)]);
   try { await main; } catch (e) { if (!raw.forecast) throw e; onUpdate(build(), { partial: false, stale: true, error: e }); }
   await extras;
   // the climate, once a year per place, in the background (it's a lot to ask for)

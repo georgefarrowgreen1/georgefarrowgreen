@@ -478,6 +478,16 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
 .ins[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
 .ins .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
+/* official warnings: in their own colour, the whole card opening the warning (from its title, so it's said as a button) */
+.ins.official > p { grid-column: 2; }
+.ins.official .ins-from { font-size: 13px; color: var(--text-3); margin-bottom: 2px; }
+.ins-open { all: unset; cursor: pointer; }
+.ins-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.ins-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
+.ins.official:active { transform: scale(0.985); transition: transform 0.12s; }
+.ins.official[data-colour="yellow"] { --tint: rgba(132, 102, 0, 0.66); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
+.ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
+.ins.official[data-colour="orange"] .ins-icon { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
 .more-btn { justify-self: start; border-radius: 999px; padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 /* ---------- best times ---------- */
@@ -771,6 +781,20 @@ body.no-scroll { overflow: hidden; }
 /* each source a row in a group, as Settings lists them; out to its site */
 .credits { list-style: none; margin: 0; padding: 0 14px; border-radius: 18px; }
 .credits li + li { border-top: 1px solid var(--line); }
+/* an official warning, in full */
+.warn-from { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.warn-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px;
+  background: linear-gradient(180deg, #ffc94d, #f5a10f); color: #241700; }
+.warning-sheet[data-colour="yellow"] .warn-badge { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
+.warning-sheet[data-colour="orange"] .warn-badge { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
+.warning-sheet[data-colour="red"] .warn-badge { background: linear-gradient(180deg, #ff7a70, #e8453a); color: #fff; }
+.warn-when { margin: 4px 0 0; font-size: 14px; color: var(--text-3); }
+.warn-headline { margin: 14px 0 0; font-size: 17px; font-weight: 600; line-height: 1.38; }
+#warning-body > p:not([class]) { margin: 0 0 10px; font-size: 15px; line-height: 1.5; color: var(--text-2); }
+.warn-list { margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.5; color: var(--text-2); }
+.warn-list li { margin: 0 0 6px; }
+.warn-link { margin: 16px 0 0; }
+.warn-link a { display: inline-flex; align-items: center; min-height: 44px; color: var(--tint-blue); font-weight: 600; text-decoration: none; }
 .credits a { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; color: inherit; text-decoration: none; transition: opacity 0.2s; }
 .credits a:active { opacity: 0.55; transition-duration: 0.08s; }
 .credits a > span { flex: 1; min-width: 0; }
@@ -818,6 +842,7 @@ select option { color: #111; }
   .card, .ins, .tile, .section-title, .foot-in, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
   .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
+  .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
   .icon-btn, .place, .pill-btn, .more-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .radar .leaflet-container .leaflet-bar,
   .radar-credit { background-color: rgb(52, 62, 80); }
 }

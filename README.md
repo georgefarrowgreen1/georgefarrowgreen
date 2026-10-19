@@ -161,10 +161,24 @@ so there's nothing to set up beyond the address.
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
   long it lasts and how heavy, charted as light, moderate or heavy (the amounts
   are in the readout as you touch it).
+- **Official warnings**, from the place's own weather service: the Met
+  Office's for the UK, and those of the other European services that draw
+  their warnings' areas (Norway, Sweden, Switzerland, Slovenia, Estonia,
+  Iceland, Israel, Ukraine, Latvia, now and then the Netherlands), through
+  MeteoAlarm (EUMETNET's feeds, CC BY 4.0); the National Weather Service's in
+  the US. Each a card in its colour (yellow, amber or orange, red) saying who
+  issued it and when, with the whole of it a tap away (what to expect, the
+  details, what to do, the issuer's own page), and in the morning briefing
+  ("Met Office: yellow wind warning until 18:00."). Only warnings yellow and
+  up, in force or to come, and not since replaced. Elsewhere none: the other
+  services name regions only by code, and MeteoAlarm keeps the map of those to
+  registered users.
 - **Warnings** worked out from the forecast: thunderstorms, heavy rain, gales,
   snow, icy patches (freezing on wet ground), frost and ground frost (clear,
   calm, cold nights), fog, heat and warm nights, bitter cold, high UV (with how
-  long fair skin takes to burn), poor air and high pollen.
+  long fair skin takes to burn), poor air and high pollen. Where an official
+  warning (in force, or starting within a day and a half) says the same, the
+  app's own stands aside.
 - **Tips**: whether to take an umbrella, what to wear (from the feels-like range
   of your waking hours, with wind and rain), and your weekday commute (Settings).
 - **How sure the forecast is**, day by day: six global models side by side
@@ -281,7 +295,7 @@ directly, so a branch can be tried before it's merged.
 | Radar | `weather/radar.js`, `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/vendor/leaflet.js`, `leaflet.css` (BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
-| Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`) |
+| Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`), `functions/_wxwarn.js` (official warnings: MeteoAlarm's feeds and the National Weather Service, each kept 5 minutes in Cloudflare's cache, shaped down to what's in force, and matched to the place by the warning's own drawn area); `weather/official.js` says them (colour, title, when) |
 
 **Its own address.** At weather.georgefarrowgreen.com only the app and its own
 API answer (anything else is "Not found"), so its storage is kept apart from the
@@ -298,6 +312,8 @@ each; all of it deleted when they're turned off, or when the push service says
 the phone has gone. Subscribing is only from the app's own pages, the push
 service must be a real one (Apple, Google, Mozilla, Microsoft), and there's a
 cap of 300. For accuracy: airports' daily highs and lows, nothing about you.
+For official warnings: the feeds themselves, for 5 minutes; the place asked
+about isn't kept.
 
 **Limits.** Open-Meteo's free API is for non-commercial use, about 10,000 calls
 a day per device (each phone asks for itself; it counts a big request as
@@ -322,15 +338,17 @@ OpenStreetMap's tiles are for light use like this. CARTO's dark
 tiles now need an API key, so they're not used. GitHub runs scheduled
 workflows late when it's busy, so a rain alert can come later than the hour's
 notice it aims for. Accuracy needs an airport within 40 km that reports round
-the clock, and 5 days of its record (7 to tune). The insights are rules of
-thumb from the forecast, not official warnings.
+the clock, and 5 days of its record (7 to tune). The insights, and the app's
+own warnings, are rules of thumb from the forecast; official warnings only come
+from the services above.
 
 **Tests.** `.tools/tests/unit/wxinsights.test.mjs` and `wxnext.test.mjs` (in
 CI: units, the Sun and Moon, climate, each insight on forecasts made up to show
 it, accuracy and tuning, airport reports, activities and their limits, when a
-rain alert or briefing is due and what it says; and `wxradar.test.mjs`, the
-radar's colours, grid, painting and timeline) and `.tools/tests/wxapp.mjs`
-(end to end: the page, warnings, models, climate, the radar, accuracy and the
+rain alert or briefing is due and what it says; `wxradar.test.mjs`, the
+radar's colours, grid, painting and timeline; and `wxwarn.test.mjs`, official
+warnings: which count, drawn areas, how they're said) and `.tools/tests/wxapp.mjs`
+(end to end: the page, official and worked-out warnings, models, climate, the radar, accuracy and the
 tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).

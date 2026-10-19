@@ -3,6 +3,7 @@
 //                                  to the city), so a first visit opens on somewhere near without
 //                                  asking for your location. Nothing is kept.
 //   GET  /api/weather/obs          the nearest airport's daily highs and lows (functions/_wxobs.js)
+//   GET  /api/weather/warnings     official warnings for a place, from its weather service (functions/_wxwarn.js)
 //   GET  /api/weather/key          the key push subscriptions are made with
 //   POST /api/weather/subscribe    rain alerts and a morning briefing for a place (functions/_wxpush.js)
 //   POST /api/weather/unsubscribe
@@ -13,6 +14,7 @@ import { HttpError, limit, clientIp, HOUR } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { subscribe, unsubscribe, moveSub, wxTick, publicKey } from "../../_wxpush.js";
 import { obsFor } from "../../_wxobs.js";
+import { warningsAt } from "../../_wxwarn.js";
 
 // (an answer is data for this site's own pages, and nothing else: not to be framed, run, or read by another site)
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-store",
@@ -40,13 +42,23 @@ async function body(request) {
   if (!b || typeof b !== "object" || Array.isArray(b)) throw new HttpError(400, "Bad request.");
   return b;
 }
+// ?lat=…&lon=… → [lat, lon], to two decimal places (about a kilometre)
+function placeOf(request) {
+  const q = new URL(request.url).searchParams, lat = Number(q.get("lat")), lon = Number(q.get("lon"));
+  if (!q.has("lat") || !q.has("lon") || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "Bad place.");
+  return [Math.round(lat * 100) / 100, Math.round(lon * 100) / 100];
+}
 const ROUTES = {
   "GET where": ({ request }) => where(request),
   "GET obs": async ({ request, env }) => {
-    const q = new URL(request.url).searchParams, lat = Number(q.get("lat")), lon = Number(q.get("lon"));
-    if (!q.has("lat") || !q.has("lon") || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new HttpError(400, "Bad place.");
+    const [lat, lon] = placeOf(request);
     await limit(env, `wxobs:${clientIp(request)}`, 60, HOUR);
-    return json(await obsFor(env, Math.round(lat * 100) / 100, Math.round(lon * 100) / 100));
+    return json(await obsFor(env, lat, lon));
+  },
+  "GET warnings": async ({ request, env }) => {
+    const [lat, lon] = placeOf(request);
+    await limit(env, `wxwarn:${clientIp(request)}`, 120, HOUR);
+    return json(await warningsAt(env, lat, lon));
   },
   "GET key": async ({ env }) => json({ key: await publicKey(env) }),
   "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribe(env, await body(request))); },

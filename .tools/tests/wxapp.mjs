@@ -9,6 +9,7 @@ import { readFileSync } from 'fs';
 import http from 'http';
 import { deflateSync, crc32 } from 'zlib';
 import * as F from './mocks/wxappdata.mjs';
+import * as OW from './mocks/wxwarnings.mjs';
 const [,, S, out] = process.argv;
 const H = 3600e3, D = 864e5;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
@@ -40,12 +41,16 @@ function modelGrid(url) {
   const time = Array.from({ length: 9 }, (_, k) => new Date(q0 + k * 900e3).toISOString().slice(0, 16));
   return Array.from({ length: n }, (_, i) => ({ minutely_15: { time, precipitation: time.map((_, k) => (i % 9 < 4 ? 0.3 + k * 0.1 : 0)), snowfall: time.map(() => 0) } }));
 }
-// the stand-in for Open-Meteo (the server's notifications) and the Aviation Weather Center (its airport reports)
+// the stand-in for Open-Meteo (the server's notifications), the Aviation Weather Center (its airport reports), and
+// MeteoAlarm and the National Weather Service (official warnings: mocks/wxwarnings.mjs)
 let wxScenario = { rainIn: 30 };
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), send = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
   if (u.pathname === '/v1/forecast') { const n = (u.searchParams.get('latitude') || '').split(',').length, one = F.forecast(Date.now(), wxScenario); return send(n > 1 ? Array(n).fill(one) : one); }
   if (u.pathname === '/api/data/stationinfo') return send([{ icaoId: 'EGLC', site: 'London City Arpt', lat: 51.505, lon: 0.055, siteType: ['METAR', 'TAF'] }, { icaoId: 'EGKB', site: 'London/Biggin Hill Arpt', lat: 51.33, lon: 0.033, siteType: ['METAR'] }]);
+  if (u.pathname === '/api/v1/warnings/feeds-united-kingdom') return send(OW.ukFeed(Date.now()));
+  if (u.pathname.startsWith('/api/v1/warnings/feeds-')) return send({ warnings: [] });
+  if (u.pathname === '/alerts/active') { if (u.searchParams.get('point') === OW.NEW_YORK) return send(OW.nwsAlerts(Date.now())); res.writeHead(400); return res.end('{"title":"out of bounds"}'); }
   if (u.pathname === '/api/data/metar') {
     const reports = [], t0 = Math.floor(Date.now() / H) * H;
     for (let k = 0; k < 9 * 24; k++) { const t = t0 - k * H; reports.push({ icaoId: 'EGLC', obsTime: t / 1000, temp: Math.round(curve(new Date(t).getUTCHours())) }); }
@@ -59,7 +64,7 @@ let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
 const now = Date.now();
-async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon=-0.1276&name=London`, push = null } = {}) {
+async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon=-0.1276&name=London`, push = null, settle = true } = {}) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale, serviceWorkers: push ? 'allow' : 'block', bypassCSP: !!sc.axe, isMobile: true, hasTouch: true });
   if (push) {
     await ctx.grantPermissions(['notifications'], { origin: HOST });
@@ -91,6 +96,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { const rv = /rainviewer/.test(r.request().url()); tiles[rv ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: rv && !sc.dryRadar ? RADAR_PNG : PNG }); });
   const res = await p.goto(url);
   await p.waitForSelector('.day-row', { timeout: 20000 });
+  if (!settle) return { ctx, p, res };
   // everything in: the last to arrive is the thirty years of climate
   await p.waitForFunction(() => /warmer than/i.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
   await p.waitForSelector('#accuracy-body table', { timeout: 20000 });
@@ -112,6 +118,25 @@ ok(sw <= 390, 'nothing wider than the phone (it would zoom the page out)', `${sw
 const warn = await p.locator('#alerts .ins h3').allTextContents();
 // (icy patches instead of frost when the shower falls in the evening before the freezing night)
 ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.test(t)), 'warnings: frost and gales', warn.join(' · '));
+// official warnings (the Met Office's, through MeteoAlarm's feed, stood in for): worst first, above the app's own
+{
+  const off = await p.locator('#alerts .official').evaluateAll((as) => as.map((a) => ({ colour: a.dataset.colour, tag: a.querySelector('.tag')?.textContent, title: a.querySelector('.ins-open').textContent, from: a.querySelector('.ins-from').textContent })));
+  ok(off.length === 2 && off[0].colour === 'amber' && off[0].tag === 'Amber' && off[0].title === 'Thunderstorm warning' && off[0].from === 'Met Office · Tomorrow 12:00 to 21:00'
+    && off[1].colour === 'yellow' && off[1].tag === 'Yellow' && off[1].title === 'Rain warning' && /^Met Office · Until (tomorrow )?\d\d:\d\d$/.test(off[1].from),
+    'official warnings: the Met Office\'s, worst first (none over, green, cancelled, replaced or without a drawn area)', JSON.stringify(off));
+  const order = await p.locator('#alerts > *').evaluateAll((es) => es.map((e) => (e.matches('.official') ? 'official' : e.tagName === 'H2' ? 'heading' : 'own')));
+  ok(order.join(',').startsWith('heading,official,official,own'), 'above the app\'s own warnings, under the one heading', order.join(','));
+  await p.locator('#alerts .official .ins-open').nth(1).click();
+  await p.waitForSelector('#warning[open]');
+  await p.waitForTimeout(600);
+  const sheet = await p.evaluate(() => ({ title: document.getElementById('warning-title').textContent, badge: document.querySelector('#warning .warn-badge')?.textContent,
+    impacts: document.querySelectorAll('#warning .warn-list li').length, link: document.querySelector('#warning .warn-link a')?.href, text: document.getElementById('warning-body').textContent }));
+  ok(sheet.title === 'Rain warning' && sheet.badge === 'Yellow' && sheet.impacts === 2 && /^https:\/\/www\.metoffice\.gov\.uk\//.test(sheet.link) && /What to do/.test(sheet.text) && /Check road conditions before you travel\./.test(sheet.text) && /Issued by the Met Office, through MeteoAlarm/.test(sheet.text),
+    'tapped, the whole of it in a sheet: what to expect, the details, what to do, and the Met Office\'s page', JSON.stringify({ ...sheet, text: sheet.text.slice(0, 100) }));
+  await p.screenshot({ path: `${out}/wx-warning.png` });
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.getElementById('warning').open);
+}
 if (await p.locator('#insights .more-btn').count()) await p.locator('#insights .more-btn').evaluate((e) => e.click());
 const cards = await p.locator('#insights .ins h3').allTextContents();
 ok(cards.some((t) => /is uncertain$/.test(t)), 'the day the models disagree is called uncertain', cards.join(' · '));
@@ -170,7 +195,7 @@ ok((await p.locator('.foot a').count()) === 2 && /^Weather data by Open-Meteo\.c
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
-ok(links.length === 11 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'aviationweather.gov', 'rainviewer.com', 'openstreetmap.org/copyright', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
+ok(links.length === 13 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'meteoalarm.org', 'weather.gov/', 'aviationweather.gov', 'rainviewer.com', 'openstreetmap.org/copyright', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
   'a credits window: every source, each linked out', `${links.length} links`);
 ok((await p.evaluate(() => document.querySelector('#credits .sheet-body').scrollTop)) === 0 && /national weather service/.test(await p.textContent('#credits .credits-note')), 'open at the weather data, with a notice at its foot');
 await p.waitForTimeout(600);
@@ -311,6 +336,14 @@ await ctx.close();
   ok(!(await p.locator('.pre, svg.c-enter').count()), 'and nothing is left waiting to move (all drawn in full)');
   await ctx.close();
 }
+// an official wind warning in force (over Bristol): the app's own gales warning stands aside for it
+{
+  const { ctx, p } = await open({ gust: 70 }, { url: `${HOST}/?lat=51.45&lon=-2.59&name=Bristol`, settle: false });
+  await p.waitForSelector('#alerts .official', { timeout: 20000 });
+  const t = await p.locator('#alerts .ins h3').allTextContents();
+  ok(t.some((x) => /^Yellow\s*Wind warning$/.test(x)) && !t.some((x) => /Gales|Damaging gusts|Windy/.test(x)), 'an official wind warning: the app\'s own gales warning stands aside', t.join(' · '));
+  await ctx.close();
+}
 // the API turns away what isn't real: made-up keys, a place left out, a body that isn't an object
 {
   const call = (method, path, body, origin = 'http://weather.localhost:8788') => new Promise((done, fail) => {
@@ -326,6 +359,14 @@ await ctx.close();
   ok(port.status === 400, 'and one to a push service on another port', `${port.status}`);
   const arr = await call('POST', '/api/weather/unsubscribe', []);
   ok(arr.status === 400, 'a body that isn\'t an object: a 400, not a 500', `${arr.status}`);
+  // official warnings: the National Weather Service's for a point in the US; none where no feed draws its areas
+  const ny = JSON.parse((await call('GET', `/api/weather/warnings?lat=40.71&lon=-74.01`, null)).body || '{}');
+  ok(ny.warnings?.length === 1 && ny.warnings[0].issuer === 'National Weather Service' && ny.warnings[0].event === 'Wind Advisory' && /^https:\/\/forecast\.weather\.gov\/MapClick\.php\?lat=40\.71&lon=-74\.01$/.test(ny.warnings[0].url),
+    'official warnings in the US, from the National Weather Service (none over, cancelled or a test)', JSON.stringify(ny).slice(0, 160));
+  const berlin = await call('GET', '/api/weather/warnings?lat=52.52&lon=13.40', null);
+  ok(berlin.status === 200 && berlin.body === '{"warnings":[]}', 'none for Berlin (Germany\'s service names regions by code, not drawn areas)', berlin.body);
+  const badWarn = await call('GET', '/api/weather/warnings?lat=abc&lon=1', null);
+  ok(badWarn.status === 400, 'and a place that isn\'t one is turned away', `${badWarn.status}`);
   const noPlace = await call('GET', '/api/weather/obs', null);
   ok(noPlace.status === 400, 'the airport reports need a place (not 0, 0)', `${noPlace.status}`);
   const other = await call('POST', '/api/weather/subscribe', {}, 'https://evil.example');
@@ -375,7 +416,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   const got = await mine();
   const brief = got.find((n) => n.tag === 'brief'), rain = got.find((n) => n.tag === 'rain'), hello = got.filter((n) => n.tag === 'wx-on');
   ok(hello.length === 1 && hello[0].title === 'Notifications on' && /^A briefing at \d\d:\d\d for London\.$/.test(hello[0].body), 'turning them on sends one "Notifications on" first (only a real phone can take it)', hello.map((n) => `${n.title} — ${n.body}`).join(' | '));
-  ok(brief && /^London · \d+° \/ \d+°$/.test(brief.title) && /on the way from about/.test(brief.body), 'the briefing, decrypted', brief && `${brief.title} — ${brief.body}`);
+  ok(brief && /^London · \d+° \/ \d+°$/.test(brief.title) && /on the way from about/.test(brief.body) && /Met Office: yellow rain warning until (tomorrow )?\d\d:\d\d\./.test(brief.body), 'the briefing, decrypted, with the Met Office\'s warning in force', brief && `${brief.title} — ${brief.body}`);
   if (!quiet) ok(rain && /^Rain in about \d+ min$/.test(rain.title) && /^London: Rain starting in about/.test(rain.body), 'the rain alert, decrypted', rain && `${rain.title} — ${rain.body}`);
   const t2 = await tick();
   ok(t2.rain === 0 && t2.brief === 0, 'and neither again straight away', JSON.stringify(t2));

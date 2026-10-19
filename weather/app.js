@@ -9,6 +9,7 @@ import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
 import { applyTuning, MIN_DAYS, TUNE_DAYS } from "./skill.js";
 import { radar } from "./radar.js";
+import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
 
 const $ = (id) => document.getElementById(id);
 function h(tag, attrs = {}, ...kids) {
@@ -349,10 +350,42 @@ function insightCard(c) {
     h("h3", {}, tag ? [h("span", { class: "tag" }, tag), " "] : null, c.title),
     h("p", {}, c.text));
 }
+// An official warning: its colour, what it is, who says so and when (all of it in a sheet, from its title)
+function officialCard(w, wx, now) {
+  const colour = colourOf(w), badge = badgeOf(w);
+  return h("article", { class: "ins official", "data-level": colour === "red" ? "alert" : "warn", "data-colour": colour },
+    h("div", { class: "ins-icon", svg: glyph(glyphOf(w), 18) }),
+    h("h3", {}, badge ? [h("span", { class: "tag" }, badge), " "] : null,
+      h("button", { class: "ins-open", type: "button", "aria-haspopup": "dialog", "aria-controls": "warning", onclick: () => openWarning(w) }, titleOf(w))),
+    h("p", { class: "ins-from" }, `${w.issuer} · ${spanOf(w, now, S.f, wx.place.offset)}`),
+    w.headline ? h("p", {}, w.headline) : null);
+}
+function openWarning(w) {
+  const wx = S.wx, d = $("warning"), badge = badgeOf(w);
+  if (!wx) return;
+  // (blank lines part its paragraphs; single ones are only where its lines were wrapped; the US's "* WHAT..." as "What: ")
+  const paras = (s) => String(s || "").split(/\n\s*\n/).map((x) => x.replace(/\s*\n\s*/g, " ").trim().replace(/^\*\s*([A-Z][A-Z /]*?)\.\.\.\s*/, (m, k) => `${k[0]}${k.slice(1).toLowerCase()}: `))
+    .filter(Boolean).map((x) => h("p", {}, x));
+  $("warning-title").textContent = titleOf(w);
+  d.dataset.colour = colourOf(w);
+  $("warning-body").replaceChildren(...[
+    h("p", { class: "warn-from" }, badge ? [h("span", { class: "warn-badge" }, badge), " "] : null, w.issuer, w.area ? ` · ${w.area}` : ""),
+    h("p", { class: "warn-when" }, spanOf(w, nowWall(wx.place.offset), S.f, wx.place.offset)),
+    w.headline ? h("p", { class: "warn-headline" }, w.headline) : null,
+    w.impacts?.length ? [h("h3", { class: "sheet-sub" }, "What to expect"), h("ul", { class: "warn-list" }, w.impacts.map((x) => h("li", {}, x)))] : null,
+    w.text ? [h("h3", { class: "sheet-sub" }, "Details"), ...paras(w.text)] : null,
+    w.instruction ? [h("h3", { class: "sheet-sub" }, "What to do"), ...paras(w.instruction)] : null,
+    w.url ? h("p", { class: "warn-link" }, h("a", { href: w.url, target: "_blank", rel: "noopener" }, `${w.issuer} website`)) : null,
+    h("p", { class: "credits-note" }, `Issued by ${/Office|Service|Center|Agency/.test(w.issuer) ? "the " : ""}${w.issuer}${w.via ? `, through ${w.via}` : ""}, and shown as issued.`)].flat().filter(Boolean));
+  openSheet(d);
+}
 function cards(wx, now) {
   const all = I.insights(wx, now, S.f, { prev: baseline(wx, now), commute: S.settings.commute });
-  const warn = all.filter((c) => c.level === "alert" || c.level === "warn"), rest = all.filter((c) => !warn.includes(c));
-  $("alerts").replaceChildren(...(warn.length ? [h("h2", { class: "sr-only" }, warn.length === 1 ? "Warning" : "Warnings"), ...warn.map(insightCard)] : []));
+  // official warnings first; the app's own after, less any an official one already says
+  const official = inForce(wx.official), said = covered(official);
+  const warn = all.filter((c) => (c.level === "alert" || c.level === "warn") && !said.has(c.icon)), rest = all.filter((c) => c.level !== "alert" && c.level !== "warn");
+  const n = official.length + warn.length;
+  $("alerts").replaceChildren(...(n ? [h("h2", { class: "sr-only" }, n === 1 ? "Warning" : "Warnings"), ...official.map((w) => officialCard(w, wx, now)), ...warn.map(insightCard)] : []));
   const shown = S.allInsights ? rest : rest.slice(0, 6);
   const box = $("insights");
   box.replaceChildren(...shown.map(insightCard));
