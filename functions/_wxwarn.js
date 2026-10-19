@@ -48,7 +48,16 @@ const issuerOf = (s = "") => (ISSUERS.find(([re]) => re.test(s)) || [null, Strin
 // (an event in capitals, as some send them: "COASTAL EVENT" → "Coastal event")
 const calm = (s) => (s && s === s.toUpperCase() && /[A-Z]{3}/.test(s) ? s[0] + s.slice(1).toLowerCase() : s);
 
-const clip = (s, n) => (typeof s === "string" && s.trim() ? s.trim().slice(0, n) : null);
+// (kept to n characters, at a word: "…" where it's cut)
+const clip = (s, n) => { const t = typeof s === "string" ? s.trim() : ""; return !t ? null : t.length <= n ? t : `${t.slice(0, n - 1).replace(/\s+\S*$/, "")}…`; };
+// A headline made by a machine ("Strong wind gusts, yellow level, Troms, 2026-10-19T04:00:00+00:00, …", as MET Norway's
+// are): its description's first sentence instead, or failing that the headline without its dates
+const STAMP = /,?\s*\d{4}-\d\d-\d\d(?:T\d\d:\d\d(?::\d\d)?(?:[+-]\d\d:?\d\d|Z)?)?/g;
+function leadOf(headline, text) {
+  if (!headline || !/\d{4}-\d\d-\d\d/.test(headline)) return headline;
+  const first = /^[^.!?]+[.!?]/.exec(String(text || "").trim())?.[0];
+  return first ? first[0].toUpperCase() + first.slice(1) : headline.replace(STAMP, "").trim() || null;
+}
 const link = (u) => (typeof u === "string" && /^https?:\/\/[^\s"<>]+$/.test(u) && u.length <= 500 ? u : null);
 const iso = (s) => (typeof s === "string" && Number.isFinite(Date.parse(s)) ? s : null);
 const param = (info, name) => (Array.isArray(info.parameter) ? info.parameter : []).filter((p) => p && p.valueName === name).map((p) => String(p.value ?? ""));
@@ -98,8 +107,8 @@ export function shapeMeteoalarm(j, now = Date.now()) {
     out.push({
       id: String(a.identifier || x.uuid || "").slice(0, 200), issuer: issuerOf(inf.senderName), via: "MeteoAlarm",
       event: calm(clip(inf.event, 120)) || "Weather warning", level, type: parseInt(param(inf, "awareness_type")[0], 10) || null,
-      headline: clip(inf.headline, 400), text: clip(inf.description, 4000), instruction: clip(inf.instruction, 2000),
-      impacts: param(inf, "impacts").map((s) => s.trim().slice(0, 300)).filter(Boolean).slice(0, 8),
+      headline: clip(leadOf(inf.headline, inf.description), 400), text: clip(inf.description, 4000), instruction: clip(inf.instruction, 2000),
+      impacts: param(inf, "impacts").map((s) => clip(s, 700)).filter(Boolean).slice(0, 8),
       onset: iso(inf.onset) || iso(inf.effective) || iso(a.sent), expires, url: link(inf.web),
       area: clip((inf.area || []).map((ar) => ar?.areaDesc).filter(Boolean).join(", "), 200), polys,
     });
@@ -150,10 +159,12 @@ export async function warningsAt(env, lat, lon, now = Date.now()) {
   }
   const got = await Promise.all(asks);
   if (got.length && got.every((x) => x === null)) throw new HttpError(502, "Warnings aren't available right now.");
+  // (and a warning issued twice over, under two names, once: as NVE's floods can be)
   const seen = new Set(), warnings = [];
   for (const w of got.filter(Boolean).flat()) {
-    if (Date.parse(w.expires) <= now || seen.has(w.id)) continue;
-    seen.add(w.id);
+    const same = `${w.issuer}|${w.event}|${w.level}|${w.onset}|${w.expires}|${w.area}`;
+    if (Date.parse(w.expires) <= now || seen.has(w.id) || seen.has(same)) continue;
+    seen.add(w.id); seen.add(same);
     const { polys, ...rest } = w;
     warnings.push(rest);
   }

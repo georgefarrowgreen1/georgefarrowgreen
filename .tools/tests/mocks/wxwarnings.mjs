@@ -37,6 +37,8 @@ export function ukFeed(now = Date.now()) {
       alert('ldn-cancel', { msgType: 'Cancel', event: 'Yellow wind warning', onset: now - H, expires: now + 5 * H }),
       alert('ldn-nomap', { type: '2; snow-ice', event: 'Yellow snow warning', onset: now - H, expires: now + 5 * H, polygon: null }),
       alert('brs-wind', { event: 'Yellow wind warning', onset: now - H / 2, expires: now + 8 * H, polygon: BRISTOL, area: 'South West England', headline: 'Strong winds may cause some disruption.' }),
+      // (the same warning again under another name, as some services issue them: shown once)
+      alert('brs-wind-again', { event: 'Yellow wind warning', onset: now - H / 2, expires: now + 8 * H, polygon: BRISTOL, area: 'South West England', headline: 'Strong winds may cause some disruption.' }),
     ],
   };
 }

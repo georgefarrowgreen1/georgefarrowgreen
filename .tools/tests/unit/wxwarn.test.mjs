@@ -27,7 +27,7 @@ test("a warning's drawn area, and whether a place is in it", () => {
 
 test("MeteoAlarm: only what's in force or to come, yellow and up, with a drawn area, and not replaced", () => {
   const list = shapeMeteoalarm(ukFeed(NOW), NOW);
-  assert.deepEqual(list.map((w) => w.id), ["ldn-rain", "ldn-storm", "brs-wind"], "not the one over, the green one, the cancelled one, the replaced one or the one without a map");
+  assert.deepEqual(list.map((w) => w.id), ["ldn-rain", "ldn-storm", "brs-wind", "brs-wind-again"], "not the one over, the green one, the cancelled one, the replaced one or the one without a map");
   const rain = list[0];
   assert.equal(rain.issuer, "Met Office"); assert.equal(rain.via, "MeteoAlarm"); assert.equal(rain.level, 2); assert.equal(rain.type, 10);
   assert.equal(rain.event, "Yellow rain warning"); assert.equal(rain.impacts.length, 2); assert.match(rain.url, /^https:\/\/www\.metoffice\.gov\.uk\//);
@@ -39,6 +39,15 @@ test("MeteoAlarm: only what's in force or to come, yellow and up, with a drawn a
     { language: "en-GB", event: "COASTAL EVENT", senderName: "MET Norway", web: "javascript:alert(1)", expires: new Date(NOW + H).toISOString(), parameter: [{ valueName: "awareness_level", value: "2; yellow; Moderate" }], area: [{ polygon: ["60,10 60,11 61,11 60,10"] }] },
   ] } }] }, NOW);
   assert.equal(multi[0].event, "Coastal event"); assert.equal(multi[0].issuer, "MET Norway"); assert.equal(multi[0].url, null);
+  // a machine's headline (MET Norway's: the event, its level, the area and two timestamps): the description's first sentence
+  // instead, or the headline without its dates; and long text cut at a word
+  const said = (headline, description, impacts = []) => shapeMeteoalarm({ warnings: [{ alert: { identifier: "h", status: "Actual", msgType: "Alert", info: [{ language: "en-GB", event: "Strong wind gusts", headline, description,
+    expires: new Date(NOW + H).toISOString(), parameter: [{ valueName: "awareness_level", value: "2; yellow; Moderate" }, ...impacts.map((value) => ({ valueName: "impacts", value }))], area: [{ polygon: ["60,10 60,11 61,11 60,10"] }] }] } }] }, NOW)[0];
+  assert.equal(said("Strong wind gusts, yellow level, Troms, 2026-10-19T04:00:00+00:00, 2026-10-19T19:00:00+00:00", "locally strong wind gusts around 27-33 m/s. The wind will ease.").headline, "Locally strong wind gusts around 27-33 m/s.");
+  assert.equal(said("Flood warning yellow level for Troms 2026-10-19", "").headline, "Flood warning yellow level for Troms");
+  assert.equal(said("Heavy rain may lead to flooding.", "Rain will turn heavy.").headline, "Heavy rain may lead to flooding.", "a person's headline stays");
+  const long = said("x", "", ["Roads may be closed, and there could be a lot of water on the road, especially near streams and rivers. ".repeat(10)]).impacts[0];
+  assert.ok(long.length <= 700 && long.endsWith("…") && /\s\S+…$/.test(long) && !/\b(ri|stre)…$/.test(long), long.slice(-40));
 });
 
 test("the National Weather Service: in force, real and not cancelled; linked to the point's own page", () => {
@@ -64,7 +73,7 @@ test("warnings for a place: from the feeds that cover it, worst first, without t
     const london = await warningsAt(env, 51.51, -0.13, NOW);
     assert.deepEqual(london.warnings.map((w) => w.id), ["ldn-storm", "ldn-rain"], "the amber one first");
     assert.ok(london.warnings.every((w) => !("polys" in w)), "no areas sent to the phone");
-    assert.deepEqual((await warningsAt(env, 51.45, -2.59, NOW)).warnings.map((w) => w.id), ["brs-wind"]);
+    assert.deepEqual((await warningsAt(env, 51.45, -2.59, NOW)).warnings.map((w) => w.id), ["brs-wind"], "the one issued twice, once");
     assert.deepEqual((await warningsAt(env, 40.71, -74.01, NOW)).warnings.map((w) => w.id), ["nws-1"]);
     asked.length = 0;
     assert.deepEqual(await warningsAt(env, 52.52, 13.4, NOW), { warnings: [] }, "Berlin: no feed with drawn areas");
