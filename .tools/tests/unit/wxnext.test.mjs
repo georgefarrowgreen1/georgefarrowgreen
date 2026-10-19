@@ -26,7 +26,7 @@ const quarters = (from, fn) => Array.from({ length: 16 }, (_, k) => ({ t: from +
 
 /* ---------- how good each model has been ---------- */
 // hourly past forecasts for two models over 10 days: ECMWF 1° too warm, GFS 3° too cold
-function previous(names = ["ecmwf_ifs025", "gfs_seamless"]) {
+function previous(names = ["ecmwf_ifs", "gfs_seamless"]) {
   const time = [], h = { time };
   for (let d = 0; d < 10; d++) for (let k = 0; k < 24; k++) time.push(`2026-10-${String(5 + d).padStart(2, "0")}T${String(k).padStart(2, "0")}:00`);
   const curve = (k) => 10 + 5 * Math.sin(((k - 9) / 24) * 2 * Math.PI);     // 5 to 15 each day
@@ -40,32 +40,32 @@ function previous(names = ["ecmwf_ifs025", "gfs_seamless"]) {
 const obs = Object.fromEntries(Array.from({ length: 10 }, (_, d) => [`2026-10-${String(5 + d).padStart(2, "0")}`, { tmax: 15, tmin: 5 }]));
 test("past forecasts → daily highs and lows, each model's own columns", () => {
   const p = shapePrevious(previous());
-  assert.deepEqual(Object.keys(p).sort(), ["ecmwf_ifs025", "gfs_seamless"]);
-  assert.ok(Math.abs(p.ecmwf_ifs025["2026-10-05"].hi1 - 16) < 0.01 && Math.abs(p.gfs_seamless["2026-10-05"].lo1 - 2) < 0.01);
+  assert.deepEqual(Object.keys(p).sort(), ["ecmwf_ifs", "gfs_seamless"]);
+  assert.ok(Math.abs(p.ecmwf_ifs["2026-10-05"].hi1 - 16) < 0.01 && Math.abs(p.gfs_seamless["2026-10-05"].lo1 - 2) < 0.01);
   // one model asked for: its columns carry no suffix
-  const one = shapePrevious(previous(["ecmwf_ifs025"]), [["ecmwf_ifs025", "ECMWF"]]);
-  assert.ok(one.ecmwf_ifs025["2026-10-06"].hi3 > one.ecmwf_ifs025["2026-10-06"].hi1);
+  const one = shapePrevious(previous(["ecmwf_ifs"]), [["ecmwf_ifs", "ECMWF"]]);
+  assert.ok(one.ecmwf_ifs["2026-10-06"].hi3 > one.ecmwf_ifs["2026-10-06"].hi1);
   assert.equal(shapePrevious({}), null);
 });
 test("skill: the closer model wins, and each one's lean is known", () => {
   const k = skillFrom(shapePrevious(previous()), obs);
-  assert.equal(k.best, "ecmwf_ifs025"); assert.equal(k.days, 10);
-  const e = k.byId.ecmwf_ifs025, g = k.byId.gfs_seamless;
+  assert.equal(k.best, "ecmwf_ifs"); assert.equal(k.days, 10);
+  const e = k.byId.ecmwf_ifs, g = k.byId.gfs_seamless;
   assert.ok(Math.abs(e.hiMae - 1) < 0.01 && Math.abs(e.hiBias - 1) < 0.01 && Math.abs(g.hiBias + 3) < 0.01);
   assert.ok(Math.abs(e.hiMae3 - 1.5) < 0.01);
   // too few days: nothing to say yet
   assert.equal(skillFrom(shapePrevious(previous()), { "2026-10-05": { tmax: 15, tmin: 5 } }), null);
 });
 test("tuning: each model's lean taken off, the closest counting most", () => {
-  const prev = shapePrevious(previous(["ecmwf_ifs025", "gfs_seamless", "icon_seamless"]));
+  const prev = shapePrevious(previous(["ecmwf_ifs", "gfs_seamless", "icon_seamless"]));
   const k = skillFrom(prev, obs);      // icon is like gfs here (3° cold)
-  const t = tuneDay(k, [{ id: "ecmwf_ifs025", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }]);
+  const t = tuneDay(k, [{ id: "ecmwf_ifs", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }]);
   // with their leans taken off, all three say 17° / 7°
   assert.ok(Math.abs(t.tmax - 17) < 0.01 && Math.abs(t.tmin - 7) < 0.01, JSON.stringify(t));
-  assert.equal(tuneDay(k, [{ id: "ecmwf_ifs025", tmax: 18, tmin: 8 }]), null, "one model isn't enough");
-  assert.equal(tuneDay({ ...k, days: TUNE_DAYS - 1 }, [{ id: "ecmwf_ifs025", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }]), null, "not enough days yet");
+  assert.equal(tuneDay(k, [{ id: "ecmwf_ifs", tmax: 18, tmin: 8 }]), null, "one model isn't enough");
+  assert.equal(tuneDay({ ...k, days: TUNE_DAYS - 1 }, [{ id: "ecmwf_ifs", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }]), null, "not enough days yet");
   const wx = makeWx();
-  wx.models = { days: { [keyOf(DAY0 + D)]: [{ id: "ecmwf_ifs025", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }] } };
+  wx.models = { days: { [keyOf(DAY0 + D)]: [{ id: "ecmwf_ifs", tmax: 18, tmin: 8 }, { id: "gfs_seamless", tmax: 14, tmin: 4 }, { id: "icon_seamless", tmax: 14, tmin: 4 }] } };
   const out = applyTuning(wx, k, keyOf(DAY0));
   const tomorrow = out.daily.find((d) => d.key === keyOf(DAY0 + D)), today = out.daily.find((d) => d.key === keyOf(DAY0));
   assert.ok(tomorrow.tuned && Math.abs(tomorrow.tmax - 17) < 0.01 && tomorrow.raw.tmax === 12);
@@ -130,4 +130,18 @@ test("briefing: due once a day, from its time, and says the day", () => {
   assert.match(b.title, /^Testville · \d+° \/ \d+°$/);
   assert.match(b.body, /then rain until around 18:00/);
   assert.match(b.body, /Warning: gales\./); assert.match(b.body, /Take an umbrella\./);
+});
+test("the tick keeps to Open-Meteo's free allowance: whole forecasts first, then rain, the rest next time", async () => {
+  const { budgeted } = await import("../../../functions/_wxpush.js");
+  const cells = (full, rain) => [...Array.from({ length: full }, (_, i) => [`f${i}`, { full: true }]), ...Array.from({ length: rain }, (_, i) => [`r${i}`, { full: false }])];
+  const cost = (list) => list.reduce((a, [, c]) => a + (c.full ? 7 : 1), 0);
+  let got = budgeted(cells(3, 10));
+  assert.equal(got.length, 13, "a few places: all of them");
+  got = budgeted(cells(3, 100));
+  assert.equal(got.filter(([, c]) => c.full).length, 3, "every briefing's forecast"); assert.equal(cost(got), 55, "and rain up to the budget");
+  got = budgeted(cells(10, 30));
+  assert.equal(got.filter(([, c]) => c.full).length, 7); assert.equal(cost(got), 55, "the budget's left-over goes on rain");
+  const a = budgeted(cells(0, 200), 55, () => 0.9).map(([k]) => k), seen = new Set();
+  for (let n = 0; n < 20; n++) budgeted(cells(0, 200)).forEach(([k]) => seen.add(k));
+  assert.equal(a.length, 55); assert.ok(seen.size > 150, "not always the same places left out");
 });

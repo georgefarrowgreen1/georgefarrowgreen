@@ -171,8 +171,10 @@ so there's nothing to set up beyond the address.
   (ECMWF, Met Office, GFS, ICON, Météo-France, GEM) and ECMWF's 51-run ensemble.
   Days the models disagree on are marked uncertain, with why; the temperature
   chart shades how far it could go either way.
-- **This time of year**: thirty years of the place's own days (ERA5, through
-  Open-Meteo's archive) put each forecast in context: the normal high and low,
+- **This time of year**: thirty years of the place's own days (ERA5-Land, with
+  ERA5 where it has none: one consistent record, through Open-Meteo's archive;
+  asked for once you've stayed on a place a few seconds) put each forecast in
+  context: the normal high and low,
   how unusual a day is (its percentile), near-record warmth or cold, a wet or dry
   week against normal, this day last year.
 - **Best times** in the next two days for your activities, each with its own
@@ -191,12 +193,14 @@ so there's nothing to set up beyond the address.
   there's no track to follow (no radar there, or too little rain to tell), the
   weather models' rain instead (Open-Meteo's 15-minute rain on a 9 × 9 grid
   about 220 km across, blended and painted in the radar's own colours, inside
-  a dashed box), animated on one
+  a dashed box; asked for only when rain's expected there soon), animated on one
   timeline marked Now, over OpenStreetMap's map turned dark. Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's
   colour read back into reflectivity, blended with a cubic B-spline (curved
   edges, colours that flow between bands) and recoloured, a few tiles at a time
-  with the frame on show first (`rainmap.js` decode, ramp, resample). A line above it
+  with the frame on show first (`rainmap.js` decode, ramp, resample). The radar
+  is asked for in 512-pixel tiles a zoom out, which carry the same detail in a
+  quarter of the requests; a tile that doesn't come is asked for again. A line above it
   says what's coming ("Rain starting in about 40 min"); below it, a legend
   (RainViewer's Universal Blue colours, from their published table, rain rate
   to reflectivity by Marshall and Palmer), and a scale and a button back to the
@@ -209,7 +213,8 @@ so there's nothing to set up beyond the address.
   `weather/rainmap.js`).
 - **Forecast accuracy here, and a forecast tuned by it**: the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation
-  Weather Center keeps only about a week, so each day's high and low is kept in
+  Weather Center gives at most 400 reports at a time, about a week at a big
+  airport, so each day's high and low is kept in
   D1, `wx_obs`, for six weeks: each day the airport's own, whoever asks, and
   only reports just fetched are written), and the phone compares them with what each of
   the six models forecast a day and three days ahead (Open-Meteo's archive of
@@ -231,7 +236,10 @@ so there's nothing to set up beyond the address.
   in a row, or after four months unheard of (the app tells the server again now
   and then, and when the browser changes its subscription). Rain checks ask
   Open-Meteo only for the next four hours' rain; the whole forecast only where
-  a briefing is due. Each connection can only ask the API so often.
+  a briefing is due; and each tick asks no more than Open-Meteo's free
+  allowance spread over a day (briefings first; places left over wait ten
+  minutes, in a different order each time). Each connection can only ask the
+  API so often.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
@@ -268,7 +276,7 @@ directly, so a branch can be tried before it's merged.
 | --- | --- |
 | Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout (translucent, blurred panels with a light-catching rim over a sky that follows the weather and the time of day; capsule controls that give under a finger and spring back, a segmented control whose raised thumb slides, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. All of it off with Reduce Motion (checked in the tests) |
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
-| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are. Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
+| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
 | Radar | `weather/radar.js`, `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/vendor/leaflet.js`, `leaflet.css` (BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
@@ -292,7 +300,15 @@ service must be a real one (Apple, Google, Mozilla, Microsoft), and there's a
 cap of 300. For accuracy: airports' daily highs and lows, nothing about you.
 
 **Limits.** Open-Meteo's free API is for non-commercial use, about 10,000 calls
-a day per device (each phone asks for itself; a refresh is a few calls). The
+a day per device (each phone asks for itself; it counts a big request as
+several calls, so a refresh of the forecast is about 8, and the models, ensemble
+and air quality, asked for at most hourly, some more). Its quarter hours are
+the 15 minutes up to their time (so each is read as starting 15 minutes
+before it), and outside central Europe and North America they're each hour's
+rain shared out. In the UK that's the Met Office's model, kept rather than
+swapped for France's or Germany's true quarter hours, which reach the UK only
+at the edge of their maps and often disagree with it (and so with the hourly
+forecast). The
 30-year history is one large request per place, so it's fetched once and kept
 for a year; if the archive is busy the card says so and tries again later.
 RainViewer's free radar is the past two hours only, to zoom 7 (closer in it's

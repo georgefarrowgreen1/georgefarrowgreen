@@ -118,7 +118,8 @@ test("shapes a forecast, the models and the ensemble", () => {
   const wx = shapeForecast(j, { name: "London", lat: 51.5, lon: -0.1 });
   assert.equal(wx.place.offset, 3600); assert.equal(wx.hourly[1].pop, 70); assert.equal(wx.hourly[1].isDay, true);
   assert.equal(wx.daily[0].sunrise, Date.UTC(2026, 9, 19, 7, 31)); assert.equal(wx.current.temp, 12.3); assert.equal(wx.minutely[0].precip, 0.1);
-  const m = shapeModels({ daily: { time: ["2026-10-19"], temperature_2m_max_ecmwf_ifs025: [14], precipitation_sum_ecmwf_ifs025: [2], temperature_2m_max_gfs_seamless: [16], precipitation_sum_gfs_seamless: [0], temperature_2m_max_gem_seamless: [null] } });
+  assert.equal(wx.minutely[0].t, Date.UTC(2026, 9, 19, 10, 0), "a quarter hour's rain is the 15 minutes up to its time: kept by when it starts");
+  const m = shapeModels({ daily: { time: ["2026-10-19"], temperature_2m_max_ecmwf_ifs: [14], precipitation_sum_ecmwf_ifs: [2], temperature_2m_max_gfs_seamless: [16], precipitation_sum_gfs_seamless: [0], temperature_2m_max_gem_seamless: [null] } });
   assert.deepEqual(m.list.map((x) => x[1]), ["ECMWF", "GFS"]);
   assert.equal(m.days["2026-10-19"][1].tmax, 16);
   const hourly = { time: [] };

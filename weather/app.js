@@ -90,7 +90,7 @@ async function start() {
   if (place()?.gps) try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted") locate(true); } catch (_) {}
   // and if its name couldn't be found when it was saved, try again from where it is (no need to ask for the location)
   const unnamed = S.places.find((x) => x.gps && x.name === "My Location");
-  if (unnamed) nameOf(unnamed.lat, unnamed.lon).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); showPlace(); } });
+  if (unnamed) nameOf(unnamed.lat, unnamed.lon, { live: false }).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); showPlace(); } });
   if ("serviceWorker" in navigator) {
     // a new version: its worker arrives with every file fresh, so if this page has only just opened, start again on it
     const had = !!navigator.serviceWorker.controller, opened = Date.now();
@@ -120,7 +120,9 @@ async function go(force = false) {
   $("refresh-btn").disabled = true;
   showPlace();
   if (!S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon)) { S.wx = S.base = null; S.allInsights = false; render(); }
-  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map") });
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map"),
+    // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
+    rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
   else S.radar.place(p.lat, p.lon);
   try {
     await load(p, (wx, how) => {
@@ -471,7 +473,7 @@ function windows(wx, now) {
 function climate(wx, now) {
   const f = S.f, t = T(), box = $("climate-body");
   if (!wx.climate) {
-    const failed = store.get(`clim:${cell(wx.place.lat, wx.place.lon)}`)?.failedAt;
+    const failed = store.get(`clim2:${cell(wx.place.lat, wx.place.lon)}`)?.failedAt;
     box.replaceChildren(h("p", { class: "muted small" }, failed ? "The climate archive is busy; this will fill in later." : "Gathering 30 years of weather…"));
     return;
   }
@@ -669,7 +671,9 @@ async function locate(quiet = false) {
   try {
     const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
     const lat = pos.coords.latitude, lon = pos.coords.longitude;
-    const name = await nameOf(lat, lon);
+    // (hardly moved since last time, under a kilometre: the name it had, rather than asking again)
+    const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+    const name = was ? { name: was.name, region: was.region } : await nameOf(lat, lon);
     addPlace({ name: name?.name || "My Location", region: name?.region || "", lat, lon, gps: true });
     const n = S.settings.notify;
     if ((n.rain || n.brief) && n.place?.gps && cell(n.place.lat, n.place.lon) !== cell(lat, lon)) { n.place = { lat, lon, name: name?.name || "My Location", gps: true }; saveSettings(); syncNotify().catch(() => {}); }
@@ -969,6 +973,8 @@ function sheetGestures(d) {
 // every source in one place (from the footer, or the map's ©), open at the part that was asked about
 function openCredits(at) {
   const d = $("credits"), body = d.querySelector(".sheet-body");
+  // (Copernicus asks for the year its information is used in)
+  for (const y of d.querySelectorAll(".this-year")) y.textContent = String(new Date().getFullYear());
   openSheet(d);
   // (from the layout, not the screen: the sheet's still rising and scaling as this runs)
   body.scrollTop = at === "map" ? $("cr-map").offsetTop - body.offsetTop - 12 : 0;

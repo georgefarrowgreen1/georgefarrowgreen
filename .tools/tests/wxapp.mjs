@@ -12,19 +12,19 @@ import * as F from './mocks/wxappdata.mjs';
 const [,, S, out] = process.argv;
 const H = 3600e3, D = 864e5;
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
-// a radar tile: 256 × 256, a checkerboard of 30 dBZ rain (the radar's own blue) and clear, 32 pixels a square,
-// so wherever the map is zoomed in to, there's rain on screen and edges to soften
+// a radar tile: 512 × 512 (the size the app asks for), a checkerboard of 30 dBZ rain (the radar's own blue) and clear,
+// 64 pixels a square, so wherever the map is zoomed in to, there's rain on screen and edges to soften
 const RADAR_PNG = (() => {
-  const raw = Buffer.alloc(256 * (1 + 256 * 4));
-  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) if (((x >> 5) + (y >> 5)) % 2 === 0) raw.set([0x00, 0x55, 0x88, 0xff], y * 1025 + 1 + x * 4);
+  const raw = Buffer.alloc(512 * (1 + 512 * 4));
+  for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) if (((x >> 6) + (y >> 6)) % 2 === 0) raw.set([0x00, 0x55, 0x88, 0xff], y * 2049 + 1 + x * 4);
   const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data]))); return Buffer.concat([len, Buffer.from(type), data, crc]); };
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(256, 0); ihdr.writeUInt32BE(256, 4); ihdr.set([8, 6, 0, 0, 0], 8);
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(512, 0); ihdr.writeUInt32BE(512, 4); ihdr.set([8, 6, 0, 0, 0], 8);
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 })();
 // the same day every day at the airport: 5° at 3am, 15° at 3pm
 const curve = (h) => 10 + 5 * Math.sin(((h - 9) / 24) * 2 * Math.PI);
 // what each model said a day ahead: ECMWF half a degree warm, GFS two degrees warm, GEM two and a half cold…
-const LEAN = { ecmwf_ifs025: 0.5, ukmo_seamless: -0.8, gfs_seamless: 2, icon_seamless: -1.5, meteofrance_seamless: 1, gem_seamless: -2.5 };
+const LEAN = { ecmwf_ifs: 0.5, ukmo_seamless: -0.8, gfs_seamless: 2, icon_seamless: -1.5, meteofrance_seamless: 1, gem_seamless: -2.5 };
 function previousRuns(url) {
   const back = Number(new URL(url).searchParams.get('past_days') || 10), start = Math.floor(Date.now() / D) * D - back * D, h = { time: [] };
   for (let t = start; t < start + (back + 1) * D; t += H) h.time.push(new Date(t).toISOString().slice(0, 16));
@@ -104,7 +104,8 @@ ok(/default-src 'self'/.test(res.headers()['content-security-policy'] || '') && 
 ok((await p.textContent('#place-name')) === 'London', 'opens on the place in the link');
 ok((await p.locator('.day-row').count()) === 16 && (await p.textContent('#daily-n')) === '16-day', '16 days');
 const nc = await p.textContent('#nowcast-text');
-ok(await p.isVisible('#nowcast') && /starting in about (30|35|40|45) min/.test(nc), 'the next four hours: rain on its way', nc);
+// (rain from 30 minutes on: said from the start of the quarter hour it starts in)
+ok(await p.isVisible('#nowcast') && /starting in about (15|20|25|30) min/.test(nc), 'the next four hours: rain on its way', nc);
 ok(/on the way from about/.test(await p.textContent('#brief')), 'the briefing says so too', await p.textContent('#brief'));
 const sw = await p.evaluate(() => document.documentElement.scrollWidth);
 ok(sw <= 390, 'nothing wider than the phone (it would zoom the page out)', `${sw}px`);
@@ -165,11 +166,11 @@ ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of l
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
 ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says which model to trust');
 // every source in one window, from one line at the foot of the page
-ok(!(await p.locator('.foot a').count()) && (await p.textContent('.foot-note')).trim() === 'Learn more about weather data and map data.', 'the footer: one line, no list of credits', await p.textContent('.foot-note'));
+ok((await p.locator('.foot a').count()) === 2 && /^Weather data by Open-Meteo\.com \(CC BY 4\.0\)\. Learn more about weather data and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, with the credit Open-Meteo asks for beside the data', await p.textContent('.foot-note'));
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
-ok(links.length === 10 && ['open-meteo.com', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'aviationweather.gov', 'rainviewer.com', 'openstreetmap.org/copyright', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
+ok(links.length === 11 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'aviationweather.gov', 'rainviewer.com', 'openstreetmap.org/copyright', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
   'a credits window: every source, each linked out', `${links.length} links`);
 ok((await p.evaluate(() => document.querySelector('#credits .sheet-body').scrollTop)) === 0 && /national weather service/.test(await p.textContent('#credits .credits-note')), 'open at the weather data, with a notice at its foot');
 await p.waitForTimeout(600);

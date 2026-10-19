@@ -3,9 +3,10 @@
 // hours as the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9
 // grid about 220 km across around the place, painted in the radar's own colours), over
 // OpenStreetMap's map turned dark to sit with the app (a filter in styles.css).
-// RainViewer's free tiles go to zoom 7 (about a county across a tile), so
-// closer in, they're enlarged: smoothly, read back into reflectivity and
-// blended (rainmap.js resample), rather than as squares.
+// RainViewer's free tiles go to zoom 7's detail (about a county across a tile),
+// which its 512-pixel tiles at zoom 6 carry too, with a quarter of the requests
+// (it asks apps to keep them few); closer in, they're enlarged: smoothly, read
+// back into reflectivity and blended (rainmap.js resample), rather than as squares.
 //
 // Leaflet (vendor/leaflet.js: 1.9.4, BSD-2-Clause, checked against npm's
 // integrity hash) is loaded only when the card first comes into view.
@@ -15,7 +16,9 @@ import { grid, paint, timeline, LEGEND, hexFor, decode, resample, motion, ramp }
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
 const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const NATIVE = 7, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
+// NATIVE: the radar's finest detail, as a zoom of 256-pixel tiles (and the map's own zoom); SRC: the size of the tiles
+// asked for (512, a zoom below, as fine as NATIVE's)
+const NATIVE = 7, SRC = 512, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
 const CENTRE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
 let loading = null;
@@ -37,7 +40,8 @@ async function modelRain(g) {
   if (!r.ok) throw new Error(`model ${r.status}`);
   const j = await r.json(), list = Array.isArray(j) ? j : [j], m0 = list[0]?.minutely_15;
   if (!m0?.time || list.length !== g.n * g.n) throw new Error("model shape");
-  const out = { at: Date.now(), times: m0.time.map((t) => Date.parse(`${t}Z`)), rain: [], snow: [] };
+  // (each quarter hour's rain is the 15 minutes up to its time: shown at their middle)
+  const out = { at: Date.now(), times: m0.time.map((t) => Date.parse(`${t}Z`) - 450e3), rain: [], snow: [] };
   m0.time.forEach((_, k) => {
     out.rain.push(list.map((o) => Math.round((o.minutely_15?.precipitation?.[k] ?? 0) * 4 * 100) / 100));
     out.snow.push(list.map((o) => ((o.minutely_15?.snowfall?.[k] ?? 0) > 0 ? 1 : 0)));
@@ -51,25 +55,38 @@ const canvasFor = (g, rates, snow) => {
   paint(img.data, PX, PX, g, rates, snow); ctx.putImageData(img, 0, 0);
   return c.toDataURL("image/png");
 };
-// A radar tile's pixels, read back into reflectivity once (a few hundred kept)
-const codes = new Map();
-function tileCodes(url) {
+// A radar tile's pixels, read back into reflectivity once (the last 120 kept). Asked for six at a time, the frame
+// on show first; a tile that doesn't come isn't kept (it's asked for again next time it's wanted)
+const codes = new Map(), asks = [];
+let asking = 0;
+function next() {
+  while (asking < 6 && asks.length) {
+    const k = Math.max(0, asks.findIndex((a) => a.shown()));
+    const a = asks.splice(k, 1)[0];
+    asking++;
+    a.go();
+  }
+}
+function tileCodes(url, shown = () => true) {
   if (codes.has(url)) return codes.get(url);
   const p = new Promise((ok) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const c = document.createElement("canvas"); c.width = c.height = 256;
-        const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0);
-        ok(decode(x.getImageData(0, 0, 256, 256).data));
-      } catch (_) { ok(null); }
-    };
-    img.onerror = () => ok(null);
-    img.src = url;
+    asks.push({ shown, go: () => {
+      const img = new Image(), end = (v) => { asking--; ok(v); next(); };
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas"); c.width = c.height = SRC;
+          const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0, SRC, SRC);
+          end(decode(x.getImageData(0, 0, SRC, SRC).data));
+        } catch (_) { end(null); }
+      };
+      img.onerror = () => { if (codes.get(url) === p) codes.delete(url); end(null); };
+      img.src = url;
+    } });
+    next();
   });
   codes.set(url, p);
-  if (codes.size > 400) codes.delete(codes.keys().next().value);
+  if (codes.size > 120) codes.delete(codes.keys().next().value);
   return p;
 }
 // How the radar is smoothed (rainmap.js resample): crisp edges in the radar's own bands, soft edges with
@@ -89,24 +106,26 @@ function work() {
   if (working) setTimeout(work, 0);
 }
 function queue(job) { jobs.push(job); if (!working) { working = true; setTimeout(work, 0); } }
-// The radar, smoothed: each tile drawn from the radar's own (zoom 7 at most). For the next two hours
-// (cast: { vx, vy, lead }), the latest radar carried along its own track: drawn from where its rain was
-// lead minutes before, vx, vy zoom-7 pixels a minute behind, and fading a little the further ahead it is.
+// The radar, smoothed: each tile drawn from the radar's own (512 pixels, a zoom below, at most zoom 6: as fine as
+// zoom 7's). For the next two hours (cast: { vx, vy, lead }), the latest radar carried along its own track: drawn
+// from where its rain was lead minutes before, vx, vy zoom-7 pixels a minute behind, fading a little the further ahead.
 function smoothRadar(L, base, look, opts, cast = null) {
   const Layer = L.GridLayer.extend({
     createTile(c, done) {
       const tile = document.createElement("canvas"); tile.width = tile.height = 256;
-      const nz = Math.min(c.z, NATIVE), f = 2 ** (c.z - nz), span = 256 / f, n = 2 ** nz;
+      // (sz: the zoom of the tiles drawn from, each SRC pixels; one of their pixels is a zoom-(sz + 1) 256-tile's)
+      const sz = Math.max(0, Math.min(c.z, NATIVE) - 1), f = 2 ** (c.z - sz), span = SRC / f, n = 2 ** sz;
       const px = Math.floor(c.x / f), py = Math.floor(c.y / f), x0 = (c.x - px * f) * span, y0 = (c.y - py * f) * span;
-      const url = (x, y) => `${base}/${nz}/${((x % n) + n) % n}/${y}/2/1_1.png`;
-      const sx = cast ? (cast.vx * cast.lead) / 2 ** (NATIVE - nz) : 0, sy = cast ? (cast.vy * cast.lead) / 2 ** (NATIVE - nz) : 0;
+      const url = (x, y) => `${base}/${sz}/${((x % n) + n) % n}/${y}/2/1_1.png`;
+      const per = cast ? cast.lead / 2 ** (NATIVE - sz - 1) : 0, sx = cast ? cast.vx * per : 0, sy = cast ? cast.vy * per : 0;
       // the tiles its pixels come from: its own, and its neighbours' where the blend (or the track) reaches over
       const need = [];
-      for (let oy = Math.floor((y0 - sy - 3) / 256); oy <= Math.floor((y0 + span - sy + 3) / 256); oy++) {
-        for (let ox = Math.floor((x0 - sx - 3) / 256); ox <= Math.floor((x0 + span - sx + 3) / 256); ox++) if (py + oy >= 0 && py + oy < n) need.push([ox, oy]);
+      for (let oy = Math.floor((y0 - sy - 3) / SRC); oy <= Math.floor((y0 + span - sy + 3) / SRC); oy++) {
+        for (let ox = Math.floor((x0 - sx - 3) / SRC); ox <= Math.floor((x0 + span - sx + 3) / SRC); ox++) if (py + oy >= 0 && py + oy < n) need.push([ox, oy]);
       }
-      Promise.all(need.map(([ox, oy]) => tileCodes(url(px + ox, py + oy)))).then((got) => queue({
-        shown: () => this.options.opacity > 0,
+      const shown = () => this.options.opacity > 0;
+      Promise.all(need.map(([ox, oy]) => tileCodes(url(px + ox, py + oy), shown))).then((got) => queue({
+        shown,
         run: () => {
           if (!this._map) return;          // (its frame was replaced: the radar reloaded)
           const from = new Map(need.map(([ox, oy], i) => [`${ox},${oy}`, got[i]]));
@@ -114,9 +133,9 @@ function smoothRadar(L, base, look, opts, cast = null) {
           if (got.some(Boolean) && tile.isConnected) {
             let lx = null, ly = null, lt = null;
             const code = (x, y) => {
-              const u = Math.round(x - sx), v = Math.round(y - sy), ox = Math.floor(u / 256), oy = Math.floor(v / 256);
+              const u = Math.round(x - sx), v = Math.round(y - sy), ox = Math.floor(u / SRC), oy = Math.floor(v / SRC);
               if (ox !== lx || oy !== ly) { lx = ox; ly = oy; lt = from.get(`${ox},${oy}`); }
-              return lt ? lt[(v - oy * 256) * 256 + (u - ox * 256)] : 0;
+              return lt ? lt[(v - oy * SRC) * SRC + (u - ox * SRC)] : 0;
             };
             let wet = false;
             for (let y = Math.floor(y0) - 2; y < y0 + span + 2 && !wet; y++) for (let x = Math.floor(x0) - 2; x < x0 + span + 2; x++) if (code(x, y)) { wet = true; break; }
@@ -141,7 +160,7 @@ const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min
  * The radar, in `card` (#radar). time(t) formats a real UTC time (ms) as the place's own clock;
  * miles: show the scale in miles. Returns { place(lat, lon), refresh(), note(text) }.
  */
-export function radar(card, { lat, lon, time, miles = false, credits = null }) {
+export function radar(card, { lat, lon, time, miles = false, credits = null, rainSoon = () => true }) {
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
@@ -198,45 +217,56 @@ export function radar(card, { lat, lon, time, miles = false, credits = null }) {
     if (frames.length - 1 > nowAt) mark(frames.length - 1, `+${span(frames[frames.length - 1].t)}`, "rs-l rs-end");
   }
   // How the rain here is moving, in zoom-7 pixels a minute, from the latest radar frame and the one 20 minutes
-  // before (over the 3 × 3 tiles around the place, about 550 km across), or null with too little rain to tell
+  // before (over a square 768 of them across around the place, about 550 km), or null with too little rain to tell
   async function driftOf(host, past) {
-    const n = 2 ** NATIVE, la = (here.lat * Math.PI) / 180, cx = Math.floor(((here.lon + 180) / 360) * n);
-    const cy = Math.floor(((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * n);
+    const world = 2 ** NATIVE * 256, la = (here.lat * Math.PI) / 180, n = 2 ** (NATIVE - 1), W = 768;
+    const x0 = Math.round(((here.lon + 180) / 360) * world) - W / 2, y0 = Math.round(((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * world) - W / 2;
+    const tx = [Math.floor(x0 / SRC), Math.floor((x0 + W - 1) / SRC)], ty = [Math.floor(y0 / SRC), Math.floor((y0 + W - 1) / SRC)];
     const field = async (fr) => {
-      const tiles = await Promise.all([-1, 0, 1].flatMap((dy) => [-1, 0, 1].map((dx) => tileCodes(`${host}${fr.path}/256/${NATIVE}/${(((cx + dx) % n) + n) % n}/${cy + dy}/2/1_1.png`))));
-      if (tiles.some((t) => !t)) return null;
-      const out = new Uint8Array(768 * 768);
-      tiles.forEach((t, k) => { const ox = (k % 3) * 256, oy = Math.floor(k / 3) * 256; for (let y = 0; y < 256; y++) out.set(t.subarray(y * 256, y * 256 + 256), (oy + y) * 768 + ox); });
+      const want = [];
+      for (let y = ty[0]; y <= ty[1]; y++) for (let x = tx[0]; x <= tx[1]; x++) want.push([x, y]);
+      const tiles = await Promise.all(want.map(([x, y]) => (y < 0 || y >= n ? Promise.resolve(null) : tileCodes(`${host}${fr.path}/${SRC}/${NATIVE - 1}/${((x % n) + n) % n}/${y}/2/1_1.png`))));
+      if (tiles.some((t, i) => !t && want[i][1] >= 0 && want[i][1] < n)) return null;
+      const out = new Uint8Array(W * W);
+      want.forEach(([x, y], i) => {
+        const t = tiles[i]; if (!t) return;
+        for (let r = 0; r < SRC; r++) {
+          const oy = y * SRC + r - y0; if (oy < 0 || oy >= W) continue;
+          const a = Math.max(0, x0 - x * SRC), b = Math.min(SRC, x0 + W - x * SRC); if (b <= a) continue;
+          out.set(t.subarray(r * SRC + a, r * SRC + b), oy * W + (x * SRC + a - x0));
+        }
+      });
       return out;
     };
     const a = past[past.length - 3], b = past[past.length - 1], mins = (b.time - a.time) / 60;
     const [A, B] = await Promise.all([field(a), field(b)]);
-    const m = A && B && mins > 0 ? motion(A, B, 768, 768) : null;
+    const m = A && B && mins > 0 ? motion(A, B, W, W) : null;
     return m && m.score >= 0.35 ? { vx: m.dx / mins, vy: m.dy / mins } : null;
   }
   async function load() {
     g = grid(here.lat, here.lon);
     const rv = await fetch(FRAMES, { signal: AbortSignal.timeout(10000) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`radar ${r.status}`)))).catch(() => null);
-    const host = rv?.host, past = rv ? [...(rv.radar?.past || []), ...(rv.radar?.nowcast || [])] : [];
+    const host = rv?.host, past = rv?.radar?.past || [];
     // the next two hours: the latest radar carried along its own track, every 10 minutes; where there's no
     // track to follow (no radar here, or too little rain to tell), the models' rain on the grid instead
     const drift = past.length >= 3 ? await driftOf(host, past).catch(() => null) : null;
     const last = past.length ? past[past.length - 1].time * 1000 : 0;
-    const model = drift ? null : await modelRain(g).catch(() => null);
+    // (the models' grid is 81 places' forecasts: only asked for when rain's expected here soon, not to show a dry map)
+    const model = drift || (past.length && !rainSoon()) ? null : await modelRain(g).catch(() => null);
     if (!past.length && !model) throw new Error("nothing");
     layers.forEach((l) => map.removeLayer(l));
     const ahead = drift ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
     const tl = timeline(past.map((f) => f.time * 1000), ahead);
     frames = tl.frames; nowAt = past.length ? tl.now : 0;
     const opt = { opacity: 0, zIndex: 300, maxZoom: 10, className: "rv-tiles" };
-    layers = frames.map((f) => (f.kind === "radar" ? smoothRadar(L, `${host}${past[f.k].path}/256`, LOOK, opt)
-      : drift ? smoothRadar(L, `${host}${past[past.length - 1].path}/256`, LOOK, opt, { vx: drift.vx, vy: drift.vy, lead: (f.t - last) / 60e3 })
+    layers = frames.map((f) => (f.kind === "radar" ? smoothRadar(L, `${host}${past[f.k].path}/${SRC}`, LOOK, opt)
+      : drift ? smoothRadar(L, `${host}${past[past.length - 1].path}/${SRC}`, LOOK, opt, { vx: drift.vx, vy: drift.vy, lead: (f.t - last) / 60e3 })
       : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame" })).addTo(map));
     if (box) map.removeLayer(box);
     box = model ? L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map) : null;
     credited(["OpenStreetMap", past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
-    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model ? "The next two hours aren't available right now: showing the radar." : "";
+    status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && rainSoon() ? "The next two hours aren't available right now: showing the radar." : "";
     slider.max = String(frames.length - 1);
     fetched = Date.now();
     drawScale();

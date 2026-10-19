@@ -1,9 +1,10 @@
 // What the weather actually did, for checking forecasts against: the nearest
 // airport's weather reports (METAR, from the US Aviation Weather Center: free,
-// worldwide). Their service keeps only about a week, so each day's high and
-// low is kept here (D1, wx_obs) as it's seen, and the record grows to six
-// weeks the more the app is used near that airport. weather/skill.js does the
-// comparing, on the phone.
+// worldwide). Their service gives at most 400 reports at a time (about a week
+// at a big airport, which reports every half hour), so each day's high and low
+// is kept here (D1, wx_obs) as it's seen, and the record grows to six weeks the
+// more the app is used near that airport. weather/skill.js does the comparing,
+// on the phone.
 //
 // Each day is the airport's own (its UTC offset, from Open-Meteo), whoever
 // asks; and only reports just fetched from the Aviation Weather Center are

@@ -546,7 +546,9 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .foot-in { border-radius: var(--r-card); padding: 8px 18px; }
 .foot p { margin: 8px 0; max-width: 80ch; }
 .foot-note { color: var(--text-3); }
-.foot-note .link { padding: 4px 0; }
+/* (its links and buttons alike: underlined in the line's own grey, as the Weather app's are) */
+.foot-note a, .foot-note .link { color: inherit; font-weight: inherit; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.32); text-underline-offset: 2px; }
+.foot-note a:active { opacity: 0.55; }
 /* a plain button: tinted text, as on iOS */
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
 .link:active { opacity: 0.55; transition-duration: 0.08s; }

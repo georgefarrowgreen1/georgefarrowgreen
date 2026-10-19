@@ -36,11 +36,13 @@ export function forecast(now, sc = {}) {
     daily.shortwave_radiation_sum.push(8); daily.et0_fao_evapotranspiration.push(1.5);
   }
   const cur = hours.find((x) => x.t <= now && now < x.t + H);
-  const q0 = Math.floor(now / 900e3) * 900e3, mins = Array.from({ length: 16 }, (_, i) => q0 + i * 900e3);
+  const q0 = Math.floor(now / 900e3) * 900e3, mins = Array.from({ length: 17 }, (_, i) => q0 + i * 900e3);
+  const wetQ = (t) => rainAt != null && t > rainAt && t - 900e3 < rainAt + H;      // (the quarter up to t has some of the hour's rain)
   return {
     latitude: LAT, longitude: LON, timezone: "UTC", timezone_abbreviation: "UTC", utc_offset_seconds: 0, elevation: 20,
     current: { time: iso(q0), temperature_2m: cur.temp, relative_humidity_2m: 70, apparent_temperature: cur.feels, is_day: cur.isDay ? 1 : 0, precipitation: 0, weather_code: cur.code, cloud_cover: cur.cloud, pressure_msl: 1016, wind_speed_10m: 15, wind_direction_10m: 240, wind_gusts_10m: cur.gust, dew_point_2m: 6, visibility: 24000, uv_index: cur.uv },
-    minutely_15: { time: mins.map(iso), precipitation: mins.map((t) => (rainAt != null && t >= rainAt && t < rainAt + H ? 0.5 : 0)), weather_code: mins.map((t) => (rainAt != null && t >= rainAt && t < rainAt + H ? 63 : 2)) },
+    // (as Open-Meteo gives them: each quarter hour's rain is the 15 minutes up to its time)
+    minutely_15: { time: mins.map(iso), precipitation: mins.map((t) => (wetQ(t) ? 0.5 : 0)), weather_code: mins.map((t) => (wetQ(t) ? 63 : 2)) },
     hourly: {
       time: col((x) => iso(x.t)), temperature_2m: col((x) => x.temp), apparent_temperature: col((x) => x.feels), relative_humidity_2m: col(() => 70), dew_point_2m: col(() => 6),
       precipitation_probability: col((x) => (x.precip ? 90 : 10)), precipitation: col((x) => x.precip), rain: col((x) => x.precip), showers: col(() => 0), snowfall: col(() => 0), snow_depth: col(() => 0),
@@ -53,7 +55,7 @@ export function forecast(now, sc = {}) {
 }
 export function models(now) {
   const start = Math.floor(now / D) * D, d = { time: [] };
-  const ids = ["ecmwf_ifs025", "ukmo_seamless", "gfs_seamless", "icon_seamless", "meteofrance_seamless", "gem_seamless"];
+  const ids = ["ecmwf_ifs", "ukmo_seamless", "gfs_seamless", "icon_seamless", "meteofrance_seamless", "gem_seamless"];
   for (let k = 0; k < 10; k++) d.time.push(day(start + k * D));
   ids.forEach((id, j) => {
     // they agree for a few days, then fall apart on day 4

@@ -8,7 +8,9 @@
 //   air          air quality and pollen
 //   climate      30 years of this place's days (once per place, kept for a year)
 //
-// Nothing about you is sent beyond the spot asked about. Data by Open-Meteo.com (CC BY 4.0).
+// Nothing about you is sent beyond the spot asked about (and, to name where you are, your position
+// as your phone gives it: BigDataCloud's free service is for exactly that, and only that). Data by
+// Open-Meteo.com (CC BY 4.0).
 
 import { parseWall, keyOf, HOUR } from "./format.js";
 import { compactClimate, climateSpan } from "./climate.js";
@@ -33,6 +35,7 @@ const MODEL_DAILY = "temperature_2m_max,temperature_2m_min,precipitation_sum,win
 /* ---------- shaping ---------- */
 const num = (v) => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
 const col = (o, k, i) => (o && Array.isArray(o[k]) ? num(o[k][i]) : null);
+const QUARTER = 15 * 60e3;
 
 export function shapeForecast(j, place = {}) {
   const h = j.hourly || {}, d = j.daily || {}, m = j.minutely_15 || {}, c = j.current || {};
@@ -56,7 +59,8 @@ export function shapeForecast(j, place = {}) {
     windMax: col(d, "wind_speed_10m_max", i), gustMax: col(d, "wind_gusts_10m_max", i), dir: col(d, "wind_direction_10m_dominant", i),
     radiation: col(d, "shortwave_radiation_sum", i), et0: col(d, "et0_fao_evapotranspiration", i),
   })).filter((x) => x.tmax != null);
-  const minutely = (m.time || []).map((t, i) => ({ t: parseWall(t), precip: col(m, "precipitation", i) ?? 0, code: col(m, "weather_code", i) ?? 0 }));
+  // (a quarter hour's rain is the 15 minutes up to its time, as Open-Meteo gives it: each is kept by when it starts)
+  const minutely = (m.time || []).map((t, i) => ({ t: parseWall(t) - QUARTER, precip: col(m, "precipitation", i) ?? 0, code: col(m, "weather_code", i) ?? 0 }));
   const current = c.time ? {
     t: parseWall(c.time), temp: num(c.temperature_2m), feels: num(c.apparent_temperature), rh: num(c.relative_humidity_2m), dew: num(c.dew_point_2m),
     precip: num(c.precipitation) ?? 0, code: num(c.weather_code) ?? 0, cloud: num(c.cloud_cover), pressure: num(c.pressure_msl),
@@ -136,14 +140,17 @@ async function getJSON(url, ms = 12000, tries = 2) {
 const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v != null)).toString();
 
 // the forecast's question (the server asks the same one for notifications: functions/_wxpush.js); lat and lon may be lists
-export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: CURRENT, minutely_15: "precipitation,weather_code", forecast_minutely_15: 16, hourly: HOURLY, daily: DAILY, past_days: 1, forecast_days: days, timezone: "auto" });
+export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: CURRENT, minutely_15: "precipitation,weather_code", forecast_minutely_15: 17, hourly: HOURLY, daily: DAILY, past_days: 1, forecast_days: days, timezone: "auto" });
 // just what a rain alert needs: the next four hours of rain, by the quarter hour (the server asks this every ten minutes)
-export const rainQuery = (lat, lon) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: "precipitation,weather_code", minutely_15: "precipitation,weather_code", forecast_minutely_15: 16, timezone: "auto" });
+// (both ask for 17 quarters: the first is the one just gone)
+export const rainQuery = (lat, lon) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: "precipitation,weather_code", minutely_15: "precipitation,weather_code", forecast_minutely_15: 17, timezone: "auto" });
 export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${forecastQuery(lat, lon)}`);
 export const fetchModels = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), models: MODELS.map((m) => m[0]).join(","), daily: MODEL_DAILY, forecast_days: 10, timezone: "auto" })}`);
 export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: "ecmwf_ifs025", hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 15000);
 export const fetchAir = (lat, lon) => getJSON(`${API.air}?${qs({ latitude: r4(lat), longitude: r4(lon), current: "european_aqi,us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide", hourly: "european_aqi,us_aqi,pm2_5,pm10,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen", forecast_days: 5, timezone: "auto" })}`);
-export const fetchClimate = (lat, lon, nowW) => { const s = climateSpan(nowW); return getJSON(`${API.archive}?${qs({ latitude: r4(lat), longitude: r4(lon), start_date: s.start, end_date: s.end, daily: "temperature_2m_max,temperature_2m_min,precipitation_sum", timezone: "auto" })}`, 30000, 1); };
+// (ERA5-Land's temperatures, with ERA5 where it has none: one consistent record over the 30 years, rather than the
+// archive's best match, which splices ERA5, ERA5-Land and the 9 km model from 2017 and shifts normals and records)
+export const fetchClimate = (lat, lon, nowW) => { const s = climateSpan(nowW); return getJSON(`${API.archive}?${qs({ latitude: r4(lat), longitude: r4(lon), start_date: s.start, end_date: s.end, daily: "temperature_2m_max,temperature_2m_min,precipitation_sum", models: "era5_seamless", timezone: "auto" })}`, 30000, 1); };
 
 // Search for a place by name
 export async function searchPlaces(name) {
@@ -153,8 +160,10 @@ export async function searchPlaces(name) {
 // A name for where a phone is (BigDataCloud's free lookup, made for exactly this)
 // A place's name from its position: BigDataCloud, or if that doesn't answer (or a blocker stops it),
 // OpenStreetMap's Nominatim (only then, as it asks to be used lightly)
-export async function nameOf(lat, lon) {
-  try {
+// live: a position just given by the phone (BigDataCloud's free service takes only those: a kept one goes to
+// Nominatim alone)
+export async function nameOf(lat, lon, { live = true } = {}) {
+  if (live) try {
     const j = await getJSON(`${API.reverse}?${qs({ latitude: r4(lat), longitude: r4(lon), localityLanguage: "en" })}`, 6000);
     const name = j.locality && j.city && j.locality.length <= j.city.length + 12 && !/^(City of|Borough of|London Borough)/.test(j.locality) ? j.locality : j.city || j.locality || j.principalSubdivision;
     if (name) return { name, region: [j.city !== name ? j.city : null, j.countryCode === "GB" ? j.principalSubdivision : j.countryName].filter(Boolean).join(", ") };
@@ -202,7 +211,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   // what's kept from before, straight away (unless it's damaged: then it's dropped, and the network's asked)
   if (raw.forecast) {
     let wx = null;
-    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill:${id}`); }
+    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill2:${id}`); }
     if (wx) onUpdate(wx, { partial: true, stale: !fresh("forecast") });
   }
   const save = () => {
@@ -224,7 +233,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   try { await main; } catch (e) { if (!raw.forecast) throw e; onUpdate(build(), { partial: false, stale: true, error: e }); }
   await extras;
   // the climate, once a year per place, in the background (it's a lot to ask for)
-  loadClimate(place).then((c) => { if (c !== null && raw.forecast) onUpdate(build(), { partial: false, stale: false }); });
+  climateSoon(place, (c) => { if (c !== null && raw.forecast) onUpdate(build(), { partial: false, stale: false }); });
   // how the models have done here, twice a day per place, in the background too
   if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); });
   return build();
@@ -238,16 +247,28 @@ function pruneCache(except) {
   } catch (_) {}
 }
 
+// (what earlier versions kept, on a record since replaced: cleared once)
+try { for (const k of Object.keys(localStorage)) if (k.startsWith("clim:") || k.startsWith("skill:")) localStorage.removeItem(k); } catch (_) {}
 const climateMemo = new Map();
 export function climateFor(place) {
   const id = cell(place.lat, place.lon);
   if (climateMemo.has(id)) return climateMemo.get(id);
-  const c = store.get(`clim:${id}`);
+  const c = store.get(`clim2:${id}`);
   if (c?.data) { climateMemo.set(id, c.data); return c.data; }
   return null;
 }
+// The climate's a big ask (thirty years: Open-Meteo counts it as about 235 of the 600 requests a minute it allows
+// each phone), so it's asked for once a place has been on screen a few seconds, and only one in any 70 seconds
+// (looking through several new places can't use up the minute and stop the forecasts coming)
+let climateAt = 0, climateWait = null;
+function climateSoon(place, then) {
+  clearTimeout(climateWait);
+  const kept = store.get(`clim2:${cell(place.lat, place.lon)}`);
+  if (kept?.data && Date.now() - kept.at < 365 * 864e5) return;
+  climateWait = setTimeout(() => { climateAt = Date.now(); loadClimate(place).then(then); }, Math.max(3000, climateAt + 70e3 - Date.now()));
+}
 async function loadClimate(place) {
-  const id = cell(place.lat, place.lon), k = `clim:${id}`, kept = store.get(k);
+  const id = cell(place.lat, place.lon), k = `clim2:${id}`, kept = store.get(k);
   if (kept?.data && Date.now() - kept.at < 365 * 864e5) return null;
   if (kept?.failedAt && Date.now() - kept.failedAt < 6 * 3600e3) return null;   // asked recently and turned away: wait
   try {
@@ -256,7 +277,7 @@ async function loadClimate(place) {
     climateMemo.set(id, data);
     if (!store.set(k, { at: Date.now(), data })) {
       // no room: make some by dropping other places' climates
-      for (const o of Object.keys(localStorage).filter((x) => x.startsWith("clim:") && x !== k)) store.del(o);
+      for (const o of Object.keys(localStorage).filter((x) => x.startsWith("clim2:") && x !== k)) store.del(o);
       store.set(k, { at: Date.now(), data });
     }
     return data;
@@ -269,9 +290,9 @@ async function loadClimate(place) {
 /* ---------- how the models have done here ---------- */
 // { at, station: { id, name, km } | null, obsDays, skill | null } — kept for 12 hours per place
 const SKILL_TTL = 12 * 3600e3;
-export const skillKept = (place) => store.get(`skill:${cell(place.lat, place.lon)}`);
+export const skillKept = (place) => store.get(`skill2:${cell(place.lat, place.lon)}`);
 async function loadSkill(place) {
-  const k = `skill:${cell(place.lat, place.lon)}`, kept = store.get(k);
+  const k = `skill2:${cell(place.lat, place.lon)}`, kept = store.get(k);
   if (kept && Date.now() - kept.at < (kept.failed ? 3 * 3600e3 : SKILL_TTL)) return null;
   try {
     // what happened, at the nearest airport (the server collects and keeps these)

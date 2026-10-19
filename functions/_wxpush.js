@@ -8,7 +8,8 @@
 // place that needs it: rain alerts outside the quiet hours (22:00 to 07:00 there),
 // briefings around their time. For rain it asks only for the next few hours'
 // rain (one small request for every place at once); the whole forecast only
-// where a briefing is due. Places are kept to two decimal places (about a
+// where a briefing is due; and no more each tick than Open-Meteo's free service
+// allows over a day (the rest wait for the next). Places are kept to two decimal places (about a
 // kilometre) and forgotten when notifications are turned off, the phone
 // unsubscribes, its push service says it's gone or keeps failing, or nothing's
 // been heard of it for four months.
@@ -27,6 +28,9 @@ import { makeFormat, nowWall, keyOf } from "../weather/format.js";
 import { rainAlert, briefDue, briefing, isQuiet } from "../weather/alerts.js";
 
 const MAX_SUBS = 300, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
+// what Open-Meteo is asked each tick, in its own measure: a place's rain is one call, its whole forecast about seven
+// (its free service allows 10,000 a day: this keeps the ticks to about 8,000 at most)
+const BUDGET = 55, COST_FULL = 7;
 let ready = null;
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
@@ -146,25 +150,35 @@ async function tick(env, D, t) {
   const snap = (v) => Math.round(v * 20) / 20, cellOf = (s) => `${snap(s.lat)},${snap(s.lon)}`;
   const cells = new Map();
   for (const s of need) { const k = cellOf(s), c = cells.get(k) || { lat: snap(s.lat), lon: snap(s.lon), full: false }; c.full ||= due(s) || s.tz_off == null; cells.set(k, c); }
+  const asked = budgeted([...cells]);
   const forecasts = new Map(), base = env.WXAPP_URL || "https://api.open-meteo.com";
-  for (const full of [true, false]) {
-    const list = [...cells].filter(([, c]) => c.full === full);
+  ask: for (const full of [true, false]) {
+    const list = asked.filter(([, c]) => c.full === full);
     for (let i = 0; i < list.length; i += 40) {
       const part = list.slice(i, i + 40), lats = part.map(([, c]) => c.lat), lons = part.map(([, c]) => c.lon);
       try {
         const r = await fetch(`${base}/v1/forecast?${full ? forecastQuery(lats, lons, 3) : rainQuery(lats, lons)}`, { signal: AbortSignal.timeout(15000), headers: { Accept: "application/json" } });
+        // (turned away for asking too much: no more this tick)
+        if (r.status === 429) { console.error("weather tick: Open-Meteo's limit reached", (await r.text().catch(() => "")).slice(0, 200)); break ask; }
         if (!r.ok) { console.error("weather tick: forecast", r.status); continue; }
         const j = await r.json(), got = Array.isArray(j) ? j : [j];
         part.forEach(([k], n) => got[n] && forecasts.set(k, got[n]));
       } catch (e) { console.error("weather tick: forecast", e && e.message); }
     }
   }
-  const out = { subs: subs.length, looked: need.length, places: cells.size, rain: 0, brief: 0, gone: 0 };
+  const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, rain: 0, brief: 0, gone: 0 };
   for (const s of need) {
     // (one phone's trouble doesn't stop the others')
     try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out); } catch (e) { console.error("weather tick:", e && e.message); }
   }
   return out;
+}
+// The places asked about in a tick ([key, { full }] each), within the budget: whole forecasts first, then rain (in a
+// shuffled order, so the places left for the next tick aren't always the same ones)
+export function budgeted(cells, budget = BUDGET, rnd = Math.random) {
+  const order = cells.map((e) => [e, e[1].full ? -1 : rnd()]).sort((a, b) => a[1] - b[1]).map(([e]) => e);
+  let spend = 0;
+  return order.filter(([, c]) => { const cost = c.full ? COST_FULL : 1; if (spend + cost > budget) return false; spend += cost; return true; });
 }
 const claim = async (D, s, col, v) => !!(await D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(v, s.id, s[col] ?? null).run()).meta?.changes;
 const giveBack = (D, s, col, v) => D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(s[col] ?? null, s.id, v).run();

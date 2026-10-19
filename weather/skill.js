@@ -10,7 +10,9 @@
 // error here taken off, weighted by how close it has been.
 
 export const MODELS = [
-  ["ecmwf_ifs025", "ECMWF", "Europe's model, usually the most accurate"],
+  // (ECMWF's own 9 km model, hourly for the first days: open since October 2025, and finer than the 0.25°, 3-hourly
+  // one, whose daily highs came out low)
+  ["ecmwf_ifs", "ECMWF", "Europe's model, usually the most accurate"],
   ["ukmo_seamless", "Met Office", "The UK Met Office's global and UK models"],
   ["gfs_seamless", "GFS", "NOAA's American model"],
   ["icon_seamless", "ICON", "Germany's DWD model"],
@@ -21,7 +23,7 @@ export const MIN_DAYS = 5, TUNE_DAYS = 7;
 
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 // Open-Meteo's past forecasts (hourly, local time) → { modelId: { "YYYY-MM-DD": { hi1, lo1, hi3, lo3 } } }
-// Several models' columns are named variable_model ("temperature_2m_previous_day1_ecmwf_ifs025"); one model's, just the variable.
+// Several models' columns are named variable_model ("temperature_2m_previous_day1_ecmwf_ifs"); one model's, just the variable.
 export function shapePrevious(j, models = MODELS) {
   const h = j?.hourly; if (!h?.time) return null;
   const col = (v, id) => [`${v}_${id}`, models.length === 1 ? v : null].find((k) => k && Array.isArray(h[k])) || null;
