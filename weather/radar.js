@@ -276,7 +276,12 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     try {
       L = await loadLeaflet();
       map = L.map(el, { zoomControl: true, attributionControl: false, scrollWheelZoom: false, dragging: !touch, tap: false, minZoom: 3, maxZoom: 10, zoomSnap: 1 }).setView([here.lat, here.lon], NATIVE);
-      L.tileLayer(OSM, { maxZoom: 19, className: "base-tiles" }).addTo(map);
+      // (a map tile that doesn't come is asked for once more, a moment later: a phone's connection drops the odd one)
+      L.tileLayer(OSM, { maxZoom: 19, className: "base-tiles" }).on("tileerror", ({ tile }) => {
+        if (tile.dataset.again) return;
+        tile.dataset.again = "1";
+        setTimeout(() => { tile.src = `${tile.src}${tile.src.includes("?") ? "&" : "?"}again=1`; }, 1500);
+      }).addTo(map);
       L.control.scale({ position: "bottomleft", metric: !miles, imperial: miles, maxWidth: 90 }).addTo(map);
       const Centre = L.Control.extend({ options: { position: "topleft" }, onAdd() {
         const b = L.DomUtil.create("button", "radar-centre leaflet-bar");
@@ -320,17 +325,19 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     full.dataset.on = on ? "1" : "0";
     hint.hidden = on || !touch;
     if (map) {
-      map.invalidateSize();
+      map.invalidateSize({ animate: false });
       if (touch) on ? map.dragging.enable() : map.dragging.disable();
       on ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
     }
   }
+  const settle = () => { if (!map) return; map.invalidateSize({ animate: false }); map.fire("moveend"); };
   // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
   // can morph one into the other (a view transition); at once otherwise, or with reduced motion
   function grow(on) {
     if (!document.startViewTransition || calm) return big(on);
     card.style.viewTransitionName = "radar";
-    document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; });
+    // (once it has grown, the map measured again and filled to its new edges: measured mid-way, it can leave gaps)
+    document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; settle(); });
   }
   hint.hidden = !touch;
   play.addEventListener("click", () => (playing ? stop() : run()));
