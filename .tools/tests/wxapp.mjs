@@ -244,6 +244,13 @@ ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' |
 // the radar, on the vector map: OpenFreeMap's, drawn with WebGL in the app's own style, the radar under its names
 await p.locator('#radar').scrollIntoViewIfNeeded();
 await p.waitForSelector('#radar .maplibregl-canvas', { timeout: 20000 });
+// as it appears: its credits in full, in two lines (four names don't fit in one), clear of the scale; nothing else at its foot yet
+await p.waitForSelector('#radar .radar-credit', { timeout: 20000 });
+const foot0 = await p.evaluate(() => {
+  const r = (s) => document.querySelector(`#radar ${s}`).getBoundingClientRect(), t = document.querySelector('#radar .rc-t'), c = r('.radar-credit'), sc = r('.map-scale');
+  return { folded: document.querySelector('#radar .radar-credit').classList.contains('folded'), whole: t.scrollWidth <= t.clientWidth + 1 && t.scrollHeight <= t.clientHeight + 1, lines: t.textContent.split('\n').length, clear: c.left >= sc.right + 4, hint: document.querySelector('#radar .radar-hint').hidden };
+});
+ok(!foot0.folded && foot0.whole && foot0.lines === 2 && foot0.clear && foot0.hint, 'as the map appears: its credits in full (two lines, none of it cut off, clear of the scale), nothing else at its foot yet', JSON.stringify(foot0));
 await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 });
 ok(/starting in about/.test(await p.textContent('#radar .radar-note')) && !(await p.isVisible('#radar .radar-note')), 'with the next few hours in a line above it, for full screen (the card above says it otherwise)', await p.textContent('#radar .radar-note'));
 ok((await p.locator('#radar .radar-legend .rl-bar').count()) === 2 && /Light.*Heavy.*Extreme/.test(await p.textContent('#radar .rl-words')) && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend (the radar\'s colours, light to extreme, and snow\'s), and a timeline marked Now');
@@ -257,6 +264,15 @@ ok(await p.evaluate(() => { const c = document.querySelector('#radar .maplibregl
 const credit = await p.getAttribute('#radar .radar-credit', 'aria-label');
 ok(/^Map data © OpenFreeMap, OpenMapTiles, OpenStreetMap, RainViewer/.test(credit) && !(await p.locator('#radar .maplibregl-ctrl-attrib').count()), 'the map credited, on the map', credit);
 await p.waitForFunction(() => document.querySelector('#radar .radar-credit').classList.contains('folded'), null, { timeout: 8000 }).then(() => true, () => false).then((x) => ok(x, 'folding into a © after a few seconds'));
+// then "Tap to explore" comes in at the map's foot, between the scale and the ©: as far in as the ©, and as tall
+await p.waitForFunction(() => !document.querySelector('#radar .radar-hint').hidden, null, { timeout: 3000 }).catch(() => {});
+await p.waitForTimeout(800);
+const foot = await p.evaluate(() => {
+  const r = (s) => document.querySelector(`#radar ${s}`).getBoundingClientRect(), m = r('.radar-map'), h = r('.radar-hint'), c = r('.radar-credit'), sc = r('.map-scale');
+  return { hint: Math.round(m.bottom - h.bottom), credit: Math.round(m.bottom - c.bottom), tall: [Math.round(h.height), Math.round(c.height)], off: Math.round(Math.abs((h.left + h.right) / 2 - (m.left + m.right) / 2)), clear: h.left > sc.right && h.right < c.left };
+});
+ok(foot.hint === 10 && foot.credit === 10 && foot.tall[0] === 26 && foot.tall[1] === 26 && foot.off <= 1 && foot.clear,
+  'then "Tap to explore" at the map\'s foot: in the middle, as far in as the © and as tall, clear of it and the scale', JSON.stringify(foot));
 await p.locator('#radar .radar-credit').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const at = await p.evaluate(() => { const b = document.querySelector('#credits .sheet-body'), want = document.getElementById('cr-map').offsetTop - b.offsetTop - 12; return { top: b.scrollTop, want: Math.min(want, b.scrollHeight - b.clientHeight) }; });

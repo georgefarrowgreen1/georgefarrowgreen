@@ -163,7 +163,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
-  let map = null, starting = null, credit = null, frames = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
+  let map = null, starting = null, credit = null, told = false, frames = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
@@ -274,7 +274,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   }
   // the map's controls, on it: zoom in and out, and back to the place (top left); its scale, a bracket drawn on the
   // map as Maps draws it (bottom left); and its credits, in full as it first appears, then folded into a © that opens
-  // all of them (bottom right)
+  // all of them (bottom right), when "Tap to explore" comes in between them (on a phone)
   function controls() {
     const button = (cls, name, html) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.title = name; b.setAttribute("aria-label", name); b.innerHTML = html; return b; };
     const zin = button("map-in", "Zoom in", PLUS), zout = button("map-out", "Zoom out", MINUS), back = button("radar-centre", "Back to the place", CENTRE);
@@ -297,7 +297,8 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       ruler.style.width = `${Math.round((n * m) / s.mpp)}px`;
     };
     map.on("move", moved); moved();
-    setTimeout(() => credit.classList.add("folded"), 5000);
+    credited([...map.credit, "RainViewer"]);
+    setTimeout(() => { credit.classList.add("folded"); told = true; hint.hidden = !touch || card.classList.contains("radar-big"); }, 5000);
   }
   async function start() {
     try {
@@ -315,7 +316,9 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   }
   function credited(names) {
     if (!credit) return;
-    credit.querySelector(".rc-t").textContent = ` ${names.join(", ")}`;
+    // (more than two names in two lines: four don't fit in one across a phone's map)
+    const one = names.length > 2 ? Math.ceil(names.length / 2) : names.length;
+    credit.querySelector(".rc-t").textContent = ` ${names.slice(0, one).join(", ")}${one < names.length ? `,\n ${names.slice(one).join(", ")}` : ""}`;
     credit.setAttribute("aria-label", `Map data © ${names.join(", ")}: all the credits`);
   }
   // (while it fills the screen, a space of its height holds its place, so the page under it doesn't move up)
@@ -327,7 +330,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     document.body.classList.toggle("no-scroll", on);
     full.setAttribute("aria-label", on ? "Close full screen" : "Full screen");
     full.dataset.on = on ? "1" : "0";
-    hint.hidden = on || !touch;
+    hint.hidden = on || !touch || !told;
     if (map) { map.resize(); map.explore(on); }
   }
   // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
@@ -338,7 +341,6 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     // (once it has grown, the map measured again and filled to its new edges: measured mid-way, it can leave gaps)
     document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; map?.resize(); });
   }
-  hint.hidden = !touch;
   play.addEventListener("click", () => (playing ? stop() : run()));
   slider.addEventListener("input", () => { stop(); show(Number(slider.value)); });
   full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));

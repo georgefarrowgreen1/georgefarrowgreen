@@ -228,8 +228,10 @@ so there's nothing to set up beyond the address.
   to reflectivity by Marshall and Palmer), and on the map, in glass: zoom in and
   out (no further in than the radar's worth seeing), a button back to the place,
   a scale drawn as Maps draws it, and the map's credits in full as it first
-  appears, then folded into a © that opens the Credits window. On a phone a tap
-  opens it full screen to pan and pinch (the page scrolls past it otherwise).
+  appears (in two lines), then folded into a © that opens the Credits window. On
+  a phone a tap opens it full screen to pan and pinch (the page scrolls past it
+  otherwise), which "Tap to explore" says at the map's foot, between the scale
+  and the ©, once the credits have folded away.
   MapLibre GL JS 6.12.0 and Leaflet 1.9.4 are vendored in `weather/vendor/`
   (each checked against npm's integrity hash); MapLibre's megabyte is fetched as
   the card comes within a screen of view, and the map made once it's in view
