@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeFormat, keyOf } from "../../../weather/format.js";
-import { shapePrevious, skillFrom, tuneDay, applyTuning, obsDays, TUNE_DAYS } from "../../../weather/skill.js";
+import { shapePrevious, skillFrom, tuneDay, applyTuning, obsDays, TUNE_DAYS, steady, daysSaid, saidBefore, localSkill, refine } from "../../../weather/skill.js";
 import { activityScore, ACTIVITIES, windows, limitsText, likely, dryChance, insights, confidence } from "../../../weather/insights.js";
 import { shapeEnsemble } from "../../../weather/data.js";
 import { rainAlert, briefDue, briefing, isQuiet } from "../../../weather/alerts.js";
@@ -108,6 +108,90 @@ test("airport reports → whole days only, in local time", () => {
   assert.equal(days["2026-10-17"].tmax, 17); assert.equal(days["2026-10-17"].tmin, 3);
   // today isn't over: left out
   assert.deepEqual(Object.keys(obsDays(reports, 3600, Date.UTC(2026, 9, 18, 12))), ["2026-10-17"]);
+});
+
+/* ---------- more than the highs and lows ---------- */
+test("airport reports → each hour of the day too: its temperature, dew point, wind and gusts", () => {
+  const reports = [];
+  for (let k = 0; k < 48; k++) for (const m of [0, 30]) reports.push({ obsTime: (Date.UTC(2026, 9, 17) + k * H + m * M) / 1000, temp: 10 + (m ? 1 : 0), dewp: 6, wspd: 10, wgst: k % 24 === 15 && m ? 25 : null });
+  const day = obsDays(reports, 0, Date.UTC(2026, 9, 19, 12))["2026-10-17"];
+  assert.deepEqual(day.hours[3], [10.5, 6, 18.5, null], "the hour's mean (10° and 11°), its wind in km/h, no gust in it");
+  assert.deepEqual(day.hours[15], [10.5, 6, 18.5, 46.3], "and its strongest gust where there was one");
+});
+// eight days at the airport, and what the forecast the page shows had said of them a day ahead: a degree too warm in
+// the small hours (midnight to six), a degree too humid, the wind too light by a quarter and the gusts by a sixth
+function airport({ days = 8 } = {}) {
+  const obs = {}, time = [], T = [], Dp = [], Ws = [], Gs = [];
+  for (let d = 0; d < days; d++) {
+    const key = `2026-10-${String(5 + d).padStart(2, "0")}`, hours = [];
+    for (let hr = 0; hr < 24; hr++) {
+      const t = 10 + 4 * Math.sin(((hr - 9) / 24) * 2 * Math.PI);
+      hours.push([t, 6, 20, hr === 14 ? 60 : null]);
+      time.push(`${key}T${String(hr).padStart(2, "0")}:00`); T.push(t + (hr < 6 ? 1 : 0)); Dp.push(7); Ws.push(15); Gs.push(hr === 14 ? 50 : 30);
+    }
+    obs[key] = { tmax: 14, tmin: 6, hours };
+  }
+  return { obs, prev: { hourly: { time, temperature_2m_previous_day1: T, dew_point_2m_previous_day1: Dp, wind_speed_10m_previous_day1: Ws, wind_gusts_10m_previous_day1: Gs } } };
+}
+test("what the forecast here gets wrong, hour by hour: by time of day, the dew point, the wind and the gusts", () => {
+  const { obs, prev } = airport(), l = localSkill(prev, obs);
+  const eased = (v, n) => (v * n) / (n + 3);
+  assert.equal(l.days, 8);
+  assert.ok(Math.abs(l.temp[0] - eased(1, 8)) < 1e-9 && Math.abs(l.temp[1] - eased(1, 8)) < 1e-9 && Math.abs(l.temp[4]) < 1e-9, l.temp.join());
+  assert.ok(Math.abs(l.dew - eased(1, 8)) < 1e-9);
+  assert.ok(Math.abs(l.wind - (1 + eased(20 / 15 - 1, 8))) < 1e-9, `${l.wind}`);
+  assert.ok(Math.abs(l.gust - (1 + eased(60 / 50 - 1, 8))) < 1e-9, `${l.gust}`);
+  assert.equal(localSkill(prev, airport({ days: 3 }).obs), null, "too few days to say");
+  assert.equal(localSkill(prev, Object.fromEntries(Object.entries(obs).map(([k, o]) => [k, { tmax: o.tmax, tmin: o.tmin }]))), null, "nor without the hours");
+});
+test("the hours from now tuned with it, eased in, the days following them", () => {
+  const now = DAY0 + 21 * H;
+  const wx = makeWx((i, t, hh) => ({ temp: 10 + 4 * Math.sin(((hh - 9) / 24) * 2 * Math.PI), dew: 4, rh: 80, wind: 20, gust: 30 }));
+  const local = { days: 8, temp: [1, 1, 0, 0, 0, 0, 0, 0], dew: 1, wind: 1.2, gust: 1.1 };
+  const out = refine(wx, local, now), at = (t) => out.hourly.find((h) => h.t === t), was = (t) => wx.hourly.find((h) => h.t === t);
+  // half past nine tonight is a third of the way in; three in the morning tomorrow, all of it: a degree cooler
+  assert.equal(at(now - H).temp, was(now - H).temp, "nothing before now");
+  assert.ok(Math.abs(at(DAY0 + D + 3 * H).temp - (was(DAY0 + D + 3 * H).temp - 1)) < 1e-9);
+  assert.ok(Math.abs(at(DAY0 + D + 15 * H).temp - was(DAY0 + D + 15 * H).temp) < 1e-9, "the afternoon as it was");
+  const h3 = at(DAY0 + D + 3 * H);
+  assert.ok(h3.dew === 3 && Math.abs(h3.wind - 24) < 1e-9 && Math.abs(h3.gust - 33) < 1e-9, JSON.stringify(h3));
+  assert.ok(h3.rh < 100 && h3.rh > 50 && h3.rh !== 80, "the humidity worked out again from the two");
+  const k = at(now + H);
+  assert.ok(Math.abs(k.wind - 20 * (1 + 0.2 / 3)) < 1e-9, "an hour from now: a third of the way in");
+  // tomorrow's low a degree lower, as its coldest hour went; a tuned day's temperatures left to the tuning
+  const tmw = out.daily.find((d) => d.key === keyOf(DAY0 + D));
+  assert.ok(Math.abs(tmw.tmin - (wx.daily.find((d) => d.key === keyOf(DAY0 + D)).tmin - 1)) < 1e-9);
+  const tunedWx = { ...wx, daily: wx.daily.map((d) => (d.key === keyOf(DAY0 + D) ? { ...d, tuned: true } : d)) };
+  assert.ok(Math.abs(refine(tunedWx, local, now).hourly.find((h) => h.t === DAY0 + D + 3 * H).temp - was(DAY0 + D + 3 * H).temp) < 1e-9);
+  assert.equal(refine(wx, null, now), wx);
+});
+
+/* ---------- steadier days ahead ---------- */
+test("days three or more off are steadied with what the page said of them a day and two days ago, now counting most", () => {
+  // six days of hours, 10° at 3am to 14° at 3pm (the high, 14°), each day the same now
+  const hourly = [], days = 6;
+  for (let i = 0; i < days * 24; i++) hourly.push({ t: DAY0 + i * H, temp: 12 + 2 * Math.sin((((i % 24) - 9) / 24) * 2 * Math.PI), feels: 11 });
+  const daily = Array.from({ length: days }, (_, k) => ({ date: DAY0 + k * D, key: keyOf(DAY0 + k * D), tmax: 14, tmin: 10, fmax: 13, fmin: 9 }));
+  // a day ago it said every day 2° warmer; two days ago, 4° warmer
+  const said = (up) => Object.fromEntries(daily.map((d) => [d.key, [d.tmax + up, d.tmin + up]]));
+  const wx = steady({ hourly, daily }, { 1: said(2), 2: said(4) }, keyOf(DAY0));
+  // today and tomorrow as now; three and four days off 60/30/10 (+1.0°); five on 50/30/20 (+1.4°)
+  assert.deepEqual(wx.daily.slice(0, 2).map((d) => d.tmax), [14, 14]);
+  assert.ok(Math.abs(wx.daily[2].tmax - 15) < 1e-9 && Math.abs(wx.daily[3].tmax - 15) < 1e-9 && Math.abs(wx.daily[4].tmax - 15.4) < 1e-9, wx.daily.map((d) => d.tmax).join());
+  assert.ok(wx.daily[2].steadied && wx.daily[2].latest.tmax === 14 && Math.abs(wx.daily[2].fmax - 14) < 1e-9);
+  // its hours with it: the day's warmest hour at its steadied high
+  const hs = wx.hourly.filter((h) => h.t >= DAY0 + 2 * D && h.t < DAY0 + 3 * D);
+  assert.ok(Math.abs(Math.max(...hs.map((h) => h.temp)) - 15) < 1e-6);
+  // only a day ago kept: that alone, in proportion (60/30)
+  assert.ok(Math.abs(steady({ hourly, daily }, { 1: said(3), 2: null }, keyOf(DAY0)).daily[2].tmax - 15) < 1e-9);
+  // nothing kept: as it is
+  assert.equal(steady({ hourly, daily }, { 1: null, 2: null }, keyOf(DAY0)).daily[3].tmax, 14);
+});
+test("what the page said, kept: the nearest to a day and two days ago (within nine hours)", () => {
+  const now = Date.UTC(2026, 9, 19, 12), kept = [{ at: now - 50 * H, days: { a: 1 } }, { at: now - 30 * H, days: { b: 1 } }, { at: now - 23 * H, days: { c: 1 } }, { at: now - 2 * H, days: { d: 1 } }];
+  assert.deepEqual(saidBefore(kept, now), { 1: { c: 1 }, 2: { a: 1 } });
+  assert.deepEqual(saidBefore([{ at: now - 12 * H, days: {} }], now), { 1: null, 2: null }, "none near enough");
+  assert.deepEqual(daysSaid({ daily: [{ key: "2026-10-18", tmax: 1, tmin: 0 }, { key: "2026-10-19", tmax: 14.04, tmin: 9.96 }] }, "2026-10-19"), { "2026-10-19": [14, 10] });
 });
 
 /* ---------- the chance a stretch stays dry ---------- */

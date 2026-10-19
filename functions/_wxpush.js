@@ -52,6 +52,8 @@ export async function wxdb(env) {
     ]);
     // columns added since the table was first made (an older table gains them and keeps its rows)
     for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
+    // (each day's hours at the airport: temperature, dew point, wind and gusts, for tuning more than the highs and lows)
+    await env.DB.prepare("ALTER TABLE wx_obs ADD COLUMN hours TEXT").run().catch(() => {});
   })().catch((e) => { ready = null; throw e; });
   await ready;
   return env.DB;

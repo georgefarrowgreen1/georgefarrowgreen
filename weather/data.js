@@ -16,7 +16,7 @@
 
 import { parseWall, keyOf, HOUR } from "./format.js";
 import { compactClimate, climateSpan } from "./climate.js";
-import { MODELS, shapePrevious, skillFrom, MIN_DAYS } from "./skill.js";
+import { MODELS, shapePrevious, skillFrom, localSkill, MIN_DAYS } from "./skill.js";
 export { MODELS };
 
 const API = {
@@ -89,8 +89,9 @@ export function shapeModels(j) {
 // 2 km UK one (3 here, and only over the UK), each system an equal say whatever its number of runs (the UK one half:
 // it's three). Systems that go less far drop out further ahead (ICON at about a week, the UK one at about six days).
 export const ENSEMBLES = "ecmwf_ifs025,icon_seamless,gfs025,ukmo_global_ensemble_20km,ukmo_uk_ensemble_2km";
-const SAY = { ukmo_uk_ensemble_2km: 0.5 }, ENS_V = 2;
-// the ensembles' runs → the spread of temperature each hour, the share of runs wet each hour, and each day's spread;
+const SAY = { ukmo_uk_ensemble_2km: 0.5 }, ENS_V = 3;
+// the ensembles' runs → the spread of temperature each hour, the share of runs wet each hour (0.2 mm or more: the chance
+// of rain the page shows, agree.js), and each day's spread;
 // and which runs are wet each hour (0.2 mm or more: a bit for each run, 26 to a number, per system), so the chance of
 // a stretch staying dry is counted run by run (insights.js dryChance)
 const RUN_WET = 0.2;
@@ -131,7 +132,7 @@ export function shapeEnsemble(j) {
       for (const v of ok) temps.push([v, s.say / ok.length]);
       const rv = s.runs.map((r) => (r.p ? num(r.p[i]) : null)), rs = rv.filter((v) => v != null);
       if (rs.length >= ok.length * 0.8) {
-        wetW += (s.say * rs.filter((v) => v >= 0.1).length) / rs.length; allW += s.say;
+        wetW += (s.say * rs.filter((v) => v >= RUN_WET).length) / rs.length; allW += s.say;
         const bits = new Array(Math.ceil(s.runs.length / 26)).fill(0);
         rv.forEach((v, k) => { if (v != null && v >= RUN_WET) bits[Math.floor(k / 26)] |= 1 << (k % 26); });
         m.push(bits);
@@ -277,7 +278,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   // what's kept from before, straight away (unless it's damaged: then it's dropped, and the network's asked)
   if (raw.forecast) {
     let wx = null;
-    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill3:${id}`); }
+    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill4:${id}`); }
     if (wx) onUpdate(wx, { partial: true, stale: !fresh("forecast") });
   }
   const save = () => {
@@ -314,7 +315,7 @@ function pruneCache(except) {
 }
 
 // (what earlier versions kept, on a record since replaced: cleared once)
-try { for (const k of Object.keys(localStorage)) if (k.startsWith("clim:") || k.startsWith("skill:") || k.startsWith("skill2:")) localStorage.removeItem(k); } catch (_) {}
+try { for (const k of Object.keys(localStorage)) if (k.startsWith("clim:") || /^skill[23]?:/.test(k)) localStorage.removeItem(k); } catch (_) {}
 const climateMemo = new Map();
 export function climateFor(place) {
   const id = cell(place.lat, place.lon);
@@ -356,23 +357,28 @@ async function loadClimate(place) {
 /* ---------- how the models have done here ---------- */
 // { at, station: { id, name, km } | null, obsDays, skill | null } — kept for 12 hours per place
 const SKILL_TTL = 12 * 3600e3;
-export const skillKept = (place) => store.get(`skill3:${cell(place.lat, place.lon)}`);
+export const skillKept = (place) => store.get(`skill4:${cell(place.lat, place.lon)}`);
 async function loadSkill(place) {
-  const k = `skill3:${cell(place.lat, place.lon)}`, kept = store.get(k);
+  const k = `skill4:${cell(place.lat, place.lon)}`, kept = store.get(k);
   if (kept && Date.now() - kept.at < (kept.failed ? 3 * 3600e3 : SKILL_TTL)) return null;
   try {
     // what happened, at the nearest airport (the server collects and keeps these)
     const r = await fetch(`/api/weather/obs?${qs({ lat: (Math.round(place.lat * 100) / 100).toFixed(2), lon: (Math.round(place.lon * 100) / 100).toFixed(2) })}`, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`obs ${r.status}`);
     const o = await r.json(), n = Object.keys(o.days || {}).length;
-    let skill = null;
+    let skill = null, local = null;
     if (o.station && n >= MIN_DAYS) {
-      // what each model said beforehand, there (past forecasts reach back as far as the reports do)
-      const back = Math.min(60, Math.ceil((Date.now() - Date.parse(Object.keys(o.days).sort()[0])) / 864e5) + 2);
-      const j = await getJSON(`${API.previous}?${qs({ latitude: r4(o.station.lat), longitude: r4(o.station.lon), hourly: "temperature_2m_previous_day1,temperature_2m_previous_day3", models: MODELS.map((m) => m[0]).join(","), past_days: back, forecast_days: 1, timezone: "auto" })}`, 20000, 1);
+      // what each model said beforehand, there (past forecasts reach back as far as the reports do); and what the
+      // forecast the page shows said, hour by hour, of the temperature, dew point, wind and gusts (localSkill)
+      const back = Math.min(60, Math.ceil((Date.now() - Date.parse(Object.keys(o.days).sort()[0])) / 864e5) + 2), at = { latitude: r4(o.station.lat), longitude: r4(o.station.lon), past_days: back, forecast_days: 1, timezone: "auto" };
+      const [j, b] = await Promise.all([
+        getJSON(`${API.previous}?${qs({ ...at, hourly: "temperature_2m_previous_day1,temperature_2m_previous_day3", models: MODELS.map((m) => m[0]).join(",") })}`, 20000, 1),
+        getJSON(`${API.previous}?${qs({ ...at, hourly: "temperature_2m_previous_day1,dew_point_2m_previous_day1,wind_speed_10m_previous_day1,wind_gusts_10m_previous_day1" })}`, 20000, 1).catch(() => null),
+      ]);
       skill = skillFrom(shapePrevious(j), o.days);
+      local = localSkill(b, o.days);
     }
-    const v = { at: Date.now(), station: o.station || null, obsDays: n, skill };
+    const v = { at: Date.now(), station: o.station || null, obsDays: n, skill, local };
     store.set(k, v);
     return v;
   } catch (_) {

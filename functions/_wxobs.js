@@ -1,10 +1,10 @@
 // What the weather actually did, for checking forecasts against: the nearest
 // airport's weather reports (METAR, from the US Aviation Weather Center: free,
 // worldwide). Their service gives at most 400 reports at a time (about a week
-// at a big airport, which reports every half hour), so each day's high and low
-// is kept here (D1, wx_obs) as it's seen, and the record grows to six weeks the
-// more the app is used near that airport. weather/skill.js does the comparing,
-// on the phone.
+// at a big airport, which reports every half hour), so each day's high and low,
+// and its hours (temperature, dew point, wind, gusts), are kept here (D1,
+// wx_obs) as they're seen, and the record grows to six weeks the more the app
+// is used near that airport. weather/skill.js does the comparing, on the phone.
 //
 // Each day is the airport's own (its UTC offset, from Open-Meteo), whoever
 // asks; and only reports just fetched from the Aviation Weather Center are
@@ -42,7 +42,11 @@ async function offsetAt(env, st) {
   return Math.round(st.lon / 15) * 3600;                    // (the Sun's, near enough)
 }
 
-// { station: { id, name, lat, lon, km } | null, days: { "YYYY-MM-DD": { tmax, tmin } } } for a place
+// a day's hours as kept (24 of [temp, dew, wind, gust] or null), or null if they're not, or not as they should be
+function hoursOf(text) {
+  try { const h = text ? JSON.parse(text) : null; return Array.isArray(h) && h.length === 24 && h.every((x) => x === null || (Array.isArray(x) && x.length === 4 && x.every((v) => v === null || Number.isFinite(v)))) ? h : null; } catch (_) { return null; }
+}
+// { station: { id, name, lat, lon, km } | null, days: { "YYYY-MM-DD": { tmax, tmin, hours? } } } for a place
 export async function obsFor(env, lat, lon) {
   const base = env.AWC_URL || "https://aviationweather.gov";
   const D = await wxdb(env);
@@ -60,12 +64,12 @@ export async function obsFor(env, lat, lon) {
       const { data, fresh } = await cachedJSON(`${base}/api/data/metar?ids=${encodeURIComponent(st.id)}&format=json&hours=360`, 3600);
       if (fresh) {
         const rows = Object.entries(obsDays(data, await offsetAt(env, st)));
-        if (rows.length) await D.batch(rows.map(([day, x]) => D.prepare("INSERT OR REPLACE INTO wx_obs (station, day, tmax, tmin, n) VALUES (?, ?, ?, ?, ?)").bind(st.id, day, x.tmax, x.tmin, x.n)));
+        if (rows.length) await D.batch(rows.map(([day, x]) => D.prepare("INSERT OR REPLACE INTO wx_obs (station, day, tmax, tmin, n, hours) VALUES (?, ?, ?, ?, ?, ?)").bind(st.id, day, x.tmax, x.tmin, x.n, JSON.stringify(x.hours))));
       }
     } catch (e) { console.error("weather obs: reports", st.id, e && e.message); }
-    const { results } = await D.prepare("SELECT day, tmax, tmin FROM wx_obs WHERE station = ? AND day >= ? ORDER BY day").bind(st.id, since).all();
+    const { results } = await D.prepare("SELECT day, tmax, tmin, hours FROM wx_obs WHERE station = ? AND day >= ? ORDER BY day").bind(st.id, since).all();
     if (results.length >= 3 || i === near.length - 1) {
-      return { station: { id: st.id, name: st.name, lat: st.lat, lon: st.lon, km: Math.round(st.km) }, days: Object.fromEntries(results.map((r) => [r.day, { tmax: r.tmax, tmin: r.tmin }])) };
+      return { station: { id: st.id, name: st.name, lat: st.lat, lon: st.lon, km: Math.round(st.km) }, days: Object.fromEntries(results.map((r) => [r.day, { tmax: r.tmax, tmin: r.tmin, ...(hoursOf(r.hours) ? { hours: hoursOf(r.hours) } : {}) }])) };
     }
   }
   return { station: null, days: {} };

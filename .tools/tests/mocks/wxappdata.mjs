@@ -68,9 +68,11 @@ export function models(now, sc = {}) {
   });
   return { latitude: LAT, longitude: LON, timezone: "UTC", utc_offset_seconds: 0, daily: d };
 }
-export function ensemble(now) {
+export function ensemble(now, sc = {}) {
   const start = Math.floor(now / D) * D, h = { time: [] };
   for (let t = start; t < start + 10 * D; t += H) h.time.push(iso(t));
+  // (wet where the forecast's wet, in nine of ten runs: the ensembles agree with it, as they would)
+  const fc = forecast(now, sc).hourly, wetAt = new Set(fc.time.filter((_, i) => fc.precipitation[i] > 0));
   // (two of the ensembles, as Open-Meteo names them asked for together: ECMWF's 51 runs and GFS's 31; ten of ECMWF's and
   // six of GFS's bring a little rain through the next three days: 41 of 51 and 25 of 31 stay dry, whatever the hour,
   // which with each system its say is 81%)
@@ -78,7 +80,7 @@ export function ensemble(now) {
     const sfx = `${m ? `_member${String(m).padStart(2, "0")}` : ""}_${sys}`;
     // (each system's runs spread alike: ±1° now, widening further ahead)
     h[`temperature_2m${sfx}`] = h.time.map((s, i) => 11 + 4 * Math.sin(((i % 24 - 9) / 24) * 2 * Math.PI) + (m / (runs - 1) - 0.5) * 2 * (1 + i / 48));
-    h[`precipitation${sfx}`] = h.time.map((s, i) => (m >= 1 && m <= wet && i < 72 ? 0.3 : 0));
+    h[`precipitation${sfx}`] = h.time.map((s, i) => (wetAt.has(s) ? (m < runs * 0.9 ? 1.5 : 0) : m >= 1 && m <= wet && i < 72 ? 0.3 : 0));
   }
   return { latitude: LAT, longitude: LON, timezone: "UTC", utc_offset_seconds: 0, hourly: h };
 }

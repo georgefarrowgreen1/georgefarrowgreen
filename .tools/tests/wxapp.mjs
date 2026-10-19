@@ -43,8 +43,16 @@ const curve = (h) => 10 + 5 * Math.sin(((h - 9) / 24) * 2 * Math.PI);
 // what each model said a day ahead: ECMWF half a degree warm, GFS two degrees warm, GEM two and a half cold…
 const LEAN = { ecmwf_ifs: 0.5, ukmo_seamless: -0.8, gfs_seamless: 2, icon_seamless: -1.5, meteofrance_seamless: 1, gem_seamless: -2.5 };
 function previousRuns(url) {
-  const back = Number(new URL(url).searchParams.get('past_days') || 10), start = Math.floor(Date.now() / D) * D - back * D, h = { time: [] };
+  const q = new URL(url).searchParams, back = Number(q.get('past_days') || 10), start = Math.floor(Date.now() / D) * D - back * D, h = { time: [] };
   for (let t = start; t < start + (back + 1) * D; t += H) h.time.push(new Date(t).toISOString().slice(0, 16));
+  // the forecast the page shows (no models asked for), a day ahead: a degree warm through the night, a degree too
+  // humid, and the wind too light (15 km/h against the airport's 10 knots)
+  if (!q.get('models')) {
+    const hr = (x) => +x.slice(11, 13);
+    Object.assign(h, { temperature_2m_previous_day1: h.time.map((x) => curve(hr(x)) + (hr(x) < 6 || hr(x) >= 21 ? 1 : 0)), dew_point_2m_previous_day1: h.time.map(() => 7),
+      wind_speed_10m_previous_day1: h.time.map(() => 15), wind_gusts_10m_previous_day1: h.time.map(() => 30) });
+    return { latitude: 51.5, longitude: 0.05, timezone: 'UTC', utc_offset_seconds: 0, hourly: h };
+  }
   for (const [id, lean] of Object.entries(LEAN)) {
     h[`temperature_2m_previous_day1_${id}`] = h.time.map((x) => curve(+x.slice(11, 13)) + lean);
     h[`temperature_2m_previous_day3_${id}`] = h.time.map((x) => curve(+x.slice(11, 13)) + lean * 1.5);
@@ -74,7 +82,7 @@ http.createServer((req, res) => {
   if (u.pathname === '/alerts/active') { if (u.searchParams.get('point') === OW.NEW_YORK) return send(OW.nwsAlerts(Date.now())); res.writeHead(400); return res.end('{"title":"out of bounds"}'); }
   if (u.pathname === '/api/data/metar') {
     const reports = [], t0 = Math.floor(Date.now() / H) * H;
-    for (let k = 0; k < 9 * 24; k++) { const t = t0 - k * H; reports.push({ icaoId: 'EGLC', obsTime: t / 1000, temp: Math.round(curve(new Date(t).getUTCHours())) }); }
+    for (let k = 0; k < 9 * 24; k++) { const t = t0 - k * H; reports.push({ icaoId: 'EGLC', obsTime: t / 1000, temp: Math.round(curve(new Date(t).getUTCHours())), dewp: 6, wspd: 10 }); }
     return send(reports);
   }
   res.writeHead(404); res.end();
@@ -117,7 +125,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await p.route(/open-meteo\.com|bigdatacloud/, (r) => {
     const u = r.request().url(), j = (o) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o), headers: { 'Access-Control-Allow-Origin': '*' } });
-    if (u.includes('ensemble-api')) return j(F.ensemble(now));
+    if (u.includes('ensemble-api')) return j(F.ensemble(now, sc));
     if (u.includes('air-quality')) return j(F.air(now));
     if (u.includes('archive-api')) return j(F.archive(now));
     if (u.includes('geocoding')) return j({ results: [{ name: 'Edinburgh', latitude: 55.95, longitude: -3.19, country: 'United Kingdom', admin1: 'Scotland', country_code: 'GB' }] });
@@ -315,6 +323,11 @@ const acc = await p.locator('#accuracy-body tr').allTextContents();
 ok(acc.length === 7 && /^ECMWFBest±0\.5°/.test(acc[1]) && /GEM.*2\.5° cold/.test(acc[6]), 'each model scored against the nearest airport, best first', acc.slice(1, 3).join(' | '));
 ok(/^London City Airport \(\d+ km\) · last \d+ days/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is', (await p.textContent('#accuracy-body')).slice(0, 50));
 ok(!/null/.test(await p.textContent('#accuracy-body')), 'with nothing stray under it', (await p.textContent('#accuracy-body')).slice(-60));
+{
+  // (the forecast shown had been a degree warm through the night, a degree too humid, and the wind too light)
+  const also = await p.textContent('#accuracy-body .chart-note:last-child').catch(() => '');
+  ok(/^Also tuned here: nights 0\.\d° cooler, dew point 0\.\d° lower, wind \d+% stronger\.$/.test(also), 'and what else the airport\'s reports have the hours tuned for', also);
+}
 // the design carries it, not notes: no captions under the charts, the next 4 hours on a light, moderate and heavy scale
 ok(!(await p.locator('#nowcast .chart-note, #hourly .chart-note, #daily .chart-note').count()), 'no notes under the charts');
 const bands = await p.locator('#nowcast-chart text.c-in').allTextContents();
@@ -528,6 +541,26 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
     'the next hours from the radar, where it sees: rain coming that the models don\'t have', `${said} | ${brief.slice(0, 60)}`);
   ok(await p5.isVisible('#nowcast-src') && (await p5.textContent('#nowcast-src')).trim() === 'Radar', 'and the card says it\'s the radar\'s timing');
   await c5.close();
+}
+// the days ahead steadied with what the page said of them a day and two days ago: kept on the phone as it goes
+{
+  const { ctx: c8, p: p8 } = await open({});
+  const highs = () => p8.locator('.day-row .d-hi').allTextContents().then((xs) => xs.map((x) => parseInt(x.replace('−', '-'), 10)));
+  const before = await highs();
+  // (what it said a day and two days ago, three degrees warmer every day, as if kept then)
+  const kept = await p8.evaluate(() => {
+    const k = Object.keys(localStorage).find((x) => x.startsWith('wx:said:')), list = JSON.parse(localStorage.getItem(k) || '[]'), now = Date.now();
+    const warmer = (days) => Object.fromEntries(Object.entries(days).map(([d, [hi, lo]]) => [d, [hi + 3, lo + 3]]));
+    if (!list.length) return null;
+    const days = list[list.length - 1].days;
+    localStorage.setItem(k, JSON.stringify([{ at: now - 48 * 3600e3, days: warmer(days) }, { at: now - 24 * 3600e3, days: warmer(days) }, ...list]));
+    return Object.keys(days).length;
+  });
+  await p8.reload(); await p8.waitForSelector('.day-row', { timeout: 20000 }); await p8.waitForTimeout(800);
+  const after = await highs(), up = after.map((v, i) => v - before[i]);
+  // (today and tomorrow as they are; from the third day, 1.2° warmer (30% and 10% of 3°), to 1.5° beyond (30% and 20%))
+  ok(kept >= 8 && up[0] === 0 && up[1] === 0 && up.slice(2, 8).every((d) => d === 1 || d === 2), 'the days ahead steadied with what it said of them a day and two days ago (kept on the phone), not today or tomorrow', `${kept} days kept; ${up.join(' ')}`);
+  await c8.close();
 }
 // somewhere with no airport station near to check the forecast against: no accuracy card at all (nothing to say)
 {

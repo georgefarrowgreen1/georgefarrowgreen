@@ -281,7 +281,8 @@ so there's nothing to set up beyond the address.
   there's an airport near enough to check against): the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation
   Weather Center gives at most 400 reports at a time, about a week at a big
-  airport, so each day's high and low is kept in
+  airport, so each day's high and low, and its hours (temperature, dew point,
+  wind, gusts), are kept in
   D1, `wx_obs`, for six weeks: each day the airport's own, whoever asks, and
   only reports just fetched are written), and the phone compares them with what each of
   the seven models forecast a day and three days ahead (Open-Meteo's archive of
@@ -292,8 +293,32 @@ so there's nothing to set up beyond the address.
   6-hourly, so its daily highs and lows run flat, and it counts for as little
   as its record here earns), and the hours with them, so a day's chart
   peaks at its tuned high (each hour moved by a share of the corrections to the
-  highs and lows either side of it; the ensemble's likely range moved as far)
-  (`weather/skill.js`; Settings can turn it off).
+  highs and lows either side of it; the ensemble's likely range moved as far).
+  From 5 days of record, the hours from now on are tuned too, against what the
+  forecast the page shows had said a day ahead, hour by hour: each time of day's
+  usual error off the temperature (three-hour blocks; on days the highs and
+  lows aren't tuned), the dew point's (the humidity worked out again), and the
+  wind and gusts in proportion, each eased towards none on a short record and
+  kept within bounds, and eased in over the next three hours from what it's
+  like now; the card says what ("Also tuned here: nights 0.7° cooler, wind 17%
+  stronger") (`weather/skill.js` localSkill and refine; Settings can turn all
+  of it off).
+- **Steadier days ahead**: a day three or more days off can swing from one
+  run of the models to the next. Its high and low are what the page says of it
+  now blended with what it said of it a day and two days ago, now counting most
+  (60/30/10 for three and four days off, 50/30/20 beyond), its hours moving with
+  them. Open-Meteo's archive of past runs only reaches the hours just ahead, so
+  the phone keeps its own: what the page said of the next 11 days, before this
+  steadying (so it doesn't feed on itself), the latest of every three hours for
+  three days (`weather/skill.js` steady, `app.js` keepSaid).
+- **One rain story**: the rain is told the same everywhere. The first hours
+  are the next four hours' (their rain and weather from the quarter hours, and
+  where the radar leads, their chance too); every other hour's chance is the
+  pooled ensembles' (the share of runs with 0.2 mm or more in it); and a day's
+  chance, or a part of a day's, is of rain at some point in it, counted run by
+  run as the umbrella's and the best times' are (today's from now on), rather
+  than its wettest hour's: so on a showery day it's higher than any one hour's
+  (`weather/agree.js`, `insights.js` rainChance).
 - **Notifications** (Settings → Notifications, for one place per phone): a
   heads-up when rain is about to start within the hour ("Rain in about 20 min",
   not between 22:00 and 07:00, not twice in three hours; where there's radar,

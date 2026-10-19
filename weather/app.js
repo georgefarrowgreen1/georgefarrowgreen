@@ -7,9 +7,10 @@ import { weatherIcon, moonIcon, glyph } from "./icons.js";
 import { timeChart, rangeChart } from "./charts.js";
 import { climateOn, rankIn, yearsAgo } from "./climate.js";
 import { nextPhases } from "./sky.js";
-import { applyTuning, MIN_DAYS, TUNE_DAYS } from "./skill.js";
+import { applyTuning, steady, refine, daysSaid, saidBefore, MIN_DAYS, TUNE_DAYS } from "./skill.js";
 import { radar, rainAt } from "./radar.js";
 import { blend } from "./rainmap.js";
+import { oneRain } from "./agree.js";
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
 
 const $ = (id) => document.getElementById(id);
@@ -158,12 +159,33 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // the forecast with its highs and lows tuned to how each model has done here (weather/skill.js), unless that's turned off
-const tuned = (wx) => (wx && S.settings.tune !== false && wx.skill?.skill ? applyTuning(wx, wx.skill.skill, keyOf(nowWall(wx.place.offset))) : wx);
-// and its next couple of hours' rain led by the radar, where it sees (rainmap.js blend), while its frame is recent
+// The forecast tuned for here as Settings has it (its highs and lows: applyTuning), steadied from three days on with
+// what the page said of those days a day and two days ago (skill.js steady), and its hours from now on as the
+// airport's reports have found the forecast here (refine)
+const tunedOnly = (wx, today) => (S.settings.tune !== false && wx.skill?.skill ? applyTuning(wx, wx.skill.skill, today) : wx);
+const tuned = (wx) => {
+  if (!wx) return wx;
+  const now = nowWall(wx.place.offset), today = keyOf(now);
+  const s = steady(tunedOnly(wx, today), saidBefore(store.get(saidKey(wx)), Date.now()), today);
+  return S.settings.tune !== false && s.skill?.local ? refine(s, s.skill.local, now) : s;
+};
+// what the page said of the days ahead (before steadying them), kept three days, one every three hours: the latest of
+// each three hours (so one kept before the tuning came in is replaced by the tuned)
+const saidKey = (wx) => `wx:said:${cell(wx.place.lat, wx.place.lon)}`;
+function keepSaid(wx) {
+  const at = Date.now(), k = saidKey(wx), list = (store.get(k) || []).filter((x) => at - x.at < 3 * DAY);
+  const today = keyOf(nowWall(wx.place.offset)), days = daysSaid(tunedOnly(wx, today), today);
+  if (list.length && at - list[list.length - 1].from < 3 * HOUR) list[list.length - 1] = { ...list[list.length - 1], at, days };
+  else list.push({ at, from: at, days });
+  store.set(k, list);
+}
+// and its next couple of hours' rain led by the radar, where it sees (rainmap.js blend), while its frame is recent; and
+// its rain one story throughout (agree.js)
 const shaped = (wx) => {
   const t = tuned(wx), r = S.rain;
-  if (!t || !r || r.id !== cell(t.place.lat, t.place.lon) || Date.now() - r.at > 40 * 60e3) return t;
-  return { ...t, minutely: blend(t.minutely, r.steps, r.at, t.place.offset) };
+  if (!t) return t;
+  const led = r && r.id === cell(t.place.lat, t.place.lon) && Date.now() - r.at <= 40 * 60e3 ? { ...t, minutely: blend(t.minutely, r.steps, r.at, t.place.offset) } : t;
+  return oneRain(led, nowWall(led.place.offset));
 };
 // The radar's say on the next couple of hours here (radar.js rainAt), asked for with each forecast, and the page drawn
 // again with it (unless the place has changed, or the forecast been asked for again, meanwhile)
@@ -174,13 +196,16 @@ async function radarRain(p, my) {
   if (S.base) render();
 }
 
-// "since you last looked": a few snapshots of the days ahead, per place
+// "since you last looked": a few snapshots of the days ahead as the page showed them, per place (snap2: since a day's
+// rain chance has been of rain at some point in it)
 function snapshotNow(wx) {
-  const k = `wx:snap:${cell(wx.place.lat, wx.place.lon)}`, now = nowWall(wx.place.offset), list = store.get(k) || [];
+  keepSaid(wx);
+  wx = shaped(wx);
+  const k = `wx:snap2:${cell(wx.place.lat, wx.place.lon)}`, now = nowWall(wx.place.offset), list = store.get(k) || [];
   if (!list.length || now - list[list.length - 1].at >= HOUR) { list.push(I.snapshot(wx, now)); store.set(k, list.slice(-6)); }
 }
 function baseline(wx, now) {
-  const list = store.get(`wx:snap:${cell(wx.place.lat, wx.place.lon)}`) || [];
+  const list = store.get(`wx:snap2:${cell(wx.place.lat, wx.place.lon)}`) || [];
   return list.filter((s) => s.at <= now - 2 * HOUR && s.at >= now - 3 * DAY).pop() || null;
 }
 
@@ -990,9 +1015,23 @@ function accuracy(wx) {
       h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "Highs"), h("th", { scope: "col" }, "Lows"), h("th", { scope: "col" }, "Leans")),
       ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Best") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
         h("td", {}, m.loMae != null ? `±${f.deltaFine(m.loMae)}` : "–"), h("td", {}, Math.abs(m.hiBias) >= 0.5 ? `${f.deltaFine(m.hiBias)} ${m.hiBias > 0 ? "warm" : "cold"}` : "–")))),
-    s.days < TUNE_DAYS ? h("p", { class: "chart-note" }, `Tuning starts at ${TUNE_DAYS} days.`) : null].filter(Boolean));
+    s.days < TUNE_DAYS ? h("p", { class: "chart-note" }, `Tuning starts at ${TUNE_DAYS} days.`) : null,
+    tunedToo(k.local) ? h("p", { class: "chart-note" }, `Also tuned here: ${tunedToo(k.local)}.`) : null].filter(Boolean));
 }
 
+// what else the airport's reports have the hours tuned for (skill.js localSkill), in words: "nights 1.2° cooler, wind
+// 15% stronger" (only what makes a difference worth saying)
+function tunedToo(l) {
+  if (!l || S.settings.tune === false) return "";
+  const f = S.f, out = [], avg = (ks) => ks.reduce((a, k) => a + l.temp[k], 0) / ks.length;
+  for (const [name, ks] of [["nights", [7, 0, 1]], ["mornings", [2, 3]], ["afternoons", [4, 5]], ["evenings", [6]]]) {
+    const e = avg(ks);
+    if (Math.abs(e) >= 0.5) out.push(`${name} ${f.deltaFine(e)} ${e > 0 ? "cooler" : "warmer"}`);
+  }
+  if (Math.abs(l.dew) >= 0.5) out.push(`dew point ${f.deltaFine(l.dew)} ${l.dew > 0 ? "lower" : "higher"}`);
+  for (const [name, r] of [["wind", l.wind], ["gusts", l.gust]]) if (Math.abs(r - 1) >= 0.08) out.push(`${name} ${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "stronger" : "lighter"}`);
+  return out.join(", ");
+}
 // One day in full, in its sheet; the days along the top to move between (or a swipe sideways, or the arrow keys)
 function openDay(key, dir = 0) {
   const wx = S.wx; if (!wx) return;

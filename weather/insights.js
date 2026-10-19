@@ -97,6 +97,16 @@ export function dryChance(wx, a, b) {
   sys.forEach((s, k) => { if (!wet[k]) return; say += s.say; dry += s.say * (1 - wet[k].reduce((x, v) => x + ones(v), 0) / s.n); });
   return say ? dry / say : null;
 }
+// The chance (0 to 1) of rain at some point from a to b, as the page tells it: the hours the radar leads (agree.js) by
+// their own chances, the rest counted run by run across the ensembles (dryChance); null where neither reaches
+export function rainChance(wx, a, b) {
+  const from = Math.floor(a / HOUR) * HOUR;
+  let dry = 1, t = from;
+  for (const h of wx?.hourly || []) if (h.led != null && h.t >= from && h.t < b) { dry *= 1 - (h.pop ?? 0) / 100; t = Math.max(t, h.t + HOUR); }
+  if (t >= b) return t > from ? 1 - dry : null;
+  const rest = dryChance(wx, t, b);
+  return rest == null ? null : 1 - dry * rest;
+}
 export const dayOf = (wx, w) => wx.daily.find((d) => d.key === keyOf(w)) || null;
 const dayIndex = (wx, w) => wx.daily.findIndex((d) => d.key === keyOf(w));
 
@@ -149,9 +159,11 @@ export function dayParts(wx, key) {
     if (!hours.length) return null;
     const worst = hours.reduce((w, h) => (rank(h.code) > rank(w.code) ? h : w), hours[0]);
     const mid = hours[Math.floor(hours.length / 2)];
+    // (its chance of rain: at some point in it, as a day's is, where the ensembles reach; else its likeliest hour's)
+    const rc = rainChance(wx, hours[0].t, hours[hours.length - 1].t + HOUR);
     return {
       name, hours, phrase: phrase(hours), code: isWet(worst) || rank(worst.code) >= 3 ? worst.code : mid.code, isDay: mid.isDay,
-      tmin: min(hours, "temp"), tmax: max(hours, "temp"), feels: avg(hours, "feels"), pop: max(hours, "pop"),
+      tmin: min(hours, "temp"), tmax: max(hours, "temp"), feels: avg(hours, "feels"), pop: rc != null ? Math.round(rc * 100) : max(hours, "pop"),
       precip: sum(hours.map((h) => h.precip)), gust: max(hours, "gust"), wind: avg(hours, "wind"), dir: mid.dir,
     };
   }).filter(Boolean);
@@ -300,12 +312,13 @@ export function nowcast(wx, now, f) {
 }
 
 /* ---------- how sure the forecast is ---------- */
-// Where a day's high and low most likely land: the middle 80% of the ensemble's runs, moved as far as the day's high
-// and low were tuned for here (the same lean taken off), so a tuned high isn't shown outside its own likely range.
+// Where a day's high and low most likely land: the middle 80% of the ensembles' runs, moved as far as the day's high
+// and low were steadied and tuned for here (the same lean taken off), so a high isn't shown outside its own likely range.
 // { hi: [from, to], lo: [from, to] | null }, or null without the ensemble
 export function likely(d, ens) {
   if (!ens || ens.tmaxP10 == null || ens.tmaxP90 == null) return null;
-  const up = d?.raw ? d.tmax - d.raw.tmax : 0, down = d?.raw ? d.tmin - d.raw.tmin : 0;
+  // (as far as the day's moved from the latest run: steadied (skill.js steady), tuned, or both)
+  const base = d?.latest || d?.raw, up = base ? d.tmax - base.tmax : 0, down = base ? d.tmin - base.tmin : 0;
   return { hi: [ens.tmaxP10 + up, ens.tmaxP90 + up], lo: ens.tminP10 == null || ens.tminP90 == null ? null : [ens.tminP10 + down, ens.tminP90 + down] };
 }
 // Per day: the ensembles' spread (their runs pooled: data.js ENSEMBLES) and whether the big models agree.
@@ -431,7 +444,7 @@ export function windows(wx, now, f, opts = {}) {
       if (hs[hs.length - 1].t - hs[0].t !== (len - 1) * HOUR) continue;     // a stretch without a gap (the night)
       // the stretch is as good as its average, held back by its worst hour, and by its chance of rain at any time in it
       // (where the ensemble's in: how many of its runs stay dry throughout, for what needs it dry or will take light rain)
-      const dry = a.rain === "any" ? null : dryChance(wx, hs[0].t, hs[hs.length - 1].t + HOUR);
+      const rc = a.rain === "any" ? null : rainChance(wx, hs[0].t, hs[hs.length - 1].t + HOUR), dry = rc == null ? null : 1 - rc;
       const each = hs.map((h) => activityScore(h, hourAt(wx, h.t - HOUR), a, dry != null));
       const s = (0.7 * (sum(each) / each.length) + 0.3 * Math.min(...each)) * (dry == null ? 1 : a.rain === "dry" ? 0.3 + 0.7 * dry : 0.8 + 0.2 * dry);
       // sooner is better, a little: today beats tomorrow at the same score
@@ -606,9 +619,9 @@ export function insights(wx, now, f, opts = {}) {
   if (waking.hours.length) {
     const whenDay = waking.tomorrow ? "tomorrow" : "today";
     const wetH = waking.hours.filter(isWet), popMax = max(waking.hours, "pop") ?? 0;
-    // (the chance of rain at some point while you're up and about: from the ensemble's runs where they're in, which over
-    // a whole day can be well above any one hour's chance; else the likeliest hour's)
-    const dry = dryChance(wx, waking.hours[0].t, waking.hours[waking.hours.length - 1].t + HOUR), any = dry == null ? null : 1 - dry;
+    // (the chance of rain at some point while you're up and about: from the ensembles' runs where they're in (and the
+    // radar's where it leads), which over a whole day can be well above any one hour's chance; else the likeliest hour's)
+    const any = rainChance(wx, waking.hours[0].t, waking.hours[waking.hours.length - 1].t + HOUR), dry = any == null ? null : 1 - any;
     const pct = (p) => Math.round(p * 100);
     if (wetH.length || popMax >= 50) {
       const first = wetH[0] || argmax(waking.hours, "pop");
