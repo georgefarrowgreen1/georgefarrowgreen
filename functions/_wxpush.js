@@ -9,7 +9,9 @@
 // briefings around their time (with any official warnings: functions/_wxwarn.js). For rain it asks only for the next few hours'
 // rain (one small request for every place at once); the whole forecast only
 // where a briefing is due; and no more each tick than Open-Meteo's free service
-// allows over a day (the rest wait for the next). Places are kept to two decimal places (about a
+// allows over a day (the rest wait for the next). Where there's radar, the next
+// couple of hours' rain is led by it, as the app's is (functions/_wxradar.js),
+// for the places whose rain alerts could go now. Places are kept to two decimal places (about a
 // kilometre) and forgotten when notifications are turned off, the phone
 // unsubscribes, its push service says it's gone or keeps failing, or nothing's
 // been heard of it for four months.
@@ -25,13 +27,17 @@ import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
 import { HttpError, fromB64url } from "./_pigeon.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf } from "../weather/format.js";
-import { rainAlert, briefDue, briefing, isQuiet } from "../weather/alerts.js";
+import { rainAlert, briefDue, briefing, isQuiet, RAIN_GAP } from "../weather/alerts.js";
+import { blend } from "../weather/rainmap.js";
 import { warningsAt } from "./_wxwarn.js";
+import { radarForTick } from "./_wxradar.js";
 
 const MAX_SUBS = 300, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
 // what Open-Meteo is asked each tick, in its own measure: a place's rain is one call, its whole forecast about seven
 // (its free service allows 10,000 a day: this keeps the ticks to about 8,000 at most)
 const BUDGET = 55, COST_FULL = 7;
+// the places the radar's read for in a tick (each costs a few tiles, shared with any place near it)
+const RADAR_PLACES = 40;
 let ready = null;
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
@@ -167,10 +173,16 @@ async function tick(env, D, t) {
       } catch (e) { console.error("weather tick: forecast", e && e.message); }
     }
   }
-  const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, rain: 0, brief: 0, gone: 0 };
+  // the radar's say on the next couple of hours, as the app has it, for each place whose rain alert could go now (not
+  // in its quiet hours, nor within three hours of the last) or whose briefing's due: read all at once, while the
+  // phones are gone through
+  const radar = radarForTick(env, t), rains = new Map(), spot = (s) => `${s.lat},${s.lon}`;
+  const could = (s) => s.rain && (s.tz_off == null || !isQuiet(local(s))) && !(s.last_rain && t - s.last_rain < RAIN_GAP);
+  for (const s of need) if (rains.size < RADAR_PLACES && !rains.has(spot(s)) && (could(s) || due(s))) rains.set(spot(s), radar.at(s.lat, s.lon));
+  const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, radar: rains.size, rain: 0, brief: 0, gone: 0 };
   for (const s of need) {
     // (one phone's trouble doesn't stop the others')
-    try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out); } catch (e) { console.error("weather tick:", e && e.message); }
+    try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s))); } catch (e) { console.error("weather tick:", e && e.message); }
   }
   return out;
 }
@@ -183,9 +195,11 @@ export function budgeted(cells, budget = BUDGET, rnd = Math.random) {
 }
 const claim = async (D, s, col, v) => !!(await D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(v, s.id, s[col] ?? null).run()).meta?.changes;
 const giveBack = (D, s, col, v) => D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(s[col] ?? null, s.id, v).run();
-async function notify(env, D, s, j, t, out) {
+// (rain: the radar's say on the next couple of hours here, if it was read: rainmap.js radarAt)
+async function notify(env, D, s, j, t, out, rain = null) {
   if (!j) return;
   const wx = shapeForecast(j, { name: s.name, lat: s.lat, lon: s.lon }), now = nowWall(wx.place.offset, t);
+  if (rain) wx.minutely = blend(wx.minutely, rain.steps, rain.at, wx.place.offset);
   let units = {}; try { units = JSON.parse(s.units || "{}"); } catch (_) {}
   const f = makeFormat(units), url = linkTo(s.lat, s.lon, s.name), got = [];
   if (s.tz_off !== wx.place.offset) await D.prepare("UPDATE wx_subs SET tz_off = ?2 WHERE id = ?1").bind(s.id, wx.place.offset).run();

@@ -30,6 +30,8 @@ const SEEN_PNG = pngOf(1, 1, () => null);
 // the radar about London, seeing: a block of rain 80 of zoom 7's pixels wide (about 60 km) and 160 tall, coming east
 // at 2 pixels a minute, its front 60 pixels west of the place in the latest of the 13 frames (here half an hour on)
 const HERE = (() => { const la = (51.5072 * Math.PI) / 180; return { x: ((-0.1276 + 180) / 360) * 32768, y: ((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * 32768 }; })();
+// (for the server's radar, read as PNGs rather than drawn: whole 512-pixel tiles, seen and not)
+const SEEN_512 = pngOf(512, 512, () => null), UNSEEN_512 = pngOf(512, 512, () => [0, 0, 0, 0xff]);
 const blocks = new Map();
 const blockTile = (k, tx, ty) => {
   const key = `${k}/${tx}/${ty}`, front = HERE.x - 60 - 20 * (12 - k);
@@ -57,10 +59,15 @@ function modelGrid(url) {
 }
 // the stand-in for Open-Meteo (the server's notifications), the Aviation Weather Center (its airport reports), and
 // MeteoAlarm and the National Weather Service (official warnings: mocks/wxwarnings.mjs)
-let wxScenario = { rainIn: 30 };
+let wxScenario = { rainIn: 30 }, radarScenario = null;
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), send = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
   if (u.pathname === '/v1/forecast') { const n = (u.searchParams.get('latitude') || '').split(',').length, one = F.forecast(Date.now(), wxScenario); return send(n > 1 ? Array(n).fill(one) : one); }
+  // RainViewer, for the server's rain alerts: its frames, and their tiles, none of it seen by the radar unless
+  // radarScenario says rain's on it coming this way (the browser's stand-in's radarHere block)
+  if (u.pathname === '/public/weather-maps.json') return send({ host: 'http://127.0.0.1:8794', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(Date.now() / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })) } });
+  const rf = /^\/v2\/radar\/f(\d+)\/512\/6\/(\d+)\/(\d+)\//.exec(u.pathname), cover = u.pathname.startsWith('/v2/coverage/');
+  if (rf || cover) { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(cover ? (radarScenario ? SEEN_512 : UNSEEN_512) : radarScenario ? blockTile(+rf[1], +rf[2], +rf[3]) : SEEN_512); }
   if (u.pathname === '/api/data/stationinfo') return send([{ icaoId: 'EGLC', site: 'London City Arpt', lat: 51.505, lon: 0.055, siteType: ['METAR', 'TAF'] }, { icaoId: 'EGKB', site: 'London/Biggin Hill Arpt', lat: 51.33, lon: 0.033, siteType: ['METAR'] }]);
   if (u.pathname === '/api/v1/warnings/feeds-united-kingdom') return send(OW.ukFeed(Date.now()));
   if (u.pathname.startsWith('/api/v1/warnings/feeds-')) return send({ warnings: [] });
@@ -673,7 +680,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     let end = pt.length - 1; while (end > 0 && pt[end] === 0) end--;
     return JSON.parse(new TextDecoder().decode(pt.slice(0, end)));
   }
-  const mine = async () => Promise.all(readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((x) => x.headers['x-endpoint'] === endpoint).map((x) => decrypt(x.body)));
+  const mine = async (to = endpoint) => Promise.all(readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((x) => x.headers['x-endpoint'] === to).map((x) => decrypt(x.body)));
   const tick = () => new Promise((done, fail) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (c) => (t += c)); res.on('end', () => done({ status: res.statusCode, ...JSON.parse(t || '{}') })); }); r.on('error', fail); r.end(); });
   const { ctx, p } = await open({}, { push: { endpoint, p256dh: b64u(pub), auth: b64u(authK) } });
   await p.evaluate(() => navigator.serviceWorker.ready);
@@ -698,6 +705,23 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   await p.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
   ok((await tick()).subs === 0, 'turned off: the server forgets the phone');
   await ctx.close();
+  // the radar's say, where it sees, as the app has it: the models dry here, and rain on the radar coming this way (a
+  // second phone, so the first's three hours' wait doesn't stand in the way)
+  if (!quiet) {
+    wxScenario = {}; radarScenario = 'coming';
+    const second = 'https://fcm.googleapis.com/fcm/send/weather-test-device-2';
+    const { ctx: c2, p: p2 } = await open({}, { push: { endpoint: second, p256dh: b64u(pub), auth: b64u(authK) } });
+    await p2.evaluate(() => navigator.serviceWorker.ready);
+    await p2.click('#settings-btn'); await p2.check('input[name="rain"]');
+    await p2.waitForFunction(() => /^On: rain alerts/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
+    const t3 = await tick(), alert = (await mine(second)).find((n) => n.tag === 'rain');
+    ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in about \d+ min$/.test(alert.title) && /^London: Rain starting in about \d+ min/.test(alert.body),
+      'the rain alert from the radar, where it sees: rain coming that the models don\'t have', `${JSON.stringify(t3)} ${alert ? `${alert.title} — ${alert.body}` : 'none'}`);
+    await p2.uncheck('input[name="rain"]');
+    await p2.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
+    await c2.close();
+    wxScenario = { rainIn: 30 }; radarScenario = null;
+  }
 }
 
 ok(!errs.length, 'no errors on the page', errs.join('; '));

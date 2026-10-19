@@ -10,7 +10,7 @@
 //
 // The map's code is loaded only as the card comes near (the vector map's, a screen ahead: it's a megabyte).
 
-import { grid, paint, timeline, LEGEND, decode, resample, motion, ramp, along } from "./rainmap.js";
+import { grid, paint, timeline, LEGEND, decode, resample, ramp, squareAt, driftOf, radarAt } from "./rainmap.js";
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
@@ -155,53 +155,16 @@ function framesNow() {
   p.catch(() => { if (frameList?.p === p) frameList = null; });
   return p;
 }
-// A square of radar about a place, AROUND zoom-7 pixels across (about 550 km): its tiles' codes side by side (tile(x, y):
-// a 512-pixel zoom-6 tile's address), or null if one of them doesn't come
-const AROUND = 768;
-async function squareAt(lat, lon, tile) {
-  const world = 2 ** NATIVE * 256, la = (lat * Math.PI) / 180, n = 2 ** (NATIVE - 1), W = AROUND;
-  const x0 = Math.round(((lon + 180) / 360) * world) - W / 2, y0 = Math.round(((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * world) - W / 2;
-  const tx = [Math.floor(x0 / SRC), Math.floor((x0 + W - 1) / SRC)], ty = [Math.floor(y0 / SRC), Math.floor((y0 + W - 1) / SRC)];
-  const want = [];
-  for (let y = ty[0]; y <= ty[1]; y++) for (let x = tx[0]; x <= tx[1]; x++) want.push([x, y]);
-  const tiles = await Promise.all(want.map(([x, y]) => (y < 0 || y >= n ? Promise.resolve(null) : tileCodes(tile(((x % n) + n) % n, y)))));
-  if (tiles.some((t, i) => !t && want[i][1] >= 0 && want[i][1] < n)) return null;
-  const out = new Uint8Array(W * W);
-  want.forEach(([x, y], i) => {
-    const t = tiles[i]; if (!t) return;
-    for (let r = 0; r < SRC; r++) {
-      const oy = y * SRC + r - y0; if (oy < 0 || oy >= W) continue;
-      const a = Math.max(0, x0 - x * SRC), b = Math.min(SRC, x0 + W - x * SRC); if (b <= a) continue;
-      out.set(t.subarray(r * SRC + a, r * SRC + b), oy * W + (x * SRC + a - x0));
-    }
-  });
-  return out;
+// How the rain about a place is moving (rainmap.js driftOf), from the latest radar frame and the one 20 minutes before
+async function driftAt(host, past, lat, lon) {
+  const a = past[past.length - 3], b = past[past.length - 1], tile = (fr) => (x, y) => tileCodes(`${host}${fr.path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`);
+  const [A, B] = await Promise.all([squareAt(lat, lon, tile(a)), squareAt(lat, lon, tile(b))]);
+  return driftOf(A, B, (b.time - a.time) / 60);
 }
-const frameTile = (host, fr) => (x, y) => `${host}${fr.path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`;
-// How the rain about a place is moving, in zoom-7 pixels a minute, from the latest radar frame and the one 20 minutes
-// before, or null with too little rain to tell. (newest: the latest frame's square, if it's to hand)
-async function driftAt(host, past, lat, lon, newest = null) {
-  const a = past[past.length - 3], b = past[past.length - 1], mins = (b.time - a.time) / 60;
-  const [A, B] = await Promise.all([squareAt(lat, lon, frameTile(host, a)), newest || squareAt(lat, lon, frameTile(host, b))]);
-  const m = A && B && mins > 0 ? motion(A, B, AROUND, AROUND) : null;
-  return m && m.score >= 0.35 ? { vx: m.dx / mins, vy: m.dy / mins } : null;
-}
-
-/**
- * The rain at a place over the next two hours, from the radar (app.js, for the next few hours' words and chart, with
- * the models' rain after it: rainmap.js blend): where the radar sees (RainViewer's coverage), the latest frame's rain
- * carried on along its own track (rainmap.js along). { at (the frame's time, ms), steps }, or null with no radar to go
- * on. Its tiles are the card's (kept): the frame before, for the track, only asked for when there's rain about.
- */
+// The rain here over the next two hours, from the radar, for the next few hours' words and chart (app.js, with the
+// models' after it: rainmap.js blend): rainmap.js radarAt, on the card's own tiles (kept, so it then has them to hand)
 export async function rainAt(lat, lon) {
-  if (Math.abs(lat) > 84) return null;      // (off the map's square tiles: and no radar there)
-  const rv = await framesNow(), host = rv?.host, past = rv?.radar?.past || [];
-  if (!host || !past.length) return null;
-  const last = past[past.length - 1], at = last.time * 1000;
-  const [codes, cover] = await Promise.all([squareAt(lat, lon, frameTile(host, last)), squareAt(lat, lon, (x, y) => `${host}/v2/coverage/0/${SRC}/${NATIVE - 1}/${x}/${y}/0/0_0.png`)]);
-  if (!codes || !cover) return null;
-  const drift = past.length >= 3 && codes.some(Boolean) ? await driftAt(host, past, lat, lon, codes).catch(() => null) : null;
-  return { at, steps: along(codes, cover, AROUND, drift, Math.max(0, Math.round((Date.now() - at) / 300e3) * 5)) };
+  return radarAt(lat, lon, await framesNow(), (url) => tileCodes(url), Date.now());
 }
 
 const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min % 60} min ` : ""}ago` : `${min} min ago`);

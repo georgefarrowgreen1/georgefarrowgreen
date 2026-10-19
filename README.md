@@ -273,7 +273,13 @@ so there's nothing to set up beyond the address.
   (`weather/skill.js`; Settings can turn it off).
 - **Notifications** (Settings → Notifications, for one place per phone): a
   heads-up when rain is about to start within the hour ("Rain in about 20 min",
-  not between 22:00 and 07:00, not twice in three hours), and a morning
+  not between 22:00 and 07:00, not twice in three hours; where there's radar,
+  timed by it just as the app's next hours are: the server reads RainViewer's
+  tiles itself, with no canvas there to draw them into (`functions/_png.js`, its
+  own PNG reader, which reads only as far as an image says it goes), and works
+  the rain out the same way, `weather/rainmap.js` radarAt, each tile once a tick
+  however many phones are under it, for at most 40 places a tick,
+  `functions/_wxradar.js`), and a morning
   briefing at a time you choose (the day in a sentence, any warnings, whether
   to take an umbrella). Sent with Web Push, encrypted to the phone, worded by
   the app's own code (`weather/alerts.js`) so a notification says what the app

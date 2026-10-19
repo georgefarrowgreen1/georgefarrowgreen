@@ -213,6 +213,55 @@ export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3
   return { frames, now: Math.max(0, radarTimes.length - 1) };
 }
 
+// Where a place is on the radar's grid: zoom 7's pixels (256 to a tile), from the world's top left
+export function pixelOf(lat, lon) {
+  const world = 2 ** 7 * 256, la = (lat * Math.PI) / 180;
+  return [((lon + 180) / 360) * world, ((1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2) * world];
+}
+// A square of radar (or of where it sees) about a place, w of zoom 7's pixels across (768: about 550 km): the 512-pixel
+// zoom-6 tiles it spans, each read back into codes (get(x, y) → a promise of them, or of null), laid side by side; null
+// if one of them doesn't come
+export const AROUND = 768;
+export async function squareAt(lat, lon, get, w = AROUND) {
+  const [px, py] = pixelOf(lat, lon), n = 64, S = 512, x0 = Math.round(px) - w / 2, y0 = Math.round(py) - w / 2;
+  const want = [];
+  for (let y = Math.floor(y0 / S); y <= Math.floor((y0 + w - 1) / S); y++) for (let x = Math.floor(x0 / S); x <= Math.floor((x0 + w - 1) / S); x++) want.push([x, y]);
+  const tiles = await Promise.all(want.map(([x, y]) => (y < 0 || y >= n ? Promise.resolve(null) : get(((x % n) + n) % n, y))));
+  if (tiles.some((t, i) => !t && want[i][1] >= 0 && want[i][1] < n)) return null;
+  const out = new Uint8Array(w * w);
+  want.forEach(([x, y], i) => {
+    const t = tiles[i]; if (!t) return;
+    for (let r = 0; r < S; r++) {
+      const oy = y * S + r - y0; if (oy < 0 || oy >= w) continue;
+      const a = Math.max(0, x0 - x * S), b = Math.min(S, x0 + w - x * S); if (b <= a) continue;
+      out.set(t.subarray(r * S + a, r * S + b), oy * w + (x * S + a - x0));
+    }
+  });
+  return out;
+}
+// How the rain's moving between two squares of radar `mins` minutes apart, in zoom 7's pixels a minute, or null with
+// too little rain to tell
+export function driftOf(older, newer, mins, w = AROUND) {
+  const m = older && newer && mins > 0 ? motion(older, newer, w, w) : null;
+  return m && m.score >= 0.35 ? { vx: m.dx / mins, vy: m.dy / mins } : null;
+}
+// The rain at a place over the next two hours from the radar, worked out the same way in the app (radar.js) and for
+// the rain alerts on the server (functions/_wxradar.js): from RainViewer's list of frames (rv), a tile's codes by its
+// address (get(url) → a promise of them, or of null), and the time now (ms). Where the radar sees (its coverage), its
+// latest frame's rain carried on along its own track (from the frame 20 minutes before, asked for only when there's
+// rain about) → { at (that frame's time, ms), steps (along, below) }, or null with no radar to go on
+export async function radarAt(lat, lon, rv, get, now) {
+  const host = rv?.host, past = rv?.radar?.past || [];
+  if (Math.abs(lat) > 84 || !host || !past.length) return null;      // (off the map's square tiles, and no radar there)
+  const frame = (fr) => (x, y) => get(`${host}${fr.path}/512/6/${x}/${y}/2/1_1.png`);
+  const last = past[past.length - 1], at = last.time * 1000;
+  const [codes, cover] = await Promise.all([squareAt(lat, lon, frame(last)), squareAt(lat, lon, (x, y) => get(`${host}/v2/coverage/0/512/6/${x}/${y}/0/0_0.png`))]);
+  if (!codes || !cover) return null;
+  let drift = null;
+  if (past.length >= 3 && codes.some(Boolean)) { const a = past[past.length - 3]; drift = driftOf(await squareAt(lat, lon, frame(a)), codes, (last.time - a.time) / 60); }
+  return { at, steps: along(codes, cover, AROUND, drift, Math.max(0, Math.round((now - at) / 300e3) * 5)) };
+}
+
 // The rain at a place over the next two hours, from the radar: the latest frame's (codes, w × w, the place at its
 // middle) carried on along its track (drift: zoom-7 pixels a minute; null: left where it is), read over a circle about
 // the place that widens the further ahead (how sure where it'll be: about 2 km across now, 20 km two hours on), every
