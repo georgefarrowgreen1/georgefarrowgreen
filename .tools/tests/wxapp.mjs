@@ -189,12 +189,37 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
   await p.keyboard.press('Escape');
   await p.waitForFunction(() => !document.getElementById('warning').open);
 }
-if (await p.locator('#insights .more-btn').count()) await p.locator('#insights .more-btn').evaluate((e) => e.click());
-const cards = await p.locator('#insights .ins h3').allTextContents();
+// the app's own insights, in one card: the first three, a title and a line each, the rest under "N more"; a row with
+// more to say than its line opens to all of it
+{
+  const rows = await p.locator('#insights .ins-row').count(), more = await p.textContent('#insights-card .ins-more').catch(() => '');
+  ok(await p.isVisible('#insights-card') && rows === 3 && /^\d+ more$/.test(more.trim()), 'insights in one card: three, then the rest under "N more"', `${rows} rows, "${more.trim()}"`);
+  const row = p.locator('#insights .ins-row:not(.whole)').first();
+  const tall = () => row.evaluate((r) => r.querySelector('.ins-line').getBoundingClientRect().height);
+  const shut = await tall();
+  // (tapped where it is, not scrolled to: the radar, further up, starts as it's first scrolled to, below)
+  await row.locator('.ins-head').evaluate((e) => e.click());
+  await p.waitForTimeout(600);
+  ok(await row.locator('.ins-head').getAttribute('aria-expanded') === 'true' && (await tall()) > shut * 1.5, 'a row opens to all it says', `${Math.round(shut)} → ${Math.round(await tall())}px`);
+  await row.locator('.ins-head').evaluate((e) => e.click());
+  await p.waitForTimeout(600);
+  ok(await row.locator('.ins-head').getAttribute('aria-expanded') === 'false' && Math.abs((await tall()) - shut) < 1, 'and closes again to its line');
+}
+if (await p.locator('#insights-card .ins-more').count()) await p.locator('#insights-card .ins-more').evaluate((e) => e.click());
+const cards = await p.locator('#insights .ins-title').allTextContents();
 ok(cards.some((t) => /is uncertain$/.test(t)), 'the day the models disagree is called uncertain', cards.join(' · '));
 ok(cards.some((t) => /umbrella/i.test(t)), 'an umbrella tip');
 if (new Date(now).getUTCHours() < 13) ok(cards.some((t) => /High UV/.test(t)), 'high UV today');
 ok(/^Warmer than \d+% of days here since \d{4}\./.test(await p.textContent('#climate-body')), 'today against thirty years', (await p.textContent('#climate-body')).slice(0, 90));
+// (those not worth it, named in a line under the rest; a tap shows them too, faded)
+{
+  const rated = await p.locator('#win-grid .win-rate').allTextContents(), line = await p.textContent('#win-poor').catch(() => null);
+  ok(!rated.includes('Poor') && (line === null || /^(Not looking good|Nothing looking good today or tomorrow): \w/.test(line)), 'best times: only those worth it as tiles, the rest named in a line', `${rated.join(', ')} | ${line}`);
+  if (line !== null) {
+    await p.locator('#win-poor').evaluate((e) => e.click());
+    ok(!(await p.locator('#win-poor').count()) && (await p.locator('#win-grid .win.poor').count()) > 0, 'which shows them, faded');
+  }
+}
 ok((await p.locator('#win-grid .win').count()) >= 5, 'best times for a run, a walk, a ride, the washing, the stars or the sunset');
 const wins = await p.locator('#win-grid .win').evaluateAll((ws) => ws.map((w) => [...w.children].map((c) => c.className).join(' ') + (w.querySelector('.win-day .win-rate') ? ' +rate' : '')));
 ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 'each card the same lines (what, when and how good, the hours, why), so they line up', wins[0]);
@@ -472,6 +497,14 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   ok(await p5.isVisible('#nowcast-src') && (await p5.textContent('#nowcast-src')).trim() === 'Radar', 'and the card says it\'s the radar\'s timing');
   await c5.close();
 }
+// somewhere with no airport station near to check the forecast against: no accuracy card at all (nothing to say)
+{
+  const { ctx: c7, p: p7 } = await open({}, { url: `${HOST}/?lat=55.95&lon=-3.19&name=Edinburgh`, settle: false });
+  await p7.waitForSelector('.day-row', { timeout: 20000 });
+  await p7.waitForTimeout(2500);
+  ok(await p7.evaluate(() => document.getElementById('accuracy').hidden) && await p7.isVisible('#climate'), 'no station near: no accuracy card (the rest as ever)');
+  await c7.close();
+}
 // the next two hours are always there: no rain anywhere on the radar and none expected, the latest radar held (and no
 // models' grid asked for); rain about on the radar but too scattered to follow, the models' grid, though none's expected here
 for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: the next two hours still there, the radar as it is (no models\' grid asked for)'],
@@ -520,7 +553,7 @@ await p.click('.act-edit .pill-btn');
 ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()), 'a run\'s limits changed', await p.locator('#acts-list .act-lim').first().textContent());
 await p.screenshot({ path: `${out}/wx-settings.png` });
 await p.keyboard.press('Escape');
-ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf'), 'and golf has its best time');
+ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf') || /Golf/.test(await p.textContent('#win-poor').catch(() => '')), 'and golf has its best time');
 // a choice of one: a lens glides to the chosen one (two choices, or four), and nothing on the page behind is blurred or
 // moving while the sheet's up (the sheet glides over a still page)
 await p.click('#settings-btn');

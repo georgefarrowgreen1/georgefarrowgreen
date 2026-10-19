@@ -32,7 +32,7 @@ const T = () => (S.f.units.temp === "f" ? (c) => c * 9 / 5 + 32 : (c) => c);
 const W = () => S.f.windNum;
 
 /* ---------- state ---------- */
-const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, radar: null, mode: "temp", allInsights: false, loading: false, stale: false, error: null };
+const S = { settings: null, f: null, places: [], cur: 0, base: null, wx: null, radar: null, mode: "temp", allInsights: false, allWins: false, loading: false, stale: false, error: null };
 function defaults() {
   const lang = (navigator.languages?.[0] || navigator.language || "en-GB");
   if (/^en-US|^en-LR|^my/i.test(lang)) return { temp: "f", wind: "mph", precip: "in", pressure: "inhg", clock: "12" };
@@ -125,7 +125,7 @@ async function go(force = false, fresh = null) {
   $("refresh-btn").disabled = true;
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
-  if (moved) { S.wx = S.base = null; S.allInsights = false; S.rain = null; }
+  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = false; S.rain = null; }
   if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map"),
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
@@ -520,17 +520,59 @@ function cards(wx, now) {
   const warn = all.filter((c) => (c.level === "alert" || c.level === "warn") && !said.has(c.icon)), rest = all.filter((c) => c.level !== "alert" && c.level !== "warn");
   const n = official.length + warn.length;
   $("alerts").replaceChildren(...(n ? [h("h2", { class: "sr-only" }, n === 1 ? "Warning" : "Warnings"), ...official.map((w) => officialCard(w, wx, now)), ...warn.map(insightCard)] : []));
-  const shown = S.allInsights ? rest : rest.slice(0, 6);
+  // the app's own, in one card: the first three, and the rest under "N more"
+  const shown = S.allInsights ? rest : rest.slice(0, FIRST_INSIGHTS);
   const box = $("insights");
-  box.replaceChildren(...shown.map(insightCard));
-  if (rest.length > shown.length) box.append(h("button", { class: "more-btn", type: "button", onclick: () => {
+  $("insights-card").hidden = !rest.length;
+  box.replaceChildren(...shown.map(insightRow));
+  box.nextElementSibling?.remove();
+  // (under the list, not in it: a list holds only its items)
+  if (rest.length > shown.length) box.after(h("button", { class: "ins-more", type: "button", onclick: () => {
     S.allInsights = true; cards(S.wx, nowWall(S.wx.place.offset));
-    // the rest rise in under the six (those on screen: see .hero's), and the first of them has focus (where the button was)
-    const more = [...box.children].slice(6);
+    // the rest rise in under the first (those on screen: see .hero's), and the first of them has focus (where the button was)
+    const more = [...box.children].slice(FIRST_INSIGHTS);
     more.forEach((c, i) => { if (c.getBoundingClientRect().top < innerHeight) { c.classList.add("rise"); c.style.setProperty("--i", String(i)); } });
-    if (more[0]) { more[0].tabIndex = -1; more[0].focus({ preventScroll: true }); }
-  } }, `Show ${rest.length - shown.length} more`));
+    more[0]?.querySelector(".ins-head").focus({ preventScroll: true });
+  } }, `${rest.length - shown.length} more`, h("span", { svg: glyph("chevron", 14) })));
+  requestAnimationFrame(fits);
 }
+// An insight in its card: its title and a line of what it says, and where there's more than a line, a tap for the
+// rest (the row opening to it, and closing again)
+const FIRST_INSIGHTS = 3;
+function insightRow(c) {
+  const row = h("div", { class: "ins-row", role: "listitem", "data-level": c.level },
+    h("button", { class: "ins-head", type: "button", "aria-expanded": "false", onclick: () => openRow(row) },
+      h("span", { class: "ins-icon", svg: glyph(c.icon, 16) }),
+      h("span", { class: "ins-words" }, h("span", { class: "ins-title" }, c.title), h("span", { class: "ins-line" }, c.text)),
+      h("span", { class: "ins-chev", svg: glyph("chevron", 16) })));
+  return row;
+}
+function openRow(row) {
+  if (row.classList.contains("whole")) return;
+  const open = !row.classList.contains("open"), from = row.offsetHeight;
+  row.getAnimations().forEach((a) => a.cancel());
+  row.classList.toggle("open", open);
+  row.querySelector(".ins-head").setAttribute("aria-expanded", String(open));
+  if (calm.matches) return;
+  // (closing, all of it stays in sight until the row has folded down to a line)
+  const to = row.offsetHeight;
+  if (!open) row.classList.add("fold");
+  row.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 420, easing: "cubic-bezier(0.32, 0.72, 0, 1)" })
+    .finished.then(() => row.classList.remove("fold"), () => row.classList.remove("fold"));
+}
+// which rows say all they have to in their line (nothing to open), measured again as the card's width changes
+let insWidth = 0;
+function fits() {
+  const box = $("insights");
+  insWidth = box.clientWidth;
+  for (const r of box.querySelectorAll(".ins-row:not(.open)")) {
+    const l = r.querySelector(".ins-line");
+    const whole = l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
+    r.classList.toggle("whole", whole);
+    whole ? head.removeAttribute("aria-expanded") : head.setAttribute("aria-expanded", "false");
+  }
+}
+new ResizeObserver(() => { if ($("insights").clientWidth !== insWidth) fits(); }).observe($("insights"));
 
 function hourly(wx, now) {
   const f = S.f, hrs = I.hoursFrom(wx, now, 48), strip = $("hourly-strip");
@@ -626,15 +668,23 @@ function daily(wx, now) {
   motion("days", ...rows);
 }
 
+// The best times: those worth it today or tomorrow, each a tile; those that aren't, named in a line under them (a
+// tap shows them too, faded)
 function windows(wx, now) {
   const f = S.f, list = I.windows(wx, now, f, { activities: S.settings.activities, extras: S.settings.extras });
-  $("win-grid").replaceChildren(...list.map((w) => {
-    return h("div", { class: "win" },
-      h("div", { class: "win-name" }, h("span", { svg: glyph(w.icon, 16) }), w.name),
-      h("div", { class: "win-day" }, h("span", {}, w.start == null ? "Not today or tomorrow" : f.day(w.start, now)), h("span", { class: "win-rate", "data-r": w.rating }, w.rating)),
-      w.start == null ? null : h("div", { class: "win-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`),
-      h("div", { class: "win-text" }, w.text));
-  }));
+  const tile = (w) => h("div", { class: `win${w.rating === "Poor" ? " poor" : ""}` },
+    h("div", { class: "win-name" }, h("span", { svg: glyph(w.icon, 16) }), w.name),
+    h("div", { class: "win-day" }, h("span", {}, w.start == null ? "Not today or tomorrow" : f.day(w.start, now)), h("span", { class: "win-rate", "data-r": w.rating }, w.rating)),
+    w.start == null ? null : h("div", { class: "win-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`),
+    h("div", { class: "win-text" }, w.text));
+  const good = list.filter((w) => w.rating !== "Poor"), poor = list.filter((w) => w.rating === "Poor");
+  const grid = $("win-grid");
+  grid.replaceChildren(...good.map(tile), ...(S.allWins ? poor.map(tile) : []));
+  $("win-poor")?.remove();
+  if (poor.length && !S.allWins) grid.after(h("button", { class: "win-poor", id: "win-poor", type: "button", "aria-label": `Not looking good today or tomorrow: ${poor.map((w) => w.name).join(", ")}. Show them`,
+    // (they come in where the line was; the first of them has its focus)
+    onclick: () => { S.allWins = true; windows(S.wx, nowWall(S.wx.place.offset)); const w = grid.children[good.length]; if (w) { w.tabIndex = -1; w.focus({ preventScroll: true }); } } },
+    h("span", {}, h("b", {}, good.length ? "Not looking good: " : "Nothing looking good today or tomorrow: "), poor.map((w) => w.name).join(", ")), h("span", { svg: glyph("chevron", 14) })));
 }
 
 function climate(wx, now) {
@@ -746,8 +796,9 @@ function tiles(wx, now) {
 // how close each model has been here (weather/skill.js, from the nearest airport's reports)
 function accuracy(wx) {
   const f = S.f, box = $("accuracy-body"), k = wx.skill, note = (t) => h("p", { class: "small muted" }, t);
-  if (!k) { box.replaceChildren(note("Checking…")); return; }
-  if (!k.station) { box.replaceChildren(note(k.failed ? "Couldn't check just now; trying again later." : "No airport weather station within 40 km to check against.")); return; }
+  // (only where there's a station to check against: nothing to say otherwise)
+  $("accuracy").hidden = !k?.station;
+  if (!k?.station) { box.replaceChildren(); return; }
   const st = k.station;
   if (!k.skill) { box.replaceChildren(note(k.obsDays >= MIN_DAYS ? `Not enough past forecasts to compare with ${st.name}'s reports yet.` : `Recording ${st.name}'s reports: ${k.obsDays} of ${MIN_DAYS} days.`)); return; }
   const s = k.skill;

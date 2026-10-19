@@ -481,8 +481,28 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .d-spread { position: absolute; top: 2px; height: 2px; background: rgba(255, 255, 255, 0.35); }
 
 /* ---------- insights ---------- */
-.insights { display: grid; gap: 12px; }
-@media (min-width: 640px) and (max-width: 979px) { .insights { grid-template-columns: 1fr 1fr; } }
+/* the app's own insights, in one card: a row each, its title and a line of what it says (a tap for the rest) */
+.ins-card { padding-bottom: 6px; }
+.insights { display: flex; flex-direction: column; margin: 0 -4px; }
+.ins-row { overflow: hidden; }
+.ins-row + .ins-row { border-top: 0.5px solid var(--line); }
+.ins-head { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: 11px; padding: 10px 4px; cursor: pointer; border-radius: 12px; -webkit-tap-highlight-color: transparent; }
+.ins-head:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.ins-row.whole .ins-head { cursor: default; }
+.ins-row .ins-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; margin-top: 1px; }
+.ins-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ins-title { font-size: 15px; font-weight: 650; line-height: 1.3; }
+.ins-line { font-size: 14px; line-height: 1.4; color: var(--text-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+.ins-row.open .ins-line, .ins-row.fold .ins-line { -webkit-line-clamp: unset; }
+.ins-chev { flex: none; display: inline-flex; margin-top: 8px; color: var(--text-3); transition: transform 0.4s var(--glide); }
+.ins-row.open .ins-chev { transform: rotate(180deg); }
+.ins-row.whole .ins-chev { visibility: hidden; }
+.ins-row.rise { animation: rise 0.6s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
+.ins-more { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 11px 0 8px; border-top: 0.5px solid var(--line); font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.ins-more:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }
+.ins-more:active { opacity: 0.6; }
+@media (hover: hover) { .ins-head:hover, .ins-more:hover { background: rgba(255, 255, 255, 0.05); } .ins-row.whole .ins-head:hover { background: none; } }
+@media (prefers-reduced-motion: reduce) { .ins-row.rise { animation: none; } .ins-chev { transition: none; } }
 .ins { border-radius: 22px; padding: 13px 15px 14px; display: grid; grid-template-columns: 32px 1fr; gap: 2px 11px; }
 .ins-icon { grid-row: span 2; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1); }
@@ -493,8 +513,8 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins[data-level="alert"] .ins-icon { background: linear-gradient(180deg, #ff7a70, #e8453a); color: #fff; }
 .ins[data-level="warn"] { --tint: rgba(104, 66, 4, 0.56); --rim: linear-gradient(135deg, rgba(255, 214, 138, 0.85), rgba(255, 176, 32, 0.25) 35%, rgba(255, 176, 32, 0.1) 65%, rgba(255, 214, 138, 0.6)); }
 .ins[data-level="warn"] .ins-icon { background: linear-gradient(180deg, #ffc94d, #f5a10f); color: #241700; }
-.ins[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
-.ins[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
+.ins[data-level="good"] .ins-icon, .ins-row[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
+.ins[data-level="tip"] .ins-icon, .ins-row[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
 .ins .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
 /* official warnings: in their own colour, the whole card opening the warning (from its title, so it's said as a button) */
 .ins.official > p { grid-column: 2; }
@@ -524,6 +544,14 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .win-day { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .win-time { font-size: 16px; font-weight: 650; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .win-text { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
+/* the ones not worth it today or tomorrow: named in a line, under the rest (a tap shows them, faded) */
+.win.poor { opacity: 0.62; }
+.win-poor { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 10px; padding: 2px 0; font-size: 13.5px; line-height: 1.4; color: var(--text-2); cursor: pointer; }
+.win-poor b { font-weight: 600; color: var(--text-3); }
+.win-poor > span:last-child { flex: none; display: inline-flex; color: var(--text-3); }
+.win-poor:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
+.win-grid:empty { display: none; }
+.win-grid:empty + .win-poor { margin-top: 0; }
 
 /* ---------- this time of year ---------- */
 .facts { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }

@@ -122,9 +122,9 @@
         <div class="card sk sk-ins"><i class="sk-l w30"></i><i class="sk-l w80"></i></div>
         <div class="sk-tiles"><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div></div>
       </div>
-      <section aria-labelledby="insights-title">
-        <h2 class="section-title" id="insights-title">Insights</h2>
-        <div class="insights" id="insights"></div>
+      <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
+        <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="info"></span>Insights</h2>
+        <div class="insights" id="insights" role="list"></div>
       </section>
 
       <section class="card" id="windows" aria-labelledby="windows-title">
@@ -132,7 +132,7 @@
         <div class="win-grid" id="win-grid"></div>
       </section>
 
-      <section class="card" id="accuracy" aria-labelledby="accuracy-title">
+      <section class="card" id="accuracy" aria-labelledby="accuracy-title" hidden>
         <h2 class="card-title" id="accuracy-title"><span class="ct-icon" data-g="target"></span>Forecast accuracy here</h2>
         <div id="accuracy-body"><p class="muted small">Checking…</p></div>
       </section>

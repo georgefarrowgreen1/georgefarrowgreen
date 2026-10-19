@@ -193,6 +193,10 @@ so there's nothing to set up beyond the address.
   hundredth of days, never short of the fixed bars (27° and 32° feeling like,
   20°, −5°, 25 mm) that are hard on anyone; and frost isn't a warning where
   nearly every night freezes at the time of year (`climate.js` extremes).
+- The app's own insights (warnings aside, which have cards of their own) are in
+  one card: the first three as rows, each its title and a line of what it says
+  (a tap opens a row to the rest, and closes it again), and the others under
+  "N more".
 - **Tips**: whether to take an umbrella (by the chance of rain at some point
   while you're up and about, counted across the ensemble's 51 runs: over a whole
   day it can be well above any one hour's chance), what to wear (from the
@@ -219,7 +223,9 @@ so there's nothing to set up beyond the address.
   than any one hour does, and which its score goes by. Plus drying washing
   outside (dry hours, thirsty air, a breeze, sun), stargazing (dark, clear, the
   Moon out of the way) and a colourful sunset or sunrise (high and mid cloud, no
-  low cloud in the way).
+  low cloud in the way). Those worth it are tiles; those that aren't today or
+  tomorrow are named in a line under them ("Not looking good: Stargazing"),
+  which a tap opens to show them too, faded.
 - **Rain radar**: the last two hours of radar, every 10 minutes, from
   RainViewer's free mosaic of the world's radars, then the next two hours as
   the latest radar carried on along its own track (how the rain's moving from
@@ -262,7 +268,8 @@ so there's nothing to set up beyond the address.
   (the vector map fading in once the country's drawn); with reduced motion it
   doesn't play by itself (`weather/radar.js`, `weather/mapgl.js`,
   `weather/mapstyle.js`, `weather/mapleaf.js`, `weather/rainmap.js`).
-- **Forecast accuracy here, and a forecast tuned by it**: the server collects
+- **Forecast accuracy here, and a forecast tuned by it** (the card only where
+  there's an airport near enough to check against): the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation
   Weather Center gives at most 400 reports at a time, about a week at a big
   airport, so each day's high and low is kept in
