@@ -150,11 +150,11 @@ async function shaped(url, shape) {
 export async function warningsAt(env, lat, lon, now = Date.now()) {
   const ma = env.METEOALARM_URL || "https://feeds.meteoalarm.org", nws = env.NWS_URL || "https://api.weather.gov";
   const feeds = [...new Set(FEEDS.filter(([, b]) => inBox(lat, lon, b)).map(([slug]) => slug))];
-  const asks = feeds.map((slug) => shaped(`${ma}/api/v1/warnings/feeds-${slug}`, (j) => shapeMeteoalarm(j))
+  const asks = feeds.map((slug) => shaped(`${ma}/api/v1/warnings/feeds-${slug}`, (j) => shapeMeteoalarm(j, now))
     .then((list) => list.filter((w) => w.polys.some((p) => inside(lat, lon, p))))
     .catch((e) => { console.error("weather warnings:", slug, e && e.message); return null; }));
   if (NWS_BOXES.some((b) => inBox(lat, lon, b))) {
-    asks.push(shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon))
+    asks.push(shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon, now))
       .catch((e) => { console.error("weather warnings: NWS", e && e.message); return null; }));
   }
   const got = await Promise.all(asks);
