@@ -210,7 +210,8 @@ so there's nothing to set up beyond the address.
 - **Forecast accuracy here, and a forecast tuned by it**: the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation
   Weather Center keeps only about a week, so each day's high and low is kept in
-  D1, `wx_obs`, for six weeks), and the phone compares them with what each of
+  D1, `wx_obs`, for six weeks: each day the airport's own, whoever asks, and
+  only reports just fetched are written), and the phone compares them with what each of
   the six models forecast a day and three days ahead (Open-Meteo's archive of
   past forecasts). The card shows each model's average error and lean ("±0.8°,
   runs 1.2° warm") and which is most accurate here. From 7 days of record, the
@@ -222,7 +223,15 @@ so there's nothing to set up beyond the address.
   briefing at a time you choose (the day in a sentence, any warnings, whether
   to take an umbrella). Sent with Web Push, encrypted to the phone, worded by
   the app's own code (`weather/alerts.js`) so a notification says what the app
-  would. On iPhone and iPad, add Weather to the Home Screen first.
+  would. On iPhone and iPad, add Weather to the Home Screen first. Turning them
+  on sends a first one ("Notifications on"), and the phone is kept only if it
+  arrives (so made-up subscriptions can't take the places); each notification is
+  claimed before it's sent, so a slow or doubled tick can't send it twice; a
+  phone is forgotten when its push service says it's gone, after five failures
+  in a row, or after four months unheard of (the app tells the server again now
+  and then, and when the browser changes its subscription). Rain checks ask
+  Open-Meteo only for the next four hours' rain; the whole forecast only where
+  a briefing is due. Each connection can only ask the API so often.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you

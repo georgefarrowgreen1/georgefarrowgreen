@@ -36,11 +36,19 @@ function defaults() {
   return { temp: "c", wind: "kmh", precip: "mm", pressure: "hpa", clock: /^en-(AU|NZ|CA|IN|PH)/i.test(lang) ? "12" : "24" };
 }
 function loadSettings() {
-  S.settings = {
+  const d = {
     ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true,
     activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
     notify: { rain: false, brief: false, briefAt: "07:00", place: null },
-    ...(store.get("wx:settings") || {}),
+  };
+  // (only values the app knows: a damaged or out-of-date one falls back to the default)
+  const k = store.get("wx:settings"), o = k && typeof k === "object" && !Array.isArray(k) ? k : {};
+  const one = (v, ok, dv) => (ok.includes(v) ? v : dv), obj = (v, dv) => ({ ...dv, ...(v && typeof v === "object" && !Array.isArray(v) ? v : {}) });
+  S.settings = { ...d, ...o,
+    temp: one(o.temp, ["c", "f"], d.temp), wind: one(o.wind, ["mph", "kmh", "ms", "kn"], d.wind), precip: one(o.precip, ["mm", "in"], d.precip),
+    pressure: one(o.pressure, ["hpa", "inhg", "mmhg"], d.pressure), clock: one(o.clock, ["12", "24"], d.clock), tune: o.tune !== false,
+    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: obj(o.notify, d.notify),
+    activities: Array.isArray(o.activities) ? o.activities.filter((a) => a && typeof a === "object" && typeof a.name === "string") : d.activities,
   };
   S.f = makeFormat(S.settings);
 }
@@ -52,7 +60,8 @@ const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur",
 async function start() {
   loadSettings();
   S.places = (store.get("wx:places") || []).filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
-  S.cur = Math.min(Math.max(0, store.get("wx:cur") || 0), Math.max(0, S.places.length - 1));
+  const cur = store.get("wx:cur");
+  S.cur = Math.min(Number.isInteger(cur) && cur > 0 ? cur : 0, Math.max(0, S.places.length - 1));
   // My Location first (lists kept from before it was), still showing the same place
   const g = S.places.findIndex((x) => x.gps);
   if (g > 0) { const was = place(); S.places.unshift(...S.places.splice(g, 1)); S.cur = S.places.indexOf(was); savePlaces(); }
@@ -60,7 +69,8 @@ async function start() {
   // a shared link: ?lat=…&lon=…&name=…
   const q = new URLSearchParams(location.search), lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
-    addPlace({ name: (q.get("name") || "").slice(0, 60) || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon });
+    const name = (q.get("name") || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, 60);
+    addPlace({ name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon });
     history.replaceState(null, "", location.pathname);
   }
   if (!S.places.length) {
@@ -86,6 +96,7 @@ async function start() {
     const had = !!navigator.serviceWorker.controller, opened = Date.now();
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && Date.now() - opened < 20e3) location.reload(); });
     navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch(() => {});
+    setTimeout(keepNotify, 4000);
   }
 }
 function addPlace(p, makeCurrent = true) {
@@ -754,16 +765,36 @@ async function post(path, body) {
   return j;
 }
 // tell the server what this phone wants (or that it wants nothing)
-async function syncNotify() {
+// (one at a time, each with the settings as they are when its turn comes: two quick changes can't race each other)
+let syncs = Promise.resolve();
+function syncNotify() {
+  const run = syncs.then(syncNow);
+  syncs = run.catch(() => {});
+  return run;
+}
+async function syncNow() {
   const n = S.settings.notify;
   if (!n.rain && !n.brief) {
     const sub = "serviceWorker" in navigator ? await pushSub(false).catch(() => null) : null;
     if (sub) { await post("/api/weather/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+    n.endpoint = null; saveSettings();
     return;
   }
   const sub = await pushSub(true), j = sub.toJSON();
-  await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, place: n.place, rain: n.rain, brief: n.brief, briefAt: n.briefAt,
+  await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, place: n.place, rain: n.rain, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
     units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
+  n.endpoint = j.endpoint; n.syncedAt = Date.now(); saveSettings();
+}
+// with notifications on, now and then (and whenever the browser's changed this phone's subscription), the server's told
+// again, so they keep coming (it forgets phones it hasn't heard from in months)
+async function keepNotify() {
+  const n = S.settings.notify;
+  if (!(n.rain || n.brief) || !("serviceWorker" in navigator) || !("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const sub = await pushSub(false);
+    if (sub && sub.endpoint === n.endpoint && Date.now() - (n.syncedAt || 0) < 7 * 864e5) return;
+    await syncNotify();
+  } catch (_) {}
 }
 const hereForNotify = () => { const p = place(); return p ? { lat: p.lat, lon: p.lon, name: p.name, gps: !!p.gps } : null; };
 const atText = (at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return S.f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };

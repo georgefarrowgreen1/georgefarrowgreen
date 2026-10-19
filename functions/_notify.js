@@ -56,7 +56,8 @@ export function isQuiet(p, t = Date.now()) {
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^push\.services\.mozilla\.com$/,
   /(^|\.)push\.apple\.com$/, /\.notify\.windows\.com$/, /^android\.googleapis\.com$/];
 export function pushEndpointOk(u) {
-  try { const x = new URL(u); return x.protocol === "https:" && PUSH_HOSTS.some((r) => r.test(x.hostname)); } catch (_) { return false; }
+  if (typeof u !== "string" || u.length > 1000) return false;
+  try { const x = new URL(u); return x.protocol === "https:" && !x.port && !x.username && !x.password && PUSH_HOSTS.some((r) => r.test(x.hostname)); } catch (_) { return false; }
 }
 
 /* ---------------- VAPID ---------------- */
@@ -136,7 +137,7 @@ export async function pushTo(env, userId, note) {
 export async function pushToSub(env, sub, note) {
   try {
     const r = await fetch(env.PIGEON_PUSH_URL || sub.endpoint, {     // PIGEON_PUSH_URL: tests only
-      method: "POST",
+      method: "POST", signal: AbortSignal.timeout(8000),
       headers: { Authorization: await vapidAuth(env, sub.endpoint), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
         TTL: String(note.ttl || DAY / 1000), Urgency: note.urgency || "normal", ...(note.tag ? { Topic: await topicFor(env, note.tag, sub.endpoint) } : {}),
         ...(env.PIGEON_PUSH_URL ? { "X-Endpoint": sub.endpoint } : {}) },

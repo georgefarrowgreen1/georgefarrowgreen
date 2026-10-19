@@ -137,6 +137,8 @@ const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v != n
 
 // the forecast's question (the server asks the same one for notifications: functions/_wxpush.js); lat and lon may be lists
 export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: CURRENT, minutely_15: "precipitation,weather_code", forecast_minutely_15: 16, hourly: HOURLY, daily: DAILY, past_days: 1, forecast_days: days, timezone: "auto" });
+// just what a rain alert needs: the next four hours of rain, by the quarter hour (the server asks this every ten minutes)
+export const rainQuery = (lat, lon) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: "precipitation,weather_code", minutely_15: "precipitation,weather_code", forecast_minutely_15: 16, timezone: "auto" });
 export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${forecastQuery(lat, lon)}`);
 export const fetchModels = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), models: MODELS.map((m) => m[0]).join(","), daily: MODEL_DAILY, forecast_days: 10, timezone: "auto" })}`);
 export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: "ecmwf_ifs025", hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 15000);
@@ -183,7 +185,7 @@ const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can.
 export async function load(place, onUpdate, { force = false } = {}) {
-  const id = cell(place.lat, place.lon), key = `wx:${id}`, kept = store.get(key) || {};
+  const id = cell(place.lat, place.lon), key = `wx:${id}`, stored = store.get(key), kept = stored && typeof stored === "object" ? stored : {};
   const raw = { ...kept };
   const fresh = (k) => !force && kept[k] && Date.now() - kept[k].at < TTL[k];
   const build = () => {
@@ -197,7 +199,12 @@ export async function load(place, onUpdate, { force = false } = {}) {
     wx.skill = skillKept(place);
     return wx;
   };
-  if (raw.forecast) onUpdate(build(), { partial: true, stale: !fresh("forecast") });
+  // what's kept from before, straight away (unless it's damaged: then it's dropped, and the network's asked)
+  if (raw.forecast) {
+    let wx = null;
+    try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill:${id}`); }
+    if (wx) onUpdate(wx, { partial: true, stale: !fresh("forecast") });
+  }
   const save = () => {
     if (!store.set(key, raw)) { pruneCache(key); store.set(key, raw); }
   };
@@ -219,7 +226,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   // the climate, once a year per place, in the background (it's a lot to ask for)
   loadClimate(place).then((c) => { if (c !== null && raw.forecast) onUpdate(build(), { partial: false, stale: false }); });
   // how the models have done here, twice a day per place, in the background too
-  if (raw.forecast) loadSkill(place, raw.forecast.j.utc_offset_seconds || 0).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); });
+  if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); });
   return build();
 }
 // keep only the newest few places' forecasts when the phone's storage fills
@@ -263,12 +270,12 @@ async function loadClimate(place) {
 // { at, station: { id, name, km } | null, obsDays, skill | null } — kept for 12 hours per place
 const SKILL_TTL = 12 * 3600e3;
 export const skillKept = (place) => store.get(`skill:${cell(place.lat, place.lon)}`);
-async function loadSkill(place, offset) {
+async function loadSkill(place) {
   const k = `skill:${cell(place.lat, place.lon)}`, kept = store.get(k);
   if (kept && Date.now() - kept.at < (kept.failed ? 3 * 3600e3 : SKILL_TTL)) return null;
   try {
     // what happened, at the nearest airport (the server collects and keeps these)
-    const r = await fetch(`/api/weather/obs?${qs({ lat: r4(place.lat), lon: r4(place.lon), off: offset })}`, { signal: AbortSignal.timeout(15000) });
+    const r = await fetch(`/api/weather/obs?${qs({ lat: (Math.round(place.lat * 100) / 100).toFixed(2), lon: (Math.round(place.lon * 100) / 100).toFixed(2) })}`, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`obs ${r.status}`);
     const o = await r.json(), n = Object.keys(o.days || {}).length;
     let skill = null;

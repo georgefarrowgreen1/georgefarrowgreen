@@ -310,6 +310,27 @@ await ctx.close();
   ok(!(await p.locator('.pre, svg.c-enter').count()), 'and nothing is left waiting to move (all drawn in full)');
   await ctx.close();
 }
+// the API turns away what isn't real: made-up keys, a place left out, a body that isn't an object
+{
+  const call = (method, path, body, origin = 'http://weather.localhost:8788') => new Promise((done, fail) => {
+    const data = body == null ? null : JSON.stringify(body);
+    const r = http.request({ host: '127.0.0.1', port: 8788, path, method, headers: { Host: 'weather.localhost:8788', Origin: origin, 'Content-Type': 'application/json', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
+      let t = ''; res.on('data', (c) => (t += c)); res.on('end', () => done({ status: res.statusCode, headers: res.headers, body: t }));
+    });
+    r.on('error', fail); if (data) r.write(data); r.end();
+  });
+  const fake = await call('POST', '/api/weather/subscribe', { sub: { endpoint: 'https://fcm.googleapis.com/fcm/send/made-up', keys: { p256dh: 'AAAA', auth: 'AAAA' } }, place: { lat: 51.5, lon: -0.1, name: 'X' }, rain: true });
+  ok(fake.status === 400 && /keys/i.test(fake.body), 'a subscription with made-up keys is turned away', `${fake.status} ${fake.body}`);
+  const port = await call('POST', '/api/weather/subscribe', { sub: { endpoint: 'https://fcm.googleapis.com:8443/fcm/send/x', keys: { p256dh: 'AAAA', auth: 'AAAA' } }, place: { lat: 51.5, lon: -0.1 }, rain: true });
+  ok(port.status === 400, 'and one to a push service on another port', `${port.status}`);
+  const arr = await call('POST', '/api/weather/unsubscribe', []);
+  ok(arr.status === 400, 'a body that isn\'t an object: a 400, not a 500', `${arr.status}`);
+  const noPlace = await call('GET', '/api/weather/obs', null);
+  ok(noPlace.status === 400, 'the airport reports need a place (not 0, 0)', `${noPlace.status}`);
+  const other = await call('POST', '/api/weather/subscribe', {}, 'https://evil.example');
+  ok(other.status === 403, 'another site can\'t sign phones up', `${other.status}`);
+  ok(/default-src 'none'/.test(noPlace.headers['content-security-policy'] || '') && noPlace.headers['cross-origin-resource-policy'] === 'same-origin', 'the API\'s answers carry their own locks', JSON.stringify([noPlace.headers['content-security-policy'], noPlace.headers['cross-origin-resource-policy']]));
+}
 // its own address only (asked of the local server directly, by name)
 const get = (host, path) => new Promise((done, fail) => http.get({ host: '127.0.0.1', port: 8788, path, headers: { Host: host } }, (r) => {
   let body = ''; r.on('data', (c) => (body += c)); r.on('end', () => done({ status: r.statusCode, body }));
@@ -351,7 +372,8 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   const t1 = await tick();
   ok(t1.status === 200 && t1.subs === 1 && t1.brief === 1 && t1.rain === (quiet ? 0 : 1), 'the tick sends what\'s due', JSON.stringify(t1));
   const got = await mine();
-  const brief = got.find((n) => n.tag === 'brief'), rain = got.find((n) => n.tag === 'rain');
+  const brief = got.find((n) => n.tag === 'brief'), rain = got.find((n) => n.tag === 'rain'), hello = got.filter((n) => n.tag === 'wx-on');
+  ok(hello.length === 1 && hello[0].title === 'Notifications on' && /^A briefing at \d\d:\d\d for London\.$/.test(hello[0].body), 'turning them on sends one "Notifications on" first (only a real phone can take it)', hello.map((n) => `${n.title} — ${n.body}`).join(' | '));
   ok(brief && /^London · \d+° \/ \d+°$/.test(brief.title) && /on the way from about/.test(brief.body), 'the briefing, decrypted', brief && `${brief.title} — ${brief.body}`);
   if (!quiet) ok(rain && /^Rain in about \d+ min$/.test(rain.title) && /^London: Rain starting in about/.test(rain.body), 'the rain alert, decrypted', rain && `${rain.title} — ${rain.body}`);
   const t2 = await tick();
