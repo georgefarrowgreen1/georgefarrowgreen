@@ -22,6 +22,8 @@ function h(tag, attrs = {}, ...kids) {
     else n.setAttribute(k, v === true ? "" : v);
   }
   for (const c of kids.flat()) if (c != null && c !== false) n.append(c instanceof Node ? c : String(c));
+  // (an icon in a span: just the icon, with no room for a line of text's descenders under it: styles.css .ic)
+  if (attrs?.svg && tag === "span") n.classList.add("ic");
   return n;
 }
 const COLOR = { temp: "#D07A12", rain: "#3B8BE0", wind: "#14A08F" };     // (checked for contrast and colour-blind separation on the cards)
@@ -1074,8 +1076,8 @@ function wire() {
   for (const k of ["rain", "brief", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
   $("notify-here").addEventListener("click", () => { S.settings.notify.place = hereForNotify(); saveSettings(); $("notify-status").textContent = "Saving…"; syncNotify().then(() => { $("notify-status").textContent = "Moved to this place."; }, (e) => { $("notify-status").textContent = `Couldn't save that just now (${e.message}).`; }); drawNotify(true); });
   $("act-add").addEventListener("change", addAct);
-  for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="g-off">${glyph("play", 16)}</span><span class="g-on">${glyph("pause", 16)}</span>`;
-  for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="g-off">${glyph("expand", 16)}</span><span class="g-on">${glyph("shrink", 16)}</span>`;
+  for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
+  for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="ic g-off">${glyph("expand", 16)}</span><span class="ic g-on">${glyph("shrink", 16)}</span>`;
   $("refresh-btn").addEventListener("click", () => go(true));
   for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));

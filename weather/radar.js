@@ -309,7 +309,11 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     credit.querySelector(".rc-t").textContent = ` ${names.join(", ")}`;
     credit.setAttribute("aria-label", `Map data © ${names.join(", ")}: all the credits`);
   }
+  // (while it fills the screen, a space of its height holds its place, so the page under it doesn't move up)
+  let held = null;
   function big(on) {
+    if (on && !held) { held = document.createElement("div"); held.className = "radar-held"; held.style.height = `${card.offsetHeight}px`; card.after(held); }
+    else if (!on && held) { held.remove(); held = null; }
     card.classList.toggle("radar-big", on);
     document.body.classList.toggle("no-scroll", on);
     full.setAttribute("aria-label", on ? "Close full screen" : "Full screen");
@@ -321,11 +325,18 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       on ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
     }
   }
+  // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
+  // can morph one into the other (a view transition); at once otherwise, or with reduced motion
+  function grow(on) {
+    if (!document.startViewTransition || calm) return big(on);
+    card.style.viewTransitionName = "radar";
+    document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; });
+  }
   hint.hidden = !touch;
   play.addEventListener("click", () => (playing ? stop() : run()));
   slider.addEventListener("input", () => { stop(); show(Number(slider.value)); });
-  full.addEventListener("click", () => big(!card.classList.contains("radar-big")));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big")) big(false); });
+  full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big")) grow(false); });
   // start once it's on screen; pause while it's off it
   const io = new IntersectionObserver((es) => {
     const vis = es.some((x) => x.isIntersecting);

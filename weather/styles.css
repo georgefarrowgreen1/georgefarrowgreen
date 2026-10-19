@@ -50,6 +50,9 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 button, input, select { font: inherit; color: inherit; }
+/* an icon in a span (app.js h): just the icon, with no room under it for a line of text's descenders, which left icons
+   sitting high in their buttons and rows */
+.ic { display: inline-grid; }
 a { color: inherit; }
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 .muted { color: var(--text-3); }
@@ -715,7 +718,16 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .conf b { font-size: 14px; }
 
 /* ---------- radar ---------- */
-[data-on="1"] > .g-off, [data-on="0"] > .g-on, :not([data-on]) > .g-on { display: none; }
+/* a button's two glyphs (play and pause; full screen and back) in one place: the one shown grows in as the other
+   shrinks and blurs away, as iOS swaps its symbols */
+.icon-btn > .g-on, .icon-btn > .g-off { grid-area: 1 / 1; position: relative; z-index: 3; transition: opacity 0.2s, transform 0.42s var(--spring), filter 0.2s; }
+[data-on="1"] > .g-off, [data-on="0"] > .g-on, :not([data-on]) > .g-on { opacity: 0; transform: scale(0.3); filter: blur(4px); }
+@media (prefers-reduced-motion: reduce) { .icon-btn > .g-on, .icon-btn > .g-off { transition: none; } }
+/* full screen: the card grows from its place (a view transition, radar.js) on iOS's curve, what's in it changing over
+   quickly at the start rather than the two showing through each other all the way */
+::view-transition-group(radar) { animation-duration: 0.42s; animation-timing-function: var(--glide); }
+::view-transition-old(radar), ::view-transition-new(radar) { animation-duration: 0.16s; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
 .radar-note { margin: 8px 0 0; font-size: 15px; font-weight: 600; }
 .radar-note:empty { display: none; }
 .radar-wrap { position: relative; margin-top: 12px; }
@@ -785,6 +797,9 @@ body.no-scroll { overflow: hidden; }
 .radar .leaflet-container .leaflet-bar a { width: 36px; height: 36px; line-height: 36px; background: transparent; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.14); font-weight: 400; }
 .radar .leaflet-container .leaflet-bar a:last-child { border-bottom: 0; }
 .radar .leaflet-container .leaflet-bar a:hover { background: rgba(255, 255, 255, 0.12); }
+/* the map's buttons give under a finger and spring back, as the rest do */
+.radar .leaflet-container .leaflet-bar a { transition: background-color 0.2s, transform 0.42s var(--spring); }
+.radar .leaflet-container .leaflet-bar a:active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
 .radar .leaflet-container .leaflet-bar a.leaflet-disabled { color: rgba(255, 255, 255, 0.35); background: transparent; }
 .radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50% !important; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
 .radar-centre svg { position: relative; z-index: 3; }
@@ -799,10 +814,11 @@ body.no-scroll { overflow: hidden; }
   color: #fff; font: inherit; font-size: 11px; line-height: 1; background-color: rgba(14, 22, 38, 0.5); transition: padding 0.6s var(--spring), transform 0.5s var(--spring); }
 .radar-credit > span { position: relative; z-index: 3; }
 .radar-credit .rc-c { font-size: 13px; font-weight: 600; }
-.radar-credit .rc-t { white-space: pre; overflow: hidden; max-width: 240px; transition: max-width 0.6s var(--spring), opacity 0.3s; }
+.radar-credit { transition: transform 0.42s var(--spring), padding 0.6s var(--glide), filter 0.25s; }
+.radar-credit .rc-t { white-space: pre; overflow: hidden; max-width: 240px; transition: max-width 0.6s var(--glide), opacity 0.3s; }
 .radar-credit.folded { padding: 0; }
 .radar-credit.folded .rc-t { max-width: 0; opacity: 0; }
-.radar-credit:active { transform: scale(0.9); transition-duration: 0.12s; }
+.radar-credit:active { transform: scale(0.88); filter: brightness(1.18); transition-duration: 0.1s; }
 @media (hover: hover) { .radar-credit.folded:hover, .radar-credit.folded:focus-visible { padding: 0 10px; } .radar-credit.folded:hover .rc-t, .radar-credit.folded:focus-visible .rc-t { max-width: 240px; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .radar-credit, .radar-credit .rc-t { transition: none; } }
 

@@ -264,11 +264,18 @@ ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · 
   'then the radar carried on two hours, marked as forecast', `${await p.textContent('#radar .radar-time')}; ${await p.locator('#radar .rv-tiles').count()} frames`);
 ok(!(await p.isVisible('#radar .radar-status')), 'with no note under it (only when something\'s missing)', await p.textContent('#radar .radar-status'));
 await p.waitForFunction(() => { const l = [...document.querySelectorAll('#radar .rv-tiles')].pop(); return [...l.querySelectorAll('canvas')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 150)); }, null, { timeout: 15000, polling: 250 }).then(() => true, () => false).then((x) => ok(x, 'the last forecast frame drawn from the radar, in its colours'));
+// every icon sits in its button's middle (one wrapped in a span used to sit high: the room a line of text keeps for descenders)
+const offMiddle = await p.evaluate(() => [...document.querySelectorAll('#radar .icon-btn, .top .icon-btn, .radar-centre')].map((b) => {
+  const s = [...b.querySelectorAll('svg')].find((x) => getComputedStyle(x.closest('span') || x).opacity !== '0'); if (!s) return null;
+  const r = b.getBoundingClientRect(), q = s.getBoundingClientRect(); return Math.round(Math.abs((q.top + q.height / 2) - (r.top + r.height / 2)) * 10) / 10;
+}).filter((x) => x != null));
+ok(offMiddle.length >= 4 && offMiddle.every((d) => d < 0.6), 'every icon in its button\'s middle (play, full screen, the map\'s, the bar\'s)', offMiddle.join(', '));
 await p.click('#radar .radar-full');
-ok(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big')), 'full screen');
+// (growing into it: the switch comes a frame later, once the page as it was has been captured to morph from)
+ok(await p.waitForFunction(() => document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'full screen');
 await p.screenshot({ path: `${out}/wx-radar.png` });
 await p.keyboard.press('Escape');
-ok(!(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big'))), 'and back');
+ok(await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'and back');
 // with no rain on the radar to follow, the next two hours come from the models instead, inside a box
 {
   const { ctx: c2, p: p2 } = await open({ rainIn: 30, dryRadar: true });
