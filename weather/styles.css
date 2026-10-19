@@ -19,6 +19,7 @@
   --tint-blue: #9fd0ff;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glide: cubic-bezier(0.32, 0.72, 0, 1);      /* big things, and things that slide: iOS's own, quick then soft, no overshoot */
   --pad: 16px;
   --card-x: 18px;                /* a card's side margins */
   /* the glass */
@@ -88,11 +89,13 @@ a { color: inherit; }
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
-/* give under a finger, spring back */
-.icon-btn, .place, .pill-btn, .more-btn, .seg button, .day-row, .row-btn, .saved .del, fieldset.opt label, .radar-centre, .link {
+/* give under a finger, spring back (buttons); rows and choices light a little instead (shrinking, they'd lurch) */
+.icon-btn, .place, .pill-btn, .more-btn, .day-row, .row-btn, .saved .del, .radar-centre, .link {
   transition: transform 0.5s var(--spring), background-color 0.25s, filter 0.25s;
 }
-.icon-btn:active, .place:active, .pill-btn:active, .more-btn:active, .radar-centre:active, fieldset.opt label:active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
+.icon-btn:active, .place:active, .pill-btn:active, .more-btn:active, .radar-centre:active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
+fieldset.opt label { transition: filter 0.2s, color 0.25s; }
+fieldset.opt label:active { filter: brightness(1.15); transition-duration: 0.08s; }
 .day-row:active, .row-btn:active { transform: scale(0.985); transition-duration: 0.12s; }
 @media (hover: hover) {
   .icon-btn:hover, .place:hover, .pill-btn:hover, .more-btn:hover, .radar-centre:hover { filter: brightness(1.15); }
@@ -173,6 +176,9 @@ body[data-sky^="snow"] .sky-fx::after { inset: -160px 0 0; opacity: 0.45; backgr
 .sky-flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(55% 40% at 72% 14%, rgba(214, 206, 255, 0.55), transparent 72%); }
 body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
 @keyframes lightning { 0%, 84%, 100% { opacity: 0; } 85% { opacity: 0.32; } 86% { opacity: 0.06; } 87.5% { opacity: 0.22; } 90% { opacity: 0; } }
+/* the sky holds still under a sheet, and once the page has scrolled on past the top (behind the cards it's
+   hardly seen, and every pane of glass over it would be blurred afresh each frame it moves) */
+body:is(.sheet-up, .deep) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-up, .deep) .sky-fx::before, body:is(.sheet-up, .deep) .sky-fx::after { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .sky-fx, .sky-fx::before, .sky-fx::after, .sky-clouds, .sky-flash { animation: none !important; } .sky, .sky-clouds { transition: none; }
 }
@@ -321,19 +327,16 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack:empty { display: none; }
 
-/* segmented control: a glass track with a lens that slides to the choice */
+/* segmented control: a glass track with a lens that glides to the choice */
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; min-width: 200px; background-color: rgba(0, 0, 0, 0.16); }
 .seg::before { content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 999px; z-index: 0;
-  transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform 0.55s var(--spring);
+  transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform 0.42s var(--glide);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.16));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
-/* moving, the thumb stretches like a drop of glass, then settles */
-.seg.moving::before { animation: seg-stretch 0.55s ease-out; }
-@keyframes seg-stretch { 35% { scale: 1.16 0.9; } 70% { scale: 0.97 1.03; } }
-@media (prefers-reduced-motion: reduce) { .seg.moving::before { animation: none; } }     /* (after the rule it undoes) */
-.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; }
+@media (prefers-reduced-motion: reduce) { .seg::before { transition: none; } }
+.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; transition: color 0.3s, opacity 0.15s; }
 .seg button[aria-selected="true"] { color: #fff; }
-.seg button:active { transform: scale(0.94); }
+.seg button:not([aria-selected="true"]):active { opacity: 0.6; }
 
 /* hour strip */
 /* the hours: they swipe to the card's edges, fading there, but rest and snap inside its margins
@@ -569,21 +572,35 @@ dialog.sheet { position: fixed; --tint: rgba(26, 34, 52, 0.74); padding: 0; colo
   border-radius: 34px; margin: auto 8px 8px; overflow: hidden;
   -webkit-backdrop-filter: blur(34px) saturate(190%); backdrop-filter: blur(34px) saturate(190%);
   box-shadow: var(--edge), 0 30px 80px -10px rgba(0, 0, 0, 0.55); }
-dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-up 0.55s var(--spring); transition: transform 0.5s var(--spring); }
+/* opening, it comes up from below on iOS's own curve (not faded in: Safari leaves a fading pane of glass unblurred,
+   then snaps it frosted); the dim fades in with it */
+dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in 0.5s var(--glide); transition: transform 0.45s var(--glide); }
 dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.38); }
-/* closing: it slides away (from wherever a finger left it); dragged, it follows the finger */
-dialog.sheet.closing { animation: sheet-down 0.32s cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+dialog.sheet[open]::backdrop { animation: dim-in 0.5s var(--glide); }
+@keyframes sheet-in { from { transform: translateY(calc(100% + 12px)); } }
+@keyframes dim-in { from { opacity: 0; } }
+/* closing: it slides away (from wherever a finger left it), the dim going with it; dragged, it follows the finger */
+dialog.sheet.closing { animation: sheet-out 0.36s var(--glide) forwards; pointer-events: none; }
+dialog.sheet.closing::backdrop { animation: dim-out 0.36s var(--glide) forwards; }
 dialog.sheet.dragging { transition: none; }
-@keyframes sheet-down { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(105%); } }
-@media (min-width: 700px) { @keyframes sheet-down { to { transform: translateY(40px) scale(0.96); opacity: 0; } } }
-/* while a sheet is up, the page behind steps back */
-.page { transition: transform 0.55s var(--spring); }
+@keyframes sheet-out { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(calc(100% + 12px)); } }
+@keyframes dim-out { to { opacity: 0; } }
+@media (min-width: 700px) {
+  @keyframes sheet-in { from { transform: translateY(24px) scale(0.98); opacity: 0; } }
+  @keyframes sheet-out { to { transform: translateY(24px) scale(0.98); opacity: 0; } }
+}
+/* while a sheet is up, the page behind steps back, and holds still: its glass unblurred, and nothing on it (or the
+   sky) moving (under the dim it looks the same, and the sheet's own glass isn't blurred afresh every frame) */
+.page { transition: transform 0.5s var(--glide); }
+body.sheet-up .page, body.sheet-up .page *, body.sheet-up .page ::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+body.sheet-up .page *, body.sheet-up .page ::before, body.sheet-up .page ::after { animation-play-state: paused !important; }
 body.sheet-up .page { transform: translateY(calc(var(--recede, 1) * 10px)) scale(calc(1 - var(--recede, 1) * 0.06)); }
 body.sheet-drag .page { transition: none; }
 @media (min-width: 700px) { body.sheet-up .page { transform: scale(calc(1 - var(--recede, 1) * 0.025)); } }
-@keyframes sheet-up { from { transform: translateY(70px) scale(0.97); opacity: 0; } }
 @media (min-width: 700px) { dialog.sheet { margin: auto; max-height: 84vh; } }
-@media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.closing { animation: none; } .page, body.sheet-up .page { transition: none; transform: none; } }
+/* places: always the same height on a phone, so it doesn't jump as results come and go */
+@media (max-width: 699px) { #places { height: 86vh; height: 86svh; } }
+@media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.closing, dialog.sheet[open]::backdrop, dialog.sheet.closing::backdrop { animation: none; } .page, body.sheet-up .page { transition: none; transform: none; } }
 /* the header stays put; what scrolls up under it fades away (the scroll edge) */
 .sheet-head { position: relative; z-index: 4; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 4px; }
 .sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
@@ -618,12 +635,24 @@ body.sheet-drag .page { transition: none; }
 fieldset.opt { border: 0; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 fieldset.opt legend { font-size: 13px; color: var(--text-3); font-weight: 600; margin-bottom: 8px; padding: 0 4px; }
 fieldset.opt label { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; cursor: pointer; font-size: 15px; min-height: 42px; }
-/* a choice of one (°C or °F…): a segmented control, the chosen one raised in glass */
+/* a choice of one (°C or °F…): a segmented control, a lens of glass gliding to the chosen one (which, and how
+   many there are, found with :has) */
 fieldset.opt:has(> .choice) { display: block; }
-.choice { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; padding: 3px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.18); }
-fieldset.opt label:has(input[type="radio"]) { justify-content: center; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-height: 36px; padding: 7px 8px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
-fieldset.opt label:has(input[type="radio"]:checked) { color: #fff; background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
+.choice { position: relative; isolation: isolate; --n: 2; --i: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; padding: 3px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.18); }
+.choice:has(> label:nth-child(3)) { --n: 3; }
+.choice:has(> label:nth-child(4)) { --n: 4; }
+.choice:has(> label:nth-child(2) > input:checked) { --i: 1; }
+.choice:has(> label:nth-child(3) > input:checked) { --i: 2; }
+.choice:has(> label:nth-child(4) > input:checked) { --i: 3; }
+.choice::before { content: ""; position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 999px;
+  transform: translateX(calc(var(--i) * 100%)); transition: transform 0.42s var(--glide);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.16), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
+.choice:not(:has(input:checked))::before { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .choice::before { transition: none; } }
+.choice > label { z-index: 1; }
+fieldset.opt label:has(input[type="radio"]) { justify-content: center; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-height: 36px; padding: 7px 8px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+fieldset.opt label:has(input[type="radio"]:checked) { color: #fff; }
 fieldset.opt input[type="radio"] { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 fieldset.opt label:has(input[type="radio"]:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
 /* switches */

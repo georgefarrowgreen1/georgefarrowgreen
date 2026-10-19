@@ -770,11 +770,22 @@ function readSettings(e) {
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
-  saveSettings(); render(); drawActs();
+  saveSettings(); afterFrame(redraw);
   // notifications speak your units too
   const n = S.settings.notify;
   if ((n.rain || n.brief) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
 }
+
+// The page behind redrawn once the next frame is out, so a choice's lens has begun to glide (started, it runs by
+// itself; redrawn first, the lens would wait for it, then jump). A sheet closing does any that's waiting at once.
+const waiting = new Set();
+function afterFrame(fn) {
+  if (waiting.has(fn)) return;
+  waiting.add(fn);
+  requestAnimationFrame(() => setTimeout(() => { if (waiting.delete(fn)) fn(); }, 0));
+}
+const flushWaiting = () => { for (const fn of [...waiting]) { waiting.delete(fn); fn(); } };
+const redraw = () => { render(); drawActs(); };
 
 /* ---------- notifications ---------- */
 const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
@@ -950,17 +961,19 @@ function motion(key, ...els) {
 // or when swiped down. With Reduce Motion, they simply come and go.
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 function openSheet(d) {
-  if (!d.open) d.showModal();
-  // (the title has focus first, so it's what a screen reader says, and no ring lands on the close button)
-  d.querySelector(".sheet-head h2")?.focus({ preventScroll: true });
-  d.classList.remove("closing"); d.style.transform = "";
-  // (stepping back about the top of what's on screen, not the middle of the whole long page)
+  // the page behind first (stepping back about the top of what's on screen, not the middle of the whole long page;
+  // and still: styles.css), so it's restyled once, with the sheet
   document.querySelector(".page").style.transformOrigin = `50% ${scrollY}px`;
   document.body.style.setProperty("--recede", "1");
   document.body.classList.add("sheet-up");
+  d.classList.remove("closing"); d.style.transform = "";
+  if (!d.open) d.showModal();
+  // (the title has focus first, so it's what a screen reader says, and no ring lands on the close button)
+  d.querySelector(".sheet-head h2")?.focus({ preventScroll: true });
 }
 function closeSheet(d, from = 0) {
   if (!d.open || d.classList.contains("closing")) return;
+  flushWaiting();
   if (calm.matches) { d.close(); return; }
   d.style.setProperty("--from", `${from}px`); d.style.transform = "";
   d.classList.add("closing");
@@ -1067,14 +1080,15 @@ function wire() {
   for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));
   $("retry-btn").addEventListener("click", () => go(true));
+  const drawModeChart = () => { if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); } };
   $("hourly-seg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-mode]"); if (!b) return;
     S.mode = b.dataset.mode;
     const tabs = [...$("hourly-seg").children];
     for (const x of tabs) x.setAttribute("aria-selected", String(x === b));
     $("hourly-seg").style.setProperty("--seg-i", String(tabs.indexOf(b)));
-    $("hourly-seg").classList.remove("moving"); void $("hourly-seg").offsetWidth; $("hourly-seg").classList.add("moving");
-    if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); }
+    // (the chart once the lens is on its way)
+    afterFrame(drawModeChart);
   });
   $("hourly-seg").addEventListener("keydown", (e) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
@@ -1092,6 +1106,7 @@ function wire() {
     const c = Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = Math.min(1, Math.max(0, (c - 0.55) / 0.35));
     heroEl.style.setProperty("--c", c.toFixed(3)); top.style.setProperty("--cs", (cs * cs * (3 - 2 * cs)).toFixed(3));
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
+    document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
     top.classList.toggle("scrolled", scrollY > 8);
   };
   addEventListener("scroll", () => { ticking ||= requestAnimationFrame(onScroll); }, { passive: true });

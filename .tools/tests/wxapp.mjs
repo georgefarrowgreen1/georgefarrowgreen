@@ -289,13 +289,46 @@ ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent
 await p.screenshot({ path: `${out}/wx-settings.png` });
 await p.keyboard.press('Escape');
 ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf'), 'and golf has its best time');
+// a choice of one: a lens glides to the chosen one (two choices, or four), and nothing on the page behind is blurred or
+// moving while the sheet's up (the sheet glides over a still page)
+await p.click('#settings-btn');
+await p.click('input[name="wind"][value="kn"]'); await p.waitForTimeout(700);
+const lens = await p.evaluate(() => ['temp', 'wind'].map((k) => {
+  const c = document.querySelector(`.choice:has(input[name="${k}"])`), chosen = c.querySelector('input:checked').closest('label');
+  const tx = new DOMMatrix(getComputedStyle(c, '::before').transform).m41, w = parseFloat(getComputedStyle(c, '::before').width);
+  return { k, off: Math.round(Math.abs(3 + tx - chosen.offsetLeft)), dw: Math.round(Math.abs(w - chosen.offsetWidth)) };
+}));
+ok(lens.every((x) => x.off <= 2 && x.dw <= 2), 'the lens sits under the chosen one (°C of two; knots, the last of four)', JSON.stringify(lens));
+const still = await p.evaluate(() => {
+  const card = document.querySelector('.page .card'), sky = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky')), page = document.getAnimations().filter((a) => a.effect?.target?.closest?.('.page'));
+  return { blur: getComputedStyle(card).backdropFilter, sky: sky.every((a) => a.playState !== 'running'), page: page.filter((a) => a.playState === 'running' && !(a instanceof CSSTransition)).map((a) => a.animationName) };
+});
+ok(still.blur === 'none' && still.sky && !still.page.length, 'under a sheet the page holds still: its glass unblurred, nothing moving on it or in the sky', JSON.stringify(still));
+await p.click('input[name="wind"][value="mph"]'); await p.keyboard.press('Escape');
+await p.waitForFunction(() => !document.getElementById('settings').open && !document.body.classList.contains('sheet-up'), null, { timeout: 3000 }).catch(() => {});
+const back = await p.evaluate(() => getComputedStyle(document.querySelector('.page .card')).backdropFilter);
+ok(/blur/.test(back), 'and its glass back once the sheet\'s gone', back);
+// scrolled on past the top, the sky behind the cards holds still too (and moves again back at the top)
+{
+  const skyRunning = () => p.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky') && a instanceof CSSAnimation).map((a) => a.playState));
+  await p.evaluate(() => scrollTo(0, 1800)); await p.waitForTimeout(400);
+  const deep = await skyRunning();
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(400);
+  const top = await skyRunning();
+  ok(deep.every((x) => x !== 'running') && (!top.length || top.some((x) => x === 'running')), 'scrolled on, the sky pauses (and moves again at the top)', `${deep.join(',')} / ${top.join(',')}`);
+}
 // units, kept
 await p.click('#settings-btn'); await p.click('input[name="temp"][value="f"]'); await p.keyboard.press('Escape');
 ok(/^\d+°$/.test(await p.textContent('#now-temp')) && Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'switches to °F');
 await p.reload(); await p.waitForSelector('.day-row');
 ok(Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'and remembers it');
-// search and save a place
-await p.click('#place-btn'); await p.fill('#search', 'Edin'); await p.press('#search', 'Enter');
+// search and save a place (the sheet the same height with results as without: it doesn't jump as they come)
+await p.click('#place-btn'); await p.waitForTimeout(600);
+const tall0 = await p.evaluate(() => document.getElementById('places').getBoundingClientRect().height);
+await p.fill('#search', 'Edin'); await p.waitForSelector('#results .row-btn', { timeout: 8000 }).catch(() => {});
+const tall1 = await p.evaluate(() => document.getElementById('places').getBoundingClientRect().height);
+ok(tall0 > 600 && Math.abs(tall1 - tall0) < 1, 'places: the same height before and with results', `${Math.round(tall0)} → ${Math.round(tall1)}`);
+await p.press('#search', 'Enter');
 await p.waitForFunction(() => document.getElementById('place-name').textContent === 'Edinburgh', null, { timeout: 8000 }).catch(() => {});
 await p.waitForTimeout(600);
 ok((await p.textContent('#place-name')) === 'Edinburgh' && !(await p.evaluate(() => document.getElementById('places').open)), 'a place found by search: Enter takes the first found (even before they\'re back)');
