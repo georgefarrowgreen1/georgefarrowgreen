@@ -315,7 +315,7 @@ so there's nothing to set up beyond the address.
 - **Right now**, straight after the 16 days: feels like (and why) on a
   thermometer marked with the actual temperature, wind with a compass and
   Beaufort name, humidity on a bar and dew-point comfort, rain in the last and
-  next 24 hours, pressure on a dial with which way it's going, visibility on a
+  next 24 hours (the next as little bars, an hour each), pressure on a dial with which way it's going, visibility on a
   scale from fog to clear, UV, air quality and pollen, the Sun's arc with golden
   hour, and the Moon (phase, rise and set, or when it next does on a day it
   doesn't, next full and new moon), all worked out on the phone
@@ -325,7 +325,8 @@ so there's nothing to set up beyond the address.
   temperature, wind and gusts with which way it'll blow every 3 hours, humidity
   with dew points, rain and pressure over the last day and the next two, UV
   today and tomorrow, visibility, the air quality index), and a line on what it
-  means.
+  means; a swipe sideways (or the arrow keys) goes on to the next tile's, as a
+  day's sheet does to the next day, with dots for which it is.
 - **Credits**: every source in one window (who, what for, the licence, a link
   out), opened from the small print at the foot of the page (no panel, centred:
   when it was updated, Open-Meteo's credit, and "Learn more about weather data

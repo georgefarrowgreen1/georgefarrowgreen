@@ -760,6 +760,12 @@ function pressureDial(hpa, dp) {
   box.firstElementChild.style.setProperty("--sw", `${(-q * 270).toFixed(0)}deg`);
   return box;
 }
+// the next hours' rain as little bars, one an hour, scaled to the wettest (or to 1 mm, so drizzle stays small)
+function rainBars(hrs) {
+  const top = Math.max(1, ...hrs.map((x) => x.precip || 0)), w = 240 / Math.max(1, hrs.length);
+  const bars = hrs.map((x, i) => { const v = Math.max((x.precip || 0) > 0.05 ? 2.5 : 0.8, ((x.precip || 0) / top) * 26); return `<rect x="${(i * w + 1).toFixed(1)}" y="${(28 - v).toFixed(1)}" width="${(w - 2.5).toFixed(1)}" height="${v.toFixed(1)}" rx="1.5"${(x.precip || 0) > 0.05 ? "" : ' class="dry"'}/>`; }).join("");
+  return h("div", { svg: `<svg class="rbars" viewBox="0 0 240 28" preserveAspectRatio="none" aria-hidden="true">${bars}</svg>` });
+}
 // a bar filled part of the way (0 to 1), and a scale with a knob on it and its ends named
 const fillBar = (k, cls) => { const b = h("div", { class: `fbar ${cls}` }), i = h("i"); i.style.width = `${Math.min(100, Math.max(0, k * 100))}%`; b.append(i); return b; };
 const scaleBar = (k, cls, ends) => { const m = h("div", { class: `meter ${cls}` }), i = h("i"); i.style.left = `${Math.min(100, Math.max(0, k * 100))}%`; m.append(i); return [m, h("div", { class: "ends" }, h("span", {}, ends[0]), h("span", {}, ends[1]))]; };
@@ -784,7 +790,7 @@ function tiles(wx, now) {
   say.humidity = () => [h("div", { class: "big" }, `${Math.round(c.rh ?? 0)}%`), fillBar((c.rh ?? 0) / 100, "wet"), h("p", { class: "sub" }, `Dew point ${f.temp(dew)}. ${comfort}.`)];
   // rain: the last day and the next
   const past = I.hoursBetween(wx, now - DAY, now).reduce((a, x) => a + (x.precip || 0), 0), next = I.hoursBetween(wx, now, now + DAY).reduce((a, x) => a + (x.precip || 0), 0);
-  say.rain = () => [h("div", { class: "big" }, f.precip(next)), h("p", {}, "in the next 24 hours"), h("p", { class: "sub" }, `${f.precip(past)} in the last 24.`)];
+  say.rain = () => [h("div", { class: "big" }, f.precip(next)), h("p", {}, "in the next 24 hours"), rainBars(I.hoursBetween(wx, now, now + DAY)), h("p", { class: "sub" }, `${f.precip(past)} in the last 24.`)];
   // pressure: a dial, and which way it's going
   const p3 = I.hourAt(wx, now - 3 * HOUR)?.pressure, dp = c.pressure != null && p3 != null ? c.pressure - p3 : null;
   // (its unit under it: four figures and a dial side by side fill a tile)
@@ -865,9 +871,17 @@ const ABOUT = {
   uv: () => "From 3, sun cream and shade around the middle of the day; from 6, cover up; from 8, keep out of the midday sun.",
   air: () => "The European Air Quality Index: to 20 good, 40 fair, 60 moderate, 80 poor and 100 very poor; over that, extremely poor.",
 };
-function openDetail(kind) {
+// the tiles there are to open, in their order (air quality only where it's known)
+const detailKinds = () => TILES.map((x) => x[0]).filter((k) => S.say?.[k]);
+function stepDetail(n, quiet = false) {
+  if (!S.wx || !$("detail").open) return;
+  const kinds = detailKinds(), next = kinds[kinds.indexOf(S.detailKind) + n];
+  if (next) openDetail(next, quiet ? 0 : n);
+}
+function openDetail(kind, dir = 0) {
   const wx = S.wx, say = S.say?.[kind];
   if (!wx || !say) return;
+  S.detailKind = kind;
   const f = S.f, now = nowWall(wx.place.offset), [, title, icon] = TILES.find((x) => x[0] === kind);
   const when = (v) => `${f.day(v, now)} ${f.time(v)}`, hrs = I.hoursFrom(wx, now, 48);
   const chart = h("div"), kids = [h("div", { class: "detail-now" }, ...say())];
@@ -879,7 +893,7 @@ function openDetail(kind) {
     const t = T(), pts = hrs.map((x) => { const fl = x.feels ?? x.temp; return { t: x.t, v: t(fl), lo: t(Math.min(fl, x.temp)), hi: t(Math.max(fl, x.temp)), x }; });
     const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
     kids.push(section("Next 48 hours"), chart, h("p", { class: "chart-note" }, "Shaded: the difference from the actual temperature."));
-    draw = plot(hrs, { kind: "line", color: COLOR.temp, points: pts, y: { fmt: (v) => f.deg(v) },
+    draw = plot(hrs, { kind: "line", color: COLOR.temp, bandColor: "#b8c6dc", points: pts, y: { fmt: (v) => f.deg(v) },
       marks: [{ t: hi.t, v: hi.v, text: f.temp(hi.x.feels) }, ...(hi.t !== lo.t ? [{ t: lo.t, v: lo.v, text: f.temp(lo.x.feels) }] : [])],
       summary: `Feels like, hour by hour: from ${f.temp(lo.x.feels)} to ${f.temp(hi.x.feels)}.`,
       tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.feels), "feels like"], [f.temp(p.x.temp), "actual"], [f.wind(p.x.wind), "wind"]] }),
@@ -948,10 +962,15 @@ function openDetail(kind) {
   }
   kids.push(h("p", { class: "detail-about" }, ABOUT[kind](f)));
   $("detail-title").replaceChildren(h("span", { class: "dt-icon", svg: glyph(icon, 18) }), title);
-  $("detail-body").replaceChildren(...kids);
+  // (which of them it is: a swipe sideways, or the arrow keys, for the one before or after)
+  const kinds = detailKinds();
+  $("detail-dots").replaceChildren(...kinds.map((k) => h("i", { class: k === kind ? "on" : null })));
+  const body = $("detail-body");
+  body.replaceChildren(...kids);
   const dlg = $("detail");
   if (!dlg.open) openSheet(dlg);
   dlg.querySelector(".sheet-body").scrollTop = 0;
+  if (dir && !calm.matches) { body.classList.remove("from-left", "from-right"); void body.offsetWidth; body.classList.add(dir > 0 ? "from-right" : "from-left"); }
   if (draw) requestAnimationFrame(draw);
 }
 
@@ -1274,6 +1293,65 @@ function stepDay(n, quiet = false) {
   if (i >= 0 && next) openDay(next.key, quiet ? 0 : n);
 }
 
+// A swipe across a sheet to the next of what it shows or the one before (a day, a tile), as across the page between
+// places: what's shown follows the finger (giving at the first and last), and let go far enough, or flicked, it
+// carries on out as the next comes in from the other side; not far enough, it springs back (a chart's own sideways is
+// its readout). atEnd(dx): nothing more that way; step(n, quiet): show the one n along (quiet: no slide of its own)
+function sideSwipe(dlg, page, atEnd, step) {
+  const body = dlg.querySelector(".sheet-body");
+  let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0, moving = false;
+  const W = () => body.clientWidth;
+  const give = (d) => Math.sign(d) * (1 - 1 / ((Math.abs(d) * 0.55) / W() + 1)) * W();
+  const band = (d) => 0.55 / ((Math.abs(d) * 0.55) / W() + 1) ** 2;
+  const offset = () => (atEnd(dx) ? give(dx) : dx);
+  const fade = (o) => String(1 - Math.min(0.45, (Math.abs(o) / W()) * 0.6));
+  const show = () => { raf = 0; const o = offset(); page.style.translate = `${o.toFixed(1)}px 0`; page.style.opacity = fade(o); };
+  const clear = () => { page.style.translate = page.style.opacity = ""; };
+  body.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || moving || !S.wx || e.target.closest(".chart")) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; axis = null;
+  }, { passive: true });
+  body.addEventListener("touchmove", (e) => {
+    if (x0 == null) return;
+    const x = e.touches[0].clientX, mx = x - x0, my = e.touches[0].clientY - y0;
+    if (!axis && Math.hypot(mx, my) > 10) { axis = Math.abs(mx) > Math.abs(my) * 1.2 ? "x" : "y"; if (axis === "x") { x0 = x; trail = []; } }
+    if (axis !== "x") return;
+    e.preventDefault(); dx = x - x0;
+    const t = performance.now(); trail.push([t, x]); while (trail.length > 2 && t - trail[0][0] > 90) trail.shift();
+    raf ||= requestAnimationFrame(show);
+  }, { passive: false });
+  const end = () => {
+    if (x0 == null) return;
+    x0 = null;
+    if (axis !== "x") return;
+    cancelAnimationFrame(raf); raf = 0;
+    const [ta, xa] = trail[0] || [0, 0], [tb, xb] = trail[trail.length - 1] || [0, 0], v = tb > ta ? (xb - xa) / (tb - ta) : 0;
+    const dir = dx < 0 ? 1 : -1, from = offset(), o = fade(from), w = W(), edge = atEnd(dx);
+    const far = Math.abs(dx) > w * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
+    clear();
+    if (edge || !(far || flung)) {
+      if (!calm.matches && from) page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: "0 0", opacity: 1 }], glide(-Math.sign(from) * (edge ? v * band(dx) : v), Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)"));
+      return;
+    }
+    if (calm.matches) { step(dir, true); return; }
+    // (out the way it was going, at about the speed it was let go at; then the next in from the other side)
+    moving = true;
+    const ms = Math.round(Math.min(200, Math.max(110, (w * 0.45 - Math.abs(from)) / Math.max(Math.abs(v), 1.2) + 60)));
+    const out = page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: `${-dir * Math.max(w * 0.5, Math.abs(from) + 48)}px 0`, opacity: 0 }], { duration: ms, easing: "cubic-bezier(0.3, 0.3, 0.8, 0.6)", fill: "forwards" });
+    out.finished.then(() => {
+      step(dir, true);
+      const inn = page.animate([{ translate: `${dir * w * 0.32}px 0`, opacity: 0 }, { translate: "0 0", opacity: 1 }], { duration: 400, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
+      out.cancel();
+      return inn.finished;
+    }).catch(() => {}).finally(() => { moving = false; });
+  };
+  body.addEventListener("touchend", end); body.addEventListener("touchcancel", end);
+  dlg.addEventListener("keydown", (e) => {
+    if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.target.closest(".chart, input, select")) return;
+    e.preventDefault(); step(e.key === "ArrowRight" ? 1 : -1);
+  });
+}
+
 /* ---------- motion ---------- */
 // Small things that move once, as they first come into view for a place: the 16 days' bars sweep out from
 // each low to its high, the compass needle swings round to the wind, the sun's path is traced, the UV and air
@@ -1390,64 +1468,9 @@ function wire() {
   for (const s of document.querySelectorAll(".ct-icon[data-g]")) s.innerHTML = glyph(s.dataset.g, 15);
   // each sheet: closing by Escape or a tap outside, and swiping down
   for (const d of document.querySelectorAll("dialog.sheet")) sheetGestures(d);
-  {
-    // a swipe across the day to the next day or the one before, as across the page between places: the day follows the
-    // finger (giving at the first and last), and let go far enough, or flicked, it carries on out as the next comes in
-    // from the other side; not far enough, it springs back (a chart's own sideways is its readout)
-    const body = $("day").querySelector(".sheet-body"), page = $("day-body");
-    let x0 = null, y0 = 0, dx = 0, axis = null, trail = [], raf = 0, moving = false;
-    const W = () => body.clientWidth;
-    const atEnd = (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); };
-    const give = (d) => Math.sign(d) * (1 - 1 / ((Math.abs(d) * 0.55) / W() + 1)) * W();
-    const band = (d) => 0.55 / ((Math.abs(d) * 0.55) / W() + 1) ** 2;
-    const offset = () => (atEnd(dx) ? give(dx) : dx);
-    const fade = (o) => String(1 - Math.min(0.45, (Math.abs(o) / W()) * 0.6));
-    const show = () => { raf = 0; const o = offset(); page.style.translate = `${o.toFixed(1)}px 0`; page.style.opacity = fade(o); };
-    const clear = () => { page.style.translate = page.style.opacity = ""; };
-    body.addEventListener("touchstart", (e) => {
-      if (e.touches.length !== 1 || moving || !S.wx || e.target.closest(".chart")) { x0 = null; return; }
-      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; axis = null;
-    }, { passive: true });
-    body.addEventListener("touchmove", (e) => {
-      if (x0 == null) return;
-      const x = e.touches[0].clientX, mx = x - x0, my = e.touches[0].clientY - y0;
-      if (!axis && Math.hypot(mx, my) > 10) { axis = Math.abs(mx) > Math.abs(my) * 1.2 ? "x" : "y"; if (axis === "x") { x0 = x; trail = []; } }
-      if (axis !== "x") return;
-      e.preventDefault(); dx = x - x0;
-      const t = performance.now(); trail.push([t, x]); while (trail.length > 2 && t - trail[0][0] > 90) trail.shift();
-      raf ||= requestAnimationFrame(show);
-    }, { passive: false });
-    const end = () => {
-      if (x0 == null) return;
-      x0 = null;
-      if (axis !== "x") return;
-      cancelAnimationFrame(raf); raf = 0;
-      const [ta, xa] = trail[0] || [0, 0], [tb, xb] = trail[trail.length - 1] || [0, 0], v = tb > ta ? (xb - xa) / (tb - ta) : 0;
-      const dir = dx < 0 ? 1 : -1, from = offset(), o = fade(from), w = W(), edge = atEnd(dx);
-      const far = Math.abs(dx) > w * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
-      clear();
-      if (edge || !(far || flung)) {
-        if (!calm.matches && from) page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: "0 0", opacity: 1 }], glide(-Math.sign(from) * (edge ? v * band(dx) : v), Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)"));
-        return;
-      }
-      if (calm.matches) { stepDay(dir, true); return; }
-      // (out the way it was going, at about the speed it was let go at; then the next in from the other side)
-      moving = true;
-      const ms = Math.round(Math.min(200, Math.max(110, (w * 0.45 - Math.abs(from)) / Math.max(Math.abs(v), 1.2) + 60)));
-      const out = page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: `${-dir * Math.max(w * 0.5, Math.abs(from) + 48)}px 0`, opacity: 0 }], { duration: ms, easing: "cubic-bezier(0.3, 0.3, 0.8, 0.6)", fill: "forwards" });
-      out.finished.then(() => {
-        stepDay(dir, true);
-        const inn = page.animate([{ translate: `${dir * w * 0.32}px 0`, opacity: 0 }, { translate: "0 0", opacity: 1 }], { duration: 400, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
-        out.cancel();
-        return inn.finished;
-      }).catch(() => {}).finally(() => { moving = false; });
-    };
-    body.addEventListener("touchend", end); body.addEventListener("touchcancel", end);
-    $("day").addEventListener("keydown", (e) => {
-      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.target.closest(".chart, input, select")) return;
-      e.preventDefault(); stepDay(e.key === "ArrowRight" ? 1 : -1);
-    });
-  }
+  // a swipe across a day to the next or the one before, and across a tile's sheet to the next tile or the one before
+  sideSwipe($("day"), $("day-body"), (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); }, stepDay);
+  sideSwipe($("detail"), $("detail-body"), (d) => { const kinds = detailKinds(), i = kinds.indexOf(S.detailKind); return (d > 0 && i <= 0) || (d < 0 && i >= kinds.length - 1); }, stepDetail);
   placeSwipe();
   pullToRefresh();
   $("place-btn").addEventListener("click", () => { drawSaved(); $("use-location").replaceChildren(h("span", { svg: glyph("locate", 18) }), " Use my location"); openSheet($("places")); });

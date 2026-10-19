@@ -430,8 +430,8 @@ main.paging > .col { will-change: translate; }
 @keyframes swing { from { transform: rotate(-150deg); } }
 @keyframes knob { from { left: 0%; opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
-  .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i { opacity: 1; } .pre .sunarc .done { stroke-dashoffset: 0; }
-  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g { animation: none; }
+  .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g, .pre .rbars rect { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i { opacity: 1; } .pre .sunarc .done { stroke-dashoffset: 0; }
+  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g, .play .rbars rect { animation: none; }
   .tile.opens, .tile.opens:active { transition: none; transform: none; }
 }
 
@@ -613,6 +613,17 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .detail-now .meter, .detail-now .fbar { margin: 10px 0 5px; }
 .detail-about { margin: 16px 2px 4px; font-size: 14px; line-height: 1.45; color: var(--text-2); }
 .detail-sheet .sheet-head h2 { display: flex; align-items: center; gap: 8px; }
+/* which tile of them it is (a swipe sideways for the next) */
+.detail-dots { display: flex; justify-content: center; gap: 7px; margin: -4px 0 6px; }
+.detail-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.detail-dots i.on { background: #fff; transform: scale(1.15); }
+/* the rain tile's next 24 hours, an hour a bar */
+.rbars { display: block; width: 100%; height: 26px; margin: 8px 0 2px; }
+.rbars rect { fill: #5aa9f0; }
+.rbars rect.dry { fill: rgba(255, 255, 255, 0.18); }
+.rbars rect { transform-box: fill-box; transform-origin: 50% 100%; }
+.pre .rbars rect { transform: scaleY(0); }
+.play .rbars rect { animation: fill-up 0.8s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
 .dt-icon { display: inline-flex; color: var(--text-3); }
 .ways { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; text-align: center; }
 .way { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 12px; }
@@ -783,12 +794,12 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .ds-day[aria-current] span { color: #fff; }
 .ds-day:active b { transform: scale(0.9); }
 /* a day slides in from the side it was moved to (by the arrow keys or the strip; swiped, it follows the finger: app.js) */
-#day-body { touch-action: pan-y; }
-#day-body.from-right { animation: from-right 0.45s var(--spring); }
-#day-body.from-left { animation: from-left 0.45s var(--spring); }
+#day-body, #detail-body { touch-action: pan-y; }
+#day-body.from-right, #detail-body.from-right { animation: from-right 0.45s var(--spring); }
+#day-body.from-left, #detail-body.from-left { animation: from-left 0.45s var(--spring); }
 @keyframes from-right { from { opacity: 0; transform: translateX(36px); } }
 @keyframes from-left { from { opacity: 0; transform: translateX(-36px); } }
-@media (prefers-reduced-motion: reduce) { #day-body.from-right, #day-body.from-left { animation: none; } .ds-day b { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #day-body.from-right, #day-body.from-left, #detail-body.from-right, #detail-body.from-left { animation: none; } .ds-day b { transition: none; } }
 .day-top { display: flex; align-items: center; gap: 12px; margin: 2px 0 10px; }
 .day-top .wi { width: 58px; height: 58px; }
 .day-top .dt-main { font-size: 18px; font-weight: 650; }
