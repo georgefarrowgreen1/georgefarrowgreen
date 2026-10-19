@@ -72,7 +72,7 @@ a { color: inherit; }
 }
 /* controls */
 .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-.radar .leaflet-bar, .radar-centre, .radar-credit {
+.map-zoom, .radar-centre, .radar-credit {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint-ctl);
   background-image: var(--sheen), var(--body);
@@ -81,7 +81,7 @@ a { color: inherit; }
 }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
 .card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
-.icon-btn::before, .place::before, .pill-btn::before, .more-btn::before, .seg::after, .radar-chip::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
+.icon-btn::before, .place::before, .pill-btn::before, .more-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
   background: var(--rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
@@ -791,29 +791,35 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 @media (prefers-reduced-motion: reduce) { .radar .leaflet-layer, .radar .fc-frame { transition: none; } }
 body.no-scroll { overflow: hidden; }
 .radar .leaflet-container { background: #0e1420; font: inherit; }
-/* OpenStreetMap's map, turned dark (the radar above it keeps its colours) */
+/* OpenStreetMap's map, turned dark (the radar above it keeps its colours), where the vector map can't be drawn */
 /* the radar's tiles, drawn smooth (Leaflet asks Safari to keep tiles crisp, which would show their pixels) */
 .radar .rv-tiles .leaflet-tile { image-rendering: auto; }
 .radar .base-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.85) saturate(0.35); }
-/* the map's own controls, in glass (Leaflet's stylesheet loads later, so these carry .leaflet-container to win) */
-.radar .leaflet-container .leaflet-bar { border: 0; border-radius: 22px; overflow: hidden; background-color: rgba(14, 22, 38, 0.42); }
-.radar .leaflet-container .leaflet-bar a { width: 36px; height: 36px; line-height: 36px; background: transparent; color: #fff; border-bottom: 1px solid rgba(255, 255, 255, 0.14); font-weight: 400; }
-.radar .leaflet-container .leaflet-bar a:last-child { border-bottom: 0; }
-.radar .leaflet-container .leaflet-bar a:hover { background: rgba(255, 255, 255, 0.12); }
+/* the vector map fades in once the country's drawn, not land-coloured first with the sea filling in after */
+.radar-map .maplibregl-canvas { opacity: 0; transition: opacity 0.4s ease; }
+.radar-map.drawn .maplibregl-canvas { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .radar-map .maplibregl-canvas { transition: none; } }
+/* the map's controls, in glass on it: zoom in and out in one capsule, back to the place below it */
+.map-ctl { position: absolute; top: 10px; left: 10px; z-index: 500; display: flex; flex-direction: column; gap: 10px; }
+.map-zoom { display: flex; flex-direction: column; border-radius: 22px; overflow: hidden; background-color: rgba(14, 22, 38, 0.42); }
+.map-zoom button { position: relative; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
+.map-zoom button + button { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+.map-zoom button:disabled { color: rgba(255, 255, 255, 0.35); cursor: default; }
 /* the map's buttons give under a finger and spring back, as the rest do */
-.radar .leaflet-container .leaflet-bar a { transition: background-color 0.2s, transform 0.42s var(--spring); }
-.radar .leaflet-container .leaflet-bar a:active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
-.radar .leaflet-container .leaflet-bar a.leaflet-disabled { color: rgba(255, 255, 255, 0.35); background: transparent; }
-.radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50% !important; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
+.map-zoom button { transition: background-color 0.2s, transform 0.42s var(--spring), color 0.2s; }
+.map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
+@media (hover: hover) { .map-zoom button:not(:disabled):hover { background: rgba(255, 255, 255, 0.12); } }
+.radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50%; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
 .radar-centre svg { position: relative; z-index: 3; }
-.radar .leaflet-touch .leaflet-bar, .radar .leaflet-touch .radar-centre { border: 0; }
-.radar .leaflet-bottom.leaflet-left .leaflet-control-scale { margin-bottom: 12px; margin-left: 10px; }
 /* the scale: a bracket drawn on the map, as Maps does */
-.radar .leaflet-container .leaflet-control-scale-line { background: none; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 10.5px; font-weight: 650; line-height: 1.3;
+.map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 10.5px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
+/* the place: a blue dot ringed in white, as Maps marks where you are */
+.map-dot { width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; pointer-events: none;
+  box-shadow: 0 0 0 8px rgba(10, 132, 255, 0.2), 0 2px 6px rgba(0, 0, 0, 0.5); }
+.map-dot-at .map-dot { transform: translate(-50%, -50%); }
 /* the map's credits: in full for a few seconds as it first appears, then a © (that opens them all) */
-.radar .leaflet-bottom.leaflet-right .radar-credit { margin: 0 10px 10px 0; }
-.radar-credit { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 10px; border-radius: 999px; cursor: pointer;
+.radar-credit { position: absolute; right: 10px; bottom: 10px; z-index: 500; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 10px; border-radius: 999px; cursor: pointer;
   color: #fff; font: inherit; font-size: 11px; line-height: 1; background-color: rgba(14, 22, 38, 0.5); transition: padding 0.6s var(--spring), transform 0.5s var(--spring); }
 .radar-credit > span { position: relative; z-index: 3; }
 .radar-credit .rc-c { font-size: 13px; font-weight: 600; }
@@ -885,13 +891,13 @@ select option { color: #111; }
 /* ---------- when transparency is turned down, or contrast up ---------- */
 @media (prefers-reduced-transparency: reduce) {
   .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-  .radar .leaflet-container .leaflet-bar, .radar-centre, .radar-credit, .top::before {
+  .map-zoom, .radar-centre, .radar-credit, .top::before {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
   .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
   .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
   .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
-  .icon-btn, .place, .pill-btn, .more-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .radar .leaflet-container .leaflet-bar,
+  .icon-btn, .place, .pill-btn, .more-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .map-zoom,
   .radar-credit { background-color: rgb(52, 62, 80); }
 }
 @media (prefers-contrast: more) {

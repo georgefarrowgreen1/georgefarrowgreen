@@ -1,35 +1,35 @@
-// The rain radar: the last two hours of radar, every ten minutes, from
-// RainViewer's free mosaic of the world's weather radars, then the next two
-// hours as the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9
-// grid about 220 km across around the place, painted in the radar's own colours), over
-// OpenStreetMap's map turned dark to sit with the app (a filter in styles.css).
+// The rain radar: the last two hours of radar, every ten minutes, from RainViewer's free mosaic of the world's
+// weather radars, then the next two hours as the weather models see them (Open-Meteo's 15-minute rain on a 9 × 9
+// grid about 220 km across around the place, painted in the radar's own colours), on a map: OpenFreeMap's vector
+// map, drawn on the phone in the app's own style (mapgl.js), or where the phone can't draw it, OpenStreetMap's own
+// turned dark (mapleaf.js). Either is driven the same way from here.
 // RainViewer's free tiles go to zoom 7's detail (about a county across a tile),
 // which its 512-pixel tiles at zoom 6 carry too, with a quarter of the requests
 // (it asks apps to keep them few); closer in, they're enlarged: smoothly, read
 // back into reflectivity and blended (rainmap.js resample), rather than as squares.
 //
-// Leaflet (vendor/leaflet.js: 1.9.4, BSD-2-Clause, checked against npm's
-// integrity hash) is loaded only when the card first comes into view.
+// The map's code is loaded only as the card comes near (the vector map's, a screen ahead: it's a megabyte).
 
-import { grid, paint, timeline, LEGEND, hexFor, decode, resample, motion, ramp } from "./rainmap.js";
+import { grid, paint, timeline, LEGEND, decode, resample, motion, ramp } from "./rainmap.js";
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
-const OSM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 // NATIVE: the radar's finest detail, as a zoom of 256-pixel tiles (and the map's own zoom); SRC: the size of the tiles
 // asked for (512, a zoom below, as fine as NATIVE's)
 const NATIVE = 7, SRC = 512, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
-const CENTRE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+const svg = (d, w = 1.8) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const CENTRE = svg('<path d="M20.2 3.8 3.9 10.6c-.7.3-.6 1.3.1 1.5l6.6 1.3 1.3 6.6c.2.7 1.2.8 1.5.1l6.8-16.3z" fill="currentColor" stroke-width="1.2"/>');
+const PLUS = svg('<path d="M12 5v14M5 12h14"/>', 2), MINUS = svg('<path d="M5 12h14"/>', 2);
 
-let loading = null;
-function loadLeaflet() {
-  if (window.L) return Promise.resolve(window.L);
-  if (!loading) loading = new Promise((ok, no) => {
-    const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "./vendor/leaflet.css"; document.head.append(css);
-    const s = document.createElement("script"); s.src = "./vendor/leaflet.js"; s.onload = () => ok(window.L); s.onerror = () => { loading = null; no(new Error("map")); };
-    document.head.append(s);
-  });
-  return loading;
+// The map: the vector one where the phone has WebGL 2, else Leaflet's (and Leaflet's if the vector one won't start)
+let vector = null;
+const vectorLib = () => (vector ||= import("./mapgl.js").catch((e) => { vector = null; throw e; }));
+async function mapIn(el, opts) {
+  try {
+    const v = await vectorLib();
+    if (v.able()) return await v.glMap(el, opts);
+  } catch (_) { el.replaceChildren(); el.className = "radar-map"; }
+  return (await import("./mapleaf.js")).leafMap(el, opts);
 }
 // The models' next two hours of rain on the grid (kept for 15 minutes): { times (ms), rain[k][point] (mm/h), snow[k][point] }
 async function modelRain(g) {
@@ -53,7 +53,7 @@ const canvasFor = (g, rates, snow) => {
   const c = document.createElement("canvas"); c.width = PX; c.height = PX;
   const ctx = c.getContext("2d"), img = ctx.createImageData(PX, PX);
   paint(img.data, PX, PX, g, rates, snow); ctx.putImageData(img, 0, 0);
-  return c.toDataURL("image/png");
+  return c;
 };
 // A radar tile's pixels, read back into reflectivity once (the last 120 kept). Asked for six at a time, the frame
 // on show first; a tile that doesn't come isn't kept (it's asked for again next time it's wanted)
@@ -100,71 +100,70 @@ function work() {
   const until = performance.now() + 12;
   while (jobs.length && performance.now() < until) {
     const k = Math.max(0, jobs.findIndex((j) => j.shown()));
-    try { jobs.splice(k, 1)[0].run(); } catch (_) { /* one tile's trouble mustn't stop the rest */ }
+    const job = jobs.splice(k, 1)[0];
+    try { job.run(); } catch (_) { job.fail?.(); }        // (one tile's trouble mustn't stop the rest)
   }
   working = jobs.length > 0;
   if (working) setTimeout(work, 0);
 }
 function queue(job) { jobs.push(job); if (!working) { working = true; setTimeout(work, 0); } }
-// The radar, smoothed: each tile drawn from the radar's own (512 pixels, a zoom below, at most zoom 6: as fine as
-// zoom 7's). For the next two hours (cast: { vx, vy, lead }), the latest radar carried along its own track: drawn
-// from where its rain was lead minutes before, vx, vy zoom-7 pixels a minute behind, fading a little the further ahead.
-function smoothRadar(L, base, look, opts, cast = null) {
-  const Layer = L.GridLayer.extend({
-    createTile(c, done) {
-      const tile = document.createElement("canvas"); tile.width = tile.height = 256;
-      // (sz: the zoom of the tiles drawn from, each SRC pixels; one of their pixels is a zoom-(sz + 1) 256-tile's)
-      const sz = Math.max(0, Math.min(c.z, NATIVE) - 1), f = 2 ** (c.z - sz), span = SRC / f, n = 2 ** sz;
-      const px = Math.floor(c.x / f), py = Math.floor(c.y / f), x0 = (c.x - px * f) * span, y0 = (c.y - py * f) * span;
-      const url = (x, y) => `${base}/${sz}/${((x % n) + n) % n}/${y}/2/1_1.png`;
-      const per = cast ? cast.lead / 2 ** (NATIVE - sz - 1) : 0, sx = cast ? cast.vx * per : 0, sy = cast ? cast.vy * per : 0;
-      // the tiles its pixels come from: its own, and its neighbours' where the blend (or the track) reaches over
-      const need = [];
-      for (let oy = Math.floor((y0 - sy - 3) / SRC); oy <= Math.floor((y0 + span - sy + 3) / SRC); oy++) {
-        for (let ox = Math.floor((x0 - sx - 3) / SRC); ox <= Math.floor((x0 + span - sx + 3) / SRC); ox++) if (py + oy >= 0 && py + oy < n) need.push([ox, oy]);
-      }
-      const shown = () => this.options.opacity > 0;
-      Promise.all(need.map(([ox, oy]) => tileCodes(url(px + ox, py + oy), shown))).then((got) => queue({
-        shown,
-        run: () => {
-          if (!this._map) return;          // (its frame was replaced: the radar reloaded)
-          const from = new Map(need.map(([ox, oy], i) => [`${ox},${oy}`, got[i]]));
-          // (gone already, scrolled away; or nothing to draw)
-          if (got.some(Boolean) && tile.isConnected) {
-            let lx = null, ly = null, lt = null;
-            const code = (x, y) => {
-              const u = Math.round(x - sx), v = Math.round(y - sy), ox = Math.floor(u / SRC), oy = Math.floor(v / SRC);
-              if (ox !== lx || oy !== ly) { lx = ox; ly = oy; lt = from.get(`${ox},${oy}`); }
-              return lt ? lt[(v - oy * SRC) * SRC + (u - ox * SRC)] : 0;
-            };
-            let wet = false;
-            for (let y = Math.floor(y0) - 2; y < y0 + span + 2 && !wet; y++) for (let x = Math.floor(x0) - 2; x < x0 + span + 2; x++) if (code(x, y)) { wet = true; break; }
-            if (wet) {
-              const ctx = tile.getContext("2d"), img = ctx.createImageData(256, 256);
-              resample(img.data, 256, code, x0, y0, span, look);
-              if (cast) { const fade = 1 - 0.3 * Math.min(1, cast.lead / 120); for (let i = 3; i < img.data.length; i += 4) img.data[i] *= fade; }
-              ctx.putImageData(img, 0, 0);
-            }
-          }
-          done(null, tile);
-        },
-      }));
-      return tile;
+// One tile of a radar frame (c: { z, x, y }, a 256-pixel tile's), smoothed: drawn from the radar's own (512 pixels, a
+// zoom below, at most zoom 6: as fine as zoom 7's; base: the frame's address up to their size). For the next two
+// hours (cast: { vx, vy, lead }), the latest radar carried along its own track: drawn from where its rain was lead
+// minutes before, vx, vy zoom-7 pixels a minute behind, fading a little the further ahead. Its pixels (ImageData),
+// or null where it's dry, or when it's no longer wanted by its turn (gone.aborted: scrolled away, or the frame
+// replaced). shown(): its frame is the one on show (its tiles come first).
+function radarTile(base, cast, c, shown, gone) {
+  // (sz: the zoom of the tiles drawn from, each SRC pixels; one of their pixels is a zoom-(sz + 1) 256-tile's)
+  const sz = Math.max(0, Math.min(c.z, NATIVE) - 1), f = 2 ** (c.z - sz), span = SRC / f, n = 2 ** sz;
+  const px = Math.floor(c.x / f), py = Math.floor(c.y / f), x0 = (c.x - px * f) * span, y0 = (c.y - py * f) * span;
+  const url = (x, y) => `${base}/${sz}/${((x % n) + n) % n}/${y}/2/1_1.png`;
+  const per = cast ? cast.lead / 2 ** (NATIVE - sz - 1) : 0, sx = cast ? cast.vx * per : 0, sy = cast ? cast.vy * per : 0;
+  // the tiles its pixels come from: its own, and its neighbours' where the blend (or the track) reaches over
+  const need = [];
+  for (let oy = Math.floor((y0 - sy - 3) / SRC); oy <= Math.floor((y0 + span - sy + 3) / SRC); oy++) {
+    for (let ox = Math.floor((x0 - sx - 3) / SRC); ox <= Math.floor((x0 + span - sx + 3) / SRC); ox++) if (py + oy >= 0 && py + oy < n) need.push([ox, oy]);
+  }
+  return Promise.all(need.map(([ox, oy]) => tileCodes(url(px + ox, py + oy), shown))).then((got) => new Promise((ok) => queue({
+    shown,
+    fail: () => ok(null),
+    run: () => {
+      if (gone.aborted || !got.some(Boolean)) return ok(null);
+      const from = new Map(need.map(([ox, oy], i) => [`${ox},${oy}`, got[i]]));
+      let lx = null, ly = null, lt = null;
+      const code = (x, y) => {
+        const u = Math.round(x - sx), v = Math.round(y - sy), ox = Math.floor(u / SRC), oy = Math.floor(v / SRC);
+        if (ox !== lx || oy !== ly) { lx = ox; ly = oy; lt = from.get(`${ox},${oy}`); }
+        return lt ? lt[(v - oy * SRC) * SRC + (u - ox * SRC)] : 0;
+      };
+      let wet = false;
+      for (let y = Math.floor(y0) - 2; y < y0 + span + 2 && !wet; y++) for (let x = Math.floor(x0) - 2; x < x0 + span + 2; x++) if (code(x, y)) { wet = true; break; }
+      if (!wet) return ok(null);
+      const img = new ImageData(256, 256);
+      resample(img.data, 256, code, x0, y0, span, LOOK);
+      if (cast) { const fade = 1 - 0.3 * Math.min(1, cast.lead / 120); for (let i = 3; i < img.data.length; i += 4) img.data[i] *= fade; }
+      ok(img);
     },
-  });
-  return new Layer(opts);
+  })));
 }
 const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min % 60} min ` : ""}ago` : `${min} min ago`);
+// a round distance, the longest of 1, 2, 3, 5 or 10 to a power of ten no more than n
+const round = (n) => { const p = 10 ** Math.floor(Math.log10(n)), d = n / p; return p * (d >= 10 ? 10 : d >= 5 ? 5 : d >= 3 ? 3 : d >= 2 ? 2 : 1); };
 
 /**
  * The radar, in `card` (#radar). time(t) formats a real UTC time (ms) as the place's own clock;
  * miles: show the scale in miles. Returns { place(lat, lon), refresh(), note(text) }.
+ *
+ * The map it's drawn on (mapgl.js, or mapleaf.js) is driven through: frames([{ draw(z, x, y, gone) } | { canvas,
+ * bounds }]), show(k, opacity), box(bounds | null | undefined, opacity), dot(lat, lon), view(lat, lon, smooth),
+ * zoomBy(±1), explore(on), resize(), state() → { zoom, min, max, mpp }, on("move" | "tap", fn), and credit (its
+ * sources' names). Zooms are 256-pixel tiles' (as Leaflet counts them).
  */
 export function radar(card, { lat, lon, time, miles = false, credits = null, rainSoon = () => true }) {
   const q = (s) => card.querySelector(s);
-  const el = q(".radar-map"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
+  const el = q(".radar-map"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
-  let L = null, map = null, dot = null, box = null, credit = null, frames = [], layers = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
+  let map = null, starting = null, credit = null, frames = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
@@ -184,12 +183,12 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   legend.replaceChildren(rain, snowKey);
 
   const show = (k) => {
-    if (!layers.length) return;
-    i = (k + layers.length) % layers.length;
-    layers.forEach((l, j) => l.setOpacity(j === i ? SHOW : 0));
+    if (!frames.length) return;
+    i = (k + frames.length) % frames.length;
+    map.show(i, SHOW);
     const f = frames[i], mins = Math.round((f.t - Date.now()) / 60e3);
     slider.value = String(i);
-    slider.style.setProperty("--f", String(i / Math.max(1, layers.length - 1)));
+    slider.style.setProperty("--f", String(i / Math.max(1, frames.length - 1)));
     const when = f.kind === "model" ? `in ${Math.max(0, mins)} min · forecast` : i === nowAt ? "latest radar" : ago(-mins);
     const b = document.createElement("b"), rel = document.createElement("span");
     b.textContent = time(f.t); rel.textContent = ` · ${when}`; rel.className = f.kind === "model" ? "rt-rel ahead" : "rt-rel";
@@ -197,12 +196,12 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     slider.setAttribute("aria-valuetext", `${time(f.t)} · ${when}`);
     chip.textContent = f.kind === "model" ? "Forecast" : "Radar";
     chip.dataset.kind = f.kind;
-    if (box) box.setStyle({ opacity: f.kind === "model" ? 0.45 : 0 });
+    map.box(undefined, f.kind === "model" ? 0.45 : 0);
   };
   const stop = () => { playing = false; clearTimeout(timer); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
   const run = () => {
     playing = true; play.setAttribute("aria-label", "Pause"); play.dataset.on = "1";
-    const next = () => { if (!playing) return; show(i + 1); timer = setTimeout(next, i === layers.length - 1 ? HOLD : i === nowAt ? AT_NOW : STEP); };
+    const next = () => { if (!playing) return; show(i + 1); timer = setTimeout(next, i === frames.length - 1 ? HOLD : i === nowAt ? AT_NOW : STEP); };
     clearTimeout(timer); timer = setTimeout(next, i === nowAt ? AT_NOW : STEP);
   };
   // under the slider: where the radar ends and the forecast begins
@@ -254,17 +253,18 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     // (the models' grid is 81 places' forecasts: only asked for when rain's expected here soon, not to show a dry map)
     const model = drift || (past.length && !rainSoon()) ? null : await modelRain(g).catch(() => null);
     if (!past.length && !model) throw new Error("nothing");
-    layers.forEach((l) => map.removeLayer(l));
     const ahead = drift ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
     const tl = timeline(past.map((f) => f.time * 1000), ahead);
     frames = tl.frames; nowAt = past.length ? tl.now : 0;
-    const opt = { opacity: 0, zIndex: 300, maxZoom: 10, className: "rv-tiles" };
-    layers = frames.map((f) => (f.kind === "radar" ? smoothRadar(L, `${host}${past[f.k].path}/${SRC}`, LOOK, opt)
-      : drift ? smoothRadar(L, `${host}${past[past.length - 1].path}/${SRC}`, LOOK, opt, { vx: drift.vx, vy: drift.vy, lead: (f.t - last) / 60e3 })
-      : L.imageOverlay(canvasFor(g, model.rain[f.k], model.snow[f.k]), [[g.south, g.west], [g.north, g.east]], { opacity: 0, interactive: false, className: "fc-frame" })).addTo(map));
-    if (box) map.removeLayer(box);
-    box = model ? L.rectangle([[g.south, g.west], [g.north, g.east]], { color: "#ffffff", weight: 1, dashArray: "4 5", fill: false, opacity: 0, interactive: false }).addTo(map) : null;
-    credited(["OpenStreetMap", past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
+    const box = [[g.south, g.west], [g.north, g.east]];
+    map.frames(frames.map((f, j) => {
+      const shown = () => i === j, from = (k) => `${host}${past[k].path}/${SRC}`;
+      if (f.kind === "radar") return { draw: (z, x, y, gone) => radarTile(from(f.k), null, { z, x, y }, shown, gone) };
+      if (drift) return { draw: (z, x, y, gone) => radarTile(from(past.length - 1), { vx: drift.vx, vy: drift.vy, lead: (f.t - last) / 60e3 }, { z, x, y }, shown, gone) };
+      return { canvas: canvasFor(g, model.rain[f.k], model.snow[f.k]), bounds: box };
+    }));
+    map.box(model ? box : null);
+    credited([...map.credit, past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
     status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && rainSoon() ? "The next two hours aren't available right now: showing the radar." : "";
     slider.max = String(frames.length - 1);
@@ -272,37 +272,41 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     drawScale();
     show(nowAt);
   }
+  // the map's controls, on it: zoom in and out, and back to the place (top left); its scale, a bracket drawn on the
+  // map as Maps draws it (bottom left); and its credits, in full as it first appears, then folded into a © that opens
+  // all of them (bottom right)
+  function controls() {
+    const button = (cls, name, html) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.title = name; b.setAttribute("aria-label", name); b.innerHTML = html; return b; };
+    const zin = button("map-in", "Zoom in", PLUS), zout = button("map-out", "Zoom out", MINUS), back = button("radar-centre", "Back to the place", CENTRE);
+    const zoom = document.createElement("div"); zoom.className = "map-zoom"; zoom.append(zin, zout);
+    const top = document.createElement("div"); top.className = "map-ctl"; top.append(zoom, back);
+    const ruler = document.createElement("div"); ruler.className = "map-scale"; ruler.setAttribute("aria-hidden", "true");
+    credit = button("radar-credit", "Map data", '<span class="rc-c" aria-hidden="true">©</span><span class="rc-t" aria-hidden="true"></span>');
+    credit.removeAttribute("title");
+    zin.addEventListener("click", () => map.zoomBy(1));
+    zout.addEventListener("click", () => map.zoomBy(-1));
+    back.addEventListener("click", () => map.view(here.lat, here.lon, true));
+    credit.addEventListener("click", () => credits?.());
+    wrap.append(top, ruler, credit);
+    const moved = () => {
+      const s = map.state(), most = s.mpp * 90;
+      zin.disabled = s.zoom >= s.max - 0.01; zout.disabled = s.zoom <= s.min + 0.01;
+      // the longest round distance that fits in 90 pixels
+      const [n, unit, m] = miles ? (most >= 1609.344 ? [round(most / 1609.344), "mi", 1609.344] : [round(most * 3.2808), "ft", 0.3048]) : most >= 1000 ? [round(most / 1000), "km", 1000] : [round(most), "m", 1];
+      ruler.textContent = `${n} ${unit}`;
+      ruler.style.width = `${Math.round((n * m) / s.mpp)}px`;
+    };
+    map.on("move", moved); moved();
+    setTimeout(() => credit.classList.add("folded"), 5000);
+  }
   async function start() {
     try {
-      L = await loadLeaflet();
-      map = L.map(el, { zoomControl: true, attributionControl: false, scrollWheelZoom: false, dragging: !touch, tap: false, minZoom: 3, maxZoom: 10, zoomSnap: 1 }).setView([here.lat, here.lon], NATIVE);
-      // (a map tile that doesn't come is asked for once more, a moment later: a phone's connection drops the odd one)
-      L.tileLayer(OSM, { maxZoom: 19, className: "base-tiles" }).on("tileerror", ({ tile }) => {
-        if (tile.dataset.again) return;
-        tile.dataset.again = "1";
-        setTimeout(() => { tile.src = `${tile.src}${tile.src.includes("?") ? "&" : "?"}again=1`; }, 1500);
-      }).addTo(map);
-      L.control.scale({ position: "bottomleft", metric: !miles, imperial: miles, maxWidth: 90 }).addTo(map);
-      const Centre = L.Control.extend({ options: { position: "topleft" }, onAdd() {
-        const b = L.DomUtil.create("button", "radar-centre leaflet-bar");
-        b.type = "button"; b.title = b.ariaLabel = "Back to the place"; b.setAttribute("aria-label", "Back to the place"); b.innerHTML = CENTRE;
-        L.DomEvent.disableClickPropagation(b); b.addEventListener("click", () => map.setView([here.lat, here.lon], NATIVE));
-        return b;
-      } });
-      new Centre().addTo(map);
-      // the map's credits: in full as it first appears, then folded into a © that opens all of them
-      const Credit = L.Control.extend({ options: { position: "bottomright" }, onAdd() {
-        const b = L.DomUtil.create("button", "radar-credit");
-        b.type = "button"; b.innerHTML = '<span class="rc-c" aria-hidden="true">©</span><span class="rc-t" aria-hidden="true"></span>';
-        L.DomEvent.disableClickPropagation(b); b.addEventListener("click", () => credits?.());
-        return b;
-      } });
-      credit = new Credit().addTo(map).getContainer();
-      credited(["OpenStreetMap", "RainViewer"]);
-      setTimeout(() => credit.classList.add("folded"), 5000);
-      dot = L.circleMarker([here.lat, here.lon], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#3B8BE0", fillOpacity: 1, interactive: false }).addTo(map);
+      const at = here;
+      map = await mapIn(el, { lat: at.lat, lon: at.lon, zoom: NATIVE, min: 3, max: 10, touch, calm });
+      if (here !== at) { map.view(here.lat, here.lon); map.dot(here.lat, here.lon); }
+      controls();
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore
-      map.on("click", () => { if (touch && !card.classList.contains("radar-big")) big(true); });
+      map.on("tap", () => { if (touch && !card.classList.contains("radar-big")) grow(true); });
       await load();
       if (!calm) run();
     } catch (e) {
@@ -324,30 +328,31 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     full.setAttribute("aria-label", on ? "Close full screen" : "Full screen");
     full.dataset.on = on ? "1" : "0";
     hint.hidden = on || !touch;
-    if (map) {
-      map.invalidateSize({ animate: false });
-      if (touch) on ? map.dragging.enable() : map.dragging.disable();
-      on ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();
-    }
+    if (map) { map.resize(); map.explore(on); }
   }
-  const settle = () => { if (!map) return; map.invalidateSize({ animate: false }); map.fire("moveend"); };
   // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
   // can morph one into the other (a view transition); at once otherwise, or with reduced motion
   function grow(on) {
     if (!document.startViewTransition || calm) return big(on);
     card.style.viewTransitionName = "radar";
     // (once it has grown, the map measured again and filled to its new edges: measured mid-way, it can leave gaps)
-    document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; settle(); });
+    document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; map?.resize(); });
   }
   hint.hidden = !touch;
   play.addEventListener("click", () => (playing ? stop() : run()));
   slider.addEventListener("input", () => { stop(); show(Number(slider.value)); });
   full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big")) grow(false); });
-  // start once it's on screen; pause while it's off it
+  // the vector map's code fetched a screen ahead; the radar started once it's on screen, and paused while it's off it
+  const near = new IntersectionObserver((es) => {
+    if (!es.some((x) => x.isIntersecting)) return;
+    near.disconnect();
+    vectorLib().then((v) => v.able() && v.preload()).catch(() => {});
+  }, { rootMargin: "100% 0px" });
+  near.observe(card);
   const io = new IntersectionObserver((es) => {
     const vis = es.some((x) => x.isIntersecting);
-    if (vis && !map) start();
+    if (vis && !starting) starting = start();
     else if (vis && map && Date.now() - fetched > 10 * 60e3) load().catch(() => {});
     if (!vis && playing) stop();
   }, { rootMargin: "120px" });
@@ -357,8 +362,8 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       const moved = Math.abs(lat2 - here.lat) > 0.05 || Math.abs(lon2 - here.lon) > 0.05;
       here = { lat: lat2, lon: lon2 };
       if (!map) return;
-      map.setView([lat2, lon2], NATIVE); dot.setLatLng([lat2, lon2]);
-      if (moved) load().catch(() => {});        // the forecast's grid goes with the place
+      map.view(lat2, lon2); map.dot(lat2, lon2);
+      if (moved) load().catch(() => {});        // (the forecast's grid goes with the place)
     },
     refresh() { if (map && Date.now() - fetched > 5 * 60e3) load().catch(() => {}); },
     note(text) { q(".radar-note").textContent = text || ""; },

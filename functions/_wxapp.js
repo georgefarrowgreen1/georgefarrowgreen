@@ -5,7 +5,8 @@
 //
 // It asks Open-Meteo (the forecast, and its archive of past forecasts), BigDataCloud
 // (a name for where you are) and RainViewer (the radar) straight from the browser,
-// and draws the radar over OpenStreetMap's tiles, so those, and nothing else, are allowed.
+// and draws the radar over OpenFreeMap's vector map (its tiles, fonts and relief; or
+// OpenStreetMap's tiles, without WebGL 2), so those, and nothing else, are allowed.
 
 import { notFound } from "./_app.js";
 
@@ -16,9 +17,9 @@ export const isWeather = (url, env) => url.hostname === (env.WEATHER_HOST || WEA
 const CONNECT = [
   "https://api.open-meteo.com", "https://ensemble-api.open-meteo.com", "https://air-quality-api.open-meteo.com",
   "https://archive-api.open-meteo.com", "https://geocoding-api.open-meteo.com", "https://previous-runs-api.open-meteo.com",
-  "https://api.bigdatacloud.net", "https://nominatim.openstreetmap.org", "https://api.rainviewer.com", "https://cloudflareinsights.com",
+  "https://api.bigdatacloud.net", "https://nominatim.openstreetmap.org", "https://api.rainviewer.com", "https://tiles.openfreemap.org", "https://cloudflareinsights.com",
 ];
-const IMAGES = ["https://tilecache.rainviewer.com", "https://tile.openstreetmap.org"];
+const IMAGES = ["https://tilecache.rainviewer.com", "https://tile.openstreetmap.org", "https://tiles.openfreemap.org"];
 export const WX_SECURITY = {
   "Content-Security-Policy": `default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob: ${IMAGES.join(" ")}; font-src 'self'; connect-src 'self' ${CONNECT.join(" ")}; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
   "Permissions-Policy": "geolocation=(self), microphone=(), camera=()",

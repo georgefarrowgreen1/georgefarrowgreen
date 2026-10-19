@@ -58,7 +58,7 @@ http.createServer((req, res) => {
   }
   res.writeHead(404); res.end();
 }).listen(8794, '127.0.0.1');
-const tiles = { radar: 0, map: 0 };
+const tiles = { radar: 0, map: 0, tilejson: 0, vector: 0, relief: 0, grid: 0 };
 const HOST = 'http://weather.localhost:8788', SITE = 'http://localhost:8788';
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
@@ -75,6 +75,17 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
       PushManager.prototype.subscribe = async function () { localStorage.setItem('fakesub', '1'); return make(); };
     }, push);
   }
+  // what the radar draws: each tile it hands the vector map, and each picture of the models' rain (and, as a phone
+  // without WebGL 2, none of it on the vector map)
+  await ctx.addInitScript((noGL) => {
+    window.__tiles = []; window.__pictures = [];
+    const look = (d) => { let rain = 0, soft = 0, blue = 0, top = 0; for (let i = 3; i < d.length; i += 4) { if (d[i] > top) top = d[i]; if (d[i] > 200) { rain++; if (d[i - 1] > d[i - 3]) blue++; } else if (d[i] > 0) soft++; } return { rain, soft, blue, top }; };
+    const bitmap = window.createImageBitmap;
+    window.createImageBitmap = function (src, ...a) { if (src instanceof ImageData && src.width === 256) __tiles.push(look(src.data)); return bitmap.call(this, src, ...a); };
+    const put = CanvasRenderingContext2D.prototype.putImageData;
+    CanvasRenderingContext2D.prototype.putImageData = function (img, ...a) { if (img.width === 200) __pictures.push(look(img.data)); return put.call(this, img, ...a); };
+    if (noGL) { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/.test(t) ? null : get.call(this, t, ...a); }; }
+  }, !!sc.noGL);
   const p = await ctx.newPage();
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
@@ -86,7 +97,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('geocoding')) return j({ results: [{ name: 'Edinburgh', latitude: 55.95, longitude: -3.19, country: 'United Kingdom', admin1: 'Scotland', country_code: 'GB' }] });
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
     if (u.includes('previous-runs-api')) return j(previousRuns(u));
-    if (u.includes('forecast_minutely_15=9')) return j(modelGrid(u));
+    if (u.includes('forecast_minutely_15=9')) { tiles.grid++; return j(modelGrid(u)); }
     if (u.includes('models=')) return j(F.models(now));
     return j(F.forecast(now, sc));
   });
@@ -94,6 +105,14 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   await p.route(/api\.rainviewer\.com/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify({ host: 'https://tilecache.rainviewer.com', radar: { past: Array.from({ length: 13 }, (_, k) => ({ time: Math.floor(now / 600e3) * 600 - (12 - k) * 600, path: `/v2/radar/f${k}` })), nowcast: [] } }) }));
   await p.route(/tilecache\.rainviewer\.com|tile\.openstreetmap\.org/, (r) => { const rv = /rainviewer/.test(r.request().url()); tiles[rv ? 'radar' : 'map']++; r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: rv && !sc.dryRadar ? RADAR_PNG : PNG }); });
+  // OpenFreeMap's: where its tiles are, then the tiles (empty: the map's drawn in its land colour, nothing on it), and
+  // its shaded relief (and its fonts, if anything needed naming)
+  await ctx.route(/tiles\.openfreemap\.org/, (r) => {
+    const u = r.request().url(), cors = { 'Access-Control-Allow-Origin': '*' };
+    if (/\/planet$/.test(u)) { tiles.tilejson++; return r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ tilejson: '3.0.0', tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14 }) }); }
+    const png = /\.png$/.test(u); tiles[png ? 'relief' : 'vector']++;
+    return r.fulfill({ status: 200, contentType: png ? 'image/png' : 'application/x-protobuf', headers: cors, body: png ? PNG : Buffer.alloc(0) });
+  });
   const res = await p.goto(url);
   await p.waitForSelector('.day-row', { timeout: 20000 });
   if (!settle) return { ctx, p, res };
@@ -195,7 +214,7 @@ ok((await p.locator('.foot a').count()) === 2 && /^Weather data by Open-Meteo\.c
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
-ok(links.length === 13 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'meteoalarm.org', 'weather.gov/', 'aviationweather.gov', 'rainviewer.com', 'openstreetmap.org/copyright', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
+ok(links.length === 17 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'meteoalarm.org', 'weather.gov/', 'aviationweather.gov', 'rainviewer.com', 'openfreemap.org', 'openmaptiles.org', 'openstreetmap.org/copyright', 'naturalearthdata.com', 'maplibre.org', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
   'a credits window: every source, each linked out', `${links.length} links`);
 ok((await p.evaluate(() => document.querySelector('#credits .sheet-body').scrollTop)) === 0 && /national weather service/.test(await p.textContent('#credits .credits-note')), 'open at the weather data, with a notice at its foot');
 await p.waitForTimeout(600);
@@ -222,16 +241,21 @@ ok((await p.getAttribute('meta[name="theme-color"]', 'content')) !== '#2b5d96' |
   await p.waitForFunction((n0) => performance.getEntriesByType('resource').filter((r) => /api\.open-meteo\.com\/v1\/forecast/.test(r.name)).length > n0, n0, { timeout: 8000 }).then(() => true, () => false)
     .then((x) => ok(x, 'pulled down past the top and let go, it fetches the forecast again'));
 }
-// the radar
+// the radar, on the vector map: OpenFreeMap's, drawn with WebGL in the app's own style, the radar under its names
 await p.locator('#radar').scrollIntoViewIfNeeded();
-await p.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
+await p.waitForSelector('#radar .maplibregl-canvas', { timeout: 20000 });
 await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 });
 ok(/starting in about/.test(await p.textContent('#radar .radar-note')) && !(await p.isVisible('#radar .radar-note')), 'with the next few hours in a line above it, for full screen (the card above says it otherwise)', await p.textContent('#radar .radar-note'));
 ok((await p.locator('#radar .radar-legend .rl-bar').count()) === 2 && /Light.*Heavy.*Extreme/.test(await p.textContent('#radar .rl-words')) && /Now/.test(await p.textContent('#radar .radar-scale')), 'a legend (the radar\'s colours, light to extreme, and snow\'s), and a timeline marked Now');
-ok(await p.locator('#radar .radar-centre').count() === 1 && await p.locator('#radar .leaflet-control-scale').count() === 1, 'a button back to the place, and a scale');
+await p.waitForFunction(() => document.querySelector('#radar .radar-map').classList.contains('drawn'), null, { timeout: 8000 }).catch(() => {});
+ok(tiles.tilejson > 0 && tiles.vector > 0 && tiles.map === 0 && await p.evaluate(() => document.querySelector('#radar .radar-map').classList.contains('drawn')),
+  'the vector map: OpenFreeMap\'s tiles (and none of OpenStreetMap\'s own)', JSON.stringify(tiles));
+ok(await p.locator('#radar .map-zoom button').count() === 2 && await p.locator('#radar .radar-centre').count() === 1 && /^\d+ mi$/.test(await p.textContent('#radar .map-scale')),
+  'buttons to zoom in and out and back to the place, and a scale (in miles, as the wind is)', await p.textContent('#radar .map-scale'));
+ok(await p.evaluate(() => { const c = document.querySelector('#radar .maplibregl-canvas'); return document.querySelectorAll('[role="region"][aria-label="Rain radar map"]').length === 1 && c.getAttribute('aria-label') === 'Rain radar map'; }), 'named once for a screen reader (its canvas, not its frame too)');
 // its credits: in full as it appears, then folded into a © that opens them all, at the map's
 const credit = await p.getAttribute('#radar .radar-credit', 'aria-label');
-ok(/^Map data © OpenStreetMap, RainViewer/.test(credit) && !(await p.locator('#radar .leaflet-control-attribution').count()), 'the map credited, on the map', credit);
+ok(/^Map data © OpenFreeMap, OpenMapTiles, OpenStreetMap, RainViewer/.test(credit) && !(await p.locator('#radar .maplibregl-ctrl-attrib').count()), 'the map credited, on the map', credit);
 await p.waitForFunction(() => document.querySelector('#radar .radar-credit').classList.contains('folded'), null, { timeout: 8000 }).then(() => true, () => false).then((x) => ok(x, 'folding into a © after a few seconds'));
 await p.locator('#radar .radar-credit').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
@@ -243,47 +267,85 @@ const was = await p.getAttribute('#radar .radar-play', 'data-on');
 await p.click('#radar .radar-play');
 ok(was === '1' && (await p.getAttribute('#radar .radar-play', 'data-on')) === '0', 'it plays by itself, and pauses');
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = '12'; s.dispatchEvent(new Event('input')); });
-ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await p.textContent('#radar .radar-chip')) === 'Radar' && tiles.radar > 0 && tiles.map > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles, ${tiles.map} map tiles; ${await p.textContent('#radar .radar-time')}`);
+ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await p.textContent('#radar .radar-chip')) === 'Radar' && tiles.radar > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles; ${await p.textContent('#radar .radar-time')}`);
 // closer in than the radar's tiles go, it's smoothed: drawn in its own blue, with an edge that fades rather than steps
-await p.click('#radar .leaflet-control-zoom-in'); await p.click('#radar .leaflet-control-zoom-in');
-const smoothed = () => [...document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 200));
-await p.waitForFunction(smoothed, null, { timeout: 15000, polling: 250 }).catch(() => {});
-await p.waitForTimeout(500);
-const drawn = await p.evaluate(() => {
-  let rain = 0, soft = 0, blue = 0;
-  for (const c of document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')) {
-    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-    for (let i = 3; i < d.length; i += 4) { if (d[i] > 200) { rain++; if (d[i - 1] > d[i - 3]) blue++; } else if (d[i] > 0) soft++; }
-  }
-  return { rain, soft, blue, tiles: document.querySelectorAll('#radar .rv-tiles canvas').length };
-});
-ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));;
+const scale0 = await p.textContent('#radar .map-scale');
+await p.click('#radar .map-in'); await p.waitForTimeout(450); await p.click('#radar .map-in'); await p.waitForTimeout(450);
+await p.waitForFunction(() => __tiles.filter((t) => t.rain > 1000).length >= 4, null, { timeout: 15000, polling: 250 }).catch(() => {});
+const drawn = await p.evaluate(() => __tiles.reduce((a, t) => ({ rain: a.rain + t.rain, soft: a.soft + t.soft, blue: a.blue + t.blue, tiles: a.tiles + 1 }), { rain: 0, soft: 0, blue: 0, tiles: 0 }));
+ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));
+ok(await p.textContent('#radar .map-scale') !== scale0 && !(await p.isDisabled('#radar .map-in')) && !(await p.isDisabled('#radar .map-out')), 'zoomed in two steps, the scale shorter', `${scale0} → ${await p.textContent('#radar .map-scale')}`);
+await p.click('#radar .map-in'); await p.waitForTimeout(450);
+ok(await p.isDisabled('#radar .map-in'), 'and no closer than the radar\'s worth seeing (zoom in greys out)');
+await p.click('#radar .radar-centre'); await p.waitForTimeout(900);
+ok(await p.textContent('#radar .map-scale') === scale0, 'back to the place at its own zoom', await p.textContent('#radar .map-scale'));
 // the next two hours: the latest radar carried along its own track (here it isn't moving), marked as forecast
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
-ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && await p.locator('#radar .fc-frame').count() === 0 && await p.locator('#radar .rv-tiles').count() >= 24,
-  'then the radar carried on two hours, marked as forecast', `${await p.textContent('#radar .radar-time')}; ${await p.locator('#radar .rv-tiles').count()} frames`);
+ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && tiles.grid === 0 && Number(await p.getAttribute('#radar .radar-slider', 'max')) >= 24,
+  'then the radar carried on two hours, marked as forecast (not the models\' grid: never asked for)', `${await p.textContent('#radar .radar-time')}; ${tiles.grid} grid requests`);
 ok(!(await p.isVisible('#radar .radar-status')), 'with no note under it (only when something\'s missing)', await p.textContent('#radar .radar-status'));
-await p.waitForFunction(() => { const l = [...document.querySelectorAll('#radar .rv-tiles')].pop(); return [...l.querySelectorAll('canvas')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 150)); }, null, { timeout: 15000, polling: 250 }).then(() => true, () => false).then((x) => ok(x, 'the last forecast frame drawn from the radar, in its colours'));
+await p.waitForFunction(() => __tiles.some((t) => t.top >= 150 && t.top < 200), null, { timeout: 15000, polling: 250 }).then(() => true, () => false).then((x) => ok(x, 'the last forecast frames drawn from the radar, in its colours, fading the further ahead'));
 // every icon sits in its button's middle (one wrapped in a span used to sit high: the room a line of text keeps for descenders)
-const offMiddle = await p.evaluate(() => [...document.querySelectorAll('#radar .icon-btn, .top .icon-btn, .radar-centre')].map((b) => {
+const offMiddle = await p.evaluate(() => [...document.querySelectorAll('#radar .icon-btn, .top .icon-btn, .radar-centre, #radar .map-zoom button')].map((b) => {
   const s = [...b.querySelectorAll('svg')].find((x) => getComputedStyle(x.closest('span') || x).opacity !== '0'); if (!s) return null;
   const r = b.getBoundingClientRect(), q = s.getBoundingClientRect(); return Math.round(Math.abs((q.top + q.height / 2) - (r.top + r.height / 2)) * 10) / 10;
 }).filter((x) => x != null));
-ok(offMiddle.length >= 4 && offMiddle.every((d) => d < 0.6), 'every icon in its button\'s middle (play, full screen, the map\'s, the bar\'s)', offMiddle.join(', '));
+ok(offMiddle.length >= 6 && offMiddle.every((d) => d < 0.6), 'every icon in its button\'s middle (play, full screen, the map\'s, the bar\'s)', offMiddle.join(', '));
 await p.click('#radar .radar-full');
 // (growing into it: the switch comes a frame later, once the page as it was has been captured to morph from)
 ok(await p.waitForFunction(() => document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'full screen');
+await p.waitForTimeout(700);
+const fills = await p.evaluate(() => { const m = document.querySelector('#radar .radar-map').getBoundingClientRect(), c = document.querySelector('#radar .maplibregl-canvas').getBoundingClientRect(); return Math.abs(m.width - c.width) < 1 && Math.abs(m.height - c.height) < 1 && m.height > 500; });
+ok(fills, 'the map filling it, edge to edge');
 await p.screenshot({ path: `${out}/wx-radar.png` });
 await p.keyboard.press('Escape');
 ok(await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'and back');
+// on a phone the page scrolls past the map in its card, and a tap opens it full screen, to pan and pinch
+{
+  await p.locator('#radar').scrollIntoViewIfNeeded(); await p.waitForTimeout(500);
+  const touch = () => p.evaluate(() => getComputedStyle(document.querySelector('#radar .maplibregl-canvas')).touchAction);
+  const inCard = await touch(), box = await p.locator('#radar .radar-map').boundingBox();
+  await p.touchscreen.tap(box.x + box.width * 0.6, box.y + box.height * 0.35);
+  const opened = await p.waitForFunction(() => document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false);
+  await p.waitForTimeout(600);
+  ok(inCard !== 'none' && opened && await touch() === 'none', 'on a phone: the page scrolls past the map; a tap opens it full screen, where it takes the finger', `${inCard} → ${await touch()}`);
+  await p.keyboard.press('Escape');
+  await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).catch(() => {});
+}
 // with no rain on the radar to follow, the next two hours come from the models instead, inside a box
 {
   const { ctx: c2, p: p2 } = await open({ rainIn: 30, dryRadar: true });
   await p2.locator('#radar').scrollIntoViewIfNeeded();
   await p2.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
-  const fc = await p2.evaluate(() => { const img = [...document.querySelectorAll('#radar .fc-frame')].pop(); return { n: document.querySelectorAll('#radar .fc-frame').length, painted: !!img && img.src.startsWith('data:image/png') && img.src.length > 500 }; });
-  ok(fc.n >= 7 && fc.painted, 'no rain on the radar to follow: the models\' rain, painted in the radar\'s colours', JSON.stringify(fc));
+  const fc = await p2.evaluate(() => ({ n: __pictures.length, painted: __pictures.filter((x) => x.rain + x.soft > 500).length }));
+  ok(fc.n >= 7 && fc.painted >= 7, 'no rain on the radar to follow: the models\' rain, painted in the radar\'s colours', JSON.stringify(fc));
   await c2.close();
+}
+// a phone that can't draw the vector map (no WebGL 2): the radar on OpenStreetMap's own map, turned dark, with the same controls
+{
+  const before = tiles.map;
+  const { ctx: c3, p: p3 } = await open({ rainIn: 30, noGL: true });
+  await p3.locator('#radar').scrollIntoViewIfNeeded();
+  await p3.waitForSelector('#radar .leaflet-container', { timeout: 15000 });
+  await p3.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
+  ok(!(await p3.locator('#radar .maplibregl-canvas').count()) && tiles.map > before && await p3.locator('#radar .map-zoom button').count() === 2 && await p3.locator('#radar .radar-centre').count() === 1 && /^\d+ mi$/.test(await p3.textContent('#radar .map-scale')),
+    'no WebGL 2: OpenStreetMap\'s map instead, with the same controls', `${tiles.map - before} map tiles`);
+  ok(/^Map data © OpenStreetMap, RainViewer/.test(await p3.getAttribute('#radar .radar-credit', 'aria-label')), 'credited as such', await p3.getAttribute('#radar .radar-credit', 'aria-label'));
+  await p3.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); const s = document.querySelector('#radar .radar-slider'); s.value = '12'; s.dispatchEvent(new Event('input')); });
+  await p3.click('#radar .map-in'); await p3.waitForTimeout(400); await p3.click('#radar .map-in');
+  const smoothed = () => [...document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 200));
+  await p3.waitForFunction(smoothed, null, { timeout: 15000, polling: 250 }).catch(() => {});
+  await p3.waitForTimeout(500);
+  const d3 = await p3.evaluate(() => {
+    let rain = 0, soft = 0, blue = 0;
+    for (const c of document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')) {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < d.length; i += 4) { if (d[i] > 200) { rain++; if (d[i - 1] > d[i - 3]) blue++; } else if (d[i] > 0) soft++; }
+    }
+    return { rain, soft, blue, frames: document.querySelectorAll('#radar .rv-tiles').length };
+  });
+  ok(d3.rain > 1000 && d3.blue > d3.rain * 0.9 && d3.soft > 100 && d3.frames >= 24, 'and the radar on it, smoothed the same', JSON.stringify(d3));
+  await c3.close();
 }
 // your own activities
 await p.click('#settings-btn');
@@ -374,6 +436,9 @@ await ctx.close();
   const moving = await p.evaluate(() => document.getAnimations().filter((a) => a instanceof CSSAnimation && a.playState === 'running').map((a) => `${a.animationName} on ${a.effect?.target?.className?.baseVal ?? a.effect?.target?.className}`));
   ok(!moving.length, 'with Reduce Motion, nothing moves: no drawing in, no settling, no sky', moving.slice(0, 5).join('; '));
   ok(!(await p.locator('.pre, svg.c-enter').count()), 'and nothing is left waiting to move (all drawn in full)');
+  await p.locator('#radar').scrollIntoViewIfNeeded();
+  await p.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
+  ok(await p.evaluate(() => getComputedStyle(document.querySelector('#radar .maplibregl-canvas')).transitionDuration === '0s' && document.querySelector('#radar .radar-play').dataset.on === '0'), 'the radar doesn\'t play by itself, and its map doesn\'t fade in');
   await ctx.close();
 }
 // an official wind warning in force (over Bristol): the app's own gales warning stands aside for it

@@ -208,7 +208,15 @@ so there's nothing to set up beyond the address.
   weather models' rain instead (Open-Meteo's 15-minute rain on a 9 × 9 grid
   about 220 km across, blended and painted in the radar's own colours, inside
   a dashed box; asked for only when rain's expected there soon), animated on one
-  timeline marked Now, over OpenStreetMap's map turned dark. Closer in than
+  timeline marked Now, on a map drawn in the app's own style, after Apple's Maps
+  at night: OpenFreeMap's vector map of OpenStreetMap (the OpenMapTiles schema),
+  drawn on the phone by MapLibre GL JS, land in a quiet grey with the lie of the
+  land faintly shaded (Natural Earth's relief), the sea a deep blue, roads a
+  whisper, borders on land only, and the names crisp and white, drawn above the
+  rain so they read through it (and stepping aside from the place's blue dot
+  rather than hiding under it). Where a phone can't draw it (no WebGL 2), the
+  radar's on OpenStreetMap's own map turned dark instead (Leaflet), with the same
+  controls; either is driven the same way (`mapgl.js`, `mapleaf.js`). Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's
   colour read back into reflectivity, blended with a cubic B-spline (curved
   edges, colours that flow between bands) and recoloured, a few tiles at a time
@@ -217,14 +225,17 @@ so there's nothing to set up beyond the address.
   quarter of the requests; a tile that doesn't come is asked for again. A line above it
   says what's coming ("Rain starting in about 40 min"); below it, a legend
   (RainViewer's Universal Blue colours, from their published table, rain rate
-  to reflectivity by Marshall and Palmer), and a scale and a button back to the
-  place on the map, all in the app's own colours (Leaflet's scale restyled to
-  match; the map's credits in full as it first appears, then folded into a ©
-  that opens the Credits window). On a phone a tap opens it full screen to pan and zoom (the
-  page scrolls past it otherwise). Leaflet 1.9.4 is vendored in `weather/vendor/`
-  (checked against npm's integrity hash) and loaded only when the card comes
-  into view; with reduced motion it doesn't play by itself (`weather/radar.js`,
-  `weather/rainmap.js`).
+  to reflectivity by Marshall and Palmer), and on the map, in glass: zoom in and
+  out (no further in than the radar's worth seeing), a button back to the place,
+  a scale drawn as Maps draws it, and the map's credits in full as it first
+  appears, then folded into a © that opens the Credits window. On a phone a tap
+  opens it full screen to pan and pinch (the page scrolls past it otherwise).
+  MapLibre GL JS 6.12.0 and Leaflet 1.9.4 are vendored in `weather/vendor/`
+  (each checked against npm's integrity hash); MapLibre's megabyte is fetched as
+  the card comes within a screen of view, and the map made once it's in view
+  (the vector map fading in once the country's drawn); with reduced motion it
+  doesn't play by itself (`weather/radar.js`, `weather/mapgl.js`,
+  `weather/mapstyle.js`, `weather/mapleaf.js`, `weather/rainmap.js`).
 - **Forecast accuracy here, and a forecast tuned by it**: the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation
   Weather Center gives at most 400 reports at a time, about a week at a big
@@ -293,7 +304,7 @@ directly, so a branch can be tried before it's merged.
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
 | Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), six models, the ensemble, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
-| Radar | `weather/radar.js`, `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/vendor/leaflet.js`, `leaflet.css` (BSD-2-Clause) |
+| Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
 | Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`), `functions/_wxwarn.js` (official warnings: MeteoAlarm's feeds and the National Weather Service, each kept 5 minutes in Cloudflare's cache, shaped down to what's in force, and matched to the place by the warning's own drawn area); `weather/official.js` says them (colour, title, when) |
@@ -302,9 +313,10 @@ directly, so a branch can be tried before it's merged.
 API answer (anything else is "Not found"), so its storage is kept apart from the
 site's and InFlight's. Its Content-Security-Policy runs only its own scripts and
 lets it fetch only from Open-Meteo, BigDataCloud (and OpenStreetMap's Nominatim
-when BigDataCloud can't name a place) and RainViewer, and show map
-tiles only from RainViewer and OpenStreetMap; it's the only place, with
-InFlight, that may ask for your location.
+when BigDataCloud can't name a place), RainViewer and OpenFreeMap (the map's
+tiles, fonts and relief), and show map tiles only from RainViewer, OpenFreeMap
+and OpenStreetMap (the map without WebGL 2); the map's own worker is the app's
+own file. It's the only place, with InFlight, that may ask for your location.
 
 **What the server keeps.** For notifications: the phone's push subscription,
 the place (to two decimal places, about a kilometre) and its name, which
@@ -335,8 +347,9 @@ latest frame carried along the rain's measured track (rain doesn't grow or die
 out on the way, hence the fade). Only without a track does the radar ask
 Open-Meteo for its 81 points (kept for 15 minutes): smoother than radar, and
 only inside the box around the place.
-OpenStreetMap's tiles are for light use like this. CARTO's dark
-tiles now need an API key, so they're not used. GitHub runs scheduled
+OpenFreeMap is free with no key or limit asked of a site like this (it asks
+for its credit, on the map); OpenStreetMap's own tiles, used only without WebGL
+2, are for light use like this. GitHub runs scheduled
 workflows late when it's busy, so a rain alert can come later than the hour's
 notice it aims for. Accuracy needs an airport within 40 km that reports round
 the clock, and 5 days of its record (7 to tune). The insights, and the app's
