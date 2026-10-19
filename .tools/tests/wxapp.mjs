@@ -80,6 +80,8 @@ http.createServer((req, res) => {
   res.writeHead(404); res.end();
 }).listen(8794, '127.0.0.1');
 const tiles = { radar: 0, map: 0, tilejson: 0, vector: 0, relief: 0, grid: 0 };
+// the radar chip's word: the one it shows (the other lies over it, out of sight)
+const chipSays = (pg) => pg.evaluate(() => [...document.querySelectorAll('#radar .radar-chip .rc-l')].filter((x) => getComputedStyle(x).position !== 'absolute').map((x) => x.textContent).join('|'));
 const HOST = 'http://weather.localhost:8788', SITE = 'http://localhost:8788';
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
@@ -405,7 +407,7 @@ const was = await p.getAttribute('#radar .radar-play', 'data-on');
 await p.click('#radar .radar-play');
 ok(was === '1' && (await p.getAttribute('#radar .radar-play', 'data-on')) === '0', 'it plays by itself, and pauses');
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = '12'; s.dispatchEvent(new Event('input')); });
-ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await p.textContent('#radar .radar-chip')) === 'Radar' && tiles.radar > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles; ${await p.textContent('#radar .radar-time')}`);
+ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await chipSays(p)) === 'Radar' && tiles.radar > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles; ${await p.textContent('#radar .radar-time')}`);
 // closer in than the radar's tiles go, it's smoothed: drawn in its own blue, with an edge that fades rather than steps
 const scale0 = await p.textContent('#radar .map-scale');
 ok(scale0 === '10 mi', 'it opens close in: 10 miles to the scale', scale0);
@@ -420,7 +422,7 @@ await p.click('#radar .radar-centre'); await p.waitForTimeout(900);
 ok(await p.textContent('#radar .map-scale') === scale0, 'back to the place at its own zoom', await p.textContent('#radar .map-scale'));
 // the next two hours: the latest radar carried along its own track (here it isn't moving), marked as forecast
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
-ok((await p.textContent('#radar .radar-chip')) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && tiles.grid === 0 && Number(await p.getAttribute('#radar .radar-slider', 'max')) >= 24,
+ok((await chipSays(p)) === 'Forecast' && /in \d+ min · forecast$/.test(await p.textContent('#radar .radar-time')) && tiles.grid === 0 && Number(await p.getAttribute('#radar .radar-slider', 'max')) >= 24,
   'then the radar carried on two hours, marked as forecast (not the models\' grid: never asked for)', `${await p.textContent('#radar .radar-time')}; ${tiles.grid} grid requests`);
 ok(!(await p.isVisible('#radar .radar-status')), 'with no note under it (only when something\'s missing)', await p.textContent('#radar .radar-status'));
 await p.waitForFunction(() => __tiles.some((t) => t.top >= 150 && t.top < 200), null, { timeout: 15000, polling: 250 }).then(() => true, () => false).then((x) => ok(x, 'the last forecast frames drawn from the radar, in its colours, fading the further ahead'));
@@ -478,7 +480,7 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   await p6.locator('#radar').scrollIntoViewIfNeeded();
   await p6.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
   await p6.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
-  const max = Number(await p6.getAttribute('#radar .radar-slider', 'max')), chip = await p6.textContent('#radar .radar-chip'), end = await p6.textContent('#radar .rs-end').catch(() => '');
+  const max = Number(await p6.getAttribute('#radar .radar-slider', 'max')), chip = await chipSays(p6), end = await p6.textContent('#radar .rs-end').catch(() => '');
   ok(max >= 18 && chip === 'Forecast' && /^\+/.test(end) && (tiles.grid > before) === grid && !(await p6.textContent('#radar .radar-status')), what, `${max + 1} frames, ${chip}, ${end}, ${tiles.grid - before} grid`);
   await c6.close();
 }

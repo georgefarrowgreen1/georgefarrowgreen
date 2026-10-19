@@ -218,9 +218,19 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     b.textContent = time(f.t); rel.textContent = ` · ${when}`; rel.className = f.kind === "model" ? "rt-rel ahead" : "rt-rel";
     label.replaceChildren(b, rel);
     slider.setAttribute("aria-valuetext", `${time(f.t)} · ${when}`);
-    chip.textContent = f.kind === "model" ? "Forecast" : "Radar";
-    chip.dataset.kind = f.kind;
+    chipTo(f.kind);
     map.box(undefined, f.kind === "model" ? 0.45 : 0);
+  };
+  // the chip over the map, Radar or Forecast: its width springing from the one word's to the other's (the words
+  // crossing, and its colour, are styles.css's)
+  let morph = null;
+  const chipTo = (kind) => {
+    if (chip.dataset.kind === kind) return;
+    const from = chip.getBoundingClientRect().width;
+    morph?.cancel();
+    chip.dataset.kind = kind;
+    const to = chip.getBoundingClientRect().width;
+    if (!calm && from && Math.abs(to - from) > 0.5) morph = chip.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 550, easing: "cubic-bezier(0.34, 1.32, 0.64, 1)" });
   };
   const stop = () => { playing = false; clearTimeout(timer); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
   const run = () => {

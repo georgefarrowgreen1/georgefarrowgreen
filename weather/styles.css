@@ -748,8 +748,17 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .radar-note:empty { display: none; }
 .radar-wrap { position: relative; margin-top: 12px; }
 .radar-map { height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
-.radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); }
+.radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
 .radar-chip[data-kind="model"] { background-color: rgba(255, 204, 110, 0.78); color: #2a1d00; }
+/* its word, Radar or Forecast: the one not said lies over it, out of sight (the radar's above, as it's before; the
+   forecast's below), so going from one to the other, one rises away as the other rises in, and back (radar.js chipTo) */
+/* (the one going quickly, the one coming a moment after, so they hardly cross) */
+.radar-chip .rc-l { display: block; transition: opacity 0.3s var(--glide) 0.07s, transform 0.5s var(--glide), filter 0.3s var(--glide) 0.07s; }
+.radar-chip:not([data-kind="model"]) .rc-l[data-k="model"], .radar-chip[data-kind="model"] .rc-l[data-k="radar"] {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; filter: blur(2px); transform: translateY(10px) scale(0.9);
+  transition: opacity 0.15s, transform 0.4s var(--glide), filter 0.15s; }
+.radar-chip[data-kind="model"] .rc-l[data-k="radar"] { transform: translateY(-10px) scale(0.9); }
+@media (prefers-reduced-motion: reduce) { .radar-chip .rc-l { transition: opacity 0.2s; transform: none !important; filter: none !important; } }
 /* "Tap to explore": at the map's foot with its scale and its ©, as far in from the edge, the same height as the ©; in
    once the credits have folded away (they share the foot) */
 .radar-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; display: inline-flex; align-items: center; height: 26px; padding: 0 12px; white-space: nowrap; font-size: 12.5px; font-weight: 600; border-radius: 999px; background-color: rgba(14, 22, 38, 0.5); }
