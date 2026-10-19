@@ -5,7 +5,7 @@
 // kept copy gets the rest of its files from here too, so they match. The forecast
 // itself is kept by the page (data.js), never here. And its notifications: rain
 // alerts and the morning briefing (functions/_wxpush.js).
-const CACHE = "wx-27";
+const CACHE = "wx-28";
 const SHELL = ["./", "./styles.css", "./app.js", "./data.js", "./insights.js", "./format.js", "./codes.js", "./climate.js", "./sky.js", "./charts.js", "./icons.js", "./skill.js", "./radar.js", "./rainmap.js", "./mapgl.js", "./mapstyle.js", "./mapleaf.js", "./official.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png"];
 
 self.addEventListener("install", (e) => {
