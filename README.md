@@ -156,8 +156,9 @@ so there's nothing to set up beyond the address.
 **What it tells you**
 
 - **A briefing** for the next day or so, in words ("Cloudy until about 16:00,
-  then rain until around 20:00. High 14°"), and each day of the fortnight
-  described part by part (morning, afternoon, evening, overnight).
+  then rain until around 20:00. High 14°"), its first sentence (what's coming)
+  in bold, and each day of the fortnight described part by part (morning,
+  afternoon, evening, overnight).
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
   long it lasts and how heavy, charted as light, moderate or heavy (the amounts
   are in the readout as you touch it). Where there's radar (RainViewer's
@@ -311,12 +312,20 @@ so there's nothing to set up beyond the address.
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
   last looked** ("Saturday looks drier: rain chance 70% → 20%").
-- **Right now**: feels like (and why), wind with a compass and Beaufort name,
-  humidity and dew-point comfort, rain in the last and next 24 hours, pressure
-  trend, visibility, UV, air quality and pollen, the Sun's arc with golden hour,
-  and the Moon (phase, rise and set, next full and new moon), all worked out on
-  the phone (`weather/sky.js`: Meeus's Moon, checked against real sunrises and
-  full moons in the tests).
+- **Right now**, straight after the 16 days: feels like (and why) on a
+  thermometer marked with the actual temperature, wind with a compass and
+  Beaufort name, humidity on a bar and dew-point comfort, rain in the last and
+  next 24 hours, pressure on a dial with which way it's going, visibility on a
+  scale from fog to clear, UV, air quality and pollen, the Sun's arc with golden
+  hour, and the Moon (phase, rise and set, or when it next does on a day it
+  doesn't, next full and new moon), all worked out on the phone
+  (`weather/sky.js`: Meeus's Moon, checked against real sunrises and full moons
+  in the tests). Each tile but the Sun's and the Moon's opens to a sheet of its
+  own: what it says now, its hours on a chart (feels like against the actual
+  temperature, wind and gusts with which way it'll blow every 3 hours, humidity
+  with dew points, rain and pressure over the last day and the next two, UV
+  today and tomorrow, visibility, the air quality index), and a line on what it
+  means.
 - **Credits**: every source in one window (who, what for, the licence, a link
   out), opened from the small print at the foot of the page (no panel, centred:
   when it was updated, Open-Meteo's credit, and "Learn more about weather data

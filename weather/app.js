@@ -446,7 +446,9 @@ function hero(wx, now) {
   $("place-now").textContent = `${f.temp(c.temp)} · ${label(c.code, c.isDay)}`;
   $("place-temp").textContent = f.temp(c.temp);
   $("now-hl").textContent = d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}`;
-  $("brief").textContent = I.headline(wx, now, f);
+  // (its first sentence, what's coming, in bold; the rest after it)
+  const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""];
+  $("brief").replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : "");
 }
 
 function nowcast(wx, now) {
@@ -602,12 +604,16 @@ function hourly(wx, now) {
 }
 
 // the chart for some hours (the next 48 on the page, or one day's in its sheet)
-function drawHourChart(wx, now, hrs, host, mode, showNow) {
-  const f = S.f, t = T(), wn = W();
+// the nights among some hours, as [from, to] (shaded softly on a chart)
+function nightsOf(hrs) {
   const nights = [];
   let run = null;
   for (const x of hrs) { if (!x.isDay) { if (!run) run = [x.t, x.t + HOUR]; else run[1] = x.t + HOUR; } else if (run) { nights.push(run); run = null; } }
   if (run) nights.push(run);
+  return nights;
+}
+function drawHourChart(wx, now, hrs, host, mode, showNow) {
+  const f = S.f, t = T(), wn = W(), nights = nightsOf(hrs);
   const ens = new Map((wx.ensemble?.hourly || []).map((e) => [e.t, e]));
   const common = { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights, now: showNow ? now : null, height: 170, key: `${cell(wx.place.lat, wx.place.lon)}:${mode}` };
   const when = (v) => `${f.day(v, now)} ${f.time(v)}`;
@@ -712,46 +718,97 @@ function climate(wx, now) {
     fmt: (v) => f.deg(v), summary: `Today's high ${f.temp(d.tmax)} against the normal range for the date: ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}, normal ${f.temp(c.tmax.mean)}.` });
 }
 
-function tile(title, icon, ...kids) { return h("section", { class: "tile" }, h("h3", {}, h("span", { svg: glyph(icon, 14) }), title), ...kids); }
+// the tiles that open, in their order: kind, title, icon
+const TILES = [["feels", "Feels like", "heat"], ["wind", "Wind", "wind"], ["humidity", "Humidity", "drop"], ["rain", "Rain", "rain"],
+  ["pressure", "Pressure", "gauge"], ["visibility", "Visibility", "eye"], ["uv", "UV index", "uv"], ["air", "Air quality", "air"]];
+const uvName = (u) => (u < 3 ? "Low" : u < 6 ? "Moderate" : u < 8 ? "High" : u < 11 ? "Very high" : "Extreme");
+const airName = (q) => (q <= 20 ? "Good" : q <= 40 ? "Fair" : q <= 60 ? "Moderate" : q <= 80 ? "Poor" : q <= 100 ? "Very poor" : "Extremely poor");
+// a tile of what it's like right now, that opens to its own sheet (openDetail): its title a button that covers the whole tile
+function tileFor(kind, title, icon, ...kids) {
+  return h("section", { class: "tile opens", "data-kind": kind }, h("h3", {}, h("span", { svg: glyph(icon, 14) }),
+    h("button", { class: "tile-open", type: "button", "aria-haspopup": "dialog", "aria-controls": "detail", onclick: () => openDetail(kind) }, title),
+    h("span", { class: "tile-chev", svg: glyph("chevron", 12) })), ...kids);
+}
+// a temperature's colour, cold blue to hot red (the 16 days' bars' colours: styles.css .d-fill)
+const WARMTH = [[-5, [124, 196, 255]], [7, [142, 230, 168]], [17, [255, 209, 102]], [25, [255, 154, 77]], [32, [255, 93, 93]]];
+function warmth(c) {
+  const k = WARMTH.findIndex(([t]) => c < t);
+  if (k === 0) return `rgb(${WARMTH[0][1]})`;
+  if (k < 0) return `rgb(${WARMTH[WARMTH.length - 1][1]})`;
+  const [t0, a] = WARMTH[k - 1], [t1, b] = WARMTH[k], q = (c - t0) / (t1 - t0);
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * q)).join(",")})`;
+}
+// a thermometer filled to how warm it feels (in its colour), marked where the actual temperature is: −15° at the
+// bulb, 40° at the top
+function thermometer(feels, actual) {
+  const y = (c) => +(58 - Math.min(1, Math.max(0, (c + 15) / 55)) * 50).toFixed(1), yf = y(feels), ya = y(actual), col = warmth(feels);
+  return `<svg class="thermo" viewBox="0 0 44 80" aria-hidden="true"><path class="th-glass" d="M14 10a6 6 0 0 1 12 0v48a10 10 0 1 1 -12 0z"/>`
+    + `<rect class="th-fill" x="17" y="${yf}" width="6" height="${(68 - yf).toFixed(1)}" rx="3" fill="${col}"/><circle cx="20" cy="66" r="7" fill="${col}"/>`
+    + `<path class="th-mark" d="M29 ${ya}l6 -4v8z"/></svg>`;
+}
+// a pressure dial, 960 to 1050 hPa round three quarters of a circle, the reading marked, and which way it's going
+// in the middle (rising, falling, steady)
+function pressureDial(hpa, dp) {
+  const q = Math.min(1, Math.max(0, (hpa - 960) / 90)), at = (k, r) => { const a = ((135 + k * 270) * Math.PI) / 180; return [40 + r * Math.cos(a), 40 + r * Math.sin(a)]; };
+  let ticks = "";
+  for (let i = 0; i <= 36; i++) { const [x1, y1] = at(i / 36, 30), [x2, y2] = at(i / 36, i % 9 ? 34 : 36); ticks += `M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`; }
+  const [a1, b1] = at(q, 24), [a2, b2] = at(q, 37);
+  const way = dp == null || Math.abs(dp) < 1 ? "M32 37h16M32 43h16" : dp > 0 ? "M40 50V30M33 37l7-7 7 7" : "M40 30v20M33 43l7 7 7-7";
+  const box = h("div", { svg: `<svg class="dial" viewBox="0 0 80 80" aria-hidden="true"><path class="dl-ticks" d="${ticks}"/>`
+    + `<g class="dl-needle-g"><path class="dl-needle" d="M${a1.toFixed(1)} ${b1.toFixed(1)}L${a2.toFixed(1)} ${b2.toFixed(1)}"/></g><path class="dl-way" d="${way}"/></svg>` });
+  // (where the needle swings round from, the dial's low end: set here, as the page's CSP allows no style attributes)
+  box.firstElementChild.style.setProperty("--sw", `${(-q * 270).toFixed(0)}deg`);
+  return box;
+}
+// a bar filled part of the way (0 to 1), and a scale with a knob on it and its ends named
+const fillBar = (k, cls) => { const b = h("div", { class: `fbar ${cls}` }), i = h("i"); i.style.width = `${Math.min(100, Math.max(0, k * 100))}%`; b.append(i); return b; };
+const scaleBar = (k, cls, ends) => { const m = h("div", { class: `meter ${cls}` }), i = h("i"); i.style.left = `${Math.min(100, Math.max(0, k * 100))}%`; m.append(i); return [m, h("div", { class: "ends" }, h("span", {}, ends[0]), h("span", {}, ends[1]))]; };
+
 function tiles(wx, now) {
   const f = S.f, c = wx.current || I.hourAt(wx, now), out = [], d = I.dayOf(wx, now);
-  // feels like
+  // what each tile says, made afresh wherever it's shown (the tile, and its sheet: openDetail)
+  const say = {};
+  // feels like: a thermometer filled to it, with the actual temperature marked
   const diff = (c.feels ?? c.temp) - c.temp;
-  out.push(tile("Feels like", "heat", h("div", { class: "big" }, f.temp(c.feels)),
-    h("p", { class: "sub" }, diff <= -2 ? ((c.wind ?? 0) >= 12 ? `Wind makes it feel ${f.delta(diff)} colder.` : `Feels ${f.delta(diff)} colder.`) : diff >= 2 ? `Humidity makes it feel ${f.delta(diff)} warmer.` : "Close to the actual temperature.")));
+  const why = diff <= -2 ? ((c.wind ?? 0) >= 12 ? `wind makes it feel ${f.delta(diff)} colder` : `it feels ${f.delta(diff)} colder`) : diff >= 2 ? `humidity makes it feel ${f.delta(diff)} warmer` : "close to it";
+  say.feels = () => [h("div", { class: "wind-row" }, h("div", { class: "big" }, f.temp(c.feels)), h("div", { svg: thermometer(c.feels ?? c.temp, c.temp) })),
+    h("p", { class: "sub" }, `Actual ${f.temp(c.temp)}: ${why}.`)];
   // wind
   const bf = beaufort(c.wind ?? 0), dir = c.dir ?? 0;
   const comp = `<svg class="compass" viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="33"/>${[0, 90, 180, 270].map((a) => `<line class="tick" x1="40" y1="6" x2="40" y2="11" transform="rotate(${a} 40 40)"/>`).join("")}<text x="40" y="20" text-anchor="middle">N</text><text x="62" y="43" text-anchor="middle">E</text><text x="40" y="66" text-anchor="middle">S</text><text x="18" y="43" text-anchor="middle">W</text><g class="needle-g"><path class="needle" transform="rotate(${(dir + 180) % 360} 40 40)" d="M40 14l6 30h-12z"/></g><circle cx="40" cy="40" r="3" fill="#fff"/></svg>`;
-  out.push(tile("Wind", "wind", h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, String(f.windNum(c.wind)), h("small", {}, f.windUnit)), h("p", {}, `Gusts ${f.windNum(c.gust)}`)), h("div", { svg: comp })),
-    h("p", { class: "sub" }, `${bf.name}, from the ${compassWord(dir)}.`)));
-  // humidity
+  say.wind = () => [h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, String(f.windNum(c.wind)), h("small", {}, f.windUnit)), h("p", {}, `Gusts ${f.windNum(c.gust)}`)), h("div", { svg: comp })),
+    h("p", { class: "sub" }, `${bf.name}, from the ${compassWord(dir)}.`)];
+  // humidity: a bar filled to it
   const dew = c.dew;
   const comfort = dew == null ? "" : dew < 10 ? "Dry and fresh" : dew < 15 ? "Comfortable" : dew < 18 ? "A little humid" : dew < 21 ? "Humid" : "Very humid and oppressive";
-  out.push(tile("Humidity", "drop", h("div", { class: "big" }, `${Math.round(c.rh ?? 0)}%`), h("p", { class: "sub" }, `Dew point ${f.temp(dew)}. ${comfort}.`)));
+  say.humidity = () => [h("div", { class: "big" }, `${Math.round(c.rh ?? 0)}%`), fillBar((c.rh ?? 0) / 100, "wet"), h("p", { class: "sub" }, `Dew point ${f.temp(dew)}. ${comfort}.`)];
   // rain: the last day and the next
   const past = I.hoursBetween(wx, now - DAY, now).reduce((a, x) => a + (x.precip || 0), 0), next = I.hoursBetween(wx, now, now + DAY).reduce((a, x) => a + (x.precip || 0), 0);
-  out.push(tile("Rain", "rain", h("div", { class: "big" }, f.precip(next)), h("p", {}, "in the next 24 hours"), h("p", { class: "sub" }, `${f.precip(past)} in the last 24.`)));
-  // pressure
+  say.rain = () => [h("div", { class: "big" }, f.precip(next)), h("p", {}, "in the next 24 hours"), h("p", { class: "sub" }, `${f.precip(past)} in the last 24.`)];
+  // pressure: a dial, and which way it's going
   const p3 = I.hourAt(wx, now - 3 * HOUR)?.pressure, dp = c.pressure != null && p3 != null ? c.pressure - p3 : null;
-  out.push(tile("Pressure", "gauge", h("div", { class: "big" }, f.pressure(c.pressure).replace(/ (\S+)$/, ""), h("small", {}, f.pressure(c.pressure).split(" ").pop())),
-    h("p", { class: "sub" }, dp == null ? "" : Math.abs(dp) < 1 ? "Steady." : `${dp < 0 ? "Falling" : "Rising"} ${f.pressureDelta(dp)} in 3 hours${dp <= -3 ? ": unsettled" : dp >= 3 ? ": settling" : ""}.`)));
-  // visibility
+  // (its unit under it: four figures and a dial side by side fill a tile)
+  say.pressure = () => [h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, f.pressure(c.pressure).replace(/ (\S+)$/, "")), h("p", {}, f.pressure(c.pressure).split(" ").pop())), c.pressure != null ? pressureDial(c.pressure, dp) : null),
+    h("p", { class: "sub" }, dp == null ? "" : Math.abs(dp) < 1 ? "Steady." : `${dp < 0 ? "Falling" : "Rising"} ${f.pressureDelta(dp)} in 3 hours${dp <= -3 ? ": unsettled" : dp >= 3 ? ": settling" : ""}.`)];
+  // visibility: on a scale from fog to clear (by how far, on a log scale: 100 m to 30 km)
   const vis = c.vis;
-  out.push(tile("Visibility", "eye", h("div", { class: "big" }, f.dist(vis)), h("p", { class: "sub" }, vis == null ? "" : vis >= 20000 ? "Excellent." : vis >= 10000 ? "Good." : vis >= 4000 ? "A little haze." : vis >= 1000 ? "Mist or haze." : "Fog.")));
+  say.visibility = () => [h("div", { class: "big" }, f.dist(vis)), ...(vis != null ? scaleBar(Math.log10(Math.max(100, vis) / 100) / Math.log10(300), "clear", ["Fog", "Clear"]) : []),
+    h("p", { class: "sub" }, vis == null ? "" : vis >= 20000 ? "Excellent." : vis >= 10000 ? "Good." : vis >= 4000 ? "A little haze." : vis >= 1000 ? "Mist or haze." : "Fog.")];
   // UV
   const todayH = I.hoursBetween(wx, dayStart(now), dayStart(now) + DAY), uvPeak = todayH.reduce((a, x) => ((x.uv ?? 0) > (a?.uv ?? -1) ? x : a), null);
-  const uv = c.uv ?? 0, uvName = (u) => (u < 3 ? "Low" : u < 6 ? "Moderate" : u < 8 ? "High" : u < 11 ? "Very high" : "Extreme");
-  const meter = (v, max) => { const m = h("div", { class: "meter" }), i = h("i"); i.style.left = `${Math.min(100, (v / max) * 100)}%`; m.append(i); return m; };
-  out.push(tile("UV index", "uv", h("div", { class: "big" }, String(Math.round(uv)), h("small", {}, uvName(uv))), meter(uv, 11),
-    h("p", { class: "sub" }, uvPeak && uvPeak.uv >= 1 ? `Peaks at ${Math.round(uvPeak.uv)} (${uvName(uvPeak.uv).toLowerCase()}) around ${f.time(uvPeak.t)}.` : "Low all day.")));
+  const uv = c.uv ?? 0, meter = (v, max) => { const m = h("div", { class: "meter" }), i = h("i"); i.style.left = `${Math.min(100, (v / max) * 100)}%`; m.append(i); return m; };
+  say.uv = () => [h("div", { class: "big" }, String(Math.round(uv)), h("small", {}, uvName(uv))), meter(uv, 11),
+    h("p", { class: "sub" }, uvPeak && uvPeak.uv >= 1 ? `Peaks at ${Math.round(uvPeak.uv)} (${uvName(uvPeak.uv).toLowerCase()}) around ${f.time(uvPeak.t)}.` : "Low all day.")];
   // air quality and pollen
   if (wx.air?.current?.eaqi != null) {
-    const a = wx.air.current, q = a.eaqi, name = q <= 20 ? "Good" : q <= 40 ? "Fair" : q <= 60 ? "Moderate" : q <= 80 ? "Poor" : q <= 100 ? "Very poor" : "Extremely poor";
+    const a = wx.air.current, q = a.eaqi;
     const pol = (wx.air.hourly || []).filter((x) => x.t >= now - HOUR && x.t < now + 12 * HOUR);
     const top = ["grass", "birch", "alder", "olive", "ragweed", "mugwort"].map((k) => [k, Math.max(0, ...pol.map((x) => x[k] ?? 0))]).sort((x, y) => y[1] - x[1])[0];
-    out.push(tile("Air quality", "air", h("div", { class: "big" }, String(Math.round(q)), h("small", {}, name)), meter(q, 100),
-      h("p", { class: "sub" }, `Fine particles ${a.pm25 != null ? Math.round(a.pm25) : "–"} µg/m³.${top && top[1] >= 10 ? ` ${top[0][0].toUpperCase() + top[0].slice(1)} pollen ${top[1] >= 80 ? "high" : top[1] >= 30 ? "moderate" : "low"}.` : pol.some((x) => x.grass != null) ? " Pollen low." : ""}`)));
+    say.air = () => [h("div", { class: "big" }, String(Math.round(q)), h("small", {}, airName(q))), meter(q, 100),
+      h("p", { class: "sub" }, `Fine particles ${a.pm25 != null ? Math.round(a.pm25) : "–"} µg/m³.${top && top[1] >= 10 ? ` ${top[0][0].toUpperCase() + top[0].slice(1)} pollen ${top[1] >= 80 ? "high" : top[1] >= 30 ? "moderate" : "low"}.` : pol.some((x) => x.grass != null) ? " Pollen low." : ""}`)];
   }
+  for (const [kind, title, icon] of TILES) if (say[kind]) out.push(tileFor(kind, title, icon, ...say[kind]()));
+  S.say = say;
   // the sun
   if (d) {
     const sk = I.skyFor(wx, d.key), y = wx.daily[wx.daily.indexOf(d) - 1];
@@ -780,16 +837,122 @@ function tiles(wx, now) {
     // the moon
     if (sk) {
       const ph = sk.phase, nx = nextPhases(now - (sk.offset || 0) * 1000), toWall = (x) => x + (sk.offset || 0) * 1000;
+      // (a day the Moon doesn't rise or set: when it next does, tomorrow's)
+      const after = next && I.skyFor(wx, next.key);
+      const moonAt = (t, k) => (t ? f.time(t) : after?.[k] ? `${f.day(after[k], now)} ${f.time(after[k])}` : "Not today");
       out.push(h("section", { class: "tile wide" }, h("h3", {}, h("span", { svg: glyph("moon", 14) }), "Moon"),
         h("div", { class: "moon-row" }, h("span", { svg: moonIcon(ph.lit, ph.waxing, 48, wx.place.lat < 0) }), h("div", {}, h("div", { class: "big" }, `${Math.round(ph.lit * 100)}%`), h("p", {}, ph.name))),
         h("dl", { class: "kv" },
-          h("dt", {}, "Moonrise"), h("dd", {}, sk.moonrise ? f.time(sk.moonrise) : "–"), h("dt", {}, "Moonset"), h("dd", {}, sk.moonset ? f.time(sk.moonset) : "–"),
+          h("dt", {}, "Moonrise"), h("dd", {}, moonAt(sk.moonrise, "moonrise")), h("dt", {}, "Moonset"), h("dd", {}, moonAt(sk.moonset, "moonset")),
           nx.full ? [h("dt", {}, "Full Moon"), h("dd", {}, `${f.day(toWall(nx.full), now)}${toWall(nx.full) - now > 6 * DAY ? "" : ` ${f.time(toWall(nx.full))}`}`)] : null,
           nx.new ? [h("dt", {}, "New Moon"), h("dd", {}, f.day(toWall(nx.new), now))] : null)));
     }
   }
   $("tiles").replaceChildren(...out);
   motion("tiles", ...out);
+}
+
+/* ---------- a tile, in full ---------- */
+// A tile in its own sheet: what it says now (as the tile has it), the hours around now on a chart (for the wind, which
+// way it'll blow too), and a line on what it means
+const ABOUT = {
+  feels: () => "How warm it feels on the skin: the temperature with the wind's chill, the air's dampness and the sun's warmth taken into account.",
+  wind: () => "Its speed 10 m up, averaged over ten minutes. Gusts are its strongest few seconds.",
+  humidity: (f) => `The dew point says best how muggy it is: under ${f.temp(10)} it's dry and fresh, from about ${f.temp(16)} humid, and from ${f.temp(20)} oppressive.`,
+  rain: () => "What's expected to fall each hour (snow as its water).",
+  pressure: (f) => `Falling pressure tends to bring cloud, wind and rain, and rising pressure settled weather. ${f.pressureDelta(3)} or more in 3 hours is quick.`,
+  visibility: (f) => `How far you can see: under ${f.dist(1000)} is fog, up to ${f.dist(4000)} mist or haze, and over ${f.dist(10000)} good.`,
+  uv: () => "From 3, sun cream and shade around the middle of the day; from 6, cover up; from 8, keep out of the midday sun.",
+  air: () => "The European Air Quality Index: to 20 good, 40 fair, 60 moderate, 80 poor and 100 very poor; over that, extremely poor.",
+};
+function openDetail(kind) {
+  const wx = S.wx, say = S.say?.[kind];
+  if (!wx || !say) return;
+  const f = S.f, now = nowWall(wx.place.offset), [, title, icon] = TILES.find((x) => x[0] === kind);
+  const when = (v) => `${f.day(v, now)} ${f.time(v)}`, hrs = I.hoursFrom(wx, now, 48);
+  const chart = h("div"), kids = [h("div", { class: "detail-now" }, ...say())];
+  const section = (text) => h("h3", { class: "day-section" }, text);
+  let draw = null;
+  // a chart of some hours: the nights shaded, now marked
+  const plot = (hours, o) => () => timeChart(chart, { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights: nightsOf(hours), now, height: 180, key: `${cell(wx.place.lat, wx.place.lon)}:${kind}`, ...o });
+  if (kind === "feels") {
+    const t = T(), pts = hrs.map((x) => { const fl = x.feels ?? x.temp; return { t: x.t, v: t(fl), lo: t(Math.min(fl, x.temp)), hi: t(Math.max(fl, x.temp)), x }; });
+    const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
+    kids.push(section("Next 48 hours"), chart, h("p", { class: "chart-note" }, "Shaded: the difference from the actual temperature."));
+    draw = plot(hrs, { kind: "line", color: COLOR.temp, points: pts, y: { fmt: (v) => f.deg(v) },
+      marks: [{ t: hi.t, v: hi.v, text: f.temp(hi.x.feels) }, ...(hi.t !== lo.t ? [{ t: lo.t, v: lo.v, text: f.temp(lo.x.feels) }] : [])],
+      summary: `Feels like, hour by hour: from ${f.temp(lo.x.feels)} to ${f.temp(hi.x.feels)}.`,
+      tip: (p) => ({ title: when(p.t), rows: [[f.temp(p.x.feels), "feels like"], [f.temp(p.x.temp), "actual"], [f.wind(p.x.wind), "wind"]] }),
+      table: { head: ["Time", "Feels like", "Actual"], rows: pts.map((p) => [when(p.t), f.temp(p.x.feels), f.temp(p.x.temp)]) } });
+  } else if (kind === "wind") {
+    // which way it'll blow, every three hours for a day: arrows going the way it goes
+    const every = hrs.filter((_, i) => i % 3 === 0).slice(0, 8);
+    const ways = h("div", { class: "ways", role: "list", "aria-label": "Wind every three hours" }, ...every.map((x) => h("div", { class: "way", role: "listitem", "aria-label": `${f.time(x.t)}: ${f.wind(x.wind)} from the ${compassWord(x.dir ?? 0)}` },
+      h("span", { class: "w-time" }, f.hour(x.t)),
+      h("span", { class: "w-arrow", svg: `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g transform="rotate(${Math.round(((x.dir ?? 0) + 180) % 360)} 12 12)"><path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g></svg>` }),
+      h("b", {}, String(f.windNum(x.wind))))));
+    kids.push(section("Next 48 hours"), chart, section(`Which way, every 3 hours (${f.windUnit})`), ways);
+    draw = () => drawHourChart(wx, now, hrs, chart, "wind", true);
+  } else if (kind === "humidity") {
+    const pts = hrs.map((x) => ({ t: x.t, v: x.rh ?? 0, x }));
+    kids.push(section("Next 48 hours"), chart);
+    draw = plot(hrs, { kind: "line", color: "#4C9BE8", points: pts, y: { min: 0, max: 100, ticks: [0, 50, 100], fmt: (v) => `${v}%` },
+      summary: `Humidity, hour by hour, between ${Math.round(Math.min(...pts.map((p) => p.v)))}% and ${Math.round(Math.max(...pts.map((p) => p.v)))}%.`,
+      tip: (p) => ({ title: when(p.t), rows: [[`${Math.round(p.v)}%`, "humidity"], [f.temp(p.x.dew), "dew point"]] }),
+      table: { head: ["Time", "Humidity", "Dew point"], rows: pts.map((p) => [when(p.t), `${Math.round(p.v)}%`, f.temp(p.x.dew)]) } });
+  } else if (kind === "rain") {
+    // the last day and the next two, hour by hour
+    const span = I.hoursBetween(wx, now - DAY, now + 2 * DAY), inch = f.units.precip === "in", amt = (mm) => (inch ? mm / 25.4 : mm);
+    const pts = span.map((x) => ({ t: x.t, v: amt(x.precip || 0), x })), wet = span.reduce((a, x) => ((x.precip || 0) > (a.precip || 0) ? x : a), span[0]);
+    kids.push(section("The last 24 hours and the next 48"), chart);
+    draw = plot(span, { kind: "columns", color: COLOR.rain, points: pts, y: { min: 0, fmt: (v) => (inch ? v.toFixed(2) : String(Math.round(v * 10) / 10)) },
+      marks: wet && (wet.precip || 0) >= 0.3 ? [{ t: wet.t, v: amt(wet.precip), text: f.precip(wet.precip) }] : [],
+      summary: `Rain each hour, from a day ago to two days ahead${wet && (wet.precip || 0) >= 0.1 ? `; the wettest hour ${when(wet.t)}, ${f.precip(wet.precip)}` : ": little or none"}.`,
+      tip: (p) => ({ title: when(p.t), rows: [[f.precip(p.x.precip), p.t < now ? "fell" : "expected"], ...(p.t >= now && p.x.pop != null ? [[`${Math.round(p.x.pop)}%`, "chance"]] : [])] }),
+      table: { head: ["Time", "Rain"], rows: pts.map((p) => [when(p.t), f.precip(p.x.precip)]) } });
+  } else if (kind === "pressure") {
+    const span = I.hoursBetween(wx, now - DAY, now + 2 * DAY).filter((x) => x.pressure != null), u = f.units.pressure;
+    const conv = (p) => (u === "inhg" ? p * 0.02953 : u === "mmhg" ? p * 0.750062 : p), pts = span.map((x) => ({ t: x.t, v: conv(x.pressure), x }));
+    const first = span[0], last = span[span.length - 1];
+    kids.push(section("The last 24 hours and the next 48"), chart);
+    draw = plot(span, { kind: "line", color: "#9B8CF2", points: pts, y: { fmt: (v) => (u === "inhg" ? v.toFixed(2) : String(Math.round(v))) },
+      summary: first && last ? `Pressure from ${f.pressure(first.pressure)} a day ago to ${f.pressure(last.pressure)} two days ahead.` : "Pressure, hour by hour.",
+      tip: (p) => ({ title: when(p.t), rows: [[f.pressure(p.x.pressure), "pressure"]] }),
+      table: { head: ["Time", "Pressure"], rows: pts.map((p) => [when(p.t), f.pressure(p.x.pressure)]) } });
+  } else if (kind === "visibility") {
+    const mi = f.units.wind === "mph", far = (m) => (mi ? m / 1609.34 : m / 1000), pts = hrs.filter((x) => x.vis != null).map((x) => ({ t: x.t, v: far(x.vis), x }));
+    kids.push(section("Next 48 hours"), chart);
+    draw = plot(hrs, { kind: "line", color: "#7FB8D9", points: pts, y: { min: 0, fmt: (v) => `${Math.round(v)}` },
+      summary: `Visibility in ${mi ? "miles" : "kilometres"}, hour by hour.`,
+      tip: (p) => ({ title: when(p.t), rows: [[f.dist(p.x.vis), "visibility"]] }),
+      table: { head: ["Time", "Visibility"], rows: pts.map((p) => [when(p.t), f.dist(p.x.vis)]) } });
+  } else if (kind === "uv") {
+    // today and tomorrow, from midnight
+    const span = I.hoursBetween(wx, dayStart(now), dayStart(now) + 2 * DAY), pts = span.map((x) => ({ t: x.t, v: x.uv ?? 0, x }));
+    const peaks = [0, 1].map((k) => span.filter((x) => x.t >= dayStart(now) + k * DAY && x.t < dayStart(now) + (k + 1) * DAY).reduce((a, x) => ((x.uv ?? 0) > (a?.uv ?? -1) ? x : a), null)).filter((x) => x && x.uv >= 1);
+    kids.push(section("Today and tomorrow"), chart);
+    draw = plot(span, { kind: "columns", color: "#E0A100", points: pts, y: { min: 0, max: Math.max(8, Math.ceil(Math.max(...pts.map((p) => p.v)))), fmt: (v) => String(Math.round(v)) },
+      marks: peaks.map((x) => ({ t: x.t, v: x.uv, text: String(Math.round(x.uv)) })),
+      summary: `UV index, hour by hour, today and tomorrow.${peaks.length ? ` Peaks: ${peaks.map((x) => `${Math.round(x.uv)} at ${f.time(x.t)} ${f.day(x.t, now).toLowerCase()}`).join("; ")}.` : " Low throughout."}`,
+      tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), uvName(p.v).toLowerCase()]] }),
+      table: { head: ["Time", "UV index"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v))]) } });
+  } else if (kind === "air") {
+    const span = (wx.air?.hourly || []).filter((x) => x.t >= now - HOUR && x.t < now + 2 * DAY && x.eaqi != null), pts = span.map((x) => ({ t: x.t, v: x.eaqi, x }));
+    if (pts.length > 3) {
+      kids.push(section("Next 48 hours"), chart);
+      draw = plot(hrs, { kind: "line", color: "#5FC08A", points: pts, y: { min: 0, fmt: (v) => String(Math.round(v)) },
+        summary: `Air quality (the European index), hour by hour, between ${Math.round(Math.min(...pts.map((p) => p.v)))} and ${Math.round(Math.max(...pts.map((p) => p.v)))}.`,
+        tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), airName(p.v).toLowerCase()], ...(p.x.pm25 != null ? [[`${Math.round(p.x.pm25)} µg/m³`, "fine particles"]] : [])] }),
+        table: { head: ["Time", "Index", "Fine particles"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v)), p.x.pm25 != null ? `${Math.round(p.x.pm25)} µg/m³` : "–"]) } });
+    }
+  }
+  kids.push(h("p", { class: "detail-about" }, ABOUT[kind](f)));
+  $("detail-title").replaceChildren(h("span", { class: "dt-icon", svg: glyph(icon, 18) }), title);
+  $("detail-body").replaceChildren(...kids);
+  const dlg = $("detail");
+  if (!dlg.open) openSheet(dlg);
+  dlg.querySelector(".sheet-body").scrollTop = 0;
+  if (draw) requestAnimationFrame(draw);
 }
 
 /* ---------- one day, in full ---------- */

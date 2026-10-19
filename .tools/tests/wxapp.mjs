@@ -228,6 +228,30 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
   const why = await p.locator('#windows .win-text').allTextContents();
   ok(why.filter((t) => /^80% chance it stays dry, /.test(t)).length >= 3, 'the best times give the chance the whole stretch stays dry', why.slice(0, 3).join(' | '));
 }
+// the briefing: what's coming first, in bold
+{
+  const lead = await p.textContent('#brief b'), all = await p.textContent('#brief');
+  ok(/\.$/.test(lead) && all.startsWith(lead) && all.length > lead.length, 'the briefing\'s first sentence in bold, the rest after it', lead);
+}
+// right now: straight after the 16 days (before the insights), each tile drawn as well as said, and each opening to
+// its hours in a sheet of its own (tapped where they are: not scrolled to, as the radar starts once it's scrolled to)
+{
+  const order = await p.evaluate(() => { const t = document.getElementById('tiles'), i = document.getElementById('insights-card'), d = document.getElementById('daily'); return { first: !!(t.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING), afterDays: !!(d.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) }; });
+  ok(order.first && order.afterDays, 'right now: after the 16 days, before the insights', JSON.stringify(order));
+  const drawn = await p.evaluate(() => ['feels .thermo', 'wind .compass', 'humidity .fbar i', 'pressure .dial', 'visibility .meter.clear', 'uv .meter'].filter((s) => { const k = s.split(' ')[0]; return !document.querySelector(`#tiles [data-kind="${k}"] ${s.slice(k.length + 1)}`); }));
+  ok(!drawn.length, 'feels like, humidity, pressure and visibility drawn too: a thermometer, a bar, a dial, a scale', drawn.join(', ') || 'all there');
+  const moon = await p.locator('#tiles .kv dd').allTextContents();
+  ok(!moon.includes('–'), 'the Moon\'s rise and set never just a dash', moon.join(' | '));
+  for (const [kind, title] of [['wind', 'Wind'], ['pressure', 'Pressure'], ['uv', 'UV index']]) {
+    await p.locator(`#tiles [data-kind="${kind}"] .tile-open`).evaluate((e) => e.click());
+    await p.waitForSelector('#detail[open]');
+    await p.waitForTimeout(500);
+    const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, now: !!document.querySelector('#detail .detail-now .big'), chart: !!document.querySelector('#detail-body .chart svg'), about: document.querySelector('#detail .detail-about')?.textContent || '', ways: document.querySelectorAll('#detail .way').length }));
+    ok(sheet.title === title && sheet.now && sheet.chart && sheet.about.length > 20 && (kind !== 'wind' || sheet.ways === 8), `${title}: a tap opens its own sheet (now, its hours on a chart, what it means${kind === 'wind' ? ', which way every 3 hours' : ''})`, JSON.stringify(sheet).slice(0, 160));
+    await p.keyboard.press('Escape');
+    await p.waitForFunction(() => !document.getElementById('detail').open);
+  }
+}
 const rows = await p.locator('.day-row').evaluateAll((rs) => rs.map((r) => Math.round(r.getBoundingClientRect().height)));
 ok(new Set(rows).size === 1, 'the 16 days, every row the same height (rain chance or not)', [...new Set(rows)].join(', '));
 await p.screenshot({ path: `${out}/wx-top.png` });

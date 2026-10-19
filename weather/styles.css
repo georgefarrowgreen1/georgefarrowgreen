@@ -88,7 +88,7 @@ a { color: inherit; }
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
 /* glass on glass: things inside a panel */
-.win, .stat, .part, .hour.now, .act-edit, .choice, .acts-list:not(:empty), .credits {
+.win, .stat, .part, .hour.now, .act-edit, .choice, .acts-list:not(:empty), .credits, .detail-now, .way {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
@@ -276,7 +276,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 @media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
 .hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
 .hero-hl { font-size: 16px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
-.brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; }
+.brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
+.brief b { font-weight: 650; color: #fff; }
 .status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1em; }
 .status.warn { color: #ffd68a; }
 .retry { margin-top: 14px; }
@@ -414,13 +415,24 @@ main.paging > .col { will-change: translate; }
 /* the UV and air knobs slide along to their reading */
 .pre .meter i { opacity: 0; }
 .play .meter i { animation: knob 1s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+/* the thermometer fills up from its bulb, the humidity bar fills along, the pressure needle swings round to its reading */
+.thermo .th-fill { transform-box: fill-box; transform-origin: 50% 100%; }
+.pre .thermo .th-fill { transform: scaleY(0); }
+.pre .fbar i { transform: scaleX(0); transform-origin: 0 50%; }
+.play .thermo .th-fill { animation: fill-up 1s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.play .fbar i { transform-origin: 0 50%; animation: sweep 0.9s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.pre .dial .dl-needle-g { transform: rotate(var(--sw, 0deg)); }
+.play .dial .dl-needle-g { animation: dial 1.3s cubic-bezier(0.3, 1.35, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+@keyframes fill-up { from { transform: scaleY(0); } }
+@keyframes dial { from { transform: rotate(var(--sw, 0deg)); } }
 @keyframes sweep { from { transform: scaleX(0); } }
 @keyframes land { from { opacity: 0; scale: 0.3; } }
 @keyframes swing { from { transform: rotate(-150deg); } }
 @keyframes knob { from { left: 0%; opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
-  .pre .d-fill, .pre .compass .needle-g { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i { opacity: 1; } .pre .sunarc .done { stroke-dashoffset: 0; }
-  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i { animation: none; }
+  .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i { opacity: 1; } .pre .sunarc .done { stroke-dashoffset: 0; }
+  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g { animation: none; }
+  .tile.opens, .tile.opens:active { transition: none; transform: none; }
 }
 
 /* ---------- the cards settle into place as they're scrolled up into view ---------- */
@@ -572,10 +584,11 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .tile { border-radius: 24px; padding: 13px 14px; min-height: 136px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .tile.wide { grid-column: span 2; }
 .tile h3 { margin: 0 0 2px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
-.tile .big { font-size: 30px; font-weight: 500; line-height: 1.1; }
-.tile .big small { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 3px; }
-.tile p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.35; }
+.tile .big, .detail-now .big { font-size: 30px; font-weight: 500; line-height: 1.1; }
+.tile .big small, .detail-now .big small { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 3px; }
+.tile p, .detail-now p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.35; }
 .tile .sub { margin-top: auto; }
+.detail-now .sub { margin-top: 6px; }
 .meter { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: linear-gradient(90deg, #34c759, #d7e34b, #ffb020, #ff5a4f, #b45cff); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
 .meter i { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
 .compass { width: 74px; height: 74px; margin: 4px auto 0; display: block; }
@@ -584,6 +597,46 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .compass text { fill: var(--text-3); font-size: 9px; font-weight: 700; }
 .compass .needle { fill: #fff; }
 .wind-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+/* a tile that opens: its title a button over all of it, a little chevron to say so; it gives under a finger */
+.tile.opens { cursor: pointer; transition: transform 0.5s var(--spring), filter 0.25s; }
+.tile.opens:active { transform: scale(0.97); filter: brightness(1.12); transition-duration: 0.12s; }
+.tile-open { all: unset; flex: 1; min-width: 0; cursor: pointer; }
+.tile-open::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; }
+.tile-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
+.tile-chev { display: inline-flex; flex: none; transform: rotate(-90deg); opacity: 0.8; }
+@media (hover: hover) { .tile.opens:hover { filter: brightness(1.08); } }
+/* a tile in full, in its own sheet: what it says now, a little larger, then its hours */
+.detail-now { border-radius: var(--r-inner); padding: 14px 16px 15px; display: flex; flex-direction: column; gap: 3px; }
+.detail-now .big { font-size: 40px; }
+.detail-now .big small { font-size: 18px; }
+.detail-now p { font-size: 14.5px; }
+.detail-now .meter, .detail-now .fbar { margin: 10px 0 5px; }
+.detail-about { margin: 16px 2px 4px; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.detail-sheet .sheet-head h2 { display: flex; align-items: center; gap: 8px; }
+.dt-icon { display: inline-flex; color: var(--text-3); }
+.ways { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; text-align: center; }
+.way { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 12px; }
+.way .w-time { font-size: 12px; font-weight: 600; color: var(--text-3); }
+.way .w-arrow { display: inline-flex; color: #fff; }
+.way b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+/* feels like: a thermometer */
+.thermo { width: 40px; height: 74px; display: block; margin: 2px 6px 0 0; }
+.thermo .th-glass { fill: rgba(255, 255, 255, 0.07); stroke: rgba(255, 255, 255, 0.34); stroke-width: 1.4; }
+.thermo .th-mark { fill: #fff; }
+/* humidity: a bar filled to it */
+.fbar { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
+.fbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.fbar.wet i { background: linear-gradient(90deg, #a9dcff, #5aa9f0 60%, #2f74d0); }
+/* pressure: a dial */
+.dial { width: 74px; height: 74px; display: block; }
+.tile .dial { width: 64px; height: 64px; margin-right: 2px; }
+.dial .dl-ticks { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1.2; stroke-linecap: round; fill: none; }
+.dial .dl-needle { stroke: #fff; stroke-width: 3.2; stroke-linecap: round; }
+.dial .dl-needle-g { transform-box: view-box; transform-origin: 40px 40px; }
+.dial .dl-way { stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+/* visibility: a scale from fog to clear, its ends named */
+.meter.clear { background: linear-gradient(90deg, rgba(190, 198, 210, 0.35), rgba(190, 210, 230, 0.7) 45%, #8fd0ff); }
+.ends { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 600; color: var(--text-3); margin-top: -1px; }
 .sunarc { width: 100%; max-width: 340px; height: auto; display: block; margin: 4px auto; }
 .sunarc .arc { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; stroke-dasharray: 3 4; }
 .sunarc .done { fill: none; stroke: #ffd166; stroke-width: 2; }

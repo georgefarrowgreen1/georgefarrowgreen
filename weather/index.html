@@ -118,10 +118,14 @@
 
     <div class="col col-b">
       <div class="skeleton" aria-hidden="true">
-        <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
-        <div class="card sk sk-ins"><i class="sk-l w30"></i><i class="sk-l w80"></i></div>
         <div class="sk-tiles"><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div></div>
+        <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
       </div>
+      <section aria-labelledby="details-title">
+        <h2 class="section-title" id="details-title">Right now</h2>
+        <div class="tiles" id="tiles"></div>
+      </section>
+
       <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
         <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="info"></span>Insights</h2>
         <div class="insights" id="insights" role="list"></div>
@@ -142,10 +146,6 @@
         <div id="climate-body"><p class="muted small">Gathering 30 years of weather…</p></div>
       </section>
 
-      <section aria-labelledby="details-title">
-        <h2 class="section-title" id="details-title">Right now</h2>
-        <div class="tiles" id="tiles"></div>
-      </section>
     </div>
   </main>
 
@@ -266,6 +266,16 @@
     </div>
     <div class="sheet-body">
       <div id="warning-body"></div>
+    </div>
+  </dialog>
+
+  <dialog class="sheet detail-sheet" id="detail" aria-labelledby="detail-title">
+    <div class="sheet-head">
+      <h2 id="detail-title" tabindex="-1">Details</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <div id="detail-body"></div>
     </div>
   </dialog>
 
