@@ -244,6 +244,20 @@ function pullToRefresh() {
   addEventListener("touchend", end, { passive: true });
   addEventListener("touchcancel", end, { passive: true });
 }
+// Let go of a swipe, the rest of the way goes as a spring (critically damped: no bounce) that starts at the speed it was
+// let go at, as iOS's paging does, so nothing jumps ahead or stalls as the finger lifts: v, pixels a millisecond towards
+// where it's going (less than none: away from it, at first); dist, the pixels there; span, the furthest any of it moves
+// (for when it's near enough there to stop). As an animation's duration and easing: a CSS linear() curve, sampled from
+// the spring (where there isn't linear(), `ease` instead)
+const curves = !!globalThis.CSS?.supports?.("animation-timing-function", "linear(0, 1)");
+function glide(v, dist, ease, span = dist) {
+  const u = dist > 1 ? Math.min(0.08, Math.max(-0.04, v / dist)) : 0, k = Math.max(0.022, u);
+  const left = (t) => (1 + (k - u) * t) * Math.exp(-k * t);
+  let end = 16;
+  while (Math.abs(left(end)) * Math.max(span, dist) > 0.5 && end < 800) end += 4;
+  if (!curves) return { duration: end, easing: ease };
+  return { duration: end, easing: `linear(${Array.from({ length: 31 }, (_, i) => (i === 30 ? 1 : +(1 - left((end * i) / 30)).toFixed(4))).join(", ")})` };
+}
 // Swipe across the top of the page to the next or previous saved place, as iOS Weather pages through its cities (the
 // places sheet is still the way to choose one; this is the shortcut). The page follows the finger (giving at the first
 // and last, as iOS's do at their ends), from where the swipe was told from a scroll, not with a jump. Let go far
@@ -259,6 +273,7 @@ function placeSwipe() {
   const atEnd = (d) => (d > 0 && S.cur === 0) || (d < 0 && S.cur === S.places.length - 1);
   // (past the first or last, the page gives less the further it's pulled, as iOS's rubber band does)
   const give = (d) => Math.sign(d) * (1 - 1 / ((Math.abs(d) * 0.55) / W() + 1)) * W();
+  const band = (d) => 0.55 / ((Math.abs(d) * 0.55) / W() + 1) ** 2;     // (how far the page moves for the finger's pixel, there)
   const offset = () => (atEnd(dx) ? give(dx) : dx);
   const shift = (x) => { for (const c of cols) c.style.translate = x ? `${x.toFixed(1)}px 0` : ""; };
   const show = () => { raf = 0; shift(offset()); };
@@ -290,20 +305,21 @@ function placeSwipe() {
     const dir = dx < 0 ? 1 : -1, next = S.cur + dir, from = offset();
     const far = Math.abs(dx) > W() * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
     if (!atEnd(dx) && next >= 0 && next < S.places.length && (far || flung)) turn(dir, from, v);
-    else back(from);
+    else back(from, atEnd(dx) ? v * band(dx) : v);
   };
-  // not far enough: back into place from where it was let go
-  const back = (from) => {
+  // not far enough: back into place from where it was let go, at the speed it was going
+  const back = (from, v) => {
     shift(0);
-    if (calm.matches) { main.classList.remove("paging"); return; }
-    Promise.all(cols.map((c) => c.animate([{ translate: `${from}px 0` }, { translate: "0 0" }], { duration: 420, easing: "cubic-bezier(0.25, 1, 0.4, 1)" }).finished))
+    if (calm.matches || !from) { main.classList.remove("paging"); return; }
+    const g = glide(-Math.sign(from) * v, Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)");
+    Promise.all(cols.map((c) => c.animate([{ translate: `${from}px 0` }, { translate: "0 0" }], g).finished))
       .catch(() => {}).finally(() => { if (!turning) main.classList.remove("paging"); });
   };
   // on to the next: this page off the screen the way it was going, the next one in beside it
   const turn = (dir, from, v) => {
     S.cur += dir; savePlaces();
-    const w = W(), ms = Math.round(Math.min(420, Math.max(260, (w - Math.abs(from)) / Math.max(Math.abs(v), 1.2) + 150)));
-    const ease = "cubic-bezier(0.22, 0.8, 0.3, 1)";
+    // (the page goes on at the finger's speed; the next, with further to come, comes in faster and meets it)
+    const w = W(), ease = "cubic-bezier(0.22, 0.8, 0.3, 1)", g = glide(Math.max(0, -dir * v), w - Math.abs(from), ease, w);
     if (calm.matches) { shift(0); main.classList.remove("paging"); go(); return; }
     turning = true;
     const finish = () => { turning = false; main.classList.remove("paging"); for (const k of ["height", "overflow", "viewTransitionName"]) main.style[k] = ""; };
@@ -314,7 +330,7 @@ function placeSwipe() {
       main.style.viewTransitionName = "page";
       const vt = document.startViewTransition(() => { shift(0); go(); });
       vt.ready.then(() => {
-        const o = { duration: ms, easing: ease, fill: "both" };
+        const o = { ...g, fill: "both" };
         // (the page's picture has it where the finger left it: from there, on off the screen)
         document.documentElement.animate({ transform: ["translateX(0)", `translateX(${-dir * w - from}px)`] }, { ...o, pseudoElement: "::view-transition-old(page)" });
         document.documentElement.animate({ transform: [`translateX(${dir * w}px)`, "translateX(0)"] }, { ...o, pseudoElement: "::view-transition-new(page)" });
@@ -324,10 +340,10 @@ function placeSwipe() {
     }
     // (no view transitions: this one goes, then the next comes)
     shift(0);
-    const out = main.animate([{ translate: `${from}px 0` }, { translate: `${-dir * w}px 0` }], { duration: ms * 0.5, easing: "cubic-bezier(0.4, 0.2, 0.9, 0.6)", fill: "forwards" });
+    const out = main.animate([{ translate: `${from}px 0` }, { translate: `${-dir * w}px 0` }], { duration: g.duration * 0.5, easing: "cubic-bezier(0.4, 0.2, 0.9, 0.6)", fill: "forwards" });
     out.finished.then(() => {
       go();
-      const inn = main.animate([{ translate: `${dir * w}px 0` }, { translate: "0 0" }], { duration: ms, easing: ease });
+      const inn = main.animate([{ translate: `${dir * w}px 0` }, { translate: "0 0" }], { duration: g.duration, easing: ease });
       out.cancel();
       return inn.finished;
     }).catch(() => {}).finally(finish);
@@ -1151,6 +1167,7 @@ function wire() {
     const W = () => body.clientWidth;
     const atEnd = (d) => { const days = sheetDays(S.wx, nowWall(S.wx.place.offset)), i = days.findIndex((x) => x.key === S.dayKey); return (d > 0 && i <= 0) || (d < 0 && i >= days.length - 1); };
     const give = (d) => Math.sign(d) * (1 - 1 / ((Math.abs(d) * 0.55) / W() + 1)) * W();
+    const band = (d) => 0.55 / ((Math.abs(d) * 0.55) / W() + 1) ** 2;
     const offset = () => (atEnd(dx) ? give(dx) : dx);
     const fade = (o) => String(1 - Math.min(0.45, (Math.abs(o) / W()) * 0.6));
     const show = () => { raf = 0; const o = offset(); page.style.translate = `${o.toFixed(1)}px 0`; page.style.opacity = fade(o); };
@@ -1174,18 +1191,18 @@ function wire() {
       if (axis !== "x") return;
       cancelAnimationFrame(raf); raf = 0;
       const [ta, xa] = trail[0] || [0, 0], [tb, xb] = trail[trail.length - 1] || [0, 0], v = tb > ta ? (xb - xa) / (tb - ta) : 0;
-      const dir = dx < 0 ? 1 : -1, from = offset(), o = fade(from), w = W();
+      const dir = dx < 0 ? 1 : -1, from = offset(), o = fade(from), w = W(), edge = atEnd(dx);
       const far = Math.abs(dx) > w * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
       clear();
-      if (atEnd(dx) || !(far || flung)) {
-        if (!calm.matches) page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: "0 0", opacity: 1 }], { duration: 380, easing: "cubic-bezier(0.25, 1, 0.4, 1)" });
+      if (edge || !(far || flung)) {
+        if (!calm.matches && from) page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: "0 0", opacity: 1 }], glide(-Math.sign(from) * (edge ? v * band(dx) : v), Math.abs(from), "cubic-bezier(0.25, 1, 0.4, 1)"));
         return;
       }
       if (calm.matches) { stepDay(dir, true); return; }
       // (out the way it was going, at about the speed it was let go at; then the next in from the other side)
       moving = true;
       const ms = Math.round(Math.min(200, Math.max(110, (w * 0.45 - Math.abs(from)) / Math.max(Math.abs(v), 1.2) + 60)));
-      const out = page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: `${-dir * w * 0.5}px 0`, opacity: 0 }], { duration: ms, easing: "cubic-bezier(0.3, 0.3, 0.8, 0.6)", fill: "forwards" });
+      const out = page.animate([{ translate: `${from}px 0`, opacity: o }, { translate: `${-dir * Math.max(w * 0.5, Math.abs(from) + 48)}px 0`, opacity: 0 }], { duration: ms, easing: "cubic-bezier(0.3, 0.3, 0.8, 0.6)", fill: "forwards" });
       out.finished.then(() => {
         stepDay(dir, true);
         const inn = page.animate([{ translate: `${dir * w * 0.32}px 0`, opacity: 0 }, { translate: "0 0", opacity: 1 }], { duration: 400, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
