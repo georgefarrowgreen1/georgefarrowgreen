@@ -265,8 +265,9 @@ so there's nothing to set up beyond the address.
   the phone (`weather/sky.js`: Meeus's Moon, checked against real sunrises and
   full moons in the tests).
 - **Credits**: every source in one window (who, what for, the licence, a link
-  out), opened from one line at the foot of the page ("Learn more about weather
-  data and map data", as the Weather app has it) or from the map's ©.
+  out), opened from the small print at the foot of the page (no panel, centred:
+  when it was updated, Open-Meteo's credit, and "Learn more about weather data
+  and map data", as the Weather app has it) or from the map's ©.
 
 Places (search, or Use My Location) and settings (°C/°F, mph/km/h/m/s/knots,
 mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on

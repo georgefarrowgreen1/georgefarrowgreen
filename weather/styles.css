@@ -62,7 +62,7 @@ a { color: inherit; }
 
 /* ---------- the glass ---------- */
 /* panels */
-.card, .ins, .tile, .section-title, .foot-in, dialog.sheet, .c-tip {
+.card, .ins, .tile, .section-title, dialog.sheet, .c-tip {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint);
   background-image: var(--light), var(--sheen), var(--body);
@@ -80,7 +80,7 @@ a { color: inherit; }
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), inset 0 -1px 0.5px rgba(255, 255, 255, 0.12), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
 }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
-.card::before, .ins::before, .tile::before, .section-title::before, .foot-in::before, dialog.sheet::before, .c-tip::before,
+.card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
 .icon-btn::before, .place::before, .pill-btn::before, .more-btn::before, .seg::after, .radar-chip::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
   background: var(--rim);
@@ -421,7 +421,7 @@ main:not([data-empty]) .hero.swap-in { animation: swap-in 0.55s var(--spring) ba
 @supports (animation-timeline: view()) and (animation-range: entry 0% entry 160px) {
   @media (prefers-reduced-motion: no-preference) {
     /* (not the radar while it's full screen: fixed in place, there's no scroll for it to follow) */
-    main .card:not(.radar-big), main .ins, main .tile, .foot-in {
+    main .card:not(.radar-big), main .ins, main .tile {
       animation: settle cubic-bezier(0.2, 0.7, 0.3, 1) both; animation-timeline: view(); animation-range: entry 0% entry 160px;
     }
   }
@@ -557,14 +557,17 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .kv dt { color: var(--text-3); }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #fff; }
 
-/* ---------- foot ---------- */
-.foot { max-width: 1180px; margin: 12px auto 0; padding: 0 var(--pad) 28px; font-size: 12.5px; color: var(--text-2); }
-.foot-in { border-radius: var(--r-card); padding: 8px 18px; }
-.foot p { margin: 8px 0; max-width: 80ch; }
-.foot-note { color: var(--text-3); }
-/* (its links and buttons alike: underlined in the line's own grey, as the Weather app's are) */
-.foot-note a, .foot-note .link { color: inherit; font-weight: inherit; padding: 4px 0; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.32); text-underline-offset: 2px; }
-.foot-note a:active { opacity: 0.55; }
+/* ---------- foot: small print, as the Weather app has it (no panel; centred and quiet) ---------- */
+.foot { max-width: 1180px; margin: 6px auto 0; padding: 0 var(--pad) 22px; font-size: 11.5px; line-height: 1.5; color: #fff; text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 0, 0, 0.22); }   /* (to read over a pale sky too) */
+.foot p { margin: 2px auto; max-width: 60ch; }
+.foot-more { display: block; }
+/* (the words small, the places to tap not: each reaches past its words, without moving the lines apart) */
+.foot .link { font-size: inherit; padding: 8px 4px; margin: -8px -4px; }
+/* (its links and buttons alike, Refresh too: underlined in the line's own colour, as the Weather app's are) */
+.foot a, .foot .link { color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.45); text-underline-offset: 2px; }
+.foot a { padding: 8px 2px; margin: -8px -2px; }
+.foot a:active { opacity: 0.55; }
 /* a plain button: tinted text, as on iOS */
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
 .link:active { opacity: 0.55; transition-duration: 0.08s; }
@@ -881,10 +884,10 @@ select option { color: #111; }
 
 /* ---------- when transparency is turned down, or contrast up ---------- */
 @media (prefers-reduced-transparency: reduce) {
-  .card, .ins, .tile, .section-title, .foot-in, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
+  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
   .radar .leaflet-container .leaflet-bar, .radar-centre, .radar-credit, .top::before {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
-  .card, .ins, .tile, .section-title, .foot-in, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
+  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
   .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
   .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
