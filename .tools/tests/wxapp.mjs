@@ -407,13 +407,14 @@ await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'
 ok(/latest radar$/.test(await p.textContent('#radar .radar-time')) && (await p.textContent('#radar .radar-chip')) === 'Radar' && tiles.radar > 0, 'the radar: two hours of frames over the map, up to the latest', `${tiles.radar} radar tiles; ${await p.textContent('#radar .radar-time')}`);
 // closer in than the radar's tiles go, it's smoothed: drawn in its own blue, with an edge that fades rather than steps
 const scale0 = await p.textContent('#radar .map-scale');
-await p.click('#radar .map-in'); await p.waitForTimeout(450); await p.click('#radar .map-in'); await p.waitForTimeout(450);
+ok(scale0 === '10 mi', 'it opens close in: 10 miles to the scale', scale0);
+await p.click('#radar .map-in'); await p.waitForTimeout(450);
 await p.waitForFunction(() => __tiles.filter((t) => t.rain > 1000).length >= 4, null, { timeout: 15000, polling: 250 }).catch(() => {});
 const drawn = await p.evaluate(() => __tiles.reduce((a, t) => ({ rain: a.rain + t.rain, soft: a.soft + t.soft, blue: a.blue + t.blue, tiles: a.tiles + 1 }), { rain: 0, soft: 0, blue: 0, tiles: 0 }));
 ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));
-ok(await p.textContent('#radar .map-scale') !== scale0 && !(await p.isDisabled('#radar .map-in')) && !(await p.isDisabled('#radar .map-out')), 'zoomed in two steps, the scale shorter', `${scale0} → ${await p.textContent('#radar .map-scale')}`);
+ok(await p.textContent('#radar .map-scale') !== scale0 && !(await p.isDisabled('#radar .map-in')) && !(await p.isDisabled('#radar .map-out')), 'zoomed in a step, the scale shorter', `${scale0} → ${await p.textContent('#radar .map-scale')}`);
 await p.click('#radar .map-in'); await p.waitForTimeout(450);
-ok(await p.isDisabled('#radar .map-in'), 'and no closer than the radar\'s worth seeing (zoom in greys out)');
+ok(await p.isDisabled('#radar .map-in'), 'and a step more, no closer than the radar\'s worth seeing (zoom in greys out)');
 await p.click('#radar .radar-centre'); await p.waitForTimeout(900);
 ok(await p.textContent('#radar .map-scale') === scale0, 'back to the place at its own zoom', await p.textContent('#radar .map-scale'));
 // the next two hours: the latest radar carried along its own track (here it isn't moving), marked as forecast

@@ -14,9 +14,12 @@ import { grid, paint, timeline, LEGEND, decode, resample, ramp, squareAt, driftO
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
-// NATIVE: the radar's finest detail, as a zoom of 256-pixel tiles (and the map's own zoom); SRC: the size of the tiles
+// NATIVE: the radar's finest detail, as a zoom of 256-pixel tiles; SRC: the size of the tiles
 // asked for (512, a zoom below, as fine as NATIVE's)
 const NATIVE = 7, SRC = 512, SHOW = 0.8, STEP = 600, HOLD = 1800, AT_NOW = 1200, PX = 200, MODEL_TTL = 15 * 60e3;
+// the map's zoom as it opens (about 10 miles to its scale's bar: the place and the rain about it, the radar smoothed), and
+// the closest it goes (two steps in: no closer than the radar's worth seeing)
+const VIEW = 9, CLOSEST = 11;
 const svg = (d, w = 1.8) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const CENTRE = svg('<path d="M20.2 3.8 3.9 10.6c-.7.3-.6 1.3.1 1.5l6.6 1.3 1.3 6.6c.2.7 1.2.8 1.5.1l6.8-16.3z" fill="currentColor" stroke-width="1.2"/>');
 const PLUS = svg('<path d="M12 5v14M5 12h14"/>', 2), MINUS = svg('<path d="M5 12h14"/>', 2);
@@ -300,7 +303,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   async function start() {
     try {
       const at = here;
-      map = await mapIn(el, { lat: at.lat, lon: at.lon, zoom: NATIVE, min: 3, max: 10, touch, calm });
+      map = await mapIn(el, { lat: at.lat, lon: at.lon, zoom: VIEW, min: 3, max: CLOSEST, touch, calm });
       if (here !== at) { map.view(here.lat, here.lon); map.dot(here.lat, here.lon); }
       controls();
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore

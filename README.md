@@ -246,7 +246,8 @@ so there's nothing to set up beyond the address.
   says what's coming ("Rain starting in about 40 min"); below it, a legend
   (RainViewer's Universal Blue colours, from their published table, rain rate
   to reflectivity by Marshall and Palmer), and on the map, in glass: zoom in and
-  out (no further in than the radar's worth seeing), a button back to the place,
+  out (opening close in, about 10 miles to the scale's bar, two steps from as
+  close as the radar's worth seeing), a button back to the place,
   a scale drawn as Maps draws it, and the map's credits in full as it first
   appears (in two lines), then folded into a © that opens the Credits window. On
   a phone a tap opens it full screen to pan and pinch (the page scrolls past it
