@@ -131,7 +131,7 @@ async function go(force = false, fresh = null) {
   $("refresh-btn").disabled = true;
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
-  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = false; S.rain = null; }
+  if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; }
   if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map"),
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
@@ -592,14 +592,15 @@ function cards(wx, now) {
   } }, `${rest.length - shown.length} more`, h("span", { svg: glyph("chevron", 14) })));
   requestAnimationFrame(fits);
 }
-// An insight in its card: its title and a line of what it says, and where there's more than a line, a tap for the
-// rest (the row opening to it, and closing again)
+// An insight in its card: its title and a line of what it says (its own short line, where it has one, rather than the
+// start of the whole cut off), and where there's more, a tap for the rest (the row opening to it, and closing again)
 const FIRST_INSIGHTS = 3;
 function insightRow(c) {
-  const row = h("div", { class: "ins-row", role: "listitem", "data-level": c.level },
+  const brief = c.short && c.short !== c.text;
+  const row = h("div", { class: `ins-row${brief ? " brief" : ""}`, role: "listitem", "data-level": c.level },
     h("button", { class: "ins-head", type: "button", "aria-expanded": "false", onclick: () => openRow(row) },
       h("span", { class: "ins-icon", svg: glyph(c.icon, 16) }),
-      h("span", { class: "ins-words" }, h("span", { class: "ins-title" }, c.title), h("span", { class: "ins-line" }, c.text)),
+      h("span", { class: "ins-words" }, h("span", { class: "ins-title" }, c.title), brief ? h("span", { class: "ins-short" }, c.short) : null, h("span", { class: "ins-line" }, c.text)),
       h("span", { class: "ins-chev", svg: glyph("chevron", 16) })));
   return row;
 }
@@ -622,8 +623,9 @@ function fits() {
   const box = $("insights");
   insWidth = box.clientWidth;
   for (const r of box.querySelectorAll(".ins-row:not(.open)")) {
+    // (one with a short line always has more to say)
     const l = r.querySelector(".ins-line");
-    const whole = l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
+    const whole = !r.classList.contains("brief") && l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
     r.classList.toggle("whole", whole);
     whole ? head.removeAttribute("aria-expanded") : head.setAttribute("aria-expanded", "false");
   }
@@ -708,7 +710,8 @@ function daily(wx, now) {
   const conf = I.confidence(wx);
   const lo = Math.min(...days.map((d) => d.tmin)), hi = Math.max(...days.map((d) => d.tmax)), span = Math.max(1, hi - lo);
   const curT = wx.current?.temp;
-  const rows = days.map((d, i) => {
+  // (the first ten; the rest, less certain, under "Show 6 more days")
+  const rows = days.slice(0, S.allDays ? days.length : FIRST_DAYS).map((d, i) => {
     const left = (d.tmin - lo) / span, width = Math.max(0.03, (d.tmax - d.tmin) / span);
     const fill = h("i", { class: "d-fill" });
     fill.style.left = `${left * 100}%`; fill.style.width = `${width * 100}%`;
@@ -724,9 +727,20 @@ function daily(wx, now) {
       h("span", { class: "d-icon" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 30) }), h("span", { class: "d-pop" }, pop)),
       h("span", { class: "d-lo" }, f.temp(d.tmin)), bar, h("span", { class: "d-hi" }, f.temp(d.tmax))));
   });
-  $("days").replaceChildren(...rows);
+  const list = $("days");
+  list.replaceChildren(...rows);
+  list.nextElementSibling?.remove();
+  // (under the list, not in it, as the insights' "N more" is)
+  if (days.length > rows.length) list.after(h("button", { class: "ins-more days-more", type: "button", onclick: () => {
+    S.allDays = true; daily(S.wx, nowWall(S.wx.place.offset));
+    // the rest rise in where the button was, the first of them with focus
+    const more = [...list.children].slice(FIRST_DAYS);
+    more.forEach((r, i) => { if (r.getBoundingClientRect().top < innerHeight) { r.classList.add("rise"); r.style.setProperty("--i", String(i)); } });
+    more[0]?.querySelector(".day-row").focus({ preventScroll: true });
+  } }, `Show ${days.length - rows.length} more days`, h("span", { svg: glyph("chevron", 14) })));
   motion("days", ...rows);
 }
+const FIRST_DAYS = 10;
 
 // The best times: those worth it today or tomorrow, each a tile; those that aren't, named in a line under them (a
 // tap shows them too, faded)
@@ -774,7 +788,8 @@ function climate(wx, now) {
 
 // the tiles that open, in their order: kind, title, icon
 const TILES = [["feels", "Feels like", "heat"], ["wind", "Wind", "wind"], ["humidity", "Humidity", "drop"], ["rain", "Rain", "rain"],
-  ["pressure", "Pressure", "gauge"], ["visibility", "Visibility", "eye"], ["uv", "UV index", "uv"], ["air", "Air quality", "air"], ["sea", "Sea", "waves", "wide"]];
+  ["pressure", "Pressure", "gauge"], ["visibility", "Visibility", "eye"], ["uv", "UV index", "uv"], ["air", "Air quality", "air"], ["sea", "Sea", "waves", "wide"],
+  ["sun", "Sun", "sunrise"], ["moon", "Moon", "moon"]];
 const uvName = (u) => (u < 3 ? "Low" : u < 6 ? "Moderate" : u < 8 ? "High" : u < 11 ? "Very high" : "Extreme");
 const airName = (q) => (q <= 20 ? "Good" : q <= 40 ? "Fair" : q <= 60 ? "Moderate" : q <= 80 ? "Poor" : q <= 100 ? "Very poor" : "Extremely poor");
 const seaName = (c) => (c == null ? "" : c < 11 ? "Very cold" : c < 15 ? "Cold" : c < 18 ? "Cool" : c < 22 ? "Pleasant" : "Warm");
@@ -895,9 +910,9 @@ function tiles(wx, now) {
       tideCurve(m, now)),
       h("p", { class: "sub" }, tide)];
   }
-  for (const t of TILES) if (say[t[0]]) out.push(tileFor(t, ...say[t[0]]()));
-  S.say = say;
-  // the sun
+  // the sun: when it next sets or rises, its path across the sky (and under it, at night); in its sheet, today's
+  // times and the week's
+  const more = {};
   if (d) {
     const sk = I.skyFor(wx, d.key), y = wx.daily[wx.daily.indexOf(d) - 1];
     const rise = d.sunrise, set = d.sunset, frac = rise && set ? Math.min(1, Math.max(0, (now - rise) / (set - rise))) : 0;
@@ -913,29 +928,46 @@ function tiles(wx, now) {
       up ? `<path class="done" pathLength="1" d="${done}"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>`
         : below ? `<path class="under" d="M180 70A80 11 0 0 1 20 70"/><circle class="sun down" cx="${below[0].toFixed(1)}" cy="${below[1].toFixed(1)}" r="5"/>` : ""}</svg>`;
     const until = (t) => f.dur(Math.max(300, Math.round((t - now) / 300e3) * 300));
-    const sunNext = up ? `Sunset in ${until(set)}` : night != null ? `Sunrise in ${until(n1)}` : null;
-    const change = y?.daylight && d.daylight ? d.daylight - y.daylight : null;
-    out.push(h("section", { class: "tile wide" }, h("h3", {}, h("span", { svg: glyph("sunrise", 14) }), "Sun"), h("div", { svg }),
-      sunNext ? h("p", { class: "sun-next" }, sunNext) : null,
-      h("dl", { class: "kv" },
-        h("dt", {}, "Sunrise"), h("dd", {}, f.time(rise)), h("dt", {}, "Sunset"), h("dd", {}, f.time(set)),
-        sk?.goldenPm?.[0] ? [h("dt", {}, "Golden hour"), h("dd", {}, `${f.time(sk.goldenPm[0])}–${f.time(set)}`)] : null,
-        sk?.dusk ? [h("dt", {}, "Dark by"), h("dd", {}, f.time(sk.dusk))] : null,
-        h("dt", {}, "Daylight"), h("dd", {}, `${f.dur(d.daylight)}${change != null ? ` (${change < 0 ? "−" : "+"}${Math.abs(Math.round(change / 60))} min)` : ""}`))));
-    // the moon
+    const nextAt = up ? set : night != null ? n1 : null;
+    const change = (a, b) => (a?.daylight && b?.daylight ? ` (${b.daylight < a.daylight ? "−" : "+"}${Math.abs(Math.round((b.daylight - a.daylight) / 60))} min)` : "");
+    say.sun = () => [h("div", { class: "big" }, nextAt ? f.time(nextAt) : f.dur(d.daylight), h("small", {}, nextAt ? (up ? "Sunset" : "Sunrise") : "daylight")), h("div", { class: "sun-arc", svg }),
+      h("p", { class: "sub" }, nextAt ? `In ${until(nextAt)}. ${up ? `Sunrise ${f.time(rise)}` : `Sunset ${f.time(now >= set ? set : setBefore)}`}.` : "")];
+    more.sun = () => {
+      const kv = (rows) => h("dl", { class: "kv" }, ...rows.filter((r) => r[1]).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+      const week = wx.daily.slice(wx.daily.indexOf(d) + 1, wx.daily.indexOf(d) + 8).filter((x) => x.sunrise && x.sunset);
+      return [h("h3", { class: "day-section" }, "Today"), kv([
+        ["First light", sk?.dawn && f.time(sk.dawn)], ["Sunrise", rise && f.time(rise)],
+        ["Morning golden hour", rise && sk?.goldenAm?.[1] && `${f.time(rise)}–${f.time(sk.goldenAm[1])}`], ["Evening golden hour", sk?.goldenPm?.[0] && set && `${f.time(sk.goldenPm[0])}–${f.time(set)}`],
+        ["Sunset", set && f.time(set)], ["Dark by", sk?.dusk && f.time(sk.dusk)], ["Daylight", d.daylight && `${f.dur(d.daylight)}${change(y, d)}`]]),
+        week.length ? [h("h3", { class: "day-section" }, "The week ahead"), kv(week.map((x) => [f.day(x.date, now), `${f.time(x.sunrise)}–${f.time(x.sunset)} (${f.dur(x.daylight)})`]))] : null].flat().filter(Boolean);
+    };
+    // the moon: how much of it's lit, when it next rises or sets, and the next full or new moon; in its sheet, all of
+    // that and the week's
     if (sk) {
       const ph = sk.phase, nx = nextPhases(now - (sk.offset || 0) * 1000), toWall = (x) => x + (sk.offset || 0) * 1000;
       // (a day the Moon doesn't rise or set: when it next does, tomorrow's)
       const after = next && I.skyFor(wx, next.key);
       const moonAt = (t, k) => (t ? f.time(t) : after?.[k] ? `${f.day(after[k], now)} ${f.time(after[k])}` : "Not today");
-      out.push(h("section", { class: "tile wide" }, h("h3", {}, h("span", { svg: glyph("moon", 14) }), "Moon"),
-        h("div", { class: "moon-row" }, h("span", { svg: moonIcon(ph.lit, ph.waxing, 48, wx.place.lat < 0) }), h("div", {}, h("div", { class: "big" }, `${Math.round(ph.lit * 100)}%`), h("p", {}, ph.name))),
-        h("dl", { class: "kv" },
+      const rel = (t) => { const w = f.day(t, now); return w === "Today" ? f.time(t) : `${/^(Tomorrow|Yesterday)$/.test(w) ? w.toLowerCase() : w} ${f.time(t)}`; };
+      const ev = [[sk.moonrise, "Rises"], [sk.moonset, "Sets"], [after?.moonrise, "Rises"], [after?.moonset, "Sets"]].filter(([t]) => t && t > now).sort((a, b) => a[0] - b[0])[0];
+      const phase = [[nx.full, "Full Moon"], [nx.new, "New Moon"]].filter(([t]) => t).sort((a, b) => a[0] - b[0])[0];
+      const lit = (p) => `${Math.round(p.lit * 100)}%`;
+      say.moon = () => [h("div", { class: "moon-row" }, h("span", { svg: moonIcon(ph.lit, ph.waxing, 44, wx.place.lat < 0) }), h("div", {}, h("div", { class: "big" }, lit(ph)), h("p", {}, ph.name))),
+        h("p", { class: "sub" }, [ev && `${ev[1]} ${rel(ev[0])}.`, phase && `${phase[1]} ${f.day(toWall(phase[0]), now)}.`].filter(Boolean).join(" "))];
+      more.moon = () => {
+        const days = wx.daily.slice(wx.daily.indexOf(d) + 1, wx.daily.indexOf(d) + 8).map((x) => [x, I.skyFor(wx, x.key)]).filter(([, k]) => k);
+        return [h("h3", { class: "day-section" }, "Tonight"), h("dl", { class: "kv" },
           h("dt", {}, "Moonrise"), h("dd", {}, moonAt(sk.moonrise, "moonrise")), h("dt", {}, "Moonset"), h("dd", {}, moonAt(sk.moonset, "moonset")),
+          h("dt", {}, "Lit"), h("dd", {}, `${lit(ph)}, ${ph.name.toLowerCase()}`),
           nx.full ? [h("dt", {}, "Full Moon"), h("dd", {}, `${f.day(toWall(nx.full), now)}${toWall(nx.full) - now > 6 * DAY ? "" : ` ${f.time(toWall(nx.full))}`}`)] : null,
-          nx.new ? [h("dt", {}, "New Moon"), h("dd", {}, f.day(toWall(nx.new), now))] : null)));
+          nx.new ? [h("dt", {}, "New Moon"), h("dd", {}, f.day(toWall(nx.new), now))] : null),
+          days.length ? [h("h3", { class: "day-section" }, "The week ahead"), h("dl", { class: "kv moons" }, ...days.flatMap(([x, k]) => [h("dt", {}, f.day(x.date, now)),
+            h("dd", {}, h("span", { svg: moonIcon(k.phase.lit, k.phase.waxing, 16, wx.place.lat < 0) }), `${lit(k.phase)}${k.moonrise ? `, rises ${f.time(k.moonrise)}` : ""}`)]))] : null].flat().filter(Boolean);
+      };
     }
   }
+  for (const t of TILES) if (say[t[0]]) out.push(tileFor(t, ...say[t[0]]()));
+  S.say = say; S.more = more;
   $("tiles").replaceChildren(...out);
   motion("tiles", ...out);
 }
@@ -952,6 +984,8 @@ const ABOUT = {
   visibility: (f) => `How far you can see: under ${f.dist(1000)} is fog, up to ${f.dist(4000)} mist or haze, and over ${f.dist(10000)} good.`,
   uv: () => "From 3, sun cream and shade around the middle of the day; from 6, cover up; from 8, keep out of the midday sun.",
   air: () => "The European Air Quality Index: to 20 good, 40 fair, 60 moderate, 80 poor and 100 very poor; over that, extremely poor.",
+  sun: () => "Golden hour: the sun low in the sky, its light soft and warm. Dark by: the end of twilight, when it's too dark to read outdoors. Worked out on your phone from where the place is.",
+  moon: () => "Worked out on your phone from the Moon's orbit. Its rise and set are over a flat horizon: hills and buildings make it later to appear and sooner to go.",
   sea: (f, wx) => `From an ocean model about ${f.dist((wx.marine?.km || 1) * 1000)} offshore: a guide to the sea, not a tide table, and not for navigation. Tide times can be out by an hour or so on the coast, and heights are about mean sea level; waves are the average height of the biggest third.`,
 };
 // the tiles there are to open, in their order (air quality only where it's known)
@@ -1042,6 +1076,8 @@ function openDetail(kind, dir = 0) {
         tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), airName(p.v).toLowerCase()], ...(p.x.pm25 != null ? [[`${Math.round(p.x.pm25)} µg/m³`, "fine particles"]] : [])] }),
         table: { head: ["Time", "Index", "Fine particles"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v)), p.x.pm25 != null ? `${Math.round(p.x.pm25)} µg/m³` : "–"]) } });
     }
+  } else if (kind === "sun" || kind === "moon") {
+    kids.push(...(S.more?.[kind]?.() || []));
   } else if (kind === "sea") {
     // the tide for two days, its highs and lows marked with their times; the waves alongside
     const m = wx.marine, span = m.hourly.filter((x) => x.t >= now - HOUR && x.t <= now + 2 * DAY), feet = f.units.temp === "f", ht = (v) => (feet ? v * 3.28084 : v);

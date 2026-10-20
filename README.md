@@ -201,8 +201,10 @@ so there's nothing to set up beyond the address.
   20°, −5°, 25 mm) that are hard on anyone; and frost isn't a warning where
   nearly every night freezes at the time of year (`climate.js` extremes).
 - The app's own insights (warnings aside, which have cards of their own) are in
-  one card: the first three as rows, each its title and a line of what it says
-  (a tap opens a row to the rest, and closes it again), and the others under
+  one card: the first three as rows, each its title and a short line of its own
+  that fits beside its icon on a phone ("Rain this afternoon (82%)", "18°:
+  warmer than 99% of days"), rather than the start of all it says cut off; a
+  tap opens a row to the whole of it, and closes it again; the others under
   "N more".
 - **Tips**: whether to take an umbrella (by the chance of rain at some point
   while you're up and about, counted across the ensembles' runs: over a whole
@@ -219,7 +221,8 @@ so there's nothing to set up beyond the address.
   (each one's usual lean here taken off first, where the record has it, so one
   that always runs cold isn't taken for disagreeing) are marked uncertain, with
   why; the temperature chart shades how far it could
-  go either way.
+  go either way. The 16 days show the first ten (the last three of them under
+  "Less certain"), and the rest under "Show 6 more days".
 - **This time of year**: thirty years of the place's own days (ERA5-Land, with
   ERA5 where it has none: one consistent record, through Open-Meteo's archive;
   asked for once you've stayed on a place a few seconds) put each forecast in
@@ -362,16 +365,19 @@ so there's nothing to set up beyond the address.
   (how warm it is, the waves and which way they come from, whether the tide's
   rising or falling and its next high and low, the next day's tide drawn as a
   curve: Open-Meteo's marine forecast at the nearest sea cell, where one's
-  within 30 km), the Sun's arc with golden
-  hour, and the Moon (phase, rise and set, or when it next does on a day it
-  doesn't, next full and new moon), all worked out on the phone
-  (`weather/sky.js`: Meeus's Moon, checked against real sunrises and full moons
-  in the tests). Each tile but the Sun's and the Moon's opens to a sheet of its
+  within 30 km), and the Sun and the Moon side by side: when the sun next sets
+  or rises and its path across the sky, and how much of the Moon is lit, when
+  it next rises or sets and the next full or new moon, all worked out on the
+  phone (`weather/sky.js`: Meeus's Moon, checked against real sunrises and full
+  moons in the tests). Each tile opens to a sheet of its
   own: what it says now, its hours on a chart (feels like against the actual
   temperature, wind and gusts with which way it'll blow every 3 hours, humidity
   with dew points, rain and pressure over the last day and the next two, UV
   today and tomorrow, visibility, the air quality index, the tide with its
-  turns marked and listed day by day and the waves over the next two days),
+  turns marked and listed day by day and the waves over the next two days;
+  the Sun's first light, sunrise, golden hours, sunset, dark and daylight today
+  and its rise and set for the week; the Moon's rise, set, phase and next full
+  and new moon, and the week's),
   and a line on what it
   means; a swipe sideways (or the arrow keys) goes on to the next tile's, as a
   day's sheet does to the next day, with dots for which it is.

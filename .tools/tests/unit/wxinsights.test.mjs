@@ -364,3 +364,29 @@ test("dayScore: a sunny calm mild day beats a wet windy one", () => {
   const nasty = { daylight: 40000, sunshine: 0, precip: 25, precipHours: 14, gustMax: 80, fmax: 6 };
   assert.ok(I.dayScore(nice) >= 90); assert.ok(I.dayScore(nasty) <= 15);
 });
+
+test("each insight has a line that fits its row (the whole of it only when it's short)", () => {
+  const now = DAY0 + 10 * H, seen = new Map();
+  const scenarios = [
+    makeWx(),
+    makeWx((i) => (i >= 14 && i < 17 ? { precip: 1.5, code: 61, pop: 80 } : {})),
+    makeWx((i) => (i >= 20 && i < 26 ? { precip: 0.3, code: 51, pop: 40 } : {})),
+    makeWx((i, t, hh) => (i >= 24 && i < 48 && hh < 7 ? { temp: -3, feels: -7, cloud: 0, wind: 2, gust: 4 } : {})),
+    makeWx((i) => (i >= 37 && i < 40 ? { gust: 85, wind: 50 } : i >= 30 && i < 34 ? { precip: 6, code: 65, pop: 95 } : {})),
+    makeWx((i, t, hh) => (i < 24 && hh >= 11 && hh <= 16 ? { temp: 33, feels: 36, uv: 9 } : {})),
+    makeWx((i, t, hh) => (i >= 24 && i < 48 && hh >= 4 && hh < 9 ? { vis: 300, code: 45 } : i >= 50 && i < 60 ? { snow: 1.2, precip: 1.2, code: 73, temp: -1, feels: -5 } : {})),
+    makeWx((i) => ({ pressure: 1015 - Math.max(-4, i - 6) * 1.5 })),
+    makeWx((i) => (i >= 96 ? { temp: 22, feels: 22 } : {})),
+  ];
+  for (const wx of scenarios) {
+    const prev = { at: now - 26 * H, daily: wx.daily.slice(1, 8).map((d, k) => ({ key: d.key, tmax: d.tmax + (k === 2 ? 4 : 0), tmin: d.tmin, popMax: k === 3 ? 90 : d.popMax, precip: d.precip })) };
+    for (const c of I.insights(wx, now, f, { prev, commute: { am: "08:00", pm: "17:30" } })) if (!seen.has(`${c.id}|${c.title}`)) seen.set(`${c.id}|${c.title}`, c);
+  }
+  if (process.env.SHOW) for (const c of seen.values()) console.log(`${c.id.padEnd(10)} ${String(c.short ?? "").padEnd(34)} | ${c.text}`);
+  assert.ok(seen.size >= 15, `${seen.size} kinds seen`);
+  for (const c of seen.values()) {
+    // (about 34 characters fit beside the icon on a phone)
+    if (c.text.length > 34) assert.ok(c.short, `${c.id} (${c.title}): a short line for "${c.text}"`);
+    if (c.short) assert.ok(c.short.length <= 32 && !/\.$/.test(c.short), `${c.id}: "${c.short}" (${c.short.length})`);
+  }
+});

@@ -172,7 +172,10 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
 const { ctx, p, res } = await open({ rainIn: 30, frost: true, gust: 70, uv: 7 });
 ok(/default-src 'self'/.test(res.headers()['content-security-policy'] || '') && /geolocation=\(self\)/.test(res.headers()['permissions-policy'] || ''), 'its own security headers, location allowed');
 ok((await p.textContent('#place-name')) === 'London', 'opens on the place in the link');
-ok((await p.locator('.day-row').count()) === 16 && (await p.textContent('#daily-n')) === '16-day', '16 days');
+// (the first ten, the rest under a line; a tap and they rise in where it was, the first of them with focus)
+ok((await p.locator('.day-row').count()) === 10 && (await p.textContent('#daily-n')) === '16-day' && (await p.textContent('#daily .days-more')) === 'Show 6 more days', '16 days: the first ten, then "Show 6 more days"');
+await p.locator('#daily .days-more').evaluate((e) => e.click());
+ok((await p.locator('.day-row').count()) === 16 && !(await p.locator('#daily .days-more').count()) && await p.evaluate(() => document.activeElement === document.querySelectorAll('.day-row')[10]), 'and a tap shows the other six, the first of them with focus');
 const nc = await p.textContent('#nowcast-text');
 // (rain from 30 minutes on: said from the start of the quarter hour it starts in)
 ok(await p.isVisible('#nowcast') && /starting in about (15|20|25|30) min/.test(nc), 'the next four hours: rain on its way', nc);
@@ -202,21 +205,23 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
   await p.keyboard.press('Escape');
   await p.waitForFunction(() => !document.getElementById('warning').open);
 }
-// the app's own insights, in one card: the first three, a title and a line each, the rest under "N more"; a row with
-// more to say than its line opens to all of it
+// the app's own insights, in one card: the first three, a title and a line each, the rest under "N more"; each line
+// its own short one, whole (not the start of all it says, cut off), and a tap opens the row to all of it
 {
   const rows = await p.locator('#insights .ins-row').count(), more = await p.textContent('#insights-card .ins-more').catch(() => '');
   ok(await p.isVisible('#insights-card') && rows === 3 && /^\d+ more$/.test(more.trim()), 'insights in one card: three, then the rest under "N more"', `${rows} rows, "${more.trim()}"`);
-  const row = p.locator('#insights .ins-row:not(.whole)').first();
-  const tall = () => row.evaluate((r) => r.querySelector('.ins-line').getBoundingClientRect().height);
-  const shut = await tall();
+  const lines = await p.evaluate(() => [...document.querySelectorAll('#insights .ins-row')].map((r) => { const l = r.querySelector('.ins-short') || r.querySelector('.ins-line'); return { text: l.textContent, whole: l.scrollHeight <= l.clientHeight + 1 }; }));
+  ok(lines.every((l) => l.whole), 'each row\'s line whole, none of it cut off', lines.map((l) => `${l.text}${l.whole ? '' : ' (cut)'}`).join(' | '));
+  const row = p.locator('#insights .ins-row.brief').first();
+  const tall = () => row.evaluate((r) => r.getBoundingClientRect().height), says = () => row.evaluate((r) => [...r.querySelectorAll('.ins-short, .ins-line')].filter((x) => x.offsetHeight).map((x) => x.className).join());
+  const shut = await tall(), shutSays = await says();
   // (tapped where it is, not scrolled to: the radar, further up, starts as it's first scrolled to, below)
   await row.locator('.ins-head').evaluate((e) => e.click());
   await p.waitForTimeout(600);
-  ok(await row.locator('.ins-head').getAttribute('aria-expanded') === 'true' && (await tall()) > shut * 1.5, 'a row opens to all it says', `${Math.round(shut)} → ${Math.round(await tall())}px`);
+  ok(shutSays === 'ins-short' && await row.locator('.ins-head').getAttribute('aria-expanded') === 'true' && (await tall()) > shut + 8 && await says() === 'ins-line', 'a row opens from its short line to all it says', `${Math.round(shut)} → ${Math.round(await tall())}px, ${shutSays} → ${await says()}`);
   await row.locator('.ins-head').evaluate((e) => e.click());
   await p.waitForTimeout(600);
-  ok(await row.locator('.ins-head').getAttribute('aria-expanded') === 'false' && Math.abs((await tall()) - shut) < 1, 'and closes again to its line');
+  ok(await row.locator('.ins-head').getAttribute('aria-expanded') === 'false' && Math.abs((await tall()) - shut) < 1 && await says() === 'ins-short', 'and closes again to its short line');
 }
 if (await p.locator('#insights-card .ins-more').count()) await p.locator('#insights-card .ins-more').evaluate((e) => e.click());
 const cards = await p.locator('#insights .ins-title').allTextContents();
@@ -255,8 +260,17 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
   const drawn = await p.evaluate(() => ['feels .thermo', 'wind .compass', 'humidity .fbar i', 'rain .rbars rect', 'pressure .dial', 'visibility .meter.clear', 'uv .meter'].filter((s) => { const k = s.split(' ')[0]; return !document.querySelector(`#tiles [data-kind="${k}"] ${s.slice(k.length + 1)}`); }));
   ok(!drawn.length, 'feels like, humidity, rain, pressure and visibility drawn too: a thermometer, a bar, the next day\'s rain, a dial, a scale', drawn.join(', ') || 'all there');
   ok(!(await p.locator('#tiles [data-kind="sea"]').count()), 'inland (London): no sea tile (the nearest sea cell is too far out to be its sea)');
-  const moon = await p.locator('#tiles .kv dd').allTextContents();
-  ok(!moon.includes('–'), 'the Moon\'s rise and set never just a dash', moon.join(' | '));
+  // the Sun and the Moon: side by side, each a tile like the rest, opening to its times today and the week's
+  const sm = await p.evaluate(() => { const [a, b] = ['sun', 'moon'].map((k) => document.querySelector(`#tiles [data-kind="${k}"]`)); const ra = a?.getBoundingClientRect(), rb = b?.getBoundingClientRect();
+    return a && b && { side: Math.abs(ra.top - rb.top) < 2 && ra.right < rb.left, arc: !!a.querySelector('.sunarc'), sun: a.querySelector('.big').textContent, moon: b.querySelector('.big').textContent, tall: Math.round(Math.max(ra.height, rb.height)) }; });
+  ok(sm?.side && sm.arc && /^\d\d:\d\d(Sunset|Sunrise)$/.test(sm.sun) && /^\d+%$/.test(sm.moon) && sm.tall < 220, 'the Sun and the Moon side by side, as tiles: when it next sets or rises, its path, how much of the Moon is lit', JSON.stringify(sm));
+  for (const [kind, want] of [['sun', /Sunrise.*Morning golden hour.*Evening golden hour.*Sunset.*Dark by.*Daylight/], ['moon', /Moonrise.*Moonset.*Lit.*Full Moon/]]) {
+    await p.locator(`#tiles [data-kind="${kind}"] .tile-open`).evaluate((e) => e.click());
+    await p.waitForSelector('#detail[open]'); await p.waitForTimeout(400);
+    const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, kv: [...document.querySelectorAll('#detail-body .kv dt')].map((x) => x.textContent).join(' '), dd: [...document.querySelectorAll('#detail-body .kv dd')].map((x) => x.textContent), week: [...document.querySelectorAll('#detail-body .day-section')].some((x) => x.textContent === 'The week ahead') }));
+    ok(want.test(sheet.kv) && sheet.week && !sheet.dd.includes('–') && sheet.dd.length >= 10, `${sheet.title}: its sheet, today's times (never just a dash) and the week's`, `${sheet.kv.slice(0, 120)} | ${sheet.dd.slice(0, 4).join(', ')}`);
+    await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.getElementById('detail').open);
+  }
   for (const [kind, title] of [['wind', 'Wind'], ['pressure', 'Pressure'], ['uv', 'UV index']]) {
     await p.locator(`#tiles [data-kind="${kind}"] .tile-open`).evaluate((e) => e.click());
     await p.waitForSelector('#detail[open]');
@@ -768,7 +782,7 @@ await ctx.close();
   await p.locator('#tiles [data-kind="sea"] .tile-open').evaluate((e) => e.click());
   await p.waitForSelector('#detail[open]'); await p.waitForTimeout(500);
   const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, charts: document.querySelectorAll('#detail-body .chart svg').length, sections: [...document.querySelectorAll('#detail-body .day-section')].map((x) => x.textContent), tides: document.querySelectorAll('#detail .kv.tides dt').length, labels: document.querySelectorAll('#detail-body .chart .c-label').length, about: document.querySelector('#detail .detail-about')?.textContent || '', dots: document.querySelectorAll('#detail-dots i').length }));
-  ok(sheet.title === 'Sea' && sheet.charts === 2 && sheet.sections.join('|') === 'Tide, next 48 hours (m)|Waves, next 48 hours (m)' && sheet.tides >= 2 && sheet.labels >= 7 && /not for navigation/.test(sheet.about) && /(10 km|6\.2 mi) offshore/.test(sheet.about) && sheet.dots === 9,
+  ok(sheet.title === 'Sea' && sheet.charts === 2 && sheet.sections.join('|') === 'Tide, next 48 hours (m)|Waves, next 48 hours (m)' && sheet.tides >= 2 && sheet.labels >= 7 && /not for navigation/.test(sheet.about) && /(10 km|6\.2 mi) offshore/.test(sheet.about) && sheet.dots === 11,
     'its sheet: two days of the tide (its turns marked and listed) and of the waves, and what it is: a model, not a tide table', JSON.stringify(sheet).slice(0, 260));
   await ctx.close();
 }
@@ -910,7 +924,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     await p2.click('#settings-btn'); await p2.check('input[name="rain"]');
     await p2.waitForFunction(() => /^On: rain alerts/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
     const t3 = await tick(), alert = (await mine(second)).find((n) => n.tag === 'rain');
-    ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in about \d+ min$/.test(alert.title) && /^London: Rain starting (in about \d+ min|any minute)/.test(alert.body),
+    ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in (about \d+ min|a few minutes)$/.test(alert.title) && /^London: Rain starting (in about \d+ min|any minute)/.test(alert.body),
       'the rain alert from the radar, where it sees: rain coming that the models don\'t have', `${JSON.stringify(t3)} ${alert ? `${alert.title} — ${alert.body}` : 'none'}`);
     await p2.uncheck('input[name="rain"]');
     await p2.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
