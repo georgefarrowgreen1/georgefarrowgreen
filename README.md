@@ -328,7 +328,10 @@ so there's nothing to set up beyond the address.
   chance, or a part of a day's, is of rain at some point in it, counted run by
   run as the umbrella's and the best times' are (today's from now on), rather
   than its wettest hour's: so on a showery day it's higher than any one hour's
-  (`weather/agree.js`, `insights.js` rainChance).
+  (`weather/agree.js`, `insights.js` rainChance). The weather now (the top of
+  the page, its sky, the hours' first) is raining or not as the next four hours
+  have it, so it never says "Overcast" over a card saying the rain stops in 25
+  minutes; and the hour now's in, partly gone, is wet if what's left of it is.
 - **Notifications** (Settings → Notifications, for one place per phone): a
   heads-up when rain is about to start within the hour ("Rain in about 20 min",
   not between 22:00 and 07:00, not twice in three hours; where there's radar,

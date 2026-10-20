@@ -1,7 +1,8 @@
 // One forecast, one story: wherever the rain's told on the page, it's told the same.
 //
 // The first hours are the next four hours' (data.js minutely, with the radar leading where it sees: rainmap.js
-// blend): each hour's rain and weather from its quarter hours, and where the radar leads, its chance too. Every other
+// blend): each hour's rain and weather from its quarter hours, and where the radar leads, its chance too; and the
+// weather now (the top of the page, its sky, the hours' first) raining or not as the next four hours have it. Every other
 // hour's chance of rain is the ensembles' (their runs pooled: data.js ENSEMBLES), the share of runs with 0.2 mm or more
 // in it. A day's chance, and a part of a day's, is of rain at some point in it (insights.js rainChance), counted run by
 // run as the umbrella's and the best times' are, rather than its wettest hour's. Where the ensembles don't reach, the
@@ -16,6 +17,8 @@ const QUARTER = 15 * 60e3;
 // a rate's weather, as the radar's are (rainmap.js blend)
 const rate = (mmh, snow) => (snow ? (mmh < 1 ? 71 : mmh < 4 ? 73 : 75) : mmh < 2.5 ? 61 : mmh < 7.6 ? 63 : 65);
 const SNOW = new Set([71, 73, 75, 77, 85, 86]);
+// a quarter hour's weather, wet: its own, or by its rate
+const wetCode = (q) => (isWetCode(q.code) ? q.code : rate((q.precip || 0) * 4, SNOW.has(q.code)));
 
 export function oneRain(wx, now) {
   if (!wx?.hourly?.length) return wx;
@@ -28,8 +31,15 @@ export function oneRain(wx, now) {
   if (qs.length) {
     const first = qs[0].t, last = qs[qs.length - 1].t + QUARTER;
     hourly = hourly.map((h) => {
-      if (h.t <= now || h.t - HOUR < first || h.t > last) return h;
+      if (h.t <= now || h.t > last) return h;
       const mine = qs.filter((q) => q.t >= h.t - HOUR && q.t < h.t);
+      // (the hour now's in, partly gone: if what's left of it is wet, it's a wet hour, whatever it was)
+      if (h.t - HOUR < first) {
+        const wet = mine.filter((q) => (q.precip || 0) >= 0.05);
+        if (!wet.length || isWetCode(h.code)) return h;
+        const most = wet.reduce((a, q) => (q.precip > a.precip ? q : a)), fell = Math.round(mine.reduce((a, q) => a + (q.precip || 0), 0) * 100) / 100;
+        return { ...h, code: wetCode(most), precip: Math.max(h.precip || 0, fell) };
+      }
       if (mine.length < 4) return h;
       const precip = Math.round(mine.reduce((a, q) => a + (q.precip || 0), 0) * 100) / 100;
       const led = mine.reduce((a, q) => a + (q.radar || 0), 0) / 4, wettest = mine.reduce((a, q) => ((q.precip || 0) > (a.precip || 0) ? q : a));
@@ -41,7 +51,16 @@ export function oneRain(wx, now) {
       return { ...h, precip, code, pop: Math.round(led * seen + (1 - led) * (h.pop ?? 0)), led };
     });
   }
-  const told = { ...wx, hourly };
+  // now: raining as the next four hours say (insights.js nowcast: this quarter hour wet, or the next one with rain
+  // falling now), else not, so the top of the page says what the card under it does
+  let current = wx.current;
+  const left = qs.filter((q) => q.t + QUARTER > now);
+  if (current && left.length >= 4) {
+    const wet = (q) => (q?.precip || 0) >= 0.05, raining = wet(left[0]) || ((current.precip || 0) > 0.05 && wet(left[1]));
+    if (raining && !isWetCode(current.code)) current = { ...current, code: wetCode(wet(left[0]) ? left[0] : left[1]) };
+    else if (!raining && isWetCode(current.code)) current = { ...current, code: (current.cloud ?? 100) >= 70 ? 3 : 2 };
+  }
+  const told = { ...wx, hourly, current };
   // each day: the chance of rain at some point in it (today's from now)
   const daily = wx.daily.map((d) => {
     const a = Math.max(d.date, now), b = d.date + DAY;

@@ -3,10 +3,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { oneRain } from "../../../weather/agree.js";
-import { rainChance, dayParts } from "../../../weather/insights.js";
+import { rainChance, dayParts, nowcast } from "../../../weather/insights.js";
+import { isWetCode } from "../../../weather/codes.js";
 import { shapeEnsemble } from "../../../weather/data.js";
 import { blend } from "../../../weather/rainmap.js";
-import { keyOf } from "../../../weather/format.js";
+import { keyOf, makeFormat } from "../../../weather/format.js";
 
 const H = 3600e3, D = 864e5, Q = 15 * 60e3;
 const DAY0 = Date.UTC(2026, 9, 19), NOW = DAY0 + 10 * H;
@@ -77,3 +78,26 @@ test("without the ensembles or the next four hours: the forecast as it was", () 
   assert.equal(told.daily[2].popMax, 10);
   assert.equal(rainChance(told, NOW, NOW + 3 * H), null);
 });
+
+test("now: raining as the next four hours say (the radar's, where it leads), so the top of the page agrees with them", () => {
+  // 15:50; the forecast's own now overcast, but the radar's quarters wet from 15:45 to 16:15, then dry
+  const at = DAY0 + 15 * H + 50 * 60e3, f = makeFormat({});
+  const wx = makeWx((i) => (i === 16 ? { code: 3, precip: 0, pop: 30 } : {}));
+  wx.current = { t: at, temp: 12, feels: 9, code: 3, precip: 0, cloud: 100, isDay: true };
+  wx.minutely = Array.from({ length: 17 }, (_, k) => ({ t: DAY0 + 15 * H + 45 * 60e3 + k * Q, precip: k < 2 ? 0.3 : 0, code: k < 2 ? 61 : 3, radar: k < 12 ? 1 : 0 }));
+  let told = oneRain(wx, at);
+  assert.equal(nowcast(told, at, f).now, true);
+  assert.equal(told.current.code, 61, "raining now, as the card under it says: not overcast");
+  // (the hour now's in, 15:00 to 16:00, partly gone: what's left of it wet, so a wet hour)
+  assert.ok(isWetCode(at16(told).code) && at16(told).precip >= 0.3, JSON.stringify(at16(told)));
+  // the other way: the forecast has rain now, the radar sees none here for the next hour
+  wx.current = { ...wx.current, code: 63, precip: 0.4, cloud: 90 };
+  wx.minutely = wx.minutely.map((q) => ({ ...q, precip: 0, code: 3 }));
+  told = oneRain(wx, at);
+  assert.equal(nowcast(told, at, f), null);
+  assert.equal(told.current.code, 3, "not raining now, as the card says: overcast");
+  // without the next four hours: the forecast's own now, as it was
+  wx.minutely = [];
+  assert.equal(oneRain(wx, at).current.code, 63);
+});
+const at16 = (wx) => wx.hourly.find((h) => h.t === DAY0 + 16 * H);
