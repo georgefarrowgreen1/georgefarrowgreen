@@ -268,7 +268,8 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
 if (await p.locator('#insights-card .ins-more').count()) await p.locator('#insights-card .ins-more').evaluate((e) => e.click());
 const cards = await p.locator('#insights .ins-title').allTextContents();
 ok(cards.some((t) => /is uncertain$/.test(t)), 'the day the models disagree is called uncertain', cards.join(' · '));
-ok(cards.some((t) => /umbrella/i.test(t)), 'an umbrella tip');
+// (an umbrella only when it's needed or might be: the unit tests have which; nothing to say on a dry day)
+ok(!cards.some((t) => /No umbrella|much the same|Shorter days|Longer days|Confident forecast|No big changes|Fresh air/.test(t)), 'only what\'s worth knowing: nothing to say there\'s nothing to say', cards.join(' · '));
 if (new Date(now).getUTCHours() < 13) ok(cards.some((t) => /High UV/.test(t)), 'high UV today');
 ok(/^Warmer than \d+% of days here since \d{4}\./.test(await p.textContent('#climate-body')), 'today against thirty years', (await p.textContent('#climate-body')).slice(0, 90));
 // (those not worth it, named in a line under the rest; a tap shows them too, faded)
@@ -312,6 +313,8 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
     await p.waitForSelector('#detail[open]'); await p.waitForTimeout(400);
     const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, kv: [...document.querySelectorAll('#detail-body .kv dt')].map((x) => x.textContent).join(' '), dd: [...document.querySelectorAll('#detail-body .kv dd')].map((x) => x.textContent), week: [...document.querySelectorAll('#detail-body .day-section')].some((x) => x.textContent === 'The week ahead') }));
     ok(want.test(sheet.kv) && sheet.week && !sheet.dd.includes('–') && sheet.dd.length >= 10, `${sheet.title}: its sheet, today's times (never just a dash) and the week's`, `${sheet.kv.slice(0, 120)} | ${sheet.dd.slice(0, 4).join(', ')}`);
+    // (the sunset against yesterday's: said here, not in the highlights)
+    if (kind === 'sun') ok(sheet.dd.some((x) => /^\d\d:\d\d \(\d+ min (earlier|later)\)$/.test(x)), 'the sunset, and how much earlier or later than yesterday\'s', sheet.dd.slice(0, 7).join(', '));
     await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.getElementById('detail').open);
   }
   for (const [kind, title] of [['wind', 'Wind'], ['pressure', 'Pressure'], ['uv', 'UV index']]) {
@@ -396,7 +399,7 @@ ok(!(await p.locator('#nowcast .chart-note, #hourly .chart-note, #daily .chart-n
 const bands = await p.locator('#nowcast-chart text.c-in').allTextContents();
 ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of light, moderate and heavy, in place of mm an hour', bands.join(','));
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
-ok(cards.some((t) => t === 'Most accurate here: ECMWF'), 'and an insight says which model to trust');
+ok(!cards.some((t) => /^Most accurate here/.test(t)) && /^ECMWFBest/.test(acc[1]), 'which model to trust: in the accuracy card, not again in the highlights', `${acc[1]} | ${cards.join(' · ')}`);
 // every source in one window, from one line at the foot of the page
 ok((await p.locator('.foot a').count()) === 2 && /^Weather data by Open-Meteo\.com \(CC BY 4\.0\)\. Learn more about weather data and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, with the credit Open-Meteo asks for beside the data', await p.textContent('.foot-note'));
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());

@@ -25,9 +25,11 @@ const aPct = (n) => `${/^(8|11|18|8\d)$/.test(String(n)) ? "an" : "a"} ${n}%`;
 const sum = (a) => a.reduce((x, y) => x + (y || 0), 0);
 // the tile whose sheet says more about an insight
 const MORE = { umbrella: "rain", heavyrain: "rain", storm: "rain", snow: "rain", wetweek: "rain", dryweek: "rain", wind: "wind", frost: "feels", ice: "feels",
-  heat: "feels", bitter: "feels", warmnight: "feels", wear: "feels", fog: "visibility", uv: "uv", air: "air", pollen: "air", pressure: "pressure", daylight: "sun" };
+  heat: "feels", bitter: "feels", warmnight: "feels", wear: "feels", fog: "visibility", uv: "uv", air: "air", pollen: "air", pressure: "pressure" };
 // an insight's short line (its row folded): the fullest of these that fits beside its icon on a phone, about 32 letters
 const fit = (...xs) => xs.find((x) => x.length <= 32) ?? xs[xs.length - 1];
+// a day named mid-sentence: "from tomorrow", not "from Tomorrow" (the days of the week keep their capitals)
+const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
 const max = (a, k) => a.reduce((m, h) => (h[k] != null && (m == null || h[k] > m) ? h[k] : m), null);
 const min = (a, k) => a.reduce((m, h) => (h[k] != null && (m == null || h[k] < m) ? h[k] : m), null);
 const avg = (a, k) => { const v = a.map((h) => h[k]).filter((x) => x != null); return v.length ? sum(v) / v.length : null; };
@@ -615,15 +617,14 @@ export function insights(wx, now, f, opts = {}) {
   if (uvPeak && Math.round(uvPeak.uv) >= T.UV_HIGH) {      // (by the number it says: "UV 6" is high)
     const burn = Math.round(167 / uvPeak.uv / 5) * 5;
     add({ id: "uv", level: Math.round(uvPeak.uv) >= 8 ? "warn" : "tip", icon: "uv", title: `${Math.round(uvPeak.uv) >= 8 ? "Very high" : "High"} UV`, short: `UV ${Math.round(uvPeak.uv)} around ${f.time(uvPeak.t)}: sunscreen`, text: `UV ${Math.round(uvPeak.uv)} around ${f.time(uvPeak.t)}: fair skin can burn in about ${burn} minutes. Sunscreen from ${f.time(uvHours[0].t)} to ${f.time(uvHours[uvHours.length - 1].t + HOUR)}.`, score: 70 });
-  } else if (uvHours.length) add({ id: "uv", level: "info", icon: "uv", title: "Moderate UV", short: `Up to ${Math.round(uvPeak.uv)} around ${f.time(uvPeak.t)}`, text: `UV ${Math.round(uvPeak.uv)} at its peak around ${f.time(uvPeak.t)}. Sunscreen if you're out for long between ${f.time(uvHours[0].t)} and ${f.time(uvHours[uvHours.length - 1].t + HOUR)}.`, score: 30 });
+  }
   // air and pollen
   if (wx.air) {
     const aqiH = (wx.air.hourly || []).filter((h) => h.t >= now - HOUR && h.t < now + DAY);
-    const worst = argmax(aqiH, "eaqi"), cur = wx.air.current?.eaqi;
+    const worst = argmax(aqiH, "eaqi");
     if (worst && worst.eaqi >= T.AQI_POOR) add({ id: "air", level: worst.eaqi >= T.AQI_VERY_POOR ? "warn" : "tip", icon: "air", title: worst.eaqi >= T.AQI_VERY_POOR ? "Very poor air quality" : "Poor air quality", short: fit(`Index ${Math.round(worst.eaqi)} ${f.when(worst.t, now)}`, `Index ${Math.round(worst.eaqi)}`), text: `Air quality index ${Math.round(worst.eaqi)} ${f.when(worst.t, now)}${worst.pm25 != null ? ` (fine particles ${Math.round(worst.pm25)} µg/m³)` : ""}. Take it easier outdoors if you have asthma or a heart condition.`, score: 75 });
     const pollen = pollenToday(aqiH);
     if (pollen && pollen.level >= 2) add({ id: "pollen", level: pollen.level >= 3 ? "warn" : "tip", icon: "pollen", title: `${pollen.level >= 3 ? "Very high" : "High"} ${pollen.name} pollen`, short: `Peaks around ${f.time(pollen.t)}`, text: `${cap(pollen.name)} pollen peaks around ${f.time(pollen.t)} (${Math.round(pollen.v)} grains/m³). Hay fever sufferers: take antihistamines early, keep windows shut.`, score: 64 });
-    else if (cur != null && cur < 20 && !cards.some((c) => c.id === "air")) add({ id: "air", level: "good", icon: "air", title: "Fresh air", text: `Air quality is good (index ${Math.round(cur)}).`, score: 8 });
   }
 
   /* tips for your day */
@@ -633,14 +634,16 @@ export function insights(wx, now, f, opts = {}) {
     const wetH = waking.hours.filter(isWet), popMax = max(waking.hours, "pop") ?? 0;
     // (the chance of rain at some point while you're up and about: from the ensembles' runs where they're in (and the
     // radar's where it leads), which over a whole day can be well above any one hour's chance; else the likeliest hour's)
-    const any = rainChance(wx, waking.hours[0].t, waking.hours[waking.hours.length - 1].t + HOUR), dry = any == null ? null : 1 - any;
+    const any = rainChance(wx, waking.hours[0].t, waking.hours[waking.hours.length - 1].t + HOUR);
     const pct = (p) => Math.round(p * 100);
+    // (the day it's about, for one row with the week's worst day when that's the same day: below)
+    const on = keyOf(waking.hours[0].t);
     if (wetH.length || popMax >= 50) {
       const first = wetH[0] || argmax(waking.hours, "pop");
-      add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Take an umbrella", short: fit(`${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}%)` : ""}`, `${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}`, `${cap(wetKind(waking.hours) || "rain")} likely`), text: `${cap(wetKind(waking.hours) || "rain")} likely ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}% chance)` : ""}${wetH.length ? `, about ${f.precip(sum(waking.hours.map((h) => h.precip)))} in all` : ""}.`, score: 72 });
-    } else if (any != null && any >= 0.7) add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Take an umbrella", short: fit(`${cap(wetKind(waking.hours) || "showers")} likely ${whenDay} (${pct(any)}%)`, `${cap(wetKind(waking.hours) || "showers")} likely ${whenDay}`), text: `${cap(wetKind(waking.hours) || "showers")} likely at some point ${whenDay} (${aPct(pct(any))} chance), though most of it stays dry.`, score: 70 });
-    else if (any != null ? any >= 0.3 : popMax >= 25) add({ id: "umbrella", level: "tip", icon: "umbrella", title: "Maybe an umbrella", short: `${cap(aPct(any != null ? pct(any) : Math.round(popMax)))} chance of a shower`, text: any != null ? `${cap(aPct(pct(any)))} chance of a shower at some point; most of ${whenDay} stays dry.` : `${cap(aPct(Math.round(popMax)))} chance of a shower ${f.when(argmax(waking.hours, "pop").t, now)}; most of ${whenDay} stays dry.`, score: 45 });
-    else add({ id: "umbrella", level: "good", icon: "umbrella", title: "No umbrella needed", short: dry != null && dry < 0.97 ? `${cap(aPct(pct(dry)))} chance it stays dry` : `Dry ${whenDay}`, text: `Dry ${whenDay}: ${dry == null ? `no more than ${aPct(Math.round(popMax))} chance of rain` : dry >= 0.97 ? "no rain in sight" : `${aPct(pct(dry))} chance it stays dry`}.`, score: 20 });
+      // (by the odds it gives: a coin toss is a maybe)
+      add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "rain"), from: wetH[0]?.t ?? null, odds: Math.round(popMax), level: "tip", icon: "umbrella", title: !popMax || popMax >= 60 ? "Take an umbrella" : "Maybe an umbrella", short: fit(`${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}%)` : ""}`, `${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}`, `${cap(wetKind(waking.hours) || "rain")} likely`), text: `${cap(wetKind(waking.hours) || "rain")} likely ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}% chance)` : ""}${wetH.length ? `, about ${f.precip(sum(waking.hours.map((h) => h.precip)))} in all` : ""}.`, score: 72 });
+    } else if (any != null && any >= 0.7) add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "showers"), odds: pct(any), level: "tip", icon: "umbrella", title: "Take an umbrella", short: fit(`${cap(wetKind(waking.hours) || "showers")} likely ${whenDay} (${pct(any)}%)`, `${cap(wetKind(waking.hours) || "showers")} likely ${whenDay}`), text: `${cap(wetKind(waking.hours) || "showers")} likely at some point ${whenDay} (${aPct(pct(any))} chance), though most of it stays dry.`, score: 70 });
+    else if (any != null ? any >= 0.3 : popMax >= 25) add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "showers"), odds: any != null ? pct(any) : Math.round(popMax), level: "tip", icon: "umbrella", title: "Maybe an umbrella", short: `${cap(aPct(any != null ? pct(any) : Math.round(popMax)))} chance of a shower`, text: any != null ? `${cap(aPct(pct(any)))} chance of a shower at some point; most of ${whenDay} stays dry.` : `${cap(aPct(Math.round(popMax)))} chance of a shower ${f.when(argmax(waking.hours, "pop").t, now)}; most of ${whenDay} stays dry.`, score: 45 });
     add(wear(waking, now, f));
   }
   // your commute
@@ -652,7 +655,6 @@ export function insights(wx, now, f, opts = {}) {
   if (a && b && a.tmax != null && b.tmax != null) {
     const dt = b.tmax - a.tmax, who = evening ? "Tomorrow" : "Today";
     if (Math.abs(dt) >= 2) add({ id: "vs", day: b.key, level: "info", icon: dt > 0 ? "up" : "down", title: `${who}: ${dt > 0 ? "warmer" : "cooler"}`, short: `Peaks at ${f.temp(b.tmax)}, ${f.delta(dt)} ${dt > 0 ? "warmer" : "cooler"}`, text: `Peaks at ${f.temp(b.tmax)}, ${f.delta(dt)} ${dt > 0 ? "warmer" : "cooler"} than ${evening ? "today" : "yesterday"}${Math.abs((b.fmax ?? b.tmax) - (a.fmax ?? a.tmax)) >= 2 ? `, and feels ${f.delta((b.fmax ?? b.tmax) - (a.fmax ?? a.tmax))} ${(b.fmax ?? b.tmax) > (a.fmax ?? a.tmax) ? "warmer" : "colder"}` : ""}.`, score: 50 });
-    else add({ id: "vs", day: b.key, level: "info", icon: "equal", title: `${who}: much the same`, short: `Peaks at ${f.temp(b.tmax)}, like ${evening ? "today" : "yesterday"}`, text: `Peaks at ${f.temp(b.tmax)}, within ${f.delta(Math.max(1, Math.abs(dt)))} of ${evening ? "today" : "yesterday"}.`, score: 15 });
   }
   // this time of year
   for (const c of climateCards(wx, now, f)) add(c);
@@ -664,13 +666,22 @@ export function insights(wx, now, f, opts = {}) {
   add(pressure(wx, now, f));
   // the week
   for (const c of weekCards(wx, now, f)) add(c);
-  // daylight
-  add(daylight(wx, now, f));
-  // which model to trust here
-  add(skillCard(wx, f));
   // what's changed since you last looked
   if (opts.prev) add(changes(opts.prev, wx, now, f));
 
+  // one row a thing: the umbrella and the week's worst day, when that's the same wet day, as one ("Tomorrow: wet and
+  // windy"), keeping what to do for the morning briefing (alerts.js)
+  const u = cards.find((c) => c.id === "umbrella"), w = cards.find((c) => c.id === "worstday");
+  if (u && w && w.wet && u.on === w.day) {
+    // (its gusts too, unless they've a row of their own)
+    const d = wx.daily.find((x) => x.key === w.day), windy = (d.gustMax ?? 0) >= 45 && !cards.some((c) => c.id === "wind");
+    // (its line not the day again: "Rain from 07:00 (50%)")
+    const lead = u.from == null ? `${u.kind} likely` : u.from <= now ? `${u.kind} now` : `${u.kind} from ${f.time(u.from)}`;
+    cards.splice(cards.indexOf(w), 1);
+    cards[cards.indexOf(u)] = { ...u, day: w.day, act: u.title, title: `${f.day(d.date, now)}: ${windy ? "wet and windy" : "a wet day"}`,
+      short: windy ? fit(`${lead}, gusts ${f.wind(d.gustMax)}`, lead) : u.odds ? fit(`${lead} (${u.odds}%)`, lead) : lead,
+      text: `${u.text}${windy ? ` Gusts to ${f.wind(d.gustMax)}.` : ""} The worst day of the week: one to plan indoors.`, score: Math.max(u.score, w.score) };
+  }
   // (where to read more: a day's own sheet, or the tile whose hours it's about: app.js)
   return cards.map((c) => (c.day || !MORE[c.id] ? c : { ...c, tile: MORE[c.id] })).sort((x, y) => y.score - x.score);
 }
@@ -742,10 +753,10 @@ function climateCards(wx, now, f) {
       if (p >= 90) { title = `${who}: unusually warm`; short = `${f.temp(focus.tmax)}, ${f.delta(anom)} above normal`; text = `${f.temp(focus.tmax)} is ${f.delta(anom)} above normal, warmer than ${Math.round(p)}% of days at this time of year (${yrs}).`; level = "good"; score = 58; }
       else if (p <= 10) { title = `${who}: unusually cold`; short = `${f.temp(focus.tmax)}, ${f.delta(anom)} below normal`; text = `${f.temp(focus.tmax)} is ${f.delta(anom)} below normal, colder than ${Math.round(100 - p)}% of days at this time of year (${yrs}).`; score = 58; }
       else if (Math.abs(anom) >= 1.5) { title = `${who}: ${anom > 0 ? "warmer" : "cooler"} than normal`; short = `${f.temp(focus.tmax)} against a normal ${f.temp(c.tmax.mean)}`; text = `${f.temp(focus.tmax)} against a normal high of ${f.temp(c.tmax.mean)} for ${f.dateLong(focus.date)} (the ${nth(p)} percentile, ${yrs}).`; score = 38; }
-      else { title = `${who}: normal for ${f.dateLong(focus.date).split(" ")[1]}`; short = `${f.temp(focus.tmax)}, close to the normal ${f.temp(c.tmax.mean)}`; text = `${f.temp(focus.tmax)} is close to the normal high of ${f.temp(c.tmax.mean)}. The usual range is ${f.temp(c.tmax.p10)} to ${f.temp(c.tmax.p90)}.`; score = 22; }
+      else title = null;          // (normal for the time of year: not news)
       if (c.recordHigh && focus.tmax >= c.recordHigh.v - 0.5) { title = `${who}: near-record warmth`; short = fit(`${f.temp(focus.tmax)}, the record ${f.temp(c.recordHigh.v)} (${c.recordHigh.year})`, `${f.temp(focus.tmax)}, the record ${f.temp(c.recordHigh.v)}`); text = `${f.temp(focus.tmax)} would ${focus.tmax > c.recordHigh.v ? "beat" : "challenge"} the record for ${f.dateLong(focus.date)}: ${f.temp(c.recordHigh.v)} in ${c.recordHigh.year} (since ${wx.climate.years[0]}).`; level = "warn"; score = 82; }
       if (c.recordLow && focus.tmin <= c.recordLow.v + 0.5) { out.push({ id: "reclow", day: focus.key, level: "warn", icon: "cold", title: `${who}: near-record cold night`, short: fit(`Low ${f.temp(focus.tmin)}, the record ${f.temp(c.recordLow.v)} (${c.recordLow.year})`, `Low ${f.temp(focus.tmin)}, the record ${f.temp(c.recordLow.v)}`), text: `A low of ${f.temp(focus.tmin)} would ${focus.tmin < c.recordLow.v ? "beat" : "challenge"} the record for ${f.dateLong(focus.date)}: ${f.temp(c.recordLow.v)} in ${c.recordLow.year}.`, score: 80 }); }
-      out.push({ id: "normal", day: focus.key, level, icon: "chart", title, short, text, score, detail: { p, anom, normal: c.tmax.mean, lo: c.tmax.p10, hi: c.tmax.p90, record: c.recordHigh } });
+      if (title) out.push({ id: "normal", day: focus.key, level, icon: "chart", title, short, text, score, detail: { p, anom, normal: c.tmax.mean, lo: c.tmax.p10, hi: c.tmax.p90, record: c.recordHigh } });
     }
   }
   // anything exceptional in the week ahead
@@ -770,6 +781,7 @@ function climateCards(wx, now, f) {
   }
   return out;
 }
+// a day in the next five the models can't agree on
 function confidenceCard(wx, now, f) {
   const conf = confidence(wx), ti = dayIndex(wx, now);
   if (!wx.models && !wx.ensemble) return null;
@@ -782,11 +794,7 @@ function confidenceCard(wx, now, f) {
     else if (c.ensWet != null && c.ensWet > 0.25 && c.ensWet < 0.75) bits.push(`${Math.round(c.ensWet * 100)}% of ensemble runs bring rain`);
     return { id: "confidence", day: shaky.key, level: "info", icon: "dice", title: `${f.day(shaky.date, now)} is uncertain`, short: fit(cap(bits[0] || "the models disagree"), "The models disagree"), text: `${cap(bits.length ? list(bits) : "the models disagree")}. Check back nearer the time.`, score: 52 };
   }
-  const sure = ahead.filter((d) => conf[d.key]?.level === "high");
-  if (sure.length >= 3 && sure[0] === ahead[0]) {
-    let last = ahead[0]; for (const d of ahead) { if (conf[d.key]?.level === "high") last = d; else break; }
-    return { id: "confidence", level: "good", icon: "check", title: "Confident forecast", short: fit(`The models agree through ${f.day(last.date, now)}`, `Models agree through ${f.day(last.date, now)}`, "The models agree"), text: `The models agree closely through ${f.day(last.date, now)}, so this forecast is unlikely to change much.`, score: 25 };
-  }
+  // (and nothing when they agree: that's what a forecast should be)
   return null;
 }
 // a big change in temperature coming: the largest step between the three days before and after any day in the next nine
@@ -800,7 +808,7 @@ function trend(wx, now, f) {
   }
   if (!best || Math.abs(best.d) < 4) return null;
   const up = best.d > 0, from = ds[best.i];
-  return { id: "trend", day: from.key, level: "info", icon: up ? "up" : "down", title: up ? "Warming up" : "Turning colder", short: fit(`Highs ${f.temp(avg(best.before, "tmax"))} → ${f.temp(avg(best.after, "tmax"))} from ${f.day(from.date, now)}`, `Highs ${f.temp(avg(best.before, "tmax"))} → ${f.temp(avg(best.after, "tmax"))}`), text: `From ${f.day(from.date, now)}, highs ${up ? "climb" : "drop"} from around ${f.temp(avg(best.before, "tmax"))} to ${f.temp(avg(best.after, "tmax"))}.`, score: 56 };
+  return { id: "trend", day: from.key, level: "info", icon: up ? "up" : "down", title: up ? "Warming up" : "Turning colder", short: fit(`Highs ${f.temp(avg(best.before, "tmax"))} → ${f.temp(avg(best.after, "tmax"))} from ${mid(f.day(from.date, now))}`, `Highs ${f.temp(avg(best.before, "tmax"))} → ${f.temp(avg(best.after, "tmax"))}`), text: `From ${f.day(from.date, now)}, highs ${up ? "climb" : "drop"} from around ${f.temp(avg(best.before, "tmax"))} to ${f.temp(avg(best.after, "tmax"))}.`, score: 56 };
 }
 // the barometer: the last three hours, and the next twelve
 function pressure(wx, now, f) {
@@ -813,8 +821,6 @@ function pressure(wx, now, f) {
     return { id: "pressure", level: "info", icon: "gauge", title: fast ? "Pressure falling fast" : "Pressure falling", short: past != null && past <= -1 ? `Down ${f.pressureDelta(past)} in 3 hours` : `Down ${f.pressureDelta(next)} over 12 hours`, text: `${past != null && past <= -1 ? `Down ${f.pressureDelta(past)} in 3 hours` : `Down ${f.pressureDelta(next)} over the next 12 hours`}: unsettled weather on the way, with wind and rain more likely.`, score: fast ? 54 : 34 };
   }
   if (past != null && past >= 3 || next != null && next >= 6) return { id: "pressure", level: "good", icon: "gauge", title: "Pressure rising", short: past != null && past >= 1 ? `Up ${f.pressureDelta(past)} in 3 hours` : `Up ${f.pressureDelta(next)} over 12 hours`, text: `${past != null && past >= 1 ? `Up ${f.pressureDelta(past)} in 3 hours` : `Up ${f.pressureDelta(next)} over the next 12 hours`}: things are settling down.`, score: 30 };
-  if (p0 >= 1028) return { id: "pressure", level: "good", icon: "gauge", title: "High pressure", short: `${f.pressure(p0)}: settled`, text: `${f.pressure(p0)} and steady: settled weather, light winds${hourOf(now) >= 15 ? ", and cold if the sky clears tonight" : ""}.`, score: 18 };
-  if (p0 <= 995) return { id: "pressure", level: "info", icon: "gauge", title: "Low pressure", short: `${f.pressure(p0)}: unsettled`, text: `${f.pressure(p0)}: an unsettled spell, with showers or longer rain and blustery winds.`, score: 26 };
   return null;
 }
 // the best and worst days of the week, and the weekend
@@ -830,42 +836,17 @@ function weekCards(wx, now, f) {
     if ((worst.d.precip ?? 0) >= 1) bits.push(`${f.precip(worst.d.precip)} of rain`);
     if ((worst.d.gustMax ?? 0) >= 45) bits.push(`gusts to ${f.wind(worst.d.gustMax)}`);
     if (!bits.length) bits.push(words(worst.d));
-    out.push({ id: "worstday", day: worst.d.key, level: "info", icon: "cloud", title: `Worst day: ${f.day(worst.d.date, now)}`, short: fit(cap(bits.join(", ")), cap(bits[0])), text: `${cap(list(bits))}. One to plan indoors.`, score: 36 });
+    out.push({ id: "worstday", day: worst.d.key, wet: (worst.d.precip ?? 0) >= 1, level: "info", icon: "cloud", title: `Worst day: ${f.day(worst.d.date, now)}`, short: fit(cap(bits.join(", ")), cap(bits[0])), text: `${cap(list(bits))}. One to plan indoors.`, score: 36 });
   }
-  // the weekend, from Monday to Thursday
-  const dow = new Date(now).getUTCDay();
+  // the weekend, from Monday to Thursday, unless the week's best day is one of its two (said already)
+  const dow = new Date(now).getUTCDay(), picked = out.find((c) => c.id === "bestday")?.day;
   if (dow >= 1 && dow <= 4) {
     const sat = wx.daily.find((d) => new Date(d.date).getUTCDay() === 6 && d.date > now), sun = sat && wx.daily.find((d) => d.date === sat.date + DAY);
     const better = sat && sun && (dayScore(sat) - dayScore(sun) >= 15 ? "Saturday" : dayScore(sun) - dayScore(sat) >= 15 ? "Sunday" : null);
-    if (sat && sun) out.push({ id: "weekend", day: sat.key, level: "info", icon: "calendar", title: "The weekend", short: better ? `${better}'s the better day` : `Saturday ${f.temp(sat.tmax)}, Sunday ${f.temp(sun.tmax)}`, text: `Saturday: ${words(sat)}, ${f.temp(sat.tmax)}. Sunday: ${words(sun)}, ${f.temp(sun.tmax)}.${dayScore(sat) - dayScore(sun) >= 15 ? " Saturday's the better day." : dayScore(sun) - dayScore(sat) >= 15 ? " Sunday's the better day." : ""}`, score: 42 });
+    if (sat && sun && picked !== sat.key && picked !== sun.key) out.push({ id: "weekend", day: sat.key, level: "info", icon: "calendar", title: "The weekend", short: better ? `${better}'s the better day` : `Saturday ${f.temp(sat.tmax)}, Sunday ${f.temp(sun.tmax)}`, text: `Saturday: ${words(sat)}, ${f.temp(sat.tmax)}. Sunday: ${words(sun)}, ${f.temp(sun.tmax)}.${dayScore(sat) - dayScore(sun) >= 15 ? " Saturday's the better day." : dayScore(sun) - dayScore(sat) >= 15 ? " Sunday's the better day." : ""}`, score: 42 });
   }
   return out;
 }
-function daylight(wx, now, f) {
-  const ti = dayIndex(wx, now), d = wx.daily[ti], y = wx.daily[ti - 1], wk = wx.daily[ti + 7];
-  if (!d?.daylight) return null;
-  const change = y?.daylight ? d.daylight - y.daylight : null, week = wk?.daylight ? wk.daylight - d.daylight : null;
-  const ss = y?.sunset && d.sunset ? ((d.sunset - d.date) - (y.sunset - y.date)) / 1000 : null;
-  const mmss = (s) => { const a = Math.abs(Math.round(s)); return a >= 60 ? `${Math.round(a / 60)} min` : `${a} s`; };     // ("2 min", not "2 min 0 s")
-  let text = `${f.dur(d.daylight)} of daylight, sunset at ${f.time(d.sunset)}`;
-  if (ss != null && Math.abs(ss) >= 30) text += ` (${mmss(ss)} ${ss < 0 ? "earlier" : "later"} than yesterday)`;
-  text += ".";
-  if (week != null && Math.abs(week) >= 60) text += ` You'll ${week < 0 ? "lose" : "gain"} ${f.dur(Math.abs(week))} of daylight over the next week.`;
-  const short = ss != null && Math.abs(ss) >= 30 ? `Sunset ${f.time(d.sunset)}, ${mmss(ss)} ${ss < 0 ? "earlier" : "later"}` : `${f.dur(d.daylight)} of daylight`;
-  return { id: "daylight", level: "info", icon: "sunset", title: change != null && change < 0 ? "Shorter days" : "Longer days", short, text, score: 14 };
-}
-
-// which model has been closest here, from the nearest airport's reports (weather/skill.js)
-function skillCard(wx, f) {
-  const k = wx.skill?.skill, st = wx.skill?.station;
-  if (!k || !st || k.models.length < 2) return null;
-  const best = k.models[0], worst = k.models[k.models.length - 1];
-  const lean = k.models.filter((m) => Math.abs(m.hiBias) >= 1).sort((a, b) => Math.abs(b.hiBias) - Math.abs(a.hiBias))[0];
-  let text = `Its next-day highs have been within ${f.deltaFine(best.hiMae)} on average at ${st.name} over the last ${k.days} days (${worst.name}: ${f.deltaFine(worst.hiMae)}).`;
-  if (lean) text += ` ${lean.name} has run ${f.deltaFine(lean.hiBias)} too ${lean.hiBias > 0 ? "warm" : "cold"}.`;
-  return { id: "skill", level: "info", icon: "target", title: `Most accurate here: ${best.name}`, short: `Highs within ${f.deltaFine(best.hiMae)} on average`, text, score: 31 };
-}
-
 /* ---------- since you last looked ---------- */
 // prev: { at (wall ms), daily: [{ key, tmax, tmin, popMax, precip }] } — a snapshot kept from an earlier visit
 export function snapshot(wx, now) {
@@ -881,17 +862,16 @@ export function changes(prev, wx, now, f) {
     const weight = Math.max(Math.abs(dt) / 2, Math.abs(dp) / 30, Math.abs(dr) / 5);
     if (weight < 1) continue;
     let what;
-    if (Math.abs(dp) / 30 >= Math.abs(dt) / 2 && p.popMax != null && d.popMax != null) what = `${f.day(d.date, now)} looks ${dp < 0 ? "drier" : "wetter"} (rain chance ${Math.round(p.popMax)}% → ${Math.round(d.popMax)}%)`;
-    else if (Math.abs(dr) / 5 >= Math.abs(dt) / 2) what = `${f.day(d.date, now)} looks ${dr < 0 ? "drier" : "wetter"} (${f.precip(p.precip)} → ${f.precip(d.precip)})`;
-    else what = `${f.day(d.date, now)} is now ${f.delta(dt)} ${dt > 0 ? "warmer" : "cooler"} (${f.temp(p.tmax)} → ${f.temp(d.tmax)})`;
+    if (Math.abs(dp) / 30 >= Math.abs(dt) / 2 && p.popMax != null && d.popMax != null) what = `${mid(f.day(d.date, now))} looks ${dp < 0 ? "drier" : "wetter"} (rain chance ${Math.round(p.popMax)}% → ${Math.round(d.popMax)}%)`;
+    else if (Math.abs(dr) / 5 >= Math.abs(dt) / 2) what = `${mid(f.day(d.date, now))} looks ${dr < 0 ? "drier" : "wetter"} (${f.precip(p.precip)} → ${f.precip(d.precip)})`;
+    else what = `${mid(f.day(d.date, now))} is now ${f.delta(dt)} ${dt > 0 ? "warmer" : "cooler"} (${f.temp(p.tmax)} → ${f.temp(d.tmax)})`;
     // (and in a few words, for its line: "Saturday drier: 70% → 20%")
     const brief = /rain chance/.test(what) ? `${f.day(d.date, now)} ${dp < 0 ? "drier" : "wetter"}: ${Math.round(p.popMax)}% → ${Math.round(d.popMax)}%`
       : /looks/.test(what) ? `${f.day(d.date, now)} ${dr < 0 ? "drier" : "wetter"}: ${f.precip(p.precip)} → ${f.precip(d.precip)}` : `${f.day(d.date, now)}: ${f.temp(p.tmax)} → ${f.temp(d.tmax)}`;
     found.push({ weight, what, brief, key: d.key });
   }
   const ago = now - prev.at, since = ago < 20 * HOUR && dayStart(prev.at) === dayStart(now) ? `earlier today (${f.time(prev.at)})` : ago < 44 * HOUR ? "yesterday" : `${Math.round(ago / DAY)} days ago`;
-  const steady = ago < 20 * HOUR && dayStart(prev.at) === dayStart(now) ? `Steady since ${f.time(prev.at)}` : ago < 44 * HOUR ? "Steady since yesterday" : `Steady for ${Math.round(ago / DAY)} days`;
-  if (!found.length) return { id: "changes", level: "info", icon: "refresh", title: "No big changes", short: steady, text: `The forecast has held steady since you looked ${since}.`, score: 12 };
+  if (!found.length) return null;
   found.sort((x, y) => y.weight - x.weight);
   return { id: "changes", level: "info", icon: "refresh", title: "Since you last looked", day: found[0].key, short: found[0].brief, text: `Compared with ${since}: ${list(found.slice(0, 3).map((x) => x.what))}.`, score: 60 };
 }

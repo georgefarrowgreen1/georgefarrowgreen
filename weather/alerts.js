@@ -40,7 +40,7 @@ export function briefing(wx, now, f) {
   const said = covered(wx.official, real);
   const cards = insights(wx, now, f, {});
   const warn = cards.filter((c) => (c.level === "alert" || c.level === "warn") && !said.has(c.icon)).slice(0, 2).map((c) => c.title);
-  const tips = cards.filter((c) => c.id === "umbrella" && c.level === "tip").map((c) => c.title);
+  const tips = cards.filter((c) => c.id === "umbrella" && c.level === "tip").map((c) => c.act || c.title);
   const head = headline(wx, now, f);
   const title = `${wx.place.name ? `${wx.place.name} · ` : ""}${d ? `${f.temp(d.tmax)} / ${f.temp(d.tmin)}` : "Today"}`;
   const extra = [...official, warn.length ? `${warn.length > 1 ? "Warnings" : "Warning"}: ${warn.map((w) => w.toLowerCase()).join(" and ")}.` : "", ...tips.map((t) => `${t}.`)].filter(Boolean).join(" ");

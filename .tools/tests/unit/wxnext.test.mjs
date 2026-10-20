@@ -277,7 +277,7 @@ test("best times and the umbrella go by the whole stretch's chance of staying dr
   assert.ok(run.rating === "Great" && walk.rating === "Good" && walk.score < run.score, `${run.rating} ${walk.rating}`);
   // the umbrella: today's waking hours, 09:00 to 22:00
   const umbrella = (wet) => { const w = makeWx(); w.ensemble = ensembleOf(wet); return insights(w, now, f).find((c) => c.id === "umbrella"); };
-  assert.deepEqual([umbrella(() => false).title, umbrella(() => false).text], ["No umbrella needed", "Dry today: no rain in sight."]);
+  assert.equal(umbrella(() => false), undefined, "dry: nothing to say");
   const maybe = umbrella((i, k) => i >= 14 && i < 16 && k < 20);
   assert.deepEqual([maybe.title, maybe.text], ["Maybe an umbrella", "A 39% chance of a shower at some point; most of today stays dry."]);
   const likely = umbrella((i, k) => i >= 10 && i < 20 && k % 10 === i % 10 && k < 40);

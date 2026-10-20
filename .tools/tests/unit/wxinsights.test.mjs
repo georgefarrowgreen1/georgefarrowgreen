@@ -209,7 +209,7 @@ test("wind, heavy rain, thunderstorms, snow, fog, heat, UV", () => {
   assert.equal(card(c, "wind").title, "Damaging gusts"); assert.equal(card(c, "wind").level, "alert"); assert.match(card(c, "wind").text, /53 mph this afternoon, from the west/);
   assert.equal(card(c, "heavyrain").title, "Heavy rain");
   assert.equal(card(c, "storm").title, "Thunderstorms possible");
-  assert.ok(ids(c).indexOf("storm") < ids(c).indexOf("umbrella"), "warnings come before tips");
+  assert.ok(ids(c).indexOf("storm") < ids(c).indexOf("wear"), "warnings come before tips");
   const snow = I.insights(makeWx((i) => (i >= 20 && i < 26 ? { snow: 1.2, code: 73, precip: 1, temp: 0 } : {})), now, f);
   assert.equal(card(snow, "snow").title, "Heavy snow");
   const fog = I.insights(makeWx((i) => (i >= 28 && i < 32 ? { code: 45, vis: 150 } : {})), DAY0 + 20 * H, f);
@@ -274,13 +274,16 @@ test("warnings suit the place: bitter cold and frost where winters are hard, hea
   assert.equal(card(soaked(compactClimate(fakeArchive())), "heavyrain").title, "Heavy rain");
   assert.equal(card(soaked(null), "heavyrain").title, "Heavy rain", "and without a climate yet");
 });
-test("the umbrella: needed, maybe, not needed", () => {
+test("the umbrella: needed, maybe, and nothing to say when it's dry", () => {
   const now = DAY0 + 9 * H;
   assert.equal(card(I.insights(makeWx((i) => (i === 17 ? { precip: 2, code: 63, pop: 80 } : {})), now, f), "umbrella").title, "Take an umbrella");
   assert.equal(card(I.insights(makeWx((i) => (i === 17 ? { pop: 35 } : {})), now, f), "umbrella").title, "Maybe an umbrella");
-  assert.equal(card(I.insights(makeWx(), now, f), "umbrella").title, "No umbrella needed");
+  // (rain in the forecast, but a coin toss: a maybe, by the odds it gives)
+  const toss = card(I.insights(makeWx((i) => (i === 17 ? { precip: 2, code: 63, pop: 48 } : {})), now, f), "umbrella");
+  assert.deepEqual([toss.title, toss.short], ["Maybe an umbrella", "Rain this afternoon (48%)"]);
+  assert.equal(card(I.insights(makeWx(), now, f), "umbrella"), undefined);
   // late in the evening it's about tomorrow
-  assert.match(card(I.insights(makeWx(), DAY0 + 21 * H, f), "umbrella").text, /tomorrow/);
+  assert.match(card(I.insights(makeWx((i) => (i === 24 + 15 ? { precip: 2, code: 63, pop: 80 } : {})), DAY0 + 21 * H, f), "umbrella").text, /tomorrow/);
 });
 test("the commute card looks at the next commute on a working day", () => {
   const wx = makeWx((i) => (i === 17 ? { precip: 1.5, code: 63, pop: 85 } : {}));
@@ -306,13 +309,35 @@ test("confidence: models that agree, and ones that don't", () => {
   const cards = I.insights(wx, DAY0 + 9 * H, f);
   assert.equal(card(cards, "confidence").title, "Wednesday is uncertain");
   assert.match(card(cards, "confidence").text, /^Highs anywhere from 9° to 17° and 3 of 6 models bring rain\. Check back nearer the time\.$/);
+  // all agreed: nothing to say (that's what a forecast should be)
+  wx.models.days[day(2)] = wx.models.days[day(1)]; wx.ensemble.days[day(2)] = wx.ensemble.days[day(1)];
+  assert.equal(card(I.insights(wx, DAY0 + 9 * H, f), "confidence"), undefined);
 });
 
 /* ---------- context ---------- */
-test("daylight: the sunset's change in whole minutes", () => {
-  // (makeWx's sunsets come 2 minutes earlier each day)
-  const c = card(I.insights(makeWx(), DAY0 + 9 * H, f), "daylight");
-  assert.equal(c.title, "Shorter days"); assert.match(c.text, /\(2 min earlier than yesterday\)\./);
+test("only what's worth knowing today: not the daylight, the best model, the same as yesterday or no change", () => {
+  // (the Sun card says the daylight; the accuracy card which model's best; the tiles the pressure and the UV)
+  const wx = makeWx((i) => (i >= 12 && i < 15 ? { uv: 4 } : {}));
+  wx.skill = { skill: { days: 30, models: [{ name: "ECMWF", hiMae: 0.7, hiBias: 0 }, { name: "GFS", hiMae: 1.4, hiBias: 1.2 }] }, station: { name: "Heathrow" } };
+  wx.air = { current: { eaqi: 12 }, hourly: [] };
+  const c = I.insights(wx, DAY0 + 9 * H, f, { prev: { ...I.snapshot(wx, DAY0 + 3 * H), at: DAY0 + 3 * H } });
+  assert.deepEqual(ids(c).filter((x) => ["daylight", "skill", "vs", "changes", "air", "uv", "pressure", "umbrella"].includes(x)), [], ids(c).join());
+  for (const x of c) assert.ok(!/much the same|Shorter days|Most accurate|No big changes|Fresh air|Moderate UV|High pressure|No umbrella/.test(x.title), x.title);
+});
+test("one row a thing: the umbrella and the week's worst day the same wet day, as one", () => {
+  // today: rain from noon, gusts to 47 km/h (not enough for a wind row of their own); Friday fine
+  const wx = makeWx((i) => (i >= 12 && i < 22 ? { precip: 2, code: 63, pop: 90, gust: 47, sun: 0, cloud: 100 } : Math.floor(i / 24) === 4 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {}));
+  const c = I.insights(wx, DAY0 + 9 * H, f), u = card(c, "umbrella");
+  assert.equal(card(c, "worstday"), undefined, ids(c).join());
+  assert.deepEqual([u.title, u.short, u.act, u.day], ["Today: wet and windy", "Rain from 12:00, gusts 29 mph", "Take an umbrella", keyOf(DAY0)]);
+  assert.match(u.text, /^Rain likely this afternoon \(90% chance\), about 20 mm in all\. Gusts to 29 mph\. The worst day of the week: one to plan indoors\.$/);
+  // gusts with a row of their own: not said again here
+  const gale = makeWx((i) => (i >= 12 && i < 22 ? { precip: 2, code: 63, pop: 90, gust: i === 15 ? 70 : 47, sun: 0, cloud: 100 } : Math.floor(i / 24) === 4 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {}));
+  const g = I.insights(gale, DAY0 + 9 * H, f);
+  assert.deepEqual([card(g, "umbrella").title, card(g, "umbrella").short, card(g, "wind").title], ["Today: a wet day", "Rain from 12:00 (90%)", "Gales"]);
+  // the worst day another day: two rows, as before
+  const later = I.insights(makeWx((i) => (i === 17 ? { precip: 2, code: 63, pop: 80 } : Math.floor(i / 24) === 2 ? { precip: 2, code: 63, pop: 90, gust: 60, sun: 0, cloud: 100 } : Math.floor(i / 24) === 4 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {})), DAY0 + 9 * H, f);
+  assert.deepEqual([card(later, "umbrella").title, card(later, "worstday").title], ["Take an umbrella", "Worst day: Wednesday"]);
 });
 
 test("warmer than yesterday, a trend coming, the barometer falling", () => {
@@ -335,6 +360,13 @@ test("the best and worst days, and the weekend", () => {
   assert.equal(card(c, "worstday").title, "Worst day: Wednesday");
   assert.match(card(c, "worstday").text, /48 mm of rain and gusts to 37 mph/);
   assert.match(card(c, "weekend").text, /^Saturday: .*Sunday: /);
+  // the week's best day on the weekend: said once, not again as the weekend's better day
+  const sunny = I.insights(makeWx((i) => {
+    const k = Math.floor(i / 24);
+    return k === 2 ? { precip: 2, code: 63, pop: 90, gust: 60, sun: 0, cloud: 100 } : k === 6 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {};
+  }), DAY0 + 9 * H, f);
+  assert.equal(card(sunny, "bestday").title, "Best day: Sunday");
+  assert.equal(card(sunny, "weekend"), undefined);
 });
 test("since you last looked: the biggest changes, in words", () => {
   const wx = makeWx(), now = DAY0 + 15 * H;
@@ -346,7 +378,10 @@ test("since you last looked: the biggest changes, in words", () => {
   assert.equal(c.title, "Since you last looked");
   assert.match(c.text, /^Compared with earlier today \(09:00\): Wednesday looks drier \(rain chance 80% → 5%\) and Thursday is now 4° warmer/);
   assert.equal(I.changes({ ...prev, at: now - H }, wx, now, f), null, "too soon to compare");
-  assert.equal(I.changes(I.snapshot(wx, now - 6 * H), wx, now, f).title, "No big changes");
+  // (a day named mid-line: "and tomorrow", not "and Tomorrow")
+  const soon = { ...prev, daily: prev.daily.map((d, k) => (k === 1 ? { ...d, tmax: d.tmax - 4 } : k === 3 ? { ...d, tmax: d.tmax + 4 } : d)) };
+  assert.match(I.changes(soon, wx, now, f).text, /: Wednesday looks drier \(rain chance 80% → 5%\) and tomorrow is now 4° warmer/);
+  assert.equal(I.changes(I.snapshot(wx, now - 6 * H), wx, now, f), null, "no change: nothing to say");
 });
 
 /* ---------- the best times ---------- */

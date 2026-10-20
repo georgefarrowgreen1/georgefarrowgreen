@@ -991,6 +991,8 @@ function tiles(wx, now) {
     const until = (t) => f.dur(Math.max(300, Math.round((t - now) / 300e3) * 300));
     const nextAt = up ? set : night != null ? n1 : null;
     const change = (a, b) => (a?.daylight && b?.daylight ? ` (${b.daylight < a.daylight ? "−" : "+"}${Math.abs(Math.round((b.daylight - a.daylight) / 60))} min)` : "");
+    // (and the sunset, against yesterday's: "17:48 (2 min earlier)")
+    const moved = (a, b) => { const m = a?.sunset && b?.sunset ? Math.round(((b.sunset - b.date) - (a.sunset - a.date)) / 60e3) : 0; return m ? ` (${Math.abs(m)} min ${m < 0 ? "earlier" : "later"})` : ""; };
     say.sun = () => [h("div", { class: "big" }, nextAt ? f.time(nextAt) : f.dur(d.daylight), h("small", {}, nextAt ? (up ? "Sunset" : "Sunrise") : "daylight")), h("div", { class: "sun-arc", svg }),
       h("p", { class: "sub" }, nextAt ? `In ${until(nextAt)}. ${up ? `Sunrise ${f.time(rise)}` : `Sunset ${f.time(now >= set ? set : setBefore)}`}.` : "")];
     more.sun = () => {
@@ -999,7 +1001,7 @@ function tiles(wx, now) {
       return [h("h3", { class: "day-section" }, "Today"), kv([
         ["First light", sk?.dawn && f.time(sk.dawn)], ["Sunrise", rise && f.time(rise)],
         ["Morning golden hour", rise && sk?.goldenAm?.[1] && `${f.time(rise)}–${f.time(sk.goldenAm[1])}`], ["Evening golden hour", sk?.goldenPm?.[0] && set && `${f.time(sk.goldenPm[0])}–${f.time(set)}`],
-        ["Sunset", set && f.time(set)], ["Dark by", sk?.dusk && f.time(sk.dusk)], ["Daylight", d.daylight && `${f.dur(d.daylight)}${change(y, d)}`]]),
+        ["Sunset", set && `${f.time(set)}${moved(y, d)}`], ["Dark by", sk?.dusk && f.time(sk.dusk)], ["Daylight", d.daylight && `${f.dur(d.daylight)}${change(y, d)}`]]),
         week.length ? [h("h3", { class: "day-section" }, "The week ahead"), kv(week.map((x) => [f.day(x.date, now), `${f.time(x.sunrise)}–${f.time(x.sunset)} (${f.dur(x.daylight)})`]))] : null].flat().filter(Boolean);
     };
     // the moon: how much of it's lit, when it next rises or sets, and the next full or new moon; in its sheet, all of
