@@ -90,7 +90,7 @@ http.createServer((req, res) => {
   }
   res.writeHead(404); res.end();
 }).listen(8794, '127.0.0.1');
-const tiles = { radar: 0, map: 0, tilejson: 0, vector: 0, relief: 0, grid: 0 };
+const tiles = { radar: 0, map: 0, tilejson: 0, vector: 0, relief: 0, grid: 0 }, asked = { forecast: 0 };
 // the radar chip's word: the one it shows (the other lies over it, out of sight)
 const chipSays = (pg) => pg.evaluate(() => [...document.querySelectorAll('#radar .radar-chip .rc-l')].filter((x) => getComputedStyle(x).position !== 'absolute').map((x) => x.textContent).join('|'));
 const HOST = 'http://weather.localhost:8788', SITE = 'http://localhost:8788';
@@ -98,8 +98,8 @@ let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
 const now = Date.now();
-async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon=-0.1276&name=London`, push = null, settle = true } = {}) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale, serviceWorkers: push ? 'allow' : 'block', bypassCSP: !!sc.axe, isMobile: true, hasTouch: true });
+async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon=-0.1276&name=London`, push = null, settle = true, sw = false } = {}) {
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale, serviceWorkers: push || sw ? 'allow' : 'block', bypassCSP: !!sc.axe, isMobile: true, hasTouch: true });
   if (push) {
     await ctx.grantPermissions(['notifications'], { origin: HOST });
     // headless Chromium has no push service: a subscription with keys this test holds (as InFlight's tests do)
@@ -137,6 +137,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('previous-runs-api')) return j(previousRuns(u));
     if (u.includes('forecast_minutely_15=9')) { tiles.grid++; return j(modelGrid(u)); }
     if (u.includes('models=')) return j(F.models(now, sc));
+    if (u.includes('daily=')) asked.forecast++;
     return j(F.forecast(now, sc));
   });
   // the radar's frames and tiles, and the map's
@@ -769,6 +770,51 @@ await ctx.close();
   const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, charts: document.querySelectorAll('#detail-body .chart svg').length, sections: [...document.querySelectorAll('#detail-body .day-section')].map((x) => x.textContent), tides: document.querySelectorAll('#detail .kv.tides dt').length, labels: document.querySelectorAll('#detail-body .chart .c-label').length, about: document.querySelector('#detail .detail-about')?.textContent || '', dots: document.querySelectorAll('#detail-dots i').length }));
   ok(sheet.title === 'Sea' && sheet.charts === 2 && sheet.sections.join('|') === 'Tide, next 48 hours (m)|Waves, next 48 hours (m)' && sheet.tides >= 2 && sheet.labels >= 7 && /not for navigation/.test(sheet.about) && /(10 km|6\.2 mi) offshore/.test(sheet.about) && sheet.dots === 9,
     'its sheet: two days of the tide (its turns marked and listed) and of the waves, and what it is: a model, not a tide table', JSON.stringify(sheet).slice(0, 260));
+  await ctx.close();
+}
+// fresh whenever it's opened: brought back to the front, it asks again for what's due (and only that), and checks for a
+// new version of the app, starting on it straight away (or, if it came while a sheet was open, the next time it's opened)
+{
+  const { ctx, p } = await open({}, { sw: true, settle: false });
+  // (the second time in, the app's own worker has it)
+  await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 }).catch(() => {});
+  await p.reload(); await p.waitForSelector('.day-row', { timeout: 20000 });
+  await p.waitForFunction(() => document.getElementById('status').textContent === '' && /Updated just now/.test(document.getElementById('updated').textContent), null, { timeout: 20000 });
+  await p.evaluate(() => { const u = ServiceWorkerRegistration.prototype.update; window.__updates = 0; ServiceWorkerRegistration.prototype.update = function () { window.__updates++; return u.call(this); }; });
+  const away = (ms = 60) => p.evaluate(async (ms) => {
+    const set = (v) => { Object.defineProperty(document, 'visibilityState', { value: v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); };
+    set('hidden'); await new Promise((r) => setTimeout(r, ms)); set('visible');
+  }, ms);
+  // back after a moment: nothing's due, nothing asked for (but the app checked for a new version)
+  await p.waitForTimeout(5500);
+  let before = asked.forecast;
+  await away(); await p.waitForTimeout(1500);
+  ok(asked.forecast === before && await p.evaluate(() => window.__updates) === 1, 'back in a moment: the forecast isn\'t asked for again (nothing due), but a new version of the app is looked for', `${asked.forecast - before} asked, ${await p.evaluate(() => window.__updates)} checks`);
+  // back after a while (the forecast kept 20 minutes ago, as if the phone had been put away): asked again, and said so
+  await p.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('wx:') && !k.startsWith('wx:s')) { const v = JSON.parse(localStorage.getItem(k)); if (v?.forecast) { v.forecast.at -= 20 * 60e3; localStorage.setItem(k, JSON.stringify(v)); } } });
+  await p.evaluate(() => { document.getElementById('updated').textContent = 'Updated 20 min ago'; });
+  await p.waitForTimeout(5500);
+  before = asked.forecast;
+  await away();
+  await p.waitForFunction(() => /Updated just now/.test(document.getElementById('updated').textContent), null, { timeout: 15000 }).catch(() => {});
+  ok(asked.forecast === before + 1 && /Updated just now/.test(await p.textContent('#updated')), 'back after a while: the forecast asked for again as it\'s opened, and the page updated', `${asked.forecast - before} asked; ${await p.textContent('#updated')}`);
+  // a new version of the app, arriving just as it's opened: it starts on it there and then
+  await p.evaluate(() => { window.__same = 1; });
+  await away(); await p.waitForTimeout(300);
+  await p.evaluate(() => navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
+  await p.waitForFunction(() => !window.__same, null, { timeout: 10000 }).catch(() => {});
+  await p.waitForSelector('.day-row', { timeout: 20000 });
+  ok(await p.evaluate(() => !window.__same), 'a new version arriving as it\'s opened: it starts again on it');
+  // one arriving with a sheet open: left until the next time it's opened
+  await p.evaluate(() => { window.__same = 1; });
+  await p.locator('#settings-btn').evaluate((e) => e.click()); await p.waitForSelector('dialog[open]');
+  await p.evaluate(() => navigator.serviceWorker.dispatchEvent(new Event('controllerchange')));
+  await p.waitForTimeout(1500);
+  const stayed = await p.evaluate(() => window.__same === 1);
+  await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog[open]'));
+  await away();
+  await p.waitForFunction(() => !window.__same, null, { timeout: 10000 }).catch(() => {});
+  ok(stayed && await p.evaluate(() => !window.__same), 'one arriving while a sheet\'s open: not then, but the next time it\'s opened', `stayed ${stayed}`);
   await ctx.close();
 }
 // the API turns away what isn't real: made-up keys, a place left out, a body that isn't an object

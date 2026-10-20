@@ -1,5 +1,5 @@
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, searchPlaces, nameOf, store, peek, cell } from "./data.js";
+import { load, due, searchPlaces, nameOf, store, peek, cell } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label } from "./codes.js";
@@ -97,9 +97,14 @@ async function start() {
   const unnamed = S.places.find((x) => x.gps && x.name === "My Location");
   if (unnamed) nameOf(unnamed.lat, unnamed.lon, { live: false }).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); showPlace(); } });
   if ("serviceWorker" in navigator) {
-    // a new version: its worker arrives with every file fresh, so if this page has only just opened, start again on it
-    const had = !!navigator.serviceWorker.controller, opened = Date.now();
-    navigator.serviceWorker.addEventListener("controllerchange", () => { if (had && Date.now() - opened < 20e3) location.reload(); });
+    // a new version: its worker arrives with every file fresh, so if the app has only just been opened (started, or
+    // brought back: opened()), start again on it; if it comes later, the next time it's opened
+    const had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!had) return;
+      if (Date.now() - openedAt < 20e3 && !document.querySelector("dialog[open]") && !$("radar").classList.contains("radar-big")) location.reload();
+      else newApp = true;
+    });
     navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch(() => {});
     setTimeout(keepNotify, 4000);
   }
@@ -116,7 +121,7 @@ function addPlace(p, makeCurrent = true) {
 }
 
 /* ---------- loading ---------- */
-let seq = 0, timer = null;
+let seq = 0;
 // (fresh: called once the forecast itself is in, or has failed: the rest comes in behind it)
 async function go(force = false, fresh = null) {
   const p = place(); if (!p) return;
@@ -150,13 +155,37 @@ async function go(force = false, fresh = null) {
     fresh?.();
     if (my === seq) { S.loading = false; $("main").setAttribute("aria-busy", "false"); $("refresh-btn").disabled = false; status(); }
   }
-  clearTimeout(timer);
-  timer = setTimeout(() => { if (document.visibilityState === "visible") go(); }, 10 * 60e3);
 }
-addEventListener("online", () => { if (S.wx && Date.now() - S.wx.fetchedAt > 60e3) go(); });
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && S.wx && Date.now() - S.wx.fetchedAt > 10 * 60e3) go();
-});
+
+/* ---------- fresh whenever it's opened ---------- */
+// Each time the app's opened (started, brought back to the front, restored by the browser, its window focused, the
+// phone back online), and every minute while it's on screen: whatever's due is asked for again (data.js due: the
+// forecast after 10 minutes, warnings after 5, the models, ensembles, air and sea hourly), the radar's say on the next
+// hours after 5, and the radar card's frames; and on opening, a new version of the app itself (its worker: start)
+let openedAt = Date.now(), newApp = false, checkedAt = 0, appAt = 0;
+function opened() {
+  if (document.visibilityState !== "visible") return;
+  // (a new version came while it was open: it starts on it now, as it's opened)
+  if (newApp) { location.reload(); return; }
+  openedAt = Date.now();
+  if ("serviceWorker" in navigator && Date.now() - appAt > 60e3) { appAt = Date.now(); navigator.serviceWorker.getRegistration().then((r) => r?.update()).catch(() => {}); }
+  check(true);
+}
+function check(opening = false) {
+  const p = place();
+  if (!p || S.loading || document.visibilityState !== "visible" || (!opening && Date.now() - checkedAt < 50e3) || Date.now() - checkedAt < 5e3) return;
+  checkedAt = Date.now();
+  if (!S.wx || due(p)) { go(); return; }
+  if (!S.rain || Date.now() - S.rain.asked > 5 * 60e3) radarRain(p, seq);
+  // (the radar card's frames, if it's on screen: scrolled to, it sees to them itself)
+  const r = $("radar").getBoundingClientRect();
+  if (r.bottom > 0 && r.top < innerHeight) S.radar?.refresh();
+  status();
+}
+document.addEventListener("visibilitychange", opened);
+addEventListener("pageshow", (e) => { if (e.persisted) opened(); });
+addEventListener("focus", opened);
+addEventListener("online", () => check(true));
 
 // the forecast with its highs and lows tuned to how each model has done here (weather/skill.js), unless that's turned off
 // The forecast tuned for here as Settings has it (its highs and lows: applyTuning), steadied from three days on with
@@ -192,7 +221,7 @@ const shaped = (wx) => {
 async function radarRain(p, my) {
   const r = await rainAt(p.lat, p.lon).catch(() => null);
   if (my !== seq) return;
-  S.rain = r && { ...r, id: cell(p.lat, p.lon) };
+  S.rain = r && { ...r, id: cell(p.lat, p.lon), asked: Date.now() };
   if (S.base) render();
 }
 
@@ -1643,6 +1672,7 @@ function wire() {
     if (!S.wx || document.visibilityState !== "visible") return;
     const now = nowWall(S.wx.place.offset);
     sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now); status();
+    check();
   }, 60e3);
 }
 

@@ -282,6 +282,14 @@ export function peek(place) {
 // how long each kind is good for
 const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, marine: 60 * 60e3, warnings: 5 * 60e3 };
 
+// Whether a place's kept forecast, or anything else kept with it, is past its time: what load() would ask for again
+// (what failed to come isn't counted: it's asked for again with the next forecast)
+export function due(place, now = Date.now()) {
+  const kept = store.get(`wx:${cell(place.lat, place.lon)}`);
+  if (!kept?.forecast || now - kept.forecast.at >= TTL.forecast) return true;
+  return Object.keys(TTL).some((k) => kept[k] && now - kept[k].at >= TTL[k]);
+}
+
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can.
 export async function load(place, onUpdate, { force = false } = {}) {

@@ -385,7 +385,16 @@ mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on
 roughly where you are, from your connection (`GET /api/weather/where`,
 Cloudflare's city-level guess; nothing kept), or on your location if you've
 already allowed it. It works offline with what it last fetched, can be added to
-the Home Screen, and refreshes itself every 10 minutes while open; on a phone,
+the Home Screen, and is **fresh whenever it's opened**: started, brought back to
+the front, restored by the browser, its window focused or the phone back online,
+it asks again for whatever's due (the forecast after 10 minutes, warnings after
+5, the models, ensembles, air and sea hourly; only those, so a quick look back
+costs nothing), the radar's say on the next hours after 5, and the radar card's
+frames if it's on screen, showing what it had meanwhile ("Updating…" under the
+temperature); it checks the same every minute while open. Opening it also looks
+for a new version of the app: one that arrives as it's opened is started on
+there and then; one that comes later (or while a sheet's open) waits until the
+next time it's opened, so it never reloads under you mid-use. On a phone,
 pull the page down past its top and let go to refresh it then. As on iPhone, the
 spinner's spokes appear one by one as you pull, it pops when you've pulled far
 enough, and let go, the page holds open a gap for it to turn in (long enough to

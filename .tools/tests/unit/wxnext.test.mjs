@@ -349,3 +349,22 @@ test("the tick keeps to Open-Meteo's free allowance: whole forecasts first, then
   for (let n = 0; n < 20; n++) budgeted(cells(0, 200)).forEach(([k]) => seen.add(k));
   assert.equal(a.length, 55); assert.ok(seen.size > 150, "not always the same places left out");
 });
+
+test("what's due when the app's opened: the forecast after 10 minutes, warnings after 5, the rest hourly", async () => {
+  const { due } = await import("../../../weather/data.js");
+  const mem = new Map(), had = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  try {
+    const here = { lat: 52.86, lon: 1.47 }, at = Date.UTC(2026, 9, 20, 9), kept = (o) => mem.set("wx:52.9,1.5", JSON.stringify(o));
+    assert.equal(due(here, at), true, "nothing kept");
+    kept({ forecast: { at: at - 4 * 60e3 }, warnings: { at: at - 4 * 60e3 }, models: { at: at - 50 * 60e3 } });
+    assert.equal(due(here, at), false, "all of it fresh");
+    assert.equal(due(here, at + 2 * 60e3), true, "the warnings 6 minutes old");
+    kept({ forecast: { at: at - 4 * 60e3 }, models: { at: at - 61 * 60e3 } });
+    assert.equal(due(here, at), true, "the models an hour old");
+    kept({ forecast: { at: at - 11 * 60e3 } });
+    assert.equal(due(here, at), true, "the forecast 11 minutes old");
+    kept({ forecast: { at: at - 60e3 } });
+    assert.equal(due(here, at), false, "what never came isn't counted (it's asked for with the next forecast)");
+  } finally { globalThis.localStorage = had; }
+});
