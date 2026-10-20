@@ -74,6 +74,11 @@
 
       <section class="stack" id="alerts" aria-label="Warnings"></section>
 
+      <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
+        <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="star"></span>Highlights</h2>
+        <div class="insights" id="insights" role="list"></div>
+      </section>
+
       <section class="card" id="hourly" aria-labelledby="hourly-title">
         <div class="card-head">
           <h2 class="card-title" id="hourly-title"><span class="ct-icon" data-g="clock"></span>Next 48 hours</h2>
@@ -111,7 +116,14 @@
       </section>
 
       <section class="card" id="daily" aria-labelledby="daily-title">
-        <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
+        <div class="card-head">
+          <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
+          <div class="seg icons" role="tablist" aria-label="Days by" id="days-seg">
+            <button role="tab" type="button" data-mode="temp" aria-selected="true" aria-label="Temperature" title="Temperature"></button>
+            <button role="tab" type="button" data-mode="rain" aria-selected="false" aria-label="Rain" title="Rain"></button>
+            <button role="tab" type="button" data-mode="wind" aria-selected="false" aria-label="Wind" title="Wind"></button>
+          </div>
+        </div>
         <ol class="days" id="days"></ol>
       </section>
     </div>
@@ -126,10 +138,6 @@
         <div class="tiles" id="tiles"></div>
       </section>
 
-      <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
-        <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="info"></span>Insights</h2>
-        <div class="insights" id="insights" role="list"></div>
-      </section>
 
       <section class="card" id="windows" aria-labelledby="windows-title">
         <h2 class="card-title" id="windows-title"><span class="ct-icon" data-g="star"></span>Best times</h2>

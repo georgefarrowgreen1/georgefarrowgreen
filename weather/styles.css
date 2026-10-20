@@ -497,6 +497,24 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .d-pop { font-size: 11.5px; font-weight: 650; color: var(--tint-blue); margin-top: 1px; }
 .d-lo { text-align: right; color: var(--text-3); font-weight: 560; font-variant-numeric: tabular-nums; }
 .d-hi { font-weight: 650; font-variant-numeric: tabular-nums; }
+/* the days by rain or by wind: when it falls, an hour a bar, and its chance and how much; or the wind, a line, with its
+   gusts a band above it, and the strongest of each */
+.days.v-rain .day-row, .days.v-wind .day-row { grid-template-columns: 4.6em 40px 1fr 4.6em; }
+.d-chart { display: block; height: 26px; min-width: 0; }
+.d-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.dr rect { fill: var(--rain); }
+.dr rect.dry { fill: rgba(255, 255, 255, 0.22); }
+.dw .band { fill: rgba(63, 214, 194, 0.3); }
+.dw .line { fill: none; stroke: #3fd6c2; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.d-val { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.d-val b { font-weight: 650; font-size: 16px; }
+.d-val b.rain { color: var(--tint-blue); }
+.d-val b small.u { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.d-val > small { font-size: 12px; color: var(--text-3); font-weight: 500; }
+/* the days' own switch: icons only, small */
+.seg.icons { min-width: 0; grid-template-columns: repeat(3, 44px); }
+.seg.icons button { padding: 0; display: grid; place-items: center; }
+#daily .card-head { margin-bottom: 4px; }
 .d-bar { position: relative; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
 .d-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #7cc4ff, #8ee6a8, #ffd166, #ff9a4d, #ff5d5d); background-size: var(--span, 100%) 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
 .d-now { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
@@ -523,6 +541,11 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-chev { flex: none; display: inline-flex; margin-top: 8px; color: var(--text-3); transition: transform 0.4s var(--glide); }
 .ins-row.open .ins-chev { transform: rotate(180deg); }
 .ins-row.whole .ins-chev { visibility: hidden; }
+/* open, a way on to its day or its hours (and one that goes somewhere is never just its line: always opens) */
+.ins-go { all: unset; box-sizing: border-box; display: none; align-items: center; gap: 4px; margin: -4px 0 10px 45px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--tint-blue); background: rgba(159, 208, 255, 0.12); cursor: pointer; }
+.ins-go span { display: inline-grid; transform: rotate(-90deg); }
+.ins-row.open .ins-go, .ins-row.fold .ins-go { display: inline-flex; }
+.ins-go:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .ins-row.rise, .days li.rise { animation: rise 0.6s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
 .ins-more { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 11px 0 8px; border-top: 0.5px solid var(--line); font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; }
 .ins-more:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }

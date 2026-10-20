@@ -438,6 +438,7 @@ function render() {
     status(); return;
   }
   const now = nowWall(wx.place.offset);
+  if (!S.modeChosen) { const v = viewFor(wx, now); if (v !== S.mode) showMode(v); }
   sky(wx, now);
   hero(wx, now);
   nowcast(wx, now);
@@ -534,12 +535,20 @@ function nowcast(wx, now) {
 }
 
 function insightCard(c) {
-  const tag = c.level === "alert" ? "Alert" : c.level === "warn" ? "Warning" : null;
+  const tag = c.level === "alert" ? "Alert" : c.level === "warn" ? "Warning" : null, go = moreOf(c);
   return h("article", { class: "ins", "data-level": c.level },
     h("div", { class: "ins-icon", svg: glyph(c.icon, 18) }),
-    h("h3", {}, tag ? [h("span", { class: "tag" }, tag), " "] : null, c.title),
+    h("h3", {}, tag ? [h("span", { class: "tag" }, tag), " "] : null, go ? h("button", { class: "ins-open", type: "button", "aria-haspopup": "dialog", onclick: go.open }, c.title) : c.title),
     h("p", {}, c.text));
 }
+// where an insight says more: its day's sheet, or the sheet of the tile it's about → { label, open } or null
+function moreOf(c) {
+  const wx = S.wx; if (!wx) return null;
+  if (c.day) { const d = wx.daily.find((x) => x.key === c.day); return d ? { label: `${f0(d)} in full`, open: () => openDay(c.day) } : null; }
+  const t = c.tile && TILES.find((x) => x[0] === c.tile);
+  return t && S.say?.[c.tile] ? { label: c.tile === "sun" ? "Sunrise and sunset" : `${t[1]}, hour by hour`, open: () => openDetail(c.tile) } : null;
+}
+const f0 = (d) => S.f.day(d.date, nowWall(S.wx.place.offset));
 // An official warning: its colour, what it is, who says so and when (all of it in a sheet, from its title)
 function officialCard(w, wx, now) {
   const colour = colourOf(w), badge = badgeOf(w);
@@ -602,6 +611,9 @@ function insightRow(c) {
       h("span", { class: "ins-icon", svg: glyph(c.icon, 16) }),
       h("span", { class: "ins-words" }, h("span", { class: "ins-title" }, c.title), brief ? h("span", { class: "ins-short" }, c.short) : null, h("span", { class: "ins-line" }, c.text)),
       h("span", { class: "ins-chev", svg: glyph("chevron", 16) })));
+  // (open, a way on to its day or its hours)
+  const go = moreOf(c);
+  if (go) { row.classList.add("goes"); row.append(h("button", { class: "ins-go", type: "button", "aria-haspopup": "dialog", onclick: go.open }, go.label, h("span", { svg: glyph("chevron", 12) }))); }
   return row;
 }
 function openRow(row) {
@@ -625,7 +637,7 @@ function fits() {
   for (const r of box.querySelectorAll(".ins-row:not(.open)")) {
     // (one with a short line always has more to say)
     const l = r.querySelector(".ins-line");
-    const whole = !r.classList.contains("has-short") && l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
+    const whole = !r.classList.contains("has-short") && !r.classList.contains("goes") && l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
     r.classList.toggle("whole", whole);
     whole ? head.removeAttribute("aria-expanded") : head.setAttribute("aria-expanded", "false");
   }
@@ -703,6 +715,22 @@ function drawHourChart(wx, now, hrs, host, mode, showNow) {
   }
 }
 
+// the view (temperature, rain or wind) on both switches
+function showMode(mode) {
+  S.mode = mode;
+  for (const seg of [$("hourly-seg"), $("days-seg")]) {
+    const tabs = [...seg.children], i = tabs.findIndex((x) => x.dataset.mode === mode);
+    tabs.forEach((x, k) => x.setAttribute("aria-selected", String(k === i)));
+    seg.style.setProperty("--seg-i", String(i));
+  }
+}
+// until one's chosen, the view the weather calls for (as iOS's Weather picks): rain if it's raining or due within the
+// hour, wind if it's blowing a gale, else temperature
+function viewFor(wx, now) {
+  const nc = I.nowcast(wx, now, S.f), c = wx.current || {};
+  return nc && (nc.now || nc.startsAt - now <= HOUR) ? "rain" : (c.gust ?? 0) >= 62 ? "wind" : "temp";
+}
+
 function daily(wx, now) {
   const f = S.f, days = wx.daily.filter((d) => d.date >= dayStart(now)).slice(0, 16);
   if (!days.length) return;
@@ -710,6 +738,9 @@ function daily(wx, now) {
   const conf = I.confidence(wx);
   const lo = Math.min(...days.map((d) => d.tmin)), hi = Math.max(...days.map((d) => d.tmax)), span = Math.max(1, hi - lo);
   const curT = wx.current?.temp;
+  // (in the rain and wind views, each day's hours drawn small: the wind on one scale for all the days)
+  const mode = S.mode, hoursOf = (d) => I.hoursBetween(wx, d.date + HOUR, d.date + DAY + HOUR), gTop = Math.max(50, ...days.map((d) => d.gustMax ?? 0));
+  $("days").className = `days v-${mode}`;
   // (the first ten; the rest, less certain, under "Show 6 more days")
   const rows = days.slice(0, S.allDays ? days.length : FIRST_DAYS).map((d, i) => {
     const left = (d.tmin - lo) / span, width = Math.max(0.03, (d.tmax - d.tmin) / span);
@@ -722,10 +753,17 @@ function daily(wx, now) {
     const c = conf[d.key], unsure = c?.level === "low" && i > 0 && i < 7;
     const pop = (d.popMax ?? 0) >= 20 ? `${Math.round(d.popMax / 10) * 10}%` : "";
     const name = i === 0 ? "Today" : f.dayShort(d.date);
-    return h("li", { class: i === 7 ? "far" : null }, i === 7 ? h("span", { class: "far-note" }, "Less certain") : null, h("button", { class: "day-row", type: "button", onclick: () => openDay(d.key), "aria-label": `${f.day(d.date, now)}: ${label(d.code)}, high ${f.temp(d.tmax)}, low ${f.temp(d.tmin)}${pop ? `, ${pop} chance of rain` : ""}${unsure ? ", uncertain" : ""}` },
+    const amount = (d.precip ?? 0) >= 0.1 ? f.precip(d.precip) : "dry";
+    const says = mode === "rain" ? `${Math.round(d.popMax ?? 0)}% chance of rain, ${amount}` : mode === "wind" ? `wind up to ${f.wind(d.windMax)}, gusts ${f.wind(d.gustMax)}`
+      : `high ${f.temp(d.tmax)}, low ${f.temp(d.tmin)}${pop ? `, ${pop} chance of rain` : ""}`;
+    // the temperatures and their range; or when the rain falls, its chance and how much; or the wind and its gusts
+    const tail = mode === "rain" ? [h("span", { class: "d-chart", svg: dayRain(hoursOf(d), now) }), h("span", { class: "d-val" }, h("b", { class: "rain" }, `${Math.round((d.popMax ?? 0) / 10) * 10}%`), h("small", {}, amount))]
+      : mode === "wind" ? [h("span", { class: "d-chart", svg: dayWind(hoursOf(d), gTop, now) }), h("span", { class: "d-val" }, h("b", {}, String(f.windNum(d.windMax)), h("small", { class: "u" }, ` ${f.windUnit}`)), h("small", {}, `gusts ${f.windNum(d.gustMax)}`))]
+      : [h("span", { class: "d-lo" }, f.temp(d.tmin)), bar, h("span", { class: "d-hi" }, f.temp(d.tmax))];
+    return h("li", { class: i === 7 ? "far" : null }, i === 7 ? h("span", { class: "far-note" }, "Less certain") : null, h("button", { class: "day-row", type: "button", onclick: () => openDay(d.key), "aria-label": `${f.day(d.date, now)}: ${label(d.code)}, ${says}${unsure ? ", uncertain" : ""}` },
       h("span", { class: "d-name" }, name, h("small", { class: unsure ? "unsure" : "" }, unsure ? "Uncertain" : f.date(d.date))),
-      h("span", { class: "d-icon" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 30) }), h("span", { class: "d-pop" }, pop)),
-      h("span", { class: "d-lo" }, f.temp(d.tmin)), bar, h("span", { class: "d-hi" }, f.temp(d.tmax))));
+      h("span", { class: "d-icon" }, h("span", { svg: weatherIcon(iconOf(d.code, true), 30) }), mode === "temp" ? h("span", { class: "d-pop" }, pop) : null),
+      ...tail));
   });
   const list = $("days");
   list.replaceChildren(...rows);
@@ -741,6 +779,26 @@ function daily(wx, now) {
   motion("days", ...rows);
 }
 const FIRST_DAYS = 10;
+// a day's rain, an hour a bar (by when it falls: the hour up to each hour's time), drizzle still showing; the hours gone
+// fainter
+function dayRain(hs, now) {
+  const bars = hs.map((x) => {
+    const mm = x.precip || 0, k = (new Date(x.t).getUTCHours() + 23) % 24, ht = mm >= 0.05 ? Math.max(2.5, Math.min(1, Math.sqrt(mm / 4)) * 22) : 1;
+    return `<rect x="${k * 4 + 0.5}" y="${(24 - ht).toFixed(1)}" width="3" height="${ht.toFixed(1)}" rx="1"${mm >= 0.05 ? "" : ' class="dry"'}${x.t <= now ? ' opacity="0.45"' : ""}/>`;
+  }).join("");
+  return `<svg class="dr" viewBox="0 0 96 24" preserveAspectRatio="none" aria-hidden="true">${bars}</svg>`;
+}
+// a day's wind, hour by hour: its speed a line, its gusts a band above it, on one scale for all the days (top, km/h)
+function dayWind(hs, top, now) {
+  if (hs.length < 2) return "";
+  const X = (x) => (((new Date(x.t).getUTCHours() + 23) % 24) * 4 + 2).toFixed(1), Y = (v) => (23 - Math.min(1, (v || 0) / top) * 21).toFixed(1);
+  const line = hs.map((x, i) => `${i ? "L" : "M"}${X(x)} ${Y(x.wind)}`).join(""), band = `${line}${[...hs].reverse().map((x) => `L${X(x)} ${Y(Math.max(x.gust ?? x.wind, x.wind))}`).join("")}z`;
+  // (the hours gone, fainter: drawn twice, the second time only from now on)
+  const past = hs.filter((x) => x.t <= now), id = `dw${++dwN}`, from = past.length ? X(past[past.length - 1]) : 0;
+  const draw = (attrs = "") => `<g${attrs}><path class="band" d="${band}"/><path class="line" d="${line}" vector-effect="non-scaling-stroke"/></g>`;
+  return `<svg class="dw" viewBox="0 0 96 24" preserveAspectRatio="none" aria-hidden="true">${past.length ? `<clipPath id="${id}"><rect x="${from}" y="-4" width="${96 - from}" height="32"/></clipPath>${draw(' opacity="0.4"')}${draw(` clip-path="url(#${id})"`)}` : draw()}</svg>`;
+}
+let dwN = 0;
 
 // The best times: those worth it today or tomorrow, each a tile; those that aren't, named in a line under them (a
 // tap shows them too, faded)
@@ -1662,21 +1720,23 @@ function wire() {
   for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));
   $("retry-btn").addEventListener("click", () => go(true));
-  const drawModeChart = () => { if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); } };
-  $("hourly-seg").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-mode]"); if (!b) return;
-    S.mode = b.dataset.mode;
-    const tabs = [...$("hourly-seg").children];
-    for (const x of tabs) x.setAttribute("aria-selected", String(x === b));
-    $("hourly-seg").style.setProperty("--seg-i", String(tabs.indexOf(b)));
-    // (the chart once the lens is on its way)
-    afterFrame(drawModeChart);
-  });
-  $("hourly-seg").addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const tabs = [...$("hourly-seg").children], i = tabs.findIndex((x) => x.getAttribute("aria-selected") === "true");
-    const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]; n.focus(); n.click();
-  });
+  // temperature, rain or wind: the 48 hours' chart and the days alike, from either switch (and once chosen, kept:
+  // otherwise as the weather has it, viewFor)
+  const drawMode = () => { if (S.wx) { const now = nowWall(S.wx.place.offset); drawHourChart(S.wx, now, I.hoursFrom(S.wx, now, 48), $("hourly-chart"), S.mode, true); daily(S.wx, now); } };
+  for (const g of document.querySelectorAll("#days-seg button")) g.innerHTML = glyph({ temp: "heat", rain: "drop", wind: "wind" }[g.dataset.mode], 16);
+  for (const seg of [$("hourly-seg"), $("days-seg")]) {
+    seg.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-mode]"); if (!b) return;
+      S.modeChosen = true; showMode(b.dataset.mode);
+      // (the chart and the days once the lens is on its way)
+      afterFrame(drawMode);
+    });
+    seg.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const tabs = [...seg.children], i = tabs.findIndex((x) => x.getAttribute("aria-selected") === "true");
+      const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]; n.focus(); n.click();
+    });
+  }
   // on a wide screen the climate card joins the left column, under the 16 days, so the columns balance
   const wide = matchMedia("(min-width: 980px)"), dock = () => (wide.matches ? $("daily") : $("windows")).after($("climate"));
   dock(); wide.addEventListener("change", dock);
