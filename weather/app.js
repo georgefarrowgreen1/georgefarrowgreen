@@ -597,7 +597,7 @@ function cards(wx, now) {
 const FIRST_INSIGHTS = 3;
 function insightRow(c) {
   const brief = c.short && c.short !== c.text;
-  const row = h("div", { class: `ins-row${brief ? " brief" : ""}`, role: "listitem", "data-level": c.level },
+  const row = h("div", { class: `ins-row${brief ? " has-short" : ""}`, role: "listitem", "data-level": c.level },
     h("button", { class: "ins-head", type: "button", "aria-expanded": "false", onclick: () => openRow(row) },
       h("span", { class: "ins-icon", svg: glyph(c.icon, 16) }),
       h("span", { class: "ins-words" }, h("span", { class: "ins-title" }, c.title), brief ? h("span", { class: "ins-short" }, c.short) : null, h("span", { class: "ins-line" }, c.text)),
@@ -625,7 +625,7 @@ function fits() {
   for (const r of box.querySelectorAll(".ins-row:not(.open)")) {
     // (one with a short line always has more to say)
     const l = r.querySelector(".ins-line");
-    const whole = !r.classList.contains("brief") && l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
+    const whole = !r.classList.contains("has-short") && l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
     r.classList.toggle("whole", whole);
     whole ? head.removeAttribute("aria-expanded") : head.setAttribute("aria-expanded", "false");
   }

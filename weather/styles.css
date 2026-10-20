@@ -517,9 +517,9 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-line, .ins-short { font-size: 14px; line-height: 1.4; color: var(--text-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
 .ins-row.open .ins-line, .ins-row.fold .ins-line { -webkit-line-clamp: unset; }
 /* one with its own short line: that, folded; the whole of it, open (fading in), and while it folds away */
-.ins-row.brief .ins-line, .ins-row.brief.open .ins-short, .ins-row.brief.fold .ins-short { display: none; }
-.ins-row.brief.open .ins-line, .ins-row.brief.fold .ins-line { display: block; }
-.ins-row.brief.open .ins-line { animation: c-fade 0.3s ease-out; }
+.ins-row.has-short .ins-line, .ins-row.has-short.open .ins-short, .ins-row.has-short.fold .ins-short { display: none; }
+.ins-row.has-short.open .ins-line, .ins-row.has-short.fold .ins-line { display: block; }
+.ins-row.has-short.open .ins-line { animation: c-fade 0.3s ease-out; }
 .ins-chev { flex: none; display: inline-flex; margin-top: 8px; color: var(--text-3); transition: transform 0.4s var(--glide); }
 .ins-row.open .ins-chev { transform: rotate(180deg); }
 .ins-row.whole .ins-chev { visibility: hidden; }
@@ -528,7 +528,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins-more:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }
 .ins-more:active { opacity: 0.6; }
 @media (hover: hover) { .ins-head:hover, .ins-more:hover { background: rgba(255, 255, 255, 0.05); } .ins-row.whole .ins-head:hover { background: none; } }
-@media (prefers-reduced-motion: reduce) { .ins-row.rise, .days li.rise, .ins-row.brief.open .ins-line { animation: none; } .ins-chev { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ins-row.rise, .days li.rise, .ins-row.has-short.open .ins-line { animation: none; } .ins-chev { transition: none; } }
 .ins { border-radius: 22px; padding: 13px 15px 14px; display: grid; grid-template-columns: 32px 1fr; gap: 2px 11px; }
 .ins-icon { grid-row: span 2; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1); }

@@ -212,7 +212,10 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
   ok(await p.isVisible('#insights-card') && rows === 3 && /^\d+ more$/.test(more.trim()), 'insights in one card: three, then the rest under "N more"', `${rows} rows, "${more.trim()}"`);
   const lines = await p.evaluate(() => [...document.querySelectorAll('#insights .ins-row')].map((r) => { const l = r.querySelector('.ins-short') || r.querySelector('.ins-line'); return { text: l.textContent, whole: l.scrollHeight <= l.clientHeight + 1 }; }));
   ok(lines.every((l) => l.whole), 'each row\'s line whole, none of it cut off', lines.map((l) => `${l.text}${l.whole ? '' : ' (cut)'}`).join(' | '));
-  const row = p.locator('#insights .ins-row.brief').first();
+  // (the rows as tall as they are, nothing between them: no stray margin from another rule's class)
+  const gaps = await p.evaluate(() => { const l = document.getElementById('insights'); return Math.round(l.getBoundingClientRect().height - [...l.children].reduce((a, r) => a + r.getBoundingClientRect().height, 0)); });
+  ok(Math.abs(gaps) <= 2, 'the rows sit one under the other, no gaps between them', `${gaps}px of gaps`);
+  const row = p.locator('#insights .ins-row.has-short').first();
   const tall = () => row.evaluate((r) => r.getBoundingClientRect().height), says = () => row.evaluate((r) => [...r.querySelectorAll('.ins-short, .ins-line')].filter((x) => x.offsetHeight).map((x) => x.className).join());
   const shut = await tall(), shutSays = await says();
   // (tapped where it is, not scrolled to: the radar, further up, starts as it's first scrolled to, below)
