@@ -1804,6 +1804,9 @@ function wire() {
   // the glass: Safari only shows a press (:active) once the page listens for touches, and with a mouse
   // a soft light follows the pointer across the panels
   addEventListener("touchstart", () => {}, { passive: true });
+  // (and no copying its words, by keys or a menu, nor dragging them off: styles.css; but what's typed into, as ever)
+  const typing = (e) => e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]");
+  for (const t of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(t, (e) => { if (!typing(e)) e.preventDefault(); });
   if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     let raf = 0, x = 0, y = 0;
     addEventListener("pointermove", (e) => {

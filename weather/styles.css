@@ -55,6 +55,11 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 button, input, select { font: inherit; color: inherit; }
+/* an app, not a page: its words aren't selected (so not copied) by a long press or a drag, and nothing calls up a menu
+   or a link's preview; what you type into (search, settings) still takes typing, cutting, copying and pasting */
+html { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img, svg, a { -webkit-user-drag: none; }
 /* an icon in a span (app.js h): just the icon, with no room under it for a line of text's descenders, which left icons
    sitting high in their buttons and rows */
 .ic { display: inline-grid; }

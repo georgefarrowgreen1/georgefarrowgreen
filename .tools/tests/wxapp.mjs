@@ -172,6 +172,20 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
 const { ctx, p, res } = await open({ rainIn: 30, frost: true, gust: 70, uv: 7 });
 ok(/default-src 'self'/.test(res.headers()['content-security-policy'] || '') && /geolocation=\(self\)/.test(res.headers()['permissions-policy'] || ''), 'its own security headers, location allowed');
 ok((await p.textContent('#place-name')) === 'London', 'opens on the place in the link');
+// an app, not a page: its words can't be selected, copied or dragged off, and no menu comes up for them; what's typed
+// into still takes it all
+{
+  const c = await p.evaluate(() => {
+    const fire = (el, type) => { const e = new Event(type, { bubbles: true, cancelable: true }); el.dispatchEvent(e); return e.defaultPrevented; };
+    const brief = document.getElementById('brief'), search = document.getElementById('search');
+    getSelection().removeAllRanges(); const r = document.createRange(); r.selectNodeContents(brief); getSelection().addRange(r);
+    const copied = getSelection().toString(); getSelection().removeAllRanges();
+    return { select: getComputedStyle(brief).userSelect, field: getComputedStyle(search).userSelect, menu: fire(brief, 'contextmenu'), copy: fire(brief, 'copy'), start: fire(brief, 'selectstart'),
+      fieldMenu: fire(search, 'contextmenu'), fieldCopy: fire(search, 'copy'), fieldPaste: fire(search, 'paste'), copied };
+  });
+  ok(c.select === 'none' && c.menu && c.copy && c.start && !c.copied, 'its words: not selectable, no copying them, no menu', JSON.stringify(c));
+  ok(c.field === 'text' && !c.fieldMenu && !c.fieldCopy && !c.fieldPaste, 'but the search box takes copying and pasting as ever', JSON.stringify(c));
+}
 // (the first ten, the rest under a line; a tap and they rise in where it was, the first of them with focus)
 ok((await p.locator('.day-row').count()) === 10 && (await p.textContent('#daily-n')) === '16-day' && (await p.textContent('#daily .days-more')) === 'Show 6 more days', '16 days: the first ten, then "Show 6 more days"');
 await p.locator('#daily .days-more').evaluate((e) => e.click());
