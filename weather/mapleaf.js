@@ -33,13 +33,23 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
       const gone = { get aborted() { return !tile.isConnected; } };
       this.options.draw(c.z, c.x, c.y, gone).then((img) => {
         if (!this._map) return;          // (its frame was replaced: the radar reloaded)
-        if (img && tile.isConnected) tile.getContext("2d").putImageData(img, 0, 0);
+        if (img && tile.isConnected) img instanceof ImageData ? tile.getContext("2d").putImageData(img, 0, 0) : tile.getContext("2d").drawImage(img, 0, 0);
         done(null, tile);
       });
       return tile;
     },
   });
-  let layers = [], box = null, on = -1;
+  // a canvas over the map, as its pictures are (the minutes between the frames: radar.js)
+  const Canvas = L.ImageOverlay.extend({
+    _initImage() {
+      const el = this._image = this._url;
+      L.DomUtil.addClass(el, "leaflet-image-layer");
+      if (this._zoomAnimated) L.DomUtil.addClass(el, "leaflet-zoom-animated");
+      if (this.options.className) L.DomUtil.addClass(el, this.options.className);
+      el.onselectstart = L.Util.falseFn; el.onmousemove = L.Util.falseFn;
+    },
+  });
+  let layers = [], box = null, on = -1, mix = null, mixAt = "";
   return {
     kind: "leaflet",
     credit: ["OpenStreetMap"],
@@ -50,10 +60,21 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
         : L.imageOverlay(f.canvas.toDataURL("image/png"), f.bounds, { opacity: 0, interactive: false, className: "fc-frame" })).addTo(map));
     },
     show(k, opacity) {
+      mix?.setOpacity(0);
       layers[on]?.setOpacity(0);
       layers[k]?.setOpacity(opacity);
       on = k;
     },
+    blend(canvas, bounds, opacity) {
+      if (!canvas) { mix?.setOpacity(0); return; }
+      const key = bounds.join();
+      if (!mix) { mix = new Canvas(canvas, bounds, { opacity: 0, interactive: false, className: "rv-mix" }).addTo(map); mixAt = key; }
+      else if (key !== mixAt) { mix.setBounds(L.latLngBounds(bounds)); mixAt = key; }
+      layers[on]?.setOpacity(0);
+      on = -1;
+      mix.setOpacity(opacity);
+    },
+    bounds() { const b = map.getBounds(); return [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; },
     box(bounds, opacity = 0) {
       if (bounds !== undefined) {
         if (box) map.removeLayer(box);

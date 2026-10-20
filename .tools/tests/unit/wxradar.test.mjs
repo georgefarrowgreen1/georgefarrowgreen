@@ -4,7 +4,7 @@
 // and then the models'.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -176,4 +176,57 @@ test("the next hours' rain: the radar's for the first half hour, giving way to t
   // where the radar can't see: the models' alone throughout
   assert.deepEqual(blend(model, steps.map((s) => ({ ...s, seen: 0.3 })), at, offset), model);
   assert.equal(blend(model, null, at, offset), model);
+});
+
+/* ---------- to the minute ---------- */
+const M = 60e3, T0 = Date.UTC(2026, 9, 20, 12, 0);
+const pastOf = (n) => Array.from({ length: n }, (_, k) => ({ time: (T0 + k * 10 * M) / 1000, path: `/v2/radar/${k}` }));
+const near = (a, b, e = 1e-9) => Math.abs(a - b) <= e;
+test("between two of the radar's frames: each moved along the rain's way and faded into the other, minute by minute", () => {
+  // (the rain going 0.5 zoom-7 pixels a minute east and 0.2 south; the 12:30 and 12:40 frames)
+  const src = { past: pastOf(13), drift: { vx: 0.5, vy: 0.2 } };
+  assert.deepEqual(partsAt(src, T0 + 30 * M), [{ k: 3, dx: 0, dy: 0, alpha: 1 }], "on a frame: that frame as it is");
+  const [a, b] = partsAt(src, T0 + 33 * M);
+  assert.equal(a.k, 3); assert.equal(b.k, 4);
+  assert.ok(near(a.alpha, 0.7) && near(b.alpha, 0.3), `${a.alpha} ${b.alpha}`);
+  // 12:30's rain moved on three minutes' worth; 12:40's moved back seven; the two meet where the rain is at 12:33
+  assert.ok(near(a.dx, 1.5) && near(a.dy, 0.6) && near(b.dx, -3.5) && near(b.dy, -1.4), JSON.stringify([a, b]));
+  assert.ok(near(a.alpha + b.alpha, 1));
+  // nothing moving to go on near now: the pair's own way, where it's known; else simply faded
+  const pair = partsAt({ past: pastOf(13), drift: null, driftOf: (k) => (k === 3 ? { vx: 1, vy: 0 } : null) }, T0 + 35 * M);
+  assert.ok(near(pair[0].dx, 5) && near(pair[1].dx, -5), JSON.stringify(pair));
+  const still = partsAt({ past: pastOf(13), drift: null }, T0 + 35 * M);
+  assert.ok(still.every((p) => p.dx === 0 && p.dy === 0) && near(still[0].alpha, 0.5), JSON.stringify(still));
+});
+test("after the latest radar: carried on to the minute along its track, fading a little the further ahead", () => {
+  const src = { past: pastOf(13), drift: { vx: 0.5, vy: -0.25 } }, last = T0 + 120 * M;
+  assert.deepEqual(partsAt(src, last), [{ k: 12, dx: 0, dy: 0, alpha: 1 }]);
+  const [p] = partsAt(src, last + 37 * M);
+  assert.ok(p.k === 12 && near(p.dx, 18.5) && near(p.dy, -9.25) && near(p.alpha, 1 - 0.3 * 37 / 120), JSON.stringify(p));
+  assert.ok(near(partsAt(src, last + 120 * M)[0].alpha, 0.7), "two hours on: faded to 70%");
+  // (nothing coming: the latest held where it is)
+  assert.ok(partsAt({ past: pastOf(13), drift: null }, last + 20 * M).every((x) => x.dx === 0 && x.dy === 0));
+});
+test("the models' rain between their quarter hours: blended, from the latest radar into the first of them", () => {
+  const last = T0 + 120 * M, models = [{ t: last + 7.5 * M, k: 0 }, { t: last + 22.5 * M, k: 1 }, { t: last + 37.5 * M, k: 2 }];
+  const model = { rain: [[0, 2, 4], [4, 2, 0], [1, 1, 1]], snow: [[0, 0, 0], [1, 1, 1], [0, 0, 0]] };
+  const src = { past: pastOf(13), drift: null, models, model };
+  // from the radar into the first quarter hour
+  const into = partsAt(src, last + 3 * M);
+  assert.ok(into.length === 2 && into[0].k === 12 && near(into[0].alpha, 0.6) && near(into[1].alpha, 0.4) && into[1].rates === model.rain[0], JSON.stringify(into));
+  // between two quarter hours: their rates blended, snow where the nearer has it
+  const [m] = partsAt(src, last + 11.25 * M);
+  assert.ok(m.alpha === 1 && m.rates.every((r, p) => near(r, model.rain[0][p] * 0.75 + model.rain[1][p] * 0.25)) && m.snow === model.snow[0], JSON.stringify(m));
+  assert.equal(partsAt(src, last + 20 * M)[0].snow, model.snow[1]);
+  assert.deepEqual(partsAt(src, last + 40 * M), [{ rates: model.rain[2], snow: model.snow[2], alpha: 1 }], "past the last: the last");
+  // no radar at all: the models' from their first
+  assert.deepEqual(partsAt({ past: [], models, model }, last), [{ rates: model.rain[0], snow: model.snow[0], alpha: 1 }]);
+});
+test("map tiles: where a place is on them, and where a tile's corner is", () => {
+  const [x, y] = tileOf(52.63, 1.28, 9);
+  assert.ok(Math.floor(x) === 257 && Math.floor(y) === 167, `${x} ${y}`);
+  const [la, lo] = cornerOf(x, y, 9);
+  assert.ok(near(la, 52.63, 1e-9) && near(lo, 1.28, 1e-9), `${la} ${lo}`);
+  assert.deepEqual(cornerOf(0, 0, 0).map((v) => Math.round(v * 1e4) / 1e4), [85.0511, -180]);
+  assert.deepEqual(tileOf(0, 0, 1), [1, 1]);
 });

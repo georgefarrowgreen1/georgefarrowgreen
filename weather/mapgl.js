@@ -87,8 +87,9 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
 
-  let layers = [], on = -1;
+  let layers = [], on = -1, mix = null, mixAt = "";
   const corners = ([[s, w], [n, e]]) => [[w, n], [e, n], [e, s], [w, s]];
+  const unmix = () => { if (mix) map.setPaintProperty("mix", "raster-opacity", 0); };
   return {
     kind: "gl",
     credit: ["OpenFreeMap", "OpenMapTiles", "OpenStreetMap"],
@@ -102,14 +103,31 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
           drawers.set(n, f.draw);
           map.addSource(id, { type: "raster", tiles: [`rv://${n}/{z}/{x}/{y}`], tileSize: 256, maxzoom: max });
         } else map.addSource(id, { type: "canvas", canvas: f.canvas, coordinates: corners(f.bounds), animate: false });
-        map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: fade, delay: 0 }, "raster-fade-duration": fade } }, ABOVE_RAIN);
+        map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": fade } }, ABOVE_RAIN);
         return id;
       });
     },
     show(k, opacity) {
+      unmix();
       if (layers[on]) map.setPaintProperty(layers[on], "raster-opacity", 0);
       if (layers[k]) map.setPaintProperty(layers[k], "raster-opacity", opacity);
       on = k;
+    },
+    // a picture over bounds in place of the frames (the minutes between them: radar.js), drawn again as it changes;
+    // null: none
+    blend(canvas, bounds, opacity) {
+      if (!canvas) return unmix();
+      const c = corners(bounds), key = c.join();
+      if (!mix) {
+        map.addSource("mix", { type: "canvas", canvas, coordinates: c, animate: false });
+        map.addLayer({ id: "mix", type: "raster", source: "mix", paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": 0 } }, ABOVE_RAIN);
+        mix = map.getSource("mix"); mixAt = key;
+      } else if (key !== mixAt) { mix.setCoordinates(c); mixAt = key; }
+      // (its picture sent on to the screen: pausing it uploads it)
+      mix.play(); mix.pause(); map.triggerRepaint();
+      if (layers[on]) map.setPaintProperty(layers[on], "raster-opacity", 0);
+      on = -1;
+      map.setPaintProperty("mix", "raster-opacity", opacity);
     },
     box(bounds, opacity = 0) {
       if (bounds !== undefined) {
@@ -139,6 +157,8 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
       yes ? map.scrollZoom.enable() : map.scrollZoom.disable();
     },
     resize() { map.resize(); },
+    // what's in sight: [[south, west], [north, east]]
+    bounds() { const b = map.getBounds(); return [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; },
     // where it is: its zoom (as Leaflet counts), the range, and how many metres a pixel spans at its middle
     state() {
       const z = map.getZoom() + 1, c = map.getCenter();

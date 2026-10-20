@@ -10,7 +10,7 @@
 //
 // The map's code is loaded only as the card comes near (the vector map's, a screen ahead: it's a megabyte).
 
-import { grid, paint, timeline, LEGEND, decode, resample, ramp, squareAt, driftOf, radarAt } from "./rainmap.js";
+import { grid, paint, timeline, LEGEND, decode, resample, ramp, squareAt, driftOf, radarAt, partsAt, tileOf, cornerOf } from "./rainmap.js";
 
 const FRAMES = "https://api.rainviewer.com/public/weather-maps.json";
 const MODEL = "https://api.open-meteo.com/v1/forecast";
@@ -115,7 +115,8 @@ function queue(job) { jobs.push(job); if (!working) { working = true; setTimeout
 // hours (cast: { vx, vy, lead }), the latest radar carried along its own track: drawn from where its rain was lead
 // minutes before, vx, vy zoom-7 pixels a minute behind, fading a little the further ahead. Its pixels (ImageData),
 // or null where it's dry, or when it's no longer wanted by its turn (gone.aborted: scrolled away, or the frame
-// replaced). shown(): its frame is the one on show (its tiles come first).
+// replaced); undefined where none of the radar it's drawn from came, and marked partial where some didn't (neither
+// kept: asked for again next time). shown(): its frame is the one on show (its tiles come first).
 function radarTile(base, cast, c, shown, gone) {
   // (sz: the zoom of the tiles drawn from, each SRC pixels; one of their pixels is a zoom-(sz + 1) 256-tile's)
   const sz = Math.max(0, Math.min(c.z, NATIVE) - 1), f = 2 ** (c.z - sz), span = SRC / f, n = 2 ** sz;
@@ -131,8 +132,9 @@ function radarTile(base, cast, c, shown, gone) {
     shown,
     fail: () => ok(null),
     run: () => {
-      if (gone.aborted || !got.some(Boolean)) return ok(null);
-      const from = new Map(need.map(([ox, oy], i) => [`${ox},${oy}`, got[i]]));
+      if (gone.aborted) return ok(null);
+      if (!got.some(Boolean)) return ok(undefined);
+      const partial = got.some((x) => !x), from = new Map(need.map(([ox, oy], i) => [`${ox},${oy}`, got[i]]));
       let lx = null, ly = null, lt = null;
       const code = (x, y) => {
         const u = Math.round(x - sx), v = Math.round(y - sy), ox = Math.floor(u / SRC), oy = Math.floor(v / SRC);
@@ -141,14 +143,49 @@ function radarTile(base, cast, c, shown, gone) {
       };
       let wet = false;
       for (let y = Math.floor(y0) - 2; y < y0 + span + 2 && !wet; y++) for (let x = Math.floor(x0) - 2; x < x0 + span + 2; x++) if (code(x, y)) { wet = true; break; }
-      if (!wet) return ok(null);
+      if (!wet) return ok(partial ? undefined : null);
       const img = new ImageData(256, 256);
+      if (partial) img.partial = true;
       resample(img.data, 256, code, x0, y0, span, LOOK);
       if (cast) { const fade = 1 - 0.3 * Math.min(1, cast.lead / 120); for (let i = 3; i < img.data.length; i += 4) img.data[i] *= fade; }
       ok(img);
     },
   })));
 }
+// A frame's tile as it is (radarTile, not carried on), drawn once and kept to be drawn again (the last 160): the frame's
+// own layer on the map and the minutes either side of it (below) both draw from it. Wanted by more than one at once,
+// it's drawn once, and given up only when none of them want it any more. → a promise of a picture to draw (an
+// ImageBitmap; a canvas where the browser has none), or of null where it's dry (kept only once it's whole: radarTile)
+const kept = new Map(), KEEP = 160;
+const drawable = (img) => {
+  if (self.createImageBitmap) return createImageBitmap(img, { premultiplyAlpha: "premultiply" });
+  const c = document.createElement("canvas"); c.width = c.height = 256; c.getContext("2d").putImageData(img, 0, 0);
+  return Promise.resolve(c);
+};
+function keptTile(base, c, shown, gone) {
+  const key = `${base}|${c.z}|${c.x}|${c.y}`;
+  let e = kept.get(key);
+  if (e?.done) { kept.delete(key); kept.set(key, e); return Promise.resolve(e.v); }       // (kept longest: wanted last)
+  if (!e) {
+    const box = e = { users: [], shows: [], done: false, v: null };
+    const all = { get aborted() { return box.users.every((g) => g.aborted); } };
+    const drop = () => { if (kept.get(key) === box) kept.delete(key); return null; };
+    box.p = radarTile(base, null, c, () => box.shows.some((f) => f()), all)
+      .then((img) => (img ? drawable(img).then((v) => [v, !img.partial]) : [null, img === null && !all.aborted]))
+      .then(([v, whole]) => {
+        if (!whole) { drop(); return v; }
+        box.v = v; box.done = true;
+        // (the oldest let go: no more than KEEP)
+        for (const [k, x] of kept) { if (kept.size <= KEEP) break; if (x.done) kept.delete(k); }
+        return v;
+      }, drop);
+    kept.set(key, box);
+  }
+  e.users.push(gone); e.shows.push(shown);
+  return e.p;
+}
+const keptNow = (base, z, x, y) => kept.get(`${base}|${z}|${x}|${y}`);
+
 // RainViewer's list of frames, kept a few minutes (the card and the next hours' words both ask for it)
 let frameList = null;
 function framesNow() {
@@ -187,7 +224,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
-  let map = null, starting = null, credit = null, dry = null, told = false, frames = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
+  let map = null, starting = null, credit = null, dry = null, told = false, frames = [], i = 0, playing = false, fetched = 0, here = { lat, lon }, g = null;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
@@ -206,21 +243,115 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   const snowKey = document.createElement("div"); snowKey.className = "rl-snow"; snowKey.append(bar(true, 5, 45), Object.assign(document.createElement("span"), { textContent: "Snow" }));
   legend.replaceChildren(rain, snowKey);
 
-  const show = (k) => {
+  // where the slider is: at (ms), from t0 (the first frame) to tEnd (the last), tNow the latest radar frame's time; the
+  // frame nearest it (i), drawn as it is where the minutes between can't be (zoomed far out, or its tiles still coming)
+  let t0 = 0, tEnd = 0, tNow = 0, at = 0, minute = null, layer = -1;
+  const show = (t) => {
     if (!frames.length) return;
-    i = (k + frames.length) % frames.length;
-    map.show(i, SHOW);
-    const f = frames[i], mins = Math.round((f.t - Date.now()) / 60e3);
-    slider.value = String(i);
-    slider.style.setProperty("--f", String(i / Math.max(1, frames.length - 1)));
-    const when = f.kind === "model" ? `in ${Math.max(0, mins)} min · forecast` : i === nowAt ? "latest radar" : ago(-mins);
+    at = Math.min(tEnd, Math.max(t0, t));
+    let k = 0;
+    for (let j = 1; j < frames.length; j++) if (Math.abs(frames[j].t - at) < Math.abs(frames[k].t - at)) k = j;
+    i = k;
+    if (paintAt(at)) layer = -1;
+    else if (layer !== i) { map.show(i, SHOW); layer = i; mixed = false; }
+    slider.style.setProperty("--f", String(tEnd > t0 ? (at - t0) / (tEnd - t0) : 1));
+    // (its words, to the minute)
+    const m = Math.round((at - t0) / 60e3);
+    if (m === minute) return;
+    minute = m;
+    const tm = Math.min(tEnd, t0 + m * 60e3), ahead = !src?.past.length || tm > tNow + 30e3, mins = Math.round((tm - Date.now()) / 60e3);
+    const when = ahead ? `${mins > 0 ? `in ${mins} min` : mins === 0 ? "now" : ago(-mins)} · forecast` : Math.abs(tm - tNow) < 30e3 ? "latest radar" : ago(-mins);
+    slider.value = String(m);
     const b = document.createElement("b"), rel = document.createElement("span");
-    b.textContent = time(f.t); rel.textContent = ` · ${when}`; rel.className = f.kind === "model" ? "rt-rel ahead" : "rt-rel";
+    b.textContent = time(tm); rel.textContent = ` · ${when}`; rel.className = ahead ? "rt-rel ahead" : "rt-rel";
     label.replaceChildren(b, rel);
-    slider.setAttribute("aria-valuetext", `${time(f.t)} · ${when}`);
-    chipTo(f.kind);
-    map.box(undefined, f.kind === "model" ? 0.45 : 0);
+    slider.setAttribute("aria-valuetext", `${time(tm)} · ${when}`);
+    chipTo(ahead ? "model" : "radar");
+    map.box(undefined, ahead ? 0.45 : 0);
   };
+
+  // The minutes between the frames (rainmap.js partsAt), on one picture over the tiles in sight: the radar's tiles,
+  // each drawn once and kept (keptTile), moved and faded into each other; the models' rain painted blended. So a
+  // minute on is a picture moved and faded, not the radar drawn again. (Added together, "lighter": two faded frames
+  // make one whole, where they overlap as where they don't.)
+  const mix = document.createElement("canvas"), mx = mix.getContext("2d");
+  const fc = document.createElement("canvas"); fc.width = fc.height = PX;
+  const fx = fc.getContext("2d"), fimg = fx.createImageData(PX, PX);
+  let src = null, mixed = false, sight = "", wanted = { aborted: false }, asked = new Set();
+  const drifts = new Map();
+  // the tiles in sight: zoom Z's (as the map's own layers have them), no more than 10 across
+  const view = () => {
+    const st = map.state(), b = map.bounds?.();
+    if (!b) return null;
+    const Z = Math.max(st.min, Math.min(st.max, Math.round(st.zoom))), n = 2 ** Z;
+    const [[s, w], [no, e]] = b, [x0, y0] = tileOf(no, w, Z), [x1, y1] = tileOf(s, e, Z);
+    const v = { Z, n, x0: Math.floor(x0), y0: Math.max(0, Math.floor(y0)), x1: Math.floor(x1), y1: Math.min(n - 1, Math.floor(y1)) };
+    if (v.x1 < v.x0 || v.y1 < v.y0 || v.x1 - v.x0 > 9 || v.y1 - v.y0 > 9) return null;
+    v.key = `${Z}/${v.x0}/${v.y0}/${v.x1}/${v.y1}`;
+    return v;
+  };
+  // between two of the radar's frames where nothing's moving near now: the rain's own way between those two
+  const pairDrift = (k) => {
+    if (drifts.has(k)) return drifts.get(k);
+    drifts.set(k, null);
+    const mine = src, { host, past } = src, tile = (fr) => (x, y) => tileCodes(`${host}${fr.path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`);
+    Promise.all([squareAt(here.lat, here.lon, tile(past[k])), squareAt(here.lat, here.lon, tile(past[k + 1]))])
+      .then(([A, B]) => driftOf(A, B, (past[k + 1].time - past[k].time) / 60), () => null)
+      .then((d) => { if (d && src === mine) { drifts.set(k, d); if (!playing) show(at); } });
+    return null;
+  };
+  const wrapX = (x, n) => ((x % n) + n) % n;       // (a tile's x round the world)
+  function paintAt(t) {
+    if (!src || !map.blend) return false;
+    const v = view();
+    if (!v) return false;
+    if (v.key !== sight) { sight = v.key; wanted.aborted = true; wanted = { aborted: false }; asked = new Set(); }
+    const scale = 2 ** (v.Z - 7), W = (v.x1 - v.x0 + 1) * 256, H = (v.y1 - v.y0 + 1) * 256, base = (k) => `${src.host}${src.past[k].path}/${SRC}`;
+    const parts = partsAt(src, t).filter((p) => p.alpha > 0.002).map((p) => {
+      if (p.rates) return p;
+      // (the tiles it's drawn from: those that, moved, cover the ones in sight)
+      const sx = p.dx * scale, sy = p.dy * scale, tiles = [];
+      for (let y = Math.max(0, Math.floor((v.y0 * 256 - sy) / 256)); y <= Math.min(v.n - 1, Math.floor(((v.y1 + 1) * 256 - sy - 1) / 256)); y++) {
+        for (let x = Math.floor((v.x0 * 256 - sx) / 256); x <= Math.floor(((v.x1 + 1) * 256 - sx - 1) / 256); x++) tiles.push([x, y]);
+      }
+      return { ...p, base: base(p.k), sx, sy, tiles };
+    });
+    // all in hand? if not, asked for (each once), and the nearest frame shown as it is until they are; and those it'll
+    // want next asked for too (a tile further round each, and the frames either side), so the next minutes are ready
+    // (one whose radar didn't come is asked for again a few seconds on, not every frame)
+    const g = wanted, list0 = asked, ask = (list, then) => {
+      const fresh = list.filter(([b, x, y]) => !list0.has(`${b}|${x}|${y}`) && !keptNow(b, v.Z, wrapX(x, v.n), y)?.done);
+      fresh.forEach(([b, x, y]) => list0.add(`${b}|${x}|${y}`));
+      if (fresh.length) Promise.all(fresh.map(([b, x, y]) => keptTile(b, { z: v.Z, x: wrapX(x, v.n), y }, () => !g.aborted, g))).then(() => {
+        const lost = fresh.filter(([b, x, y]) => !keptNow(b, v.Z, wrapX(x, v.n), y)?.done);
+        if (lost.length) setTimeout(() => lost.forEach(([b, x, y]) => list0.delete(`${b}|${x}|${y}`)), 3000);
+        if (then && !g.aborted && !playing) show(at);
+      });
+    };
+    const missing = [], soon = [], ks = new Set();
+    for (const p of parts) if (p.base) { ks.add(p.k - 1).add(p.k).add(p.k + 1); for (const [x, y] of p.tiles) if (!keptNow(p.base, v.Z, wrapX(x, v.n), y)?.done) missing.push([p.base, x, y]); }
+    for (const k of ks) if (k >= 0 && k < src.past.length) for (let y = Math.max(0, v.y0 - 1); y <= Math.min(v.n - 1, v.y1 + 1); y++) for (let x = v.x0 - 1; x <= v.x1 + 1; x++) soon.push([base(k), x, y]);
+    ask(missing, true); ask(soon, false);
+    if (missing.length) return false;
+    if (mix.width !== W || mix.height !== H) { mix.width = W; mix.height = H; } else mx.clearRect(0, 0, W, H);
+    mx.globalCompositeOperation = "lighter";
+    for (const p of parts) {
+      mx.globalAlpha = Math.min(1, p.alpha);
+      if (p.base) {
+        for (const [x, y] of p.tiles) { const b = keptNow(p.base, v.Z, wrapX(x, v.n), y).v; if (b) mx.drawImage(b, (x - v.x0) * 256 + p.sx, (y - v.y0) * 256 + p.sy); }
+      } else {
+        // the models' rain, painted over the grid's box
+        paint(fimg.data, PX, PX, g, p.rates, p.snow); fx.putImageData(fimg, 0, 0);
+        const [ax, ay] = tileOf(g.north, g.west, v.Z), [bx, by] = tileOf(g.south, g.east, v.Z);
+        mx.drawImage(fc, (ax - v.x0) * 256, (ay - v.y0) * 256, (bx - ax) * 256, (by - ay) * 256);
+      }
+    }
+    mx.globalAlpha = 1; mx.globalCompositeOperation = "source-over";
+    const [n, w] = cornerOf(v.x0, v.y0, v.Z), [s2, e] = cornerOf(v.x1 + 1, v.y1 + 1, v.Z);
+    map.blend(mix, [[s2, w], [n, e]], SHOW);
+    mixed = true;
+    return true;
+  }
   // the chip over the map, Radar or Forecast: its width springing from the one word's to the other's (the words
   // crossing, and its colour, are styles.css's)
   let morph = null;
@@ -232,25 +363,39 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     const to = chip.getBoundingClientRect().width;
     if (!calm && from && Math.abs(to - from) > 0.5) morph = chip.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 550, easing: "cubic-bezier(0.34, 1.32, 0.64, 1)" });
   };
-  const stop = () => { playing = false; clearTimeout(timer); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
-  // playing: from now through the next two hours, again and again (the hours gone are a drag back; played from there,
-  // it runs on through them too)
+  // playing: from now through the next two hours, again and again, minute by minute as smoothly as the screen can
+  // (ten minutes to every STEP ms; a moment at now, and at the end); the hours gone are a drag back, and played from
+  // there, it runs on through them too
+  const SPEED = 600e3 / STEP;
+  let raf = 0;
+  const stop = () => { playing = false; cancelAnimationFrame(raf); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
   const run = () => {
     playing = true; play.setAttribute("aria-label", "Pause"); play.dataset.on = "1";
-    const from = i < nowAt ? 0 : nowAt;
-    const next = () => { if (!playing) return; show(i >= frames.length - 1 ? from : i + 1); timer = setTimeout(next, i === frames.length - 1 ? HOLD : i === nowAt ? AT_NOW : STEP); };
-    clearTimeout(timer); timer = setTimeout(next, i === nowAt ? AT_NOW : STEP);
+    const from = at < tNow - 30e3 ? t0 : tNow, rest = (t) => (Math.abs(t - tNow) < 30e3 ? AT_NOW : 0);
+    if (at >= tEnd - 30e3) at = from;
+    let prev = 0, wait = rest(at), end = false;
+    const tick = (ts) => {
+      if (!playing) return;
+      const dt = prev ? Math.min(100, ts - prev) : 0; prev = ts;
+      if (wait > 0) wait -= dt;
+      else if (end) { end = false; show(from); wait = rest(from); }
+      else { show(at + dt * SPEED); if (at >= tEnd) { end = true; wait = HOLD; } }
+      raf = requestAnimationFrame(tick);
+    };
+    cancelAnimationFrame(raf);
+    show(at);
+    raf = requestAnimationFrame(tick);
   };
   // under the slider: where the radar ends and the forecast begins
   function drawScale() {
     scale.replaceChildren();
-    if (frames.length < 2) return;
-    const at = (k) => `${(k / (frames.length - 1)) * 100}%`, mark = (k, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = at(k); scale.append(s); };
-    slider.style.setProperty("--nowf", String(nowAt / (frames.length - 1)));
+    if (tEnd <= t0) return;
+    const pos = (t) => `${((t - t0) / (tEnd - t0)) * 100}%`, mark = (t, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = pos(t); scale.append(s); };
+    slider.style.setProperty("--nowf", String((tNow - t0) / (tEnd - t0)));
     const span = (t) => { const m = Math.round(Math.abs(t - Date.now()) / 60e3); return m >= 90 ? `${Math.round(m / 60)} h` : `${Math.round(m / 10) * 10} min`; };
-    mark(0, `${span(frames[0].t)} ago`, "rs-l rs-start");
-    mark(nowAt, "Now", "rs-l rs-now");
-    if (frames.length - 1 > nowAt) mark(frames.length - 1, `+${span(frames[frames.length - 1].t)}`, "rs-l rs-end");
+    mark(t0, `${span(t0)} ago`, "rs-l rs-start");
+    mark(tNow, "Now", "rs-l rs-now");
+    if (tEnd > tNow) mark(tEnd, `+${span(tEnd)}`, "rs-l rs-end");
   }
   async function load() {
     g = grid(here.lat, here.lon);
@@ -268,24 +413,30 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     const held = !drift && !model && past.length > 0 && !rainSoon() && !wetAbout;
     const ahead = drift || held ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
     const tl = timeline(past.map((f) => f.time * 1000), ahead);
-    frames = tl.frames; nowAt = past.length ? tl.now : 0;
+    frames = tl.frames;
     const box = [[g.south, g.west], [g.north, g.east]];
     map.frames(frames.map((f, j) => {
-      const shown = () => i === j, from = (k) => `${host}${past[k].path}/${SRC}`;
-      if (f.kind === "radar") return { draw: (z, x, y, gone) => radarTile(from(f.k), null, { z, x, y }, shown, gone) };
+      // (a frame's own tiles first while it's the one on show; not while the minutes either side of it are)
+      const shown = () => i === j && !mixed, from = (k) => `${host}${past[k].path}/${SRC}`;
+      if (f.kind === "radar") return { draw: (z, x, y, gone) => keptTile(from(f.k), { z, x, y }, shown, gone) };
       if (drift || held) return { draw: (z, x, y, gone) => radarTile(from(past.length - 1), { vx: drift?.vx ?? 0, vy: drift?.vy ?? 0, lead: (f.t - last) / 60e3 }, { z, x, y }, shown, gone) };
       return { canvas: canvasFor(g, model.rain[f.k], model.snow[f.k]), bounds: box };
     }));
+    // (what the minutes between are drawn from: rainmap.js partsAt)
+    drifts.clear();
+    src = { host, past, drift, model, models: model ? frames.filter((f) => f.kind === "model") : [], driftOf: pairDrift };
+    t0 = frames[0].t; tEnd = frames[frames.length - 1].t; tNow = past.length ? last : t0;
+    sight = ""; minute = null; layer = -1; mixed = false;
     map.box(model ? box : null);
     // (nothing on the radar about here, and nothing coming: said on the map, so an empty map isn't a puzzle)
     dry.hidden = !held;
     credited([...map.credit, past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
     status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && !held ? "The next two hours aren't available right now: showing the radar." : "";
-    slider.max = String(frames.length - 1);
+    slider.max = String(Math.round((tEnd - t0) / 60e3));
     fetched = Date.now();
     drawScale();
-    show(nowAt);
+    show(tNow);
   }
   // the map's controls, on it: zoom in and out, and back to the place (top left); its scale, a bracket drawn on the
   // map as Maps draws it (bottom left); and its credits, in full as it first appears, then folded into a © that opens
@@ -333,6 +484,10 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       map = await mapIn(el, { lat: at.lat, lon: at.lon, zoom: VIEW, min: 3, max: CLOSEST, touch, calm });
       if (here !== at) { map.view(here.lat, here.lon); map.dot(here.lat, here.lon); }
       controls();
+      // (the minutes between drawn again for what's in sight as the map's moved: once a frame, and not while it plays,
+      // which draws them anyway)
+      let moving = 0;
+      map.on("move", () => { if (!playing && frames.length && !moving) moving = requestAnimationFrame(() => { moving = 0; show(at); }); });
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore
       map.on("tap", () => { if (touch && !card.classList.contains("radar-big")) grow(true); });
       await load();
@@ -369,7 +524,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     document.startViewTransition(() => big(on)).finished.finally(() => { card.style.viewTransitionName = ""; map?.resize(); });
   }
   play.addEventListener("click", () => (playing ? stop() : run()));
-  slider.addEventListener("input", () => { stop(); show(Number(slider.value)); });
+  slider.addEventListener("input", () => { stop(); show(t0 + Number(slider.value) * 60e3); });
   full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big")) grow(false); });
   // the vector map's code fetched a screen ahead; the radar started once it's on screen, and paused while it's off it

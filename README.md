@@ -264,7 +264,13 @@ so there's nothing to set up beyond the address.
   about 220 km across, blended and painted in the radar's own colours, inside
   a dashed box; asked for only when rain's expected there soon, or there's rain about on the radar; dry all
   about, the latest radar held, so the next two hours are always there), animated on one
-  timeline marked Now, on a map drawn in the app's own style, after Apple's Maps
+  timeline marked Now, to the minute: the slider moves a minute at a time, and play runs on smoothly. Between two
+  frames of the radar, each is moved along the rain's track (the earlier on, the later back to meet it) and faded
+  into the other; after the latest, it's carried on to the minute; the models' quarter hours are blended
+  (`rainmap.js` partsAt). Each frame's tiles are drawn once and kept, so the minutes between are only those
+  pictures moved and faded on one canvas over the tiles in sight (a canvas layer under the names), with the tiles
+  a minute or a frame on asked for ahead; where they aren't in yet, or zoomed far out, the nearest frame as it is.
+  The minutes between are estimates: the radar itself comes every 10 minutes, the models' every 15. It's on a map drawn in the app's own style, after Apple's Maps
   at night: OpenFreeMap's vector map of OpenStreetMap (the OpenMapTiles schema),
   drawn on the phone by MapLibre GL JS, land in a quiet grey with the lie of the
   land faintly shaded (Natural Earth's relief), the sea a deep blue, roads a

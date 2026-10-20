@@ -1026,8 +1026,6 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .radar-status { margin-top: 8px; }
 .radar-status:empty { display: none; }
 .radar.said-above:not(.radar-big) .radar-note { display: none; }
-.radar .leaflet-layer, .radar .fc-frame { transition: opacity 0.25s linear; }
-@media (prefers-reduced-motion: reduce) { .radar .leaflet-layer, .radar .fc-frame { transition: none; } }
 body.no-scroll { overflow: hidden; }
 .radar .leaflet-container { background: #0e1420; font: inherit; }
 /* OpenStreetMap's map, turned dark (the radar above it keeps its colours), where the vector map can't be drawn */
