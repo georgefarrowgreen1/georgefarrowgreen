@@ -759,7 +759,6 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .foot { max-width: 1180px; margin: 6px auto 0; padding: 0 var(--pad) 22px; font-size: 11.5px; line-height: 1.5; color: #fff; text-align: center;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 0, 0, 0.22); }   /* (to read over a pale sky too) */
 .foot p { margin: 2px auto; max-width: 60ch; }
-.foot-more { display: block; }
 /* (the words small, the places to tap not: each reaches past its words, without moving the lines apart) */
 .foot .link { font-size: inherit; padding: 13px 4px; margin: -13px -4px; }
 /* (its links and buttons alike, Refresh too: underlined in the line's own colour, as the Weather app's are) */
@@ -1098,6 +1097,9 @@ body.no-scroll { overflow: hidden; }
 .credits b { display: block; font-weight: 600; }
 .credits small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--text-3); }
 .credits .cr-out { flex: none; color: var(--text-3); }
+/* (Open-Meteo's credit, as it asks for it, over the sources it brings) */
+.credits-lead { margin: 0 4px 10px; font-size: 13px; line-height: 1.4; color: var(--text-2); }
+.credits-lead a { color: var(--tint-blue); text-decoration: none; }
 .credits-note { margin: 22px 4px 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
 
 /* ---------- accuracy ---------- */

@@ -336,6 +336,12 @@ function glide(v, dist, ease, span = dist) {
 // enough, or flicked, it carries on off the screen at the speed it was let go at as the next place's page comes in
 // beside it (a view transition, of just what's on screen; where there aren't any, one goes and then the other comes);
 // not far enough, it springs back. With Reduce Motion, the next place is just there.
+// how fast a swipe was let go: pixels a millisecond over its last moment, up to the finger lifting (held still a moment
+// before it lifted, it wasn't flicked, as on iOS). trail: [[ms, x], ...] as it moved
+function flickSpeed(trail) {
+  const now = performance.now(), last = trail.filter(([t]) => now - t <= 90);
+  return last.length > 1 ? (last[last.length - 1][1] - last[0][1]) / (now - last[0][0]) : 0;
+}
 function placeSwipe() {
   // (it's the page's columns that follow the finger, not the page itself: a page that's been moved isn't one the
   // browser will turn from)
@@ -372,9 +378,7 @@ function placeSwipe() {
     x0 = null;
     if (axis !== "x") return;
     cancelAnimationFrame(raf); raf = 0;
-    // how fast it was let go (pixels a millisecond, over the last moment of the swipe)
-    const [ta, xa] = trail[0] || [0, 0], [tb, xb] = trail[trail.length - 1] || [0, 0], v = tb > ta ? (xb - xa) / (tb - ta) : 0;
-    const dir = dx < 0 ? 1 : -1, next = S.cur + dir, from = offset();
+    const v = flickSpeed(trail), dir = dx < 0 ? 1 : -1, next = S.cur + dir, from = offset();
     const far = Math.abs(dx) > W() * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
     if (!atEnd(dx) && next >= 0 && next < S.places.length && (far || flung)) turn(dir, from, v);
     else back(from, atEnd(dx) ? v * band(dx) : v);
@@ -1596,8 +1600,7 @@ function sideSwipe(dlg, page, atEnd, step) {
     x0 = null;
     if (axis !== "x") return;
     cancelAnimationFrame(raf); raf = 0;
-    const [ta, xa] = trail[0] || [0, 0], [tb, xb] = trail[trail.length - 1] || [0, 0], v = tb > ta ? (xb - xa) / (tb - ta) : 0;
-    const dir = dx < 0 ? 1 : -1, from = offset(), o = fade(from), w = W(), edge = atEnd(dx);
+    const v = flickSpeed(trail), dir = dx < 0 ? 1 : -1, from = offset(), o = fade(from), w = W(), edge = atEnd(dx);
     const far = Math.abs(dx) > w * 0.28, flung = Math.abs(v) > 0.3 && Math.sign(v) === Math.sign(dx) && Math.abs(dx) > 16;
     clear();
     if (edge || !(far || flung)) {

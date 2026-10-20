@@ -401,13 +401,19 @@ ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of l
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
 ok(!cards.some((t) => /^Most accurate here/.test(t)) && /^ECMWFBest/.test(acc[1]), 'which model to trust: in the accuracy card, not again in the highlights', `${acc[1]} | ${cards.join(' · ')}`);
 // every source in one window, from one line at the foot of the page
-ok((await p.locator('.foot a').count()) === 2 && /^Weather data by Open-Meteo\.com \(CC BY 4\.0\)\. Learn more about weather data and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, with the credit Open-Meteo asks for beside the data', await p.textContent('.foot-note'));
+ok(!(await p.locator('.foot a').count()) && /^Learn more about weather data and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, to the credits', await p.textContent('.foot-note'));
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
 ok(links.length === 19 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'marine.copernicus.eu', 'meteoalarm.org', 'weather.gov/', 'environment.data.gov.uk', 'aviationweather.gov', 'rainviewer.com', 'openfreemap.org', 'openmaptiles.org', 'openstreetmap.org/copyright', 'naturalearthdata.com', 'maplibre.org', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
   'a credits window: every source, each linked out', `${links.length} links`);
 ok((await p.evaluate(() => document.querySelector('#credits .sheet-body').scrollTop)) === 0 && /national weather service/.test(await p.textContent('#credits .credits-note')), 'open at the weather data, with a notice at its foot');
+{
+  // (Open-Meteo's credit, as it asks for it, at the top of the weather data, in sight as it opens: linked to it and to
+  // the licence; measured within the sheet, which may still be sliding up)
+  const lead = await p.evaluate(() => { const l = document.querySelector('#cr-weather + .credits-lead'); return l && { text: l.textContent.replace(/\s+/g, ' ').trim(), links: [...l.querySelectorAll('a')].map((a) => `${a.href} ${a.target} ${a.rel}`), seen: (() => { const b = l.closest('.sheet-body'); return l.getBoundingClientRect().bottom - b.getBoundingClientRect().top < b.clientHeight; })() }; });
+  ok(lead?.text === 'Weather data by Open-Meteo.com (CC BY 4.0).' && lead.seen && lead.links.length === 2 && /^https:\/\/open-meteo\.com\/ _blank noopener$/.test(lead.links[0]) && /creativecommons\.org\/licenses\/by\/4\.0\/ _blank noopener$/.test(lead.links[1]), 'Open-Meteo\'s credit at the top of the weather data, linked', JSON.stringify(lead));
+}
 await p.waitForTimeout(600);
 await p.screenshot({ path: `${out}/wx-credits.png` });
 await p.keyboard.press('Escape');
@@ -786,7 +792,8 @@ await p.keyboard.press('Escape');
   await drag([100, 110, 125, 140, 152]);
   const followed = await shift();
   await touch('touchEnd'); await p.waitForTimeout(700);
-  ok(Math.abs(followed - 27) <= 1 && (await name()) === 'Edinburgh' && (await shift()) === 0, 'a short swipe: the page follows the finger exactly, from where it was told from a scroll, and springs back', `${followed} px for 27 px`);
+  const back = { name: await name(), shift: await shift() };
+  ok(Math.abs(followed - 27) <= 1 && back.name === 'Edinburgh' && back.shift === 0, 'a short swipe: the page follows the finger exactly, from where it was told from a scroll, and springs back', `${followed} px for 27 px, then ${JSON.stringify(back)}`);
   // far enough: London, the page turning to it
   await drag([60, 90, 130, 180, 230, 280, 320]);
   await touch('touchEnd');
