@@ -176,6 +176,25 @@ ok((await p.textContent('#place-name')) === 'London', 'opens on the place in the
 ok((await p.locator('.day-row').count()) === 10 && (await p.textContent('#daily-n')) === '16-day' && (await p.textContent('#daily .days-more')) === 'Show 6 more days', '16 days: the first ten, then "Show 6 more days"');
 await p.locator('#daily .days-more').evaluate((e) => e.click());
 ok((await p.locator('.day-row').count()) === 16 && !(await p.locator('#daily .days-more').count()) && await p.evaluate(() => document.activeElement === document.querySelectorAll('.day-row')[10]), 'and a tap shows the other six, the first of them with focus');
+// the days by rain or by wind, as iOS 27's Weather has them: the view the weather calls for (rain due within the hour:
+// rain), the 48 hours and the days alike, from either switch
+{
+  const sel = (id) => `document.querySelector('#${id} [aria-selected="true"]').dataset.mode`;
+  const v = await p.evaluate(() => ({ days: document.getElementById('days').className, hourly: document.querySelector('#hourly-seg [aria-selected="true"]').dataset.mode, own: document.querySelector('#days-seg [aria-selected="true"]').dataset.mode, bars: document.querySelector('#days .day-row .dr')?.querySelectorAll('rect').length, val: document.querySelector('#days .d-val')?.textContent }));
+  ok(v.days === 'days v-rain' && v.hourly === 'rain' && v.own === 'rain' && v.bars >= 20 && /^\d+%/.test(v.val), 'rain due within the hour: the rain view, the 48 hours and the days alike (each day its hours as bars, its chance and how much)', JSON.stringify(v));
+  await p.locator('#days-seg [data-mode="wind"]').evaluate((e) => e.click()); await p.waitForTimeout(400);
+  const w = await p.evaluate(() => ({ days: document.getElementById('days').className, hourly: document.querySelector('#hourly-seg [aria-selected="true"]').dataset.mode, line: !!document.querySelector('#days .dw .line'), val: document.querySelector('#days .d-val')?.textContent }));
+  ok(w.days === 'days v-wind' && w.hourly === 'wind' && w.line && /gusts \d+/.test(w.val), 'the days\' own switch: wind (a line, the gusts a band), and the 48 hours\' switch with it', JSON.stringify(w));
+  await p.locator('#hourly-seg [data-mode="temp"]').evaluate((e) => e.click()); await p.waitForTimeout(400);
+  ok(await p.evaluate(() => document.getElementById('days').className === 'days v-temp' && !!document.querySelector('#days .d-hi')), 'and back to temperatures from the other switch');
+}
+// a word about the alerts, once: put away, it stays away
+{
+  const n = await p.evaluate(() => { const b = document.getElementById('nudge'); return { shown: !b.hidden, text: b.textContent }; });
+  ok(n.shown && /Get rain alerts/.test(n.text) && /Turn on/.test(n.text), 'a word about the rain alerts, with a way to them', n.text.slice(0, 90));
+  await p.locator('#nudge .link').evaluate((e) => e.click());
+  ok(await p.evaluate(() => document.getElementById('nudge').hidden && !!localStorage.getItem('wx:nudge')), 'and "Not now" puts it away (for a month)');
+}
 const nc = await p.textContent('#nowcast-text');
 // (rain from 30 minutes on: said from the start of the quarter hour it starts in)
 ok(await p.isVisible('#nowcast') && /starting in about (15|20|25|30) min/.test(nc), 'the next four hours: rain on its way', nc);
@@ -222,6 +241,12 @@ ok(warn.some((t) => /Frost|Icy patches/.test(t)) && warn.some((t) => /Gales/.tes
   await row.locator('.ins-head').evaluate((e) => e.click());
   await p.waitForTimeout(600);
   ok(shutSays === 'ins-short' && await row.locator('.ins-head').getAttribute('aria-expanded') === 'true' && (await tall()) > shut + 8 && await says() === 'ins-line', 'a row opens from its short line to all it says', `${Math.round(shut)} → ${Math.round(await tall())}px, ${shutSays} → ${await says()}`);
+  // and on from there, to its day or its hours
+  const goLabel = await row.locator('.ins-go').textContent().catch(() => '');
+  if (goLabel) { await row.locator('.ins-go').evaluate((e) => e.click()); await p.waitForSelector('dialog[open]', { timeout: 3000 }).catch(() => {}); }
+  const sheet = await p.evaluate(() => { const d = document.querySelector('dialog[open]'); return d ? `${d.id}: ${(d.querySelector('#detail-title, #day-title, h2')?.textContent || '').trim()}` : ''; });
+  ok(/hour by hour|in full|Sunrise/.test(goLabel) && sheet, 'and on from there to its day or its hours', `${goLabel} → ${sheet}`);
+  if (sheet) { await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog[open]')); await p.waitForTimeout(300); }
   await row.locator('.ins-head').evaluate((e) => e.click());
   await p.waitForTimeout(600);
   ok(await row.locator('.ins-head').getAttribute('aria-expanded') === 'false' && Math.abs((await tall()) - shut) < 1 && await says() === 'ins-short', 'and closes again to its short line');
@@ -258,8 +283,9 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
 // right now: straight after the 16 days (before the insights), each tile drawn as well as said, and each opening to
 // its hours in a sheet of its own (tapped where they are: not scrolled to, as the radar starts once it's scrolled to)
 {
-  const order = await p.evaluate(() => { const t = document.getElementById('tiles'), i = document.getElementById('insights-card'), d = document.getElementById('daily'); return { first: !!(t.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING), afterDays: !!(d.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING) }; });
-  ok(order.first && order.afterDays, 'right now: after the 16 days, before the insights', JSON.stringify(order));
+  const order = await p.evaluate(() => { const t = document.getElementById('tiles'), i = document.getElementById('insights-card'), d = document.getElementById('daily'), hr = document.getElementById('hourly'), nc = document.getElementById('nowcast'), after = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return { highlights: after(nc, i) && after(i, hr), afterDays: after(d, t), title: document.getElementById('insights-title').textContent }; });
+  ok(order.highlights && order.afterDays && order.title === 'Highlights', 'the highlights up top (after the next four hours, before the 48), right now after the days', JSON.stringify(order));
   const drawn = await p.evaluate(() => ['feels .thermo', 'wind .compass', 'humidity .fbar i', 'rain .rbars rect', 'pressure .dial', 'visibility .meter.clear', 'uv .meter'].filter((s) => { const k = s.split(' ')[0]; return !document.querySelector(`#tiles [data-kind="${k}"] ${s.slice(k.length + 1)}`); }));
   ok(!drawn.length, 'feels like, humidity, rain, pressure and visibility drawn too: a thermometer, a bar, the next day\'s rain, a dial, a scale', drawn.join(', ') || 'all there');
   ok(!(await p.locator('#tiles [data-kind="sea"]').count()), 'inland (London): no sea tile (the nearest sea cell is too far out to be its sea)');
@@ -675,6 +701,16 @@ await p.click('#settings-btn'); await p.click('input[name="temp"][value="f"]'); 
 ok(/^\d+°$/.test(await p.textContent('#now-temp')) && Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'switches to °F');
 await p.reload(); await p.waitForSelector('.day-row');
 ok(Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'and remembers it');
+// the glass, as clear or as tinted as you like (iOS 27's slider, in three steps)
+{
+  const tint = () => p.evaluate(() => ({ glass: document.body.dataset.glass, tint: getComputedStyle(document.querySelector('.card')).backgroundColor }));
+  const was = await tint();
+  await p.click('#settings-btn'); await p.click('input[name="glass"][value="tinted"]'); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  const now = await tint();
+  const alpha = (c) => Number((/rgba\([^)]*,\s*([\d.]+)\)/.exec(c) || [])[1] ?? 1);
+  ok(was.glass === 'standard' && now.glass === 'tinted' && alpha(now.tint) > alpha(was.tint) * 1.5, 'the glass tinted when asked: the cards darker behind their words', `${was.tint} → ${now.tint}`);
+  await p.click('#settings-btn'); await p.click('input[name="glass"][value="standard"]'); await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+}
 // search and save a place (the sheet the same height with results as without: it doesn't jump as they come)
 await p.click('#place-btn'); await p.waitForTimeout(600);
 const tall0 = await p.evaluate(() => document.getElementById('places').getBoundingClientRect().height);
@@ -687,6 +723,17 @@ await p.waitForTimeout(600);
 ok((await p.textContent('#place-name')) === 'Edinburgh' && !(await p.evaluate(() => document.getElementById('places').open)), 'a place found by search: Enter takes the first found (even before they\'re back)');
 await p.click('#place-btn');
 ok((await p.locator('#saved li').count()) === 2, 'both places saved');
+// each a card in its own sky (iOS's list): its name, clock and weather, its temperature and the day's high and low;
+// swiped left, a Delete behind it
+{
+  const cards = await p.evaluate(() => [...document.querySelectorAll('#saved .place-card')].map((c) => ({ sky: c.dataset.sky, name: c.querySelector('.pc-name').textContent.trim(), sub: c.querySelector('.pc-sub')?.textContent, temp: c.querySelector('.pc-temp')?.textContent, hl: c.querySelector('.pc-hl')?.textContent, on: c.getAttribute('aria-current') })));
+  ok(cards.length === 2 && cards.every((c) => c.sky && /\d\d:\d\d/.test(c.sub) && /°/.test(c.temp) && /^H .+ L .+/.test(c.hl)) && cards.filter((c) => c.on === 'true').length === 1, 'each place a card in its own sky: its clock, its weather, the day\'s high and low', JSON.stringify(cards).slice(0, 220));
+  await p.waitForTimeout(700);      // (the sheet up, and still)
+  const b = await p.locator('#saved .place-card').nth(1).boundingBox(), cdp = await p.context().newCDPSession(p), y = b.y + b.height / 2;
+  const t = (type, x) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: x == null ? [] : [{ x, y }] });
+  await t('touchStart', b.x + b.width - 30); for (const dx of [20, 50, 90, 130]) { await p.waitForTimeout(16); await t('touchMove', b.x + b.width - 30 - dx); } await t('touchEnd'); await p.waitForTimeout(500);
+  ok(await p.evaluate(() => document.querySelectorAll('#saved li')[1].classList.contains('swiped') && getComputedStyle(document.querySelectorAll('#saved .pc-del')[1]).display !== 'none'), 'swiped left, a Delete behind it');
+}
 await p.keyboard.press('Escape');
 // swipe across the top of the page to the next or previous place: the page follows the finger, and turns to it (a
 // view transition, the page carried off as the next comes in), or gives at the ends, or springs back from a short one

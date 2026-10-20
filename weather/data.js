@@ -276,8 +276,12 @@ export { store };
 export const cell = (lat, lon) => `${(Math.round(lat * 10) / 10).toFixed(1)},${(Math.round(lon * 10) / 10).toFixed(1)}`;
 // what's kept for a place, at a glance (for the list of places): { temp, code, isDay, at } or null
 export function peek(place) {
-  const c = store.get(`wx:${cell(place.lat, place.lon)}`)?.forecast;
-  return c?.j?.current ? { temp: c.j.current.temperature_2m, code: c.j.current.weather_code, isDay: c.j.current.is_day === 1, at: c.at } : null;
+  const c = store.get(`wx:${cell(place.lat, place.lon)}`)?.forecast, j = c?.j;
+  if (!j?.current) return null;
+  // (and its day's high and low, and its clock: for the list of places)
+  const offset = j.utc_offset_seconds || 0, k = j.daily?.time?.indexOf(new Date(Date.now() + offset * 1000).toISOString().slice(0, 10)) ?? -1;
+  return { temp: j.current.temperature_2m, code: j.current.weather_code, isDay: j.current.is_day === 1, at: c.at, offset,
+    hi: k >= 0 ? j.daily.temperature_2m_max?.[k] ?? null : null, lo: k >= 0 ? j.daily.temperature_2m_min?.[k] ?? null : null };
 }
 // how long each kind is good for
 const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, marine: 60 * 60e3, warnings: 5 * 60e3 };

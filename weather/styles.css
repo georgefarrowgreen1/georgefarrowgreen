@@ -23,23 +23,28 @@
   --pad: 16px;
   --card-x: 18px;                /* a card's side margins */
   /* the glass */
-  --tint: rgba(14, 22, 38, 0.36);               /* panels: how much the glass darkens what's behind (more over a pale sky) */
+  --tint: rgba(14, 22, 38, 0.36);               /* panels: how much the glass darkens what's behind (more over a pale sky: body) */
   --tint-ctl: rgba(255, 255, 255, 0.12);        /* controls: lighter, clearer glass */
-  --blur: blur(16px) saturate(190%) brightness(1.04);
+  --blur: blur(22px) saturate(190%) brightness(1.04);      /* (iOS 27's: diffusing busy things behind it more) */
   --blur-ctl: blur(10px) saturate(200%) brightness(1.08);
-  --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 46%);
+  --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 46%);
   --body: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 48%, rgba(255, 255, 255, 0.035));
   --light: radial-gradient(520px circle at var(--lx, -9999px) var(--ly, -9999px), rgba(255, 255, 255, 0.07), transparent 45%);
-  --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.42), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1), inset 0 0 22px rgba(255, 255, 255, 0.035);
-  --lift: 0 14px 34px -10px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.12);
-  --rim: linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.1) 28%, rgba(255, 255, 255, 0.03) 55%, rgba(255, 255, 255, 0.1) 78%, rgba(255, 255, 255, 0.4));
+  --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.55), inset 0 -1px 0.5px rgba(255, 255, 255, 0.12), inset 0 0 22px rgba(255, 255, 255, 0.04);
+  /* (iOS 27's darker edge round the glass, a hairline outside its bright rim, setting it apart from what's behind) */
+  --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.34), 0 14px 34px -10px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.12);
+  --rim: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.12) 28%, rgba(255, 255, 255, 0.03) 55%, rgba(255, 255, 255, 0.12) 78%, rgba(255, 255, 255, 0.55));
   --r-card: 26px;
   --r-inner: 18px;
   color-scheme: dark;
 }
-/* pale skies want a little more tint for the words to stand out; dark ones, less */
-body[data-sky="clear-day"], body[data-sky="partly-day"], body[data-sky="snow-day"], body[data-sky="fog"], body[data-sky="dawn"], body[data-sky="dusk"] { --tint: rgba(14, 22, 38, 0.42); }
-body[data-sky$="-night"], body[data-sky="storm"] { --tint: rgba(14, 22, 38, 0.3); }
+/* pale skies want a little more tint for the words to stand out; dark ones, less; and the glass as clear or as tinted as
+   Settings has it (as iOS 27's Liquid Glass slider: from clear to tinted) */
+body { --tint-a: 0.36; --glass-k: 1; --tint: rgba(14, 22, 38, calc(var(--tint-a) * var(--glass-k))); }
+body[data-sky="clear-day"], body[data-sky="partly-day"], body[data-sky="snow-day"], body[data-sky="fog"], body[data-sky="dawn"], body[data-sky="dusk"] { --tint-a: 0.42; }
+body[data-sky$="-night"], body[data-sky="storm"] { --tint-a: 0.3; }
+body[data-glass="clear"] { --glass-k: 0.55; --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
+body[data-glass="tinted"] { --glass-k: 1.9; --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; -webkit-tap-highlight-color: transparent; }
@@ -77,7 +82,7 @@ a { color: inherit; }
   background-color: var(--tint-ctl);
   background-image: var(--sheen), var(--body);
   -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl);
-  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), inset 0 -1px 0.5px rgba(255, 255, 255, 0.12), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.6), inset 0 -1px 0.5px rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
 }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
 .card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
@@ -188,11 +193,11 @@ body:is(.sheet-up, .deep) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-
 
 /* ---------- the top bar: floating glass ---------- */
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; min-height: 70px; }
-/* where the page scrolls under the bar, it softens (the scroll edge) */
-.top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) 0 -26px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s;
-  background: linear-gradient(180deg, rgba(10, 16, 28, 0.62), rgba(10, 16, 28, 0.38) 60%, rgba(10, 16, 28, 0));
-  -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%);
-  -webkit-mask-image: linear-gradient(180deg, #000 58%, transparent); mask-image: linear-gradient(180deg, #000 58%, transparent); }
+/* where the page scrolls under the bar, a bar of glass the width of the screen with a hairline under it (iOS 27's
+   scroll edge: uniform, so what's under it stays legible, rather than iOS 26's soft fade) */
+.top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) calc(50% - 50vw) 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: rgba(12, 18, 30, 0.5); border-bottom: 0.5px solid rgba(255, 255, 255, 0.16); box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); }
 .top.scrolled::before { opacity: 1; }
 /* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
 .top .place, .top .icon-btn { transition: background-color 0.3s, transform 0.5s var(--spring), filter 0.25s; }
@@ -246,6 +251,35 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
   main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 22px; }
   .col-b { padding-top: 8px; }
 }
+
+/* a phone on its side (iOS 27's Weather turns too): the weather now held on the left, everything else beside it, and a
+   slimmer bar */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  main { grid-template-columns: minmax(0, 0.36fr) minmax(0, 0.64fr); align-items: start; gap: 12px 18px; }
+  .col { display: contents; }
+  main > .col > * { grid-column: 2; }
+  main > .col > .hero { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; }
+  .hero-temp { font-size: 76px; }
+  .hero-icon .wi { width: 60px; height: 60px; }
+  .brief { font-size: 15px; }
+  .top { min-height: 56px; padding-top: 6px; padding-bottom: 4px; }
+  .top .place { min-height: 40px; padding-top: 4px; padding-bottom: 4px; }
+  .top .icon-btn { width: 40px; height: 40px; }
+  html { scroll-padding-top: 60px; }
+}
+
+/* the radar with no rain about: said on the map, at its top in the middle */
+.radar-dry { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 3; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff;
+  background: rgba(20, 28, 44, 0.62); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3); pointer-events: none; }
+
+/* a word about the alerts, once, until they're on or it's put away */
+.nudge { display: grid; grid-template-columns: 34px 1fr; gap: 4px 12px; align-items: start; }
+.nudge .ins-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; grid-row: span 2; }
+.nudge h3 { margin: 0; font-size: 16px; font-weight: 650; }
+.nudge p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.4; }
+.nudge-btns { grid-column: 2; display: flex; gap: 10px; margin-top: 8px; }
+.nudge-btns .pill-btn { min-height: 40px; padding: 8px 16px; }
+.nudge-btns .link { min-height: 40px; padding: 0 8px; color: var(--text-2); }
 
 /* ---------- now ---------- */
 .hero { padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); transform-origin: 0 0;
@@ -334,7 +368,10 @@ main.paging > .col { will-change: translate; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .card-title, .section-title { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 0 0 10px; display: flex; align-items: center; gap: 7px; }
 .card-head .card-title { margin: 0; }
-.section-title { margin: 4px 0 10px; color: #fff; padding: 6px 14px; border-radius: 999px; width: fit-content; }
+.section-title { margin: 4px 0 10px; padding: 0 4px; width: fit-content; }
+/* (no glass of its own: a heading over the tiles, as each card's is inside it) */
+.section-title { background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.section-title::before { display: none; }
 .ct-icon { display: inline-flex; color: var(--text-3); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack:empty { display: none; }
@@ -348,6 +385,8 @@ main.paging > .col { will-change: translate; }
 @media (prefers-reduced-motion: reduce) { .seg::before { transition: none; } }
 .seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; transition: color 0.3s, opacity 0.15s; }
 .seg button[aria-selected="true"] { color: #fff; }
+/* (each a finger's 44 points tall, reaching over the track's edge) */
+.seg button::after { content: ""; position: absolute; inset: -3px 0; }
 .seg button:not([aria-selected="true"]):active { opacity: 0.6; }
 
 /* hour strip */
@@ -595,7 +634,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .win-text { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
 /* the ones not worth it today or tomorrow: named in a line, under the rest (a tap shows them, faded) */
 .win.poor { opacity: 0.62; }
-.win-poor { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 10px; padding: 2px 0; font-size: 13.5px; line-height: 1.4; color: var(--text-2); cursor: pointer; }
+.win-poor { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 0; padding: 10px 0; min-height: 44px; font-size: 13.5px; line-height: 1.4; color: var(--text-2); cursor: pointer; }
 .win-poor b { font-weight: 600; color: var(--text-3); }
 .win-poor > span:last-child { flex: none; display: inline-flex; color: var(--text-3); }
 .win-poor:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
@@ -684,7 +723,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .dial .dl-way { stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 /* visibility: a scale from fog to clear, its ends named */
 .meter.clear { background: linear-gradient(90deg, rgba(190, 198, 210, 0.35), rgba(190, 210, 230, 0.7) 45%, #8fd0ff); }
-.ends { display: flex; justify-content: space-between; font-size: 10.5px; font-weight: 600; color: var(--text-3); margin-top: -1px; }
+.ends { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--text-3); margin-top: -1px; }
 .sunarc { width: 100%; max-width: 340px; height: auto; display: block; margin: 4px auto; }
 .sunarc .arc { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; stroke-dasharray: 3 4; }
 .sunarc .done { fill: none; stroke: #ffd166; stroke-width: 2; }
@@ -717,10 +756,10 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .foot p { margin: 2px auto; max-width: 60ch; }
 .foot-more { display: block; }
 /* (the words small, the places to tap not: each reaches past its words, without moving the lines apart) */
-.foot .link { font-size: inherit; padding: 8px 4px; margin: -8px -4px; }
+.foot .link { font-size: inherit; padding: 13px 4px; margin: -13px -4px; }
 /* (its links and buttons alike, Refresh too: underlined in the line's own colour, as the Weather app's are) */
 .foot a, .foot .link { color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.45); text-underline-offset: 2px; }
-.foot a { padding: 8px 2px; margin: -8px -2px; }
+.foot a { padding: 13px 2px; margin: -13px -2px; }
 .foot a:active { opacity: 0.55; }
 /* a plain button: tinted text, as on iOS */
 .link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
@@ -786,9 +825,32 @@ body.sheet-drag .page { transition: none; }
 .row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-btn .rb-temp { font-size: 20px; font-weight: 500; }
 .row-btn[aria-current="true"] .rb-name::after { content: " · showing"; font-weight: 500; color: var(--text-3); font-size: 13px; }
-.saved li { display: flex; align-items: center; gap: 4px; }
-.saved .del { width: 38px; height: 38px; border-radius: 50%; border: 0; background: none; color: var(--text-3); cursor: pointer; display: grid; place-items: center; flex: none; }
-.saved .del:hover { color: #fff; background-color: rgba(255, 255, 255, 0.1); }
+/* the saved places: a card each, in its own sky (iOS's Weather list), a Delete behind it, swiped to */
+.saved { display: flex; flex-direction: column; gap: 10px; }
+.saved li + li { border-top: 0; }
+.pc-li { position: relative; border-radius: 22px; overflow: hidden; }
+.place-card { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; width: 100%; min-height: 104px; padding: 14px 16px 12px; border: 0; border-radius: 22px; cursor: pointer; text-align: left; color: #fff;
+  background: linear-gradient(160deg, var(--pa, #3a5a86), var(--pb, #22324c)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.3);
+  transition: transform 0.35s var(--glide); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
+.place-card[aria-current="true"] { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.3); }
+.pc-li.swiped .place-card { transform: translateX(-92px); }
+.pc-l, .pc-r { display: flex; flex-direction: column; min-width: 0; }
+.pc-r { align-items: flex-end; justify-content: space-between; }
+.pc-name { font-size: 21px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-here { display: inline-grid; vertical-align: 1px; }
+.pc-sub { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); margin-top: 2px; }
+.pc-cond { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: auto; padding-top: 10px; }
+.pc-temp { font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
+.pc-hl { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); white-space: pre; }
+.pc-del { position: absolute; inset: 0 0 0 auto; width: 92px; border: 0; background: #ff453a; color: #fff; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+.pc-bin { display: none; position: absolute; z-index: 2; right: 10px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.35); color: #fff; place-items: center; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .pc-li:hover .pc-bin { display: grid; } .pc-li:hover .pc-r { visibility: hidden; } }
+.place-card[data-sky="clear-day"] { --pa: #3d86d6; --pb: #1f5fae; } .place-card[data-sky="partly-day"] { --pa: #4c7fb8; --pb: #2c5f99; }
+.place-card[data-sky="cloudy-day"] { --pa: #6a7d93; --pb: #43566c; } .place-card[data-sky="rain-day"] { --pa: #4f6176; --pb: #303f52; }
+.place-card[data-sky="snow-day"] { --pa: #7d93ad; --pb: #4f6580; } .place-card[data-sky="fog"] { --pa: #858f9b; --pb: #59626e; } .place-card[data-sky="storm"] { --pa: #3a4256; --pb: #1c2130; }
+.place-card[data-sky="clear-night"] { --pa: #1b2950; --pb: #070d22; } .place-card[data-sky="partly-night"] { --pa: #22305a; --pb: #0c1428; }
+.place-card[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } .place-card[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } .place-card[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
+@media (prefers-reduced-motion: reduce) { .place-card { transition: none; } }
 #use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
 
 /* settings: groups */
@@ -978,10 +1040,12 @@ body.no-scroll { overflow: hidden; }
 .map-zoom button { transition: background-color 0.2s, transform 0.42s var(--spring), color 0.2s; }
 .map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
 @media (hover: hover) { .map-zoom button:not(:disabled):hover { background: rgba(255, 255, 255, 0.12); } }
+.map-in, .map-out { position: relative; }
+.map-in::after, .map-out::after, .radar-centre::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
 .radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50%; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
 .radar-centre svg { position: relative; z-index: 3; }
 /* the scale: a bracket drawn on the map, as Maps does */
-.map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 10.5px; font-weight: 650; line-height: 1.3;
+.map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 11px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
 /* the place: a blue dot ringed in white, as Maps marks where you are */
 .map-dot { width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; pointer-events: none;
@@ -1029,7 +1093,7 @@ body.no-scroll { overflow: hidden; }
 
 /* ---------- accuracy ---------- */
 .models.acc td { white-space: nowrap; }
-.best { margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; vertical-align: 1px; display: inline-block; }
+.best { margin-left: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; vertical-align: 1px; display: inline-block; }
 .tuned-note { color: #cfe7ff; margin: -4px 0 12px; }
 .models .tuned-row td { color: #cfe7ff; font-weight: 650; }
 

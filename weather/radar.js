@@ -187,7 +187,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
-  let map = null, starting = null, credit = null, told = false, frames = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
+  let map = null, starting = null, credit = null, dry = null, told = false, frames = [], nowAt = 0, i = 0, timer = null, playing = false, fetched = 0, here = { lat, lon }, g = null;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
@@ -233,9 +233,12 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     if (!calm && from && Math.abs(to - from) > 0.5) morph = chip.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 550, easing: "cubic-bezier(0.34, 1.32, 0.64, 1)" });
   };
   const stop = () => { playing = false; clearTimeout(timer); play.setAttribute("aria-label", "Play"); play.dataset.on = "0"; };
+  // playing: from now through the next two hours, again and again (the hours gone are a drag back; played from there,
+  // it runs on through them too)
   const run = () => {
     playing = true; play.setAttribute("aria-label", "Pause"); play.dataset.on = "1";
-    const next = () => { if (!playing) return; show(i + 1); timer = setTimeout(next, i === frames.length - 1 ? HOLD : i === nowAt ? AT_NOW : STEP); };
+    const from = i < nowAt ? 0 : nowAt;
+    const next = () => { if (!playing) return; show(i >= frames.length - 1 ? from : i + 1); timer = setTimeout(next, i === frames.length - 1 ? HOLD : i === nowAt ? AT_NOW : STEP); };
     clearTimeout(timer); timer = setTimeout(next, i === nowAt ? AT_NOW : STEP);
   };
   // under the slider: where the radar ends and the forecast begins
@@ -274,6 +277,8 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       return { canvas: canvasFor(g, model.rain[f.k], model.snow[f.k]), bounds: box };
     }));
     map.box(model ? box : null);
+    // (nothing on the radar about here, and nothing coming: said on the map, so an empty map isn't a puzzle)
+    dry.hidden = !held;
     credited([...map.credit, past.length ? "RainViewer" : "Open-Meteo"]);      // (the rest are in the credits)
     // (a line only when something's missing)
     status.textContent = !past.length ? "The radar isn't available right now: showing the forecast's rain." : !drift && !model && !held ? "The next two hours aren't available right now: showing the radar." : "";
@@ -297,7 +302,8 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     zout.addEventListener("click", () => map.zoomBy(-1));
     back.addEventListener("click", () => map.view(here.lat, here.lon, true));
     credit.addEventListener("click", () => credits?.());
-    wrap.append(top, ruler, credit);
+    dry = document.createElement("span"); dry.className = "radar-dry"; dry.textContent = "No rain nearby"; dry.hidden = true;
+    wrap.append(top, ruler, credit, dry);
     const moved = () => {
       const s = map.state(), most = s.mpp * 90;
       zin.disabled = s.zoom >= s.max - 0.01; zout.disabled = s.zoom <= s.min + 0.01;

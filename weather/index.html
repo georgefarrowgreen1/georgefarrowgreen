@@ -79,6 +79,8 @@
         <div class="insights" id="insights" role="list"></div>
       </section>
 
+      <section class="card nudge" id="nudge" aria-labelledby="nudge-title" hidden></section>
+
       <section class="card" id="hourly" aria-labelledby="hourly-title">
         <div class="card-head">
           <h2 class="card-title" id="hourly-title"><span class="ct-icon" data-g="clock"></span>Next 48 hours</h2>
@@ -201,6 +203,9 @@
         </fieldset>
         <fieldset class="opt"><legend>Clock</legend>
           <div class="choice"><label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Glass</legend>
+          <div class="choice"><label><input type="radio" name="glass" value="clear" /> Clear</label><label><input type="radio" name="glass" value="standard" /> Standard</label><label><input type="radio" name="glass" value="tinted" /> Tinted</label></div>
         </fieldset>
         <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
           <label class="switch"><input type="checkbox" name="rain" /> Rain alerts</label>

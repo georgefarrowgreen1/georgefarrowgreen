@@ -52,12 +52,14 @@ function loadSettings() {
   S.settings = { ...d, ...o,
     temp: one(o.temp, ["c", "f"], d.temp), wind: one(o.wind, ["mph", "kmh", "ms", "kn"], d.wind), precip: one(o.precip, ["mm", "in"], d.precip),
     pressure: one(o.pressure, ["hpa", "inhg", "mmhg"], d.pressure), clock: one(o.clock, ["12", "24"], d.clock), tune: o.tune !== false,
+    glass: one(o.glass, ["clear", "standard", "tinted"], "standard"),
     commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: obj(o.notify, d.notify),
     activities: Array.isArray(o.activities) ? o.activities.filter((a) => a && typeof a === "object" && typeof a.name === "string") : d.activities,
   };
   S.f = makeFormat(S.settings);
+  document.body.dataset.glass = S.settings.glass;
 }
-const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); };
+const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); document.body.dataset.glass = S.settings.glass; };
 const place = () => S.places[S.cur] || null;
 const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur", S.cur); };
 
@@ -446,6 +448,7 @@ function render() {
   hourly(wx, now);
   daily(wx, now);
   windows(wx, now);
+  nudge();
   accuracy(wx);
   climate(wx, now);
   tiles(wx, now);
@@ -928,8 +931,8 @@ function tiles(wx, now) {
   say.wind = () => [h("div", { class: "wind-row" }, h("div", {}, h("div", { class: "big" }, String(f.windNum(c.wind)), h("small", {}, f.windUnit)), h("p", {}, `Gusts ${f.windNum(c.gust)}`)), h("div", { svg: comp })),
     h("p", { class: "sub" }, `${bf.name}, from the ${compassWord(dir)}.`)];
   // humidity: a bar filled to it
-  const dew = c.dew;
-  const comfort = dew == null ? "" : dew < 10 ? "Dry and fresh" : dew < 15 ? "Comfortable" : dew < 18 ? "A little humid" : dew < 21 ? "Humid" : "Very humid and oppressive";
+  const dew = c.dew, dr = dew == null ? null : Math.round(dew);     // (worded by the dew point as shown: 9.6° shows as 10°, so it's "comfortable")
+  const comfort = dr == null ? "" : dr < 10 ? "Dry and fresh" : dr < 15 ? "Comfortable" : dr < 18 ? "A little humid" : dr < 21 ? "Humid" : "Very humid and oppressive";
   say.humidity = () => [h("div", { class: "big" }, `${Math.round(c.rh ?? 0)}%`), fillBar((c.rh ?? 0) / 100, "wet"), h("p", { class: "sub" }, `Dew point ${f.temp(dew)}. ${comfort}.`)];
   // rain: the last day and the next
   const past = I.hoursBetween(wx, now - DAY, now).reduce((a, x) => a + (x.precip || 0), 0), next = I.hoursBetween(wx, now, now + DAY).reduce((a, x) => a + (x.precip || 0), 0);
@@ -1304,20 +1307,42 @@ async function locate(quiet = false) {
     return false;
   } finally { btn.classList.remove("busy"); }
 }
+// the saved places as cards, as iOS's Weather lists them: each in its own sky, its name, its clock and its weather, the
+// temperature and the day's high and low; swiped left, a Delete behind it (or, with a mouse, a bin on it)
 function drawSaved() {
   const f = S.f;
   $("saved").replaceChildren(...S.places.map((p, i) => {
-    const k = peek(p);
-    return h("li", {},
-      h("button", { class: "row-btn", type: "button", "aria-current": i === S.cur ? "true" : "false", onclick: () => { S.cur = i; savePlaces(); closeSheet($("places")); go(); } },
-        k ? h("span", { svg: weatherIcon(iconOf(k.code, k.isDay), 30) }) : null,
-        h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.gps && p.name !== "My Location" ? "My Location" : p.region || "")),
-        k ? h("span", { class: "rb-temp" }, f.temp(k.temp)) : null),
-      S.places.length > 1 ? h("button", { class: "del", type: "button", "aria-label": `Remove ${p.name}`, svg: glyph("trash", 18), onclick: () => {
-        const was = place(); S.places.splice(i, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go();
-      } }) : null);
+    const k = peek(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
+    const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
+      "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}${i === S.cur ? ", showing" : ""}`,
+      onclick: () => { if (li.classList.contains("swiped")) { li.classList.remove("swiped"); return; } S.cur = i; savePlaces(); closeSheet($("places")); go(); } },
+      h("span", { class: "pc-l" }, h("span", { class: "pc-name" }, p.gps ? [h("span", { class: "pc-here", svg: glyph("arrow", 12) }), " "] : null, p.name),
+        h("span", { class: "pc-sub" }, [p.gps && p.name !== "My Location" ? "My Location" : p.region?.split(",")[0], k ? f.time(Date.now() + k.offset * 1000) : null].filter(Boolean).join(" · ")),
+        k ? h("span", { class: "pc-cond" }, label(k.code, k.isDay)) : null),
+      h("span", { class: "pc-r" }, k ? h("span", { class: "pc-temp" }, f.temp(k.temp)) : null, k && k.hi != null ? h("span", { class: "pc-hl" }, `H ${f.temp(k.hi)}  L ${f.temp(k.lo)}`) : null));
+    const remove = () => { const was = place(); S.places.splice(i, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go(); };
+    const li = h("li", { class: "pc-li" }, card, S.places.length > 1 ? [h("button", { class: "pc-del", type: "button", "aria-label": `Remove ${p.name}`, onclick: remove }, h("span", { svg: glyph("trash", 20) }), "Delete"),
+      h("button", { class: "pc-bin", type: "button", "aria-label": `Remove ${p.name}`, svg: glyph("trash", 16), onclick: remove })] : null);
+    if (S.places.length > 1) swipeOpen(li, card);
+    return li;
   }));
 }
+// a card swiped left shows what's behind it; back, or a tap, closes it again
+function swipeOpen(li, card) {
+  let x0 = null, y0 = 0, dx = 0, lock = null;
+  card.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; lock = null; for (const o of document.querySelectorAll(".pc-li.swiped")) if (o !== li) o.classList.remove("swiped"); }, { passive: true });
+  card.addEventListener("touchmove", (e) => {
+    if (x0 == null) return;
+    const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
+    lock ??= Math.abs(mx) > 8 ? "x" : Math.abs(my) > 8 ? "y" : null;
+    if (lock !== "x") return;
+    dx = Math.min(0, mx + (li.classList.contains("swiped") ? -92 : 0));
+    card.style.transition = "none"; card.style.transform = `translateX(${Math.max(-140, dx)}px)`;
+  }, { passive: true });
+  card.addEventListener("touchend", () => { if (lock === "x") { card.style.transition = card.style.transform = ""; li.classList.toggle("swiped", dx < -46); } x0 = null; });
+}
+// a sky for some weather, as the page's (styles.css body[data-sky])
+const skyOf = (code, day) => { const kind = codeInfo(code).kind; return kind === "storm" ? "storm" : ["rain", "showers", "drizzle", "sleet"].includes(kind) ? (day ? "rain-day" : "rain-night") : kind === "snow" ? (day ? "snow-day" : "snow-night") : kind === "fog" ? "fog" : kind === "clear" ? (day ? "clear-day" : "clear-night") : kind === "partly" ? (day ? "partly-day" : "partly-night") : day ? "cloudy-day" : "cloudy-night"; };
 let searchTimer = null, searchSeq = 0;
 function onSearch(now = false) {
   clearTimeout(searchTimer);
@@ -1342,7 +1367,7 @@ function onSearch(now = false) {
 /* ---------- settings ---------- */
 function drawSettings() {
   const form = $("settings-form");
-  for (const k of ["temp", "wind", "precip", "pressure", "clock"]) { const r = form.querySelector(`input[name="${k}"][value="${S.settings[k]}"]`); if (r) r.checked = true; }
+  for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) { const r = form.querySelector(`input[name="${k}"][value="${S.settings[k]}"]`); if (r) r.checked = true; }
   form.commute.checked = !!S.settings.commute?.on;
   form.am.value = S.settings.commute?.am || "08:00"; form.pm.value = S.settings.commute?.pm || "17:30";
   form.tune.checked = S.settings.tune !== false;
@@ -1353,7 +1378,7 @@ function readSettings(e) {
   if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add")) return;     // (their own handlers)
   const form = $("settings-form"), v = (k) => form.querySelector(`input[name="${k}"]:checked`)?.value;
   const units = ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join();
-  for (const k of ["temp", "wind", "precip", "pressure", "clock"]) if (v(k)) S.settings[k] = v(k);
+  for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) if (v(k)) S.settings[k] = v(k);
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
@@ -1376,6 +1401,24 @@ const redraw = () => { render(); drawActs(); };
 
 /* ---------- notifications ---------- */
 const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+// A word about the alerts, until they're on or it's put away (for a month): what they are, and a way to them (or, on an
+// iPhone not yet running Weather from its Home Screen, how to get there first)
+function nudge() {
+  const box = $("nudge"), n = S.settings.notify, away = store.get("wx:nudge");
+  if (n.rain || n.brief || (away && Date.now() - away < 30 * DAY)) { box.hidden = true; return; }
+  if (!box.hidden && box.childElementCount) return;
+  const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
+  box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h3", { id: "nudge-title" }, "Get rain alerts"),
+    h("p", {}, why || "A heads-up here before rain starts, and a morning briefing if you'd like one."),
+    h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify-set"); } }, "Turn on"),
+      h("button", { class: "link", type: "button", onclick: done }, why ? "OK" : "Not now")));
+  box.hidden = false;
+}
+// Settings, open at one of its parts
+function openSettingsAt(id) {
+  $("settings-btn").click();
+  setTimeout(() => { const el = $(id); el?.scrollIntoView({ block: "start", behavior: calm.matches ? "auto" : "smooth" }); el?.querySelector("input")?.focus({ preventScroll: true }); }, 450);
+}
 // why this phone can't have them, if it can't
 function notifyWhy() {
   if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site (browser settings)." : null;
@@ -1741,11 +1784,12 @@ function wire() {
   const wide = matchMedia("(min-width: 980px)"), dock = () => (wide.matches ? $("daily") : $("windows")).after($("climate"));
   dock(); wide.addEventListener("change", dock);
   // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
-  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero");
+  const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
   let ticking = 0;
   const onScroll = () => {
     ticking = 0;
-    const c = Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = Math.min(1, Math.max(0, (c - 0.55) / 0.35));
+    // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
+    const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = Math.min(1, Math.max(0, (c - 0.55) / 0.35));
     heroEl.style.setProperty("--c", c.toFixed(3)); top.style.setProperty("--cs", (cs * cs * (3 - 2 * cs)).toFixed(3));
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
