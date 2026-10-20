@@ -825,15 +825,16 @@ body.sheet-drag .page { transition: none; }
 .row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-btn .rb-temp { font-size: 20px; font-weight: 500; }
 .row-btn[aria-current="true"] .rb-name::after { content: " · showing"; font-weight: 500; color: var(--text-3); font-size: 13px; }
-/* the saved places: a card each, in its own sky (iOS's Weather list), a Delete behind it, swiped to */
+/* the saved places: a card each, in its own sky (iOS's Weather list); swiped left, it narrows to make room for a Delete
+   beside it, a rounded button of its own (iOS 27's swipe actions), so nothing on it is cut off */
 .saved { display: flex; flex-direction: column; gap: 10px; }
 .saved li + li { border-top: 0; }
-.pc-li { position: relative; border-radius: 22px; overflow: hidden; }
+.pc-li { position: relative; }
 .place-card { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; width: 100%; min-height: 104px; padding: 14px 16px 12px; border: 0; border-radius: 22px; cursor: pointer; text-align: left; color: #fff;
   background: linear-gradient(160deg, var(--pa, #3a5a86), var(--pb, #22324c)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.3);
-  transition: transform 0.35s var(--glide); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
+  transition: width 0.35s var(--glide); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
 .place-card[aria-current="true"] { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.3); }
-.pc-li.swiped .place-card { transform: translateX(-92px); }
+.pc-li.swiped .place-card, .pc-li:has(.pc-del:focus-visible) .place-card { width: calc(100% - 100px); }
 .pc-l, .pc-r { display: flex; flex-direction: column; min-width: 0; }
 .pc-r { align-items: flex-end; justify-content: space-between; }
 .pc-name { font-size: 21px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -842,7 +843,10 @@ body.sheet-drag .page { transition: none; }
 .pc-cond { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: auto; padding-top: 10px; }
 .pc-temp { font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
 .pc-hl { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); white-space: pre; }
-.pc-del { position: absolute; inset: 0 0 0 auto; width: 92px; border: 0; background: #ff453a; color: #fff; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+.pc-del { position: absolute; inset: 0 0 0 auto; width: 92px; border: 0; border-radius: 22px; background: #ff453a; color: #fff; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3); transform: scale(0.6); opacity: 0; transition: transform 0.35s var(--spring), opacity 0.2s; }
+.pc-li.swiped .pc-del, .pc-del:focus-visible { transform: none; opacity: 1; }
+.pc-del:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .pc-bin { display: none; position: absolute; z-index: 2; right: 10px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.35); color: #fff; place-items: center; cursor: pointer; }
 @media (hover: hover) and (pointer: fine) { .pc-li:hover .pc-bin { display: grid; } .pc-li:hover .pc-r { visibility: hidden; } }
 .place-card[data-sky="clear-day"] { --pa: #3d86d6; --pb: #1f5fae; } .place-card[data-sky="partly-day"] { --pa: #4c7fb8; --pb: #2c5f99; }
@@ -850,7 +854,7 @@ body.sheet-drag .page { transition: none; }
 .place-card[data-sky="snow-day"] { --pa: #7d93ad; --pb: #4f6580; } .place-card[data-sky="fog"] { --pa: #858f9b; --pb: #59626e; } .place-card[data-sky="storm"] { --pa: #3a4256; --pb: #1c2130; }
 .place-card[data-sky="clear-night"] { --pa: #1b2950; --pb: #070d22; } .place-card[data-sky="partly-night"] { --pa: #22305a; --pb: #0c1428; }
 .place-card[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } .place-card[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } .place-card[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
-@media (prefers-reduced-motion: reduce) { .place-card { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: none; } }
 #use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
 
 /* settings: groups */

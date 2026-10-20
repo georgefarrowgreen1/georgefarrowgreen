@@ -427,7 +427,8 @@ speed you let go at as the next place comes in from the other side (a view
 transition, where the browser has them); not far enough, it springs back. A
 day's details go to the day before or after the same way. Places lists them as
 cards, as iOS's Weather does: each in its own sky, its name, its clock and its
-weather, the temperature and the day's high and low; swipe one left for Delete.
+weather, the temperature and the day's high and low; swipe one left and it
+narrows to make room for a Delete beside it (nothing on it cut off).
 Turned on its side, a phone shows the weather now held on the left and
 everything else beside it, scrolling, as iOS 27's Weather does. Settings →
 Glass makes the glass Clear, Standard or Tinted (as iOS 27's slider does: a web

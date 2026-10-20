@@ -732,7 +732,10 @@ ok((await p.locator('#saved li').count()) === 2, 'both places saved');
   const b = await p.locator('#saved .place-card').nth(1).boundingBox(), cdp = await p.context().newCDPSession(p), y = b.y + b.height / 2;
   const t = (type, x) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: x == null ? [] : [{ x, y }] });
   await t('touchStart', b.x + b.width - 30); for (const dx of [20, 50, 90, 130]) { await p.waitForTimeout(16); await t('touchMove', b.x + b.width - 30 - dx); } await t('touchEnd'); await p.waitForTimeout(500);
-  ok(await p.evaluate(() => document.querySelectorAll('#saved li')[1].classList.contains('swiped') && getComputedStyle(document.querySelectorAll('#saved .pc-del')[1]).display !== 'none'), 'swiped left, a Delete behind it');
+  await p.waitForTimeout(400);
+  const sw = await p.evaluate(() => { const li = document.querySelectorAll('#saved li')[1], c = li.querySelector('.place-card'), n = c.querySelector('.pc-name'), d = li.querySelector('.pc-del'), r = (e) => e.getBoundingClientRect();
+    return { swiped: li.classList.contains('swiped'), sameLeft: Math.abs(r(c).left - r(li).left) < 1, nameIn: r(n).left >= r(c).left && r(n).width > 0, room: Math.round(r(li).right - r(c).right), del: getComputedStyle(d).opacity, apart: r(d).left - r(c).right }; });
+  ok(sw.swiped && sw.sameLeft && sw.nameIn && sw.room >= 90 && sw.del === '1' && sw.apart >= 4, 'swiped left, it narrows (nothing on it cut off) for a Delete beside it', JSON.stringify(sw));
 }
 await p.keyboard.press('Escape');
 // swipe across the top of the page to the next or previous place: the page follows the finger, and turns to it (a

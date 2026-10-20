@@ -1327,8 +1327,10 @@ function drawSaved() {
     return li;
   }));
 }
-// a card swiped left shows what's behind it; back, or a tap, closes it again
+// a card swiped left narrows, following the finger, for the Delete beside it (let go past half way, it stays open);
+// back, or a tap, closes it again
 function swipeOpen(li, card) {
+  const ROOM = 100;
   let x0 = null, y0 = 0, dx = 0, lock = null;
   card.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; lock = null; for (const o of document.querySelectorAll(".pc-li.swiped")) if (o !== li) o.classList.remove("swiped"); }, { passive: true });
   card.addEventListener("touchmove", (e) => {
@@ -1336,10 +1338,12 @@ function swipeOpen(li, card) {
     const mx = e.touches[0].clientX - x0, my = e.touches[0].clientY - y0;
     lock ??= Math.abs(mx) > 8 ? "x" : Math.abs(my) > 8 ? "y" : null;
     if (lock !== "x") return;
-    dx = Math.min(0, mx + (li.classList.contains("swiped") ? -92 : 0));
-    card.style.transition = "none"; card.style.transform = `translateX(${Math.max(-140, dx)}px)`;
+    dx = Math.min(0, mx + (li.classList.contains("swiped") ? -ROOM : 0));
+    // (past the room it needs, it gives less and less)
+    const give = -dx <= ROOM ? -dx : ROOM + (-dx - ROOM) * 0.3;
+    card.style.transition = "none"; card.style.width = `calc(100% - ${give.toFixed(1)}px)`;
   }, { passive: true });
-  card.addEventListener("touchend", () => { if (lock === "x") { card.style.transition = card.style.transform = ""; li.classList.toggle("swiped", dx < -46); } x0 = null; });
+  card.addEventListener("touchend", () => { if (lock === "x") { card.style.transition = card.style.width = ""; li.classList.toggle("swiped", dx < -ROOM / 2); } x0 = null; });
 }
 // a sky for some weather, as the page's (styles.css body[data-sky])
 const skyOf = (code, day) => { const kind = codeInfo(code).kind; return kind === "storm" ? "storm" : ["rain", "showers", "drizzle", "sleet"].includes(kind) ? (day ? "rain-day" : "rain-night") : kind === "snow" ? (day ? "snow-day" : "snow-night") : kind === "fog" ? "fog" : kind === "clear" ? (day ? "clear-day" : "clear-night") : kind === "partly" ? (day ? "partly-day" : "partly-night") : day ? "cloudy-day" : "cloudy-night"; };
