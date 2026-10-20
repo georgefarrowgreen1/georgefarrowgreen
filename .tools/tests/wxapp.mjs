@@ -685,6 +685,17 @@ ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent
 await p.screenshot({ path: `${out}/wx-settings.png` });
 await p.keyboard.press('Escape');
 ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf') || /Golf/.test(await p.textContent('#win-poor').catch(() => '')), 'and golf has its best time');
+// none of them chosen: no Best times card at all, back as soon as one is
+{
+  // (one at a time, found afresh: each switch draws the list again)
+  const flip = (on) => p.evaluate((on) => { for (let k = 0; k < 20; k++) { const i = [...document.querySelectorAll('#acts-list .act input[type="checkbox"], #settings-form input[name^="x_"]')].find((x) => x.checked !== on); if (!i) break; i.click(); } }, on);
+  await p.click('#settings-btn'); await flip(false); await p.waitForTimeout(300);
+  const gone = await p.evaluate(() => document.getElementById('windows').hidden && !document.getElementById('windows').offsetHeight);
+  await flip(true); await p.waitForTimeout(300);
+  const back = await p.evaluate(() => !document.getElementById('windows').hidden && document.querySelectorAll('#win-grid .win, #win-poor').length > 0);
+  await p.keyboard.press('Escape');
+  ok(gone && back, 'nothing chosen for the best times: no card for them (and back when one is)', JSON.stringify({ gone, back }));
+}
 // a choice of one: a lens glides to the chosen one (two choices, or four), and nothing on the page behind is blurred or
 // moving while the sheet's up (the sheet glides over a still page)
 await p.click('#settings-btn');

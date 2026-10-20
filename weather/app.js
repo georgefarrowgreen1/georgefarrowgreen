@@ -812,6 +812,8 @@ function windows(wx, now) {
     h("div", { class: "win-day" }, h("span", {}, w.start == null ? "Not today or tomorrow" : f.day(w.start, now)), h("span", { class: "win-rate", "data-r": w.rating }, w.rating)),
     w.start == null ? null : h("div", { class: "win-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`),
     h("div", { class: "win-text" }, w.text));
+  // (none chosen in Settings: no card at all)
+  $("windows").hidden = !list.length;
   const good = list.filter((w) => w.rating !== "Poor"), poor = list.filter((w) => w.rating === "Poor");
   const grid = $("win-grid");
   grid.replaceChildren(...good.map(tile), ...(S.allWins ? poor.map(tile) : []));
