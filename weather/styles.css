@@ -423,6 +423,16 @@ main.paging > .col { will-change: translate; }
 .play .fbar i { transform-origin: 0 50%; animation: sweep 0.9s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
 .pre .dial .dl-needle-g { transform: rotate(var(--sw, 0deg)); }
 .play .dial .dl-needle-g { animation: dial 1.3s cubic-bezier(0.3, 1.35, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+/* the tide comes in: its water rises, its line traces along, then where it is now */
+.tidec .tc-water { transform-box: fill-box; transform-origin: 50% 100%; }
+.pre .tidec .tc-water { transform: scaleY(0); }
+.pre .tidec .tc-line { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
+.pre .tidec .tc-here, .pre .tidec .tc-mark { opacity: 0; }
+.tidec .tc-here, .tidec .tc-mark { transform-box: fill-box; transform-origin: 50% 50%; }
+.play .tidec .tc-water { animation: fill-up 1.1s var(--spring) backwards; animation-delay: var(--t0, 0ms); }
+.play .tidec .tc-line { stroke-dasharray: 1 1; animation: c-draw 1.2s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.play .tidec .tc-mark { animation: c-pop 0.4s var(--spring) backwards; animation-delay: calc(0.9s + var(--t0, 0ms)); }
+.play .tidec .tc-here { animation: c-pop 0.5s var(--spring) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
 @keyframes fill-up { from { transform: scaleY(0); } }
 @keyframes dial { from { transform: rotate(var(--sw, 0deg)); } }
 @keyframes sweep { from { transform: scaleX(0); } }
@@ -430,8 +440,8 @@ main.paging > .col { will-change: translate; }
 @keyframes swing { from { transform: rotate(-150deg); } }
 @keyframes knob { from { left: 0%; opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
-  .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g, .pre .rbars rect { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i { opacity: 1; } .pre .sunarc .done { stroke-dashoffset: 0; }
-  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g, .play .rbars rect { animation: none; }
+  .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g, .pre .rbars rect, .pre .tidec .tc-water { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i, .pre .tidec .tc-here, .pre .tidec .tc-mark { opacity: 1; } .pre .sunarc .done, .pre .tidec .tc-line { stroke-dashoffset: 0; }
+  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g, .play .rbars rect, .play .tidec .tc-water, .play .tidec .tc-line, .play .tidec .tc-mark, .play .tidec .tc-here { animation: none; }
   .tile.opens, .tile.opens:active { transition: none; transform: none; }
 }
 
@@ -657,6 +667,16 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .sunarc .sun.down { fill: #ffd166; opacity: 0.55; }
 .sun-next { margin: -2px 0 8px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .moon-row { display: flex; align-items: center; gap: 10px; margin: 2px 0; }
+/* the sea: how warm, the waves, and the tide's next day as a little curve */
+.sea-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tidec { width: 168px; max-width: 54vw; height: auto; display: block; overflow: visible; }
+.tidec .tc-water { fill: rgba(90, 200, 250, 0.2); }
+.tidec .tc-line { fill: none; stroke: #5ac8fa; stroke-width: 2; stroke-linecap: round; }
+.tidec .tc-mark { fill: #5ac8fa; stroke: rgba(14, 22, 36, 0.9); stroke-width: 1.2; }
+.tidec .tc-now { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; stroke-dasharray: 2 3; }
+.tidec .tc-here { fill: #fff; stroke: rgba(14, 22, 36, 0.9); stroke-width: 1.6; }
+.detail-now .tidec { width: 200px; }
+.kv.tides { margin: 10px 0 2px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 13px; color: var(--text-2); margin: 0; }
 .kv dt { color: var(--text-3); }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #fff; }

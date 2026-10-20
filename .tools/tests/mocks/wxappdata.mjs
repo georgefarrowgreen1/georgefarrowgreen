@@ -100,3 +100,17 @@ export function archive(now) {
   }
   return { latitude: LAT, longitude: LON, timezone: "UTC", daily: { time, temperature_2m_max: tmax, temperature_2m_min: tmin, precipitation_sum: rain } };
 }
+// the sea (Open-Meteo's marine forecast, its nearest sea cell): for Bacton, on the Norfolk coast, a cell 10 km off it;
+// anywhere else, the nearest is far out (as for London: the Thames estuary's mouth, too far to be its sea)
+export const BACTON = { lat: 52.86, lon: 1.47 };
+export function marine(now, url) {
+  const q = new URL(url).searchParams, near = Math.abs(+q.get("latitude") - BACTON.lat) < 0.05 && Math.abs(+q.get("longitude") - BACTON.lon) < 0.05;
+  const start = Math.floor(now / D) * D, time = [];
+  for (let t = start; t < start + 7 * D; t += H) time.push(iso(t));
+  // (the tide: a semi-diurnal 12.42-hour swing of 1.6 m either way; waves building to 1.4 m tomorrow afternoon)
+  const at = (s) => Date.parse(`${s}:00Z`);
+  return { latitude: near ? 52.95 : 51.45, longitude: near ? 1.5 : 1.2, timezone: "UTC", utc_offset_seconds: 0,
+    hourly: { time, wave_height: time.map((s) => +(0.6 + 0.8 * Math.max(0, Math.sin(((at(s) - start - 30 * H) / (12 * H)) * Math.PI))).toFixed(2)),
+      wave_direction: time.map(() => 45), wave_period: time.map(() => 6.5), sea_surface_temperature: time.map(() => 14.2),
+      sea_level_height_msl: time.map((s) => +(1.6 * Math.cos(((at(s) - start - 3 * H) / (12.42 * H)) * 2 * Math.PI)).toFixed(2)) } };
+}

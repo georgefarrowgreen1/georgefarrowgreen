@@ -181,7 +181,13 @@ so there's nothing to set up beyond the address.
   ("Met Office: yellow wind warning until 18:00."). Only warnings yellow and
   up, in force or to come, and not since replaced. Elsewhere none: the other
   services name regions only by code, and MeteoAlarm keeps the map of those to
-  registered users.
+  registered users. In England, the Environment Agency's **flood warnings**
+  too (its real-time flood-monitoring API, Open Government Licence): flood
+  alerts yellow, flood warnings amber, severe flood warnings red, each for
+  its own flood area, shown where the place is in that area or within 3 km of
+  it (the areas' outlines kept a week). They have no end time, so they're in
+  force while the Agency lists them (the phone lets one go if it hasn't heard
+  of it for 12 hours). Scotland's and Wales's services offer no open feed.
 - **Warnings** worked out from the forecast: thunderstorms, heavy rain, gales,
   snow, icy patches (freezing on wet ground), frost and ground frost (clear,
   calm, cold nights), fog, heat and warm nights, bitter cold, high UV (with how
@@ -225,7 +231,8 @@ so there's nothing to set up beyond the address.
   with, and golf, sailing (which needs some wind), gardening, tennis, hiking, a
   barbecue, an outdoor swim or anything you add: a feels-like range, wind
   (at least and at most), gusts, whether light rain is fine, how long, and
-  between which hours. Each with the chance the whole stretch stays dry
+  between which hours. By the sea, a swim goes by the water's warmth and its
+  waves too ("sea 14°"), and sailing by the waves ("waves 1.2 m"). Each with the chance the whole stretch stays dry
   ("80% chance it stays dry"): the share of the ensembles' runs dry throughout,
   each system that reaches through the stretch by its say (`data.js` keeps
   which are wet each hour), which a longer stretch has less of
@@ -351,7 +358,11 @@ so there's nothing to set up beyond the address.
   thermometer marked with the actual temperature, wind with a compass and
   Beaufort name, humidity on a bar and dew-point comfort, rain in the last and
   next 24 hours (the next as little bars, an hour each), pressure on a dial with which way it's going, visibility on a
-  scale from fog to clear, UV, air quality and pollen, the Sun's arc with golden
+  scale from fog to clear, UV, air quality and pollen, by the sea the sea
+  (how warm it is, the waves and which way they come from, whether the tide's
+  rising or falling and its next high and low, the next day's tide drawn as a
+  curve: Open-Meteo's marine forecast at the nearest sea cell, where one's
+  within 30 km), the Sun's arc with golden
   hour, and the Moon (phase, rise and set, or when it next does on a day it
   doesn't, next full and new moon), all worked out on the phone
   (`weather/sky.js`: Meeus's Moon, checked against real sunrises and full moons
@@ -359,7 +370,9 @@ so there's nothing to set up beyond the address.
   own: what it says now, its hours on a chart (feels like against the actual
   temperature, wind and gusts with which way it'll blow every 3 hours, humidity
   with dew points, rain and pressure over the last day and the next two, UV
-  today and tomorrow, visibility, the air quality index), and a line on what it
+  today and tomorrow, visibility, the air quality index, the tide with its
+  turns marked and listed day by day and the waves over the next two days),
+  and a line on what it
   means; a swipe sideways (or the arrow keys) goes on to the next tile's, as a
   day's sheet does to the next day, with dots for which it is.
 - **Credits**: every source in one window (who, what for, the licence, a link
@@ -400,12 +413,12 @@ directly, so a branch can be tried before it's merged.
 | --- | --- |
 | Page, styles | `weather/index.html`, `weather/styles.css`: Liquid Glass throughout (translucent, blurred panels with a light-catching rim over a sky that follows the weather and the time of day; capsule buttons that give under a finger and spring back, segmented controls (the chart's, and every choice of one in Settings) whose lens of glass glides to the choice, iOS switches, floating sheets whose content fades under a fixed header; solid panels when Reduce Transparency is on, stronger edges with Increase Contrast). Motion: a new chart draws in once it's on screen (the line traced, columns growing one after another); the 16 days' bars sweep out row by row, the compass needle swings round to the wind, the sun's path is traced and the UV and air knobs slide to their reading, once per place as each comes into view; cards settle into place as they're scrolled to (scroll-linked, where the browser has it); the big icon at the top lives a little (rays turn, clouds drift, rain and snow fall); and the sky drifts with cloud, twinkles on clear nights, snows, and lights up softly in a storm. Sheets come up from below on iOS's own curve (quick, then soft, no overshoot; not faded in, which Safari draws unblurred then snaps frosted), the dim with them, and the page behind steps back and holds still while one's up (its glass unblurred, nothing on it or in the sky moving, so the sheet's own glass isn't blurred afresh every frame); the sky holds still too once the page has scrolled on past the top; a choice redraws the page behind only once its lens is gliding; Places keeps one height, so it doesn't jump as results come and go. Buttons' icons sit in their middles; play and pause (and full screen and back) swap as iOS swaps its symbols, one shrinking and blurring away as the other grows in; the map's buttons give under a finger like the rest; and the radar grows from its place to fill the screen and back (a view transition, where the browser has them; its place held meanwhile, so the page under it doesn't move). All of it off with Reduce Motion (checked in the tests) |
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
-| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
+| Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the sea (temperature, waves, tide), the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
 | Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline: pure), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
-| Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`), `functions/_wxwarn.js` (official warnings: MeteoAlarm's feeds and the National Weather Service, each kept 5 minutes in Cloudflare's cache, shaped down to what's in force, and matched to the place by the warning's own drawn area); `weather/official.js` says them (colour, title, when) |
+| Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`), `functions/_wxwarn.js` (official warnings: MeteoAlarm's feeds, the National Weather Service and the Environment Agency's floods, each kept 5 minutes in Cloudflare's cache, shaped down to what's in force, and matched to the place by the warning's own drawn area; the flood areas' outlines a week); `weather/official.js` says them (colour, title, when) |
 
 **Its own address.** At weather.georgefarrowgreen.com only the app and its own
 API answer (anything else is "Not found"), so its storage is kept apart from the
@@ -423,8 +436,8 @@ each; all of it deleted when they're turned off, or when the push service says
 the phone has gone. Subscribing is only from the app's own pages, the push
 service must be a real one (Apple, Google, Mozilla, Microsoft), and there's a
 cap of 300. For accuracy: airports' daily highs and lows, nothing about you.
-For official warnings: the feeds themselves, for 5 minutes; the place asked
-about isn't kept.
+For official warnings: the feeds themselves, for 5 minutes (flood areas'
+outlines for a week); the place asked about isn't kept.
 
 **Limits.** Open-Meteo's free API is for non-commercial use, about 10,000 calls
 a day per device (each phone asks for itself; it counts a big request as
@@ -452,15 +465,21 @@ workflows late when it's busy, so a rain alert can come later than the hour's
 notice it aims for. Accuracy needs an airport within 40 km that reports round
 the clock, and 5 days of its record (7 to tune). The insights, and the app's
 own warnings, are rules of thumb from the forecast; official warnings only come
-from the services above.
+from the services above. The sea's from a global ocean model (Copernicus
+Marine, and the wave models, through Open-Meteo) a few kilometres offshore: a
+guide, not a tide table. Checked against published tide tables on the Sussex
+and Norfolk coasts, its high and low waters came 10 to 95 minutes early, and the
+app says so.
 
 **Tests.** `.tools/tests/unit/wxinsights.test.mjs` and `wxnext.test.mjs` (in
 CI: units, the Sun and Moon, climate, each insight on forecasts made up to show
 it, accuracy and tuning, airport reports, activities and their limits, when a
 rain alert or briefing is due and what it says; `wxradar.test.mjs`, the
 radar's colours, grid, painting and timeline; and `wxwarn.test.mjs`, official
-warnings: which count, drawn areas, how they're said) and `.tools/tests/wxapp.mjs`
-(end to end: the page, official and worked-out warnings, models, climate, the radar, accuracy and the
+warnings: which count, drawn areas, how they're said; `wxcoast.test.mjs`, the
+Environment Agency's floods and their areas, the sea's tides found from its
+hours, and the sea in a swim's and a sail's score) and `.tools/tests/wxapp.mjs`
+(end to end: the page, official and worked-out warnings (a flood warning by the sea among them), the sea's tile and sheet, models, climate, the radar, accuracy and the
 tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).

@@ -55,6 +55,14 @@ export function makeFormat(units = {}) {
       if (U.wind === "mph") { const mi = m / 1609.34; return mi >= 10 ? `${Math.round(mi)} mi` : `${mi.toFixed(1)} mi`; }
       return m >= 10000 ? `${Math.round(m / 1000)} km` : `${(m / 1000).toFixed(1)} km`;
     },
+    // a wave's or a tide's height: in feet where the temperature's in Fahrenheit
+    // (a tide's below mean sea level half the time: a true minus sign, as for temperatures)
+    heightNum: (m) => (m == null ? null : U.temp === "f" ? Math.round(m * 3.28084) : Math.round(m * 10) / 10),
+    height: (m) => {
+      if (m == null) return "–";
+      const v = U.temp === "f" ? Math.round(m * 3.28084) : Math.round(m * 10) / 10, s = U.temp === "f" ? String(Math.abs(v)) : Math.abs(v).toFixed(1);
+      return `${v < 0 ? "−" : ""}${s} ${U.temp === "f" ? "ft" : "m"}`;
+    },
     // 15:00 / 3pm; 15:30 / 3:30pm
     time: (w) => {
       if (w == null || Number.isNaN(w)) return "–";

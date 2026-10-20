@@ -57,3 +57,20 @@ export function nwsAlerts(now = Date.now()) {
   });
   return { type: 'FeatureCollection', features: [f('nws-1'), f('nws-over', { ends: iso(now - H), expires: iso(now - H) }), f('nws-cancel', { messageType: 'Cancel' }), f('nws-test', { status: 'Test' })] };
 }
+
+// The Environment Agency's floods near Bacton, on the Norfolk coast: a flood warning whose area takes it in, a flood
+// alert whose area is 10 km off (listed by the API's own 15 km, but not near enough), and one no longer in force; and
+// each area's outline (GeoJSON, lon/lat)
+export const BACTON_EA = { lat: 52.86, lon: 1.47 };
+const ring = (s, w, n, e) => [[w, s], [e, s], [e, n], [w, n], [w, s]];
+export const EA_AREAS = { '054FWCBACTN': ring(52.84, 1.43, 52.88, 1.51), '054WAFARAWY': ring(52.93, 1.6, 52.97, 1.7), '054FWCOLD01': ring(52.84, 1.43, 52.88, 1.51) };
+export function eaFloods(lat, lon, now = Date.now()) {
+  if (Math.abs(lat - BACTON_EA.lat) > 0.1 || Math.abs(lon - BACTON_EA.lon) > 0.1) return { items: [] };
+  const t = (k) => new Date(now - k * H).toISOString().slice(0, 19);
+  const item = (id, severityLevel, o = {}) => ({ '@id': `http://environment.data.gov.uk/flood-monitoring/id/floods/${id}`, description: 'North Norfolk coast at Bacton', eaAreaName: 'East Anglia',
+    floodArea: { '@id': `http://environment.data.gov.uk/flood-monitoring/id/floodAreas/${id}`, county: 'Norfolk', notation: id, polygon: `http://environment.data.gov.uk/flood-monitoring/id/floodAreas/${id}/polygon`, riverOrSea: 'North Sea' },
+    floodAreaID: id, isTidal: true, message: 'High tides and strong winds are expected to cause flooding along the coast.\n\nAvoid the sea front.',
+    severity: ['', 'Severe Flood Warning', 'Flood Warning', 'Flood Alert', 'Warning no Longer in Force'][severityLevel], severityLevel, timeMessageChanged: t(2), timeRaised: t(3), timeSeverityChanged: t(3), ...o });
+  return { items: [item('054FWCBACTN', 2), item('054WAFARAWY', 3, { description: 'Sea Palling to Winterton' }), item('054FWCOLD01', 4)] };
+}
+export const eaOutline = (id) => (EA_AREAS[id] ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { FWS_TACODE: id }, geometry: { type: 'Polygon', coordinates: [EA_AREAS[id]] } }] } : null);

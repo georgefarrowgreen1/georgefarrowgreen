@@ -6,6 +6,7 @@
 //   models       seven of the world's big models side by side, to see if they agree (ECMWF's AI one among them)
 //   ensemble     five ensembles' runs pooled (ECMWF, ICON, GFS, the Met Office's global and UK): how wide the possibilities are
 //   air          air quality and pollen
+//   marine       by the sea: its temperature, waves and tides
 //   climate      30 years of this place's days (once per place, kept for a year)
 //   warnings     official warnings, from the place's own weather service (asked by this site's server:
 //                functions/_wxwarn.js)
@@ -23,6 +24,7 @@ const API = {
   forecast: "https://api.open-meteo.com/v1/forecast",
   ensemble: "https://ensemble-api.open-meteo.com/v1/ensemble",
   air: "https://air-quality-api.open-meteo.com/v1/air-quality",
+  marine: "https://marine-api.open-meteo.com/v1/marine",
   archive: "https://archive-api.open-meteo.com/v1/archive",
   previous: "https://previous-runs-api.open-meteo.com/v1/forecast",
   geocode: "https://geocoding-api.open-meteo.com/v1/search",
@@ -168,6 +170,29 @@ export function shapeEnsemble(j) {
   return { v: ENS_V, hourly, days, members: systems.reduce((a, s) => a + s.runs.length, 0), systems: systems.map((s) => ({ id: s.id, say: s.say, n: s.runs.length })) };
 }
 
+// The sea, for a place by it: Open-Meteo's marine forecast at the nearest sea cell (cell_selection=sea), where there's
+// one within 30 km (inland, there's none, or it has nothing to say) → { km, hourly: [{ t, wave (m), waveDir (from),
+// period (s), sst (°C), tide (m, about mean sea level) }], tides: [{ t, h, high }] } or null. Its tides are from a
+// global ocean model, not a tide table: high and low waters found from the hours either side (a curve through three).
+const kmTo = (a, b, c, d) => 12742 * Math.asin(Math.sqrt(Math.sin(((c - a) * Math.PI) / 360) ** 2 + Math.cos((a * Math.PI) / 180) * Math.cos((c * Math.PI) / 180) * Math.sin(((d - b) * Math.PI) / 360) ** 2));
+export function shapeMarine(j, place = {}) {
+  const h = j?.hourly; if (!h?.time || !Number.isFinite(j.latitude)) return null;
+  const km = place.lat != null ? kmTo(place.lat, place.lon, j.latitude, j.longitude) : 0;
+  if (km > 30) return null;
+  const hourly = h.time.map((t, i) => ({ t: parseWall(t), wave: col(h, "wave_height", i), waveDir: col(h, "wave_direction", i), period: col(h, "wave_period", i), sst: col(h, "sea_surface_temperature", i), tide: col(h, "sea_level_height_msl", i) }));
+  if (!hourly.some((x) => x.sst != null || x.wave != null)) return null;
+  const tides = [];
+  for (let i = 1; i < hourly.length - 1; i++) {
+    const a = hourly[i - 1].tide, b = hourly[i].tide, c = hourly[i + 1].tide;
+    if (a == null || b == null || c == null) continue;
+    const high = b > a && b >= c, low = b < a && b <= c;
+    if (!high && !low) continue;
+    const d = a - 2 * b + c, x = d ? Math.max(-0.5, Math.min(0.5, (a - c) / (2 * d))) : 0;
+    tides.push({ t: hourly[i].t + Math.round(x * 4) * QUARTER, h: Math.round((b - ((c - a) ** 2) / (8 * (d || 1))) * 100) / 100, high });
+  }
+  return { km: Math.round(km), hourly, tides };
+}
+
 export function shapeAir(j) {
   if (!j?.hourly?.time) return null;
   const h = j.hourly, c = j.current || {};
@@ -204,6 +229,7 @@ export const forecastQuery = (lat, lon, days = 16) => qs({ latitude: [].concat(l
 export const rainQuery = (lat, lon) => qs({ latitude: [].concat(lat).map(r4).join(","), longitude: [].concat(lon).map(r4).join(","), current: "precipitation,weather_code", minutely_15: "precipitation,weather_code", forecast_minutely_15: 17, timezone: "auto" });
 export const fetchForecast = (lat, lon) => getJSON(`${API.forecast}?${forecastQuery(lat, lon)}`);
 export const fetchModels = (lat, lon) => getJSON(`${API.forecast}?${qs({ latitude: r4(lat), longitude: r4(lon), models: MODELS.map((m) => m[0]).join(","), daily: MODEL_DAILY, forecast_days: 10, timezone: "auto" })}`);
+export const fetchMarine = (lat, lon) => getJSON(`${API.marine}?${qs({ latitude: r4(lat), longitude: r4(lon), hourly: "wave_height,wave_direction,wave_period,sea_surface_temperature,sea_level_height_msl", forecast_days: 7, timezone: "auto", cell_selection: "sea" })}`);
 export const fetchEnsemble = (lat, lon) => getJSON(`${API.ensemble}?${qs({ latitude: r4(lat), longitude: r4(lon), models: ENSEMBLES, hourly: "temperature_2m,precipitation", forecast_days: 10, timezone: "auto" })}`, 20000);
 export const fetchAir = (lat, lon) => getJSON(`${API.air}?${qs({ latitude: r4(lat), longitude: r4(lon), current: "european_aqi,us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide", hourly: "european_aqi,us_aqi,pm2_5,pm10,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen", forecast_days: 5, timezone: "auto" })}`);
 // (ERA5-Land's temperatures, with ERA5 where it has none: one consistent record over the 30 years, rather than the
@@ -254,7 +280,7 @@ export function peek(place) {
   return c?.j?.current ? { temp: c.j.current.temperature_2m, code: c.j.current.weather_code, isDay: c.j.current.is_day === 1, at: c.at } : null;
 }
 // how long each kind is good for
-const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, warnings: 5 * 60e3 };
+const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, marine: 60 * 60e3, warnings: 5 * 60e3 };
 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
 // (first with whatever's kept, if anything), so the page fills in as fast as it can.
@@ -270,6 +296,9 @@ export async function load(place, onUpdate, { force = false } = {}) {
     wx.models = raw.models ? shapeModels(raw.models.j) : null;
     wx.ensemble = raw.ensemble?.s?.v === ENS_V ? raw.ensemble.s : null;
     wx.air = raw.air ? shapeAir(raw.air.j) : null;
+    // (by the sea: its temperature, waves and tide on each hour too, for the best times)
+    wx.marine = raw.marine ? shapeMarine(raw.marine.j, place) : null;
+    if (wx.marine) { const sea = new Map(wx.marine.hourly.map((x) => [x.t, x])); wx.hourly = wx.hourly.map((x) => { const m = sea.get(x.t); return m ? { ...x, sst: m.sst, wave: m.wave, waveDir: m.waveDir, tide: m.tide } : x; }); }
     wx.official = Array.isArray(raw.warnings?.j?.warnings) ? raw.warnings.j.warnings : null;
     wx.climate = climateFor(place);
     wx.skill = skillKept(place);
@@ -296,7 +325,7 @@ export async function load(place, onUpdate, { force = false } = {}) {
   };
   // the forecast first (the page needs it); the rest alongside
   const main = get("forecast", fetchForecast);
-  const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir), get("warnings", fetchWarnings)]);
+  const extras = Promise.all([get("models", fetchModels), get("ensemble", fetchEnsemble), get("air", fetchAir), get("marine", fetchMarine), get("warnings", fetchWarnings)]);
   try { await main; } catch (e) { if (!raw.forecast) throw e; onUpdate(build(), { partial: false, stale: true, error: e }); }
   await extras;
   // the climate, once a year per place, in the background (it's a lot to ask for)

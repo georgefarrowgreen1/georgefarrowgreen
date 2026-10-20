@@ -15,7 +15,7 @@ export const WEATHER_HOST = "weather.georgefarrowgreen.com";
 export const isWeather = (url, env) => url.hostname === (env.WEATHER_HOST || WEATHER_HOST);
 
 const CONNECT = [
-  "https://api.open-meteo.com", "https://ensemble-api.open-meteo.com", "https://air-quality-api.open-meteo.com",
+  "https://api.open-meteo.com", "https://ensemble-api.open-meteo.com", "https://air-quality-api.open-meteo.com", "https://marine-api.open-meteo.com",
   "https://archive-api.open-meteo.com", "https://geocoding-api.open-meteo.com", "https://previous-runs-api.open-meteo.com",
   "https://api.bigdatacloud.net", "https://nominatim.openstreetmap.org", "https://api.rainviewer.com", "https://tiles.openfreemap.org", "https://cloudflareinsights.com",
 ];

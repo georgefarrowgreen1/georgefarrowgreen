@@ -66,7 +66,7 @@ function modelGrid(url) {
   return Array.from({ length: n }, (_, i) => ({ minutely_15: { time, precipitation: time.map((_, k) => (i % 9 < 4 ? 0.3 + k * 0.1 : 0)), snowfall: time.map(() => 0) } }));
 }
 // the stand-in for Open-Meteo (the server's notifications), the Aviation Weather Center (its airport reports), and
-// MeteoAlarm and the National Weather Service (official warnings: mocks/wxwarnings.mjs)
+// MeteoAlarm, the National Weather Service and the Environment Agency (official warnings: mocks/wxwarnings.mjs)
 let wxScenario = { rainIn: 30 }, radarScenario = null;
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), send = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
@@ -79,6 +79,9 @@ http.createServer((req, res) => {
   if (u.pathname === '/api/data/stationinfo') return send([{ icaoId: 'EGLC', site: 'London City Arpt', lat: 51.505, lon: 0.055, siteType: ['METAR', 'TAF'] }, { icaoId: 'EGKB', site: 'London/Biggin Hill Arpt', lat: 51.33, lon: 0.033, siteType: ['METAR'] }]);
   if (u.pathname === '/api/v1/warnings/feeds-united-kingdom') return send(OW.ukFeed(Date.now()));
   if (u.pathname.startsWith('/api/v1/warnings/feeds-')) return send({ warnings: [] });
+  if (u.pathname === '/flood-monitoring/id/floods') return send(OW.eaFloods(+u.searchParams.get('lat'), +u.searchParams.get('long'), Date.now()));
+  const ea = /^\/flood-monitoring\/id\/floodAreas\/([\w-]+)\/polygon$/.exec(u.pathname);
+  if (ea) { const g = OW.eaOutline(ea[1]); if (g) return send(g); res.writeHead(404); return res.end(); }
   if (u.pathname === '/alerts/active') { if (u.searchParams.get('point') === OW.NEW_YORK) return send(OW.nwsAlerts(Date.now())); res.writeHead(400); return res.end('{"title":"out of bounds"}'); }
   if (u.pathname === '/api/data/metar') {
     const reports = [], t0 = Math.floor(Date.now() / H) * H;
@@ -127,6 +130,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     const u = r.request().url(), j = (o) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o), headers: { 'Access-Control-Allow-Origin': '*' } });
     if (u.includes('ensemble-api')) return j(F.ensemble(now, sc));
     if (u.includes('air-quality')) return j(F.air(now));
+    if (u.includes('marine-api')) return j(F.marine(now, u));
     if (u.includes('archive-api')) return j(F.archive(now));
     if (u.includes('geocoding')) return j({ results: [{ name: 'Edinburgh', latitude: 55.95, longitude: -3.19, country: 'United Kingdom', admin1: 'Scotland', country_code: 'GB' }] });
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
@@ -249,6 +253,7 @@ ok(wins.every((x) => /^win-name win-day (win-time )?win-text \+rate$/.test(x)), 
   ok(order.first && order.afterDays, 'right now: after the 16 days, before the insights', JSON.stringify(order));
   const drawn = await p.evaluate(() => ['feels .thermo', 'wind .compass', 'humidity .fbar i', 'rain .rbars rect', 'pressure .dial', 'visibility .meter.clear', 'uv .meter'].filter((s) => { const k = s.split(' ')[0]; return !document.querySelector(`#tiles [data-kind="${k}"] ${s.slice(k.length + 1)}`); }));
   ok(!drawn.length, 'feels like, humidity, rain, pressure and visibility drawn too: a thermometer, a bar, the next day\'s rain, a dial, a scale', drawn.join(', ') || 'all there');
+  ok(!(await p.locator('#tiles [data-kind="sea"]').count()), 'inland (London): no sea tile (the nearest sea cell is too far out to be its sea)');
   const moon = await p.locator('#tiles .kv dd').allTextContents();
   ok(!moon.includes('–'), 'the Moon\'s rise and set never just a dash', moon.join(' | '));
   for (const [kind, title] of [['wind', 'Wind'], ['pressure', 'Pressure'], ['uv', 'UV index']]) {
@@ -339,7 +344,7 @@ ok((await p.locator('.foot a').count()) === 2 && /^Weather data by Open-Meteo\.c
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
-ok(links.length === 17 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'meteoalarm.org', 'weather.gov/', 'aviationweather.gov', 'rainviewer.com', 'openfreemap.org', 'openmaptiles.org', 'openstreetmap.org/copyright', 'naturalearthdata.com', 'maplibre.org', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
+ok(links.length === 19 && ['open-meteo.com', 'metoffice.gov.uk', 'climate.copernicus.eu', 'atmosphere.copernicus.eu', 'marine.copernicus.eu', 'meteoalarm.org', 'weather.gov/', 'environment.data.gov.uk', 'aviationweather.gov', 'rainviewer.com', 'openfreemap.org', 'openmaptiles.org', 'openstreetmap.org/copyright', 'naturalearthdata.com', 'maplibre.org', 'leafletjs.com', 'bigdatacloud.com', 'nominatim.org', 'geonames.org'].every((x) => links.some((l) => l.includes(x))) && links.every((l) => / _blank noopener$/.test(l)),
   'a credits window: every source, each linked out', `${links.length} links`);
 ok((await p.evaluate(() => document.querySelector('#credits .sheet-body').scrollTop)) === 0 && /national weather service/.test(await p.textContent('#credits .credits-note')), 'open at the weather data, with a notice at its foot');
 await p.waitForTimeout(600);
@@ -740,6 +745,32 @@ await ctx.close();
   ok(t.some((x) => /^Yellow\s*Wind warning$/.test(x)) && !t.some((x) => /Gales|Damaging gusts|Windy/.test(x)), 'an official wind warning: the app\'s own gales warning stands aside', t.join(' · '));
   await ctx.close();
 }
+// by the sea (Bacton, on the Norfolk coast): the Environment Agency's flood warning for it, and the sea's own tile: how
+// warm, the waves, the tide's next day as a curve, and a sheet of the tide and the waves for two days
+{
+  const { ctx, p } = await open({}, { url: `${HOST}/?lat=52.86&lon=1.47&name=Bacton`, settle: false });
+  await p.waitForSelector('#alerts .official', { timeout: 20000 });
+  const cards = await p.locator('#alerts .official').evaluateAll((es) => es.map((e) => ({ title: e.querySelector('h3').textContent, from: e.querySelector('.ins-from').textContent, colour: e.dataset.colour, line: e.querySelector('p:last-child').textContent })));
+  ok(cards.length === 1 && cards[0].title === 'Flood warning' && cards[0].from === 'Environment Agency · In force' && cards[0].colour === 'amber' && /act now/.test(cards[0].line),
+    'a flood warning from the Environment Agency, amber, in force (not the alert for an area 10 km off)', JSON.stringify(cards));
+  await p.locator('#alerts').screenshot({ path: `${out}/wx-flood.png` });
+  await p.locator('#alerts .official .ins-open').evaluate((e) => e.click());
+  await p.waitForSelector('#warning[open]'); await p.waitForTimeout(500);
+  await p.screenshot({ path: `${out}/wx-flood-sheet.png` });
+  const warn = await p.evaluate(() => ({ text: document.getElementById('warning-body').textContent, link: document.querySelector('#warning .warn-link a')?.href }));
+  ok(/Avoid the sea front/.test(warn.text) && /Issued by the Environment Agency, and shown as issued/.test(warn.text) && warn.link === 'https://check-for-flooding.service.gov.uk/target-area/054FWCBACTN', 'its sheet: the Agency\'s message, and a link to its page for the area', JSON.stringify(warn).slice(0, 200));
+  await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.getElementById('warning').open);
+  await p.waitForSelector('#tiles [data-kind="sea"]', { timeout: 20000 });
+  const sea = await p.evaluate(() => { const t = document.querySelector('#tiles [data-kind="sea"]'); return { wide: t.classList.contains('wide'), text: t.textContent.replace(/\s+/g, ' '), curve: !!t.querySelector('.tidec .tc-line'), here: !!t.querySelector('.tidec .tc-here'), marks: t.querySelectorAll('.tidec .tc-mark').length, before: t.previousElementSibling?.dataset.kind }; });
+  ok(sea.wide && /14° ?Cold/.test(sea.text) && /Waves \d\.\d m, from the north-east/.test(sea.text) && /(Rising|Falling): (High|Low) [^,]+, (high|low) /.test(sea.text) && sea.curve && sea.here && sea.marks >= 3 && sea.before === 'air',
+    'by the sea, a tile of it: how warm, the waves and which way, the next high and low tides, the next day\'s tide drawn', JSON.stringify(sea).slice(0, 220));
+  await p.locator('#tiles [data-kind="sea"] .tile-open').evaluate((e) => e.click());
+  await p.waitForSelector('#detail[open]'); await p.waitForTimeout(500);
+  const sheet = await p.evaluate(() => ({ title: document.getElementById('detail-title').textContent, charts: document.querySelectorAll('#detail-body .chart svg').length, sections: [...document.querySelectorAll('#detail-body .day-section')].map((x) => x.textContent), tides: document.querySelectorAll('#detail .kv.tides dt').length, labels: document.querySelectorAll('#detail-body .chart .c-label').length, about: document.querySelector('#detail .detail-about')?.textContent || '', dots: document.querySelectorAll('#detail-dots i').length }));
+  ok(sheet.title === 'Sea' && sheet.charts === 2 && sheet.sections.join('|') === 'Tide, next 48 hours (m)|Waves, next 48 hours (m)' && sheet.tides >= 2 && sheet.labels >= 7 && /not for navigation/.test(sheet.about) && /(10 km|6\.2 mi) offshore/.test(sheet.about) && sheet.dots === 9,
+    'its sheet: two days of the tide (its turns marked and listed) and of the waves, and what it is: a model, not a tide table', JSON.stringify(sheet).slice(0, 260));
+  await ctx.close();
+}
 // the API turns away what isn't real: made-up keys, a place left out, a body that isn't an object
 {
   const call = (method, path, body, origin = 'http://weather.localhost:8788') => new Promise((done, fail) => {
@@ -759,6 +790,9 @@ await ctx.close();
   const ny = JSON.parse((await call('GET', `/api/weather/warnings?lat=40.71&lon=-74.01`, null)).body || '{}');
   ok(ny.warnings?.length === 1 && ny.warnings[0].issuer === 'National Weather Service' && ny.warnings[0].event === 'Wind Advisory' && /^https:\/\/forecast\.weather\.gov\/MapClick\.php\?lat=40\.71&lon=-74\.01$/.test(ny.warnings[0].url),
     'official warnings in the US, from the National Weather Service (none over, cancelled or a test)', JSON.stringify(ny).slice(0, 160));
+  const bac = JSON.parse((await call('GET', '/api/weather/warnings?lat=52.86&lon=1.47', null)).body || '{}'), w0 = bac.warnings?.[0] || {};
+  ok(bac.warnings?.length === 1 && w0.issuer === 'Environment Agency' && w0.event === 'Flood warning' && w0.level === 3 && w0.open === true && w0.expires === null && Date.parse(w0.checked) > Date.now() - 60e3 && w0.url === 'https://check-for-flooding.service.gov.uk/target-area/054FWCBACTN' && !('floodArea' in w0),
+    'flood warnings in England, from the Environment Agency: those whose area takes the place in (not one 10 km off, nor one no longer in force)', JSON.stringify(bac).slice(0, 200));
   const berlin = await call('GET', '/api/weather/warnings?lat=52.52&lon=13.40', null);
   ok(berlin.status === 200 && berlin.body === '{"warnings":[]}', 'none for Berlin (Germany\'s service names regions by code, not drawn areas)', berlin.body);
   const badWarn = await call('GET', '/api/weather/warnings?lat=abc&lon=1', null);

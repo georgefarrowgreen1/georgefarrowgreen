@@ -6,12 +6,16 @@
 //            and then). The rest name regions by code only, and MeteoAlarm keeps the map of those to
 //            registered users: there, the app's own warnings (worked out from the forecast) are all.
 //   US       the National Weather Service (its API answers for a point).
+//   England  the Environment Agency's flood alerts and warnings (its flood-monitoring API, Open Government
+//            Licence), for the flood areas the place is in or within 3 km of (each area's outline, from the same
+//            API, kept a week). They've no end time: in force while they're listed. (Scotland's SEPA and
+//            Wales's NRW offer no open feed to ask.)
 //
 // Each feed is fetched at most every 5 minutes, kept (shaped down to what's in force or to come) in
 // Cloudflare's cache for everyone; the place asked about isn't kept at all. Only warnings yellow or
 // above (MeteoAlarm's green is "nothing in particular"), in force or to come, and not since replaced.
 //
-// METEOALARM_URL, NWS_URL: tests only.
+// METEOALARM_URL, NWS_URL, EA_URL: tests only.
 
 import { HttpError } from "./_pigeon.js";
 
@@ -36,6 +40,8 @@ const FEEDS = [
 // and the Virgin Islands, Guam and the Marianas, American Samoa
 const NWS_BOXES = [[24.3, -125, 49.5, -66.8], [51, -180, 71.6, -129.9], [51, 172, 53.5, 180], [18.8, -160.4, 22.4, -154.6], [17.6, -67.4, 18.6, -64.5], [13.2, 144.5, 20.6, 146.1], [-14.6, -171.1, -14.1, -168.1]];
 const inBox = (lat, lon, b) => lat >= b[0] && lat <= b[2] && lon >= b[1] && lon <= b[3];
+// where the Environment Agency warns of floods: England (a box about it; its areas are England's alone)
+const EA_BOX = [49.8, -6.5, 55.9, 1.9], EA_NEAR_KM = 3;
 
 // the names their senders give, made short enough for a tag
 const ISSUERS = [
@@ -133,6 +139,64 @@ export function shapeNws(j, lat, lon, now = Date.now()) {
   }));
 }
 
+// The Environment Agency's floods near a point → the same shape, each with its flood area's id: severe flood warnings
+// red, flood warnings amber, flood alerts yellow (those no longer in force left out). No end time: listed, in force.
+const EA_LEVEL = { 1: 4, 2: 3, 3: 2 }, EA_SAYS = { 4: "Severe flooding: danger to life.", 3: "Flooding is expected: act now.", 2: "Flooding is possible: be prepared." };
+const eaTime = (s) => (typeof s === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(s) ? iso(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s}Z`) : null);
+export function shapeEa(j) {
+  return (Array.isArray(j?.items) ? j.items : []).filter((x) => x && EA_LEVEL[x.severityLevel] && typeof x.floodAreaID === "string" && /^[\w-]{1,24}$/.test(x.floodAreaID)).map((x) => {
+    const level = EA_LEVEL[x.severityLevel];
+    return {
+      id: `ea-${x.floodAreaID}-${x.severityLevel}`, issuer: "Environment Agency", via: null,
+      event: ["", "Severe flood warning", "Flood warning", "Flood alert"][x.severityLevel], level, type: null,
+      headline: EA_SAYS[level], text: clip(x.message, 4000), instruction: null, impacts: [],
+      onset: eaTime(x.timeSeverityChanged) || eaTime(x.timeRaised), expires: null, open: true,
+      url: `https://check-for-flooding.service.gov.uk/target-area/${x.floodAreaID}`, area: clip(x.description || x.floodArea?.label, 200), floodArea: x.floodAreaID,
+    };
+  });
+}
+// a flood area's outline (GeoJSON, lon/lat) → [{ b, p }] as polygon() makes them (each ring), or []
+export function outlineOf(j) {
+  const rings = [], g = j?.features?.[0]?.geometry || j?.geometry || j;
+  const add = (ring) => { if (!Array.isArray(ring) || ring.length < 4) return; const p = []; for (const pt of ring) { if (!Array.isArray(pt) || !Number.isFinite(pt[0]) || !Number.isFinite(pt[1])) return; p.push(Math.round(pt[1] * 1e4) / 1e4, Math.round(pt[0] * 1e4) / 1e4); } const lats = p.filter((_, i) => i % 2 === 0), lons = p.filter((_, i) => i % 2 === 1); rings.push({ b: [Math.min(...lats), Math.min(...lons), Math.max(...lats), Math.max(...lons)], p }); };
+  if (g?.type === "Polygon") (g.coordinates || []).forEach(add);
+  else if (g?.type === "MultiPolygon") (g.coordinates || []).forEach((poly) => (poly || []).forEach(add));
+  return rings.slice(0, 200);
+}
+// how far (km) a point is from an outline: 0 inside it, else to its nearest edge
+const KM_LAT = 111.32;
+export function kmFrom(lat, lon, rings) {
+  let best = Infinity;
+  for (const r of rings) {
+    if (inside(lat, lon, r)) return 0;
+    const kx = KM_LAT * Math.cos((lat * Math.PI) / 180);
+    for (let i = 0; i + 3 < r.p.length; i += 2) {
+      const ay = (r.p[i] - lat) * KM_LAT, ax = (r.p[i + 1] - lon) * kx, by = (r.p[i + 2] - lat) * KM_LAT, bx = (r.p[i + 3] - lon) * kx;
+      const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0;
+      best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+    }
+  }
+  return best;
+}
+// a flood area's outline, kept a week (they hardly change)
+async function outlineAt(base, id) {
+  const cache = typeof caches !== "undefined" && caches.default ? caches.default : null, url = `${base}/flood-monitoring/id/floodAreas/${encodeURIComponent(id)}/polygon`, key = new Request(`${url}?outline=1`);
+  if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) return hit.json(); }
+  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error(`floods outline ${r.status}`);
+  const rings = outlineOf(await r.json());
+  if (cache) await cache.put(key, new Response(JSON.stringify(rings), { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=604800" } })).catch(() => {});
+  return rings;
+}
+// the floods for a place: those listed within 15 km of it (the API's own reckoning), then only those whose area it's
+// in or within 3 km of
+async function floodsAt(env, lat, lon) {
+  const base = env.EA_URL || "https://environment.data.gov.uk";
+  const near = await shaped(`${base}/flood-monitoring/id/floods?lat=${lat.toFixed(2)}&long=${lon.toFixed(2)}&dist=15`, shapeEa);
+  const kept = await Promise.all(near.slice(0, 12).map((w) => outlineAt(base, w.floodArea).then((rings) => kmFrom(lat, lon, rings) <= EA_NEAR_KM, () => false)));
+  return near.slice(0, 12).filter((_, i) => kept[i]);
+}
+
 // a feed, shaped: from the cache, or asked for and kept for TTL (an answer that it's outside its map: none, kept too)
 async function shaped(url, shape) {
   const cache = typeof caches !== "undefined" && caches.default ? caches.default : null;
@@ -157,6 +221,7 @@ export async function warningsAt(env, lat, lon, now = Date.now()) {
     asks.push(shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon, now))
       .catch((e) => { console.error("weather warnings: NWS", e && e.message); return null; }));
   }
+  if (inBox(lat, lon, EA_BOX)) asks.push(floodsAt(env, lat, lon).catch((e) => { console.error("weather warnings: floods", e && e.message); return null; }));
   const got = await Promise.all(asks);
   if (got.length && got.every((x) => x === null)) throw new HttpError(502, "Warnings aren't available right now.");
   // (and a warning issued twice over, under two names, once: as NVE's floods can be)
@@ -165,8 +230,9 @@ export async function warningsAt(env, lat, lon, now = Date.now()) {
     const same = `${w.issuer}|${w.event}|${w.level}|${w.onset}|${w.expires}|${w.area}`;
     if (Date.parse(w.expires) <= now || seen.has(w.id) || seen.has(same)) continue;
     seen.add(w.id); seen.add(same);
-    const { polys, ...rest } = w;
-    warnings.push(rest);
+    // (one without an end time is in force as of now: the phone lets it go if it's not heard of it again for long)
+    const { polys, floodArea, ...rest } = w;
+    warnings.push(rest.open ? { ...rest, checked: new Date(now).toISOString() } : rest);
   }
   warnings.sort((a, b) => b.level - a.level || Date.parse(a.onset || 0) - Date.parse(b.onset || 0));
   return { warnings };

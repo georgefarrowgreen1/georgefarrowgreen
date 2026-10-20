@@ -745,12 +745,13 @@ function climate(wx, now) {
 
 // the tiles that open, in their order: kind, title, icon
 const TILES = [["feels", "Feels like", "heat"], ["wind", "Wind", "wind"], ["humidity", "Humidity", "drop"], ["rain", "Rain", "rain"],
-  ["pressure", "Pressure", "gauge"], ["visibility", "Visibility", "eye"], ["uv", "UV index", "uv"], ["air", "Air quality", "air"]];
+  ["pressure", "Pressure", "gauge"], ["visibility", "Visibility", "eye"], ["uv", "UV index", "uv"], ["air", "Air quality", "air"], ["sea", "Sea", "waves", "wide"]];
 const uvName = (u) => (u < 3 ? "Low" : u < 6 ? "Moderate" : u < 8 ? "High" : u < 11 ? "Very high" : "Extreme");
 const airName = (q) => (q <= 20 ? "Good" : q <= 40 ? "Fair" : q <= 60 ? "Moderate" : q <= 80 ? "Poor" : q <= 100 ? "Very poor" : "Extremely poor");
+const seaName = (c) => (c == null ? "" : c < 11 ? "Very cold" : c < 15 ? "Cold" : c < 18 ? "Cool" : c < 22 ? "Pleasant" : "Warm");
 // a tile of what it's like right now, that opens to its own sheet (openDetail): its title a button that covers the whole tile
-function tileFor(kind, title, icon, ...kids) {
-  return h("section", { class: "tile opens", "data-kind": kind }, h("h3", {}, h("span", { svg: glyph(icon, 14) }),
+function tileFor([kind, title, icon, wide], ...kids) {
+  return h("section", { class: `tile opens${wide ? " wide" : ""}`, "data-kind": kind }, h("h3", {}, h("span", { svg: glyph(icon, 14) }),
     h("button", { class: "tile-open", type: "button", "aria-haspopup": "dialog", "aria-controls": "detail", onclick: () => openDetail(kind) }, title),
     h("span", { class: "tile-chev", svg: glyph("chevron", 12) })), ...kids);
 }
@@ -793,6 +794,21 @@ function rainBars(hrs) {
 }
 // a bar filled part of the way (0 to 1), and a scale with a knob on it and its ends named
 const fillBar = (k, cls) => { const b = h("div", { class: `fbar ${cls}` }), i = h("i"); i.style.width = `${Math.min(100, Math.max(0, k * 100))}%`; b.append(i); return b; };
+// the tide over the next day, as a little curve: the water under it, now marked, its highs and lows dotted
+function tideCurve(m, now) {
+  const pts = m.hourly.filter((x) => x.tide != null && x.t >= now - 2 * HOUR && x.t <= now + 22 * HOUR);
+  if (pts.length < 8) return null;
+  const t0 = now - 2 * HOUR, lo = Math.min(...pts.map((p) => p.tide)), r = Math.max(0.3, Math.max(...pts.map((p) => p.tide)) - lo);
+  const X = (t) => ((t - t0) / (24 * HOUR)) * 160, Y = (v) => 52 - ((v - lo) / r) * 40, n = (v) => v.toFixed(1);
+  const P = pts.map((p) => [X(p.t), Y(p.tide)]);
+  // (a smooth line through the hours)
+  const line = P.map((c, i) => { if (!i) return `M${n(c[0])} ${n(c[1])}`; const a = P[i - 2] || P[i - 1], b = P[i - 1], d = P[i + 1] || c;
+    return `C${n(b[0] + (c[0] - a[0]) / 6)} ${n(b[1] + (c[1] - a[1]) / 6)} ${n(c[0] - (d[0] - b[0]) / 6)} ${n(c[1] - (d[1] - b[1]) / 6)} ${n(c[0])} ${n(c[1])}`; }).join("");
+  const k = pts.findIndex((p) => p.t > now), a = pts[k - 1], b = pts[k], here = a && b ? a.tide + ((b.tide - a.tide) * (now - a.t)) / (b.t - a.t) : null;
+  const dots = m.tides.filter((x) => x.t > pts[0].t && x.t < pts[pts.length - 1].t).map((x) => `<circle class="tc-mark" cx="${n(X(x.t))}" cy="${n(Y(x.h))}" r="2.2"/>`).join("");
+  return h("div", { svg: `<svg class="tidec" viewBox="0 0 160 60" aria-hidden="true"><path class="tc-water" d="${line}L${n(P[P.length - 1][0])} 60L${n(P[0][0])} 60z"/><path class="tc-line" pathLength="1" d="${line}"/>${dots}`
+    + `${here != null ? `<line class="tc-now" x1="${n(X(now))}" x2="${n(X(now))}" y1="4" y2="60"/><circle class="tc-here" cx="${n(X(now))}" cy="${n(Y(here))}" r="3.6"/>` : ""}</svg>` });
+}
 const scaleBar = (k, cls, ends) => { const m = h("div", { class: `meter ${cls}` }), i = h("i"); i.style.left = `${Math.min(100, Math.max(0, k * 100))}%`; m.append(i); return [m, h("div", { class: "ends" }, h("span", {}, ends[0]), h("span", {}, ends[1]))]; };
 
 function tiles(wx, now) {
@@ -838,7 +854,19 @@ function tiles(wx, now) {
     say.air = () => [h("div", { class: "big" }, String(Math.round(q)), h("small", {}, airName(q))), meter(q, 100),
       h("p", { class: "sub" }, `Fine particles ${a.pm25 != null ? Math.round(a.pm25) : "–"} µg/m³.${top && top[1] >= 10 ? ` ${top[0][0].toUpperCase() + top[0].slice(1)} pollen ${top[1] >= 80 ? "high" : top[1] >= 30 ? "moderate" : "low"}.` : pol.some((x) => x.grass != null) ? " Pollen low." : ""}`)];
   }
-  for (const [kind, title, icon] of TILES) if (say[kind]) out.push(tileFor(kind, title, icon, ...say[kind]()));
+  // the sea, by it (data.js shapeMarine): how warm, the waves, and the tide
+  if (wx.marine) {
+    const m = wx.marine, near = (k) => m.hourly.filter((x) => x[k] != null).reduce((a, x) => (!a || Math.abs(x.t - now) < Math.abs(a.t - now) ? x : a), null);
+    const s = near("sst"), w = near("wave"), soon = m.tides.filter((x) => x.t > now).slice(0, 2);
+    const at = (t) => (f.day(t, now) === "Today" ? f.time(t) : `${f.day(t, now).toLowerCase()} ${f.time(t)}`);
+    const tide = soon.length ? `${soon[0].high ? "Rising" : "Falling"}: ${soon.map((x, i) => `${x.high ? (i ? "high" : "High") : i ? "low" : "Low"} ${at(x.t)}`).join(", ")}.` : "";
+    say.sea = () => [h("div", { class: "sea-row" },
+      h("div", {}, s ? h("div", { class: "big" }, f.temp(s.sst), h("small", {}, seaName(s.sst))) : h("div", { class: "big" }, f.height(w?.wave)),
+        w ? h("p", {}, `Waves ${f.height(w.wave)}${w.waveDir != null ? `, from the ${compassWord(w.waveDir)}` : ""}`) : null),
+      tideCurve(m, now)),
+      h("p", { class: "sub" }, tide)];
+  }
+  for (const t of TILES) if (say[t[0]]) out.push(tileFor(t, ...say[t[0]]()));
   S.say = say;
   // the sun
   if (d) {
@@ -895,6 +923,7 @@ const ABOUT = {
   visibility: (f) => `How far you can see: under ${f.dist(1000)} is fog, up to ${f.dist(4000)} mist or haze, and over ${f.dist(10000)} good.`,
   uv: () => "From 3, sun cream and shade around the middle of the day; from 6, cover up; from 8, keep out of the midday sun.",
   air: () => "The European Air Quality Index: to 20 good, 40 fair, 60 moderate, 80 poor and 100 very poor; over that, extremely poor.",
+  sea: (f, wx) => `From an ocean model about ${f.dist((wx.marine?.km || 1) * 1000)} offshore: a guide to the sea, not a tide table, and not for navigation. Tide times can be out by an hour or so on the coast, and heights are about mean sea level; waves are the average height of the biggest third.`,
 };
 // the tiles there are to open, in their order (air quality only where it's known)
 const detailKinds = () => TILES.map((x) => x[0]).filter((k) => S.say?.[k]);
@@ -909,11 +938,11 @@ function openDetail(kind, dir = 0) {
   S.detailKind = kind;
   const f = S.f, now = nowWall(wx.place.offset), [, title, icon] = TILES.find((x) => x[0] === kind);
   const when = (v) => `${f.day(v, now)} ${f.time(v)}`, hrs = I.hoursFrom(wx, now, 48);
-  const chart = h("div"), kids = [h("div", { class: "detail-now" }, ...say())];
+  const chart = h("div"), chart2 = h("div"), kids = [h("div", { class: "detail-now" }, ...say())];
   const section = (text) => h("h3", { class: "day-section" }, text);
   let draw = null;
   // a chart of some hours: the nights shaded, now marked
-  const plot = (hours, o) => () => timeChart(chart, { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights: nightsOf(hours), now, height: 180, key: `${cell(wx.place.lat, wx.place.lon)}:${kind}`, ...o });
+  const plot = (hours, o, host = chart) => () => timeChart(host, { x: { hour: (v) => f.hour(v), day: (v) => f.dayShort(v) }, nights: nightsOf(hours), now, height: 180, key: `${cell(wx.place.lat, wx.place.lon)}:${kind}`, ...o });
   if (kind === "feels") {
     const t = T(), pts = hrs.map((x) => { const fl = x.feels ?? x.temp; return { t: x.t, v: t(fl), lo: t(Math.min(fl, x.temp)), hi: t(Math.max(fl, x.temp)), x }; });
     const hi = pts.reduce((a, p) => (p.v > a.v ? p : a)), lo = pts.reduce((a, p) => (p.v < a.v ? p : a));
@@ -984,8 +1013,37 @@ function openDetail(kind, dir = 0) {
         tip: (p) => ({ title: when(p.t), rows: [[String(Math.round(p.v)), airName(p.v).toLowerCase()], ...(p.x.pm25 != null ? [[`${Math.round(p.x.pm25)} µg/m³`, "fine particles"]] : [])] }),
         table: { head: ["Time", "Index", "Fine particles"], rows: pts.map((p) => [when(p.t), String(Math.round(p.v)), p.x.pm25 != null ? `${Math.round(p.x.pm25)} µg/m³` : "–"]) } });
     }
+  } else if (kind === "sea") {
+    // the tide for two days, its highs and lows marked with their times; the waves alongside
+    const m = wx.marine, span = m.hourly.filter((x) => x.t >= now - HOUR && x.t <= now + 2 * DAY), feet = f.units.temp === "f", ht = (v) => (feet ? v * 3.28084 : v);
+    const tp = span.filter((x) => x.tide != null).map((x) => ({ t: x.t, v: ht(x.tide), x })), wp = span.filter((x) => x.wave != null).map((x) => ({ t: x.t, v: ht(x.wave), x }));
+    const turns = m.tides.filter((x) => x.t > now && x.t <= now + 2 * DAY), say1 = (x) => `${x.high ? "High" : "Low"} ${when(x.t)}`;
+    const fmt = (v) => { const n = feet ? Math.round(v) : Math.round(v * 10) / 10; return `${n < 0 ? "−" : ""}${feet ? Math.abs(n) : Math.abs(n).toFixed(1)}`; }, unit = feet ? "ft" : "m";
+    const draws = [];
+    if (tp.length > 6) {
+      const lo = Math.min(...tp.map((p) => p.v)), hi = Math.max(...tp.map((p) => p.v)), r = Math.max(0.3, hi - lo);
+      kids.push(section(`Tide, next 48 hours (${unit})`), chart);
+      draws.push(plot(hrs, { kind: "line", color: "#5AC8FA", points: tp, y: { min: lo - r * 0.2, max: hi + r * 0.35, fmt },
+        marks: turns.map((x) => ({ t: x.t, v: ht(x.h), text: f.time(x.t) })),
+        summary: turns.length ? `The tide over the next two days: ${turns.map(say1).join("; ")}.` : "The tide over the next two days.",
+        tip: (p) => ({ title: when(p.t), rows: [[f.height(p.x.tide), "tide"]] }),
+        table: { head: ["Time", "Tide"], rows: tp.map((p) => [when(p.t), f.height(p.x.tide)]) }, key: `${cell(wx.place.lat, wx.place.lon)}:tide` }));
+      // (and their times, day by day: the heights are the chart's, about mean sea level, not a tide table's)
+      const days = [...new Set(turns.map((x) => f.day(x.t, now)))];
+      if (turns.length) kids.push(h("dl", { class: "kv tides" }, ...days.flatMap((d) => [h("dt", {}, d), h("dd", {}, turns.filter((x) => f.day(x.t, now) === d).map((x) => `${x.high ? "High" : "Low"} ${f.time(x.t)}`).join(" · "))])));
+    }
+    if (wp.length > 6) {
+      const top = wp.reduce((a, p) => (p.v > a.v ? p : a));
+      kids.push(section(`Waves, next 48 hours (${unit})`), chart2);
+      draws.push(plot(hrs, { kind: "line", color: "#4C9BE8", points: wp, y: { min: 0, fmt },
+        marks: [{ t: top.t, v: top.v, text: f.height(top.x.wave) }],
+        summary: `Wave height, hour by hour: highest ${f.height(top.x.wave)} ${when(top.t)}.`,
+        tip: (p) => ({ title: when(p.t), rows: [[f.height(p.x.wave), "waves"], ...(p.x.period != null ? [[`${Math.round(p.x.period)} s`, "apart"]] : []), ...(p.x.waveDir != null ? [[compassWord(p.x.waveDir), "from"]] : [])] }),
+        table: { head: ["Time", "Waves", "From"], rows: wp.map((p) => [when(p.t), f.height(p.x.wave), p.x.waveDir != null ? compassWord(p.x.waveDir) : "–"]) }, key: `${cell(wx.place.lat, wx.place.lon)}:waves` }, chart2));
+    }
+    draw = () => draws.forEach((d) => d());
   }
-  kids.push(h("p", { class: "detail-about" }, ABOUT[kind](f)));
+  kids.push(h("p", { class: "detail-about" }, ABOUT[kind](f, wx)));
   $("detail-title").replaceChildren(h("span", { class: "dt-icon", svg: glyph(icon, 18) }), title);
   // (which of them it is: a swipe sideways, or the arrow keys, for the one before or after)
   const kinds = detailKinds();

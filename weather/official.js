@@ -2,17 +2,19 @@
 // app says them: which are still in force, their colour and title, and when. Pure: no page, no network.
 //
 // A warning: { id, issuer, via, event, level (2 yellow, 3 amber or orange, 4 red), type, headline, text,
-// instruction, impacts, onset, expires (ISO times), url, area }
+// instruction, impacts, onset, expires (ISO times), url, area }; or without an end time (the Environment Agency's
+// floods: in force while they're listed), { ..., expires: null, open: true, checked (when the server last saw it) }
 
-// those not over yet (real time, ms)
-export const inForce = (list, real = Date.now()) => (Array.isArray(list) ? list : []).filter((w) => w && Date.parse(w.expires) > real);
+// those not over yet (real time, ms); one without an end time (a flood warning) while the server said so lately
+const OPEN_KEEP = 12 * 3600e3;
+export const inForce = (list, real = Date.now()) => (Array.isArray(list) ? list : []).filter((w) => w && (w.open ? Date.parse(w.checked) > real - OPEN_KEEP : Date.parse(w.expires) > real));
 
 // its colour, in the issuer's own word where it gives one (the Met Office's amber is MeteoAlarm's orange)
 export function colourOf(w) {
   const said = /^(yellow|amber|orange|red)\b/i.exec(w.event || "");
   if (said) return said[1].toLowerCase();
   if (w.level >= 4) return "red";
-  return w.level === 3 ? (/met office/i.test(w.issuer || "") ? "amber" : "orange") : "yellow";
+  return w.level === 3 ? (/met office|environment agency/i.test(w.issuer || "") ? "amber" : "orange") : "yellow";
 }
 // its title: the issuer's name for it, less a colour the badge already says ("Yellow wind warning" → "Wind warning")
 export function titleOf(w) {
@@ -40,7 +42,7 @@ export function glyphOf(w) {
   if (TYPES[w.type]) return TYPES[w.type];
   const e = String(w.event || "").toLowerCase();
   for (const [re, g] of [[/tornado|thunder|lightning/, "storm"], [/frost|freeze/, "frost"], [/snow|blizzard|winter|ice|sleet/, "snow"],
-    [/hurricane|tropical|typhoon|wind|gale|storm/, "wind"], [/flood|rain/, "rain"], [/heat/, "heat"], [/cold|chill/, "cold"],
+    [/hurricane|tropical|typhoon|wind|gale|storm/, "wind"], [/flood/, "flood"], [/rain/, "rain"], [/heat/, "heat"], [/cold|chill/, "cold"],
     [/fog|smoke|dust|visibility/, "fog"], [/fire|red flag/, "flame"], [/avalanche/, "mountain"]]) if (re.test(e)) return g;
   return "warning";
 }

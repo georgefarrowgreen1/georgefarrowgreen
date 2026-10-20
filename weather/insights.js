@@ -417,6 +417,10 @@ export function activityScore(h, prev, a, joint = false) {
   if (a.rain === "dry") s *= (joint ? (isWet(h) ? 0 : 1) : dryOf(h)) * (prev && isWet(prev) ? 0.85 : 1);
   else if (a.rain === "light") s *= isWet(h) ? ((h.precip ?? 0) < 1 && codeInfo(h.code).wet < 3 ? 0.75 : 0.2) : 1;
   if (a.id === "run" && (h.uv ?? 0) > 6) s *= 0.85;
+  // by the sea (data.js shapeMarine): a swim in it as warm as the water, and calm enough; sailing in waves not too big
+  if (a.id === "swim" && h.sst != null) s *= h.sst >= 17 ? 1 : h.sst >= 14 ? 0.8 : h.sst >= 11 ? 0.55 : 0.3;
+  if (a.id === "swim" && (h.wave ?? 0) > 0.8) s *= clamp(1 - (h.wave - 0.8) / 1.2, 0.3, 1);
+  if (a.id === "sail" && (h.wave ?? 0) > 2) s *= clamp(1 - (h.wave - 2) / 1.5, 0.2, 1);
   return clamp(s, 0, 1);
 }
 const rateOf = (s) => (s >= 0.8 ? "Great" : s >= 0.6 ? "Good" : s >= 0.4 ? "Fair" : "Poor");
@@ -429,11 +433,14 @@ export function limitsText(a, f) {
 export function windows(wx, now, f, opts = {}) {
   const out = [], acts = (opts.activities || DEFAULT_ACTIVITIES).filter((a) => a.on !== false);
   const horizon = hoursFrom(wx, now, 48).filter((h) => h.t >= now - 30 * 60e3);
-  const describe = (hs, dry) => {
+  const describe = (hs, dry, a) => {
     const t = avg(hs, "temp"), w = avg(hs, "wind"), pop = max(hs, "pop") ?? 0;
     const wind = w < 12 ? "light winds" : w < 25 ? "a breeze" : "windy";
     const rain = dry != null && !hs.some(isWet) ? (dry >= 0.9 ? "Dry" : `${Math.round(dry * 100)}% chance it stays dry`) : pop < 20 ? "Dry" : `${Math.round(pop)}% chance of rain`;
-    return `${rain}, ${f.temp(t)}, ${wind}`;
+    // (by the sea: the water's warmth for a swim, the waves for sailing)
+    const sst = avg(hs.filter((h) => h.sst != null), "sst"), wave = max(hs.filter((h) => h.wave != null), "wave");
+    const sea = a.id === "swim" && sst != null ? `, sea ${f.temp(sst)}` : a.id === "sail" && wave != null ? `, waves ${f.height(wave)}` : "";
+    return `${rain}, ${f.temp(t)}, ${wind}${sea}`;
   };
   for (const a of acts) {
     const len = Math.max(1, Math.min(8, Math.round(a.hours || 1)));
@@ -451,7 +458,7 @@ export function windows(wx, now, f, opts = {}) {
       const adj = s - (hs[0].t - now) / DAY * 0.04;
       if (!best || adj > best.adj) best = { adj, s, hs, dry };
     }
-    out.push(best ? { id: a.id, name: a.name, icon: a.icon, start: best.hs[0].t, end: best.hs[best.hs.length - 1].t + HOUR, score: best.s, rating: rateOf(best.s), text: describe(best.hs, best.dry) }
+    out.push(best ? { id: a.id, name: a.name, icon: a.icon, start: best.hs[0].t, end: best.hs[best.hs.length - 1].t + HOUR, score: best.s, rating: rateOf(best.s), text: describe(best.hs, best.dry, a) }
       : { id: a.id, name: a.name, icon: a.icon, start: null, end: null, score: 0, rating: "Poor", text: "No time in its hours in the next two days" });
   }
   const x = opts.extras || {};
