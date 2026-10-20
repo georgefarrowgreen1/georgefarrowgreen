@@ -4,7 +4,7 @@
 // and then the models'.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf, rainValues, colour, palette } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -182,7 +182,7 @@ test("the next hours' rain: the radar's for the first half hour, giving way to t
 const M = 60e3, T0 = Date.UTC(2026, 9, 20, 12, 0);
 const pastOf = (n) => Array.from({ length: n }, (_, k) => ({ time: (T0 + k * 10 * M) / 1000, path: `/v2/radar/${k}` }));
 const near = (a, b, e = 1e-9) => Math.abs(a - b) <= e;
-test("between two of the radar's frames: each moved along the rain's way and faded into the other, minute by minute", () => {
+test("between two of the radar's frames: each moved along the rain's way and blended into the other, minute by minute", () => {
   // (the rain going 0.5 zoom-7 pixels a minute east and 0.2 south; the 12:30 and 12:40 frames)
   const src = { past: pastOf(13), drift: { vx: 0.5, vy: 0.2 } };
   assert.deepEqual(partsAt(src, T0 + 30 * M), [{ k: 3, dx: 0, dy: 0, alpha: 1 }], "on a frame: that frame as it is");
@@ -192,9 +192,11 @@ test("between two of the radar's frames: each moved along the rain's way and fad
   // 12:30's rain moved on three minutes' worth; 12:40's moved back seven; the two meet where the rain is at 12:33
   assert.ok(near(a.dx, 1.5) && near(a.dy, 0.6) && near(b.dx, -3.5) && near(b.dy, -1.4), JSON.stringify([a, b]));
   assert.ok(near(a.alpha + b.alpha, 1));
-  // nothing moving to go on near now: the pair's own way, where it's known; else simply faded
-  const pair = partsAt({ past: pastOf(13), drift: null, driftOf: (k) => (k === 3 ? { vx: 1, vy: 0 } : null) }, T0 + 35 * M);
-  assert.ok(near(pair[0].dx, 5) && near(pair[1].dx, -5), JSON.stringify(pair));
+  // the pair's own way, where it's known (the rain then may have been going another way than it is now); else the latest's
+  const pair = partsAt({ past: pastOf(13), drift: { vx: 0.5, vy: 0.2 }, driftOf: (k) => (k === 3 ? { vx: 1, vy: 0 } : null) }, T0 + 35 * M);
+  assert.ok(near(pair[0].dx, 5) && near(pair[0].dy, 0) && near(pair[1].dx, -5), JSON.stringify(pair));
+  const other = partsAt({ past: pastOf(13), drift: { vx: 0.5, vy: 0.2 }, driftOf: (k) => (k === 3 ? { vx: 1, vy: 0 } : null) }, T0 + 55 * M);
+  assert.ok(near(other[0].dx, 2.5) && near(other[0].dy, 1), JSON.stringify(other));
   const still = partsAt({ past: pastOf(13), drift: null }, T0 + 35 * M);
   assert.ok(still.every((p) => p.dx === 0 && p.dy === 0) && near(still[0].alpha, 0.5), JSON.stringify(still));
 });
@@ -229,4 +231,33 @@ test("map tiles: where a place is on them, and where a tile's corner is", () => 
   assert.ok(near(la, 52.63, 1e-9) && near(lo, 1.28, 1e-9), `${la} ${lo}`);
   assert.deepEqual(cornerOf(0, 0, 0).map((v) => Math.round(v * 1e4) / 1e4), [85.0511, -180]);
   assert.deepEqual(tileOf(0, 0, 1), [1, 1]);
+});
+test("kept as rain, then coloured: as the smoothing draws it; and two frames blended as rain go through the radar's own colours", () => {
+  // a tile of rain, heavier to the east, snow in its north-east corner
+  const S = 512, codes = new Uint8Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const v = Math.sin(x / 23) * Math.cos(y / 31) + Math.sin((x + y) / 57); codes[y * S + x] = v > 0.3 ? (x > 300 && y < 150 ? 111 : 11) + Math.round(v * 12 + x / 20) : 0; }
+  const code = (x, y) => (x < 0 || y < 0 || x >= S || y >= S ? 0 : codes[y * S + x]), LOOK = { edge: [0.16, 0.5], soft: 1.4 };
+  const drawn = resample(new Uint8ClampedArray(256 * 256 * 4), 256, code, 100, 100, 128, LOOK);
+  const vals = rainValues(new Uint8ClampedArray(256 * 256 * 4), 256, code, 100, 100, 128, LOOK), again = colour(vals, new Uint8ClampedArray(256 * 256 * 4), LOOK.soft);
+  let off = 0, n = 0, worst = 0;
+  for (let i = 0; i < drawn.length; i += 4) {
+    if (!drawn[i + 3] && !again[i + 3]) continue;
+    n++;
+    const d = Math.max(...[0, 1, 2, 3].map((j) => Math.abs(drawn[i + j] - again[i + j])));
+    if (drawn[i + 3] > 128) worst = Math.max(worst, d);
+    off += d;
+  }
+  // (kept to a 255th of the 75 dB, a third of a dB, where the smoothing goes by quarters: the most a colour's off is where
+  // the radar's jumps from blue to yellow)
+  assert.ok(n > 10000 && off / n < 1.5 && worst <= 24, `${n} pixels; mean ${(off / n).toFixed(2)}, the worst where it's solid ${worst}`);
+  // (dry: nothing there; where it's there, all of the alpha's its own)
+  assert.equal(palette(false, 1.4).length, 256 * 4);
+  // two pixels blended as rain: heavy (yellow) half way to light (blue) is the radar's colour for the rain between, not
+  // a mix of the two colours
+  const px = (dbz) => { const x = (dbz + 10) / 75; return [Math.round(x * 255), 255, 0, 255]; }, heavy = px(40), light = px(18);
+  const mid = [0, 1, 2].map((j) => Math.round((heavy[j] + light[j]) / 2)).concat(255);
+  const [r, g, b] = colour(Uint8ClampedArray.from(mid), new Uint8ClampedArray(4), 1.4), want = rgbaFor(29);
+  assert.ok(Math.abs(r - want[0]) + Math.abs(g - want[1]) + Math.abs(b - want[2]) < 40, `${[r, g, b]} against ${want}`);
+  const [hr, hg, hb] = colour(Uint8ClampedArray.from(heavy), new Uint8ClampedArray(4), 1.4), [lr, lg, lb] = colour(Uint8ClampedArray.from(light), new Uint8ClampedArray(4), 1.4);
+  assert.ok(Math.abs(r - (hr + lr) / 2) + Math.abs(g - (hg + lg) / 2) + Math.abs(b - (hb + lb) / 2) > 60, "not the two colours' average");
 });

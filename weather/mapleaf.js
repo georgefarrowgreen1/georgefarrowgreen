@@ -49,7 +49,7 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
       el.onselectstart = L.Util.falseFn; el.onmousemove = L.Util.falseFn;
     },
   });
-  let layers = [], box = null, on = -1, mix = null, mixAt = "";
+  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null;
   return {
     kind: "leaflet",
     credit: ["OpenStreetMap"],
@@ -68,7 +68,8 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
     blend(canvas, bounds, opacity) {
       if (!canvas) { mix?.setOpacity(0); return; }
       const key = bounds.join();
-      if (!mix) { mix = new Canvas(canvas, bounds, { opacity: 0, interactive: false, className: "rv-mix" }).addTo(map); mixAt = key; }
+      if (mix && mixOf !== canvas) { map.removeLayer(mix); mix = null; }
+      if (!mix) { mix = new Canvas(canvas, bounds, { opacity: 0, interactive: false, className: "rv-mix" }).addTo(map); mixAt = key; mixOf = canvas; }
       else if (key !== mixAt) { mix.setBounds(L.latLngBounds(bounds)); mixAt = key; }
       layers[on]?.setOpacity(0);
       on = -1;

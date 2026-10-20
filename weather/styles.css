@@ -1003,6 +1003,8 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .rs-start { transform: none; left: 0 !important; }
 .rs-end { transform: translateX(-100%); }
 .rs-now { color: #fff; font-weight: 700; }
+/* (a tick under each real frame: the minutes between are worked out) */
+.rs-t { position: absolute; top: -3px; width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: rgba(255, 255, 255, 0.32); }
 /* the readout: the time, then how long ago or ahead (amber when it's the forecast) */
 .radar-time { margin: 4px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; }
 .radar-time b { font-weight: 650; }

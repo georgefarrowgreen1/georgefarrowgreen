@@ -87,7 +87,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
 
-  let layers = [], on = -1, mix = null, mixAt = "";
+  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null;
   const corners = ([[s, w], [n, e]]) => [[w, n], [e, n], [e, s], [w, s]];
   const unmix = () => { if (mix) map.setPaintProperty("mix", "raster-opacity", 0); };
   return {
@@ -118,10 +118,12 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
     blend(canvas, bounds, opacity) {
       if (!canvas) return unmix();
       const c = corners(bounds), key = c.join();
+      // (a picture on another canvas: its layer made again for it)
+      if (mix && mixOf !== canvas) { map.removeLayer("mix"); map.removeSource("mix"); mix = null; }
       if (!mix) {
         map.addSource("mix", { type: "canvas", canvas, coordinates: c, animate: false });
         map.addLayer({ id: "mix", type: "raster", source: "mix", paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": 0 } }, ABOVE_RAIN);
-        mix = map.getSource("mix"); mixAt = key;
+        mix = map.getSource("mix"); mixAt = key; mixOf = canvas;
       } else if (key !== mixAt) { mix.setCoordinates(c); mixAt = key; }
       // (its picture sent on to the screen: pausing it uploads it)
       mix.play(); mix.pause(); map.triggerRepaint();

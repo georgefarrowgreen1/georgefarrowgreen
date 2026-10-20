@@ -113,6 +113,58 @@ export function resample(out, w, code, x0, y0, span, look = { edge: [0.22, 0.45]
   return out;
 }
 
+// The same smoothing kept as rain rather than colour, so two frames can be blended as rain is (radar.js, radarmix.js):
+// for each pixel, how much of it the rain covers (c, 0 to 1: resample's edge, faded the same), its strength (x: dBZ + 10
+// over 75, 0 to 1) and how much of it is snow (s, 0 to 1), each times c ("premultiplied": blending two frames, or a
+// pixel with its neighbours, then blends the rain where it is) → R = x·c, G = c, B = s·c (×255), A = 255. colour()
+// turns them into the radar's colours, as resample would have drawn them
+export function rainValues(out, w, code, x0, y0, span, look = { edge: [0.22, 0.45], soft: 0 }) {
+  const wx = new Float64Array(4), wy = new Float64Array(4), [e0, e1] = look.edge;
+  for (let y = 0; y < w; y++) {
+    const sy = y0 + ((y + 0.5) * span) / w - 0.5, iy = Math.floor(sy);
+    bspline(sy - iy, wy);
+    for (let x = 0; x < w; x++) {
+      const sx = x0 + ((x + 0.5) * span) / w - 0.5, ix = Math.floor(sx);
+      bspline(sx - ix, wx);
+      let cov = 0, sum = 0, snow = 0;
+      for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+        const c = code(ix - 1 + i, iy - 1 + j);
+        if (!c) continue;
+        const k = wx[i] * wy[j];
+        cov += k; sum += k * (c > 100 ? c - 111 : c - 11); if (c > 100) snow += k;
+      }
+      const o = (y * w + x) * 4;
+      out[o + 3] = 255;
+      if (cov <= e0) { out[o] = out[o + 1] = out[o + 2] = 0; continue; }
+      const f = cov >= e1 ? 1 : ((cov - e0) / (e1 - e0)) ** 2 * (3 - 2 * (cov - e0) / (e1 - e0));
+      const x01 = Math.min(75, Math.max(0, sum / cov + 10)) / 75;
+      out[o] = Math.round(x01 * f * 255); out[o + 1] = Math.round(f * 255); out[o + 2] = snow > cov / 2 ? Math.round(f * 255) : 0;
+    }
+  }
+  return out;
+}
+// The radar's colours by strength (x × 255, as rainValues keeps it), 256 of them, RGBA: rain's or snow's
+const palettes = new Map();
+export function palette(snow, soft = 0) {
+  const key = `${snow ? "s" : "r"}${soft}`;
+  if (palettes.has(key)) return palettes.get(key);
+  const t = ramp(snow, soft), out = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) out.set(t.subarray(Math.round((i / 255) * 300) * 4, Math.round((i / 255) * 300) * 4 + 4), i * 4);
+  palettes.set(key, out);
+  return out;
+}
+// rainValues' pixels in the radar's colours (out: RGBA, as many) — the same sums radarmix.js's shader does
+export function colour(vals, out, soft = 0) {
+  const pr = palette(false, soft), ps = palette(true, soft);
+  for (let o = 0; o < vals.length; o += 4) {
+    const c = vals[o + 1];
+    if (!c) { out[o + 3] = 0; continue; }
+    const i = Math.round(Math.min(1, vals[o] / c) * 255) * 4, t = vals[o + 2] * 2 > c ? ps : pr;
+    out[o] = t[i]; out[o + 1] = t[i + 1]; out[o + 2] = t[i + 2]; out[o + 3] = Math.round((t[i + 3] * c) / 255);
+  }
+  return out;
+}
+
 // How the rain is moving, from two frames of radar (tile codes, w × h, the older first): each boiled down
 // to blocks of `cell` pixels (rain heavier than `min` dBZ, so drizzle and clutter don't steer it), then the
 // shift, up to `reach` blocks each way, that lines them up best (normalised cross-correlation), refined to a
@@ -217,8 +269,9 @@ export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3
 // the earlier carried on along the way the rain's going and the later brought back to meet it, each faded into the other
 // as the minutes pass; after the latest, the latest carried on along its track to the minute (as its forecast frames
 // are), fading a little the further ahead; the models', the quarter hours either side blended (and from the latest
-// radar, faded into their first). src: { past: [{ time (s) }], drift: { vx, vy } (zoom-7 pixels a minute, or null: the
-// pair's own, or none), driftOf(k): the rain's way between frames k and k + 1 where there's no drift, models: [{ t, k }]
+// radar, faded into their first). src: { past: [{ time (s) }], drift: { vx, vy } (the latest's way, zoom-7 pixels a
+// minute, or null), driftOf(k): the rain's own way between frames k and k + 1 where it's known (else the latest's, or
+// none), models: [{ t, k }]
 // (the timeline's frames of the models', in order; none where the radar's carried on), model: { rain, snow } }.
 // → [{ k (a radar frame), dx, dy (zoom-7 pixels it's moved), alpha }] and [{ rates, snow, alpha }] of the models'
 export function partsAt(src, t) {
@@ -230,7 +283,7 @@ export function partsAt(src, t) {
     const ta = past[k].time * 1000, tb = past[k + 1] ? past[k + 1].time * 1000 : ta;
     if (tb <= ta || t <= ta) return [{ k, dx: 0, dy: 0, alpha: 1 }];
     if (t >= tb) return [{ k: k + 1, dx: 0, dy: 0, alpha: 1 }];
-    const a = (t - ta) / (tb - ta), mins = (tb - ta) / 60e3, v = src.drift || src.driftOf?.(k) || still;
+    const a = (t - ta) / (tb - ta), mins = (tb - ta) / 60e3, v = src.driftOf?.(k) || src.drift || still;
     return [{ k, dx: v.vx * mins * a, dy: v.vy * mins * a, alpha: 1 - a }, { k: k + 1, dx: -v.vx * mins * (1 - a), dy: -v.vy * mins * (1 - a), alpha: a }];
   }
   if (!models.length || !model) {
