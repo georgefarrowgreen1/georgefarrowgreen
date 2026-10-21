@@ -560,19 +560,28 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     return tNow !== was;
   }
   // under the slider: where the radar ends and the forecast begins
+  // (drawn again as its width changes: the half hours, and what's too near Now, go by it)
+  let scaleW = 0;
+  if (typeof ResizeObserver === "function") new ResizeObserver(() => { const w = scale.clientWidth; if (Math.abs(w - scaleW) > 8 && frames.length) drawScale(); }).observe(scale);
   function drawScale() {
+    scaleW = scale.clientWidth;
     scale.replaceChildren();
     if (tEnd <= t0) return;
-    const pos = (t) => `${((t - t0) / (tEnd - t0)) * 100}%`, mark = (t, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = pos(t); scale.append(s); };
+    const pos = (t) => `${((t - t0) / (tEnd - t0)) * 100}%`, mark = (t, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = pos(t); scale.append(s); return s; };
     slider.style.setProperty("--nowf", String((tNow - t0) / (tEnd - t0)));
     // (a tick on the track at each frame that's the radar's own, or the models': the minutes between them are worked out)
     for (const f of frames) if (f.kind === "radar" || src.model) mark(f.t, "", "rs-t");
     // and under it, as Apple's has it, the clock: Now, and the hours (the half hours too, where there's room), none so
     // near Now or the ends that they'd crowd
-    mark(tNow, "Now", "rs-l rs-now");
-    const w = scale.clientWidth || 300, step = (3600e3 * w) / (tEnd - t0) >= 110 ? 1800e3 : 3600e3, near = (t) => Math.abs(t - tNow) < 0.09 * (tEnd - t0);
+    const nowAt = mark(tNow, "Now", "rs-l rs-now");
+    const w = scale.clientWidth || 300, step = (3600e3 * w) / (tEnd - t0) >= 110 ? 1800e3 : 3600e3;
+    // (too near: less than 10 pixels between it and Now, as they're drawn; where they aren't yet, about 45 pixels apart)
+    const near = (s, t) => {
+      const a = s.getBoundingClientRect(), b = nowAt.getBoundingClientRect();
+      return a.width && b.width ? a.left < b.right + 10 && b.left < a.right + 10 : (Math.abs(t - tNow) / (tEnd - t0)) * w < 45;
+    };
     for (let t = Math.ceil(t0 / step) * step; t <= tEnd; t += step) {
-      if (!near(t) && t - t0 > 0.05 * (tEnd - t0) && tEnd - t > 0.05 * (tEnd - t0)) mark(t, time(t), "rs-l rs-at");
+      if (t - t0 > 0.05 * (tEnd - t0) && tEnd - t > 0.05 * (tEnd - t0)) { const s = mark(t, time(t), "rs-l rs-at"); if (near(s, t)) s.remove(); }
     }
   }
   async function load() {

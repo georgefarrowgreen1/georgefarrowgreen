@@ -411,6 +411,11 @@ ok(!/null/.test(await p.textContent('#accuracy-body')), 'with nothing stray unde
 ok(!(await p.locator('#nowcast .chart-note, #hourly .chart-note, #daily .chart-note').count()), 'no notes under the charts');
 const bands = await p.locator('#nowcast-chart text.c-in').allTextContents();
 ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of light, moderate and heavy, in place of mm an hour', bands.join(','));
+{
+  // (each in a margin of its own: no column runs under one)
+  const clear = await p.evaluate(() => { const r = (s) => [...document.querySelectorAll(`#nowcast-chart ${s}`)].map((x) => x.getBoundingClientRect()); return Math.round(Math.min(...r('text.c-in').map((x) => x.left)) - Math.max(...r('.c-col').map((x) => x.right))); });
+  ok(clear >= 4, 'and those words clear of the columns', `${clear} px apart`);
+}
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
 ok(!cards.some((t) => /^Most accurate here/.test(t)) && /^ECMWFBest/.test(acc[1]), 'which model to trust: in the accuracy card, not again in the highlights', `${acc[1]} | ${cards.join(' · ')}`);
 // every source in one window, from one line at the foot of the page
@@ -801,7 +806,18 @@ const still = await p.evaluate(() => {
   return { blur: getComputedStyle(card).backdropFilter, sky: sky.every((a) => a.playState !== 'running'), page: page.filter((a) => a.playState === 'running' && !(a instanceof CSSTransition)).map((a) => a.animationName) };
 });
 ok(still.blur === 'none' && still.sky && !still.page.length, 'under a sheet the page holds still: its glass unblurred, nothing moving on it or in the sky', JSON.stringify(still));
-await p.click('input[name="wind"][value="mph"]'); await p.keyboard.press('Escape');
+await p.click('input[name="wind"][value="mph"]');
+// the times to choose, said as the clock's set: 07:00, or 7am (not the browser's own 12-hour box), the label on one line
+{
+  const said = () => p.evaluate(() => ({ brief: document.querySelector('select[name="briefAt"]').selectedOptions[0]?.textContent, pm: document.querySelector('select[name="pm"]').selectedOptions[0]?.textContent,
+    line: Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height), n: document.querySelector('select[name="briefAt"]').options.length }));
+  const h24 = await said();
+  await p.click('input[name="clock"][value="12"]'); await p.waitForTimeout(300);
+  const h12 = await said();
+  await p.click('input[name="clock"][value="24"]'); await p.waitForTimeout(300);
+  ok(h24.brief === '07:00' && h24.pm === '17:30' && h12.brief === '7am' && h12.pm === '5:30pm' && h24.n === 96 && h24.line <= 46, 'the briefing\'s and the commute\'s times said as the clock is set, every quarter hour; "Morning briefing" on one line', JSON.stringify({ h24, h12 }));
+}
+await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('settings').open && !document.body.classList.contains('sheet-up'), null, { timeout: 3000 }).catch(() => {});
 const back = await p.evaluate(() => getComputedStyle(document.querySelector('.page .card')).backdropFilter);
 ok(/blur/.test(back), 'and its glass back once the sheet\'s gone', back);
@@ -910,6 +926,12 @@ await ctx.close();
   await p.locator('#hourly-chart').scrollIntoViewIfNeeded();
   await p.waitForSelector('#hourly-chart svg.c-enter', { timeout: 3000 }).catch(() => {});
   ok(!before && await p.locator('#hourly-chart svg.c-enter').count() === 1, 'a new chart draws in (columns growing, a line traced), once it\'s on screen', `before ${before}`);
+  // each spell's rain said over it, clear of every column (not printed over them)
+  const spells = await p.evaluate(() => {
+    const box = (e) => e.getBBox(), cols = [...document.querySelectorAll('#hourly-chart .c-col')].map(box);
+    return [...document.querySelectorAll('#hourly-chart text.c-label')].map((t) => { const b = box(t); return { text: t.textContent, on: cols.filter((c) => c.x < b.x + b.width && b.x < c.x + c.width && c.y < b.y + b.height).length }; });
+  });
+  ok(spells.length >= 1 && spells.every((x) => /mm$/.test(x.text) && !x.on), 'the rain chart: each spell\'s rain over it, on no column', JSON.stringify(spells));
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await p.reload(); await p.waitForSelector('.day-row');
   await p.waitForFunction(() => /warmer than/i.test(document.querySelector('#climate-body').textContent), null, { timeout: 20000 });
@@ -1066,8 +1088,9 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   const { ctx, p } = await open({}, { push: { endpoint, p256dh: b64u(pub), auth: b64u(authK) } });
   await p.evaluate(() => navigator.serviceWorker.ready);
   await p.click('#settings-btn');
-  const at = new Date(Date.now() - 5 * 60e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
-  await p.fill('input[name="briefAt"]', hhmm);
+  // (the times to choose are a quarter of an hour apart: the one just gone)
+  const at = new Date(Math.floor((Date.now() - 5 * 60e3) / 900e3) * 900e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
+  await p.selectOption('select[name="briefAt"]', hhmm);
   await p.check('input[name="brief"]');
   await p.check('input[name="rain"]');
   await p.waitForFunction(() => /^On: rain alerts and a briefing/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });

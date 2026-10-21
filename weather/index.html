@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-57" />
+  <meta name="app-version" content="wx-58" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -214,7 +214,8 @@
         </fieldset>
         <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
           <label class="switch"><input type="checkbox" name="rain" /> Rain alerts</label>
-          <label class="switch"><input type="checkbox" name="brief" /> Morning briefing <input type="time" name="briefAt" value="07:00" aria-label="Briefing time" /></label>
+          <label class="switch"><input type="checkbox" name="brief" /> Morning briefing</label>
+          <label class="at-row">Briefing time <select class="at" name="briefAt"><option value="07:00">07:00</option></select></label>
           <p class="note" id="notify-place"></p>
           <button class="pill-btn" type="button" id="notify-here" hidden>Use this place</button>
           <p class="note" id="notify-status" role="status"></p>
@@ -232,8 +233,8 @@
         <fieldset class="opt commute"><legend>Commute check</legend>
           <label class="switch"><input type="checkbox" name="commute" /> Weekdays</label>
           <div class="times">
-            <label>Leave <input type="time" name="am" value="08:00" /></label>
-            <label>Return <input type="time" name="pm" value="17:30" /></label>
+            <label>Leave <select class="at" name="am"><option value="08:00">08:00</option></select></label>
+            <label>Return <select class="at" name="pm"><option value="17:30">17:30</option></select></label>
           </div>
         </fieldset>
       </form>

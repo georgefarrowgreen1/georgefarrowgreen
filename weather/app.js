@@ -468,7 +468,43 @@ function render() {
   climate(wx, now);
   tiles(wx, now);
   status();
+  balance(`${cell(wx.place.lat, wx.place.lon)}|${!!wx.climate}|${!!wx.skill?.station}`);
 }
+// A wide screen's two columns kept about level: the radar (after the next 48 hours, or after Right now), the 15 days
+// (at the foot of either) and this time of year (under the 15 days, or after the best times) each on whichever side
+// does it. Worked out once a place's forecast is in (and again as its climate and its accuracy come), and as the
+// window's resized: not as the page is used, so nothing moves under a finger (a list unfolded, say); not with the radar
+// full screen. On a narrower one, one column, each in its own place
+let levelled = "", keyed = "";
+function balance(key = keyed, again = false) {
+  const main = $("main"), a = main.querySelector(".col-a"), b = main.querySelector(".col-b"), radar = $("radar"), days = $("daily"), clim = $("climate");
+  const wide = innerWidth >= 980 && getComputedStyle(a).display !== "contents", want = `${key}|${wide}`;
+  if ((want === levelled && !again) || radar.classList.contains("radar-big")) return;
+  levelled = want; keyed = key;
+  // (each moved only if it isn't where it goes already: the radar's map, say, isn't taken out and put back for nothing)
+  const put = ([r, d, c]) => {
+    if (r ? radar.previousElementSibling !== $("hourly") : radar.nextElementSibling !== $("windows")) { if (r) $("hourly").after(radar); else $("windows").before(radar); }
+    if (d ? days.parentElement !== a || (days.nextElementSibling && days.nextElementSibling !== clim) : days.parentElement !== b || days.nextElementSibling) (d ? a : b).append(days);
+    if (c ? clim.parentElement !== a || clim.nextElementSibling : clim.previousElementSibling !== $("windows")) { if (c) a.append(clim); else $("windows").after(clim); }
+  };
+  const where = () => [radar, days, clim].map((x) => x.parentElement === a);
+  if (!wide) { put([true, true, false]); return; }
+  requestAnimationFrame(() => {
+    const gap = 16, hs = [radar, days, clim].map((x) => (x.offsetHeight ? x.offsetHeight + gap : 0)), now = where();
+    const baseA = a.offsetHeight - hs.reduce((t, x, k) => t + (now[k] ? x : 0), 0), baseB = b.offsetHeight - hs.reduce((t, x, k) => t + (now[k] ? 0 : x), 0);
+    const off = (pick) => Math.abs(baseA - baseB + hs.reduce((t, x, k) => t + (pick[k] ? x : -x), 0));
+    // (the radar and the 15 days on the left, this time of year under them, where it's as level as any)
+    const picks = [[1, 1, 1], [1, 1, 0], [0, 1, 1], [0, 1, 0], [1, 0, 0], [1, 0, 1], [0, 0, 0], [0, 0, 1]].map((x) => x.map(Boolean));
+    const best = picks.reduce((x, y) => (off(y) < off(x) ? y : x));
+    // (only for a real difference: not back and forth over a few pixels)
+    if (off(now) - off(best) > 60) put(best);
+  });
+}
+let resized = 0, wasWide = null;
+addEventListener("resize", () => {
+  clearTimeout(resized);
+  resized = setTimeout(() => { const w = Math.round(innerWidth / 40); if (w !== wasWide && S.wx) { wasWide = w; balance(keyed, true); } }, 250);
+});
 function status() {
   const wx = S.wx, el = $("status");
   if (!wx) { el.classList.remove("warn"); el.textContent = ""; $("updated").textContent = ""; return; }
@@ -734,10 +770,14 @@ function drawHourChart(wx, now, hrs, host, mode, showNow) {
       table: { head: ["Time", "Temperature", "Feels like"], rows: pts.map((p) => [when(p.t), f.temp(p.x.temp), f.temp(p.x.feels)]) } });
   } else if (mode === "rain") {
     const pts = hrs.map((x) => ({ t: x.t, v: x.pop ?? (x.precip >= 0.1 ? 100 : 0), x }));
-    const marks = I.spells(hrs).slice(0, 3).map((s) => { const top = s.hours.reduce((a, b) => (b.precip > a.precip ? b : a)); return top.precip >= 0.3 ? { t: top.t, v: Math.min(100, top.pop ?? 100), text: f.precip(top.precip) } : null; }).filter(Boolean);
+    // each spell's rain, over its wettest hour (the wettest spells first, where they're too close for all of them)
+    const marks = I.spells(hrs).map((s) => {
+      const mm = s.hours.reduce((a, b) => a + (b.precip || 0), 0), top = s.hours.reduce((a, b) => (b.precip > a.precip ? b : a));
+      return mm >= 0.3 ? { t: top.t, v: Math.min(100, top.pop ?? 100), text: f.precip(mm), mm, from: s.start } : null;
+    }).filter(Boolean).sort((a, b) => b.mm - a.mm);
     timeChart(host, { ...common, kind: "columns", color: COLOR.rain, points: pts, marks,
       y: { min: 0, max: 100, ticks: [0, 50, 100], fmt: (v) => `${v}%` },
-      summary: `Chance of rain, hour by hour. ${marks.length ? `Wettest hours: ${marks.map((m) => `${f.time(m.t)} (${m.text})`).join(", ")}.` : "Little or no rain expected."}`,
+      summary: `Chance of rain, hour by hour. ${marks.length ? `Rain from ${[...marks].sort((a, b) => a.from - b.from).map((m) => `${when(Math.max(m.from, now))} (${m.text})`).join(", ")}.` : "Little or no rain expected."}`,
       tip: (p) => ({ title: when(p.t), rows: [[`${Math.round(p.v)}%`, "chance of rain"], [f.precip(p.x.precip), (p.x.snow ?? 0) > 0 ? "expected (snow)" : "expected"]] }),
       table: { head: ["Time", "Chance", "Amount"], rows: pts.map((p) => [when(p.t), `${Math.round(p.v)}%`, f.precip(p.x.precip)]) } });
   } else {
@@ -1439,7 +1479,7 @@ function drawSettings() {
   const form = $("settings-form");
   for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) { const r = form.querySelector(`input[name="${k}"][value="${S.settings[k]}"]`); if (r) r.checked = true; }
   form.commute.checked = !!S.settings.commute?.on;
-  form.am.value = S.settings.commute?.am || "08:00"; form.pm.value = S.settings.commute?.pm || "17:30";
+  fillTimes(form.am, S.settings.commute?.am || "08:00"); fillTimes(form.pm, S.settings.commute?.pm || "17:30");
   form.tune.checked = S.settings.tune !== false;
   for (const k of ["laundry", "stars", "sunset"]) form[`x_${k}`].checked = S.settings.extras?.[k] !== false;
   drawNotify(); drawActs();
@@ -1453,6 +1493,8 @@ function readSettings(e) {
   S.settings.tune = form.tune.checked;
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
   saveSettings(); afterFrame(redraw);
+  // (the times to choose from said the new way)
+  if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
   // notifications speak your units too
   const n = S.settings.notify;
   if ((n.rain || n.brief) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
@@ -1545,6 +1587,14 @@ async function keepNotify() {
   } catch (_) {}
 }
 const hereForNotify = () => { const p = place(); return p ? { lat: p.lat, lon: p.lon, name: p.name, gps: !!p.gps } : null; };
+// a time to choose, as "HH:MM": every quarter of an hour, said as the Clock setting says them (and the one chosen,
+// should it be between)
+function fillTimes(sel, at) {
+  const list = Array.from({ length: 96 }, (_, k) => `${String(Math.floor(k / 4)).padStart(2, "0")}:${String((k % 4) * 15).padStart(2, "0")}`);
+  if (/^\d\d:\d\d$/.test(at) && !list.includes(at)) list.push(at), list.sort();
+  sel.replaceChildren(...list.map((v) => h("option", { value: v }, atText(v))));
+  sel.value = at;
+}
 const atText = (at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return S.f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };
 async function onNotify() {
   const form = $("settings-form"), n = S.settings.notify, st = $("notify-status");
@@ -1568,7 +1618,7 @@ async function onNotify() {
 }
 function drawNotify(keepStatus = false) {
   const n = S.settings.notify, form = $("settings-form"), p = place(), on = n.rain || n.brief;
-  form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; form.briefAt.value = n.briefAt || "07:00";
+  form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; fillTimes(form.briefAt, n.briefAt || "07:00");
   $("notify-place").textContent = on && n.place ? `For ${n.place.gps ? `My Location (${n.place.name})` : n.place.name}.` : "For the place on screen when you turn them on.";
   $("notify-here").hidden = !(on && n.place && p && cell(p.lat, p.lon) !== cell(n.place.lat, n.place.lon));
   if (!keepStatus) $("notify-status").textContent = on ? "" : notifyWhy() || "";
@@ -1852,9 +1902,6 @@ function wire() {
       const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]; n.focus(); n.click();
     });
   }
-  // on a wide screen the climate card joins the left column, under the 16 days, so the columns balance
-  const wide = matchMedia("(min-width: 980px)"), dock = () => (wide.matches ? $("daily") : $("windows")).after($("climate"));
-  dock(); wide.addEventListener("change", dock);
   // as the page scrolls past the big temperature, it fades and the bar takes up the temperature (iOS's collapsing title)
   const top = document.querySelector(".top"), heroEl = document.querySelector(".hero"), sideways = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
   let ticking = 0;

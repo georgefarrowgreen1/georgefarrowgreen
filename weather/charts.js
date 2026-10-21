@@ -38,7 +38,7 @@ function colPath(x, y, w, h, r = 4) {
  *   x         { hour(t), day(t), step }          (labels for hours and for the start of each day)
  *   now       a time to mark "Now"
  *   nights    [[from, to]]              (shaded softly)
- *   marks     [{ t, v, text }]          (a few direct labels)
+ *   marks     [{ t, v, text }]          (a few direct labels; over columns, those that fit, the first first)
  *   tip(p)    → { title, rows: [[value, label]] }
  *   summary   what the chart shows, for screen readers
  *   table     { head: [..], rows: [[..]] }
@@ -89,7 +89,9 @@ function draw(host, fresh = false) {
   host.replaceChildren();
   host.classList.add("chart");
   if (!pts.length) { host.textContent = "No data"; return; }
-  const L = o.y?.inside ? 8 : 34, R = 10, T = 18, B = 26, iw = W - L - R, ih = Hh - T - B;
+  // (inside: the labels in a margin of their own at the end, as wide as the longest, so no column runs under them)
+  const gutter = o.y?.inside ? Math.max(...(o.y.ticks || []).map((v) => String(o.y.fmt ? o.y.fmt(v) : v).length)) * 6.4 + 12 : 0;
+  const L = o.y?.inside ? 8 : 34, R = o.y?.inside ? gutter : 10, T = 18, B = 26, iw = W - L - R, ih = Hh - T - B;
   const step = o.x?.step || HOUR, cols = o.kind === "columns";
   const t0 = o.points[0].t, t1 = o.points[o.points.length - 1].t + (cols ? step : 0);
   const X = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * iw;
@@ -109,7 +111,7 @@ function draw(host, fresh = false) {
   // gridlines and the y-axis
   const shown = ys.ticks.filter((v) => v >= ys.lo - 1e-9 && v <= ys.hi + 1e-9), inside = [];
   shown.forEach((v, i) => {
-    svg.append(el("line", { x1: L, x2: L + iw, y1: Y(v), y2: Y(v), class: "c-grid" }));
+    svg.append(el("line", { x1: L, x2: o.y?.inside ? W - 2 : L + iw, y1: Y(v), y2: Y(v), class: "c-grid" }));
     const text = o.y?.fmt ? o.y.fmt(v) : String(v);
     if (o.y?.inside) inside.push([(Y(v) + Y(i ? shown[i - 1] : ys.lo)) / 2, text]);
     else svg.append(el("text", { x: L - 6, y: Y(v) + 3.5, class: "c-ytick", "text-anchor": "end" }, text));
@@ -156,14 +158,27 @@ function draw(host, fresh = false) {
     svg.append(el("line", { x1: x, x2: x, y1: T - 4, y2: T + ih, class: "c-now" }));
     svg.append(el("text", { x: Math.min(Math.max(x, L + 12), L + iw - 12), y: T - 7, class: "c-nowtext", "text-anchor": "middle" }, "Now"));
   }
-  // the y-axis's labels inside the chart: each in the middle of its band, at the end, on top of the data
-  for (const [y, text] of inside) svg.append(el("text", { x: L + iw - 2, y: y + 3.5, class: "c-ytick c-in", "text-anchor": "end" }, text));
-  // a few labels, on the marks themselves
+  // the y-axis's labels inside the chart: each in the middle of its band, in the margin at the end
+  for (const [y, text] of inside) svg.append(el("text", { x: W - 2, y: y + 3.5, class: "c-ytick c-in", "text-anchor": "end" }, text));
+  // a few labels, on the marks themselves; over columns, clear of every column under it (above the tallest, up into
+  // the margin over the chart if need be), and of Now and each other: one that can't be is left out (the first come
+  // first: the caller's most worth saying)
+  const taken = [];
+  if (o.now != null && o.now >= t0 && o.now <= t1) { const x = Math.min(Math.max(X(o.now), L + 12), L + iw - 12); taken.push([x - 15, x + 15, 0, T - 4]); }
   for (const m of o.marks || []) {
     const x = cols ? X(m.t) + (X(m.t + step) - X(m.t)) / 2 : X(m.t), y = Y(m.v);
-    if (!cols) svg.append(el("circle", { cx: x, cy: y, r: 4, fill: o.color, class: "c-dot" }));
-    const tx = Math.min(Math.max(x, L + 14), L + iw - 14), above = y - T > 16;
-    svg.append(el("text", { x: tx, y: above ? y - 9 : y + 17, class: "c-label", "text-anchor": "middle" }, m.text));
+    if (!cols) {
+      svg.append(el("circle", { cx: x, cy: y, r: 4, fill: o.color, class: "c-dot" }));
+      const tx = Math.min(Math.max(x, L + 14), L + iw - 14), above = y - T > 16;
+      svg.append(el("text", { x: tx, y: above ? y - 9 : y + 17, class: "c-label", "text-anchor": "middle" }, m.text));
+      continue;
+    }
+    const w = String(m.text).length * 6.6 + 4, tx = Math.min(Math.max(x, L + w / 2), L + iw - w / 2);
+    const top = Math.max(m.v, ...pts.filter((p) => X(p.t + step) > tx - w / 2 && X(p.t) < tx + w / 2).map((p) => p.v));
+    const by = Math.max(12, Y(top) - 6), box = [tx - w / 2, tx + w / 2, by - 11, by + 2];
+    if (taken.some((b) => b[0] < box[1] && box[0] < b[1] && b[2] < box[3] && box[2] < b[3])) continue;
+    taken.push(box);
+    svg.append(el("text", { x: tx, y: by, class: "c-label", "text-anchor": "middle" }, m.text));
   }
   // the crosshair and the readout
   const cross = el("g", { class: "c-cross", visibility: "hidden" });

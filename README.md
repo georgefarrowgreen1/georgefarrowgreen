@@ -160,8 +160,9 @@ so there's nothing to set up beyond the address.
   in bold, and each day of the fortnight described part by part (morning,
   afternoon, evening, overnight).
 - **The next four hours**, by the quarter hour: rain starting or stopping, how
-  long it lasts and how heavy, charted as light, moderate or heavy (the amounts
-  are in the readout as you touch it). Where there's radar (RainViewer's
+  long it lasts and how heavy, charted as light, moderate or heavy (those words in a margin of their own at
+  the chart's end, so no column runs under them; the amounts are in the readout
+  as you touch it). Where there's radar (RainViewer's
   coverage), the radar leads: the rain on it carried along its own track and
   read over a circle about the place that widens the further ahead (about 2 km
   across now, 20 km two hours on), the radar's alone for the first half hour,
@@ -229,7 +230,10 @@ so there's nothing to set up beyond the address.
   card's switch, kept in step): by rain, each day shows when it falls, an hour a
   bar, with its chance and how much; by wind, its wind as a line with the gusts
   a band above it, on one scale for all the days. Until you choose, it follows
-  the weather: rain if it's raining or due within the hour, wind in a gale.
+  the weather: rain if it's raining or due within the hour, wind in a gale. By
+  rain, the 48 hours' chart says how much each spell brings over its wettest
+  hour, clear of every column (the wettest first, where there isn't room for
+  them all).
 - **This time of year**: thirty years of the place's own days (ERA5-Land, with
   ERA5 where it has none: one consistent record, through Open-Meteo's archive;
   asked for once you've stayed on a place a few seconds) put each forecast in
@@ -249,7 +253,8 @@ so there's nothing to set up beyond the address.
   than any one hour does, and which its score goes by. Plus drying washing
   outside (dry hours, thirsty air, a breeze, sun), stargazing (dark, clear, the
   Moon out of the way) and a colourful sunset or sunrise (high and mid cloud, no
-  low cloud in the way). Those worth it are tiles; those that aren't today or
+  low cloud in the way). Those worth it are tiles (two to a row, an odd one out at the end across
+  the row); those that aren't today or
   tomorrow are named in a line under them ("Not looking good: Stargazing"),
   which a tap opens to show them too, faded.
 - **Rain radar** (playing from now through the next two hours, again and
@@ -380,7 +385,8 @@ so there's nothing to set up beyond the address.
   however many phones are under it, for at most 40 places a tick,
   `functions/_wxradar.js`), and a morning
   briefing at a time you choose (the day in a sentence, any warnings, whether
-  to take an umbrella). Sent with Web Push, encrypted to the phone, worded by
+  to take an umbrella; any quarter hour, said as your clock's set, 07:00 or 7am,
+  as the commute check's times are). Sent with Web Push, encrypted to the phone, worded by
   the app's own code (`weather/alerts.js`) so a notification says what the app
   would. On iPhone and iPad, add Weather to the Home Screen first. Turning them
   on sends a first one ("Notifications on"), and the phone is kept only if it
@@ -467,7 +473,11 @@ cards, as iOS's Weather does: each in its own sky, its name, its clock and its
 weather, the temperature and the day's high and low; swipe one left and it
 narrows to make room for a Delete beside it (nothing on it cut off).
 Turned on its side, a phone shows the weather now held on the left and
-everything else beside it, scrolling, as iOS 27's Weather does. Settings →
+everything else beside it, scrolling, as iOS 27's Weather does. On a wide
+screen, two columns kept about level: the radar, the 16 days and This time of
+year each go to whichever side does it, worked out as a place's forecast comes
+in and as the window's resized (never as the page is used, so nothing moves
+under a finger). Settings →
 Glass makes the glass Clear, Standard or Tinted (as iOS 27's slider does: a web
 page can't read the phone's own). Everything to tap is a finger's 44 points,
 and no words are smaller than 11. Like an app, its words can't be selected,

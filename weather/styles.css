@@ -630,7 +630,15 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 
 /* ---------- best times ---------- */
 .win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-@media (min-width: 640px) and (max-width: 979px) { .win-grid { grid-template-columns: repeat(3, 1fr); } }
+/* (an odd one out at the end across the row, rather than a gap beside it; three to a row, the last row's one or two
+   share it) */
+.win-grid > .win:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (min-width: 640px) and (max-width: 979px) {
+  .win-grid { grid-template-columns: repeat(6, 1fr); }
+  .win-grid > .win, .win-grid > .win:last-child:nth-child(odd) { grid-column: span 2; }
+  .win-grid > .win:last-child:nth-child(3n+1) { grid-column: 1 / -1; }
+  .win-grid > .win:nth-last-child(2):nth-child(3n+1), .win-grid > .win:nth-last-child(2):nth-child(3n+1) + .win { grid-column: span 3; }
+}
 .win { border-radius: var(--r-inner); padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 /* the name and its rating side by side, the rating on a line of its own when the name needs the room */
 /* the same lines in every card (what, when and how good, the hours, why), so side by side they line up */
@@ -917,8 +925,12 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .switch input[type="checkbox"]:checked:active::before { transform: translateX(14px); }
 .switch input[type="checkbox"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .commute .times { display: flex; gap: 8px; flex-wrap: wrap; }
-.commute input[type="time"], .notify input[type="time"] { background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 10px; padding: 4px 8px; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25); }
-.notify .switch input[type="time"] { order: 1; margin-left: 4px; }
+/* a time to choose (app.js fillTimes: a quarter of an hour apart, said as the Clock setting says them), in a chip */
+select.at { -webkit-appearance: none; appearance: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 10px;
+  padding: 5px 10px; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25); cursor: pointer; }
+select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+fieldset.opt label.at-row { width: 100%; }
+.at-row select.at { margin-left: auto; }
 
 /* the day */
 /* the days along the top of a day's sheet, as Weather has them: the day, and its date in a circle when it's the one shown */
