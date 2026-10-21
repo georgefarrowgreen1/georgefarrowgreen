@@ -47,9 +47,19 @@ function stats(vals) {
 }
 
 // What's normal around a date (wall ms of the day), and the records for the date itself
+// (asked of the same days many times over as the page is drawn, and drawn again as each part comes in: worked out once
+// a day per climate)
+const daysOn = new WeakMap();
 export function climateOn(c, w) {
   if (!c) return null;
-  const L = doyList(c), target = doyOf(w), d = new Date(w), md = d.getUTCMonth() * 100 + d.getUTCDate();
+  const target = doyOf(w), d = new Date(w), md = d.getUTCMonth() * 100 + d.getUTCDate(), key = target * 10000 + md;
+  let kept = daysOn.get(c);
+  if (!kept) daysOn.set(c, (kept = new Map()));
+  if (!kept.has(key)) kept.set(key, dayOn(c, target, md));
+  return kept.get(key);
+}
+function dayOn(c, target, md) {
+  const L = doyList(c);
   const hi = [], lo = [], rain = [];
   let recHi = null, recLo = null, wetDays = 0, rainDays = 0;
   for (let i = 0; i < c.tmax.length; i++) {

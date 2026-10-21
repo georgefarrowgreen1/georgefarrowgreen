@@ -20,6 +20,9 @@ import { compactClimate, climateSpan } from "./climate.js";
 import { MODELS, shapePrevious, skillFrom, localSkill, MIN_DAYS } from "./skill.js";
 export { MODELS };
 
+// (iOS 15 has no AbortSignal.timeout, which every request here gives up with: the same, by hand)
+if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
+
 const API = {
   forecast: "https://api.open-meteo.com/v1/forecast",
   ensemble: "https://ensemble-api.open-meteo.com/v1/ensemble",
@@ -32,8 +35,8 @@ const API = {
   reverse2: "https://nominatim.openstreetmap.org/reverse",
 };
 const CURRENT = "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,visibility,uv_index";
-const HOURLY = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,rain,showers,snowfall,snow_depth,weather_code,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day,cape,lifted_index,freezing_level_height,vapour_pressure_deficit,sunshine_duration";
-const DAILY = "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,daylight_duration,sunshine_duration,uv_index_max,precipitation_sum,rain_sum,showers_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,shortwave_radiation_sum,et0_fao_evapotranspiration";
+const HOURLY = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,snowfall,weather_code,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day,cape,lifted_index,sunshine_duration";
+const DAILY = "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,daylight_duration,sunshine_duration,uv_index_max,precipitation_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant";
 const MODEL_DAILY = "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max,weather_code";
 
 /* ---------- shaping ---------- */
@@ -46,22 +49,21 @@ export function shapeForecast(j, place = {}) {
   const hourly = (h.time || []).map((t, i) => ({
     t: parseWall(t), temp: col(h, "temperature_2m", i), feels: col(h, "apparent_temperature", i), rh: col(h, "relative_humidity_2m", i),
     dew: col(h, "dew_point_2m", i), pop: col(h, "precipitation_probability", i), precip: col(h, "precipitation", i) ?? 0,
-    rain: col(h, "rain", i), showers: col(h, "showers", i), snow: col(h, "snowfall", i) ?? 0, snowDepth: col(h, "snow_depth", i),
+    snow: col(h, "snowfall", i) ?? 0,
     code: col(h, "weather_code", i) ?? 0, pressure: col(h, "pressure_msl", i), cloud: col(h, "cloud_cover", i),
     cloudLow: col(h, "cloud_cover_low", i), cloudMid: col(h, "cloud_cover_mid", i), cloudHigh: col(h, "cloud_cover_high", i),
     vis: col(h, "visibility", i), wind: col(h, "wind_speed_10m", i), dir: col(h, "wind_direction_10m", i), gust: col(h, "wind_gusts_10m", i),
     uv: col(h, "uv_index", i), isDay: col(h, "is_day", i) === 1, cape: col(h, "cape", i), li: col(h, "lifted_index", i),
-    fz: col(h, "freezing_level_height", i), vpd: col(h, "vapour_pressure_deficit", i), sun: col(h, "sunshine_duration", i),
+    sun: col(h, "sunshine_duration", i),
   })).filter((x) => x.temp != null);
   const daily = (d.time || []).map((t, i) => ({
     date: parseWall(t), key: t, code: col(d, "weather_code", i) ?? 0, tmax: col(d, "temperature_2m_max", i), tmin: col(d, "temperature_2m_min", i),
     fmax: col(d, "apparent_temperature_max", i), fmin: col(d, "apparent_temperature_min", i),
     sunrise: d.sunrise?.[i] ? parseWall(d.sunrise[i]) : null, sunset: d.sunset?.[i] ? parseWall(d.sunset[i]) : null,
     daylight: col(d, "daylight_duration", i), sunshine: col(d, "sunshine_duration", i), uvMax: col(d, "uv_index_max", i),
-    precip: col(d, "precipitation_sum", i) ?? 0, rain: col(d, "rain_sum", i), showers: col(d, "showers_sum", i), snow: col(d, "snowfall_sum", i) ?? 0,
+    precip: col(d, "precipitation_sum", i) ?? 0, snow: col(d, "snowfall_sum", i) ?? 0,
     precipHours: col(d, "precipitation_hours", i), popMax: col(d, "precipitation_probability_max", i),
     windMax: col(d, "wind_speed_10m_max", i), gustMax: col(d, "wind_gusts_10m_max", i), dir: col(d, "wind_direction_10m_dominant", i),
-    radiation: col(d, "shortwave_radiation_sum", i), et0: col(d, "et0_fao_evapotranspiration", i),
   })).filter((x) => x.tmax != null);
   // (a quarter hour's rain is the 15 minutes up to its time, as Open-Meteo gives it: each is kept by when it starts)
   const minutely = (m.time || []).map((t, i) => ({ t: parseWall(t) - QUARTER, precip: col(m, "precipitation", i) ?? 0, code: col(m, "weather_code", i) ?? 0 }));
@@ -286,12 +288,18 @@ export function peek(place) {
 // how long each kind is good for
 const TTL = { forecast: 10 * 60e3, models: 60 * 60e3, ensemble: 60 * 60e3, air: 60 * 60e3, marine: 60 * 60e3, warnings: 5 * 60e3 };
 
+// What's failed to come lately, and when (by place and kind): not asked for again for a while (up to 10 minutes, less
+// for what's kept for less), so a service that's down isn't asked every minute, the page drawn again each time. The
+// forecast itself always is: there's no page without it.
+const failed = new Map();
+const resting = (id, k, now = Date.now()) => k !== "forecast" && now - (failed.get(`${id}|${k}`) ?? -Infinity) < Math.min(TTL[k], 10 * 60e3);
+
 // Whether a place's kept forecast, or anything else kept with it, is past its time: what load() would ask for again
 // (what failed to come isn't counted: it's asked for again with the next forecast)
 export function due(place, now = Date.now()) {
-  const kept = store.get(`wx:${cell(place.lat, place.lon)}`);
+  const id = cell(place.lat, place.lon), kept = store.get(`wx:${id}`);
   if (!kept?.forecast || now - kept.forecast.at >= TTL.forecast) return true;
-  return Object.keys(TTL).some((k) => kept[k] && now - kept[k].at >= TTL[k]);
+  return Object.keys(TTL).some((k) => kept[k] && now - kept[k].at >= TTL[k] && !resting(id, k, now));
 }
 
 // Load everything for a place. onUpdate(wx, { partial, stale }) is called as each piece arrives
@@ -300,7 +308,10 @@ export async function load(place, onUpdate, { force = false } = {}) {
   const id = cell(place.lat, place.lon), key = `wx:${id}`, stored = store.get(key), kept = stored && typeof stored === "object" ? stored : {};
   const raw = { ...kept };
   // (an ensemble summary from before the ensembles were pooled is asked for again)
-  const fresh = (k) => !force && kept[k] && Date.now() - kept[k].at < TTL[k] && (k !== "ensemble" || kept[k].s?.v === ENS_V);
+  // (asked for again, refreshed by hand say: the forecast and the warnings, which change by the minute; not the rest, kept
+  // an hour, which change with each model run, a few times a day, and are a lot to ask for again)
+  const fresh = (k) => !(force && (k === "forecast" || k === "warnings")) && kept[k] && Date.now() - kept[k].at < TTL[k] && (k !== "ensemble" || kept[k].s?.v === ENS_V);
+  const wait = (k) => fresh(k) || (!force && resting(id, k));
   const build = () => {
     if (!raw.forecast) return null;
     const wx = shapeForecast(raw.forecast.j, place);
@@ -320,20 +331,27 @@ export async function load(place, onUpdate, { force = false } = {}) {
   if (raw.forecast) {
     let wx = null;
     try { wx = build(); } catch (_) { for (const o of [raw, kept]) for (const k of Object.keys(o)) delete o[k]; store.del(key); store.del(`skill4:${id}`); }
-    if (wx) onUpdate(wx, { partial: true, stale: !fresh("forecast") });
+    // (and a fault in drawing it never keeps the new one from being asked for)
+    if (wx) try { onUpdate(wx, { partial: true, stale: !fresh("forecast") }); } catch (e) { console.error(e); }
   }
   const save = () => {
-    if (!store.set(key, raw)) { pruneCache(key); store.set(key, raw); }
+    if (store.set(key, raw)) return;
+    pruneCache(key);
+    if (store.set(key, raw)) return;
+    // (still no room: other places' climates go too, the biggest things kept, and asked for again if they're looked at)
+    try { for (const o of Object.keys(localStorage)) if (o.startsWith("clim2:") && o !== `clim2:${id}`) store.del(o); } catch (_) {}
+    store.set(key, raw);
   };
   const get = async (k, fn) => {
-    if (fresh(k)) return;
+    if (wait(k)) return;
     try {
       const j = await fn(place.lat, place.lon);
       // the ensembles are big (143 runs): only their summary is kept
       raw[k] = k === "ensemble" ? { at: Date.now(), s: shapeEnsemble(j) } : { at: Date.now(), j };
+      failed.delete(`${id}|${k}`);
       save(); onUpdate(build(), { partial: k !== "forecast", stale: false });
     }
-    catch (e) { if (k === "forecast") throw e; }
+    catch (e) { failed.set(`${id}|${k}`, Date.now()); if (k === "forecast") throw e; }
   };
   // the forecast first (the page needs it); the rest alongside
   const main = get("forecast", fetchForecast);

@@ -24,7 +24,7 @@
   <link rel="modulepreload" href="./data.js" /><link rel="modulepreload" href="./format.js" /><link rel="modulepreload" href="./insights.js" />
   <link rel="modulepreload" href="./codes.js" /><link rel="modulepreload" href="./icons.js" /><link rel="modulepreload" href="./charts.js" />
   <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
-  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" />
+  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
   <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
 </head>
 <body data-sky="cloudy-day">
@@ -44,8 +44,8 @@
 
   <main id="main" aria-busy="true" data-empty="loading">
     <div class="col col-a">
-      <section class="hero" aria-labelledby="now-temp">
-        <h1 class="sr-only">Weather for <span id="sr-place">your place</span></h1>
+      <section class="hero" aria-labelledby="hero-title">
+        <h1 class="sr-only" id="hero-title">Weather for <span id="sr-place">your place</span></h1>
         <div class="dots" id="dots" hidden aria-hidden="true"></div>
         <div class="hero-row">
           <div class="hero-temp" id="now-temp">–</div>
@@ -175,7 +175,8 @@
         <label class="sr-only" for="search">Search for a place</label>
         <input id="search" type="search" placeholder="Search for a city or town" autocomplete="off" enterkeyhint="search" />
       </form>
-      <ul class="results" id="results" aria-live="polite"></ul>
+      <ul class="results" id="results"></ul>
+      <p class="sr-only" id="results-said" role="status"></p>
       <button class="row-btn" id="use-location" type="button"></button>
       <h3 class="sheet-sub">Saved</h3>
       <ul class="saved" id="saved"></ul>

@@ -416,18 +416,25 @@ Places (search, or Use My Location) and settings (°C/°F, mph/km/h/m/s/knots,
 mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on
 roughly where you are, from your connection (`GET /api/weather/where`,
 Cloudflare's city-level guess; nothing kept), or on your location if you've
-already allowed it. It works offline with what it last fetched, can be added to
-the Home Screen, and is **fresh whenever it's opened**: started, brought back to
-the front, restored by the browser, its window focused or the phone back online,
-it asks again for whatever's due (the forecast after 10 minutes, warnings after
-5, the models, ensembles, air and sea hourly; only those, so a quick look back
-costs nothing), the radar's say on the next hours after 5, and the radar card's
-frames if it's on screen, showing what it had meanwhile ("Updating…" under the
-temperature); it checks the same every minute while open. Opening it also looks
-for a new version of the app: one that arrives as it's opened is started on
-there and then; one that comes later (or while a sheet's open) waits until the
-next time it's opened, so it never reloads under you mid-use. On a phone,
-pull the page down past its top and let go to refresh it then. As on iPhone, the
+already allowed it. It opens at once, on a poor signal or none, from its own
+copy (`weather/sw.js`: each version's files kept whole as it's installed, and
+given from there before the network's asked; the map's libraries kept apart,
+across versions), shows what it last fetched, can be added to the Home Screen,
+and is **fresh whenever it's opened**: started, brought back to the front,
+restored by the browser, its window focused or the phone back online, it asks
+again for whatever's due (the forecast after 10 minutes, warnings after 5, the
+models, ensembles, air and sea hourly; only those, so a quick look back costs
+nothing; and one that failed rests a while, up to 10 minutes, rather than being
+asked every minute), the radar's say on the next hours after 5, and the radar
+card's frames if it's on screen, showing what it had meanwhile; it checks the
+same every minute while open, and redraws only what's changed. A forecast kept
+so long it has run out (two weeks away, say) isn't shown; the new one is asked
+for. Opening it also looks for a new version of the app: one that arrives as
+it's opened is started on there and then; one that comes later (or while a
+sheet's open) waits until the next time it's opened, so it never reloads under
+you mid-use. On a phone, pull the page down past its top and let go to refresh
+it then ("Updating…" under the temperature: the forecast and warnings asked for
+again, the rest as they're due). As on iPhone, the
 spinner's spokes appear one by one as you pull, it pops when you've pulled far
 enough, and let go, the page holds open a gap for it to turn in (long enough to
 be seen) until the forecast itself is in, the rest arriving behind it, then

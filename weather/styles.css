@@ -8,7 +8,7 @@
 :root {
   --text: #ffffff;
   --text-2: rgba(255, 255, 255, 0.84);
-  --text-3: rgba(255, 255, 255, 0.72);
+  --text-3: rgba(255, 255, 255, 0.8);
   --line: rgba(255, 255, 255, 0.14);
   --temp: #D07A12;
   --rain: #3B8BE0;
@@ -41,7 +41,7 @@
 /* pale skies want a little more tint for the words to stand out; dark ones, less; and the glass as clear or as tinted as
    Settings has it (as iOS 27's Liquid Glass slider: from clear to tinted) */
 body { --tint-a: 0.36; --glass-k: 1; --tint: rgba(14, 22, 38, calc(var(--tint-a) * var(--glass-k))); }
-body[data-sky="clear-day"], body[data-sky="partly-day"], body[data-sky="snow-day"], body[data-sky="fog"], body[data-sky="dawn"], body[data-sky="dusk"] { --tint-a: 0.42; }
+body[data-sky="clear-day"], body[data-sky="partly-day"], body[data-sky="snow-day"], body[data-sky="fog"], body[data-sky="dawn"], body[data-sky="dusk"] { --tint-a: 0.48; }
 body[data-sky$="-night"], body[data-sky="storm"] { --tint-a: 0.3; }
 body[data-glass="clear"] { --glass-k: 0.55; --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
 body[data-glass="tinted"] { --glass-k: 1.9; --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
@@ -53,6 +53,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
   color: var(--text); -webkit-font-smoothing: antialiased; line-height: 1.4;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x: clip;      /* (the top bar's glass reaches the screen's edges: never past them, under a scrollbar) */
 }
 button, input, select { font: inherit; color: inherit; }
 /* an app, not a page: its words aren't selected (so not copied) by a long press or a drag, and nothing calls up a menu
@@ -75,13 +76,17 @@ a { color: inherit; }
 .card, .ins, .tile, .section-title, dialog.sheet, .c-tip {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint);
-  background-image: var(--light), var(--sheen), var(--body);
-  background-attachment: fixed, scroll, scroll;
+  background-image: var(--sheen), var(--body);
   -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   box-shadow: var(--edge), var(--lift);
 }
+/* (where there's a pointer, the light it casts across the glass: fixed to the screen, so only there, where it's worth
+   the repainting as the page scrolls; a phone's panels are spared it) */
+@media (hover: hover) and (pointer: fine) {
+  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-image: var(--light), var(--sheen), var(--body); background-attachment: fixed, scroll, scroll; }
+}
 /* controls */
-.icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
+.icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
 .map-zoom, .radar-centre, .radar-credit {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint-ctl);
@@ -89,9 +94,11 @@ a { color: inherit; }
   -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.6), inset 0 -1px 0.5px rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
 }
+/* (badges on a card: the card's already blurred what's behind; theirs would cost a layer for nothing) */
+.win-rate, .best { -webkit-backdrop-filter: none; backdrop-filter: none; }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
 .card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
-.icon-btn::before, .place::before, .pill-btn::before, .more-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
+.icon-btn::before, .place::before, .pill-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
   background: var(--rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
@@ -103,15 +110,15 @@ a { color: inherit; }
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
 /* give under a finger, spring back (buttons); rows and choices light a little instead (shrinking, they'd lurch) */
-.icon-btn, .place, .pill-btn, .more-btn, .day-row, .row-btn, .saved .del, .radar-centre, .link {
+.icon-btn, .place, .pill-btn, .day-row, .row-btn, .radar-centre, .link {
   transition: transform 0.5s var(--spring), background-color 0.25s, filter 0.25s;
 }
-.icon-btn:active, .place:active, .pill-btn:active, .more-btn:active, .radar-centre:active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
+.icon-btn:active, .place:active, .pill-btn:active, .radar-centre:active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
 fieldset.opt label { transition: filter 0.2s, color 0.25s; }
 fieldset.opt label:active { filter: brightness(1.15); transition-duration: 0.08s; }
 .day-row:active, .row-btn:active { transform: scale(0.985); transition-duration: 0.12s; }
 @media (hover: hover) {
-  .icon-btn:hover, .place:hover, .pill-btn:hover, .more-btn:hover, .radar-centre:hover { filter: brightness(1.15); }
+  .icon-btn:hover, .place:hover, .pill-btn:hover, .radar-centre:hover { filter: brightness(1.15); }
 }
 
 /* ---------- the sky ---------- */
@@ -280,7 +287,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 /* a word about the alerts, once, until they're on or it's put away */
 .nudge { display: grid; grid-template-columns: 34px 1fr; gap: 4px 12px; align-items: start; }
 .nudge .ins-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; grid-row: span 2; }
-.nudge h3 { margin: 0; font-size: 16px; font-weight: 650; }
+.nudge h2 { margin: 0; font-size: 16px; font-weight: 650; }
 .nudge p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.4; }
 .nudge-btns { grid-column: 2; display: flex; gap: 10px; margin-top: 8px; }
 .nudge-btns .pill-btn { min-height: 40px; padding: 8px 16px; }
@@ -315,6 +322,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 @media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
 .hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
 .hero-hl { font-size: 16px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
+.hero-hl, .brief, .status { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32), 0 0 12px rgba(0, 0, 0, 0.22); }
 .brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
 .brief b { font-weight: 650; color: #fff; }
 .status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1em; }
@@ -348,7 +356,7 @@ main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
 /* swiping between places (app.js placeSwipe): the page follows the finger, then turns to the next place, its picture
    carried off as the next one's comes in beside it (each moved by the swipe's own speed: none of the browser's own
    fades), or springs back */
-.hero { touch-action: pan-y; }
+.hero { touch-action: pan-y pinch-zoom; }
 main.paging > .col { will-change: translate; }
 ::view-transition-group(page) { animation: none; }
 ::view-transition-image-pair(page) { isolation: auto; }
@@ -399,6 +407,7 @@ main.paging > .col { will-change: translate; }
    (the space at the end is a spacer: browsers differ on padding at the end of a scrolling row) */
 .strip { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x proximity; margin: 12px calc(-1 * var(--card-x)) 6px; padding: 2px 0 8px var(--card-x); scroll-padding-inline: var(--card-x); scrollbar-width: none;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
+.strip:focus-visible { -webkit-mask-image: none; mask-image: none; outline-offset: -2px; }
 .strip::after { content: ""; flex: none; width: calc(var(--card-x) - 4px); }
 .strip::-webkit-scrollbar { display: none; }
 .hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 999px; scroll-snap-align: start; }
@@ -410,7 +419,7 @@ main.paging > .col { will-change: translate; }
 .chart-note { font-size: 12.5px; color: var(--text-3); margin: 4px 0 0; }
 
 /* charts */
-.chart { position: relative; width: 100%; outline-offset: 4px; touch-action: pan-y; }
+.chart { position: relative; width: 100%; outline-offset: 4px; touch-action: pan-y pinch-zoom; }
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .c-grid { stroke: rgba(255, 255, 255, 0.13); stroke-width: 1; }
 .c-daysep { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
@@ -562,7 +571,6 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .d-bar { position: relative; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
 .d-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #7cc4ff, #8ee6a8, #ffd166, #ff9a4d, #ff5d5d); background-size: var(--span, 100%) 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
 .d-now { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
-.d-spread { position: absolute; top: 2px; height: 2px; background: rgba(255, 255, 255, 0.35); }
 
 /* ---------- insights ---------- */
 /* the app's own insights, in one card: a row each, its title and a line of what it says (a tap for the rest) */
@@ -619,7 +627,6 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .ins.official[data-colour="yellow"] { --tint: rgba(132, 102, 0, 0.66); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
 .ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
 .ins.official[data-colour="orange"] .ins-icon { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
-.more-btn { justify-self: start; border-radius: 999px; padding: 12px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
 
 /* ---------- best times ---------- */
 .win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -722,6 +729,16 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 /* pressure: a dial */
 .dial { width: 74px; height: 74px; display: block; }
 .tile .dial { width: 64px; height: 64px; margin-right: 2px; }
+/* the smallest phones (320 across): the tiles' dials and figures a little smaller so they fit their tile, a best time's
+   day and rating free to wrap, and the days' rows a little tighter */
+@media (max-width: 359px) {
+  .tile .compass, .tile .dial { width: 52px; height: 52px; }
+  .tile .big, .detail-now .big { font-size: 26px; }
+  .win-day { flex-wrap: wrap; }
+  .win-time { white-space: normal; }
+  .day-row { grid-template-columns: 3.9em 34px 2.4em 1fr 2.4em; gap: 6px; }
+  .days.v-rain .day-row, .days.v-wind .day-row { grid-template-columns: 3.9em 34px 1fr 4.2em; }
+}
 .dial .dl-ticks { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1.2; stroke-linecap: round; fill: none; }
 .dial .dl-needle { stroke: #fff; stroke-width: 3.2; stroke-linecap: round; }
 .dial .dl-needle-g { transform-box: view-box; transform-origin: 40px 40px; }
@@ -757,7 +774,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 
 /* ---------- foot: small print, as the Weather app has it (no panel; centred and quiet) ---------- */
 .foot { max-width: 1180px; margin: 6px auto 0; padding: 0 var(--pad) 22px; font-size: 11.5px; line-height: 1.5; color: #fff; text-align: center;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 10px rgba(0, 0, 0, 0.22); }   /* (to read over a pale sky too) */
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 10px rgba(0, 0, 0, 0.25); }   /* (to read over a pale sky too) */
 .foot p { margin: 2px auto; max-width: 60ch; }
 /* (the words small, the places to tap not: each reaches past its words, without moving the lines apart) */
 .foot .link { font-size: inherit; padding: 13px 4px; margin: -13px -4px; }
@@ -800,6 +817,8 @@ body.sheet-up .page *, body.sheet-up .page ::before, body.sheet-up .page ::after
 body.sheet-up .page { transform: translateY(calc(var(--recede, 1) * 10px)) scale(calc(1 - var(--recede, 1) * 0.06)); }
 body.sheet-drag .page { transition: none; }
 @media (min-width: 700px) { body.sheet-up .page { transform: scale(calc(1 - var(--recede, 1) * 0.025)); } }
+/* (the radar full screen stays put under a sheet: a page that steps back would carry it with it) */
+body.sheet-up .page:has(.radar-big) { transform: none; }
 @media (min-width: 700px) { dialog.sheet { margin: auto; max-height: 84vh; } }
 /* places: always the same height on a phone, so it doesn't jump as results come and go */
 @media (max-width: 699px) { #places { height: 86vh; height: 86svh; } }
@@ -827,7 +846,6 @@ body.sheet-drag .page { transition: none; }
 .row-btn .rb-main { flex: 1; min-width: 0; }
 .row-btn .rb-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-btn .rb-temp { font-size: 20px; font-weight: 500; }
 .row-btn[aria-current="true"] .rb-name::after { content: " · showing"; font-weight: 500; color: var(--text-3); font-size: 13px; }
 /* the saved places: a card each, in its own sky (iOS's Weather list); swiped left, it narrows to make room for a Delete
    beside it, a rounded button of its own (iOS 27's swipe actions), so nothing on it is cut off */
@@ -914,7 +932,7 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .ds-day[aria-current] span { color: #fff; }
 .ds-day:active b { transform: scale(0.9); }
 /* a day slides in from the side it was moved to (by the arrow keys or the strip; swiped, it follows the finger: app.js) */
-#day-body, #detail-body { touch-action: pan-y; }
+#day-body, #detail-body { touch-action: pan-y pinch-zoom; }
 #day-body.from-right, #detail-body.from-right { animation: from-right 0.45s var(--spring); }
 #day-body.from-left, #detail-body.from-left { animation: from-left 0.45s var(--spring); }
 @keyframes from-right { from { opacity: 0; transform: translateX(36px); } }
@@ -959,7 +977,7 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .radar-note { margin: 8px 0 0; font-size: 15px; font-weight: 600; }
 .radar-note:empty { display: none; }
 .radar-wrap { position: relative; margin-top: 12px; }
-.radar-map { height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
+.radar-map { isolation: isolate; height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
 .radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
 .radar-chip[data-kind="model"] { background-color: rgba(255, 204, 110, 0.78); color: #2a1d00; }
 /* its word, Radar or Forecast: the one not said lies over it, out of sight (the radar's above, as it's before; the
@@ -1040,7 +1058,9 @@ body.no-scroll { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .radar-map .maplibregl-canvas { transition: none; } }
 /* the map's controls, in glass on it: zoom in and out in one capsule, back to the place below it */
 .map-ctl { position: absolute; top: 10px; left: 10px; z-index: 500; display: flex; flex-direction: column; gap: 10px; }
-.map-zoom { display: flex; flex-direction: column; border-radius: 22px; overflow: hidden; background-color: rgba(14, 22, 38, 0.42); }
+.map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: rgba(14, 22, 38, 0.42); }
+.map-zoom > :first-child { border-radius: 22px 22px 0 0; }
+.map-zoom > :last-child { border-radius: 0 0 22px 22px; }
 .map-zoom button { position: relative; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
 .map-zoom button + button { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
 .map-zoom button:disabled { color: rgba(255, 255, 255, 0.35); cursor: default; }
@@ -1112,7 +1132,7 @@ body.no-scroll { overflow: hidden; }
 fieldset.opt .note { width: 100%; margin: 2px 4px 0; font-size: 13px; color: var(--text-2); }
 fieldset.opt .note:empty { display: none; }
 .pill-btn { border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
-.pill-btn > *, .more-btn > * { position: relative; z-index: 3; }
+.pill-btn > * { position: relative; z-index: 3; }
 .acts-list { list-style: none; margin: 0 0 4px; padding: 0 16px; width: 100%; border-radius: 22px; }
 .act { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 12px; padding: 10px 0; }
 .act + .act { border-top: 0.5px solid var(--line); }
@@ -1131,21 +1151,25 @@ fieldset.opt label.fld { align-items: stretch; }
 .link.danger { color: #ffb3ad; }
 .acts-add { display: flex !important; align-items: center; gap: 10px; width: 100%; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 4px 0 !important; color: var(--text-2); border-radius: 0 !important; }
 .acts-add select { width: auto; flex: 1; }
-select option { color: #111; }
+select option { color: #fff; background: #1c2434; }
 
 /* ---------- when transparency is turned down, or contrast up ---------- */
 @media (prefers-reduced-transparency: reduce) {
-  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .more-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-  .map-zoom, .radar-centre, .radar-credit, .top::before {
+  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
+  .map-zoom, .radar-centre, .radar-credit, .top::before, .radar-dry {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
+  .top::before { background: rgb(20, 28, 44); }
+  .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgb(52, 62, 80); }
   .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
   .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
   .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
-  .icon-btn, .place, .pill-btn, .more-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .map-zoom,
+  .icon-btn, .place, .pill-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .map-zoom,
   .radar-credit { background-color: rgb(52, 62, 80); }
 }
 @media (prefers-contrast: more) {
-  :root { --tint: rgba(10, 14, 24, 0.7); --text-2: #fff; --text-3: rgba(255, 255, 255, 0.88); --line: rgba(255, 255, 255, 0.3); }
+  :root { --text-2: #fff; --text-3: rgba(255, 255, 255, 0.88); --line: rgba(255, 255, 255, 0.3); }
+  body { --tint: rgba(10, 14, 24, 0.7); }
+  dialog.sheet, .c-tip { --tint: rgba(10, 14, 24, 0.85); }
   .card::before, .ins::before, .tile::before, .icon-btn::before, .place::before { background: rgba(255, 255, 255, 0.6); }
 }

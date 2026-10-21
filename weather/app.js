@@ -80,23 +80,25 @@ async function start() {
     addPlace({ name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon });
     history.replaceState(null, "", location.pathname);
   }
+  let located = false;
   if (!S.places.length) {
     // first time: your location if you've already allowed it, else roughly where you are (from your connection), else London
     let granted = false;
     try { granted = (await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted"; } catch (_) {}
-    if (granted && await locate(true)) return;
-    try {
+    located = granted && await locate(true);
+    if (!located) try {
       const r = await fetch("/api/weather/where", { signal: AbortSignal.timeout(4000) });
       const j = r.ok ? await r.json() : null;
       if (j && Number.isFinite(j.lat)) addPlace({ name: j.name, region: j.region || "", lat: j.lat, lon: j.lon, approx: true });
     } catch (_) {}
     if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276 });
   }
-  go();
+  // (found, it's asked for already)
+  if (!located) go();
   // keep "My Location" current, quietly, if you've allowed it (what was kept shows meanwhile)
-  if (place()?.gps) try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted") locate(true); } catch (_) {}
+  if (!located && place()?.gps) try { if ((await navigator.permissions?.query({ name: "geolocation" }))?.state === "granted") locate(true); } catch (_) {}
   // and if its name couldn't be found when it was saved, try again from where it is (no need to ask for the location)
-  const unnamed = S.places.find((x) => x.gps && x.name === "My Location");
+  const unnamed = !located && S.places.find((x) => x.gps && x.name === "My Location");
   if (unnamed) nameOf(unnamed.lat, unnamed.lon, { live: false }).then((n) => { if (n && unnamed.name === "My Location") { Object.assign(unnamed, n); savePlaces(); showPlace(); } });
   if ("serviceWorker" in navigator) {
     // a new version: its worker arrives with every file fresh, so if the app has only just been opened (started, or
@@ -128,13 +130,14 @@ let seq = 0;
 async function go(force = false, fresh = null) {
   const p = place(); if (!p) return;
   const my = ++seq;
-  S.loading = true; S.error = null;
-  $("main").setAttribute("aria-busy", "true");
+  S.loading = true; S.error = null; S.asked = force;
+  // (busy only while there's nothing on the page yet: a refresh in the background leaves what's there to be read)
+  if (!S.wx) $("main").setAttribute("aria-busy", "true");
   $("refresh-btn").disabled = true;
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
   if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; }
-  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: S.f.units.wind === "mph", credits: () => openCredits("map"),
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
   else S.radar.place(p.lat, p.lon);
@@ -142,8 +145,9 @@ async function go(force = false, fresh = null) {
     const loading = load(p, (wx, how) => {
       if (!how.partial) fresh?.();
       if (my !== seq || !wx) return;
-      S.base = wx; S.wx = shaped(wx); S.stale = !!how.stale;
       if (how.error) S.error = how.error;
+      if (runOut(wx)) { render(); return; }
+      S.base = wx; S.stale = !!how.stale;      // (shaped as it's drawn: render)
       if (!how.stale && !how.partial) snapshotNow(wx);
       render();
     }, { force });
@@ -223,8 +227,11 @@ const shaped = (wx) => {
 async function radarRain(p, my) {
   const r = await rainAt(p.lat, p.lon).catch(() => null);
   if (my !== seq) return;
-  S.rain = r && { ...r, id: cell(p.lat, p.lon), asked: Date.now() };
-  if (S.base) render();
+  // (none counts as asked too, so it's not asked again every minute while the radar's away; and the page is drawn
+  // again only if what the radar says has changed)
+  const was = S.rain, id = cell(p.lat, p.lon), said = r ? JSON.stringify([r.at, r.steps]) : "";
+  S.rain = { ...r, id, asked: Date.now(), said };
+  if (S.base && !(was?.id === id && was.said === said)) render();
 }
 
 // "since you last looked": a few snapshots of the days ahead as the page showed them, per place (snap2: since a day's
@@ -426,8 +433,11 @@ function placeSwipe() {
   };
   zone.addEventListener("touchend", end); zone.addEventListener("touchcancel", end);
 }
+// (one kept so long that it's run out, or all but, has nothing to show: two weeks away, say)
+const runOut = (wx) => I.hoursFrom(wx, nowWall(wx.place.offset), 6).length < 6;
 function render() {
   showPlace();
+  if (S.base && runOut(S.base)) S.base = S.wx = null;
   if (S.base) S.wx = shaped(S.base);
   const wx = S.wx;
   // nothing to show yet: placeholders while it loads, or the hero's message and a way to try again
@@ -460,12 +470,14 @@ function render() {
 }
 function status() {
   const wx = S.wx, el = $("status");
-  el.classList.remove("warn");
-  if (!wx) { el.textContent = ""; $("updated").textContent = ""; return; }
+  if (!wx) { el.classList.remove("warn"); el.textContent = ""; $("updated").textContent = ""; return; }
   const mins = Math.round((Date.now() - wx.fetchedAt) / 60e3);
   const ago = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.floor(mins / 60)} h ago` : `${Math.floor(mins / 1440)} days ago`;
-  if ((S.error || S.stale) && !S.loading && mins > 15) { el.textContent = `Couldn't refresh: showing the forecast from ${ago}.`; el.classList.add("warn"); }
-  else el.textContent = S.loading ? "Updating…" : "";
+  // (said once, not again every minute as the age goes up: that's in the line under the page; "Updating…" only when
+  // it was asked for, not each time it refreshes by itself)
+  const warn = (S.error || S.stale) && !S.loading && mins > 15, text = warn ? "Couldn't refresh: showing the last forecast." : S.loading && S.asked ? "Updating…" : "";
+  el.classList.toggle("warn", warn);
+  if (el.textContent !== text) el.textContent = text;
   $("updated").textContent = `Updated ${ago}`;
 }
 
@@ -496,8 +508,9 @@ function hero(wx, now) {
   // a new temperature rolls in, up if it's warmer, down if it's cooler (as iOS's numbers do)
   const tEl = $("now-temp"), t = f.temp(c.temp);
   if (tEl.textContent !== t) {
-    const warmer = parseFloat(t) >= parseFloat(tEl.textContent);
-    tEl.textContent = t;
+    // (by the numbers themselves: a minus, as it's written, isn't one to parseFloat)
+    const warmer = !(c.temp < Number(tEl.dataset.v));
+    tEl.textContent = t; tEl.dataset.v = String(c.temp);
     if (tEl.dataset.shown && !calm.matches) { tEl.classList.remove("roll-up", "roll-down"); void tEl.offsetWidth; tEl.classList.add(warmer ? "roll-up" : "roll-down"); }
     tEl.dataset.shown = "1";
   }
@@ -509,8 +522,9 @@ function hero(wx, now) {
   $("place-temp").textContent = f.temp(c.temp);
   $("now-hl").textContent = d ? `H ${f.temp(d.tmax)}  L ${f.temp(d.tmin)}  ·  Feels like ${f.temp(c.feels)}` : `Feels like ${f.temp(c.feels)}`;
   // (its first sentence, what's coming, in bold; the rest after it)
-  const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""];
-  $("brief").replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : "");
+  // (and written, so read out, only when what it says has changed: not every minute, nor as each part comes in)
+  const said = I.headline(wx, now, f), [, lead, rest] = /^(.+?[.!?])\s+(?=[A-Z])(.*)$/s.exec(said) || [, said, ""], brief = $("brief");
+  if (brief.dataset.said !== said) { brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; }
 }
 
 function nowcast(wx, now) {
@@ -641,10 +655,14 @@ let insWidth = 0;
 function fits() {
   const box = $("insights");
   insWidth = box.clientWidth;
-  for (const r of box.querySelectorAll(".ins-row:not(.open)")) {
+  // (all measured, then all marked: measuring one after marking another would lay the page out again each time)
+  const rows = [...box.querySelectorAll(".ins-row:not(.open)")].map((r) => {
     // (one with a short line always has more to say)
     const l = r.querySelector(".ins-line");
-    const whole = !r.classList.contains("has-short") && !r.classList.contains("goes") && l.scrollHeight <= l.clientHeight + 1, head = r.querySelector(".ins-head");
+    return [r, !r.classList.contains("has-short") && !r.classList.contains("goes") && l.scrollHeight <= l.clientHeight + 1];
+  });
+  for (const [r, whole] of rows) {
+    const head = r.querySelector(".ins-head");
     r.classList.toggle("whole", whole);
     whole ? head.removeAttribute("aria-expanded") : head.setAttribute("aria-expanded", "false");
   }
@@ -653,8 +671,9 @@ new ResizeObserver(() => { if ($("insights").clientWidth !== insWidth) fits(); }
 
 function hourly(wx, now) {
   const f = S.f, hrs = I.hoursFrom(wx, now, 48), strip = $("hourly-strip");
-  // (the strip again only if what it shows has changed: not for every other part of the forecast arriving)
-  const sig = `${cell(wx.place.lat, wx.place.lon)}|${wx.fetchedAt}|${hrs[0]?.t}|${wx.current?.temp}|${wx.current?.code}|${JSON.stringify(f.units)}`;
+  // (the strip again only if what it shows has changed: not for every other part of the forecast arriving, but for
+  // any that changes it, the ensembles' odds or the radar's say on the next hours, say)
+  const sig = `${cell(wx.place.lat, wx.place.lon)}|${wx.current?.temp}|${wx.current?.code}|${JSON.stringify(f.units)}|${hrs.map((x) => `${x.t},${Math.round(x.temp * 10)},${x.code},${x.isDay ? 1 : 0},${Math.round(x.pop ?? 0)}`).join(";")}`;
   if (strip._sig === sig) { drawHourChart(wx, now, hrs, $("hourly-chart"), S.mode, true); return; }
   strip._sig = sig;
   const items = [];
@@ -1301,14 +1320,28 @@ async function locate(quiet = false) {
   const btn = $("locate-btn"); btn.classList.add("busy");
   try {
     const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: false, timeout: 12000, maximumAge: 10 * 60e3 }));
-    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    const lat = pos.coords.latitude, lon = pos.coords.longitude, before = S.places.find((x) => x.gps);
     // (hardly moved since last time, under a kilometre: the name it had, rather than asking again)
     const was = S.places.find((x) => x.gps && x.name !== "My Location" && Math.abs(x.lat - lat) < 0.009 && Math.abs(x.lon - lon) < 0.009 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
-    const name = was ? { name: was.name, region: was.region } : await nameOf(lat, lon);
-    addPlace({ name: name?.name || "My Location", region: name?.region || "", lat, lon, gps: true });
-    const n = S.settings.notify;
-    if ((n.rain || n.brief) && n.place?.gps && cell(n.place.lat, n.place.lon) !== cell(lat, lon)) { n.place = { lat, lon, name: name?.name || "My Location", gps: true }; saveSettings(); syncNotify().catch(() => {}); }
-    go();
+    // (found quietly, as it's opened: the place being looked at stays the one looked at; and still in the same square
+    // of the forecast's, what's being asked for already is what's wanted)
+    const mine = !quiet || !S.places.length || !!place()?.gps, same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
+    const named = (name) => {
+      const n = S.settings.notify;
+      if ((n.rain || n.brief) && n.place?.gps && (cell(n.place.lat, n.place.lon) !== cell(lat, lon) || n.place.name !== name)) { n.place = { lat, lon, name, gps: true }; saveSettings(); syncNotify().catch(() => {}); }
+    };
+    // (named as it was, until the new name's found, if it's not gone far; "My Location" if it has)
+    const as = was || (same ? before : null);
+    addPlace({ name: as?.name || "My Location", region: as?.region || "", lat, lon, gps: true }, mine);
+    if (mine && !same) go(); else showPlace();
+    // (its name looked up meanwhile, the forecast not kept waiting for it)
+    if (was) named(was.name);
+    else nameOf(lat, lon).then((nm) => {
+      const p = S.places.find((x) => x.gps);
+      if (!p || p.lat !== lat || p.lon !== lon) return;
+      if (nm) { Object.assign(p, nm); savePlaces(); showPlace(); }
+      named(p.name);
+    });
     return true;
   } catch (e) {
     if (!quiet) $("status").textContent = e?.code === 1 ? "Location is turned off for this site. You can search for a place instead." : "Couldn't find your location just now.";
@@ -1318,8 +1351,8 @@ async function locate(quiet = false) {
 // the saved places as cards, as iOS's Weather lists them: each in its own sky, its name, its clock and its weather, the
 // temperature and the day's high and low; swiped left, a Delete behind it (or, with a mouse, a bin on it)
 function drawSaved() {
-  const f = S.f;
-  $("saved").replaceChildren(...S.places.map((p, i) => {
+  const f = S.f, box = $("saved"), had = document.activeElement?.closest?.("#saved .pc-li"), at = had ? [...box.children].indexOf(had) : -1;
+  box.replaceChildren(...S.places.map((p, i) => {
     const k = peek(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
     const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
       "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}${i === S.cur ? ", showing" : ""}`,
@@ -1334,6 +1367,8 @@ function drawSaved() {
     if (S.places.length > 1) swipeOpen(li, card);
     return li;
   }));
+  // (what had the focus keeps it, drawn anew: the same place, or the next along if it's the one that's gone)
+  if (at >= 0) box.children[Math.min(at, box.children.length - 1)]?.querySelector(".place-card")?.focus();
 }
 // a card swiped left narrows, following the finger, for the Delete beside it (let go past half way, it stays open);
 // back, or a tap, closes it again
@@ -1359,7 +1394,7 @@ let searchTimer = null, searchSeq = 0;
 function onSearch(now = false) {
   clearTimeout(searchTimer);
   const q = $("search").value.trim(), out = $("results");
-  if (q.length < 2) { out.replaceChildren(); S.pick = S.searching = false; return; }
+  if (q.length < 2) { out.replaceChildren(); $("results-said").textContent = ""; S.pick = S.searching = false; return; }
   if (now !== true) S.pick = false;
   S.searching = true;
   searchTimer = setTimeout(async () => {
@@ -1370,9 +1405,10 @@ function onSearch(now = false) {
       S.searching = false;
       out.replaceChildren(...(list.length ? list.map((p) => h("li", {}, h("button", { class: "row-btn", type: "button", onclick: () => { addPlace(p); $("search").value = ""; out.replaceChildren(); closeSheet($("places")); go(); } },
         h("span", { class: "rb-main" }, h("span", { class: "rb-name" }, p.name), h("span", { class: "rb-sub" }, p.region))))) : [h("li", { class: "muted small" }, "No places found.")]));
+      $("results-said").textContent = list.length ? `${list.length} ${list.length === 1 ? "place" : "places"} found` : "No places found";
       // (Enter pressed before the places came back: take the first now)
       if (S.pick && list.length) { S.pick = false; out.querySelector(".row-btn")?.click(); }
-    } catch (_) { if (my === searchSeq) { S.searching = false; out.replaceChildren(h("li", { class: "muted small" }, "Search isn't available right now.")); } }
+    } catch (_) { if (my === searchSeq) { S.searching = false; out.replaceChildren(h("li", { class: "muted small" }, "Search isn't available right now.")); $("results-said").textContent = "Search isn't available right now"; } }
   }, now === true ? 0 : 280);
 }
 
@@ -1420,7 +1456,7 @@ function nudge() {
   if (n.rain || n.brief || (away && Date.now() - away < 30 * DAY)) { box.hidden = true; return; }
   if (!box.hidden && box.childElementCount) return;
   const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
-  box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h3", { id: "nudge-title" }, "Get rain alerts"),
+  box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h2", { id: "nudge-title" }, "Get rain alerts"),
     h("p", {}, why || "A heads-up here before rain starts, and a morning briefing if you'd like one."),
     h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify-set"); } }, "Turn on"),
       h("button", { class: "link", type: "button", onclick: done }, why ? "OK" : "Not now")));
@@ -1517,15 +1553,17 @@ function drawNotify(keepStatus = false) {
 }
 
 /* ---------- your activities ---------- */
-function saveActs() { saveSettings(); if (S.wx) windows(S.wx, nowWall(S.wx.place.offset)); drawActs(); }
-function drawActs() {
+// (focus: where the focus goes, the list drawn anew: [row, "on"] its switch, [row, "change"] its Change)
+function saveActs(focus) { saveSettings(); if (S.wx) windows(S.wx, nowWall(S.wx.place.offset)); drawActs(focus); }
+function drawActs(focus) {
   const f = S.f, acts = S.settings.activities, have = new Set(acts.map((a) => a.id));
   $("acts-list").replaceChildren(...acts.map((a, i) => h("li", { class: "act" },
-    h("label", { class: "switch" }, h("input", { type: "checkbox", checked: a.on !== false, onchange: (e) => { a.on = e.target.checked; saveActs(); } }), h("span", { class: "act-icon", svg: glyph(a.icon || "star", 16) }), a.name),
+    h("label", { class: "switch" }, h("input", { type: "checkbox", checked: a.on !== false, onchange: (e) => { a.on = e.target.checked; saveActs([i, "on"]); } }), h("span", { class: "act-icon", svg: glyph(a.icon || "star", 16) }), a.name),
     h("span", { class: "act-lim" }, I.limitsText(a, f)),
     h("button", { class: "link", type: "button", "aria-label": `Change ${a.name}`, onclick: () => editAct(i) }, "Change"))));
   $("act-add").replaceChildren(h("option", { value: "" }, "Choose…"),
     ...Object.entries(I.ACTIVITIES).filter(([id]) => !have.has(id)).map(([id, a]) => h("option", { value: id }, a.name)), h("option", { value: "custom" }, "Something else…"));
+  if (focus) { const li = $("acts-list").children[Math.min(focus[0], acts.length - 1)]; (li?.querySelector(focus[1] === "on" ? "input" : "button") || $("act-add")).focus(); }
 }
 function editAct(i) {
   const a = S.settings.activities[i], f = S.f, li = $("acts-list").children[i];
@@ -1540,14 +1578,14 @@ function editAct(i) {
     num("gustMax", "Gusts at most", wU(a.gustMax), f.windUnit),
     h("label", { class: "fld" }, h("span", {}, "Rain"), h("select", { name: "rain" }, ...[["dry", "Must be dry"], ["light", "Light rain is fine"], ["any", "Any weather"]].map(([v, t]) => h("option", { value: v, selected: a.rain === v ? true : null }, t)))),
     num("hours", "For (hours)", a.hours), hour("from", "Between", a.from), hour("to", "and", a.to),
-    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: () => done() }, "Done"), h("button", { class: "link danger", type: "button", onclick: () => { S.settings.activities.splice(i, 1); saveActs(); } }, "Remove")));
+    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: () => done() }, "Done"), h("button", { class: "link danger", type: "button", onclick: () => { S.settings.activities.splice(i, 1); saveActs([i, "change"]); } }, "Remove")));
   const val = (k) => ed.querySelector(`[name="${k}"]`).value, n = (k, d) => { const v = parseFloat(val(k)); return Number.isFinite(v) ? v : d; };
   function done() {
     Object.assign(a, { name: val("name").trim().slice(0, 24) || a.name, tmin: tM(n("tmin", tU(a.tmin))), tmax: tM(n("tmax", tU(a.tmax))), windMin: Math.max(0, wM(n("windMin", 0))),
       windMax: Math.max(1, wM(n("windMax", wU(a.windMax)))), gustMax: Math.max(1, wM(n("gustMax", wU(a.gustMax)))), rain: val("rain"), hours: Math.max(1, Math.min(8, Math.round(n("hours", a.hours)))), from: Number(val("from")), to: Number(val("to")) });
     if (a.tmax < a.tmin) [a.tmin, a.tmax] = [a.tmax, a.tmin];
     if (a.to <= a.from) a.to = Math.min(24, a.from + a.hours);
-    saveActs();
+    saveActs([i, "change"]);
   }
   li.replaceChildren(ed);
   ed.querySelector("input").focus();

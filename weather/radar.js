@@ -50,7 +50,15 @@ async function modelRain(g) {
     out.rain.push(list.map((o) => Math.round((o.minutely_15?.precipitation?.[k] ?? 0) * 4 * 100) / 100));
     out.snow.push(list.map((o) => ((o.minutely_15?.snowfall?.[k] ?? 0) > 0 ? 1 : 0)));
   });
-  try { localStorage.setItem(key, JSON.stringify(out)); } catch (_) {}
+  try {
+    // (and those kept for elsewhere that have gone stale cleared away: one for each part of the map looked at would pile up)
+    for (const k of Object.keys(localStorage)) {
+      if (!k.startsWith("radarfc:") || k === key) continue;
+      let at = 0; try { at = JSON.parse(localStorage.getItem(k))?.at ?? 0; } catch (_) {}
+      if (Date.now() - at >= MODEL_TTL) localStorage.removeItem(k);
+    }
+    localStorage.setItem(key, JSON.stringify(out));
+  } catch (_) {}
   return out;
 }
 const canvasFor = (g, rates, snow) => {
@@ -222,18 +230,18 @@ const round = (n) => { const p = 10 ** Math.floor(Math.log10(n)), d = n / p; ret
 
 /**
  * The radar, in `card` (#radar). time(t) formats a real UTC time (ms) as the place's own clock;
- * miles: show the scale in miles. Returns { place(lat, lon), refresh(), note(text) }.
+ * miles(): whether to show the scale in miles. Returns { place(lat, lon), refresh(), note(text) }.
  *
  * The map it's drawn on (mapgl.js, or mapleaf.js) is driven through: frames([{ draw(z, x, y, gone) } | { canvas,
  * bounds }]), show(k, opacity), box(bounds | null | undefined, opacity), dot(lat, lon), clear([{ x, y, w, h }]), view(lat, lon, smooth),
  * zoomBy(±1), explore(on), resize(), state() → { zoom, min, max, mpp }, on("move" | "tap", fn), and credit (its
  * sources' names). Zooms are 256-pixel tiles' (as Leaflet counts them).
  */
-export function radar(card, { lat, lon, time, miles = false, credits = null, rainSoon = () => true }) {
+export function radar(card, { lat, lon, time, miles = () => false, credits = null, rainSoon = () => true }) {
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
-  let map = null, starting = null, credit = null, dry = null, told = false, frames = [], i = 0, playing = false, fetched = 0, here = { lat, lon }, g = null;
+  let map = null, starting = null, credit = null, dry = null, told = false, frames = [], i = 0, playing = false, fetched = 0, here = { lat, lon }, g = null, loads = 0;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
@@ -464,20 +472,23 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     if (tEnd > tNow) mark(tEnd, `+${span(tEnd)}`, "rs-l rs-end");
   }
   async function load() {
-    g = grid(here.lat, here.lon);
+    // (where it was asked for, throughout; and if it's been asked for again meanwhile, somewhere else say, this one's dropped)
+    const my = ++loads, spot = here, want = grid(spot.lat, spot.lon);
     const rv = await framesNow().catch(() => null);
     const host = rv?.host, past = rv?.radar?.past || [];
     // the next two hours, always: the latest radar carried along its own track, every 10 minutes; where there's no
     // track to follow (no radar here, or too little rain to tell) but rain's about on the radar or expected here soon,
     // the models' rain on the grid instead (81 places' forecasts: not asked for to show a dry map); and where it's dry
     // all about, the latest radar as it is (nothing coming: no more to ask for)
-    const drift = past.length >= 3 ? await driftAt(host, past, here.lat, here.lon).catch(() => null) : null;
+    const drift = past.length >= 3 ? await driftAt(host, past, spot.lat, spot.lon).catch(() => null) : null;
     const last = past.length ? past[past.length - 1].time * 1000 : 0;
-    const wetAbout = !drift && past.length ? !!(await squareAt(here.lat, here.lon, (x, y) => tileCodes(`${host}${past[past.length - 1].path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`)).catch(() => null))?.some(Boolean) : false;
-    const model = drift || (past.length && !rainSoon() && !wetAbout) ? null : await modelRain(g).catch(() => null);
+    const wetAbout = !drift && past.length ? !!(await squareAt(spot.lat, spot.lon, (x, y) => tileCodes(`${host}${past[past.length - 1].path}/${SRC}/${NATIVE - 1}/${x}/${y}/2/1_1.png`)).catch(() => null))?.some(Boolean) : false;
+    const model = drift || (past.length && !rainSoon() && !wetAbout) ? null : await modelRain(want).catch(() => null);
     if (!past.length && !model) throw new Error("nothing");
     const held = !drift && !model && past.length > 0 && !rainSoon() && !wetAbout;
     const ahead = drift || held ? Array.from({ length: 12 }, (_, k) => last + (k + 1) * 600e3) : model ? model.times : [];
+    if (my !== loads) return;
+    g = want;
     const tl = timeline(past.map((f) => f.time * 1000), ahead);
     frames = tl.frames;
     const box = [[g.south, g.west], [g.north, g.east]];
@@ -530,7 +541,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       const s = map.state(), most = s.mpp * 90;
       zin.disabled = s.zoom >= s.max - 0.01; zout.disabled = s.zoom <= s.min + 0.01;
       // the longest round distance that fits in 90 pixels
-      const [n, unit, m] = miles ? (most >= 1609.344 ? [round(most / 1609.344), "mi", 1609.344] : [round(most * 3.2808), "ft", 0.3048]) : most >= 1000 ? [round(most / 1000), "km", 1000] : [round(most), "m", 1];
+      const [n, unit, m] = miles() ? (most >= 1609.344 ? [round(most / 1609.344), "mi", 1609.344] : [round(most * 3.2808), "ft", 0.3048]) : most >= 1000 ? [round(most / 1000), "km", 1000] : [round(most), "m", 1];
       ruler.textContent = `${n} ${unit}`;
       ruler.style.width = `${Math.round((n * m) / s.mpp)}px`;
     };
@@ -565,6 +576,7 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
       if (!calm) run();
     } catch (e) {
       status.textContent = "The radar isn't available right now.";
+      if (!map) starting = null;
     }
   }
   function credited(names) {
@@ -605,7 +617,8 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
     show(Math.round((to - t0) / 60e3) * 60e3 + t0);
   });
   full.addEventListener("click", () => grow(!card.classList.contains("radar-big")));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big")) grow(false); });
+  // (Escape in a sheet opened from it, the credits say, closes the sheet, not this)
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && card.classList.contains("radar-big") && !document.querySelector("dialog[open]")) grow(false); });
   // the vector map's code fetched a screen ahead; the radar started once it's on screen, and paused while it's off it
   const near = new IntersectionObserver((es) => {
     if (!es.some((x) => x.isIntersecting)) return;
@@ -622,13 +635,19 @@ export function radar(card, { lat, lon, time, miles = false, credits = null, rai
   io.observe(card);
   return {
     place(lat2, lon2) {
+      // (the same place, its forecast refreshed: the map left where it's been moved to)
+      if (lat2 === here.lat && lon2 === here.lon) return;
       const moved = Math.abs(lat2 - here.lat) > 0.05 || Math.abs(lon2 - here.lon) > 0.05;
       here = { lat: lat2, lon: lon2 };
       if (!map) return;
       map.view(lat2, lon2); map.dot(lat2, lon2);
       if (moved) load().catch(() => {});        // (the forecast's grid goes with the place)
     },
-    refresh() { if (map && Date.now() - fetched > 5 * 60e3) load().catch(() => {}); },
+    refresh() {
+      // (a map that couldn't start, its code not to hand, say: tried again)
+      if (!map && !starting) starting = start();
+      else if (map && Date.now() - fetched > 5 * 60e3) load().catch(() => {});
+    },
     note(text) { q(".radar-note").textContent = text || ""; },
   };
 }

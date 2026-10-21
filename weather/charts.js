@@ -47,9 +47,10 @@ function colPath(x, y, w, h, r = 4) {
 export function timeChart(host, opts) {
   const fresh = !host._chart || (opts.key ?? null) !== (host._chart.key ?? null);
   host._chart = opts;
+  // (its width kept as it changes, rather than measured each time it's drawn: that would lay the page out again then and
+  // there, each chart in turn, as the forecast's parts come in)
   if (!host._ro && typeof ResizeObserver !== "undefined") {
-    let w = 0;
-    host._ro = new ResizeObserver(() => { if (Math.abs(host.clientWidth - w) > 2) { w = host.clientWidth; draw(host); } });
+    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; host._w = w; if (Math.abs(w - was) > 2) draw(host); });
     host._ro.observe(host);
   }
   draw(host, fresh);
@@ -84,10 +85,10 @@ function carryOn(host, svg) {
 function draw(host, fresh = false) {
   const o = host._chart; if (!o) return;
   const pts = o.points.filter((p) => p.v != null);
+  const W = Math.max(260, (host._w ??= host.clientWidth) || 340), Hh = o.height || 170;
   host.replaceChildren();
   host.classList.add("chart");
   if (!pts.length) { host.textContent = "No data"; return; }
-  const W = Math.max(260, host.clientWidth || 340), Hh = o.height || 170;
   const L = o.y?.inside ? 8 : 34, R = 10, T = 18, B = 26, iw = W - L - R, ih = Hh - T - B;
   const step = o.x?.step || HOUR, cols = o.kind === "columns";
   const t0 = o.points[0].t, t1 = o.points[o.points.length - 1].t + (cols ? step : 0);
