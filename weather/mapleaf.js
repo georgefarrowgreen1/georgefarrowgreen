@@ -49,7 +49,7 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       el.onselectstart = L.Util.falseFn; el.onmousemove = L.Util.falseFn;
     },
   });
-  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null;
+  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null, was = null;
   return {
     kind: "leaflet",
     credit: ["OpenStreetMap"],
@@ -64,6 +64,16 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       layers[on]?.setOpacity(0);
       layers[k]?.setOpacity(opacity);
       on = k;
+    },
+    // what's over the map now, faded away over what's drawn next (styles.css .rv-was)
+    fadeOut() {
+      if (!mix || !mixOf || calm) return;
+      const snap = document.createElement("canvas"); snap.width = mixOf.width; snap.height = mixOf.height;
+      snap.getContext("2d").drawImage(mixOf, 0, 0);
+      if (was) map.removeLayer(was);
+      was = new Canvas(snap, mix.getBounds(), { opacity: mix.options.opacity, interactive: false, className: "rv-was" }).addTo(map);
+      const it = was;
+      requestAnimationFrame(() => requestAnimationFrame(() => { it.setOpacity(0); setTimeout(() => { if (was === it) { map.removeLayer(it); was = null; } }, 400); }));
     },
     blend(canvas, bounds, opacity) {
       if (!canvas) { mix?.setOpacity(0); return; }

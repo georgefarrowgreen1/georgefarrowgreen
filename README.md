@@ -278,9 +278,12 @@ so there's nothing to set up beyond the address.
   WebGL 1), drawn on one canvas over the tiles in sight (a layer under the names). After the latest frame, it's
   carried on to the minute, fading a little the further ahead; the models' quarter hours are blended
   (`rainmap.js` partsAt). Each frame's tiles are drawn once and kept (those a picture's drawing never let go,
-  those of other zooms first), with the tiles a minute or a frame on asked for ahead; where they aren't in yet,
-  or zoomed far out, the nearest frame as it is (where there's no graphics chip to hand, the same blend drawn as
-  pictures). The minutes between are estimates: the radar itself comes every 10 minutes, the models' every 15. It looks
+  those of other zooms first), with the tiles a minute or a frame on asked for ahead, and, once the map's still, the
+  rest of the frames for what's in sight (nearest in time first) and the frame on show a zoom out, so play, a drag
+  along the timeline or a pinch out finds them waiting. Where they aren't in yet, the last picture's held till they
+  are, then faded into (zoomed far out, the nearest frame as it is); a jump (play coming round to the start, Page Up
+  or Down) fades from one picture to the next rather than cutting (where there's no graphics chip to hand, the same
+  blend drawn as pictures). The minutes between are estimates: the radar itself comes every 10 minutes, the models' every 15. It looks
   as Apple's Weather map does. The rain in its colours (`rainmap.js` SHADES, sampled from Apple's own legend): light
   rain a see-through blue, moderate violet, through mauve and tan into heavy's yellow, extreme a pale yellow, snow in
   cyans to teal (RainViewer's Universal Blue, from their published table, is only for reading their tiles back into
@@ -289,15 +292,17 @@ so there's nothing to set up beyond the address.
   and a pale grey-blue sea, roads in light greys and the names dark; at night land in a quiet grey and the sea a deep
   blue, the names crisp and white; either way the lie of the land faintly shaded (Natural Earth's relief), roads a
   whisper, borders on land only, the names drawn above the rain so they read through it (and stepping aside from the
-  place's bubble, and from the buttons, scale and credits over the map, rather than hiding under them, as the map
+  place's bubble and its name, however long, and from the buttons, scale and credits over the map, rather than hiding under them, as the map
   moves too). The place is marked as Apple marks it: its temperature and sky in a bubble the colour of how warm it is,
   pointing to a dot, its name ("My Location") under it. Where a phone can't draw the vector map (no WebGL 2), the
   radar's on OpenStreetMap's own map instead (Leaflet), toned to match, with the same controls; either is driven the
   same way (`mapgl.js`, `mapleaf.js`). Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's
   colour read back into reflectivity, blended with a cubic B-spline (curved
-  edges, colours that flow between bands) and recoloured, a few tiles at a time
-  with the frame on show first (`rainmap.js` decode, ramp, resample). The radar
+  edges, colours that flow between bands) and recoloured, the frame on show first,
+  off the page's own thread (up to three workers, `weather/radarwork.js`, so the map keeps moving under a finger
+  meanwhile; on the page a few tiles at a time where there are none), each tile's radar stitched into one block so
+  the smoothing reads it straight through (`rainmap.js` decode, ramp, resample, rainValues). The radar
   is asked for in 512-pixel tiles a zoom out, which carry the same detail in a
   quarter of the requests; a tile that doesn't come is asked for again. A line above it
   says what's coming ("Rain starting in about 40 min"); under it, the dock: play, what's on show over its day and
@@ -306,7 +311,8 @@ so there's nothing to set up beyond the address.
   there's room); then a legend (Light, Moderate, Heavy, Extreme, and Snow). On the map, in glass at its top right,
   zoom in and out (opening close in, about 10 miles to the scale's bar, two steps from as close as the radar's worth
   seeing) and a button back to the place; a scale drawn as Maps draws it, and the map's credits in full as it first
-  appears (in two lines), then folded into a © that opens the Credits window. On
+  appears (in two lines), then folded into a © that opens the Credits window (folding over the map
+  without moving anything on it). On
   a phone a tap opens it full screen to pan and pinch (the page scrolls past it
   otherwise), which "Tap to explore" says at the map's foot, between the scale
   and the ©, once the credits have folded away. Full screen, as Apple's: the map to every edge, an × at the top left,
@@ -485,7 +491,7 @@ directly, so a branch can be tried before it's merged.
 | Drawing | `weather/app.js`, `weather/charts.js` (SVG charts: one measure each, a readout under your finger or the arrow keys, a table for screen readers), `weather/icons.js` |
 | Fetching | `weather/data.js`: Open-Meteo's forecast (now, 15-minute rain, hourly, 16 days), seven models, five ensembles pooled, air quality and pollen, the sea (temperature, waves, tide), the 30-year archive, past forecasts, place search; BigDataCloud names where you are (only a position your phone has just given: a kept one is named by OpenStreetMap's Nominatim). Kept in `localStorage` (the climate for a year per place, the accuracy for 12 hours) |
 | Thinking | `weather/insights.js` (and activities), `weather/skill.js` (accuracy, tuning), `weather/alerts.js` (notifications), `weather/climate.js`, `weather/sky.js`, `weather/codes.js`, `weather/format.js` (pure: no page, no network) |
-| Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline, the minutes between: pure), `weather/radarmix.js` (the minutes between blended as rain on the graphics chip: WebGL 1), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |
+| Radar | `weather/radar.js` (the frames, the timeline, the controls; drives either map), `weather/rainmap.js` (colours, the grid, painting, the timeline, the minutes between: pure), `weather/radarwork.js` (the smoothing, off the page's thread), `weather/radarmix.js` (the minutes between blended as rain on the graphics chip: WebGL 1), `weather/mapgl.js` (the vector map: MapLibre, `weather/vendor/maplibre-gl*.mjs`, `maplibre-gl.css`, BSD-3-Clause; the radar's tiles handed to it as drawn), `weather/mapstyle.js` (its style: pure), `weather/mapleaf.js` (without WebGL 2: Leaflet, `weather/vendor/leaflet.js`, `leaflet.css`, BSD-2-Clause) |
 | Offline, notifications | `weather/sw.js` (the offline copy, and showing notifications), `weather/manifest.webmanifest` |
 | Serving | `functions/_wxapp.js` (headers, the app at the root of its address), `functions/_middleware.js`, `functions/weather/_middleware.js`, `functions/api/weather/[[path]].js` |
 | Server | `functions/_wxpush.js` (subscriptions in D1 `wx_subs`, the tick; push through `functions/_notify.js`'s `pushToSub`), `functions/_wxobs.js` (airport reports, kept in D1 `wx_obs`), `functions/_wxwarn.js` (official warnings: MeteoAlarm's feeds, the National Weather Service and the Environment Agency's floods, each kept 5 minutes in Cloudflare's cache, shaped down to what's in force, and matched to the place by the warning's own drawn area; the flood areas' outlines a week); `weather/official.js` says them (colour, title, when) |

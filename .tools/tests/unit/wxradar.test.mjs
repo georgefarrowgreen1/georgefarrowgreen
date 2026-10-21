@@ -269,3 +269,23 @@ test("kept as rain, then coloured: as the smoothing draws it; and two frames ble
   const [hr, hg, hb] = colour(Uint8ClampedArray.from(heavy), new Uint8ClampedArray(4), 1.4), [lr, lg, lb] = colour(Uint8ClampedArray.from(light), new Uint8ClampedArray(4), 1.4);
   assert.ok(Math.abs(r - (hr + lr) / 2) + Math.abs(g - (hg + lg) / 2) + Math.abs(b - (hb + lb) / 2) > 60, "not the two colours' average");
 });
+
+// the quick way (the codes about the square stitched into one array, as radar.js hands them to radarwork.js) draws
+// exactly what the pixel-by-pixel way does, across tiles' edges, snow and all
+test("smoothing from the codes stitched together: the same, byte for byte", () => {
+  const SRC = 512, A = new Uint8Array(SRC * SRC), B = new Uint8Array(SRC * SRC);
+  for (let y = 0; y < SRC; y++) for (let x = 0; x < SRC; x++) {
+    const v = Math.sin(x / 23) * Math.cos(y / 31) + Math.sin((x + y) / 57);
+    A[y * SRC + x] = v > 0.1 ? (x > 300 && y < 150 ? 111 : 11) + Math.round(v * 20) : 0; B[y * SRC + x] = (x * 7 + y * 3) % 11 === 0 ? 30 : 0;
+  }
+  const from = new Map([["0,0", A], ["1,0", B]]);
+  const code = (x, y) => { const ox = Math.floor(x / SRC), oy = Math.floor(y / SRC), t = from.get(`${ox},${oy}`); return t ? t[(y - oy * SRC) * SRC + (x - ox * SRC)] : 0; };
+  const LOOK = { edge: [0.16, 0.5], soft: 1.4 };
+  for (const [x0, y0, span] of [[100, 100, 128], [480, 20, 64], [0, 0, 256], [505, 500, 32], [3.5, 7.25, 64]]) {
+    const ox = Math.floor(x0) - 2, oy = Math.floor(y0) - 2, w = Math.ceil(x0 + span + 2) - ox, h = Math.ceil(y0 + span + 2) - oy, data = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) data[y * w + x] = code(x + ox, y + oy);
+    const a = rainValues(new Uint8ClampedArray(256 * 256 * 4), 256, code, x0, y0, span, LOOK), b = rainValues(new Uint8ClampedArray(256 * 256 * 4), 256, { data, w, h, ox, oy }, x0, y0, span, LOOK);
+    assert.ok(a.some((v, i) => i % 4 === 1 && v > 0), "(some rain in it)");
+    assert.ok(a.every((v, i) => v === b[i]), `the same at ${x0},${y0} over ${span}`);
+  }
+});

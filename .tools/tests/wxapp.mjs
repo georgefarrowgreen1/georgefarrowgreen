@@ -526,7 +526,7 @@ await p.waitForSelector('#radar .maplibregl-canvas', { timeout: 20000 });
 // as it appears: its credits in full, in two lines (four names don't fit in one), clear of the scale; nothing else at its foot yet
 await p.waitForSelector('#radar .radar-credit', { timeout: 20000 });
 const foot0 = await p.evaluate(() => {
-  const r = (s) => document.querySelector(`#radar ${s}`).getBoundingClientRect(), t = document.querySelector('#radar .rc-t'), c = r('.radar-credit'), sc = r('.map-scale');
+  const r = (s) => document.querySelector(`#radar ${s}`).getBoundingClientRect(), t = document.querySelector('#radar .rc-t'), c = r('.rc-t'), sc = r('.map-scale');
   return { folded: document.querySelector('#radar .radar-credit').classList.contains('folded'), whole: t.scrollWidth <= t.clientWidth + 1 && t.scrollHeight <= t.clientHeight + 1, lines: t.textContent.split('\n').length, clear: c.left >= sc.right + 4, hint: document.querySelector('#radar .radar-hint').hidden };
 });
 ok(!foot0.folded && foot0.whole && foot0.lines === 2 && foot0.clear && foot0.hint, 'as the map appears: its credits in full (two lines, none of it cut off, clear of the scale), nothing else at its foot yet', JSON.stringify(foot0));

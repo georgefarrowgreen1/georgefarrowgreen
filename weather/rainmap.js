@@ -142,7 +142,12 @@ export function resample(out, w, code, x0, y0, span, look = { edge: [0.22, 0.45]
 // over 75, 0 to 1) and how much of it is snow (s, 0 to 1), each times c ("premultiplied": blending two frames, or a
 // pixel with its neighbours, then blends the rain where it is) → R = x·c, G = c, B = s·c (×255), A = 255. colour()
 // turns them into the radar's colours, as resample would have drawn them
+//
+// code: a function (x, y) → the code there, or (much the quicker) the codes about the square stitched into one array,
+// { data, w, h, ox, oy } (data[(y - oy) * w + (x - ox)], nothing outside it): the same sums, each column's and row's
+// weights worked out once, the codes read straight out (radar.js, off the page's own thread: radarwork.js)
 export function rainValues(out, w, code, x0, y0, span, look = { edge: [0.22, 0.45], soft: 0 }) {
+  if (typeof code !== "function") return rainValuesFrom(out, w, code, x0, y0, span, look);
   const wx = new Float64Array(4), wy = new Float64Array(4), [e0, e1] = look.edge;
   for (let y = 0; y < w; y++) {
     const sy = y0 + ((y + 0.5) * span) / w - 0.5, iy = Math.floor(sy);
@@ -156,6 +161,39 @@ export function rainValues(out, w, code, x0, y0, span, look = { edge: [0.22, 0.4
         if (!c) continue;
         const k = wx[i] * wy[j];
         cov += k; sum += k * (c > 100 ? c - 111 : c - 11); if (c > 100) snow += k;
+      }
+      const o = (y * w + x) * 4;
+      out[o + 3] = 255;
+      if (cov <= e0) { out[o] = out[o + 1] = out[o + 2] = 0; continue; }
+      const f = cov >= e1 ? 1 : ((cov - e0) / (e1 - e0)) ** 2 * (3 - 2 * (cov - e0) / (e1 - e0));
+      const x01 = Math.min(75, Math.max(0, sum / cov + 10)) / 75;
+      out[o] = Math.round(x01 * f * 255); out[o + 1] = Math.round(f * 255); out[o + 2] = snow > cov / 2 ? Math.round(f * 255) : 0;
+    }
+  }
+  return out;
+}
+function rainValuesFrom(out, w, src, x0, y0, span, look) {
+  const [e0, e1] = look.edge, { data, w: sw, h: sh, ox, oy } = src, t4 = new Float64Array(4);
+  const cols = new Int32Array(w), cw = new Float64Array(w * 4), rows = new Int32Array(w), rw = new Float64Array(w * 4);
+  for (let x = 0; x < w; x++) { const sx = x0 + ((x + 0.5) * span) / w - 0.5, ix = Math.floor(sx); bspline(sx - ix, t4); cols[x] = ix - 1 - ox; cw.set(t4, x * 4); }
+  for (let y = 0; y < w; y++) { const sy = y0 + ((y + 0.5) * span) / w - 0.5, iy = Math.floor(sy); bspline(sy - iy, t4); rows[y] = iy - 1 - oy; rw.set(t4, y * 4); }
+  for (let y = 0; y < w; y++) {
+    const r0 = rows[y], y4 = y * 4;
+    for (let x = 0; x < w; x++) {
+      const c0 = cols[x], x4 = x * 4;
+      let cov = 0, sum = 0, snow = 0;
+      for (let j = 0; j < 4; j++) {
+        const ry = r0 + j;
+        if (ry < 0 || ry >= sh) continue;
+        const at = ry * sw, wj = rw[y4 + j];
+        for (let i = 0; i < 4; i++) {
+          const cx = c0 + i;
+          if (cx < 0 || cx >= sw) continue;
+          const c = data[at + cx];
+          if (!c) continue;
+          const k = cw[x4 + i] * wj;
+          cov += k; sum += k * (c > 100 ? c - 111 : c - 11); if (c > 100) snow += k;
+        }
       }
       const o = (y * w + x) * 4;
       out[o + 3] = 255;

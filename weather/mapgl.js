@@ -72,7 +72,8 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   const mark = pin || Object.assign(document.createElement("div"), { className: "map-pin" });
   const dot = new m.Marker({ element: mark, anchor: "center" }).setLngLat([lon, lat]).addTo(map);
   const spot = (la, lo) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lo, la] } });
-  map.addImage("room", { width: 64, height: 136, data: new Uint8Array(64 * 136 * 4) });
+  let roomW = 64;
+  map.addImage("room", { width: roomW, height: 136, data: new Uint8Array(roomW * 136 * 4) });
   map.addSource("here", { type: "geojson", data: spot(lat, lon) });
   map.addLayer({ id: "here", type: "symbol", source: "here", layout: { "icon-image": "room", "icon-allow-overlap": true, "icon-ignore-placement": false } });
   // and room kept the same way where the map's own controls are over it (radar.js), so no name is half under one: each
@@ -89,9 +90,22 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
 
-  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null;
+  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null, mixCorners = null, was = null, wasFade = 0;
   const corners = ([[s, w], [n, e]]) => [[w, n], [e, n], [e, s], [w, s]];
-  const unmix = () => { if (mix) map.setPaintProperty("mix", "raster-opacity", 0); };
+  // (a layer's opacity, at once, or faded to it over a quarter of a second)
+  const INSTANT = { duration: 0, delay: 0 }, GENTLY = { duration: calm ? 0 : 260, delay: 0 };
+  // (each told only when it changes: not again every frame the radar plays)
+  const told = new Map();
+  const opacity = (id, v, soft = false) => {
+    const was = told.get(id);
+    if (was && was[0] === v && was[1] === soft) return;
+    told.set(id, [v, soft]);
+    map.setPaintProperty(id, "raster-opacity-transition", soft ? GENTLY : INSTANT); map.setPaintProperty(id, "raster-opacity", v);
+  };
+  const unmix = () => { if (mix) opacity("mix", 0); };
+  // the picture over the map as it is, kept a moment on top of what comes next and faded away (blend draws over the
+  // one canvas: so it's copied first)
+  const wasCanvas = document.createElement("canvas");
   return {
     kind: "gl",
     credit: ["OpenFreeMap", "OpenMapTiles", "OpenStreetMap"],
@@ -109,29 +123,55 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
         return id;
       });
     },
-    show(k, opacity) {
+    show(k, value) {
       unmix();
-      if (layers[on]) map.setPaintProperty(layers[on], "raster-opacity", 0);
-      if (layers[k]) map.setPaintProperty(layers[k], "raster-opacity", opacity);
+      if (layers[on]) opacity(layers[on], 0);
+      if (layers[k]) opacity(layers[k], value);
       on = k;
+    },
+    // what's over the map now, faded away over what's drawn next
+    fadeOut() {
+      if (!mix || !mixOf || !mixCorners || calm) return;
+      wasCanvas.width = mixOf.width; wasCanvas.height = mixOf.height;
+      wasCanvas.getContext("2d").drawImage(mixOf, 0, 0);
+      if (!was) {
+        map.addSource("was", { type: "canvas", canvas: wasCanvas, coordinates: mixCorners, animate: false });
+        map.addLayer({ id: "was", type: "raster", source: "was", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0 } }, ABOVE_RAIN);
+        was = map.getSource("was");
+      } else was.setCoordinates(mixCorners);
+      was.play(); was.pause();
+      opacity("was", map.getPaintProperty("mix", "raster-opacity") ?? 0);
+      // (on the next frame, once it's shown as it was: faded from there)
+      cancelAnimationFrame(wasFade);
+      wasFade = requestAnimationFrame(() => requestAnimationFrame(() => opacity("was", 0, true)));
     },
     // a picture over bounds in place of the frames (the minutes between them: radar.js), drawn again as it changes;
     // null: none
-    blend(canvas, bounds, opacity) {
+    // (fade: the frame shown before it faded away under it, not cut)
+    blend(canvas, bounds, value, fade = false) {
       if (!canvas) return unmix();
       const c = corners(bounds), key = c.join();
+      mixCorners = c;
       // (a picture on another canvas: its layer made again for it)
       if (mix && mixOf !== canvas) { map.removeLayer("mix"); map.removeSource("mix"); mix = null; }
       if (!mix) {
+        told.delete("mix");
         map.addSource("mix", { type: "canvas", canvas, coordinates: c, animate: false });
         map.addLayer({ id: "mix", type: "raster", source: "mix", paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": 0 } }, ABOVE_RAIN);
         mix = map.getSource("mix"); mixAt = key; mixOf = canvas;
       } else if (key !== mixAt) { mix.setCoordinates(c); mixAt = key; }
       // (its picture sent on to the screen: pausing it uploads it)
       mix.play(); mix.pause(); map.triggerRepaint();
-      if (layers[on]) map.setPaintProperty(layers[on], "raster-opacity", 0);
+      if (layers[on]) opacity(layers[on], 0, fade);
       on = -1;
-      map.setPaintProperty("mix", "raster-opacity", opacity);
+      opacity("mix", value);
+    },
+    // room kept round the place's bubble that names step aside from: as wide as its name
+    room(w) {
+      const W = Math.max(64, Math.ceil((w + 12) / 8) * 8);
+      if (W === roomW) return;
+      roomW = W;
+      map.removeImage("room"); map.addImage("room", { width: W, height: 136, data: new Uint8Array(W * 136 * 4) });
     },
     box(bounds, opacity = 0) {
       if (bounds !== undefined) {
