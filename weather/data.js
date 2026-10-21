@@ -35,7 +35,7 @@ const API = {
   reverse2: "https://nominatim.openstreetmap.org/reverse",
 };
 const CURRENT = "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dew_point_2m,visibility,uv_index";
-const HOURLY = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,snowfall,weather_code,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day,cape,lifted_index,sunshine_duration";
+const HOURLY = "temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,snowfall,weather_code,pressure_msl,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,is_day,cape,lifted_index,vapour_pressure_deficit,sunshine_duration";
 const DAILY = "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,daylight_duration,sunshine_duration,uv_index_max,precipitation_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant";
 const MODEL_DAILY = "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max,weather_code";
 
@@ -54,7 +54,7 @@ export function shapeForecast(j, place = {}) {
     cloudLow: col(h, "cloud_cover_low", i), cloudMid: col(h, "cloud_cover_mid", i), cloudHigh: col(h, "cloud_cover_high", i),
     vis: col(h, "visibility", i), wind: col(h, "wind_speed_10m", i), dir: col(h, "wind_direction_10m", i), gust: col(h, "wind_gusts_10m", i),
     uv: col(h, "uv_index", i), isDay: col(h, "is_day", i) === 1, cape: col(h, "cape", i), li: col(h, "lifted_index", i),
-    sun: col(h, "sunshine_duration", i),
+    vpd: col(h, "vapour_pressure_deficit", i), sun: col(h, "sunshine_duration", i),
   })).filter((x) => x.temp != null);
   const daily = (d.time || []).map((t, i) => ({
     date: parseWall(t), key: t, code: col(d, "weather_code", i) ?? 0, tmax: col(d, "temperature_2m_max", i), tmin: col(d, "temperature_2m_min", i),

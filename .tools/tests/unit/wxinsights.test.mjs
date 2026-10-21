@@ -149,7 +149,7 @@ test("nowcast: rain starting soon, and rain stopping", () => {
   // starting again later: in hours, not "175 min"
   wx = makeWx(() => ({}), { minutely: quarter(now, (k) => (k < 2 || k >= 12 ? 0.4 : 0)) });
   n = I.nowcast(wx, now, f);
-  assert.match(n.text, /stopping in about 30 min\. Starting again in about 3h\.$/, n.text);
+  assert.match(n.text, /stopping in about 30 min\. Starting again in about 3 h\.$/, n.text);
   wx = makeWx(() => ({}), { minutely: quarter(now, () => 0) });
   assert.equal(I.nowcast(wx, now, f), null);
 });
@@ -158,6 +158,11 @@ test("nowcast: rain starting soon, and rain stopping", () => {
 test("headline: dry, rain later, raining now", () => {
   const dry = makeWx((i, t, hh) => ({ cloud: 10 }));
   assert.match(I.headline(dry, DAY0 + 9 * H, f), /^Dry, sunny for the rest of the day and clear tonight\. High \d+°\.$/);
+  // in the small hours, before the sun's up, the day's all to come: today, not "the rest of the day"
+  assert.match(I.headline(dry, DAY0 + 3 * H, f), /^Dry, sunny today and clear tonight\./);
+  // dry until rain after dark: not "sunny until 21:00" with the sun down at 18:00
+  const dusk = makeWx((i, t, hh) => (i >= 21 && i < 24 ? { precip: 1.5, code: 63, pop: 90 } : { cloud: 10 }));
+  assert.match(I.headline(dusk, DAY0 + 16 * H + 30 * M, f), /^Clear until about 21:00, then rain until around midnight\./);
   const later = makeWx((i) => (i >= 16 && i < 20 ? { precip: 1.5, code: 63, pop: 90 } : {}));
   assert.match(I.headline(later, DAY0 + 9 * H, f), /until about 16:00, then rain until around 20:00\./);
   // rain due later in this very hour: the quarter-hours say it hasn't started yet
@@ -424,4 +429,42 @@ test("each insight has a line that fits its row (the whole of it only when it's 
     if (c.text.length > 34) assert.ok(c.short, `${c.id} (${c.title}): a short line for "${c.text}"`);
     if (c.short) assert.ok(c.short.length <= 32 && !/\.$/.test(c.short), `${c.id}: "${c.short}" (${c.short.length})`);
   }
+});
+
+// every hourly figure the insights read by name (avg(hours, "vpd"), say) is one the forecast's asked for and shaped: one
+// left out of the request reads as missing everywhere, quietly (the washing line once said "damp air" in the desert)
+test("every hourly figure the insights read by name is asked for and shaped", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { forecastQuery } = await import("../../../weather/data.js");
+  const src = readFileSync(new URL("../../../weather/insights.js", import.meta.url), "utf8");
+  const read = [...new Set([...src.matchAll(/\b(?:avg|sum|max|min|argmax|argmin)\(\s*[\w.]+\s*,\s*"(\w+)"\s*\)/g)].map((m) => m[1]))];
+  const vars = new URLSearchParams(forecastQuery(51.5, -0.1)).get("hourly").split(",");
+  const time = ["2026-01-01T00:00", "2026-01-01T01:00"];
+  const wx = shapeForecast({ utc_offset_seconds: 0, hourly: { time, ...Object.fromEntries(vars.map((v) => [v, [1, 1]])) }, daily: { time: ["2026-01-01"], temperature_2m_max: [5], temperature_2m_min: [1] } });
+  const hour = wx.hourly[0], daily = ["tmax"];
+  const missing = read.filter((k) => !daily.includes(k) && k !== "eaqi" && (hour[k] == null));
+  assert.deepEqual(missing, [], `read by name but never filled: ${missing.join(", ")}`);
+  assert.ok(read.includes("vpd"), "(the check sees the names it's meant to)");
+});
+
+// the same kinds of thing said the same way: durations as the radar says them; midnight in a sentence a word
+test("durations and times in a sentence", () => {
+  assert.deepEqual([45 * 60, 2 * 3600, 105 * 60, 10 * 3600 + 31 * 60].map(f.dur), ["45 min", "2 h", "1 h 45 min", "10 h 31 min"]);
+  assert.deepEqual([DAY0, DAY0 + 21 * H].map(f.said), ["midnight", "21:00"]);
+  assert.equal(f.time(DAY0), "00:00");      // (in a table or on a chart, the clock as it is)
+});
+// a dry week with nothing at all: "No rain", not "Only 0 mm"
+test("a dry week: no rain at all is said as such", () => {
+  const wx = makeWx(() => ({ pop: 0 }), { extra: { climate: compactClimate(fakeArchive()) } });
+  const dw = card(I.insights(wx, DAY0 + 9 * H, f), "dryweek");
+  assert.ok(dw, "a dry week's said");
+  assert.equal(dw.short, "No rain in 7 days"); assert.match(dw.text, /^No rain in the next 7 days, against /);
+});
+// the umbrella's "from" agrees with the briefing: by the quarter hour where the next hours' rain sees it coming sooner
+// than the hourly forecast does (the briefing said 10:00, Highlights 11:00)
+test("the umbrella's start is the briefing's", () => {
+  const wx = makeWx((i) => (i >= 11 && i < 20 ? { precip: 1.5, code: 63, pop: 90 } : {}), { minutely: quarter(DAY0 + 9 * H, (k) => (k >= 4 ? 0.4 : 0)) });
+  const now = DAY0 + 9 * H + 5 * M;
+  assert.match(I.headline(wx, now, f), /from about 10:00/);
+  assert.equal(card(I.insights(wx, now, f), "umbrella").from, DAY0 + 10 * H);
 });

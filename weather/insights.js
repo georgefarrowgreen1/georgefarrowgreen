@@ -135,7 +135,8 @@ function wetKind(hours) {
 function skyWord(hours) {
   if (!hours.length) return "dry";
   if (hours.filter((h) => codeInfo(h.code).kind === "fog").length >= Math.max(1, hours.length / 3)) return "foggy";
-  const c = avg(hours, "cloud") ?? 50, day = hours.filter((h) => h.isDay).length >= hours.length / 2;
+  // (by day only if most of it is: sunny until 21:00 isn't, with the sun down at 19:00)
+  const c = avg(hours, "cloud") ?? 50, day = hours.filter((h) => h.isDay).length > hours.length / 2;
   if (c < 20) return day ? "sunny" : "clear";
   if (c < 45) return day ? "mostly sunny" : "mostly clear";
   if (c < 75) return day ? "sunny spells" : "partly cloudy";
@@ -243,7 +244,7 @@ export function headline(wx, now, f) {
   if (rainingNow) {
     const s = wets[0] && wets[0].start <= now + HOUR ? wets[0] : null, k = s ? kindOf(s) : ncKind;
     const stop = nc?.now && nc.endsAt ? nc.endsAt : s && s.end < end ? s.end : null;
-    if (stop) out.push(`${cap(k)} easing ${stop - now <= 45 * 60e3 ? "soon" : `around ${f.time(Math.round(stop / HOUR) * HOUR)}`}, then ${skyAfter(stop)}.`);
+    if (stop) out.push(`${cap(k)} easing ${stop - now <= 45 * 60e3 ? "soon" : `around ${f.said(Math.round(stop / HOUR) * HOUR)}`}, then ${skyAfter(stop)}.`);
     else out.push(`${cap(k)} for the next several hours.`);
     const next = wets.find((x) => x.start > (stop || end));
     if (next) out.push(`More ${kindOf(next)} ${f.when(next.start, now)}.`);
@@ -257,18 +258,19 @@ export function headline(wx, now, f) {
     const byQuarter = nc && !nc.now && nc.startsAt && nc.startsAt >= first.start - HOUR && nc.startsAt <= first.end;
     const len = (last.end - first.start) / HOUR, startAt = Math.max(byQuarter ? nc.startsAt : first.start, Math.ceil(now / 900e3) * 900e3);
     const soon = first.start - now <= 90 * 60e3;
-    const lead = soon ? `${cap(k)} on the way from about ${f.time(Math.round(startAt / 900e3) * 900e3)}` : `${cap(sky || "dry")} until about ${f.time(first.start)}, then ${k}`;
+    const lead = soon ? `${cap(k)} on the way from about ${f.said(Math.round(startAt / 900e3) * 900e3)}` : `${cap(sky || "dry")} until about ${f.said(first.start)}, then ${k}`;
     const onoff = cl.length > 1 ? `${soon ? "," : ""} on and off` : "";
-    const dur = last.end >= end ? `, lasting into ${f.when(end - HOUR, now)}` : len <= 2 && !onoff ? `${soon ? "," : ""} for an hour or two` : ` until around ${f.time(last.end)}`;
+    const dur = last.end >= end ? `, lasting into ${f.when(end - HOUR, now)}` : len <= 2 && !onoff ? `${soon ? "," : ""} for an hour or two` : ` until around ${f.said(last.end)}`;
     out.push(`${lead}${onoff}${dur}.`);
     const next = wets[cl.length];
     if (next) { const w = f.when(next.start, now); out.push(`More ${kindOf(next)} ${w === f.when(last.start, now) ? "later " : ""}${w}.`); }
   } else {
-    const today = dayOf(wx, now), sunset = today?.sunset ?? dayStart(now) + 18 * HOUR;
-    const dayHours = hours.filter((h) => h.t < sunset), night = hours.filter((h) => h.t >= sunset && h.t < sunset + 10 * HOUR);
-    const a = dayHours.length >= 2 ? phrase(dayHours) : "", b = night.length ? phrase(night) : "";
-    if (a && b && a !== b) out.push(`Dry, ${a} for the rest of the day and ${b} tonight.`);
-    else if (a) out.push(`Dry and ${a} for the rest of the day.`);
+    // (in the small hours, before the sun's up, the day's all to come: "today", its daylight, not "the rest of the day")
+    const today = dayOf(wx, now), sunset = today?.sunset ?? dayStart(now) + 18 * HOUR, early = today?.sunrise != null && now < today.sunrise;
+    const dayHours = hours.filter((h) => h.t < sunset && (!early || h.t + HOUR > today.sunrise)), night = hours.filter((h) => h.t >= sunset && h.t < sunset + 10 * HOUR);
+    const a = dayHours.length >= 2 ? phrase(dayHours) : "", b = night.length ? phrase(night) : "", rest = early ? "today" : "for the rest of the day";
+    if (a && b && a !== b) out.push(`Dry, ${a} ${rest} and ${b} tonight.`);
+    else if (a) out.push(`Dry and ${a} ${rest}.`);
     else out.push(`Dry${b ? ` and ${b}` : ""} tonight.`);
   }
   // the temperature to come
@@ -640,8 +642,12 @@ export function insights(wx, now, f, opts = {}) {
     const on = keyOf(waking.hours[0].t);
     if (wetH.length || popMax >= 50) {
       const first = wetH[0] || argmax(waking.hours, "pop");
+      // (when it starts: by the quarter hour, as the briefing has it, where the next few hours' rain sees it coming
+      // sooner than the hours do (the radar's, where it leads); else the first wet hour)
+      const nc = waking.tomorrow ? null : nowcast(wx, now, f), end = waking.hours[waking.hours.length - 1].t + HOUR;
+      const from = nc?.now ? now : nc?.startsAt && nc.startsAt < end && (!wetH[0] || nc.startsAt < wetH[0].t) ? nc.startsAt : wetH[0]?.t ?? null;
       // (by the odds it gives: a coin toss is a maybe)
-      add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "rain"), from: wetH[0]?.t ?? null, odds: Math.round(popMax), level: "tip", icon: "umbrella", title: !popMax || popMax >= 60 ? "Take an umbrella" : "Maybe an umbrella", short: fit(`${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}%)` : ""}`, `${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}`, `${cap(wetKind(waking.hours) || "rain")} likely`), text: `${cap(wetKind(waking.hours) || "rain")} likely ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}% chance)` : ""}${wetH.length ? `, about ${f.precip(sum(waking.hours.map((h) => h.precip)))} in all` : ""}.`, score: 72 });
+      add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "rain"), from, odds: Math.round(popMax), level: "tip", icon: "umbrella", title: !popMax || popMax >= 60 ? "Take an umbrella" : "Maybe an umbrella", short: fit(`${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}%)` : ""}`, `${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}`, `${cap(wetKind(waking.hours) || "rain")} likely`), text: `${cap(wetKind(waking.hours) || "rain")} likely ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}% chance)` : ""}${wetH.length ? `, about ${f.precip(sum(waking.hours.map((h) => h.precip)))} in all` : ""}.`, score: 72 });
     } else if (any != null && any >= 0.7) add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "showers"), odds: pct(any), level: "tip", icon: "umbrella", title: "Take an umbrella", short: fit(`${cap(wetKind(waking.hours) || "showers")} likely ${whenDay} (${pct(any)}%)`, `${cap(wetKind(waking.hours) || "showers")} likely ${whenDay}`), text: `${cap(wetKind(waking.hours) || "showers")} likely at some point ${whenDay} (${aPct(pct(any))} chance), though most of it stays dry.`, score: 70 });
     else if (any != null ? any >= 0.3 : popMax >= 25) add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "showers"), odds: any != null ? pct(any) : Math.round(popMax), level: "tip", icon: "umbrella", title: "Maybe an umbrella", short: `${cap(aPct(any != null ? pct(any) : Math.round(popMax)))} chance of a shower`, text: any != null ? `${cap(aPct(pct(any)))} chance of a shower at some point; most of ${whenDay} stays dry.` : `${cap(aPct(Math.round(popMax)))} chance of a shower ${f.when(argmax(waking.hours, "pop").t, now)}; most of ${whenDay} stays dry.`, score: 45 });
     add(wear(waking, now, f));
@@ -776,7 +782,7 @@ function climateCards(wx, now, f) {
     if (normal > 0) {
       const ratio = rain / normal;
       if (ratio >= 1.8 && rain >= 10) out.push({ id: "wetweek", level: "info", icon: "rain", title: "A wet week ahead", short: fit(`${f.precip(rain)} in 7 days, ${ratio >= 2.5 ? Math.round(ratio) + " times" : "twice"} the usual`, `${f.precip(rain)} in 7 days: ${ratio >= 2.5 ? Math.round(ratio) + "×" : "2×"} normal`), text: `${f.precip(rain)} of rain in the next 7 days, about ${ratio >= 2.5 ? Math.round(ratio) + " times" : "twice"} the usual ${f.precip(normal)} for the time of year.`, score: 48 });
-      else if (ratio <= 0.35 && normal >= 6) out.push({ id: "dryweek", level: "good", icon: "sun", title: "A dry week ahead", short: `Only ${f.precip(rain)} in 7 days`, text: `Only ${f.precip(rain)} of rain in the next 7 days, against ${f.precip(normal)} normally at this time of year.`, score: 46 });
+      else if (ratio <= 0.35 && normal >= 6) out.push({ id: "dryweek", level: "good", icon: "sun", title: "A dry week ahead", short: rain < 0.05 ? "No rain in 7 days" : `Only ${f.precip(rain)} in 7 days`, text: `${rain < 0.05 ? "No rain" : `Only ${f.precip(rain)} of rain`} in the next 7 days, against ${f.precip(normal)} normally at this time of year.`, score: 46 });
     }
   }
   return out;

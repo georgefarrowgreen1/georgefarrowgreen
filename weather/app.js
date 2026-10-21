@@ -833,7 +833,8 @@ function windows(wx, now) {
   const tile = (w) => h("div", { class: `win${w.rating === "Poor" ? " poor" : ""}` },
     h("div", { class: "win-name" }, h("span", { svg: glyph(w.icon, 16) }), w.name),
     h("div", { class: "win-day" }, h("span", {}, w.start == null ? "Not today or tomorrow" : f.day(w.start, now)), h("span", { class: "win-rate", "data-r": w.rating }, w.rating)),
-    w.start == null ? null : h("div", { class: "win-time" }, `${f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`),
+    // (one that's begun already: from now)
+    w.start == null ? null : h("div", { class: "win-time" }, `${w.end && w.start <= now && w.end > now ? "Now" : f.time(w.start)}${w.end ? `–${f.time(w.end)}` : ""}`),
     h("div", { class: "win-text" }, w.text));
   // (none chosen in Settings: no card at all)
   $("windows").hidden = !list.length;
@@ -957,7 +958,8 @@ function tiles(wx, now) {
     h("p", { class: "sub" }, `${bf.name}, from the ${compassWord(dir)}.`)];
   // humidity: a bar filled to it
   const dew = c.dew, dr = dew == null ? null : Math.round(dew);     // (worded by the dew point as shown: 9.6° shows as 10°, so it's "comfortable")
-  const comfort = dr == null ? "" : dr < 10 ? "Dry and fresh" : dr < 15 ? "Comfortable" : dr < 18 ? "A little humid" : dr < 21 ? "Humid" : "Very humid and oppressive";
+  // (the air's feel, by its dew point: not "dry", which would sit oddly by a high humidity on a cool day)
+  const comfort = dr == null ? "" : dr < 10 ? "Fresh" : dr < 15 ? "Comfortable" : dr < 18 ? "A little humid" : dr < 21 ? "Humid" : "Very humid and oppressive";
   say.humidity = () => [h("div", { class: "big" }, `${Math.round(c.rh ?? 0)}%`), fillBar((c.rh ?? 0) / 100, "wet"), h("p", { class: "sub" }, `Dew point ${f.temp(dew)}. ${comfort}.`)];
   // rain: the last day and the next
   const past = I.hoursBetween(wx, now - DAY, now).reduce((a, x) => a + (x.precip || 0), 0), next = I.hoursBetween(wx, now, now + DAY).reduce((a, x) => a + (x.precip || 0), 0);

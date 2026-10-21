@@ -97,7 +97,10 @@ export function makeFormat(units = {}) {
       const d = diff === 1 ? "tomorrow" : f.day(w, now);
       return part === "night" ? `${d} night` : `${d} ${part}`;
     },
-    dur: (sec) => { const m = Math.round(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m} min`; },
+    // "45 min", "2 h", "1 h 45 min" (as the radar says its times, and the line under the page)
+    dur: (sec) => { const m = Math.round(sec / 60); return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`; },
+    // a time in a sentence: as time(), but midnight's a word ("until around midnight", not "until around 00:00")
+    said: (w) => (w != null && !Number.isNaN(w) && new Date(w).getUTCHours() === 0 && new Date(w).getUTCMinutes() === 0 ? "midnight" : f.time(w)),
     pct: (p) => (p == null ? "–" : `${Math.round(p)}%`),
   };
   return f;
