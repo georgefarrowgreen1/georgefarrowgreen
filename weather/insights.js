@@ -215,12 +215,13 @@ export function describeDay(wx, key, f) {
 }
 
 /* ---------- the headline ---------- */
-// Rain spells in some hours, allowing a dry hour inside one: [{ start, end (exclusive), hours }]
+// Rain spells in some hours, allowing a dry hour inside one: [{ start, end (exclusive), hours }] (an hour's rain is the
+// hour up to its time, as Open-Meteo gives it: a wet 16:00 is rain from 15:00)
 export function spells(hours) {
   const out = [];
   let cur = null, gap = 0;
   for (const h of hours) {
-    if (isWet(h)) { if (!cur) cur = { start: h.t, end: h.t + HOUR, hours: [] }; cur.hours.push(h); cur.end = h.t + HOUR; gap = 0; }
+    if (isWet(h)) { if (!cur) cur = { start: h.t - HOUR, end: h.t, hours: [] }; cur.hours.push(h); cur.end = h.t; gap = 0; }
     else if (cur && ++gap > 1) { out.push(cur); cur = null; gap = 0; }
   }
   if (cur) out.push(cur);
@@ -229,7 +230,8 @@ export function spells(hours) {
 export function headline(wx, now, f) {
   const hours = hoursFrom(wx, now, 18);
   if (!hours.length) return "";
-  const end = hours[hours.length - 1].t + HOUR, wets = spells(hours);
+  // (the first of the hours can be all past: its rain's the hour up to now)
+  const end = hours[hours.length - 1].t, wets = spells(hours).filter((x) => x.end > now);
   const nc = nowcast(wx, now, f), out = [], ncKind = nc?.kind.endsWith("snow") ? "snow" : "rain";
   // the quarter-hours, where there are any, know better than the hours whether it's raining yet (the radar's, where
   // it sees: app.js); and rain they see coming that the hours don't is a spell of its own
@@ -244,7 +246,7 @@ export function headline(wx, now, f) {
   if (rainingNow) {
     const s = wets[0] && wets[0].start <= now + HOUR ? wets[0] : null, k = s ? kindOf(s) : ncKind;
     const stop = nc?.now && nc.endsAt ? nc.endsAt : s && s.end < end ? s.end : null;
-    if (stop) out.push(`${cap(k)} easing ${stop - now <= 45 * 60e3 ? "soon" : `around ${f.said(Math.round(stop / HOUR) * HOUR)}`}, then ${skyAfter(stop)}.`);
+    if (stop) out.push(`${cap(k)} easing ${stop - now <= 45 * 60e3 ? "soon" : `around ${f.said(Math.round(stop / 900e3) * 900e3)}`}, then ${skyAfter(stop)}.`);
     else out.push(`${cap(k)} for the next several hours.`);
     const next = wets.find((x) => x.start > (stop || end));
     if (next) out.push(`More ${kindOf(next)} ${f.when(next.start, now)}.`);
@@ -256,11 +258,13 @@ export function headline(wx, now, f) {
     const sky = phrase(hoursBetween(wx, now - HOUR, first.start).filter((h) => !isWet(h)));
     // when it starts: by the quarter hour if the nowcast sees it coming, else by the hour
     const byQuarter = nc && !nc.now && nc.startsAt && nc.startsAt >= first.start - HOUR && nc.startsAt <= first.end;
-    const len = (last.end - first.start) / HOUR, startAt = Math.max(byQuarter ? nc.startsAt : first.start, Math.ceil(now / 900e3) * 900e3);
-    const soon = first.start - now <= 90 * 60e3;
-    const lead = soon ? `${cap(k)} on the way from about ${f.said(Math.round(startAt / 900e3) * 900e3)}` : `${cap(sky || "dry")} until about ${f.said(first.start)}, then ${k}`;
+    // (and when it stops, by the quarter hour too, where it's one spell and they see that)
+    const stopAt = nc && !nc.now && nc.endsAt && cl.length === 1 && Math.abs(nc.endsAt - last.end) <= HOUR ? nc.endsAt : last.end;
+    const len = (stopAt - first.start) / HOUR, startAt = Math.max(byQuarter ? nc.startsAt : first.start, Math.ceil(now / 900e3) * 900e3);
+    const soon = first.start - now <= 90 * 60e3, q = (t) => f.said(Math.round(t / 900e3) * 900e3);
+    const lead = soon ? `${cap(k)} on the way from about ${q(startAt)}` : `${cap(sky || "dry")} until about ${q(byQuarter ? nc.startsAt : first.start)}, then ${k}`;
     const onoff = cl.length > 1 ? `${soon ? "," : ""} on and off` : "";
-    const dur = last.end >= end ? `, lasting into ${f.when(end - HOUR, now)}` : len <= 2 && !onoff ? `${soon ? "," : ""} for an hour or two` : ` until around ${f.said(last.end)}`;
+    const dur = last.end >= end ? `, lasting into ${f.when(end - HOUR, now)}` : len <= 2 && !onoff ? `${soon ? "," : ""} for an hour or two` : ` until around ${q(stopAt)}`;
     out.push(`${lead}${onoff}${dur}.`);
     const next = wets[cl.length];
     if (next) { const w = f.when(next.start, now); out.push(`More ${kindOf(next)} ${w === f.when(last.start, now) ? "later " : ""}${w}.`); }
@@ -305,7 +309,7 @@ export function nowcast(wx, now, f) {
     // when it stops: the first dry half hour
     let endsAt = null;
     for (let i = 1; i < m.length - 1; i++) if (!wet(m[i]) && !wet(m[i + 1])) { endsAt = m[i].t; break; }
-    if (endsAt == null) return { now: true, endsAt: null, peak, kind: what, text: `${cap(what)} for at least the next ${Math.round(span / 60)} hours.` };
+    if (endsAt == null) return { now: true, endsAt: null, peak, kind: what, text: `${cap(what)} for at least the next ${Math.round(span / 60) === 1 ? "hour" : `${Math.round(span / 60)} hours`}.` };
     const again = m.findIndex((x, i) => x.t > endsAt + 15 * 60e3 && wet(x) && i > 0);
     // (an hour or more in hours: "in about 3h", not "in about 175 min")
     const about = (n) => (n < 60 ? `${n} min` : f.dur(Math.round(n / 15) * 15 * 60));
@@ -645,7 +649,7 @@ export function insights(wx, now, f, opts = {}) {
       // (when it starts: by the quarter hour, as the briefing has it, where the next few hours' rain sees it coming
       // sooner than the hours do (the radar's, where it leads); else the first wet hour)
       const nc = waking.tomorrow ? null : nowcast(wx, now, f), end = waking.hours[waking.hours.length - 1].t + HOUR;
-      const from = nc?.now ? now : nc?.startsAt && nc.startsAt < end && (!wetH[0] || nc.startsAt < wetH[0].t) ? nc.startsAt : wetH[0]?.t ?? null;
+      const from = nc?.now ? now : nc?.startsAt && nc.startsAt < end && (!wetH[0] || nc.startsAt < wetH[0].t) ? nc.startsAt : wetH[0] ? wetH[0].t - HOUR : null;
       // (by the odds it gives: a coin toss is a maybe)
       add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "rain"), from, odds: Math.round(popMax), level: "tip", icon: "umbrella", title: !popMax || popMax >= 60 ? "Take an umbrella" : "Maybe an umbrella", short: fit(`${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}%)` : ""}`, `${cap(wetKind(waking.hours) || "rain")} ${f.when(first.t, now)}`, `${cap(wetKind(waking.hours) || "rain")} likely`), text: `${cap(wetKind(waking.hours) || "rain")} likely ${f.when(first.t, now)}${popMax ? ` (${Math.round(popMax)}% chance)` : ""}${wetH.length ? `, about ${f.precip(sum(waking.hours.map((h) => h.precip)))} in all` : ""}.`, score: 72 });
     } else if (any != null && any >= 0.7) add({ id: "umbrella", on, kind: cap(wetKind(waking.hours) || "showers"), odds: pct(any), level: "tip", icon: "umbrella", title: "Take an umbrella", short: fit(`${cap(wetKind(waking.hours) || "showers")} likely ${whenDay} (${pct(any)}%)`, `${cap(wetKind(waking.hours) || "showers")} likely ${whenDay}`), text: `${cap(wetKind(waking.hours) || "showers")} likely at some point ${whenDay} (${aPct(pct(any))} chance), though most of it stays dry.`, score: 70 });
@@ -876,7 +880,8 @@ export function changes(prev, wx, now, f) {
       : /looks/.test(what) ? `${f.day(d.date, now)} ${dr < 0 ? "drier" : "wetter"}: ${f.precip(p.precip)} → ${f.precip(d.precip)}` : `${f.day(d.date, now)}: ${f.temp(p.tmax)} → ${f.temp(d.tmax)}`;
     found.push({ weight, what, brief, key: d.key });
   }
-  const ago = now - prev.at, since = ago < 20 * HOUR && dayStart(prev.at) === dayStart(now) ? `earlier today (${f.time(prev.at)})` : ago < 44 * HOUR ? "yesterday" : `${Math.round(ago / DAY)} days ago`;
+  // (by the calendar: last looked on Monday evening, it's "yesterday" all Tuesday, and "2 days ago" on Wednesday morning)
+  const dd = Math.round((dayStart(now) - dayStart(prev.at)) / DAY), since = dd <= 0 ? `earlier today (${f.time(prev.at)})` : dd === 1 ? "yesterday" : `${dd} days ago`;
   if (!found.length) return null;
   found.sort((x, y) => y.weight - x.weight);
   return { id: "changes", level: "info", icon: "refresh", title: "Since you last looked", day: found[0].key, short: found[0].brief, text: `Compared with ${since}: ${list(found.slice(0, 3).map((x) => x.what))}.`, score: 60 };

@@ -472,7 +472,7 @@ function status() {
   const wx = S.wx, el = $("status");
   if (!wx) { el.classList.remove("warn"); el.textContent = ""; $("updated").textContent = ""; return; }
   const mins = Math.round((Date.now() - wx.fetchedAt) / 60e3);
-  const ago = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.floor(mins / 60)} h ago` : `${Math.floor(mins / 1440)} days ago`;
+  const ago = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 1440 ? `${Math.floor(mins / 60)} h ago` : `${Math.floor(mins / 1440) === 1 ? "1 day" : `${Math.floor(mins / 1440)} days`} ago`;
   // (said once, not again every minute as the age goes up: that's in the line under the page; "Updating…" only when
   // it was asked for, not each time it refreshes by itself)
   const warn = (S.error || S.stale) && !S.loading && mins > 15, text = warn ? "Couldn't refresh: showing the last forecast." : S.loading && S.asked ? "Updating…" : "";
@@ -531,7 +531,7 @@ function nowcast(wx, now) {
   const f = S.f, nc = I.nowcast(wx, now, f), box = $("nowcast");
   // the radar says it in a line too
   const quarters = (wx.minutely || []).filter((x) => x.t + 15 * 60e3 > now).length;
-  S.radar?.note(nc ? nc.text : quarters >= 4 ? `No rain expected here for the next ${Math.round(quarters / 4)} hours.` : "");
+  S.radar?.note(nc ? nc.text : quarters >= 4 ? `No rain expected here for the next ${Math.round(quarters / 4) === 1 ? "hour" : `${Math.round(quarters / 4)} hours`}.` : "");
   // (the radar's line only where the card above isn't saying it already: when it's hidden, or the radar's full screen)
   const shown = !(!nc || (!nc.now && nc.startsAt - now > 2 * HOUR));
   $("radar").classList.toggle("said-above", shown);
@@ -779,7 +779,8 @@ function daily(wx, now) {
     const c = conf[d.key], unsure = c?.level === "low" && i > 0 && i < 7;
     const pop = (d.popMax ?? 0) >= 20 ? `${Math.round(d.popMax / 10) * 10}%` : "";
     const name = i === 0 ? "Today" : f.dayShort(d.date);
-    const amount = (d.precip ?? 0) >= 0.1 ? f.precip(d.precip) : "dry";
+    // (a chance of rain with next to none expected: a trace, not "dry" under its chance)
+    const amount = (d.precip ?? 0) >= 0.1 ? f.precip(d.precip) : (d.popMax ?? 0) >= 20 ? "a trace" : "dry";
     const says = mode === "rain" ? `${Math.round(d.popMax ?? 0)}% chance of rain, ${amount}` : mode === "wind" ? `wind up to ${f.wind(d.windMax)}, gusts ${f.wind(d.gustMax)}`
       : `high ${f.temp(d.tmax)}, low ${f.temp(d.tmin)}${pop ? `, ${pop} chance of rain` : ""}`;
     // the temperatures and their range; or when the rain falls, its chance and how much; or the wind and its gusts
@@ -1015,7 +1016,8 @@ function tiles(wx, now) {
     const svg = `<svg class="sunarc" viewBox="0 0 200 84" aria-hidden="true"><line class="hz" x1="6" y1="70" x2="194" y2="70"/><path class="arc" d="M20 70A80 56 0 0 1 180 70"/>${
       up ? `<path class="done" pathLength="1" d="${done}"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>`
         : below ? `<path class="under" d="M180 70A80 11 0 0 1 20 70"/><circle class="sun down" cx="${below[0].toFixed(1)}" cy="${below[1].toFixed(1)}" r="5"/>` : ""}</svg>`;
-    const until = (t) => f.dur(Math.max(300, Math.round((t - now) / 300e3) * 300));
+    // (to five minutes an hour or more ahead; to the minute under that, "In 1 min" at the last)
+    const until = (t) => { const m = Math.max(1, Math.round((t - now) / 60e3)); return f.dur((m >= 60 ? Math.round(m / 5) * 5 : m) * 60); };
     const nextAt = up ? set : night != null ? n1 : null;
     const change = (a, b) => (a?.daylight && b?.daylight ? ` (${b.daylight < a.daylight ? "−" : "+"}${Math.abs(Math.round((b.daylight - a.daylight) / 60))} min)` : "");
     // (and the sunset, against yesterday's: "17:48 (2 min earlier)")
@@ -1043,7 +1045,7 @@ function tiles(wx, now) {
       const phase = [[nx.full, "Full Moon"], [nx.new, "New Moon"]].filter(([t]) => t).sort((a, b) => a[0] - b[0])[0];
       const lit = (p) => `${Math.round(p.lit * 100)}%`;
       say.moon = () => [h("div", { class: "moon-row" }, h("span", { svg: moonIcon(ph.lit, ph.waxing, 44, wx.place.lat < 0) }), h("div", {}, h("div", { class: "big" }, lit(ph)), h("p", {}, ph.name))),
-        h("p", { class: "sub" }, [ev && `${ev[1]} ${rel(ev[0])}.`, phase && `${phase[1]} ${f.day(toWall(phase[0]), now)}.`].filter(Boolean).join(" "))];
+        h("p", { class: "sub" }, [ev && `${ev[1]} ${rel(ev[0])}.`, phase && `${phase[1]} ${mid(f.day(toWall(phase[0]), now))}.`].filter(Boolean).join(" "))];
       more.moon = () => {
         const days = wx.daily.slice(wx.daily.indexOf(d) + 1, wx.daily.indexOf(d) + 8).map((x) => [x, I.skyFor(wx, x.key)]).filter(([, k]) => k);
         return [h("h3", { class: "day-section" }, "Tonight"), h("dl", { class: "kv" },
@@ -1223,7 +1225,7 @@ function accuracy(wx) {
   if (!k.skill) { box.replaceChildren(note(k.obsDays >= MIN_DAYS ? `Not enough past forecasts to compare with ${st.name}'s reports yet.` : `Recording ${st.name}'s reports: ${k.obsDays} of ${MIN_DAYS} days.`)); return; }
   const s = k.skill;
   box.replaceChildren(...[
-    h("p", { class: "small muted" }, `${st.name} (${st.km} km) · last ${s.days} days`),
+    h("p", { class: "small muted" }, `${st.name} (${f.dist(st.km * 1000)}) · last ${s.days} days`),
     h("table", { class: "models acc" }, h("caption", { class: "sr-only" }, "Each model's average error and lean, next-day forecasts"),
       h("tr", {}, h("th", { scope: "col" }, "Model"), h("th", { scope: "col" }, "Highs"), h("th", { scope: "col" }, "Lows"), h("th", { scope: "col" }, "Leans")),
       ...s.models.map((m, i) => h("tr", {}, h("td", {}, m.name, i === 0 ? h("span", { class: "best" }, "Best") : null), h("td", {}, `±${f.deltaFine(m.hiMae)}`),
@@ -1246,13 +1248,17 @@ function tunedToo(l) {
   return out.join(", ");
 }
 // One day in full, in its sheet; the days along the top to move between (or a swipe sideways, or the arrow keys)
+// a day's name and its date, once: "Tomorrow, 22 October", "Wednesday, 28 October" (f.day dates those a week out itself)
+const dayTitle = (w, now) => { const n = S.f.day(w, now); return `${/\d/.test(n) ? S.f.dayName(w) : n}, ${S.f.dateLong(w)}`; };
+// Today, Tomorrow and Yesterday mid-sentence: "Full Moon tomorrow."
+const mid = (s) => s.replace(/^(Today|Tomorrow|Yesterday)\b/, (m) => m.toLowerCase());
 function openDay(key, dir = 0) {
   const wx = S.wx; if (!wx) return;
   const f = S.f, now = nowWall(wx.place.offset), d = wx.daily.find((x) => x.key === key); if (!d) return;
   S.dayKey = key;
-  $("day-title").textContent = `${f.day(d.date, now)}, ${f.dateLong(d.date)}`;
+  $("day-title").textContent = dayTitle(d.date, now);
   const days = sheetDays(wx, now), strip = $("day-strip"), inStrip = strip.contains(document.activeElement);
-  strip.replaceChildren(...days.map((x, i) => h("button", { type: "button", class: "ds-day", "aria-current": x.key === key ? "true" : null, "aria-label": `${f.day(x.date, now)}, ${f.dateLong(x.date)}`,
+  strip.replaceChildren(...days.map((x, i) => h("button", { type: "button", class: "ds-day", "aria-current": x.key === key ? "true" : null, "aria-label": dayTitle(x.date, now),
     onclick: () => { if (x.key !== key) openDay(x.key, i > days.indexOf(d) ? 1 : -1); } },
     h("span", {}, i === 0 ? "Today" : f.dayShort(x.date)), h("b", {}, String(new Date(x.date).getUTCDate())))));
   const cur = strip.querySelector("[aria-current]");
@@ -1352,10 +1358,13 @@ async function locate(quiet = false) {
 }
 // the saved places as cards, as iOS's Weather lists them: each in its own sky, its name, its clock and its weather, the
 // temperature and the day's high and low; swiped left, a Delete behind it (or, with a mouse, a bin on it)
+// what the page says of a place now, in peek()'s (data.js) form
+const onPage = (wx) => { const now = nowWall(wx.place.offset), c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now); return c && { temp: c.temp, code: c.code, isDay: c.isDay, offset: wx.place.offset, hi: d?.tmax ?? null, lo: d?.tmin ?? null }; };
 function drawSaved() {
   const f = S.f, box = $("saved"), had = document.activeElement?.closest?.("#saved .pc-li"), at = had ? [...box.children].indexOf(had) : -1;
   box.replaceChildren(...S.places.map((p, i) => {
-    const k = peek(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
+    // (the place on show as the page has it, its sky and its high and low the same as there; the rest as last kept)
+    const k = i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : peek(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
     const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
       "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}${i === S.cur ? ", showing" : ""}`,
       onclick: () => { if (li.classList.contains("swiped")) { li.classList.remove("swiped"); return; } S.cur = i; savePlaces(); closeSheet($("places")); go(); } },
@@ -1862,10 +1871,18 @@ function wire() {
     }, { passive: true });
   }
   // the minute changes things like "in 20 minutes": redraw just what says so (the rest waits for the next forecast)
+  // (a new hour: all of it again, the strip's Now and the days' Today moving on with it; else what tells the time, and
+  // in the hour before a sunrise or sunset, the tiles, for the Sun's "In 25 min" (not while one of them's in hand))
+  let tickHour = null;
   setInterval(() => {
     if (!S.wx || document.visibilityState !== "visible") return;
-    const now = nowWall(S.wx.place.offset);
-    sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now); status();
+    const now = nowWall(S.wx.place.offset), hr = Math.floor(now / HOUR), d = I.dayOf(S.wx, now);
+    if (tickHour != null && hr !== tickHour) render();
+    else {
+      sky(S.wx, now); hero(S.wx, now); nowcast(S.wx, now); status();
+      if ([d?.sunrise, d?.sunset].some((t) => t && t > now && t - now <= HOUR) && !$("tiles").contains(document.activeElement)) tiles(S.wx, now);
+    }
+    tickHour = hr;
     check();
   }, 60e3);
 }

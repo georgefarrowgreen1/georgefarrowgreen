@@ -400,7 +400,7 @@ await p.keyboard.press('Escape');
 // the forecast's track record here, and tuned by it
 const acc = await p.locator('#accuracy-body tr').allTextContents();
 ok(acc.length === 7 && /^ECMWFBest±0\.5°/.test(acc[1]) && /GEM.*2\.5° cold/.test(acc[6]), 'each model scored against the nearest airport, best first', acc.slice(1, 3).join(' | '));
-ok(/^London City Airport \(\d+ km\) · last \d+ days/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is', (await p.textContent('#accuracy-body')).slice(0, 50));
+ok(/^London City Airport \(\d+(\.\d)? mi\) · last \d+ days/.test(await p.textContent('#accuracy-body')), 'named, with how far away it is (in miles, as the wind\'s in mph)', (await p.textContent('#accuracy-body')).slice(0, 50));
 ok(!/null/.test(await p.textContent('#accuracy-body')), 'with nothing stray under it', (await p.textContent('#accuracy-body')).slice(-60));
 {
   // (the forecast shown had been a degree warm through the night, a degree too humid, and the wind too light)

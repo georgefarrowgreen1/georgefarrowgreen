@@ -161,15 +161,16 @@ test("headline: dry, rain later, raining now", () => {
   // in the small hours, before the sun's up, the day's all to come: today, not "the rest of the day"
   assert.match(I.headline(dry, DAY0 + 3 * H, f), /^Dry, sunny today and clear tonight\./);
   // dry until rain after dark: not "sunny until 21:00" with the sun down at 18:00
-  const dusk = makeWx((i, t, hh) => (i >= 21 && i < 24 ? { precip: 1.5, code: 63, pop: 90 } : { cloud: 10 }));
+  const dusk = makeWx((i, t, hh) => (i >= 22 && i < 25 ? { precip: 1.5, code: 63, pop: 90 } : { cloud: 10 }));
   assert.match(I.headline(dusk, DAY0 + 16 * H + 30 * M, f), /^Clear until about 21:00, then rain until around midnight\./);
   const later = makeWx((i) => (i >= 16 && i < 20 ? { precip: 1.5, code: 63, pop: 90 } : {}));
-  assert.match(I.headline(later, DAY0 + 9 * H, f), /until about 16:00, then rain until around 20:00\./);
+  // (an hour's rain is the hour up to its time: wet 16:00 to 19:00 is rain from 15:00 to 19:00)
+  assert.match(I.headline(later, DAY0 + 9 * H, f), /until about 15:00, then rain until around 19:00\./);
   // rain due later in this very hour: the quarter-hours say it hasn't started yet
   const soon = makeWx((i) => (i === 9 ? { precip: 1, code: 63, pop: 90 } : {}), { minutely: quarter(DAY0 + 9 * H, (k) => (k >= 2 && k < 4 ? 0.3 : 0)) });
   assert.match(I.headline(soon, DAY0 + 9 * H + 5 * M, f), /^Rain on the way from about 09:30, for an hour or two\./);
   const now = makeWx((i) => (i >= 6 && i < 12 ? { precip: 2, code: 63, pop: 95 } : {}));
-  assert.match(I.headline(now, DAY0 + 9 * H, f), /^Rain easing around 12:00, then/);
+  assert.match(I.headline(now, DAY0 + 9 * H, f), /^Rain easing around 11:00, then/);
   const evening = makeWx(() => ({ cloud: 90 }));
   assert.match(I.headline(evening, DAY0 + 20 * H, f), /Down to \d+° tonight\. Tomorrow: cloudy, \d+°\./);
   // a shower the quarter hours see coming (the radar's) that the hours don't: said, not "dry"
@@ -334,12 +335,12 @@ test("one row a thing: the umbrella and the week's worst day the same wet day, a
   const wx = makeWx((i) => (i >= 12 && i < 22 ? { precip: 2, code: 63, pop: 90, gust: 47, sun: 0, cloud: 100 } : Math.floor(i / 24) === 4 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {}));
   const c = I.insights(wx, DAY0 + 9 * H, f), u = card(c, "umbrella");
   assert.equal(card(c, "worstday"), undefined, ids(c).join());
-  assert.deepEqual([u.title, u.short, u.act, u.day], ["Today: wet and windy", "Rain from 12:00, gusts 29 mph", "Take an umbrella", keyOf(DAY0)]);
+  assert.deepEqual([u.title, u.short, u.act, u.day], ["Today: wet and windy", "Rain from 11:00, gusts 29 mph", "Take an umbrella", keyOf(DAY0)]);
   assert.match(u.text, /^Rain likely this afternoon \(90% chance\), about 20 mm in all\. Gusts to 29 mph\. The worst day of the week: one to plan indoors\.$/);
   // gusts with a row of their own: not said again here
   const gale = makeWx((i) => (i >= 12 && i < 22 ? { precip: 2, code: 63, pop: 90, gust: i === 15 ? 70 : 47, sun: 0, cloud: 100 } : Math.floor(i / 24) === 4 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {}));
   const g = I.insights(gale, DAY0 + 9 * H, f);
-  assert.deepEqual([card(g, "umbrella").title, card(g, "umbrella").short, card(g, "wind").title], ["Today: a wet day", "Rain from 12:00 (90%)", "Gales"]);
+  assert.deepEqual([card(g, "umbrella").title, card(g, "umbrella").short, card(g, "wind").title], ["Today: a wet day", "Rain from 11:00 (90%)", "Gales"]);
   // the worst day another day: two rows, as before
   const later = I.insights(makeWx((i) => (i === 17 ? { precip: 2, code: 63, pop: 80 } : Math.floor(i / 24) === 2 ? { precip: 2, code: 63, pop: 90, gust: 60, sun: 0, cloud: 100 } : Math.floor(i / 24) === 4 ? { cloud: 5, sun: 3600, temp: 19, feels: 19, gust: 15 } : {})), DAY0 + 9 * H, f);
   assert.deepEqual([card(later, "umbrella").title, card(later, "worstday").title], ["Take an umbrella", "Worst day: Wednesday"]);

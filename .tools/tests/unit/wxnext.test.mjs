@@ -332,7 +332,7 @@ test("briefing: due once a day, from its time, and says the day", () => {
   const wx = makeWx((i) => (i >= 15 && i < 18 ? { precip: 2, code: 63, pop: 90 } : i === 13 ? { gust: 70 } : {}));
   const b = briefing(wx, DAY0 + 7 * H, f);
   assert.match(b.title, /^Testville · \d+° \/ \d+°$/);
-  assert.match(b.body, /then rain until around 18:00/);
+  assert.match(b.body, /until about 14:00, then rain until around 17:00/);
   assert.match(b.body, /Warning: gales\./); assert.match(b.body, /Take an umbrella\./);
 });
 test("the tick keeps to Open-Meteo's free allowance: whole forecasts first, then rain, the rest next time", async () => {
