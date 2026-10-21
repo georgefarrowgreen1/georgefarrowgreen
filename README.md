@@ -264,8 +264,12 @@ so there's nothing to set up beyond the address.
   about 220 km across, blended and painted in the radar's own colours, inside
   a dashed box; asked for only when rain's expected there soon, or there's rain about on the radar; dry all
   about, the latest radar held, so the next two hours are always there), animated on one
-  timeline marked Now, to the minute: the slider moves a minute at a time (Page Up and Page Down from frame to
-  frame, a tick under each of the radar's own), and play runs on smoothly (about 30 pictures a second, for the
+  timeline marked Now, to the minute: Now is the clock's own time (kept to it while the map's on screen), where it
+  opens; the radar comes 5 to 15 minutes behind, so its latest frame sits a little before Now, said as such and how
+  long ago ("06:50 · 11 min ago · latest radar"), carried on along its track up to Now (if it's more than 20
+  minutes behind, those minutes are said to be estimated); after Now, "in 25 min · forecast". The slider moves a
+  minute at a time (Page Up and Page Down from frame to frame and to Now, a tick under each of the radar's own),
+  and play runs on smoothly (about 30 pictures a second, for the
   battery's sake). Between two frames of the radar, each is moved along the rain's track between those two (each
   pair's own, steadied with the pairs either side) and blended into the other as rain, not as colour: each
   frame's tiles are kept as rain (how much of each pixel it covers, its strength, whether it's snow:

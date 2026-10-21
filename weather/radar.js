@@ -225,6 +225,7 @@ export async function rainAt(lat, lon) {
 }
 
 const ago = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60 ? `${min % 60} min ` : ""}ago` : `${min} min ago`);
+const until = (min) => (min >= 60 ? `in ${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ""}` : `in ${min} min`);
 // a round distance, the longest of 1, 2, 3, 5 or 10 to a power of ten no more than n
 const round = (n) => { const p = 10 ** Math.floor(Math.log10(n)), d = n / p; return p * (d >= 10 ? 10 : d >= 5 ? 5 : d >= 3 ? 3 : d >= 2 ? 2 : 1); };
 
@@ -260,9 +261,12 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
   const snowKey = document.createElement("div"); snowKey.className = "rl-snow"; snowKey.append(bar(true, 5, 45), Object.assign(document.createElement("span"), { textContent: "Snow" }));
   legend.replaceChildren(rain, snowKey);
 
-  // where the slider is: at (ms), from t0 (the first frame) to tEnd (the last), tNow the latest radar frame's time; the
-  // frame nearest it (i), drawn as it is where the minutes between can't be (zoomed far out, or its tiles still coming)
-  let t0 = 0, tEnd = 0, tNow = 0, at = 0, minute = null, layer = -1, layerAt = () => 0;
+  // where the slider is: at (ms), from t0 (the first frame) to tEnd (the last); tNow now, as the clock has it (where it
+  // opens, and the past turns to the forecast), tLast the latest radar frame's time (always a little before: it's 5 to
+  // 15 minutes coming), and seen how far on the radar counts as seen (up to now, it carried on along its track meanwhile;
+  // but not if it's been away a while: then only as far as its latest); the frame nearest at (i), drawn as it is where
+  // the minutes between can't be (zoomed far out, or its tiles still coming)
+  let t0 = 0, tEnd = 0, tNow = 0, tLast = 0, seen = 0, at = 0, minute = null, layer = -1, layerAt = () => 0;
   const show = (t) => {
     if (!frames.length || !Number.isFinite(t)) return;
     at = Math.min(tEnd, Math.max(t0, t));
@@ -276,8 +280,11 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
     const m = Math.round((at - t0) / 60e3);
     if (m === minute) return;
     minute = m;
-    const tm = Math.min(tEnd, t0 + m * 60e3), ahead = !src?.past.length || tm > tNow + 30e3, mins = Math.round((tm - Date.now()) / 60e3);
-    const when = ahead ? `${mins > 0 ? `in ${mins} min` : mins === 0 ? "now" : ago(-mins)} · forecast` : Math.abs(tm - tNow) < 30e3 ? "latest radar" : ago(-mins);
+    // (how long ago or ahead of Now as it's marked (kept to the clock: clockOn); the latest radar's said as such; and
+    // what's to come, forecast, or what's been worked out since a radar that's been away a while, estimated)
+    const tm = Math.min(tEnd, t0 + m * 60e3), ahead = tm > seen + 30e3, mins = Math.round((tm - tNow) / 60e3), had = src?.past.length > 0;
+    const when = [mins > 0 ? until(mins) : mins === 0 ? "now" : ago(-mins), had && Math.abs(tm - tLast) < 30e3 ? "latest radar" : null,
+      ahead ? (!had || tm > tNow + 30e3 ? "forecast" : "estimated") : null].filter(Boolean).join(" · ");
     slider.value = String(m);
     const b = document.createElement("b"), rel = document.createElement("span");
     b.textContent = time(tm); rel.textContent = ` · ${when}`; rel.className = ahead ? "rt-rel ahead" : "rt-rel";
@@ -458,13 +465,21 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
     show(at);
     raf = requestAnimationFrame(tick);
   };
+  // Now kept to the clock (to the slider's minute, between the latest radar and the end), and so the radar counted as
+  // seen up to it, if it's no more than 20 minutes behind; true if it's moved on
+  function clockOn() {
+    const was = tNow;
+    tNow = Math.min(tEnd, Math.max(tLast, t0 + Math.round((Date.now() - t0) / 60e3) * 60e3));
+    seen = !src?.past.length ? -Infinity : tNow - tLast <= 20 * 60e3 ? tNow : tLast;
+    return tNow !== was;
+  }
   // under the slider: where the radar ends and the forecast begins
   function drawScale() {
     scale.replaceChildren();
     if (tEnd <= t0) return;
     const pos = (t) => `${((t - t0) / (tEnd - t0)) * 100}%`, mark = (t, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = pos(t); scale.append(s); };
     slider.style.setProperty("--nowf", String((tNow - t0) / (tEnd - t0)));
-    const span = (t) => { const m = Math.round(Math.abs(t - Date.now()) / 60e3); return m >= 90 ? `${Math.round(m / 60)} h` : `${Math.round(m / 10) * 10} min`; };
+    const span = (t) => { const m = Math.round(Math.abs(t - tNow) / 60e3); return m >= 90 ? `${Math.round(m / 60)} h` : `${Math.round(m / 10) * 10} min`; };
     // (a tick under each frame that's the radar's own, or the models': the minutes between them are worked out)
     for (const f of frames) if (f.kind === "radar" || src.model) mark(f.t, "", "rs-t");
     mark(t0, `${span(t0)} ago`, "rs-l rs-start");
@@ -507,7 +522,8 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
     // (what the minutes between are drawn from: rainmap.js partsAt)
     raw.clear();
     src = { host, past, drift, model, models: model ? frames.filter((f) => f.kind === "model") : [], driftOf: pairDrift };
-    t0 = frames[0].t; tEnd = frames[frames.length - 1].t; tNow = past.length ? last : t0;
+    t0 = frames[0].t; tEnd = frames[frames.length - 1].t; tLast = past.length ? last : t0; tNow = 0;
+    clockOn();
     sight = ""; minute = null; layer = -1; mixed = false;
     map.box(model ? box : null);
     // (nothing on the radar about here, and nothing coming: said on the map, so an empty map isn't a puzzle)
@@ -612,7 +628,7 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
   slider.addEventListener("keydown", (e) => {
     if ((e.key !== "PageUp" && e.key !== "PageDown") || !frames.length) return;
     e.preventDefault(); stop();
-    const real = frames.filter((f) => f.kind === "radar" || src?.model).map((f) => f.t).concat(tEnd);
+    const real = frames.filter((f) => f.kind === "radar" || src?.model).map((f) => f.t).concat(tNow, tEnd).sort((a, b) => a - b);
     const to = e.key === "PageUp" ? real.find((t) => t > at + 30e3) ?? tEnd : [...real].reverse().find((t) => t < at - 30e3) ?? t0;
     show(Math.round((to - t0) / 60e3) * 60e3 + t0);
   });
@@ -647,6 +663,13 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
       // (a map that couldn't start, its code not to hand, say: tried again)
       if (!map && !starting) starting = start();
       else if (map && Date.now() - fetched > 5 * 60e3) load().catch(() => {});
+      // (and as the minutes go by, Now with them, and what's said of the time on show; left at Now, it stays there)
+      else if (frames.length) {
+        const was = tNow;
+        if (!clockOn()) return;
+        drawScale();
+        if (!playing) { minute = null; show(Math.abs(at - was) < 30e3 ? tNow : at); }
+      }
     },
     note(text) { q(".radar-note").textContent = text || ""; },
   };
