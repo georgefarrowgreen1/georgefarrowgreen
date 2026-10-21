@@ -91,7 +91,8 @@ function draw(host, fresh = false) {
   if (!pts.length) { host.textContent = "No data"; return; }
   // (inside: the labels in a margin of their own at the end, as wide as the longest, so no column runs under them)
   const gutter = o.y?.inside ? Math.max(...(o.y.ticks || []).map((v) => String(o.y.fmt ? o.y.fmt(v) : v).length)) * 6.4 + 12 : 0;
-  const L = o.y?.inside ? 8 : 34, R = o.y?.inside ? gutter : 10, T = 18, B = 26, iw = W - L - R, ih = Hh - T - B;
+  // (columns with labels over them: a row more above them, so one over a full column can go over Now's too)
+  const L = o.y?.inside ? 8 : 34, R = o.y?.inside ? gutter : 10, T = o.kind === "columns" && o.marks ? 30 : 18, B = 26, iw = W - L - R, ih = Hh - T - B;
   const step = o.x?.step || HOUR, cols = o.kind === "columns";
   const t0 = o.points[0].t, t1 = o.points[o.points.length - 1].t + (cols ? step : 0);
   const X = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * iw;
@@ -161,10 +162,10 @@ function draw(host, fresh = false) {
   // the y-axis's labels inside the chart: each in the middle of its band, in the margin at the end
   for (const [y, text] of inside) svg.append(el("text", { x: W - 2, y: y + 3.5, class: "c-ytick c-in", "text-anchor": "end" }, text));
   // a few labels, on the marks themselves; over columns, clear of every column under it (above the tallest, up into
-  // the margin over the chart if need be), and of Now and each other: one that can't be is left out (the first come
-  // first: the caller's most worth saying)
+  // the margin over the chart if need be, over Now's row if that's in the way), and of Now and each other: one that
+  // can't be is left out (the first come first: the caller's most worth saying)
   const taken = [];
-  if (o.now != null && o.now >= t0 && o.now <= t1) { const x = Math.min(Math.max(X(o.now), L + 12), L + iw - 12); taken.push([x - 15, x + 15, 0, T - 4]); }
+  if (o.now != null && o.now >= t0 && o.now <= t1) { const x = Math.min(Math.max(X(o.now), L + 12), L + iw - 12); taken.push([x - 15, x + 15, T - 18, T - 4]); }
   for (const m of o.marks || []) {
     const x = cols ? X(m.t) + (X(m.t + step) - X(m.t)) / 2 : X(m.t), y = Y(m.v);
     if (!cols) {
@@ -175,9 +176,10 @@ function draw(host, fresh = false) {
     }
     const w = String(m.text).length * 6.6 + 4, tx = Math.min(Math.max(x, L + w / 2), L + iw - w / 2);
     const top = Math.max(m.v, ...pts.filter((p) => X(p.t + step) > tx - w / 2 && X(p.t) < tx + w / 2).map((p) => p.v));
-    const by = Math.max(12, Y(top) - 6), box = [tx - w / 2, tx + w / 2, by - 11, by + 2];
-    if (taken.some((b) => b[0] < box[1] && box[0] < b[1] && b[2] < box[3] && box[2] < b[3])) continue;
-    taken.push(box);
+    const boxAt = (y) => [tx - w / 2, tx + w / 2, y - 11, y + 2], free = (box) => !taken.some((b) => b[0] < box[1] && box[0] < b[1] && b[2] < box[3] && box[2] < b[3]);
+    let by = Math.max(12, Y(top) - 6);
+    if (!free(boxAt(by))) { by = 10; if (!free(boxAt(by))) continue; }
+    taken.push(boxAt(by));
     svg.append(el("text", { x: tx, y: by, class: "c-label", "text-anchor": "middle" }, m.text));
   }
   // the crosshair and the readout

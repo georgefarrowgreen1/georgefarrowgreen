@@ -810,12 +810,12 @@ await p.click('input[name="wind"][value="mph"]');
 // the times to choose, said as the clock's set: 07:00, or 7am (not the browser's own 12-hour box), the label on one line
 {
   const said = () => p.evaluate(() => ({ brief: document.querySelector('select[name="briefAt"]').selectedOptions[0]?.textContent, pm: document.querySelector('select[name="pm"]').selectedOptions[0]?.textContent,
-    line: Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height), n: document.querySelector('select[name="briefAt"]').options.length }));
+    line: Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height - document.querySelector('input[name="rain"]').closest('label').getBoundingClientRect().height), n: document.querySelector('select[name="briefAt"]').options.length }));
   const h24 = await said();
   await p.click('input[name="clock"][value="12"]'); await p.waitForTimeout(300);
   const h12 = await said();
   await p.click('input[name="clock"][value="24"]'); await p.waitForTimeout(300);
-  ok(h24.brief === '07:00' && h24.pm === '17:30' && h12.brief === '7am' && h12.pm === '5:30pm' && h24.n === 96 && h24.line <= 46, 'the briefing\'s and the commute\'s times said as the clock is set, every quarter hour; "Morning briefing" on one line', JSON.stringify({ h24, h12 }));
+  ok(h24.brief === '07:00' && h24.pm === '17:30' && h12.brief === '7am' && h12.pm === '5:30pm' && h24.n === 96 && h24.line === 0, 'the briefing\'s and the commute\'s times said as the clock is set, every quarter hour; "Morning briefing" on one line', JSON.stringify({ h24, h12 }));
 }
 await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('settings').open && !document.body.classList.contains('sheet-up'), null, { timeout: 3000 }).catch(() => {});
