@@ -280,32 +280,37 @@ so there's nothing to set up beyond the address.
   (`rainmap.js` partsAt). Each frame's tiles are drawn once and kept (those a picture's drawing never let go,
   those of other zooms first), with the tiles a minute or a frame on asked for ahead; where they aren't in yet,
   or zoomed far out, the nearest frame as it is (where there's no graphics chip to hand, the same blend drawn as
-  pictures). The minutes between are estimates: the radar itself comes every 10 minutes, the models' every 15. It's on a map drawn in the app's own style, after Apple's Maps
-  at night: OpenFreeMap's vector map of OpenStreetMap (the OpenMapTiles schema),
-  drawn on the phone by MapLibre GL JS, land in a quiet grey with the lie of the
-  land faintly shaded (Natural Earth's relief), the sea a deep blue, roads a
-  whisper, borders on land only, and the names crisp and white, drawn above the
-  rain so they read through it (and stepping aside from the place's blue dot,
-  and from the buttons, scale and credits over the map, rather than hiding under
-  them, as the map moves too). Where a phone can't draw it (no WebGL 2), the
-  radar's on OpenStreetMap's own map turned dark instead (Leaflet), with the same
-  controls; either is driven the same way (`mapgl.js`, `mapleaf.js`). Closer in than
+  pictures). The minutes between are estimates: the radar itself comes every 10 minutes, the models' every 15. It looks
+  as Apple's Weather map does. The rain in its colours (`rainmap.js` SHADES, sampled from Apple's own legend): light
+  rain a see-through blue, moderate violet, through mauve and tan into heavy's yellow, extreme a pale yellow, snow in
+  cyans to teal (RainViewer's Universal Blue, from their published table, is only for reading their tiles back into
+  rain; rain rate to reflectivity by Marshall and Palmer). The map, OpenFreeMap's vector map of OpenStreetMap (the
+  OpenMapTiles schema) drawn on the phone by MapLibre GL JS, light or dark as the phone is: by day near-white land
+  and a pale grey-blue sea, roads in light greys and the names dark; at night land in a quiet grey and the sea a deep
+  blue, the names crisp and white; either way the lie of the land faintly shaded (Natural Earth's relief), roads a
+  whisper, borders on land only, the names drawn above the rain so they read through it (and stepping aside from the
+  place's bubble, and from the buttons, scale and credits over the map, rather than hiding under them, as the map
+  moves too). The place is marked as Apple marks it: its temperature and sky in a bubble the colour of how warm it is,
+  pointing to a dot, its name ("My Location") under it. Where a phone can't draw the vector map (no WebGL 2), the
+  radar's on OpenStreetMap's own map instead (Leaflet), toned to match, with the same controls; either is driven the
+  same way (`mapgl.js`, `mapleaf.js`). Closer in than
   the radar's tiles go, it's smoothed rather than drawn as squares: each pixel's
   colour read back into reflectivity, blended with a cubic B-spline (curved
   edges, colours that flow between bands) and recoloured, a few tiles at a time
   with the frame on show first (`rainmap.js` decode, ramp, resample). The radar
   is asked for in 512-pixel tiles a zoom out, which carry the same detail in a
   quarter of the requests; a tile that doesn't come is asked for again. A line above it
-  says what's coming ("Rain starting in about 40 min"); below it, a legend
-  (RainViewer's Universal Blue colours, from their published table, rain rate
-  to reflectivity by Marshall and Palmer), and on the map, in glass: zoom in and
-  out (opening close in, about 10 miles to the scale's bar, two steps from as
-  close as the radar's worth seeing), a button back to the place,
-  a scale drawn as Maps draws it, and the map's credits in full as it first
+  says what's coming ("Rain starting in about 40 min"); under it, the dock: play, what's on show over its day and
+  time ("Latest radar · Wednesday 08:50 · 3 min ago", "Forecast · Wednesday 09:30 · in 37 min"), and the timeline,
+  filled to where it is, a tick at each real frame, the clock under it (Now, and the hours, the half hours where
+  there's room); then a legend (Light, Moderate, Heavy, Extreme, and Snow). On the map, in glass at its top right,
+  zoom in and out (opening close in, about 10 miles to the scale's bar, two steps from as close as the radar's worth
+  seeing) and a button back to the place; a scale drawn as Maps draws it, and the map's credits in full as it first
   appears (in two lines), then folded into a © that opens the Credits window. On
   a phone a tap opens it full screen to pan and pinch (the page scrolls past it
   otherwise), which "Tap to explore" says at the map's foot, between the scale
-  and the ©, once the credits have folded away.
+  and the ©, once the credits have folded away. Full screen, as Apple's: the map to every edge, an × at the top left,
+  the legend in a panel under it, and the dock in glass at the foot.
   MapLibre GL JS 6.12.0 and Leaflet 1.9.4 are vendored in `weather/vendor/`
   (each checked against npm's integrity hash); MapLibre's megabyte is fetched as
   the card comes within a screen of view, and the map made once it's in view

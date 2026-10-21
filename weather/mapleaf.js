@@ -15,7 +15,7 @@ function loadLeaflet() {
   return loading;
 }
 
-export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
+export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin = null }) {
   const L = await loadLeaflet();
   const map = L.map(el, { zoomControl: false, attributionControl: false, scrollWheelZoom: false, dragging: !touch, tap: false, minZoom: min, maxZoom: max, zoomSnap: 1, fadeAnimation: !calm, zoomAnimation: !calm })
     .setView([lat, lon], zoom);
@@ -25,7 +25,7 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm }) {
     tile.dataset.again = "1";
     setTimeout(() => { tile.src = `${tile.src}${tile.src.includes("?") ? "&" : "?"}again=1`; }, 1500);
   }).addTo(map);
-  const dot = L.marker([lat, lon], { icon: L.divIcon({ className: "map-dot-at", html: '<div class="map-dot"></div>', iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(map);
+  const dot = L.marker([lat, lon], { icon: L.divIcon({ className: "map-pin-at", html: pin || '<div class="map-pin"><span class="mp-dot"></span></div>', iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(map);
   // a frame drawn tile by tile: each tile's pixels from its function, once it's in place (none where it's dry)
   const Drawn = L.GridLayer.extend({
     createTile(c, done) {

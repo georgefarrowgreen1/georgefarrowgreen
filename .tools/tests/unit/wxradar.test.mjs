@@ -4,7 +4,7 @@
 // and then the models'.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf, rainValues, colour, palette } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, shade, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf, rainValues, colour, palette } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -34,8 +34,8 @@ test("the grid: 9 × 9 points about 220 km across, north-west to south-east", ()
 test("painting a frame: rain where the points say, nothing where they don't", () => {
   const g = grid(51.5, -0.12, 9), W = 40, H = 40;
   const all = paint(new Uint8ClampedArray(W * H * 4), W, H, g, Array(81).fill(2));
-  const c = rgbaFor(dbzOf(2));
-  assert.deepEqual([...all.slice(0, 4)], c, "2 mm/h everywhere: every pixel the same blue");
+  const c = shade(dbzOf(2));
+  assert.deepEqual([...all.slice(0, 4)], c, "2 mm/h everywhere: every pixel the same colour, the app's own for it");
   assert.ok(all.every((v, k) => v === c[k % 4]));
   const dry = paint(new Uint8ClampedArray(W * H * 4), W, H, g, Array(81).fill(0));
   assert.ok(dry.every((v, k) => k % 4 !== 3 || v === 0), "dry: all clear");
@@ -51,7 +51,7 @@ test("painting a frame: rain where the points say, nothing where they don't", ()
   const snow = Array(81).fill(0); snow[40] = 1;
   const sn = paint(new Uint8ClampedArray(W * H * 4), W, H, g, one, snow);
   const s = [...sn.slice((20 * W + 20) * 4, (20 * W + 20) * 4 + 4)];
-  assert.ok(s[2] === 255 && s[0] < s[2], "blue for snow");
+  assert.ok(s[0] < s[1] && s[0] < s[2] && s[2] > 150, `cyan for snow: ${s}`);
 });
 test("the timeline: two hours of radar, then the forecast after the latest frame", () => {
   const now = Date.UTC(2026, 9, 18, 15, 7), radar = Array.from({ length: 13 }, (_, k) => Date.UTC(2026, 9, 18, 13) + k * 600e3);
@@ -72,15 +72,23 @@ test("reading a radar tile back: each colour to its dBZ, rain or snow", () => {
   // a colour not in the table: the nearest rain colour
   assert.equal(decode(px([0x01, 0xa2, 0xe1, 0xff]))[0], 31);
 });
-test("the colour ramp: the radar's own colours, or flowing between them", () => {
+test("the colour ramp: the app's own colours (after Apple's Weather map), or flowing between them", () => {
   const r = ramp(false), at = (t, dbz) => [...t.slice((dbz + 10) * 16, (dbz + 10) * 16 + 4)];
-  assert.deepEqual(at(r, 20), [0x00, 0xa3, 0xe0, 0xff]);
-  assert.deepEqual(at(r, 36), [0xff, 0xe0, 0x00, 0xff]);
-  assert.deepEqual(at(ramp(true), 20), [0x7f, 0xbf, 0xff, 0xff], "snow in blues");
-  // soft: the jump from deep blue (34) to yellow (35) becomes a blend, and the blues stay blue
-  const s = ramp(false, 1.4), mid = at(s, 35);
-  assert.ok(mid[0] > 0x80 && mid[0] < 0xff && mid[2] > 0, `blended: ${mid}`);
-  assert.ok(at(s, 24)[2] > at(s, 24)[0], "blue stays blue");
+  assert.deepEqual(at(r, 20), shade(20));
+  // light rain blue, moderate violet, heavy yellow, extreme a pale yellow; see-through where it's light
+  const [lt, md, hv, ex] = [16, 29, 45, 58].map((d) => at(r, d));
+  assert.ok(lt[2] > lt[0] && lt[2] > lt[1], `light blue: ${lt}`);
+  assert.ok(md[2] > md[1] && md[0] > md[1], `moderate violet: ${md}`);
+  assert.ok(hv[0] > 240 && hv[1] > 240 && hv[2] < 120, `heavy yellow: ${hv}`);
+  assert.ok(ex[0] > 240 && ex[1] > 240 && ex[2] > 200, `extreme pale: ${ex}`);
+  assert.ok(lt[3] < md[3] && md[3] < hv[3], "light rain lighter on the map");
+  const sn = at(ramp(true), 20);
+  assert.ok(sn[1] > sn[0] && sn[2] > sn[0], `snow in cyans: ${sn}`);
+  // soft: no step from one dB to the next bigger than a gentle one, and light rain stays blue
+  const s = ramp(false, 1.4);
+  let step = 0; for (let d = 8; d < 64; d++) step = Math.max(step, ...[0, 1, 2].map((j) => Math.abs(at(s, d + 1)[j] - at(s, d)[j])));
+  assert.ok(step < 24, `flowing: the biggest step ${step}`);
+  assert.ok(at(s, 18)[2] > at(s, 18)[0], "blue stays blue");
 });
 test("smoothing an enlarged tile: a shower becomes round, its edge soft, the dry stays clear", () => {
   // a 4 × 4 block of 30 dBZ rain in a dry tile, enlarged 8 times (as at zoom 10)
@@ -90,19 +98,19 @@ test("smoothing an enlarged tile: a shower becomes round, its edge soft, the dry
   const W = 128, out = resample(new Uint8ClampedArray(W * W * 4), W, code, 8, 8, 8, { edge: [0.16, 0.5], soft: 1.4 });
   const a = (x, y) => out[(y * W + x) * 4 + 3];
   // the block covers source x 10-14 → output 32-96: rain in the middle, clear at the tile's corners
-  assert.ok(a(64, 64) > 200 && a(2, 2) === 0 && a(125, 125) === 0);
+  assert.ok(a(64, 64) > 180 && a(2, 2) === 0 && a(125, 125) === 0);
   assert.deepEqual([...out.slice((64 * W + 64) * 4, (64 * W + 64) * 4 + 3)], [...ramp(false, 1.4).slice(40 * 16, 40 * 16 + 3)], "the middle in 30 dBZ's colour");
   // round, not square: the block's corner is cut away, while the middle of its edge is rain
   assert.ok(a(34, 34) < a(34, 64), `corner ${a(34, 34)} vs edge ${a(34, 64)}`);
   // its edge fades over a few pixels rather than stepping from clear to rain
-  const row = Array.from({ length: 30 }, (_, k) => a(18 + k, 64)), between = row.filter((v) => v > 0 && v < 200);
+  const row = Array.from({ length: 30 }, (_, k) => a(18 + k, 64)), between = row.filter((v) => v > 0 && v < 180);
   assert.ok(between.length >= 2, `a soft edge: ${row.join(",")}`);
   // nothing in, nothing out
   const dry = resample(new Uint8ClampedArray(W * W * 4), W, () => 0, 0, 0, 32);
   assert.ok(dry.every((v, k) => k % 4 !== 3 || v === 0));
   // snow: snow's blues
   const snow = (x, y) => (code(x, y) ? 30 + 111 : 0), sn = resample(new Uint8ClampedArray(W * W * 4), W, snow, 8, 8, 8);
-  assert.ok(sn[(64 * W + 64) * 4 + 2] === 255 && sn[(64 * W + 64) * 4] < 0x80, "snow in blues");
+  assert.ok(sn[(64 * W + 64) * 4 + 2] > 150 && sn[(64 * W + 64) * 4] < 0x80, "snow in cyans");
 });
 
 test("how the rain is moving: two frames lined up", () => {
@@ -256,7 +264,7 @@ test("kept as rain, then coloured: as the smoothing draws it; and two frames ble
   // a mix of the two colours
   const px = (dbz) => { const x = (dbz + 10) / 75; return [Math.round(x * 255), 255, 0, 255]; }, heavy = px(40), light = px(18);
   const mid = [0, 1, 2].map((j) => Math.round((heavy[j] + light[j]) / 2)).concat(255);
-  const [r, g, b] = colour(Uint8ClampedArray.from(mid), new Uint8ClampedArray(4), 1.4), want = rgbaFor(29);
+  const [r, g, b] = colour(Uint8ClampedArray.from(mid), new Uint8ClampedArray(4), 1.4), want = shade(29);
   assert.ok(Math.abs(r - want[0]) + Math.abs(g - want[1]) + Math.abs(b - want[2]) < 40, `${[r, g, b]} against ${want}`);
   const [hr, hg, hb] = colour(Uint8ClampedArray.from(heavy), new Uint8ClampedArray(4), 1.4), [lr, lg, lb] = colour(Uint8ClampedArray.from(light), new Uint8ClampedArray(4), 1.4);
   assert.ok(Math.abs(r - (hr + lr) / 2) + Math.abs(g - (hg + lg) / 2) + Math.abs(b - (hb + lb) / 2) > 60, "not the two colours' average");

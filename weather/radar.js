@@ -238,28 +238,36 @@ const round = (n) => { const p = 10 ** Math.floor(Math.log10(n)), d = n / p; ret
  * zoomBy(±1), explore(on), resize(), state() → { zoom, min, max, mpp }, on("move" | "tap", fn), and credit (its
  * sources' names). Zooms are 256-pixel tiles' (as Leaflet counts them).
  */
-export function radar(card, { lat, lon, time, miles = () => false, credits = null, rainSoon = () => true }) {
+export function radar(card, { lat, lon, time, day = () => "", miles = () => false, credits = null, rainSoon = () => true }) {
   const q = (s) => card.querySelector(s);
   const el = q(".radar-map"), wrap = q(".radar-wrap"), play = q(".radar-play"), slider = q(".radar-slider"), label = q(".radar-time"), full = q(".radar-full");
   const status = q(".radar-status"), chip = q(".radar-chip"), hint = q(".radar-hint"), scale = q(".radar-scale"), legend = q(".radar-legend");
   let map = null, starting = null, credit = null, dry = null, told = false, frames = [], i = 0, playing = false, fetched = 0, here = { lat, lon }, g = null, loads = 0;
   const touch = matchMedia("(pointer: coarse)").matches, calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // the map light or dark as the phone is (as Apple's Weather map is), its controls to match (styles.css)
+  const light = matchMedia("(prefers-color-scheme: light)").matches;
+  card.classList.toggle("light-map", light);
+  // the place on the map: its temperature in a bubble over it, and its name under it (mark: once the page has them)
+  const pin = document.createElement("div"); pin.className = "map-pin"; pin.setAttribute("aria-hidden", "true");
+  pin.innerHTML = '<span class="mp-bubble"><b class="mp-t"></b><span class="mp-i"></span></span><span class="mp-dot"></span><span class="mp-name"></span>';
 
-  // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's
+  // the legend: one bar in the colours the radar's drawn in (rainmap.js ramp), light to extreme, then snow's; along
+  // under the map in the card, and up the side of it full screen, as Apple's Weather map has it (styles.css: its
+  // colours --stops, each word's place along it --at)
   const bar = (snow, from, to) => {
     const r = ramp(snow, LOOK.soft), stops = [];
     for (let d = from; d <= to; d += 2) { const q = (d + 10) * 16; stops.push(`rgba(${r[q]},${r[q + 1]},${r[q + 2]},${(r[q + 3] / 255).toFixed(2)}) ${(((d - from) / (to - from)) * 100).toFixed(1)}%`); }
-    const i = document.createElement("i"); i.className = "rl-bar"; i.style.background = `linear-gradient(90deg, ${stops.join(", ")})`; return i;
+    const i = document.createElement("i"); i.className = "rl-bar"; i.style.setProperty("--stops", stops.join(", ")); return i;
   };
   const words = document.createElement("div"); words.className = "rl-words";
-  for (const [text, dbz] of [["Light", 12], ["Heavy", 40], ["Extreme", 62]]) {
-    const w = document.createElement("span"); w.textContent = text; w.style.left = `${((dbz - 8) / 56) * 100}%`;
+  for (const [text, dbz] of [["Light", 14], ["Moderate", 30], ["Heavy", 44], ["Extreme", 57]]) {
+    const w = document.createElement("span"); w.textContent = text; w.style.setProperty("--at", `${(((dbz - 8) / 54) * 100).toFixed(1)}%`);
     const x = LEGEND.reduce((a, l) => (Math.abs(l.dbz - dbz) < Math.abs(a.dbz - dbz) ? l : a));
     w.title = `About ${x.mmh < 1 ? x.mmh.toFixed(1) : Math.round(x.mmh)} mm an hour`; words.append(w);
   }
-  const rain = document.createElement("div"); rain.className = "rl-rain"; rain.append(bar(false, 8, 64), words);
-  const snowKey = document.createElement("div"); snowKey.className = "rl-snow"; snowKey.append(bar(true, 5, 45), Object.assign(document.createElement("span"), { textContent: "Snow" }));
-  legend.replaceChildren(rain, snowKey);
+  const rain = document.createElement("div"); rain.className = "rl-rain"; rain.append(bar(false, 8, 62), words);
+  const snowKey = document.createElement("div"); snowKey.className = "rl-snow"; snowKey.append(bar(true, 0, 45), Object.assign(document.createElement("span"), { textContent: "Snow" }));
+  legend.replaceChildren(Object.assign(document.createElement("b"), { className: "rl-title", textContent: "Precipitation" }), rain, snowKey);
 
   // where the slider is: at (ms), from t0 (the first frame) to tEnd (the last); tNow now, as the clock has it (where it
   // opens, and the past turns to the forecast), tLast the latest radar frame's time (always a little before: it's 5 to
@@ -282,14 +290,15 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
     minute = m;
     // (how long ago or ahead of Now as it's marked (kept to the clock: clockOn); the latest radar's said as such; and
     // what's to come, forecast, or what's been worked out since a radar that's been away a while, estimated)
+    // (as Apple's Weather map says it: what it is, over the day and the time, here with how long ago or ahead)
     const tm = Math.min(tEnd, t0 + m * 60e3), ahead = tm > seen + 30e3, mins = Math.round((tm - tNow) / 60e3), had = src?.past.length > 0;
-    const when = [mins > 0 ? until(mins) : mins === 0 ? "now" : ago(-mins), had && Math.abs(tm - tLast) < 30e3 ? "latest radar" : null,
-      ahead ? (!had || tm > tNow + 30e3 ? "forecast" : "estimated") : null].filter(Boolean).join(" · ");
+    const what = had && Math.abs(tm - tLast) < 30e3 ? "Latest radar" : !ahead ? "Radar" : !had || tm > tNow + 30e3 ? "Forecast" : "Estimated";
+    const when = `${day(tm)} ${time(tm)} · ${mins > 0 ? until(mins) : mins === 0 ? "now" : ago(-mins)}`.trim();
     slider.value = String(m);
     const b = document.createElement("b"), rel = document.createElement("span");
-    b.textContent = time(tm); rel.textContent = ` · ${when}`; rel.className = ahead ? "rt-rel ahead" : "rt-rel";
-    label.replaceChildren(b, rel);
-    slider.setAttribute("aria-valuetext", `${time(tm)} · ${when}`);
+    b.className = "rt-k"; b.textContent = what; rel.textContent = when; rel.className = ahead ? "rt-rel ahead" : "rt-rel";
+    label.replaceChildren(b, " ", rel);
+    slider.setAttribute("aria-valuetext", `${what}, ${when}`);
     chipTo(ahead ? "model" : "radar");
     map.box(undefined, ahead ? 0.45 : 0);
   };
@@ -479,12 +488,15 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
     if (tEnd <= t0) return;
     const pos = (t) => `${((t - t0) / (tEnd - t0)) * 100}%`, mark = (t, text, cls) => { const s = document.createElement("span"); s.className = cls; s.textContent = text; s.style.left = pos(t); scale.append(s); };
     slider.style.setProperty("--nowf", String((tNow - t0) / (tEnd - t0)));
-    const span = (t) => { const m = Math.round(Math.abs(t - tNow) / 60e3); return m >= 90 ? `${Math.round(m / 60)} h` : `${Math.round(m / 10) * 10} min`; };
-    // (a tick under each frame that's the radar's own, or the models': the minutes between them are worked out)
+    // (a tick on the track at each frame that's the radar's own, or the models': the minutes between them are worked out)
     for (const f of frames) if (f.kind === "radar" || src.model) mark(f.t, "", "rs-t");
-    mark(t0, `${span(t0)} ago`, "rs-l rs-start");
+    // and under it, as Apple's has it, the clock: Now, and the hours (the half hours too, where there's room), none so
+    // near Now or the ends that they'd crowd
     mark(tNow, "Now", "rs-l rs-now");
-    if (tEnd > tNow) mark(tEnd, `+${span(tEnd)}`, "rs-l rs-end");
+    const w = scale.clientWidth || 300, step = (3600e3 * w) / (tEnd - t0) >= 110 ? 1800e3 : 3600e3, near = (t) => Math.abs(t - tNow) < 0.09 * (tEnd - t0);
+    for (let t = Math.ceil(t0 / step) * step; t <= tEnd; t += step) {
+      if (!near(t) && t - t0 > 0.05 * (tEnd - t0) && tEnd - t > 0.05 * (tEnd - t0)) mark(t, time(t), "rs-l rs-at");
+    }
   }
   async function load() {
     // (where it was asked for, throughout; and if it's been asked for again meanwhile, somewhere else say, this one's dropped)
@@ -579,7 +591,7 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
   async function start() {
     try {
       const from = here;
-      map = await mapIn(el, { lat: from.lat, lon: from.lon, zoom: VIEW, min: 3, max: CLOSEST, touch, calm });
+      map = await mapIn(el, { lat: from.lat, lon: from.lon, zoom: VIEW, min: 3, max: CLOSEST, touch, calm, light, pin });
       if (here !== from) { map.view(here.lat, here.lon); map.dot(here.lat, here.lon); }
       controls();
       // (the minutes between drawn again for what's in sight as the map's moved: once a frame, and not while it plays,
@@ -613,6 +625,8 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
     full.dataset.on = on ? "1" : "0";
     hint.hidden = on || !touch || !told;
     if (map) { map.resize(); map.explore(on); }
+    // (the timeline's clock times again for its new width)
+    if (frames.length) drawScale();
   }
   // full screen and back, the card growing to fill the screen (and shrinking back into its place), where the browser
   // can morph one into the other (a view transition); at once otherwise, or with reduced motion
@@ -672,5 +686,13 @@ export function radar(card, { lat, lon, time, miles = () => false, credits = nul
       }
     },
     note(text) { q(".radar-note").textContent = text || ""; },
+    // the place's bubble: { temp ("10°"), icon (an svg), name, colour (its temperature's) }
+    mark({ temp, icon, name, colour }) {
+      pin.dataset.on = temp ? "1" : "0";
+      pin.querySelector(".mp-t").textContent = temp || "";
+      const i = pin.querySelector(".mp-i"); if (i.dataset.icon !== icon) { i.innerHTML = icon || ""; i.dataset.icon = icon || ""; }
+      pin.querySelector(".mp-name").textContent = name || "";
+      pin.style.setProperty("--pin", colour || "#3f72c6");
+    },
   };
 }

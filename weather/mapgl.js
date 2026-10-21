@@ -4,7 +4,7 @@
 // radar.js as the map asks for them (rv://, an address of the app's own, handed to the frame's function). It needs
 // WebGL 2; without it, mapleaf.js draws the radar on Leaflet instead. Same shape as that one: see radar.js.
 
-import { mapStyle, ABOVE_RAIN } from "./mapstyle.js";
+import { mapStyle, ABOVE_RAIN, boxColour } from "./mapstyle.js";
 
 let ml = null;
 const drawers = new Map();         // each frame's tiles, by its address: (z, x, y, signal) => Promise<ImageData | null>
@@ -42,12 +42,13 @@ export function able() {
 }
 
 // The map in `el`, at the place (zoom: in 256-pixel tiles' zooms, as Leaflet counts them; MapLibre's are a zoom
-// below); touch: the page scrolls past it, until it's opened to explore; calm: no animation. (Each of the radar's
+// below); touch: the page scrolls past it, until it's opened to explore; calm: no animation; light: the day style
+// (mapstyle.js); pin: the element that marks the place (radar.js). (Each of the radar's
 // 25 frames keeps its own tiles: only a screen's worth each once they're out of sight, as Leaflet keeps them.)
-export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
+export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light = false, pin = null }) {
   const m = await preload();
   const map = new m.Map({
-    container: el, style: mapStyle(), center: [lon, lat], zoom: zoom - 1, minZoom: min - 1, maxZoom: max - 1,
+    container: el, style: mapStyle(light), center: [lon, lat], zoom: zoom - 1, minZoom: min - 1, maxZoom: max - 1,
     attributionControl: false, dragRotate: false, pitchWithRotate: false, touchPitch: false, rollEnabled: false,
     scrollZoom: false, dragPan: !touch, touchZoomRotate: !touch, boxZoom: false, fadeDuration: calm ? 0 : 200,
     maxTileCacheZoomLevels: 1, reduceMotion: calm, locale: { "Map.Title": "Rain radar map" },
@@ -65,12 +66,13 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm }) {
 
   const fade = calm ? 0 : 250, NONE = { type: "FeatureCollection", features: [] };
   map.addSource("box", { type: "geojson", data: NONE });
-  map.addLayer({ id: "box", type: "line", source: "box", paint: { "line-color": "#ffffff", "line-width": 1, "line-dasharray": [4, 5], "line-opacity": 0, "line-opacity-transition": { duration: fade } } }, ABOVE_RAIN);
-  // the place: a dot (styles.css), with room kept round it that names step aside from (above or below it), not under it
-  const pin = document.createElement("div"); pin.className = "map-dot";
-  const dot = new m.Marker({ element: pin }).setLngLat([lon, lat]).addTo(map);
+  map.addLayer({ id: "box", type: "line", source: "box", paint: { "line-color": boxColour(light), "line-width": 1, "line-dasharray": [4, 5], "line-opacity": 0, "line-opacity-transition": { duration: fade } } }, ABOVE_RAIN);
+  // the place: its bubble (radar.js; else a dot), with room kept round it that names step aside from: the bubble
+  // above it and its name below
+  const mark = pin || Object.assign(document.createElement("div"), { className: "map-pin" });
+  const dot = new m.Marker({ element: mark, anchor: "center" }).setLngLat([lon, lat]).addTo(map);
   const spot = (la, lo) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lo, la] } });
-  map.addImage("room", { width: 20, height: 20, data: new Uint8Array(20 * 20 * 4) });
+  map.addImage("room", { width: 64, height: 136, data: new Uint8Array(64 * 136 * 4) });
   map.addSource("here", { type: "geojson", data: spot(lat, lon) });
   map.addLayer({ id: "here", type: "symbol", source: "here", layout: { "icon-image": "room", "icon-allow-overlap": true, "icon-ignore-placement": false } });
   // and room kept the same way where the map's own controls are over it (radar.js), so no name is half under one: each

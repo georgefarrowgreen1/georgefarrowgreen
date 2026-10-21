@@ -105,15 +105,17 @@
           <span class="radar-chip" data-kind="radar" aria-hidden="true"><span class="rc-l" data-k="radar">Radar</span><span class="rc-l" data-k="model">Forecast</span></span>
           <span class="radar-hint" hidden>Tap to explore</span>
         </div>
-        <div class="radar-bar">
-          <button class="icon-btn small radar-play" type="button" aria-label="Play" data-on="0"></button>
-          <div class="radar-track">
-            <input class="radar-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
-            <div class="radar-scale" aria-hidden="true"></div>
+        <div class="radar-dock">
+          <div class="radar-bar">
+            <button class="icon-btn small radar-play" type="button" aria-label="Play" data-on="0"></button>
+            <div class="radar-track">
+              <input class="radar-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
+              <div class="radar-scale" aria-hidden="true"></div>
+            </div>
           </div>
+          <p class="radar-time" aria-live="off"></p>
         </div>
-        <p class="radar-time" aria-live="off"></p>
-        <div class="radar-legend" role="img" aria-label="Colours: drizzle sand, light rain blue, heavy yellow to red, extreme pink; snow pale blue to deep blue"></div>
+        <div class="radar-legend" role="img" aria-label="Colours: light rain blue, moderate purple, heavy orange to yellow, extreme pale yellow; snow cyan to teal"></div>
         <p class="chart-note radar-status"></p>
       </section>
 

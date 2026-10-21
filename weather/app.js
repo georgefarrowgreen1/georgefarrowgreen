@@ -137,7 +137,7 @@ async function go(force = false, fresh = null) {
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
   if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; }
-  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
+  if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
   else S.radar.place(p.lat, p.lon);
@@ -457,6 +457,7 @@ function render() {
   if (!S.modeChosen) { const v = viewFor(wx, now); if (v !== S.mode) showMode(v); }
   sky(wx, now);
   hero(wx, now);
+  pinOnMap(wx, now);
   nowcast(wx, now);
   cards(wx, now);
   hourly(wx, now);
@@ -527,6 +528,16 @@ function hero(wx, now) {
   if (brief.dataset.said !== said) { brief.replaceChildren(h("b", {}, lead), rest ? ` ${rest}` : ""); brief.dataset.said = said; }
 }
 
+// the place on the radar's map as Apple's Weather map marks it: its temperature and sky in a bubble the colour of how
+// warm it is, its name under it
+const PIN_HUES = [[-10, [110, 90, 210]], [0, [60, 120, 220]], [10, [58, 112, 196]], [15, [40, 145, 160]], [20, [80, 160, 70]], [25, [222, 148, 40]], [30, [222, 88, 50]], [35, [196, 40, 50]]];
+function pinOnMap(wx, now) {
+  const c = wx.current || I.hourAt(wx, now), p = place();
+  if (!S.radar || !c) return;
+  const at = PIN_HUES.findIndex(([t]) => t >= c.temp), k = Math.max(1, at < 0 ? PIN_HUES.length - 1 : at), [t0, a] = PIN_HUES[k - 1], [t1, b] = PIN_HUES[k];
+  const f = t1 > t0 ? Math.min(1, Math.max(0, (c.temp - t0) / (t1 - t0))) : 0, rgb = a.map((v, j) => Math.round(v + (b[j] - v) * f));
+  S.radar.mark({ temp: S.f.temp(c.temp), icon: weatherIcon(iconOf(c.code, c.isDay), 22), name: p?.gps ? "My Location" : p?.name || "", colour: `rgb(${rgb.join(",")})` });
+}
 function nowcast(wx, now) {
   const f = S.f, nc = I.nowcast(wx, now, f), box = $("nowcast");
   // the radar says it in a line too
@@ -1818,7 +1829,8 @@ function wire() {
   $("notify-here").addEventListener("click", () => { S.settings.notify.place = hereForNotify(); saveSettings(); $("notify-status").textContent = "Saving…"; syncNotify().then(() => { $("notify-status").textContent = "Moved to this place."; }, (e) => { $("notify-status").textContent = `Couldn't save that just now (${e.message}).`; }); drawNotify(true); });
   $("act-add").addEventListener("change", addAct);
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
-  for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="ic g-off">${glyph("expand", 16)}</span><span class="ic g-on">${glyph("shrink", 16)}</span>`;
+  // (full screen, it closes with an ×, as Apple's Weather map does)
+  for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="ic g-off">${glyph("expand", 16)}</span><span class="ic g-on">${glyph("close", 18)}</span>`;
   $("refresh-btn").addEventListener("click", () => go(true));
   for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));

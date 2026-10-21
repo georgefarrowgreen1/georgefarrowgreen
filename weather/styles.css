@@ -995,53 +995,82 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .radar-hint:not([hidden]) { animation: hint-in 0.45s var(--glide) both; }
 @keyframes hint-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .radar-hint:not([hidden]) { animation: none; } }
-.radar-bar { display: flex; align-items: flex-start; gap: 12px; margin-top: 12px; }
-.radar-track { flex: 1; min-width: 0; padding-top: 4px; }
-/* the slider: a glass knob on a groove that fills up to it */
-/* the timeline: the past filling blue, a mark at Now, the forecast's stretch in amber dashes (filling amber as it
-   plays into it); positions are along the thumb's travel (14px in from each end), so the mark meets the thumb */
+/* the dock, as Apple's Weather map has it: play, and what's on show (its kind over its day and time), then the
+   timeline; in the card under the map, full screen a glass panel over the map's foot */
+.radar { --fill: #fff; --rest: rgba(255, 255, 255, 0.18); --tick: rgba(255, 255, 255, 0.5); --panel: rgba(26, 30, 40, 0.74); --ink: #fff; --ink-2: var(--text-2); }
+.radar.light-map.radar-big { --fill: #1c1c1e; --rest: rgba(60, 60, 67, 0.16); --tick: rgba(60, 60, 67, 0.4); --panel: rgba(250, 250, 252, 0.8); --ink: #1c1c1e; --ink-2: rgba(60, 60, 67, 0.72); }
+.radar-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "play time" "track track"; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.radar-bar { display: contents; }
+.radar-play { grid-area: play; }
+.radar-track { grid-area: track; min-width: 0; }
+/* the timeline: a groove filled up to where it is (no knob to speak of: the fill's end is it), a tick at each real
+   frame, and Now marked; positions are along the thumb's travel (14px in from each end), so the marks meet it */
 /* (44 tall to press, in the space of 30: it reaches 7px into the space above and below) */
-.radar-slider { --f: 1; --nowf: 1; --amber: #ffcf70; -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: -7px 0; display: block; background: transparent; cursor: pointer; }
-.radar-slider::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.35), 0 0.5px 0 rgba(255, 255, 255, 0.12);
+.radar-slider { --f: 1; --nowf: 1; -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: -7px 0; display: block; background: transparent; cursor: pointer; }
+.radar-slider::-webkit-slider-runnable-track { height: 8px; border-radius: 999px;
   --pos: calc(14px + (100% - 28px) * var(--f)); --now: calc(14px + (100% - 28px) * var(--nowf));
   background:
-    linear-gradient(90deg, transparent calc(var(--now) - 1px), rgba(255, 255, 255, 0.9) calc(var(--now) - 1px) calc(var(--now) + 1px), transparent calc(var(--now) + 1px)),
-    linear-gradient(90deg, var(--tint-blue) 0 min(var(--pos), var(--now)), var(--amber) min(var(--pos), var(--now)) var(--pos), transparent var(--pos)),
-    repeating-linear-gradient(90deg, rgba(255, 207, 112, 0.38) 0 4px, transparent 4px 8px) right center / calc(100% - var(--now)) 100% no-repeat,
-    rgba(0, 0, 0, 0.26); }
-.radar-slider::-moz-range-track { height: 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.26); }
-.radar-slider::-moz-range-progress { height: 8px; border-radius: 999px; background: var(--tint-blue); }
-.radar-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 28px; height: 28px; margin-top: -10px; border-radius: 50%; border: 0;
-  background: linear-gradient(180deg, #ffffff, #eef1f6); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.12); transition: transform 0.4s var(--spring), background 0.2s; }
-.radar-slider::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; border: 0; background: linear-gradient(180deg, #ffffff, #eef1f6); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); }
-/* held, the knob swells and turns to glass */
-.radar-slider:active::-webkit-slider-thumb { transform: scale(1.3); background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.25)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.9), 0 6px 16px rgba(0, 0, 0, 0.3); }
+    linear-gradient(90deg, transparent calc(var(--now) - 1px), var(--tick) calc(var(--now) - 1px) calc(var(--now) + 1px), transparent calc(var(--now) + 1px)),
+    linear-gradient(90deg, var(--fill) 0 var(--pos), transparent var(--pos)),
+    var(--rest); }
+.radar-slider::-moz-range-track { height: 8px; border-radius: 999px; background: var(--rest); }
+.radar-slider::-moz-range-progress { height: 8px; border-radius: 999px; background: var(--fill); }
+/* (the thumb: the fill's rounded end, a size up when it's held) */
+.radar-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -3px; border-radius: 50%; border: 0;
+  background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform 0.4s var(--spring); }
+.radar-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: 0; background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.radar-slider:active::-webkit-slider-thumb { transform: scale(1.5); }
+.radar-slider:focus-visible { outline: none; }
+.radar-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--tint-blue), 0 1px 4px rgba(0, 0, 0, 0.3); }
 .radar-scale { position: relative; height: 20px; margin: 2px 14px 0; }
-.rs-l { position: absolute; top: 2px; transform: translateX(-50%); font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
-.rs-start { transform: none; left: 0 !important; }
-.rs-end { transform: translateX(-100%); }
-.rs-now { color: #fff; font-weight: 700; }
-/* (a tick under each real frame: the minutes between are worked out) */
-.rs-t { position: absolute; top: -3px; width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: rgba(255, 255, 255, 0.32); }
-/* the readout: the time, then how long ago or ahead (amber when it's the forecast) */
-.radar-time { margin: 4px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; }
-.radar-time b { font-weight: 650; }
-.radar-time .rt-rel { color: var(--text-2); font-weight: 500; }
-.radar-time .rt-rel.ahead { color: #ffd68a; }
-/* the legend: the radar's colours as one bar, light to extreme, and snow's beside it */
+.rs-l { position: absolute; top: 2px; transform: translateX(-50%); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rs-now { color: var(--ink); font-weight: 700; }
+/* (a tick on the track at each real frame: the minutes between are worked out; lost under the fill once it's passed) */
+.rs-t { position: absolute; top: -19px; width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: var(--tick); pointer-events: none; }
+/* the readout: what's on show over its day and time and how long ago or ahead */
+.radar-time { grid-area: time; margin: 0; min-width: 0; font-variant-numeric: tabular-nums; color: var(--ink); }
+.radar-time .rt-k { display: block; font-size: 16px; font-weight: 650; line-height: 1.25; }
+.radar-time .rt-rel { display: block; font-size: 13px; color: var(--ink-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the legend: the radar's colours as one bar, light to extreme, and snow's beside it (radar.js: --stops, --at) */
 .radar-legend { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0 0; font-size: 11.5px; color: var(--text-2); }
+.rl-title { display: none; }
 .rl-rain { flex: 1; min-width: 0; }
-.rl-bar { display: block; height: 8px; border-radius: 999px; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
+.rl-bar { display: block; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--stops)); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
 .rl-words { position: relative; height: 16px; margin-top: 4px; }
-.rl-words span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
-.rl-words span:first-child { transform: none; left: 0 !important; }
-.rl-words span:last-child { transform: translateX(-100%); left: 100% !important; }
+.rl-words span { position: absolute; top: 0; left: var(--at); transform: translateX(-50%); white-space: nowrap; }
+.rl-words span:first-child { transform: none; left: 0; }
+.rl-words span:last-child { transform: translateX(-100%); left: 100%; }
 .rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
-.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: flex; flex-direction: column; --tint: rgba(10, 16, 28, 0.9); overflow-y: auto;
-  padding: calc(10px + env(safe-area-inset-top)) max(var(--pad), env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(var(--pad), env(safe-area-inset-left)); }
+
+/* full screen, as Apple's Weather map: the map to every edge, an × top left, its controls top right, the legend in a
+   panel under the ×, and the dock in glass at the foot */
+.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: block; padding: 0; overflow: hidden; --tint: rgba(10, 16, 28, 0.9); --top: calc(env(safe-area-inset-top) + 12px); }
 .radar.radar-big::before { display: none; }
-.radar.radar-big .radar-wrap { flex: 1; display: flex; min-height: 280px; }
-.radar.radar-big .radar-map { flex: 1; height: auto; }
+.radar.radar-big .card-title, .radar.radar-big .radar-note { display: none; }
+.radar.radar-big .radar-full { position: absolute; z-index: 600; top: var(--top); left: max(16px, env(safe-area-inset-left)); width: 44px; height: 44px; }
+.radar.radar-big .radar-wrap { position: absolute; inset: 0; margin: 0; }
+.radar.radar-big .radar-map { height: 100%; border-radius: 0; box-shadow: none; }
+.radar.radar-big .map-ctl { top: var(--top); right: max(16px, env(safe-area-inset-right)); }
+.radar.radar-big .radar-dry { top: calc(var(--top) + 10px); }
+.radar.radar-big .map-scale, .radar.radar-big .radar-credit { bottom: calc(env(safe-area-inset-bottom) + 168px); }
+.radar.radar-big .map-scale { left: max(16px, env(safe-area-inset-left)); }
+.radar.radar-big .radar-credit { right: max(16px, env(safe-area-inset-right)); }
+.radar.radar-big .radar-legend, .radar.radar-big .radar-dock {
+  position: absolute; z-index: 600; color: var(--ink); background-color: var(--panel); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 32px -8px rgba(0, 0, 0, 0.35); }
+.radar.radar-big .radar-legend { top: calc(var(--top) + 58px); left: max(16px, env(safe-area-inset-left)); margin: 0; flex-direction: column; gap: 10px; padding: 12px 16px 12px 14px; border-radius: 18px; font-size: 13px; color: var(--ink-2); }
+.radar.radar-big .rl-title { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+.radar.radar-big .rl-rain { flex: none; display: flex; gap: 10px; height: 132px; }
+.radar.radar-big .rl-rain .rl-bar { width: 6px; height: 100%; background: linear-gradient(0deg, var(--stops)); }
+.radar.radar-big .rl-words { width: 72px; height: 100%; margin: 0; }
+.radar.radar-big .rl-words span { left: 0; top: auto; bottom: var(--at); transform: translateY(50%); }
+.radar.radar-big .rl-words span:first-child { transform: none; bottom: 0; }
+.radar.radar-big .rl-words span:last-child { transform: none; left: 0; top: 0; bottom: auto; }
+.radar.radar-big .rl-snow { flex-direction: row; align-items: center; gap: 10px; width: auto; }
+.radar.radar-big .rl-snow .rl-bar { width: 6px; height: 22px; background: linear-gradient(0deg, var(--stops)); }
+.radar.radar-big .radar-dock { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 12px); margin: 0 auto; max-width: 560px; padding: 14px 16px 8px; border-radius: 28px; }
+.radar.light-map.radar-big .radar-play, .radar.light-map.radar-big .radar-full { background-color: rgba(120, 120, 128, 0.16); color: #1c1c1e; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.radar.light-map.radar-big .radar-full { background-color: rgba(255, 255, 255, 0.8); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
 .radar.radar-big .radar-status { display: none; }
 .radar-status { margin-top: 8px; }
 .radar-status:empty { display: none; }
@@ -1057,7 +1086,7 @@ body.no-scroll { overflow: hidden; }
 .radar-map.drawn .maplibregl-canvas { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .radar-map .maplibregl-canvas { transition: none; } }
 /* the map's controls, in glass on it: zoom in and out in one capsule, back to the place below it */
-.map-ctl { position: absolute; top: 10px; left: 10px; z-index: 500; display: flex; flex-direction: column; gap: 10px; }
+.map-ctl { position: absolute; top: 10px; right: 10px; z-index: 500; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: rgba(14, 22, 38, 0.42); }
 .map-zoom > :first-child { border-radius: 22px 22px 0 0; }
 .map-zoom > :last-child { border-radius: 0 0 22px 22px; }
@@ -1075,10 +1104,33 @@ body.no-scroll { overflow: hidden; }
 /* the scale: a bracket drawn on the map, as Maps does */
 .map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 11px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
-/* the place: a blue dot ringed in white, as Maps marks where you are */
-.map-dot { width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; pointer-events: none;
-  box-shadow: 0 0 0 8px rgba(10, 132, 255, 0.2), 0 2px 6px rgba(0, 0, 0, 0.5); }
-.map-dot-at .map-dot { transform: translate(-50%, -50%); }
+/* the place, as Apple's Weather map marks it: its temperature and sky in a bubble the colour of how warm it is
+   (radar.js mark), pointing down to a dot at the very spot, its name under that */
+.map-pin { position: relative; width: 0; height: 0; pointer-events: none; color: #fff; }
+.mp-dot { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; background: #fff; border: 1.5px solid var(--pin, #3f72c6); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.mp-bubble { position: absolute; left: 0; bottom: 11px; transform: translateX(-50%); width: 54px; height: 54px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid #fff;
+  background: var(--pin, #3f72c6); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32); display: grid; justify-items: center; align-content: center; gap: 1px; }
+.mp-bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 6px solid transparent; border-top: 7px solid #fff; border-bottom: 0; }
+.mp-t { font-size: 17px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; padding-left: 0.2em; }
+.mp-i { display: block; width: 22px; height: 22px; }
+.mp-i svg { width: 22px; height: 22px; display: block; }
+.mp-name { position: absolute; left: 0; top: 8px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 600;
+  text-shadow: 0 0 2px rgba(8, 11, 17, 0.9), 0 0 6px rgba(8, 11, 17, 0.6); }
+.light-map .mp-name { color: #1c1c1e; text-shadow: 0 0 2px #fff, 0 0 6px rgba(255, 255, 255, 0.9); }
+/* (before the page has its temperature: the dot alone) */
+.map-pin:not([data-on="1"]) .mp-bubble, .map-pin:not([data-on="1"]) .mp-name { display: none; }
+.map-pin-at { width: 0 !important; height: 0 !important; }
+/* the radar's chip (Radar or Forecast): said in the dock now, as Apple's map says it; kept for its state */
+.radar-chip { display: none !important; }
+/* on the day map, the controls on it in light glass, their ink dark, as Apple's */
+.radar.light-map .radar-map, .radar.light-map .leaflet-container { background: #f2f1ee; }
+.radar.light-map .map-zoom, .radar.light-map .radar-centre, .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
+  background-color: rgba(255, 255, 255, 0.8); color: #1c1c1e; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
+.radar.light-map .map-zoom button { color: #1c1c1e; }
+.radar.light-map .map-zoom button + button { box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.1); }
+.radar.light-map .map-zoom button:disabled { color: rgba(60, 60, 67, 0.3); }
+.radar.light-map .map-scale { color: #1c1c1e; border-color: rgba(28, 28, 30, 0.8); text-shadow: 0 0 2px #fff, 0 0 5px rgba(255, 255, 255, 0.9); box-shadow: none; }
+.radar.light-map .base-tiles { filter: saturate(0.2) brightness(1.04) contrast(0.92); }
 /* the map's credits: in full for a few seconds as it first appears, then a © (that opens them all) */
 .radar-credit { position: absolute; right: 10px; bottom: 10px; z-index: 500; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; min-height: 26px; padding: 4px 10px; border-radius: 13px; cursor: pointer;
   color: #fff; font: inherit; font-size: 11px; line-height: 1; background-color: rgba(14, 22, 38, 0.5); transition: padding 0.6s var(--spring), transform 0.5s var(--spring); }
@@ -1159,6 +1211,8 @@ select option { color: #fff; background: #1c2434; }
   .map-zoom, .radar-centre, .radar-credit, .top::before, .radar-dry {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
   .top::before { background: rgb(20, 28, 44); }
+  .radar.radar-big .radar-legend, .radar.radar-big .radar-dock { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(28, 32, 42); }
+  .radar.light-map.radar-big .radar-legend, .radar.light-map.radar-big .radar-dock { background-color: rgb(248, 248, 250); }
   .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgb(52, 62, 80); }
   .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }

@@ -1,7 +1,8 @@
 // The map under the radar, drawn on the phone from OpenFreeMap's vector map of OpenStreetMap (the OpenMapTiles
-// schema), in the app's own dark style, after Apple's Maps at night: land and sea in quiet blue-greys, the country
-// faintly shaded, roads a whisper, borders only on land, and the names crisp and white. The names are drawn last,
-// above the rain (radar.js puts the radar's frames under the first of them), so they read through it.
+// schema), in the app's own style, after Apple's Weather map: by day (the phone light), near-white land and a pale
+// grey-blue sea, roads in light greys, the names dark; at night (the phone dark), land and sea in quiet blue-greys,
+// the names crisp and white. Either way the country faintly shaded, roads a whisper, borders only on land. The names
+// are drawn last, above the rain (radar.js puts the radar's frames under the first of them), so they read through it.
 // Pure: no page, no network.
 
 export const TILES = "https://tiles.openfreemap.org/planet";
@@ -9,13 +10,24 @@ export const RELIEF = "https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}
 export const GLYPHS = "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf";
 // the first of the layers drawn over the rain
 export const ABOVE_RAIN = "water-names";
+// the dashed box round the models' grid, in the map's ink
+export const boxColour = (light) => (light ? DAY : NIGHT).box;
 
-const C = {
+const NIGHT = {
   land: "#272b33", water: "#17263a", ice: "#30363f", green: "#232f2a", town: "#2d323c",
   motorway: "#4a5160", road: "#363c48", border: "rgba(222, 230, 245, 0.32)", region: "rgba(222, 230, 245, 0.13)",
   label: "#f4f6fa", label2: "rgba(235, 238, 245, 0.78)", label3: "rgba(235, 238, 245, 0.56)", sea: "#5f7896",
-  halo: "rgba(8, 11, 17, 0.75)",
+  halo: "rgba(8, 11, 17, 0.75)", box: "#ffffff",
+  relief: { "raster-brightness-min": 0, "raster-brightness-max": 0.32, "raster-opacity": [2, 0.5, 6, 0.35, 9, 0.12] },
 };
+const DAY = {
+  land: "#f5f4f1", water: "#dfe7ee", ice: "#ffffff", green: "#e3ecdc", town: "#edebe6",
+  motorway: "#d2cfc8", road: "#e2dfd8", border: "rgba(60, 60, 67, 0.36)", region: "rgba(60, 60, 67, 0.16)",
+  label: "#1c1c1e", label2: "rgba(28, 28, 30, 0.82)", label3: "rgba(60, 60, 67, 0.62)", sea: "#8d97a6",
+  halo: "rgba(255, 255, 255, 0.9)", box: "#3c3c43",
+  relief: { "raster-brightness-min": 0.72, "raster-brightness-max": 1, "raster-opacity": [2, 0.35, 6, 0.22, 9, 0.08] },
+};
+let C = NIGHT;
 // the countries too small to name from afar (their capitals are named)
 const TINY = ["MC", "AD", "LI", "SM", "VA", "GI", "MT", "LU"];
 // a place's name: in English where the map has it, else in Latin letters, else its own
@@ -33,10 +45,11 @@ const label = (id, filter, { font = "Noto Sans Regular", size, color = C.label, 
   paint: { "text-color": color, "text-halo-color": C.halo, "text-halo-width": 1.2, "text-halo-blur": 0.6 },
 });
 
-export function mapStyle() {
+export function mapStyle(light = false) {
+  C = light ? DAY : NIGHT;
   return {
     version: 8,
-    name: "Weather night",
+    name: light ? "Weather day" : "Weather night",
     glyphs: GLYPHS,
     sources: {
       map: { type: "vector", url: TILES },
@@ -46,7 +59,7 @@ export function mapStyle() {
       { id: "land", type: "background", paint: { "background-color": C.land } },
       // the lie of the land, faintly (Natural Earth's shaded relief, its colour taken out)
       { id: "relief", type: "raster", source: "relief", maxzoom: 9,
-        paint: { "raster-saturation": -1, "raster-contrast": 0.1, "raster-brightness-min": 0, "raster-brightness-max": 0.32, "raster-opacity": zoom(2, 0.5, 6, 0.35, 9, 0.12), "raster-fade-duration": 0 } },
+        paint: { "raster-saturation": -1, "raster-contrast": 0.1, "raster-brightness-min": C.relief["raster-brightness-min"], "raster-brightness-max": C.relief["raster-brightness-max"], "raster-opacity": zoom(...C.relief["raster-opacity"]), "raster-fade-duration": 0 } },
       { id: "ice", type: "fill", source: "map", "source-layer": "landcover", filter: ["all", areas, ["match", ["get", "subclass"], ["glacier", "ice_shelf"], true, false]],
         paint: { "fill-color": C.ice, "fill-opacity": 0.8 } },
       { id: "green", type: "fill", source: "map", "source-layer": "landcover", minzoom: 6, filter: ["all", areas, ["match", ["get", "class"], ["wood", "forest"], true, false]],

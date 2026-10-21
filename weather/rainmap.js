@@ -1,6 +1,7 @@
 // The radar's sums, kept apart from the map so they can be tested alone:
-// the colours (RainViewer's Universal Blue, from their published table, so the
-// legend and the forecast's frames match the radar's own), turning a rain rate
+// the colours (RainViewer's Universal Blue, from their published table, to read
+// their tiles back into rain; drawn again in the app's own, after Apple's Weather
+// map: SHADES), turning a rain rate
 // into radar reflectivity (dBZ), the grid of points the forecast's frames are
 // made from, painting a frame of them, and the timeline of frames; and the rain
 // at a place over the next two hours from the radar, with the models' after it.
@@ -25,6 +26,29 @@ export function rgbaFor(dbz, snow = false) {
   return c;
 }
 export const hexFor = (dbz, snow = false) => { const c = rgbaFor(dbz, snow); return c ? `rgba(${c[0]},${c[1]},${c[2]},${(c[3] / 255).toFixed(2)})` : "transparent"; };
+// The colours it's drawn in, after Apple's Weather map: light rain a see-through blue, moderate purple, then pink and
+// orange into heavy's yellow, extreme a pale yellow; snow in cyans to teal. Stops of dBZ: [r, g, b, alpha 0-1], filled
+// in at every dB from -10 to 65 (as Universal Blue's table is, so they line up: ramp)
+const SHADES = {
+  // (sampled from Apple's own legend, light blue at the foot to pale yellow at the top, and laid along the dBZ: light
+  // rain to 2.5 mm an hour, moderate to 10, heavy to 50, extreme beyond; a little see-through, as Apple's map draws it)
+  rain: [[-10, 117, 194, 245, 0], [6, 117, 194, 245, 0], [10, 117, 194, 245, 0.3], [12.7, 103, 178, 245, 0.42], [15.5, 92, 163, 244, 0.52], [18.3, 84, 152, 245, 0.62],
+    [21, 86, 141, 242, 0.68], [23.8, 104, 131, 235, 0.72], [26.5, 130, 120, 227, 0.76], [29.3, 162, 111, 221, 0.78], [31.4, 178, 118, 203, 0.8], [33.2, 188, 135, 178, 0.8],
+    [35, 199, 154, 153, 0.8], [36.8, 208, 172, 130, 0.82], [38.6, 219, 192, 108, 0.84], [40.4, 231, 214, 91, 0.86], [42.1, 243, 235, 83, 0.88], [44, 255, 255, 85, 0.9],
+    [47.9, 255, 255, 106, 0.9], [51.9, 255, 255, 155, 0.92], [55.8, 255, 255, 212, 0.94], [60, 255, 255, 244, 0.96], [65, 255, 255, 250, 0.96]],
+  snow: [[-10, 150, 225, 240, 0], [-2, 150, 225, 240, 0], [0, 150, 225, 240, 0.45], [8, 120, 215, 238, 0.6], [15, 90, 205, 230, 0.72], [22, 60, 190, 222, 0.82],
+    [30, 40, 175, 212, 0.9], [38, 28, 150, 198, 0.96], [45, 20, 135, 188, 1], [55, 16, 112, 170, 1], [65, 15, 95, 155, 1]],
+};
+const shades = (stops) => Array.from({ length: 76 }, (_, i) => {
+  const d = i - 10, k = Math.max(1, stops.findIndex((s) => s[0] >= d)), [d0, ...a] = stops[k - 1], [d1, ...b] = stops[k], t = d1 > d0 ? Math.min(1, Math.max(0, (d - d0) / (d1 - d0))) : 0;
+  return [0, 1, 2].map((j) => Math.round(a[j] + (b[j] - a[j]) * t)).concat(Math.round((a[3] + (b[3] - a[3]) * t) * 255));
+});
+const SHOWN = { rain: shades(SHADES.rain), snow: shades(SHADES.snow) };
+// the colour it's drawn in at a reflectivity, [r, g, b, a] (0-255); null where it isn't drawn
+export function shade(dbz, snow = false) {
+  const c = SHOWN[snow ? "snow" : "rain"][Math.round(Math.min(65, Math.max(-10, dbz))) + 10];
+  return c[3] ? c : null;
+}
 // the legend: what each band of colour means
 export const LEGEND = [
   { label: "Drizzle", dbz: 12 }, { label: "Light", dbz: 20 }, { label: "Moderate", dbz: 28 },
@@ -62,13 +86,13 @@ export function decode(rgba) {
   }
   return out;
 }
-// The colours as a ramp every quarter of a dB, -10 to 65: as the radar has them (soft 0), or each the
-// average of its neighbours over about ±soft dB (in linear light), so even its jumps (blue to yellow) flow
+// The colours as a ramp every quarter of a dB, -10 to 65 (the app's own: SHADES): as they are (soft 0), or each the
+// average of its neighbours over about ±soft dB (in linear light), so they flow
 const ramps = new Map();
 export function ramp(snow, soft = 0) {
   const key = `${snow ? "s" : "r"}${soft}`;
   if (ramps.has(key)) return ramps.get(key);
-  const t = snow ? FS : FR, n = (t.length - 1) * 4 + 1, out = new Uint8ClampedArray(n * 4);
+  const t = snow ? SHOWN.snow : SHOWN.rain, n = (t.length - 1) * 4 + 1, out = new Uint8ClampedArray(n * 4);
   const lin = (v) => (v / 255) ** 2.2, gam = (v) => 255 * v ** (1 / 2.2);
   for (let q = 0; q < n; q++) {
     const d = q / 4;
@@ -248,7 +272,7 @@ export function paint(buf, w, h, g, rates, snow = null) {
       const o = (y * w + x) * 4;
       if (v < MIN_RATE) { buf[o + 3] = 0; continue; }
       // snow where the nearest point says so
-      const near = Math.round(fy) * n + Math.round(fx), col = rgbaFor(dbzOf(v), !!(snow && snow[near]));
+      const near = Math.round(fy) * n + Math.round(fx), col = shade(dbzOf(v), !!(snow && snow[near]));
       if (!col) { buf[o + 3] = 0; continue; }
       buf[o] = col[0]; buf[o + 1] = col[1]; buf[o + 2] = col[2]; buf[o + 3] = v < SOFT ? Math.round(col[3] * ((v - MIN_RATE) / (SOFT - MIN_RATE))) : col[3];
     }

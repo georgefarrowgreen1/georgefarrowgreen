@@ -575,25 +575,25 @@ const toNow = (pg, on = 0) => pg.evaluate((on) => { const s = document.querySele
   const gapOf = await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); return Math.round(s.max * parseFloat(s.style.getPropertyValue('--nowf'))) - 120; });
   await toNow(p); const now = await p.textContent('#radar .radar-time'), nowChip = await chipSays(p);
   await toNow(p, 1); const next = await p.textContent('#radar .radar-time'), nextChip = await chipSays(p);
-  ok(/^\d\d:\d\d · now( · latest radar)?$/.test(now) && nowChip === 'Radar' && /^\d\d:\d\d · in 1 min · forecast$/.test(next) && nextChip === 'Forecast',
+  ok(/^(Latest radar|Radar) [A-Z][a-z]+day \d\d:\d\d · now$/.test(now) && nowChip === 'Radar' && /^Forecast [A-Z][a-z]+day \d\d:\d\d · in 1 min$/.test(next) && nextChip === 'Forecast',
     'Now is now: the radar up to it (carried on from its latest meanwhile), the forecast after it', `${now} (${nowChip}) | ${next} (${nextChip}); now ${gapOf} min after the latest radar`);
   await toMinute(p, -1); const gap = await p.textContent('#radar .radar-time'), gapChip = await chipSays(p);
-  ok(gapOf < 2 || (/^\d\d:\d\d · \d+ min ago$/.test(gap) && gapChip === 'Radar'), 'a minute after the latest radar, before now: so many minutes ago, never "forecast"', `${gap} (${gapChip}); now ${gapOf} min after it`);
+  ok(gapOf < 2 || (/^Radar [A-Z][a-z]+day \d\d:\d\d · \d+ min ago$/.test(gap) && gapChip === 'Radar'), 'a minute after the latest radar, before now: so many minutes ago, never "forecast"', `${gap} (${gapChip}); now ${gapOf} min after it`);
 }
 await toMinute(p);
-ok(/^\d\d:\d0 · (\d+ min ago|now) · latest radar$/.test(await p.textContent('#radar .radar-time')) && (await chipSays(p)) === 'Radar' && tiles.radar > 0, 'the radar: two hours of frames over the map, up to the latest (said how long ago it was)', `${tiles.radar} radar tiles; ${await p.textContent('#radar .radar-time')}`);
+ok(/^Latest radar [A-Z][a-z]+day \d\d:\d0 · (\d+ min ago|now)$/.test(await p.textContent('#radar .radar-time')) && (await chipSays(p)) === 'Radar' && tiles.radar > 0, 'the radar: two hours of frames over the map, up to the latest (said how long ago it was)', `${tiles.radar} radar tiles; ${await p.textContent('#radar .radar-time')}`);
 // to the minute: five minutes before the latest, between two of its frames, blended on the graphics chip (the frames'
 // rain the same, here: the blend the same rain); a tick under each of the radar's frames; Page Up and Down from frame to frame
 {
   await toMinute(p, 5);
   await p.waitForFunction(() => (window.__glread?.()?.solid ?? 0) > 1000, null, { timeout: 10000 }).catch(() => {});
   const mid = await p.evaluate(() => ({ label: document.querySelector('#radar .radar-time').textContent, gl: __glread(), step: document.querySelector('#radar .radar-slider').step, ticks: document.querySelectorAll('#radar .rs-t').length }));
-  ok(/^\d\d:\d5 · \d+ min ago$/.test(mid.label) && mid.gl?.solid > 1000 && mid.gl.w % 256 === 0 && mid.step === '1' && mid.ticks === 13,
+  ok(/^Radar [A-Z][a-z]+day \d\d:\d5 · \d+ min ago$/.test(mid.label) && mid.gl?.solid > 1000 && mid.gl.w % 256 === 0 && mid.step === '1' && mid.ticks === 13,
     'the slider to the minute: between two frames, blended on the graphics chip, a tick under each of the radar\'s 13 frames', JSON.stringify(mid));
   await p.focus('#radar .radar-slider');
   await p.keyboard.press('PageDown'); const back = await p.textContent('#radar .radar-time');
   await p.keyboard.press('PageUp'); const on = await p.textContent('#radar .radar-time');
-  ok(/^\d\d:\d0 · \d+ min ago$/.test(back) && /latest radar$/.test(on), 'Page Down to the frame before, Page Up on to the next ones', `${back} | ${on}`);
+  ok(/^Radar [A-Z][a-z]+day \d\d:\d0 · \d+ min ago$/.test(back) && /^Latest radar /.test(on), 'Page Down to the frame before, Page Up on to the next ones', `${back} | ${on}`);
   await toMinute(p);
 }
 // closer in than the radar's tiles go, it's smoothed: drawn in its own blue, with an edge that fades rather than steps
@@ -610,14 +610,15 @@ await p.click('#radar .radar-centre'); await p.waitForTimeout(900);
 ok(await p.textContent('#radar .map-scale') === scale0, 'back to the place at its own zoom', await p.textContent('#radar .map-scale'));
 await p.waitForTimeout(600);
 const after = await p.evaluate(() => ({ label: document.querySelector('#radar .radar-time').textContent, gl: __glread() }));
-ok(/^\d\d:\d\d · (\d+ min ago|now) · latest radar$/.test(after.label) && after.gl?.solid > 1000, 'moved and zoomed while paused: the same time, still drawn', JSON.stringify(after));
+ok(/^Latest radar [A-Z][a-z]+day \d\d:\d\d · (\d+ min ago|now)$/.test(after.label) && after.gl?.solid > 1000, 'moved and zoomed while paused: the same time, still drawn', JSON.stringify(after));
 // the next two hours: the latest radar carried along its own track (here it isn't moving), marked as forecast
 await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
-ok((await chipSays(p)) === 'Forecast' && / · in (\d+ h( \d+ min)?|\d+ min) · forecast$/.test(await p.textContent('#radar .radar-time')) && tiles.grid === 0 && Number(await p.getAttribute('#radar .radar-slider', 'max')) >= 230,
+ok((await chipSays(p)) === 'Forecast' && /^Forecast [A-Z][a-z]+day \d\d:\d\d · in (\d+ h( \d+ min)?|\d+ min)$/.test(await p.textContent('#radar .radar-time')) && tiles.grid === 0 && Number(await p.getAttribute('#radar .radar-slider', 'max')) >= 230,
   'then the radar carried on two hours, marked as forecast (not the models\' grid: never asked for)', `${await p.textContent('#radar .radar-time')}; ${tiles.grid} grid requests`);
 ok(!(await p.isVisible('#radar .radar-status')), 'with no note under it (only when something\'s missing)', await p.textContent('#radar .radar-status'));
-// (two hours on, the latest radar carried on, faded to 70%: a strongest pixel of about 0.7 of the radar's)
-await p.waitForFunction(() => { const g = window.__glmix; if (!g) return false; const c = document.createElement('canvas'); c.width = g.width; c.height = g.height; const x = c.getContext('2d'); x.drawImage(g, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data; let top = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > top) top = d[i]; window.__top = top; return top >= 150 && top < 200; }, null, { timeout: 15000, polling: 250 })
+// (two hours on, the latest radar carried on, faded to 70%: a strongest pixel of about 0.7 of the radar's: its 30 dBZ
+// is drawn a little see-through, as Apple's map draws it, at about 200 of 255)
+await p.waitForFunction(() => { const g = window.__glmix; if (!g) return false; const c = document.createElement('canvas'); c.width = g.width; c.height = g.height; const x = c.getContext('2d'); x.drawImage(g, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data; let top = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > top) top = d[i]; window.__top = top; return top >= 120 && top <= 165; }, null, { timeout: 15000, polling: 250 })
   .then(() => true, () => false).then(async (x) => ok(x, 'the last forecast minutes drawn from the radar, in its colours, fading the further ahead', `strongest ${await p.evaluate(() => window.__top)}`));
 // every icon sits in its button's middle (one wrapped in a span used to sit high: the room a line of text keeps for descenders)
 const offMiddle = await p.evaluate(() => [...document.querySelectorAll('#radar .icon-btn, .top .icon-btn, .radar-centre, #radar .map-zoom button')].map((b) => {
@@ -719,8 +720,8 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   await p6.locator('#radar').scrollIntoViewIfNeeded();
   await p6.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
   await p6.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); const s = document.querySelector('#radar .radar-slider'); s.value = s.max; s.dispatchEvent(new Event('input')); });
-  const max = Number(await p6.getAttribute('#radar .radar-slider', 'max')), chip = await chipSays(p6), end = await p6.textContent('#radar .rs-end').catch(() => '');
-  ok(max >= 180 && chip === 'Forecast' && /^\+/.test(end) && (tiles.grid > before) === grid && !(await p6.textContent('#radar .radar-status')), what, `${max} minutes, ${chip}, ${end}, ${tiles.grid - before} grid`);
+  const max = Number(await p6.getAttribute('#radar .radar-slider', 'max')), chip = await chipSays(p6), end = await p6.textContent('#radar .radar-time').catch(() => '');
+  ok(max >= 180 && chip === 'Forecast' && /^Forecast /.test(end) && (tiles.grid > before) === grid && !(await p6.textContent('#radar .radar-status')), what, `${max} minutes, ${chip}, ${end}, ${tiles.grid - before} grid`);
   if (grid) {
     // and between the models' quarter hours, the two blended: their rain there, not a blank map
     await p6.click('#radar .map-out'); await p6.waitForTimeout(600);
@@ -744,14 +745,14 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   await p3.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); });
   await toMinute(p3);
   await p3.click('#radar .map-in'); await p3.waitForTimeout(400); await p3.click('#radar .map-in');
-  const smoothed = () => [...document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 200));
+  const smoothed = () => [...document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 150));
   await p3.waitForFunction(smoothed, null, { timeout: 15000, polling: 250 }).catch(() => {});
   await p3.waitForTimeout(500);
   const d3 = await p3.evaluate(() => {
     let rain = 0, soft = 0, blue = 0;
     for (const c of document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')) {
       const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-      for (let i = 3; i < d.length; i += 4) { if (d[i] > 200) { rain++; if (d[i - 1] > d[i - 3]) blue++; } else if (d[i] > 0) soft++; }
+      for (let i = 3; i < d.length; i += 4) { if (d[i] > 150) { rain++; if (d[i - 1] > d[i - 3]) blue++; } else if (d[i] > 0) soft++; }
     }
     return { rain, soft, blue, frames: document.querySelectorAll('#radar .rv-tiles').length };
   });
