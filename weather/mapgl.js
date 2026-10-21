@@ -72,10 +72,13 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   const mark = pin || Object.assign(document.createElement("div"), { className: "map-pin" });
   const dot = new m.Marker({ element: mark, anchor: "center" }).setLngLat([lon, lat]).addTo(map);
   const spot = (la, lo) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lo, la] } });
-  let roomW = 64;
-  map.addImage("room", { width: roomW, height: 136, data: new Uint8Array(roomW * 136 * 4) });
+  map.addImage("room", { width: 64, height: 136, data: new Uint8Array(64 * 136 * 4) });
   map.addSource("here", { type: "geojson", data: spot(lat, lon) });
   map.addLayer({ id: "here", type: "symbol", source: "here", layout: { "icon-image": "room", "icon-allow-overlap": true, "icon-ignore-placement": false } });
+  // (and as wide as its name where the name is, just under the dot: room(); not beside the bubble, which is narrower)
+  let roomW = 64;
+  map.addImage("nameroom", { width: roomW, height: 20, data: new Uint8Array(roomW * 20 * 4) });
+  map.addLayer({ id: "here-name", type: "symbol", source: "here", layout: { "icon-image": "nameroom", "icon-offset": [0, 16], "icon-allow-overlap": true, "icon-ignore-placement": false } });
   // and room kept the same way where the map's own controls are over it (radar.js), so no name is half under one: each
   // a clear picture its size (to the next 8 pixels), at the point under its middle, put back there as the map moves
   let rooms = [];
@@ -166,12 +169,12 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       on = -1;
       opacity("mix", value);
     },
-    // room kept round the place's bubble that names step aside from: as wide as its name
+    // room kept under the place's bubble, where its name is, that names step aside from: as wide as the name
     room(w) {
       const W = Math.max(64, Math.ceil((w + 12) / 8) * 8);
       if (W === roomW) return;
       roomW = W;
-      map.removeImage("room"); map.addImage("room", { width: W, height: 136, data: new Uint8Array(W * 136 * 4) });
+      map.removeImage("nameroom"); map.addImage("nameroom", { width: W, height: 20, data: new Uint8Array(W * 20 * 4) });
     },
     box(bounds, opacity = 0) {
       if (bounds !== undefined) {
