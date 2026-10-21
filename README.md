@@ -428,7 +428,10 @@ Cloudflare's city-level guess; nothing kept), or on your location if you've
 already allowed it. It opens at once, on a poor signal or none, from its own
 copy (`weather/sw.js`: each version's files kept whole as it's installed, and
 given from there before the network's asked; the map's libraries kept apart,
-across versions), shows what it last fetched, can be added to the Home Screen,
+across versions), shows what it last fetched (each file is checked against its
+fingerprint as it's kept, and the page against its version, so a phone never
+keeps a mix of two versions, as a server can hand out for a moment mid-release:
+after changing any of them, `node .tools/wxshell.mjs`, which the tests check), can be added to the Home Screen,
 and is **fresh whenever it's opened**: started, brought back to the front,
 restored by the browser, its window focused or the phone back online, it asks
 again for whatever's due (the forecast after 10 minutes, warnings after 5, the

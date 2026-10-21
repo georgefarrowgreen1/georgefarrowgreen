@@ -6,13 +6,31 @@
 // which change far less often, are kept apart, across versions (LIBS: renamed when they're updated). The forecast
 // itself is kept by the page (data.js), never here. And its notifications: rain alerts and the morning briefing
 // (functions/_wxpush.js).
-const CACHE = "wx-55", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
+const CACHE = "wx-56", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
 const SHELL = ["./", "./styles.css", "./app.js", "./data.js", "./insights.js", "./format.js", "./codes.js", "./climate.js", "./sky.js", "./charts.js", "./icons.js", "./skill.js", "./radar.js", "./rainmap.js", "./radarmix.js", "./mapgl.js", "./mapstyle.js", "./mapleaf.js", "./official.js", "./agree.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png"];
 
-// (all of it or none: a version that couldn't all be fetched, on a poor connection say, isn't started, so the last
-// whole one carries on, offline too, and it's tried again next time)
+// Each file's fingerprint (SHA-256, base64), and the page marked with its version (index.html app-version): written by
+// .tools/wxshell.mjs, checked by the tests. As it's installed, every file fetched is checked against them, so a phone
+// only ever keeps a whole version: straight after a release, a server can hand out a mix of the old and the new for a
+// moment, and kept, that mix would stay (an old radar.js in a new page, say) until the next.
+const SUMS = {"./styles.css":"3a1+P8eAbenJRjE0bchtuhN4/5hYK0dtkFov8u38Xvg=","./app.js":"4weGOldkg5Wc62eO5FrgufRuhIItZQ/XQCdUgzpK8X8=","./data.js":"vyHlifCv4mlrLj71EmBQ5D1IsgRp9pQ7JzKWgnUXXIQ=","./insights.js":"KnNBffTytajX6XBHQjrABPV6jF0CrV4HA0ExaWp00Oc=","./format.js":"66QoA5l590GLjJhiY+zt9579ElvnQPEWjD/tsDRjzUk=","./codes.js":"PHbbg+X5K7QHQ1W6W01b5Uwwzo2F+C4XTe66wcl4WEA=","./climate.js":"/s5LWNYNCwtbHzaRNXGVThLSqmRnsBY52fbvAU64NcM=","./sky.js":"EoIVxUSsCs8vhhIJiMiyMXsAZDB0fX9DuupXEXNb1E4=","./charts.js":"LZjAzxLdkysEpFxbUvMv7ik2q4ktiVNvCUBsQt6puSQ=","./icons.js":"daHVEiVbL28DTiJLhQiJyUhbUh+IYxxMpaCJik6HQWw=","./skill.js":"OrlD82LcGyGa38PtjDKQ30o1rcrIc1hMLdvdThq8/JI=","./radar.js":"KlAJTunNucn5dFjKM07AuGXTZpnTdtHhxan5NxRKMQg=","./rainmap.js":"ST2wNosMBUTx0MFSBY6OCbyWk2tNWB5rUgLOaIVXlPk=","./radarmix.js":"3dzLtoup0LZ6h82r0+uhHflaAhOR4+w/4ISzoiKIxlU=","./mapgl.js":"H7oBiMY9LJmrzDq3ZF7qAwHNecAy8CRLWQT48PZ65y8=","./mapstyle.js":"osMN3spikruD4/zLawoAoxUkpAPE/wnzXxL+Qfnm+1k=","./mapleaf.js":"NuxKXVyr/o+LRfyCfz7pwPFjggryuDJD2M53V5bnFeM=","./official.js":"MBuFZNOiZcpKKkDtx0wAdXNSHQB9gTsifrzihmSGyPM=","./agree.js":"rZ/1Zsu8eMFq29fTzFwX8f+yZ5lfCGO0o8MwnB1IWwc=","./manifest.webmanifest":"9HNM4pGFRMMXh2W2fTLh9y+sv0KqeaPpbO46fSbH1UQ=","./icon.svg":"Mfwc5OH4F6BLd/7oUJGzE93BUHpdA9pP8ngJdHx/4GE=","./icon-192.png":"XB9hcjlwHuXlvCewcQrfsEaciriz+kH8TaL/9PN19eE="};
+const sum = async (buf) => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))));
+// (all of it or none: a version that couldn't all be fetched whole, on a poor connection or mid-release say, isn't
+// started, so the last whole one carries on, offline too, and it's tried again next time)
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const got = await Promise.all(SHELL.map(async (u) => {
+      const res = await fetch(new Request(u, { cache: "reload" }));
+      if (!res.ok) throw new Error(`${u}: ${res.status}`);
+      const body = await res.clone().arrayBuffer();
+      const whole = u === "./" ? new TextDecoder().decode(body).includes(`name="app-version" content="${CACHE}"`) : !SUMS[u] || (await sum(body)) === SUMS[u];
+      if (!whole) throw new Error(`${u} isn't ${CACHE}'s`);
+      return [u, res];
+    }));
+    const c = await caches.open(CACHE);
+    await Promise.all(got.map(([u, res]) => c.put(u, res)));
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== LIBS).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
