@@ -29,7 +29,6 @@
   --blur-ctl: blur(10px) saturate(200%) brightness(1.08);
   --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 46%);
   --body: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 48%, rgba(255, 255, 255, 0.035));
-  --light: radial-gradient(520px circle at var(--lx, -9999px) var(--ly, -9999px), rgba(255, 255, 255, 0.07), transparent 45%);
   --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.55), inset 0 -1px 0.5px rgba(255, 255, 255, 0.12), inset 0 0 22px rgba(255, 255, 255, 0.04);
   /* (iOS 27's darker edge round the glass, a hairline outside its bright rim, setting it apart from what's behind) */
   --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.34), 0 14px 34px -10px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.12);
@@ -80,10 +79,15 @@ a { color: inherit; }
   -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
   box-shadow: var(--edge), var(--lift);
 }
-/* (where there's a pointer, the light it casts across the glass: fixed to the screen, so only there, where it's worth
-   the repainting as the page scrolls; a phone's panels are spared it) */
+/* (where there's a pointer, the light it casts across the glass, on the pane it's over (app.js lit): where it is, --lx
+   and --ly, the pane's own and not passed on to what's in it, so the pointer moving restyles that pane alone; and only
+   that pane repainted as the page scrolls, its light fixed to the screen; a phone's panels are spared it) */
+@property --lx { syntax: "<length>"; inherits: false; initial-value: -9999px; }
+@property --ly { syntax: "<length>"; inherits: false; initial-value: -9999px; }
 @media (hover: hover) and (pointer: fine) {
-  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-image: var(--light), var(--sheen), var(--body); background-attachment: fixed, scroll, scroll; }
+  :is(.card, .ins, .tile, .section-title, dialog.sheet, .c-tip).lit {
+    background-image: radial-gradient(520px circle at var(--lx) var(--ly), rgba(255, 255, 255, 0.07), transparent 45%), var(--sheen), var(--body);
+    background-attachment: fixed, scroll, scroll; }
 }
 /* controls */
 .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
@@ -164,7 +168,10 @@ body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[dat
 .sky-clouds { position: absolute; inset: -12% -50% auto; height: 75%; opacity: 0; transition: opacity 1.2s var(--ease); pointer-events: none;
   background: radial-gradient(26% 16% at 18% 32%, rgba(255, 255, 255, 0.13), transparent 70%), radial-gradient(20% 12% at 40% 18%, rgba(255, 255, 255, 0.1), transparent 70%),
     radial-gradient(30% 18% at 66% 36%, rgba(255, 255, 255, 0.12), transparent 70%), radial-gradient(18% 11% at 88% 22%, rgba(255, 255, 255, 0.09), transparent 70%);
-  animation: clouds 80s ease-in-out infinite alternate; }
+  animation: clouds 80s steps(160) infinite alternate; }
+/* (moved on in small steps, twice a second: a slow drift looks the same, and the glass over it is blurred afresh twice
+   a second rather than at every frame; and held still where there are no clouds to see) */
+body:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) .sky-clouds { animation-play-state: paused; }
 body[data-sky^="partly"] .sky-clouds { opacity: 0.55; }
 body[data-sky^="cloudy"] .sky-clouds, body[data-sky="fog"] .sky-clouds { opacity: 1; }
 body[data-sky^="rain"] .sky-clouds, body[data-sky^="snow"] .sky-clouds, body[data-sky="storm"] .sky-clouds { opacity: 0.8; }
@@ -172,7 +179,7 @@ body[data-sky$="night"]:not([data-sky="clear-night"]) .sky-clouds { opacity: 0.4
 body[data-sky="fog"] .sky-clouds { inset: 20% -50% auto; height: 90%; animation-duration: 50s; }
 @keyframes clouds { from { transform: translateX(-9%); } to { transform: translateX(9%); } }
 body[data-sky="clear-night"] .sky-fx::before, body[data-sky="clear-night"] .sky-fx::after, body[data-sky="partly-night"] .sky-fx::before {
-  content: ""; position: absolute; inset: 0; animation: twinkle 3.6s ease-in-out infinite alternate;
+  content: ""; position: absolute; inset: 0; animation: twinkle 3.6s steps(14) infinite alternate;
   background-image: radial-gradient(1.4px 1.4px at 17% 12%, #fff 50%, transparent), radial-gradient(1px 1px at 38% 28%, #fff 50%, transparent),
     radial-gradient(1.2px 1.2px at 52% 9%, #fff 50%, transparent), radial-gradient(1px 1px at 71% 33%, #fff 50%, transparent),
     radial-gradient(1.5px 1.5px at 84% 16%, #fff 50%, transparent), radial-gradient(1px 1px at 5% 26%, #fff 50%, transparent), radial-gradient(1.1px 1.1px at 60% 47%, #fff 50%, transparent); }
@@ -198,7 +205,7 @@ body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
 @keyframes lightning { 0%, 84%, 100% { opacity: 0; } 85% { opacity: 0.32; } 86% { opacity: 0.06; } 87.5% { opacity: 0.22; } 90% { opacity: 0; } }
 /* the sky holds still under a sheet, and once the page has scrolled on past the top (behind the cards it's
    hardly seen, and every pane of glass over it would be blurred afresh each frame it moves) */
-body:is(.sheet-up, .deep) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-up, .deep) .sky-fx::before, body:is(.sheet-up, .deep) .sky-fx::after { animation-play-state: paused; }
+body:is(.sheet-up, .deep, .no-scroll) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-up, .deep, .no-scroll) .sky-fx::before, body:is(.sheet-up, .deep, .no-scroll) .sky-fx::after { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .sky-fx, .sky-fx::before, .sky-fx::after, .sky-clouds, .sky-flash { animation: none !important; } .sky, .sky-clouds { transition: none; }
 }
@@ -318,7 +325,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 @keyframes wi-fall { 0% { transform: translate(1px, -4px); opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-1.5px, 5px); opacity: 0; } }
 @keyframes wi-flake { 0% { transform: translate(0, -4px) rotate(0deg); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(1.5px, 5px) rotate(60deg); opacity: 0; } }
 @keyframes wi-flicker { 0%, 78%, 100% { opacity: 1; } 80% { opacity: 0.3; } 83% { opacity: 1; } 86% { opacity: 0.45; } 89% { opacity: 1; } }
-.hero.away .hero-icon .wi * { animation-play-state: paused; }
+.hero:is(.away, .still) .hero-icon .wi * { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
 .hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
 .hero-hl { font-size: 16px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
@@ -329,6 +336,8 @@ main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: gr
 .status.warn { color: #ffd68a; }
 .retry { margin-top: 14px; }
 main[data-empty] ~ .foot .foot-refresh { display: none; }
+/* (and the footer comes with the forecast, not before: under placeholders it would only be pushed away as it came) */
+main[data-empty="loading"] ~ .foot { display: none; }
 
 /* before there's a forecast: glass placeholders that shimmer (or, if it couldn't be had, just the hero's message);
    the cards that would be empty wait out of sight */
@@ -336,18 +345,29 @@ main[data-empty] ~ .foot .foot-refresh { display: none; }
 main[data-empty="loading"] .skeleton { display: grid; gap: 14px; }
 main[data-empty] .col > :not(.hero):not(.skeleton), main[data-empty="error"] .skeleton { display: none !important; }
 main[data-empty="error"] .hero-row { display: none; }
+/* (in one column, the second's placeholders would sit under the first's, only to be pushed away as the forecast came) */
+@media (max-width: 979px) { main[data-empty] .col-b { display: none; } }
 main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height: 84px; margin: 8px 0; border-radius: 22px; }
+/* (and the lines the hero will have, the high and low and the briefing, kept for them: so the cards come in where the
+   placeholders were, not some way further down) */
+main[data-empty="loading"] :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="loading"] .hero-hl { width: 42%; height: 14px; margin-top: 10px; }
+main[data-empty="loading"] .brief { width: 88%; height: 46px; }
 .sk { display: flex; flex-direction: column; gap: 12px; }
-.sk i, main[data-empty="loading"] .hero-temp { display: block; background: linear-gradient(100deg, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.07) 70%) 0 0 / 300% 100%; animation: sk 1.6s ease-in-out infinite; }
+/* (the shimmer a light passing over each: moved, rather than its background redrawn every frame) */
+.sk i, main[data-empty="loading"] .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
+.sk i::after, main[data-empty="loading"] .hero-temp::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.09) 50%, transparent 80%); animation: sk 1.6s ease-in-out infinite; }
 .sk-l { height: 12px; border-radius: 6px; width: 100%; }
 .sk-l.w30 { width: 30%; } .sk-l.w35 { width: 35%; } .sk-l.w40 { width: 40%; } .sk-l.w50 { width: 50%; } .sk-l.w80 { width: 80%; } .sk-l.w90 { width: 90%; }
-.sk-hours { display: flex; gap: 10px; }
-.sk-hours i { flex: 1; height: 86px; border-radius: 999px; }
+.sk-hours { display: flex; gap: 10px; overflow: hidden; }
+/* (the hours' pills their own width, as the hours are, however wide the card: not stretched into discs) */
+.sk-hours i { flex: 0 0 52px; height: 86px; border-radius: 999px; }
 .sk-chart { height: 120px; border-radius: 14px; }
 .sk-big { height: 40px; width: 60%; border-radius: 10px; }
 .sk-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .sk-tiles .card { border-radius: 24px; min-height: 136px; }
-@keyframes sk { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes sk { to { transform: translateX(100%); } }
 /* when the forecast arrives, the hero eases up into place (only what's on screen: an animation on a card still
    off it can leave it unpainted; backwards fill, so nothing's left behind) */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
@@ -374,7 +394,7 @@ main.paging > .col { will-change: translate; }
 .dots i.gps.on { color: #fff; }
 .dots i svg { display: block; }
 @media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, .hero-temp.roll-up, .hero-temp.roll-down, .ins.rise { animation: none; } }
-@media (prefers-reduced-motion: reduce) { .sk i, main[data-empty="loading"] .hero-temp { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
 
 /* ---------- cards ---------- */
 .card { border-radius: var(--r-card); padding: 16px var(--card-x) 18px; min-width: 0; }
@@ -491,7 +511,8 @@ main.paging > .col { will-change: translate; }
 @keyframes sweep { from { transform: scaleX(0); } }
 @keyframes land { from { opacity: 0; scale: 0.3; } }
 @keyframes swing { from { transform: rotate(-150deg); } }
-@keyframes knob { from { left: 0%; opacity: 0.5; } }
+/* (moved, not laid out afresh each frame: from the start of the meter, its width (cqw) times how far along it is) */
+@keyframes knob { from { transform: translateX(calc(-50% - var(--at, 0) * 1cqw)); opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
   .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g, .pre .rbars rect, .pre .tidec .tc-water { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i, .pre .tidec .tc-here, .pre .tidec .tc-mark { opacity: 1; } .pre .sunarc .done, .pre .tidec .tc-line { stroke-dashoffset: 0; }
   .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g, .play .rbars rect, .play .tidec .tc-water, .play .tidec .tc-line, .play .tidec .tc-mark, .play .tidec .tc-here { animation: none; }
@@ -685,7 +706,7 @@ dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
 .tile p, .detail-now p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.35; }
 .tile .sub { margin-top: auto; }
 .detail-now .sub { margin-top: 6px; }
-.meter { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: linear-gradient(90deg, #34c759, #d7e34b, #ffb020, #ff5a4f, #b45cff); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+.meter { position: relative; container-type: inline-size; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: linear-gradient(90deg, #34c759, #d7e34b, #ffb020, #ff5a4f, #b45cff); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
 .meter i { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
 .compass { width: 74px; height: 74px; margin: 4px auto 0; display: block; }
 .compass .ring { fill: rgba(255, 255, 255, 0.05); stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; }
@@ -820,8 +841,13 @@ dialog.sheet.dragging { transition: none; }
 /* while a sheet is up, the page behind steps back, and holds still: its glass unblurred, and nothing on it (or the
    sky) moving (under the dim it looks the same, and the sheet's own glass isn't blurred afresh every frame) */
 .page { transition: transform 0.5s var(--glide); }
-body.sheet-up .page, body.sheet-up .page *, body.sheet-up .page ::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
-body.sheet-up .page *, body.sheet-up .page ::before, body.sheet-up .page ::after { animation-play-state: paused !important; }
+/* (named one by one, the panes of glass and the hero's icon, the one thing on the page that moves of itself: a rule
+   for everything on the page would have every one of its thousands of parts restyled as a sheet came and went) */
+body.sheet-up .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .map-zoom, .radar-centre, .radar-credit, .rc-t, .radar-dry),
+body.sheet-up .top::before,
+/* (and the same behind the radar full screen, its map over all of it: all but the radar's own) */
+body.no-scroll .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg):not(.radar, .radar *), body.no-scroll .top::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; animation-play-state: paused !important; }
+@property --recede { syntax: "<number>"; inherits: false; initial-value: 1; }
 body.sheet-up .page { transform: translateY(calc(var(--recede, 1) * 10px)) scale(calc(1 - var(--recede, 1) * 0.06)); }
 body.sheet-drag .page { transition: none; }
 @media (min-width: 700px) { body.sheet-up .page { transform: scale(calc(1 - var(--recede, 1) * 0.025)); } }
@@ -1056,7 +1082,8 @@ fieldset.opt label.at-row { width: 100%; }
 
 /* full screen, as Apple's Weather map: the map to every edge, an × top left, its controls top right, the legend in a
    panel under the ×, and the dock in glass at the foot */
-.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: block; padding: 0; overflow: hidden; --tint: rgba(10, 16, 28, 0.9); --top: calc(env(safe-area-inset-top) + 12px); }
+.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: block; padding: 0; overflow: hidden; --tint: rgba(10, 16, 28, 0.9); --top: calc(env(safe-area-inset-top) + 12px);
+  -webkit-backdrop-filter: none; backdrop-filter: none; }
 .radar.radar-big::before { display: none; }
 .radar.radar-big .card-title, .radar.radar-big .radar-note { display: none; }
 .radar.radar-big .radar-full { position: absolute; z-index: 600; top: var(--top); left: max(16px, env(safe-area-inset-left)); width: 44px; height: 44px; }

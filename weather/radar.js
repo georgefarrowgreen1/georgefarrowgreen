@@ -178,6 +178,14 @@ function stitch(from, x0, y0, span) {
 // (gone.aborted: scrolled away, or the frame replaced); undefined where none of the radar it's drawn from came, and
 // marked partial where some didn't (neither kept: asked for again next time). shown(): its frame is the one on show
 // (its tiles come first). (The next two hours carried on from the radar are the minutes between's: below)
+// Heavy work (the map's code, read in, and the map itself, made) once the page has come to rest: not in the middle of
+// a flick, where it would hold the scrolling up for a moment
+function whenStill(fn) {
+  let t = 0;
+  const go = () => { removeEventListener("scroll", on); if (typeof requestIdleCallback === "function") requestIdleCallback(fn, { timeout: 500 }); else setTimeout(fn, 0); };
+  const on = () => { clearTimeout(t); t = setTimeout(go, 180); };
+  addEventListener("scroll", on, { passive: true }); on();
+}
 const GONE = Symbol("gone");
 function radarTile(base, c, shown, gone) {
   // (sz: the zoom of the tiles drawn from, each SRC pixels; one of their pixels is a zoom-(sz + 1) 256-tile's)
@@ -540,6 +548,8 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const tick = (ts) => {
       if (!playing) return;
       raf = requestAnimationFrame(tick);
+      // (held where it is under a sheet: unseen there, and each picture would have the sheet's glass blurred afresh)
+      if (document.body.classList.contains("sheet-up")) { prev = 0; return; }
       // (about 30 pictures a second, however fast the screen: as smooth to the eye, for less of the battery)
       if (prev && ts - prev < 30) return;
       const dt = prev ? Math.min(100, ts - prev) : 0; prev = ts;
@@ -741,12 +751,15 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   const near = new IntersectionObserver((es) => {
     if (!es.some((x) => x.isIntersecting)) return;
     near.disconnect();
-    vectorLib().then((v) => v.able() && v.preload()).catch(() => {});
+    whenStill(() => vectorLib().then((v) => v.able() && v.preload()).catch(() => {}));
   }, { rootMargin: "100% 0px" });
   near.observe(card);
+  // (in sight, as the page comes to rest: the map made then; scrolled on past it meanwhile, it waits to be seen again)
+  let inView = false;
   const io = new IntersectionObserver((es) => {
     const vis = es.some((x) => x.isIntersecting);
-    if (vis && !starting) starting = start();
+    inView = vis;
+    if (vis && !starting) starting = new Promise((ok) => whenStill(() => { if (inView) ok(start()); else { starting = null; ok(); } }));
     else if (vis && map && Date.now() - fetched > 10 * 60e3) load().catch(() => {});
     if (!vis && playing) stop();
   }, { rootMargin: "120px" });

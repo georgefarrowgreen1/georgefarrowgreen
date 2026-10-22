@@ -137,6 +137,15 @@ async function go(force = false, fresh = null) {
   showPlace();
   const moved = !S.wx || cell(S.wx.place.lat, S.wx.place.lon) !== cell(p.lat, p.lon);
   if (moved) { S.wx = S.base = null; S.allInsights = S.allWins = S.allDays = false; S.rain = null; }
+  // (a place with nothing kept: its first picture waits, a second at most from the forecast's coming, for the warnings
+  // and the radar's say, which would otherwise come in over the top of it and push it down as it's read: paint)
+  clearTimeout(S.hold?.timer);
+  // (a new place's first picture straight away, not held back by the last place's drawing: paint)
+  if (moved) { clearTimeout(S.paintT); S.painted = 0; }
+  S.hold = moved && !S.wx && !store.get(`wx:${cell(p.lat, p.lon)}`)?.forecast ? { id: cell(p.lat, p.lon), until: 0, timer: 0 } : null;
+  // (meanwhile, a sky for the time of day, by this phone's clock: not a day's sky that turns to night as the forecast
+  // comes, nor the last place's)
+  if (S.hold) { const hr = new Date().getHours(); document.body.dataset.sky = hr >= 7 && hr < 19 ? "cloudy-day" : "cloudy-night"; }
   if (!S.radar) S.radar = radar($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
@@ -149,7 +158,7 @@ async function go(force = false, fresh = null) {
       if (runOut(wx)) { render(); return; }
       S.base = wx; S.stale = !!how.stale;      // (shaped as it's drawn: render)
       if (!how.stale && !how.partial) snapshotNow(wx);
-      render();
+      paint();
     }, { force });
     // (a new place: what's kept of it is already showing, drawn once; with nothing kept, placeholders meanwhile)
     if (moved && !S.wx) render();
@@ -231,7 +240,26 @@ async function radarRain(p, my) {
   // again only if what the radar says has changed)
   const was = S.rain, id = cell(p.lat, p.lon), said = r ? JSON.stringify([r.at, r.steps]) : "";
   S.rain = { ...r, id, asked: Date.now(), said };
-  if (S.base && !(was?.id === id && was.said === said)) render();
+  if (S.base && !(was?.id === id && was.said === said)) paint();
+}
+// The page drawn, unless a new place's first picture is still waiting (go): for its warnings and the radar's say, or
+// until a second after its forecast came, whichever's first
+function paint() {
+  const h = S.hold;
+  if (h) {
+    const ready = S.base?.official != null && S.rain?.id === h.id;
+    h.until ||= Date.now() + 1000;
+    clearTimeout(h.timer);
+    if (!ready && Date.now() < h.until) { h.timer = setTimeout(paint, h.until - Date.now()); return; }
+    S.hold = null;
+  }
+  // (parts coming in close together, as they do, drawn together: twice a second at most, rather than the whole page
+  // over again for each, moving under the eye each time)
+  clearTimeout(S.paintT);
+  const wait = (S.painted || 0) + 500 - Date.now();
+  if (wait > 0) { S.paintT = setTimeout(paint, wait); return; }
+  S.painted = Date.now();
+  render();
 }
 
 // "since you last looked": a few snapshots of the days ahead as the page showed them, per place (snap2: since a day's
@@ -455,18 +483,20 @@ function render() {
   }
   const now = nowWall(wx.place.offset);
   if (!S.modeChosen) { const v = viewFor(wx, now); if (v !== S.mode) showMode(v); }
-  sky(wx, now);
-  hero(wx, now);
-  pinOnMap(wx, now);
-  nowcast(wx, now);
-  cards(wx, now);
-  hourly(wx, now);
-  daily(wx, now);
-  windows(wx, now);
-  nudge();
-  accuracy(wx);
-  climate(wx, now);
-  tiles(wx, now);
+  // (each part drawn by itself: a fault in one, on some odd piece of the forecast, leaves the others as they should be)
+  const part = (fn, ...a) => { try { fn(...a); } catch (e) { console.error(e); } };
+  part(sky, wx, now);
+  part(hero, wx, now);
+  part(pinOnMap, wx, now);
+  part(nowcast, wx, now);
+  part(cards, wx, now);
+  part(hourly, wx, now);
+  part(daily, wx, now);
+  part(windows, wx, now);
+  part(nudge);
+  part(accuracy, wx);
+  part(climate, wx, now);
+  part(tiles, wx, now);
   status();
   balance(`${cell(wx.place.lat, wx.place.lon)}|${!!wx.climate}|${!!wx.skill?.station}`);
 }
@@ -475,10 +505,12 @@ function render() {
 // does it. Worked out once a place's forecast is in (and again as its climate and its accuracy come), and as the
 // window's resized: not as the page is used, so nothing moves under a finger (a list unfolded, say); not with the radar
 // full screen. On a narrower one, one column, each in its own place
+// (wide: two columns, as styles.css has them; not a phone on its side, its columns one list beside the weather now)
 let levelled = "", keyed = "";
+const twoCols = matchMedia("(min-width: 980px)"), onSide = matchMedia("(orientation: landscape) and (max-height: 500px) and (min-width: 600px)");
 function balance(key = keyed, again = false) {
   const main = $("main"), a = main.querySelector(".col-a"), b = main.querySelector(".col-b"), radar = $("radar"), days = $("daily"), clim = $("climate");
-  const wide = innerWidth >= 980 && getComputedStyle(a).display !== "contents", want = `${key}|${wide}`;
+  const wide = twoCols.matches && !onSide.matches, want = `${key}|${wide}`;
   if ((want === levelled && !again) || radar.classList.contains("radar-big")) return;
   levelled = want; keyed = key;
   // (each moved only if it isn't where it goes already: the radar's map, say, isn't taken out and put back for nothing)
@@ -542,13 +574,16 @@ function sky(wx, now) {
 
 function hero(wx, now) {
   const f = S.f, c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now);
+  // (no reading for now, a gap in the hours say: what's there stays)
+  if (!c) return;
   // a new temperature rolls in, up if it's warmer, down if it's cooler (as iOS's numbers do)
   const tEl = $("now-temp"), t = f.temp(c.temp);
   if (tEl.textContent !== t) {
     // (by the numbers themselves: a minus, as it's written, isn't one to parseFloat)
     const warmer = !(c.temp < Number(tEl.dataset.v));
     tEl.textContent = t; tEl.dataset.v = String(c.temp);
-    if (tEl.dataset.shown && !calm.matches) { tEl.classList.remove("roll-up", "roll-down"); void tEl.offsetWidth; tEl.classList.add(warmer ? "roll-up" : "roll-down"); }
+    // (started again on the next frame, rather than by having the whole page laid out here and now to restart it)
+    if (tEl.dataset.shown && !calm.matches) { tEl.classList.remove("roll-up", "roll-down"); requestAnimationFrame(() => tEl.classList.add(warmer ? "roll-up" : "roll-down")); }
     tEl.dataset.shown = "1";
   }
   // (only when it changes: it's moving, and drawn again it would start over)
@@ -992,10 +1027,13 @@ function tideCurve(m, now) {
   return h("div", { svg: `<svg class="tidec" viewBox="0 0 160 60" aria-hidden="true"><path class="tc-water" d="${line}L${n(P[P.length - 1][0])} 60L${n(P[0][0])} 60z"/><path class="tc-line" pathLength="1" d="${line}"/>${dots}`
     + `${here != null ? `<line class="tc-now" x1="${n(X(now))}" x2="${n(X(now))}" y1="4" y2="60"/><circle class="tc-here" cx="${n(X(now))}" cy="${n(Y(here))}" r="3.6"/>` : ""}</svg>` });
 }
-const scaleBar = (k, cls, ends) => { const m = h("div", { class: `meter ${cls}` }), i = h("i"); i.style.left = `${Math.min(100, Math.max(0, k * 100))}%`; m.append(i); return [m, h("div", { class: "ends" }, h("span", {}, ends[0]), h("span", {}, ends[1]))]; };
+// (a knob along a meter: at, how far along, for it to slide in from the start: styles.css knob)
+const knob = (pct) => { const i = h("i"); i.style.left = `${pct}%`; i.style.setProperty("--at", String(pct)); return i; };
+const scaleBar = (k, cls, ends) => { const m = h("div", { class: `meter ${cls}` }); m.append(knob(Math.min(100, Math.max(0, k * 100)))); return [m, h("div", { class: "ends" }, h("span", {}, ends[0]), h("span", {}, ends[1]))]; };
 
 function tiles(wx, now) {
   const f = S.f, c = wx.current || I.hourAt(wx, now), out = [], d = I.dayOf(wx, now);
+  if (!c) return;
   // what each tile says, made afresh wherever it's shown (the tile, and its sheet: openDetail)
   const say = {};
   // feels like: a thermometer filled to it, with the actual temperature marked
@@ -1027,7 +1065,7 @@ function tiles(wx, now) {
     h("p", { class: "sub" }, vis == null ? "" : vis >= 20000 ? "Excellent." : vis >= 10000 ? "Good." : vis >= 4000 ? "A little haze." : vis >= 1000 ? "Mist or haze." : "Fog.")];
   // UV
   const todayH = I.hoursBetween(wx, dayStart(now), dayStart(now) + DAY), uvPeak = todayH.reduce((a, x) => ((x.uv ?? 0) > (a?.uv ?? -1) ? x : a), null);
-  const uv = c.uv ?? 0, meter = (v, max) => { const m = h("div", { class: "meter" }), i = h("i"); i.style.left = `${Math.min(100, (v / max) * 100)}%`; m.append(i); return m; };
+  const uv = c.uv ?? 0, meter = (v, max) => { const m = h("div", { class: "meter" }); m.append(knob(Math.min(100, (v / max) * 100))); return m; };
   say.uv = () => [h("div", { class: "big" }, String(Math.round(uv)), h("small", {}, uvName(uv))), meter(uv, 11),
     h("p", { class: "sub" }, uvPeak && uvPeak.uv >= 1 ? `Peaks at ${Math.round(uvPeak.uv)} (${uvName(uvPeak.uv).toLowerCase()}) around ${f.time(uvPeak.t)}.` : "Low all day.")];
   // air quality and pollen
@@ -1756,11 +1794,13 @@ const seen = typeof IntersectionObserver === "function" && new IntersectionObser
 }, { threshold: 0.6 });
 function motion(key, ...els) {
   if (!seen || calm.matches || !S.wx) return;
-  const k = `${cell(S.wx.place.lat, S.wx.place.lon)}:${key}`, old = drawn.get(k);
+  const here = cell(S.wx.place.lat, S.wx.place.lon), k = `${here}:${key}`, old = drawn.get(k);
+  // (what was drawn before, here or at another place, no longer watched for: it's off the page)
+  old?.forEach((o) => seen.unobserve(o));
+  for (const [x, list] of drawn) if (!x.startsWith(`${here}:`)) list.forEach((o) => seen.unobserve(o));
   drawn.set(k, els);
   els.forEach((e, i) => {
     const o = old?.[i];
-    if (o) seen.unobserve(o);
     if (!old || !o || o.classList.contains("pre")) { e.classList.add("pre"); seen.observe(e); return; }
     const gone = performance.now() - (o._t0 ?? -1e9);
     if (gone < 1800) { e.classList.add("play"); e._t0 = o._t0; e.style.setProperty("--i", o.style.getPropertyValue("--i") || "0"); e.style.setProperty("--t0", `${-Math.round(gone)}ms`); }
@@ -1773,10 +1813,11 @@ function motion(key, ...els) {
 const calm = matchMedia("(prefers-reduced-motion: reduce)");
 function openSheet(d) {
   // the page behind first (stepping back about the top of what's on screen, not the middle of the whole long page;
-  // and still: styles.css), so it's restyled once, with the sheet
+  // and still: styles.css), so it's restyled once, with the sheet (how far back, --recede, on the page alone and not
+  // passed down to all that's on it: so a finger dragging the sheet down restyles just the page, not every card)
   document.querySelector(".page").style.transformOrigin = `50% ${scrollY}px`;
-  document.body.style.setProperty("--recede", "1");
-  document.body.classList.add("sheet-up");
+  document.querySelector(".page").style.setProperty("--recede", "1");
+  document.body.classList.add("sheet-up"); document.querySelector(".hero").classList.add("still");
   d.classList.remove("closing"); d.style.transform = "";
   if (!d.open) d.showModal();
   // (the title has focus first, so it's what a screen reader says, and no ring lands on the close button)
@@ -1788,7 +1829,7 @@ function closeSheet(d, from = 0) {
   if (calm.matches) { d.close(); return; }
   d.style.setProperty("--from", `${from}px`); d.style.transform = "";
   d.classList.add("closing");
-  document.body.style.setProperty("--recede", "0");
+  document.querySelector(".page").style.setProperty("--recede", "0");
   let gone = false;
   const done = () => { if (gone) return; gone = true; d.classList.remove("closing"); d.close(); };
   d.addEventListener("animationend", done, { once: true });
@@ -1796,7 +1837,7 @@ function closeSheet(d, from = 0) {
 }
 function sheetGestures(d) {
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeSheet(d); });
-  d.addEventListener("close", () => { if (!document.querySelector("dialog[open]")) document.body.classList.remove("sheet-up", "sheet-drag"); });
+  d.addEventListener("close", () => { if (!document.querySelector("dialog[open]")) { document.body.classList.remove("sheet-up", "sheet-drag"); document.querySelector(".hero").classList.remove("still"); } });
   d.addEventListener("click", (e) => { if (e.target === d) closeSheet(d); });
   // swipe down: from the grabber, or from the content once it's scrolled to the top (and down, not sideways: a day's
   // sheet goes sideways to another day)
@@ -1821,7 +1862,7 @@ function sheetGestures(d) {
     d.classList.add("dragging"); document.body.classList.add("sheet-drag");
     const pull = dy < 40 ? dy : 40 + (dy - 40) * 0.9;
     d.style.transform = `translateY(${pull}px)`;
-    document.body.style.setProperty("--recede", String(Math.max(0, 1 - pull / 420)));
+    document.querySelector(".page").style.setProperty("--recede", String(Math.max(0, 1 - pull / 420)));
   }, { passive: false });
   const end = () => {
     if (y0 == null) return;
@@ -1829,7 +1870,7 @@ function sheetGestures(d) {
     y0 = null; d.classList.remove("dragging"); document.body.classList.remove("sheet-drag");
     if (!dragged) return;
     if (dy > 120 || (dy > 30 && v > 0.55)) closeSheet(d, dy);
-    else { d.style.transform = ""; document.body.style.setProperty("--recede", "1"); }
+    else { d.style.transform = ""; document.querySelector(".page").style.setProperty("--recede", "1"); }
   };
   d.addEventListener("touchend", end); d.addEventListener("touchcancel", end);
 }
@@ -1923,11 +1964,17 @@ function wire() {
   const typing = (e) => e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]");
   for (const t of ["copy", "cut", "contextmenu", "selectstart", "dragstart"]) document.addEventListener(t, (e) => { if (!typing(e)) e.preventDefault(); });
   if (matchMedia("(hover: hover) and (pointer: fine)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    let raf = 0, x = 0, y = 0;
+    // (on the pane it's over: styles.css .lit)
+    let raf = 0, x = 0, y = 0, over = null, lit = null;
     addEventListener("pointermove", (e) => {
-      x = e.clientX; y = e.clientY;
-      raf ||= requestAnimationFrame(() => { raf = 0; document.documentElement.style.setProperty("--lx", `${x}px`); document.documentElement.style.setProperty("--ly", `${y}px`); });
+      x = e.clientX; y = e.clientY; over = e.target instanceof Element ? e.target.closest(".card, .ins, .tile, .section-title, dialog.sheet, .c-tip") : null;
+      raf ||= requestAnimationFrame(() => {
+        raf = 0;
+        if (over !== lit) { lit?.classList.remove("lit"); lit = over; lit?.classList.add("lit"); }
+        if (lit) { lit.style.setProperty("--lx", `${x}px`); lit.style.setProperty("--ly", `${y}px`); }
+      });
     }, { passive: true });
+    document.addEventListener("pointerleave", () => { lit?.classList.remove("lit"); lit = over = null; });
   }
   // the minute changes things like "in 20 minutes": redraw just what says so (the rest waits for the next forecast)
   // (a new hour: all of it again, the strip's Now and the days' Today moving on with it; else what tells the time, and

@@ -233,8 +233,11 @@ function draw(host, fresh = false) {
     pts.forEach((p, i) => { const px = cols ? X(p.t) + (X(p.t + step) - X(p.t)) / 2 : X(p.t), dd = Math.abs(px - x); if (dd < bd) { bd = dd; best = i; } });
     return best;
   };
-  hit.addEventListener("pointermove", (e) => show(nearest(e.clientX)));
-  hit.addEventListener("pointerdown", (e) => show(nearest(e.clientX)));
+  // (a finger or mouse moving: once a frame at most, where layout's already done, and only when it's on another point)
+  let near = 0, nearX = 0;
+  const to = (i) => { if (i !== idx) show(i); };
+  hit.addEventListener("pointermove", (e) => { nearX = e.clientX; near ||= requestAnimationFrame(() => { near = 0; to(nearest(nearX)); }); });
+  hit.addEventListener("pointerdown", (e) => to(nearest(e.clientX)));
   hit.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") hide(); });
   host.tabIndex = 0;
   host.onkeydown = (e) => {

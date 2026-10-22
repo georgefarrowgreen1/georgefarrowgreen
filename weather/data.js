@@ -349,9 +349,11 @@ export async function load(place, onUpdate, { force = false } = {}) {
       // the ensembles are big (143 runs): only their summary is kept
       raw[k] = k === "ensemble" ? { at: Date.now(), s: shapeEnsemble(j) } : { at: Date.now(), j };
       failed.delete(`${id}|${k}`);
-      save(); onUpdate(build(), { partial: k !== "forecast", stale: false });
     }
-    catch (e) { failed.set(`${id}|${k}`, Date.now()); if (k === "forecast") throw e; }
+    catch (e) { failed.set(`${id}|${k}`, Date.now()); if (k === "forecast") throw e; return; }
+    // (drawn outside the asking: a fault in drawing it isn't taken for the network failing, nor asked again for nothing)
+    save();
+    try { onUpdate(build(), { partial: k !== "forecast", stale: false }); } catch (e) { console.error(e); }
   };
   // the forecast first (the page needs it); the rest alongside
   const main = get("forecast", fetchForecast);
@@ -359,9 +361,9 @@ export async function load(place, onUpdate, { force = false } = {}) {
   try { await main; } catch (e) { if (!raw.forecast) throw e; onUpdate(build(), { partial: false, stale: true, error: e }); }
   await extras;
   // the climate, once a year per place, in the background (it's a lot to ask for)
-  climateSoon(place, (c) => { if (c !== null && raw.forecast) onUpdate(build(), { partial: false, stale: false }); });
+  climateSoon(place, (c) => { if (c !== null && raw.forecast) try { onUpdate(build(), { partial: false, stale: false }); } catch (e) { console.error(e); } });
   // how the models have done here, twice a day per place, in the background too
-  if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); });
+  if (raw.forecast) loadSkill(place).then((k) => { if (k) onUpdate(build(), { partial: false, stale: false }); }).catch((e) => console.error(e));
   return build();
 }
 // keep only the newest few places' forecasts when the phone's storage fills
