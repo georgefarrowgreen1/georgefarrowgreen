@@ -6,7 +6,7 @@
 // which change far less often, are kept apart, across versions (LIBS: renamed when they're updated). The forecast
 // itself is kept by the page (data.js), never here. And its notifications: rain alerts and the morning briefing
 // (functions/_wxpush.js).
-const CACHE = "wx-62", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
+const CACHE = "wx-63", LIBS = "wx-libs-maplibre-6.12.0-leaflet-1.9.4";
 const SHELL = ["./", "./styles.css", "./app.js", "./data.js", "./insights.js", "./format.js", "./codes.js", "./climate.js", "./sky.js", "./charts.js", "./icons.js", "./skill.js", "./radar.js", "./rainmap.js", "./radarmix.js", "./radarwork.js", "./mapgl.js", "./mapstyle.js", "./mapleaf.js", "./official.js", "./agree.js", "./manifest.webmanifest", "./icon.svg", "./icon-192.png"];
 
 // Each file's fingerprint (SHA-256, base64), and the page marked with its version (index.html app-version): written by
