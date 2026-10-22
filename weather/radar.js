@@ -784,19 +784,35 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const band = [...LEGEND].reverse().find((l) => mmh >= l.mmh * 0.999) || LEGEND[0];
     return band.label === "Drizzle" ? (snow ? "Light snow" : "Drizzle") : `${band.label} ${snow ? "snow" : "rain"}`;
   };
-  // (over its spot, unless that's over the place's bubble or name: then beside it, on whichever side there's room, or
-  // under it where there's none either side)
+  // (over its spot, unless it would cover a bubble or a name there (the place's own, or another saved place's): then
+  // beside it, on whichever side's clear, or under it; the first of those that covers none, and stays on the map)
   function placeReading() {
     if (!reading || !map) return;
     const v = viewNow(), at0 = (la, lo) => [((lo - v.w0) / (v.e0 - v.w0)) * v.w, ((v.yN - mercY(la)) / (v.yN - v.yS)) * v.h];
-    const [px, py] = at0(here.lat, here.lon), [rx, ry] = at0(reading.lat, reading.lon), lw = readEl.querySelector(".mr-b").offsetWidth || 150;
-    const over = Math.abs(rx - px) < lw / 2 + 34 && ry - py > -56 && ry - py < 82, right = rx + 18 + lw < v.w - 8, left = rx - 18 - lw > 8;
-    // (beside the spot would still be over the name where the spot's by the name itself: under it then)
-    const half = (pin.querySelector(".mp-name")?.offsetWidth || 60) / 2, byName = Math.abs(rx - px) < half + 12 && ry - py > -12 && ry - py < 48;
-    const side = over && !byName && right, sideL = over && !byName && !right && left;
-    readEl.classList.toggle("side", side);
-    readEl.classList.toggle("side-l", sideL);
-    readEl.classList.toggle("below", over && !side && !sideL);
+    const box = readEl.querySelector(".mr-b"), lw = box.offsetWidth || 150, lh = box.offsetHeight || 40, [rx, ry] = at0(reading.lat, reading.lon);
+    // (what it mustn't cover: each bubble, and each name under its dot; [left, top, right, bottom])
+    const taken = [], mark = (la, lo, bw, bh, nameEl) => {
+      const [x, y] = at0(la, lo), half = (nameEl?.offsetWidth || 60) / 2;
+      taken.push([x - bw / 2, y - bh - 11, x + bw / 2, y - 6], [x - half, y + 6, x + half, y + 24]);
+    };
+    mark(here.lat, here.lon, 58, 58, pin.querySelector(".mp-name"));
+    for (const { o, b } of otherMarks) if (b.dataset.empty !== "1") mark(o.lat, o.lon, 40, 38, b.querySelector(".mo-n"));
+    // (where it could go, in order: over the spot, beside it either side, over it moved along, then under it; each
+    // scored by how much of a bubble or name it covers, and of itself off the map: the first that scores nothing, else
+    // the least)
+    const along = Math.max(0, lw / 2 - 26), spots = [["", 0], ["side", 0], ["side-l", 0], ["", along], ["", -along], ["below", 0], ["below", along], ["below", -along]].map(([cls, dx]) => {
+      const t = cls === "below" ? ry + 30 : cls === "" ? ry - 12 - lh : ry - lh / 2;
+      // (beside the spot, and the place's name there too: out past the name)
+      const [nl, nt, nr, nb] = taken[1], byName = t < nb + 3 && nt - 3 < t + lh;
+      const l = cls === "side" ? Math.max(rx + 14, byName && nl < rx + 14 + lw ? nr + 6 : 0) : cls === "side-l" ? Math.min(rx - 14, byName && nr > rx - 14 - lw ? nl - 6 : Infinity) - lw : rx - lw / 2 + dx;
+      return { cls, dx: cls === "side" ? l - (rx + 14) : cls === "side-l" ? l + lw - (rx - 14) : dx, r: [l, t, l + lw, t + lh] };
+    });
+    const cut = (a, b2) => Math.max(0, Math.min(a[2], b2[2] + 3) - Math.max(a[0], b2[0] - 3)) * Math.max(0, Math.min(a[3], b2[3] + 3) - Math.max(a[1], b2[1] - 3));
+    const score = ({ r }) => taken.reduce((n, x) => n + cut(r, x), 0) + 2 * (lw * lh - cut(r, [6, 4, v.w - 6, v.h - 4]));
+    let best = spots[0], least = Infinity;
+    for (const sp of spots) { const n = score(sp); if (n < least) { least = n; best = sp; } if (!n) break; }
+    for (const k of ["side", "side-l", "below"]) readEl.classList.toggle(k, best.cls === k);
+    readEl.style.setProperty("--dx", `${Math.round(best.dx)}px`);
   }
   function sayReading() {
     if (!reading) return;
@@ -1264,7 +1280,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       // (the minutes between drawn again for what's in sight as the map's moved: once a frame, and not while it plays,
       // which draws them anyway)
       let moving = 0;
-      map.on("move", () => { if (!playing && frames.length && !moving) moving = requestAnimationFrame(() => { moving = 0; show(at); }); });
+      map.on("move", () => { if (!playing && frames.length && !moving) moving = requestAnimationFrame(() => { moving = 0; show(at); placeReading(); }); });
       // on a phone, the page scrolls past the map; a tap opens it full screen to explore
       // (full screen, or with a mouse, a tap reads the weather there)
       map.on("tap", (pt) => { if (touch && !card.classList.contains("radar-big")) grow(true); else if (pt) readAt(pt); });
