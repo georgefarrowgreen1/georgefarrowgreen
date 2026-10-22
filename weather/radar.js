@@ -791,9 +791,12 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const v = viewNow(), at0 = (la, lo) => [((lo - v.w0) / (v.e0 - v.w0)) * v.w, ((v.yN - mercY(la)) / (v.yN - v.yS)) * v.h];
     const [px, py] = at0(here.lat, here.lon), [rx, ry] = at0(reading.lat, reading.lon), lw = readEl.querySelector(".mr-b").offsetWidth || 150;
     const over = Math.abs(rx - px) < lw / 2 + 34 && ry - py > -56 && ry - py < 82, right = rx + 18 + lw < v.w - 8, left = rx - 18 - lw > 8;
-    readEl.classList.toggle("side", over && right);
-    readEl.classList.toggle("side-l", over && !right && left);
-    readEl.classList.toggle("below", over && !right && !left);
+    // (beside the spot would still be over the name where the spot's by the name itself: under it then)
+    const half = (pin.querySelector(".mp-name")?.offsetWidth || 60) / 2, byName = Math.abs(rx - px) < half + 12 && ry - py > -12 && ry - py < 48;
+    const side = over && !byName && right, sideL = over && !byName && !right && left;
+    readEl.classList.toggle("side", side);
+    readEl.classList.toggle("side-l", sideL);
+    readEl.classList.toggle("below", over && !side && !sideL);
   }
   function sayReading() {
     if (!reading) return;
