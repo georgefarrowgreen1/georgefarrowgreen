@@ -1,7 +1,7 @@
 name: InFlight checks
 
 # On every push: every server and app file parses, and the unit tests pass (the space
-# maths, eclipses, pigeons following people between worlds, key checks). Quick: no
+# maths, eclipses, pigeons following people between worlds, key checks, the weather app's insights). Quick: no
 # browser, no database. The end-to-end tests run locally: see .tools/tests/README.md.
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       - name: Every file parses
         run: |
           fail=0
-          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
+          for f in $(git ls-files 'functions/*.js' 'pigeon/*.js' 'weather/*.js' 'app.js'); do node --check "$f" || { echo "::error file=$f::doesn't parse"; fail=1; }; done
           exit $fail
       - name: Unit tests
         run: node --test .tools/tests/unit/*.test.mjs

@@ -24,4 +24,11 @@ Each test prints `PASS`/`FAIL` lines and ends with `FAILS n`; `run.sh` sums them
 screen and sheet in light and dark at 390 and 320 wide, checked for overlap, clipping and
 accessibility (axe).
 
+`wxapp.mjs` is the Weather app's (weather/), at weather.localhost (Chromium finds `*.localhost` by itself), against
+made-up Open-Meteo answers for the time it runs (`mocks/wxappdata.mjs`), stand-in radar and map tiles, and its own
+stand-in on :8794 for Open-Meteo and the Aviation Weather Center as the server asks them (notifications, airport
+reports). It turns notifications on with a push subscription whose keys it holds, runs the tick, and decrypts what
+arrives in the push stand-in's box. The app's reasoning has unit tests of its own (`unit/wxinsights.test.mjs`,
+`unit/wxnext.test.mjs`).
+
 This folder is part of the repository but not the site: `/.tools/*` is turned away in `_redirects`.

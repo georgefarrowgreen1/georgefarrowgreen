@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Weather</title>
+  <meta name="description" content="A forecast that explains itself: a daily briefing, what to wear, the best times to get outside, how unusual the weather is for the time of year, and how sure the forecast is." />
+  <meta name="theme-color" content="#2b5d96" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Weather" />
+  <meta property="og:title" content="Weather" />
+  <meta property="og:description" content="A forecast that explains itself." />
+  <meta property="og:type" content="website" />
+  <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
+  <meta name="app-version" content="wx-59" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon-180.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module" src="./app.js"></script>
+  <!-- everything app.js needs, asked for at once (rather than found one import at a time), and the forecast's
+       server warmed up while they come -->
+  <link rel="modulepreload" href="./data.js" /><link rel="modulepreload" href="./format.js" /><link rel="modulepreload" href="./insights.js" />
+  <link rel="modulepreload" href="./codes.js" /><link rel="modulepreload" href="./icons.js" /><link rel="modulepreload" href="./charts.js" />
+  <link rel="modulepreload" href="./climate.js" /><link rel="modulepreload" href="./sky.js" /><link rel="modulepreload" href="./skill.js" />
+  <link rel="modulepreload" href="./radar.js" /><link rel="modulepreload" href="./rainmap.js" /><link rel="modulepreload" href="./radarmix.js" /><link rel="modulepreload" href="./official.js" /><link rel="modulepreload" href="./agree.js" />
+  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
+</head>
+<body data-sky="cloudy-day">
+  <div class="sky" aria-hidden="true"><div class="sky-clouds"></div><div class="sky-fx"></div><div class="sky-flash"></div></div>
+
+  <div class="page">
+  <header class="top">
+    <button class="place" id="place-btn" type="button" aria-haspopup="dialog" aria-controls="places">
+      <span class="place-name"><span id="place-name">Weather</span><span class="place-temp" id="place-temp" aria-hidden="true"></span></span>
+      <span class="place-line"><span class="place-sub" id="place-sub"></span><span class="place-now" id="place-now" aria-hidden="true"></span></span>
+    </button>
+    <div class="top-actions">
+      <button class="icon-btn" id="locate-btn" type="button" aria-label="Use my location" title="Use my location"></button>
+      <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-controls="settings"></button>
+    </div>
+  </header>
+
+  <main id="main" aria-busy="true" data-empty="loading">
+    <div class="col col-a">
+      <section class="hero" aria-labelledby="hero-title">
+        <h1 class="sr-only" id="hero-title">Weather for <span id="sr-place">your place</span></h1>
+        <div class="dots" id="dots" hidden aria-hidden="true"></div>
+        <div class="hero-row">
+          <div class="hero-temp" id="now-temp">–</div>
+          <div class="hero-icon" id="now-icon"></div>
+        </div>
+        <div class="hero-cond" id="now-cond">Loading the forecast…</div>
+        <div class="hero-hl" id="now-hl"></div>
+        <p class="brief" id="brief" aria-live="polite"></p>
+        <p class="status" id="status" role="status"></p>
+        <button class="pill-btn retry" id="retry-btn" type="button" hidden>Try again</button>
+      </section>
+
+      <div class="skeleton" aria-hidden="true">
+        <div class="card sk"><i class="sk-l w35"></i><div class="sk-hours"><i></i><i></i><i></i><i></i><i></i><i></i></div><i class="sk-chart"></i></div>
+        <div class="card sk"><i class="sk-l w30"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l"></i><i class="sk-l w80"></i></div>
+      </div>
+
+      <section class="card nowcast" id="nowcast" hidden aria-labelledby="nowcast-title">
+        <div class="card-head">
+          <h2 class="card-title" id="nowcast-title"><span class="ct-icon" data-g="rain"></span>Next 4 hours</h2>
+          <span class="nc-src" id="nowcast-src" title="Timed by the rain radar" hidden><span class="ct-icon" data-g="radar"></span>Radar</span>
+        </div>
+        <p class="nowcast-text" id="nowcast-text"></p>
+        <div id="nowcast-chart"></div>
+      </section>
+
+      <section class="stack" id="alerts" aria-label="Warnings"></section>
+
+      <section class="card ins-card" id="insights-card" aria-labelledby="insights-title" hidden>
+        <h2 class="card-title" id="insights-title"><span class="ct-icon" data-g="star"></span>Highlights</h2>
+        <div class="insights" id="insights" role="list"></div>
+      </section>
+
+      <section class="card nudge" id="nudge" aria-labelledby="nudge-title" hidden></section>
+
+      <section class="card" id="hourly" aria-labelledby="hourly-title">
+        <div class="card-head">
+          <h2 class="card-title" id="hourly-title"><span class="ct-icon" data-g="clock"></span>Next 48 hours</h2>
+          <div class="seg" role="tablist" aria-label="Chart" id="hourly-seg">
+            <button role="tab" type="button" data-mode="temp" aria-selected="true">Temp</button>
+            <button role="tab" type="button" data-mode="rain" aria-selected="false">Rain</button>
+            <button role="tab" type="button" data-mode="wind" aria-selected="false">Wind</button>
+          </div>
+        </div>
+        <div class="strip" id="hourly-strip" tabindex="0" aria-label="Hour by hour"></div>
+        <div id="hourly-chart" role="tabpanel"></div>
+      </section>
+
+      <section class="card radar" id="radar" aria-labelledby="radar-title">
+        <div class="card-head">
+          <h2 class="card-title" id="radar-title"><span class="ct-icon" data-g="radar"></span>Rain radar</h2>
+          <button class="icon-btn small radar-full" type="button" aria-label="Full screen" data-on="0"></button>
+        </div>
+        <p class="radar-note"></p>
+        <div class="radar-wrap">
+          <div class="radar-map" role="region" aria-label="Rain radar map"></div>
+          <span class="radar-chip" data-kind="radar" aria-hidden="true"><span class="rc-l" data-k="radar">Radar</span><span class="rc-l" data-k="model">Forecast</span></span>
+          <span class="radar-hint" hidden>Tap to explore</span>
+        </div>
+        <div class="radar-dock">
+          <div class="radar-bar">
+            <button class="icon-btn small radar-play" type="button" aria-label="Play" data-on="0"></button>
+            <div class="radar-track">
+              <input class="radar-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Radar time" />
+              <div class="radar-scale" aria-hidden="true"></div>
+            </div>
+          </div>
+          <p class="radar-time" aria-live="off"></p>
+        </div>
+        <div class="radar-legend" role="img" aria-label="Colours: light rain blue, moderate purple, heavy orange to yellow, extreme pale yellow; snow cyan to teal"></div>
+        <p class="chart-note radar-status"></p>
+      </section>
+
+      <section class="card" id="daily" aria-labelledby="daily-title">
+        <div class="card-head">
+          <h2 class="card-title" id="daily-title"><span class="ct-icon" data-g="calendar"></span><span id="daily-n">16-day</span> forecast</h2>
+          <div class="seg icons" role="tablist" aria-label="Days by" id="days-seg">
+            <button role="tab" type="button" data-mode="temp" aria-selected="true" aria-label="Temperature" title="Temperature"></button>
+            <button role="tab" type="button" data-mode="rain" aria-selected="false" aria-label="Rain" title="Rain"></button>
+            <button role="tab" type="button" data-mode="wind" aria-selected="false" aria-label="Wind" title="Wind"></button>
+          </div>
+        </div>
+        <ol class="days" id="days"></ol>
+      </section>
+    </div>
+
+    <div class="col col-b">
+      <div class="skeleton" aria-hidden="true">
+        <div class="sk-tiles"><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div><div class="card sk"><i class="sk-l w50"></i><i class="sk-big"></i></div></div>
+        <div class="card sk sk-ins"><i class="sk-l w40"></i><i class="sk-l w90"></i></div>
+      </div>
+      <section aria-labelledby="details-title">
+        <h2 class="section-title" id="details-title">Right now</h2>
+        <div class="tiles" id="tiles"></div>
+      </section>
+
+
+      <section class="card" id="windows" aria-labelledby="windows-title">
+        <h2 class="card-title" id="windows-title"><span class="ct-icon" data-g="star"></span>Best times</h2>
+        <div class="win-grid" id="win-grid"></div>
+      </section>
+
+      <section class="card" id="accuracy" aria-labelledby="accuracy-title" hidden>
+        <h2 class="card-title" id="accuracy-title"><span class="ct-icon" data-g="target"></span>Forecast accuracy here</h2>
+        <div id="accuracy-body"><p class="muted small">Checking…</p></div>
+      </section>
+
+      <section class="card" id="climate" aria-labelledby="climate-title">
+        <h2 class="card-title" id="climate-title"><span class="ct-icon" data-g="chart"></span>This time of year</h2>
+        <div id="climate-body"><p class="muted small">Gathering 30 years of weather…</p></div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="foot">
+    <p class="foot-refresh"><span id="updated"></span> · <button class="link" id="refresh-btn" type="button">Refresh</button></p>
+    <p class="foot-note">Learn more about <button class="link" type="button" data-credits="weather" aria-haspopup="dialog" aria-controls="credits">weather data</button> and <button class="link" type="button" data-credits="map" aria-haspopup="dialog" aria-controls="credits">map data</button>.</p>
+  </footer>
+  </div>
+
+  <dialog class="sheet" id="places" aria-labelledby="places-title">
+    <div class="sheet-head">
+      <h2 id="places-title" tabindex="-1">Places</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <form class="search" id="search-form" role="search">
+        <label class="sr-only" for="search">Search for a place</label>
+        <input id="search" type="search" placeholder="Search for a city or town" autocomplete="off" enterkeyhint="search" />
+      </form>
+      <ul class="results" id="results"></ul>
+      <p class="sr-only" id="results-said" role="status"></p>
+      <button class="row-btn" id="use-location" type="button"></button>
+      <h3 class="sheet-sub">Saved</h3>
+      <ul class="saved" id="saved"></ul>
+    </div>
+  </dialog>
+
+  <dialog class="sheet" id="settings" aria-labelledby="settings-title">
+    <div class="sheet-head">
+      <h2 id="settings-title" tabindex="-1">Settings</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <form id="settings-form">
+        <fieldset class="opt"><legend>Temperature</legend>
+          <div class="choice"><label><input type="radio" name="temp" value="c" /> °C</label><label><input type="radio" name="temp" value="f" /> °F</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Wind</legend>
+          <div class="choice"><label><input type="radio" name="wind" value="mph" /> mph</label><label><input type="radio" name="wind" value="kmh" /> km/h</label><label><input type="radio" name="wind" value="ms" /> m/s</label><label><input type="radio" name="wind" value="kn" /> knots</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Rain</legend>
+          <div class="choice"><label><input type="radio" name="precip" value="mm" /> mm</label><label><input type="radio" name="precip" value="in" /> inches</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Pressure</legend>
+          <div class="choice"><label><input type="radio" name="pressure" value="hpa" /> hPa</label><label><input type="radio" name="pressure" value="inhg" /> inHg</label><label><input type="radio" name="pressure" value="mmhg" /> mmHg</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Clock</legend>
+          <div class="choice"><label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label></div>
+        </fieldset>
+        <fieldset class="opt"><legend>Glass</legend>
+          <div class="choice"><label><input type="radio" name="glass" value="clear" /> Clear</label><label><input type="radio" name="glass" value="standard" /> Standard</label><label><input type="radio" name="glass" value="tinted" /> Tinted</label></div>
+        </fieldset>
+        <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
+          <label class="switch"><input type="checkbox" name="rain" /> Rain alerts</label>
+          <label class="switch"><input type="checkbox" name="brief" /> Morning briefing</label>
+          <label class="at-row">Briefing time <select class="at" name="briefAt"><option value="07:00">07:00</option></select></label>
+          <p class="note" id="notify-place"></p>
+          <button class="pill-btn" type="button" id="notify-here" hidden>Use this place</button>
+          <p class="note" id="notify-status" role="status"></p>
+        </fieldset>
+        <fieldset class="opt"><legend>Forecast</legend>
+          <label class="switch"><input type="checkbox" name="tune" /> Tune highs and lows for here</label>
+        </fieldset>
+        <fieldset class="opt acts" id="acts-set"><legend>Best times</legend>
+          <ul class="acts-list" id="acts-list"></ul>
+          <label class="acts-add">Add an activity <select id="act-add"><option value="">Choose…</option></select></label>
+          <label class="switch"><input type="checkbox" name="x_laundry" /> Drying washing outside</label>
+          <label class="switch"><input type="checkbox" name="x_stars" /> Stargazing</label>
+          <label class="switch"><input type="checkbox" name="x_sunset" /> Sunset and sunrise colour</label>
+        </fieldset>
+        <fieldset class="opt commute"><legend>Commute check</legend>
+          <label class="switch"><input type="checkbox" name="commute" /> Weekdays</label>
+          <div class="times">
+            <label>Leave <select class="at" name="am"><option value="08:00">08:00</option></select></label>
+            <label>Return <select class="at" name="pm"><option value="17:30">17:30</option></select></label>
+          </div>
+        </fieldset>
+      </form>
+      <p class="muted small" id="about-app">Settings and places stay on this device.</p>
+    </div>
+  </dialog>
+
+  <dialog class="sheet" id="credits" aria-labelledby="credits-title">
+    <div class="sheet-head">
+      <h2 id="credits-title" tabindex="-1">Credits</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <h3 class="sheet-sub" id="cr-weather">Weather data</h3>
+      <p class="credits-lead"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;4.0</a>).</p>
+      <ul class="credits">
+        <li><a href="https://open-meteo.com/" target="_blank" rel="noopener"><span><b>Open-Meteo</b><small>Forecasts, ensembles and waves from ECMWF (its AI model, AIFS, too), NOAA, DWD, Météo-France and ECCC · CC&nbsp;BY&nbsp;4.0 · shaped and summarised by this app</small></span></a></li>
+        <li><a href="https://www.metoffice.gov.uk/" target="_blank" rel="noopener"><span><b>Met Office</b><small>UK models and ensembles, through Open-Meteo · CC&nbsp;BY-SA&nbsp;4.0</small></span></a></li>
+        <li><a href="https://climate.copernicus.eu/" target="_blank" rel="noopener"><span><b>ERA5 · Copernicus Climate Change Service</b><small>30 years of climate, through Open-Meteo. Contains modified Copernicus Climate Change Service information <span class="this-year">2026</span></small></span></a></li>
+        <li><a href="https://atmosphere.copernicus.eu/" target="_blank" rel="noopener"><span><b>CAMS · Copernicus Atmosphere Monitoring Service</b><small>Air quality and pollen (CAMS European air quality forecasts, ENSEMBLE data), through Open-Meteo. Contains modified Copernicus Atmosphere Monitoring Service information <span class="this-year">2026</span></small></span></a></li>
+        <li><a href="https://marine.copernicus.eu/" target="_blank" rel="noopener"><span><b>Copernicus Marine Service</b><small>Sea temperature and tides, through Open-Meteo. Generated using E.U. Copernicus Marine Service information</small></span></a></li>
+        <li><a href="https://meteoalarm.org/" target="_blank" rel="noopener"><span><b>MeteoAlarm · EUMETNET</b><small>Official warnings from Europe's weather services (the Met Office's for the UK) · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+        <li><a href="https://www.weather.gov/" target="_blank" rel="noopener"><span><b>National Weather Service</b><small>Official warnings in the US</small></span></a></li>
+        <li><a href="https://environment.data.gov.uk/flood-monitoring/doc/reference" target="_blank" rel="noopener"><span><b>Environment Agency</b><small>Flood warnings in England. This uses Environment Agency flood and river level data from the real-time data API (Beta) · Open Government Licence</small></span></a></li>
+        <li><a href="https://aviationweather.gov/" target="_blank" rel="noopener"><span><b>Aviation Weather Center</b><small>Airport reports, for the forecast's accuracy</small></span></a></li>
+      </ul>
+      <h3 class="sheet-sub" id="cr-map">Map data</h3>
+      <ul class="credits">
+        <li><a href="https://www.rainviewer.com/" target="_blank" rel="noopener"><span><b>RainViewer</b><small>Rain radar</small></span></a></li>
+        <li><a href="https://openfreemap.org/" target="_blank" rel="noopener"><span><b>OpenFreeMap</b><small>The map, from OpenStreetMap's data</small></span></a></li>
+        <li><a href="https://www.openmaptiles.org/" target="_blank" rel="noopener"><span><b>© OpenMapTiles</b><small>The map's layers · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+        <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><span><b>© OpenStreetMap contributors</b><small>The map's data · ODbL</small></span></a></li>
+        <li><a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener"><span><b>Natural Earth</b><small>The lie of the land, shaded · public domain</small></span></a></li>
+        <li><a href="https://maplibre.org/" target="_blank" rel="noopener"><span><b>MapLibre</b><small>Draws the map · BSD-3-Clause</small></span></a></li>
+        <li><a href="https://leafletjs.com/" target="_blank" rel="noopener"><span><b>Leaflet</b><small>Draws it on phones that can't draw MapLibre's · BSD-2-Clause</small></span></a></li>
+      </ul>
+      <h3 class="sheet-sub" id="cr-places">Place names</h3>
+      <ul class="credits">
+        <li><a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener"><span><b>BigDataCloud</b><small>The name of where you are (it's sent your position, as your phone gives it)</small></span></a></li>
+        <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><span><b>Nominatim · OpenStreetMap</b><small>Names BigDataCloud doesn't have</small></span></a></li>
+        <li><a href="https://www.geonames.org/" target="_blank" rel="noopener"><span><b>GeoNames</b><small>Search, through Open-Meteo · CC&nbsp;BY&nbsp;4.0</small></span></a></li>
+      </ul>
+      <p class="credits-note">Worked out on this device from the data above; official warnings are shown as issued, where their weather service maps them (the UK, the US and some others). Forecasts can be wrong: elsewhere, for warnings, check your national weather service. Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains.</p>
+    </div>
+  </dialog>
+
+  <dialog class="sheet warning-sheet" id="warning" aria-labelledby="warning-title">
+    <div class="sheet-head">
+      <h2 id="warning-title" tabindex="-1">Warning</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="sheet-body">
+      <div id="warning-body"></div>
+    </div>
+  </dialog>
+
+  <dialog class="sheet detail-sheet" id="detail" aria-labelledby="detail-title">
+    <div class="sheet-head">
+      <h2 id="detail-title" tabindex="-1">Details</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <div class="detail-dots" id="detail-dots" aria-hidden="true"></div>
+    <div class="sheet-body">
+      <div id="detail-body"></div>
+    </div>
+  </dialog>
+
+  <dialog class="sheet day-sheet" id="day" aria-labelledby="day-title">
+    <div class="sheet-head">
+      <h2 id="day-title" tabindex="-1">Day</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close"></button>
+    </div>
+    <nav class="day-strip" id="day-strip" aria-label="Days"></nav>
+    <div class="sheet-body">
+      <div id="day-body"></div>
+    </div>
+  </dialog>
+</body>
+</html>

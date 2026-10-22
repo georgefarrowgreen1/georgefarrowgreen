@@ -56,7 +56,8 @@ export function isQuiet(p, t = Date.now()) {
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^push\.services\.mozilla\.com$/,
   /(^|\.)push\.apple\.com$/, /\.notify\.windows\.com$/, /^android\.googleapis\.com$/];
 export function pushEndpointOk(u) {
-  try { const x = new URL(u); return x.protocol === "https:" && PUSH_HOSTS.some((r) => r.test(x.hostname)); } catch (_) { return false; }
+  if (typeof u !== "string" || u.length > 1000) return false;
+  try { const x = new URL(u); return x.protocol === "https:" && !x.port && !x.username && !x.password && PUSH_HOSTS.some((r) => r.test(x.hostname)); } catch (_) { return false; }
 }
 
 /* ---------------- VAPID ---------------- */
@@ -125,20 +126,28 @@ export async function pushTo(env, userId, note) {
   let sent = 0;
   for (const sub of results) {
     if (sub.dead) { await D.prepare("DELETE FROM pg_push WHERE endpoint = ?").bind(sub.endpoint).run(); continue; }
-    try {
-      const r = await fetch(env.PIGEON_PUSH_URL || sub.endpoint, {     // PIGEON_PUSH_URL: tests only
-        method: "POST",
-        headers: { Authorization: await vapidAuth(env, sub.endpoint), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
-          TTL: String(note.ttl || DAY / 1000), Urgency: "normal", ...(note.tag ? { Topic: await topicFor(env, note.tag, sub.endpoint) } : {}),
-          ...(env.PIGEON_PUSH_URL ? { "X-Endpoint": sub.endpoint } : {}) },
-        body: await encryptPayload(sub, JSON.stringify({ title: note.title, body: note.body, tag: note.tag, url: note.url })),
-      });
-      if (r.status === 404 || r.status === 410) await D.prepare("DELETE FROM pg_push WHERE endpoint = ?").bind(sub.endpoint).run();   // device gone
-      else if (r.ok) sent++;
-      else console.error("pigeon push", r.status, await r.text().catch(() => ""));
-    } catch (e) { console.error("pigeon push", e && e.message); }
+    const r = await pushToSub(env, sub, note);
+    if (r === "gone") await D.prepare("DELETE FROM pg_push WHERE endpoint = ?").bind(sub.endpoint).run();   // device gone
+    else if (r === "sent") sent++;
   }
   return sent;
+}
+// One notification to one subscription ({ endpoint, p256dh, auth }): "sent", "gone" (the device has
+// unsubscribed: forget it) or "error". Weather's notifications go this way too (functions/_wxpush.js).
+export async function pushToSub(env, sub, note) {
+  try {
+    const r = await fetch(env.PIGEON_PUSH_URL || sub.endpoint, {     // PIGEON_PUSH_URL: tests only
+      method: "POST", signal: AbortSignal.timeout(8000),
+      headers: { Authorization: await vapidAuth(env, sub.endpoint), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
+        TTL: String(note.ttl || DAY / 1000), Urgency: note.urgency || "normal", ...(note.tag ? { Topic: await topicFor(env, note.tag, sub.endpoint) } : {}),
+        ...(env.PIGEON_PUSH_URL ? { "X-Endpoint": sub.endpoint } : {}) },
+      body: await encryptPayload(sub, JSON.stringify({ title: note.title, body: note.body, tag: note.tag, url: note.url })),
+    });
+    if (r.status === 404 || r.status === 410) return "gone";
+    if (r.ok) return "sent";
+    console.error("push", r.status, await r.text().catch(() => ""));
+  } catch (e) { console.error("push", e && e.message); }
+  return "error";
 }
 
 // still friends? (a pigeon from someone you've blocked or unfriended lands silently, and nothing on its way is said)
@@ -778,10 +787,10 @@ export async function maybeTick(env, origin) {
   if (r.meta.changes) await tick(env, origin);
 }
 
-export function tickAuthOk(request, env) {
+export function tickAuthOk(request, env, secret = env.PIGEON_TICK_SECRET) {
   const m = /^Bearer (.+)$/.exec(request.headers.get("Authorization") || "");
-  if (!env.PIGEON_TICK_SECRET) throw new HttpError(404, "Not found.");
-  const a = enc.encode(m ? m[1] : ""), b = enc.encode(env.PIGEON_TICK_SECRET);
+  if (!secret) throw new HttpError(404, "Not found.");
+  const a = enc.encode(m ? m[1] : ""), b = enc.encode(secret);
   let d = a.length ^ b.length; for (let i = 0; i < Math.min(a.length, b.length); i++) d |= a[i] ^ b[i];
   if (d) throw new HttpError(401, "Not allowed.");
 }

@@ -1,0 +1,1272 @@
+/* Weather, in Liquid Glass: the sky behind, and in front of it glass that's
+   clear rather than frosted, saturated by what's behind it, lit along its rim
+   where the light catches, with a sheen across the top, floating on its own
+   shadow. Controls are capsules and circles of the same glass that give
+   under a finger and spring back. (Browsers can't bend the light behind glass
+   the way the phone does, so the lensing is suggested by the rim and the
+   sheen.) With Reduce Transparency on, everything turns solid. */
+:root {
+  --text: #ffffff;
+  --text-2: rgba(255, 255, 255, 0.84);
+  --text-3: rgba(255, 255, 255, 0.8);
+  --line: rgba(255, 255, 255, 0.14);
+  --temp: #D07A12;
+  --rain: #3B8BE0;
+  --wind: #14A08F;
+  --warn: #ffb020;
+  --alert: #ff5a4f;
+  --good: #34c759;
+  --tint-blue: #9fd0ff;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glide: cubic-bezier(0.32, 0.72, 0, 1);      /* big things, and things that slide: iOS's own, quick then soft, no overshoot */
+  --pad: 16px;
+  --card-x: 18px;                /* a card's side margins */
+  /* the glass */
+  --tint: rgba(14, 22, 38, 0.36);               /* panels: how much the glass darkens what's behind (more over a pale sky: body) */
+  --tint-ctl: rgba(255, 255, 255, 0.12);        /* controls: lighter, clearer glass */
+  --blur: blur(22px) saturate(190%) brightness(1.04);      /* (iOS 27's: diffusing busy things behind it more) */
+  --blur-ctl: blur(10px) saturate(200%) brightness(1.08);
+  --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 46%);
+  --body: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 48%, rgba(255, 255, 255, 0.035));
+  --edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.55), inset 0 -1px 0.5px rgba(255, 255, 255, 0.12), inset 0 0 22px rgba(255, 255, 255, 0.04);
+  /* (iOS 27's darker edge round the glass, a hairline outside its bright rim, setting it apart from what's behind) */
+  --lift: 0 0 0 0.5px rgba(0, 0, 0, 0.34), 0 14px 34px -10px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.12);
+  --rim: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.12) 28%, rgba(255, 255, 255, 0.03) 55%, rgba(255, 255, 255, 0.12) 78%, rgba(255, 255, 255, 0.55));
+  --r-card: 26px;
+  --r-inner: 18px;
+  color-scheme: dark;
+}
+/* pale skies want a little more tint for the words to stand out; dark ones, less; and the glass as clear or as tinted as
+   Settings has it (as iOS 27's Liquid Glass slider: from clear to tinted) */
+body { --tint-a: 0.36; --glass-k: 1; --tint: rgba(14, 22, 38, calc(var(--tint-a) * var(--glass-k))); }
+body[data-sky="clear-day"], body[data-sky="partly-day"], body[data-sky="snow-day"], body[data-sky="fog"], body[data-sky="dawn"], body[data-sky="dusk"] { --tint-a: 0.48; }
+body[data-sky$="-night"], body[data-sky="storm"] { --tint-a: 0.3; }
+body[data-glass="clear"] { --glass-k: 0.55; --blur: blur(12px) saturate(180%) brightness(1.05); --tint-ctl: rgba(255, 255, 255, 0.08); }
+body[data-glass="tinted"] { --glass-k: 1.9; --blur: blur(30px) saturate(140%); --tint-ctl: rgba(40, 52, 76, 0.62); }
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0; min-height: 100vh; min-height: 100svh;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
+  color: var(--text); -webkit-font-smoothing: antialiased; line-height: 1.4;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x: clip;      /* (the top bar's glass reaches the screen's edges: never past them, under a scrollbar) */
+}
+button, input, select { font: inherit; color: inherit; }
+/* an app, not a page: its words aren't selected (so not copied) by a long press or a drag, and nothing calls up a menu
+   or a link's preview; what you type into (search, settings) still takes typing, cutting, copying and pasting */
+html { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img, svg, a { -webkit-user-drag: none; }
+/* an icon in a span (app.js h): just the icon, with no room under it for a line of text's descenders, which left icons
+   sitting high in their buttons and rows */
+.ic { display: inline-grid; }
+a { color: inherit; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+.muted { color: var(--text-3); }
+.small { font-size: 13px; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+
+/* ---------- the glass ---------- */
+/* panels */
+.card, .ins, .tile, .section-title, dialog.sheet, .c-tip {
+  position: relative; isolation: isolate; border: 0;
+  background-color: var(--tint);
+  background-image: var(--sheen), var(--body);
+  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  box-shadow: var(--edge), var(--lift);
+}
+/* (where there's a pointer, the light it casts across the glass, on the pane it's over (app.js lit): where it is, --lx
+   and --ly, the pane's own and not passed on to what's in it, so the pointer moving restyles that pane alone; and only
+   that pane repainted as the page scrolls, its light fixed to the screen; a phone's panels are spared it) */
+@property --lx { syntax: "<length>"; inherits: false; initial-value: -9999px; }
+@property --ly { syntax: "<length>"; inherits: false; initial-value: -9999px; }
+@media (hover: hover) and (pointer: fine) {
+  :is(.card, .ins, .tile, .section-title, dialog.sheet, .c-tip).lit {
+    background-image: radial-gradient(520px circle at var(--lx) var(--ly), rgba(255, 255, 255, 0.07), transparent 45%), var(--sheen), var(--body);
+    background-attachment: fixed, scroll, scroll; }
+}
+/* controls */
+.icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
+.map-zoom, .radar-centre, .radar-credit {
+  position: relative; isolation: isolate; border: 0;
+  background-color: var(--tint-ctl);
+  background-image: var(--sheen), var(--body);
+  -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.6), inset 0 -1px 0.5px rgba(255, 255, 255, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 6px 18px -6px rgba(0, 0, 0, 0.35);
+}
+/* (badges on a card: the card's already blurred what's behind; theirs would cost a layer for nothing) */
+.win-rate, .best { -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* the rim: a hairline that's bright where the light catches it, top left and bottom right */
+.card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
+.icon-btn::before, .place::before, .pill-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
+  background: var(--rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+/* glass on glass: things inside a panel */
+.win, .stat, .part, .hour.now, .act-edit, .choice, .acts-list:not(:empty), .credits, .detail-now, .way {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+}
+/* give under a finger, spring back (buttons); rows and choices light a little instead (shrinking, they'd lurch) */
+.icon-btn, .place, .pill-btn, .day-row, .row-btn, .radar-centre, .link {
+  transition: transform 0.5s var(--spring), background-color 0.25s, filter 0.25s;
+}
+.icon-btn:active, .place:active, .pill-btn:active, .radar-centre:active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
+fieldset.opt label { transition: filter 0.2s, color 0.25s; }
+fieldset.opt label:active { filter: brightness(1.15); transition-duration: 0.08s; }
+.day-row:active, .row-btn:active { transform: scale(0.985); transition-duration: 0.12s; }
+@media (hover: hover) {
+  .icon-btn:hover, .place:hover, .pill-btn:hover, .radar-centre:hover { filter: brightness(1.15); }
+}
+
+/* ---------- the sky ---------- */
+.sky { position: fixed; inset: 0; z-index: -1; background: var(--sky); transition: background 1.2s var(--ease); overflow: hidden; }
+/* light in the sky for the glass to catch: a glow where the sun or moon would be */
+.sky::before { content: ""; position: absolute; inset: -20% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow, rgba(255, 255, 255, 0.12)), transparent 62%); pointer-events: none; }
+.sky::after { content: ""; position: absolute; inset: auto auto -30% -25%; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(circle, var(--glow-2, rgba(120, 160, 255, 0.12)), transparent 60%); pointer-events: none; }
+html { background: #2a3546; }
+body { --sky: linear-gradient(180deg, #3f5670 0%, #5d7189 60%, #7b8ca0 100%); background: transparent; }
+body[data-sky="clear-day"] { --sky: linear-gradient(180deg, #1f5fae 0%, #3b82cf 50%, #6aa7e2 100%); --glow: rgba(255, 236, 180, 0.32); --glow-2: rgba(120, 200, 255, 0.22); }
+body[data-sky="partly-day"] { --sky: linear-gradient(180deg, #2c5f99 0%, #4e7fb6 55%, #7ea2c9 100%); --glow: rgba(255, 236, 190, 0.22); }
+body[data-sky="cloudy-day"] { --sky: linear-gradient(180deg, #43566c 0%, #5c6f85 55%, #7a8a9c 100%); }
+body[data-sky="rain-day"] { --sky: linear-gradient(180deg, #303f52 0%, #46576b 55%, #5d6d80 100%); --glow-2: rgba(80, 150, 255, 0.16); }
+body[data-sky="storm"] { --sky: linear-gradient(180deg, #1c2130 0%, #2c3245 55%, #3f4559 100%); --glow: rgba(170, 150, 255, 0.14); }
+body[data-sky="snow-day"] { --sky: linear-gradient(180deg, #4f6580 0%, #6d819b 55%, #92a3b8 100%); --glow: rgba(255, 255, 255, 0.2); }
+body[data-sky="fog"] { --sky: linear-gradient(180deg, #59626e 0%, #737c87 55%, #8d959f 100%); --glow: rgba(255, 255, 255, 0.16); }
+body[data-sky="clear-night"] { --sky: linear-gradient(180deg, #070d22 0%, #101c3e 55%, #1d2c57 100%); --glow: rgba(190, 210, 255, 0.16); --glow-2: rgba(110, 90, 220, 0.16); }
+body[data-sky="partly-night"] { --sky: linear-gradient(180deg, #0c1428 0%, #18233f 55%, #263453 100%); --glow: rgba(190, 210, 255, 0.12); }
+body[data-sky="cloudy-night"] { --sky: linear-gradient(180deg, #151b27 0%, #222a3a 55%, #313a4c 100%); }
+body[data-sky="rain-night"] { --sky: linear-gradient(180deg, #10151f 0%, #1c2432 55%, #2a3343 100%); --glow-2: rgba(70, 120, 220, 0.14); }
+body[data-sky="snow-night"] { --sky: linear-gradient(180deg, #1b2335 0%, #2c374d 55%, #3e4a62 100%); }
+body[data-sky="dusk"] { --sky: linear-gradient(180deg, #1f2b55 0%, #5a4a78 45%, #b0666a 80%, #d98b62 100%); --glow: rgba(255, 170, 120, 0.3); --glow-2: rgba(140, 100, 230, 0.2); }
+body[data-sky="dawn"] { --sky: linear-gradient(180deg, #24376a 0%, #5b6a9a 45%, #c58a86 80%, #e7ad7c 100%); --glow: rgba(255, 200, 150, 0.3); }
+/* stars on a clear night; rain falling on a wet one */
+body[data-sky="clear-night"] .sky-fx, body[data-sky="partly-night"] .sky-fx {
+  position: absolute; inset: 0; opacity: 0.8;
+  background-image: radial-gradient(1.2px 1.2px at 12% 18%, #fff 50%, transparent), radial-gradient(1px 1px at 28% 8%, #fff 50%, transparent),
+    radial-gradient(1.4px 1.4px at 45% 22%, #fff 50%, transparent), radial-gradient(1px 1px at 63% 12%, #fff 50%, transparent),
+    radial-gradient(1.2px 1.2px at 78% 26%, #fff 50%, transparent), radial-gradient(1px 1px at 88% 6%, #fff 50%, transparent),
+    radial-gradient(1px 1px at 8% 38%, #fff 50%, transparent), radial-gradient(1.3px 1.3px at 34% 34%, #fff 50%, transparent),
+    radial-gradient(1px 1px at 56% 40%, #fff 50%, transparent), radial-gradient(1.1px 1.1px at 92% 44%, #fff 50%, transparent),
+    radial-gradient(1px 1px at 70% 52%, #fff 50%, transparent), radial-gradient(1px 1px at 20% 56%, #fff 50%, transparent);
+}
+body[data-sky="partly-night"] .sky-fx { opacity: 0.4; }
+body[data-sky="rain-day"] .sky-fx, body[data-sky="rain-night"] .sky-fx, body[data-sky="storm"] .sky-fx {
+  position: absolute; inset: -50% 0 0; opacity: 0.22;
+  background-image: repeating-linear-gradient(103deg, transparent 0 14px, rgba(255, 255, 255, 0.5) 14px 15px, transparent 15px 31px);
+  background-size: 120px 120px; animation: rain 0.7s linear infinite;
+}
+@keyframes rain { to { transform: translateY(120px); } }
+/* the sky lives a little: clouds drift slowly over, stars twinkle, snow falls (two layers, the nearer
+   faster), lightning lights the cloud now and then (soft and rare: at most two flickers, every eleven seconds) */
+.sky-clouds { position: absolute; inset: -12% -50% auto; height: 75%; opacity: 0; transition: opacity 1.2s var(--ease); pointer-events: none;
+  background: radial-gradient(26% 16% at 18% 32%, rgba(255, 255, 255, 0.13), transparent 70%), radial-gradient(20% 12% at 40% 18%, rgba(255, 255, 255, 0.1), transparent 70%),
+    radial-gradient(30% 18% at 66% 36%, rgba(255, 255, 255, 0.12), transparent 70%), radial-gradient(18% 11% at 88% 22%, rgba(255, 255, 255, 0.09), transparent 70%);
+  animation: clouds 80s steps(160) infinite alternate; }
+/* (moved on in small steps, twice a second: a slow drift looks the same, and the glass over it is blurred afresh twice
+   a second rather than at every frame; and held still where there are no clouds to see) */
+body:is([data-sky^="clear"], [data-sky="dawn"], [data-sky="dusk"]) .sky-clouds { animation-play-state: paused; }
+body[data-sky^="partly"] .sky-clouds { opacity: 0.55; }
+body[data-sky^="cloudy"] .sky-clouds, body[data-sky="fog"] .sky-clouds { opacity: 1; }
+body[data-sky^="rain"] .sky-clouds, body[data-sky^="snow"] .sky-clouds, body[data-sky="storm"] .sky-clouds { opacity: 0.8; }
+body[data-sky$="night"]:not([data-sky="clear-night"]) .sky-clouds { opacity: 0.4; }
+body[data-sky="fog"] .sky-clouds { inset: 20% -50% auto; height: 90%; animation-duration: 50s; }
+@keyframes clouds { from { transform: translateX(-9%); } to { transform: translateX(9%); } }
+body[data-sky="clear-night"] .sky-fx::before, body[data-sky="clear-night"] .sky-fx::after, body[data-sky="partly-night"] .sky-fx::before {
+  content: ""; position: absolute; inset: 0; animation: twinkle 3.6s steps(14) infinite alternate;
+  background-image: radial-gradient(1.4px 1.4px at 17% 12%, #fff 50%, transparent), radial-gradient(1px 1px at 38% 28%, #fff 50%, transparent),
+    radial-gradient(1.2px 1.2px at 52% 9%, #fff 50%, transparent), radial-gradient(1px 1px at 71% 33%, #fff 50%, transparent),
+    radial-gradient(1.5px 1.5px at 84% 16%, #fff 50%, transparent), radial-gradient(1px 1px at 5% 26%, #fff 50%, transparent), radial-gradient(1.1px 1.1px at 60% 47%, #fff 50%, transparent); }
+body[data-sky="clear-night"] .sky-fx::after { animation-duration: 5.2s; animation-delay: -2.4s;
+  background-image: radial-gradient(1.2px 1.2px at 24% 21%, #fff 50%, transparent), radial-gradient(1px 1px at 46% 14%, #fff 50%, transparent),
+    radial-gradient(1.4px 1.4px at 66% 24%, #fff 50%, transparent), radial-gradient(1px 1px at 93% 30%, #fff 50%, transparent),
+    radial-gradient(1px 1px at 12% 48%, #fff 50%, transparent), radial-gradient(1.2px 1.2px at 79% 42%, #fff 50%, transparent); }
+@keyframes twinkle { from { opacity: 0.15; } to { opacity: 1; } }
+body[data-sky^="snow"] .sky-fx::before, body[data-sky^="snow"] .sky-fx::after {
+  content: ""; position: absolute; inset: -240px 0 0; opacity: 0.75;
+  background-image: radial-gradient(2.4px 2.4px at 30px 40px, #fff 60%, transparent), radial-gradient(2px 2px at 150px 90px, #fff 60%, transparent),
+    radial-gradient(2.8px 2.8px at 90px 170px, #fff 60%, transparent), radial-gradient(2px 2px at 200px 210px, #fff 60%, transparent), radial-gradient(2.2px 2.2px at 220px 20px, #fff 60%, transparent);
+  background-size: 240px 240px; animation: snow-near 11s linear infinite, sway 5s ease-in-out infinite alternate; }
+body[data-sky^="snow"] .sky-fx::after { inset: -160px 0 0; opacity: 0.45; background-size: 160px 160px;
+  background-image: radial-gradient(1.4px 1.4px at 20px 30px, #fff 60%, transparent), radial-gradient(1.2px 1.2px at 110px 70px, #fff 60%, transparent),
+    radial-gradient(1.6px 1.6px at 60px 130px, #fff 60%, transparent), radial-gradient(1.2px 1.2px at 140px 150px, #fff 60%, transparent);
+  animation: snow-far 13s linear infinite, sway 7s ease-in-out -3s infinite alternate; }
+@keyframes snow-near { to { translate: 0 240px; } }
+@keyframes snow-far { to { translate: 0 160px; } }
+@keyframes sway { from { transform: translateX(-12px); } to { transform: translateX(12px); } }
+.sky-flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(55% 40% at 72% 14%, rgba(214, 206, 255, 0.55), transparent 72%); }
+body[data-sky="storm"] .sky-flash { animation: lightning 11s linear infinite; }
+@keyframes lightning { 0%, 84%, 100% { opacity: 0; } 85% { opacity: 0.32; } 86% { opacity: 0.06; } 87.5% { opacity: 0.22; } 90% { opacity: 0; } }
+/* the sky holds still under a sheet, and once the page has scrolled on past the top (behind the cards it's
+   hardly seen, and every pane of glass over it would be blurred afresh each frame it moves) */
+body:is(.sheet-up, .deep, .no-scroll) :is(.sky-fx, .sky-clouds, .sky-flash), body:is(.sheet-up, .deep, .no-scroll) .sky-fx::before, body:is(.sheet-up, .deep, .no-scroll) .sky-fx::after { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .sky-fx, .sky-fx::before, .sky-fx::after, .sky-clouds, .sky-flash { animation: none !important; } .sky, .sky-clouds { transition: none; }
+}
+
+/* ---------- the top bar: floating glass ---------- */
+.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px var(--pad) 8px; max-width: 1180px; margin: 0 auto; min-height: 70px; }
+/* where the page scrolls under the bar, a bar of glass the width of the screen with a hairline under it (iOS 27's
+   scroll edge: uniform, so what's under it stays legible, rather than iOS 26's soft fade) */
+.top::before { content: ""; position: absolute; inset: calc(-1 * env(safe-area-inset-top)) calc(50% - 50vw) 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: rgba(12, 18, 30, 0.5); border-bottom: 0.5px solid rgba(255, 255, 255, 0.16); box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); }
+.top.scrolled::before { opacity: 1; }
+/* over the page's own content, the bar's glass firms up so it stays legible (as iOS's does over busy content) */
+.top .place, .top .icon-btn { transition: background-color 0.3s, transform 0.5s var(--spring), filter 0.25s; }
+.top.scrolled .place, .top.scrolled .icon-btn { background-color: rgba(34, 44, 64, 0.62); }
+.place { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-width: 0; min-height: 44px; padding: 7px 18px 8px; border-radius: 999px; cursor: pointer; text-align: left; max-width: 72vw; }
+.place-name { font-size: 17px; line-height: 22px; font-weight: 650; display: flex; align-items: center; gap: 0; max-width: 100%; white-space: nowrap; }
+#place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
+/* the line under the name: where it is, and once the big temperature has scrolled away, the temperature and sky
+   (crossfading with the scroll, as iOS Weather's large title collapses) */
+.place-line { display: grid; font-size: 12px; line-height: 15px; color: var(--text-3); }
+.place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.2s; }
+.place-sub { opacity: calc(1 - var(--cs, 0)); }
+.place-now { opacity: var(--cs, 0); color: var(--text-2); font-weight: 600; }
+.place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
+/* with nothing to say under the name, it stays one line: the temperature slides in beside the name instead
+   (the pill never changes height) */
+.place.no-sub .place-line { display: none; }
+.place-temp { display: none; }
+.place.no-sub .place-temp { display: inline-block; flex: none; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
+  max-width: calc(var(--cs, 0) * 3.2em); margin-left: calc(var(--cs, 0) * 7px); opacity: var(--cs, 0); }
+.top-actions { display: flex; gap: 10px; }
+/* pull to refresh (app.js pullToRefresh): iOS's spinner, in the gap that opens above the bar, its ticks coming in one by
+   one as the page is pulled, a little pop when letting go would refresh, then turning, each tick fainter than the one
+   ahead of it; it eases into its place in the gap the page is held open by, and away as the page glides back up */
+.ptr { position: fixed; z-index: 6; top: env(safe-area-inset-top); left: 50%; width: 28px; height: 28px; margin-left: -14px; pointer-events: none; opacity: 0;
+  transition: transform 0.5s var(--glide), opacity 0.25s ease; }
+.ptr.follow { transition: none; }
+.ptr svg { display: block; overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.3)); }
+.ptr line { stroke: #fff; stroke-width: 2.6; stroke-linecap: round; opacity: clamp(0, calc(var(--pull, 0) * 9 - var(--i)), 1); }
+.ptr.armed svg { animation: ptr-pop 0.42s var(--spring); }
+.ptr.busy line { opacity: var(--o); }
+.ptr.busy svg { animation: ptr-spin 0.8s steps(8) infinite; }
+@keyframes ptr-pop { 40% { transform: scale(1.16); } }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ptr { transition: none; } .ptr.armed svg, .ptr.busy svg { animation: none; } }
+/* (the page held open at its top while it refreshes: as far as the spinner's room in app.js, 56 pixels) */
+.page.held { transform: translateY(56px); }
+.icon-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; flex: none; color: #fff; }
+.icon-btn .g { position: relative; z-index: 3; }
+.icon-btn.small { width: 36px; height: 36px; }
+.icon-btn.small::after, .radar-credit::after { content: ""; position: absolute; inset: -5px; border-radius: inherit; }
+.radar-credit::after { inset: -9px; }
+.icon-btn.busy .g { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- the layout ---------- */
+main { max-width: 1180px; margin: 0 auto; padding: 0 var(--pad) 8px; display: grid; gap: 16px; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (min-width: 980px) {
+  main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 22px; }
+  .col-b { padding-top: 8px; }
+}
+
+/* a phone on its side (iOS 27's Weather turns too): the weather now held on the left, everything else beside it, and a
+   slimmer bar */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  main { grid-template-columns: minmax(0, 0.36fr) minmax(0, 0.64fr); align-items: start; gap: 12px 18px; }
+  .col { display: contents; }
+  main > .col > * { grid-column: 2; }
+  main > .col > .hero { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 64px; opacity: 1; transform: none; }
+  .hero-temp { font-size: 76px; }
+  .hero-icon .wi { width: 60px; height: 60px; }
+  .brief { font-size: 15px; }
+  .top { min-height: 56px; padding-top: 6px; padding-bottom: 4px; }
+  .top .place { min-height: 40px; padding-top: 4px; padding-bottom: 4px; }
+  .top .icon-btn { width: 40px; height: 40px; }
+  html { scroll-padding-top: 60px; }
+}
+
+/* the radar with no rain about: said on the map, at its top in the middle */
+.radar-dry { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 3; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff;
+  background: rgba(20, 28, 44, 0.62); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3); pointer-events: none; }
+
+/* a word about the alerts, once, until they're on or it's put away */
+.nudge { display: grid; grid-template-columns: 34px 1fr; gap: 4px 12px; align-items: start; }
+.nudge .ins-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; grid-row: span 2; }
+.nudge h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.nudge p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.4; }
+.nudge-btns { grid-column: 2; display: flex; gap: 10px; margin-top: 8px; }
+.nudge-btns .pill-btn { min-height: 40px; padding: 8px 16px; }
+.nudge-btns .link { min-height: 40px; padding: 0 8px; color: var(--text-2); }
+
+/* ---------- now ---------- */
+.hero { padding: 10px 4px 8px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.2); transform-origin: 0 0;
+  opacity: calc(1 - var(--c, 0) * 1.15); transform: scale(calc(1 - var(--c, 0) * 0.06)); }
+.hero-row { display: flex; align-items: center; gap: 10px; }
+.hero-temp { font-family: -apple-system-headline, -apple-system, "SF Pro Display", system-ui, sans-serif; font-size: 100px; font-weight: 200; line-height: 1; letter-spacing: -4px; }
+.hero-icon .wi { width: 78px; height: 78px; filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22)); }
+/* and lives a little: the sun's rays turn, clouds drift, rain and snow fall, the lightning flickers */
+.hero-icon .wi-rays, .hero-icon .wi-flakes > * { transform-box: fill-box; transform-origin: 50% 50%; }
+.hero-icon .wi-rays { animation: wi-turn 30s linear infinite; }
+.hero-icon .wi-cloud { animation: wi-drift 7s ease-in-out infinite alternate; }
+.hero-icon .wi-cloud + .wi-cloud { animation-duration: 5.4s; animation-direction: alternate-reverse; }
+.hero-icon .wi-drops > * { animation: wi-fall 1.3s cubic-bezier(0.5, 0, 0.9, 0.6) infinite; }
+.hero-icon .wi-drops > :nth-child(2) { animation-delay: -0.45s; }
+.hero-icon .wi-drops > :nth-child(3) { animation-delay: -0.9s; }
+.hero-icon .wi-drops > :nth-child(4) { animation-delay: -0.25s; }
+.hero-icon .wi-flakes > * { animation: wi-flake 3.4s ease-in-out infinite; }
+.hero-icon .wi-flakes > :nth-child(2) { animation-delay: -1.7s; }
+.hero-icon .wi-fog > * { animation: wi-drift 6s ease-in-out infinite alternate; }
+.hero-icon .wi-fog > :nth-child(2) { animation-direction: alternate-reverse; animation-duration: 7.5s; }
+.hero-icon .wi-bolt { animation: wi-flicker 4.6s linear infinite; }
+@keyframes wi-turn { to { transform: rotate(360deg); } }
+@keyframes wi-drift { from { transform: translateX(-2.2px); } to { transform: translateX(2.2px); } }
+@keyframes wi-fall { 0% { transform: translate(1px, -4px); opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-1.5px, 5px); opacity: 0; } }
+@keyframes wi-flake { 0% { transform: translate(0, -4px) rotate(0deg); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(1.5px, 5px) rotate(60deg); opacity: 0; } }
+@keyframes wi-flicker { 0%, 78%, 100% { opacity: 1; } 80% { opacity: 0.3; } 83% { opacity: 1; } 86% { opacity: 0.45; } 89% { opacity: 1; } }
+.hero:is(.away, .still) .hero-icon .wi * { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .hero-icon .wi * { animation: none !important; } }
+.hero-cond { font-size: 22px; font-weight: 600; margin-top: 4px; }
+.hero-hl { font-size: 16px; color: var(--text-2); margin-top: 2px; font-weight: 500; }
+.hero-hl, .brief, .status { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.32), 0 0 12px rgba(0, 0, 0, 0.22); }
+.brief { font-size: 17px; line-height: 1.45; margin: 14px 0 4px; max-width: 46ch; font-weight: 500; color: var(--text-2); }
+.brief b { font-weight: 650; color: #fff; }
+.status { font-size: 13px; color: var(--text-3); margin: 6px 0 0; min-height: 1em; }
+.status.warn { color: #ffd68a; }
+.retry { margin-top: 14px; }
+main[data-empty] ~ .foot .foot-refresh { display: none; }
+/* (and the footer comes with the forecast, not before: under placeholders it would only be pushed away as it came) */
+main[data-empty="loading"] ~ .foot { display: none; }
+
+/* before there's a forecast: glass placeholders that shimmer (or, if it couldn't be had, just the hero's message);
+   the cards that would be empty wait out of sight */
+.skeleton { display: none; }
+main[data-empty="loading"] .skeleton { display: grid; gap: 14px; }
+main[data-empty] .col > :not(.hero):not(.skeleton), main[data-empty="error"] .skeleton { display: none !important; }
+main[data-empty="error"] .hero-row { display: none; }
+/* (in one column, the second's placeholders would sit under the first's, only to be pushed away as the forecast came) */
+@media (max-width: 979px) { main[data-empty] .col-b { display: none; } }
+main[data-empty="loading"] .hero-temp { color: transparent; width: 150px; height: 84px; margin: 8px 0; border-radius: 22px; }
+/* (and the lines the hero will have, the high and low and the briefing, kept for them: so the cards come in where the
+   placeholders were, not some way further down) */
+main[data-empty="loading"] :is(.hero-hl, .brief) { display: block; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+main[data-empty="loading"] .hero-hl { width: 42%; height: 14px; margin-top: 10px; }
+main[data-empty="loading"] .brief { width: 88%; height: 46px; }
+.sk { display: flex; flex-direction: column; gap: 12px; }
+/* (the shimmer a light passing over each: moved, rather than its background redrawn every frame) */
+.sk i, main[data-empty="loading"] .hero-temp { display: block; position: relative; overflow: hidden; background: rgba(255, 255, 255, 0.07); }
+.sk i::after, main[data-empty="loading"] .hero-temp::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.09) 50%, transparent 80%); animation: sk 1.6s ease-in-out infinite; }
+.sk-l { height: 12px; border-radius: 6px; width: 100%; }
+.sk-l.w30 { width: 30%; } .sk-l.w35 { width: 35%; } .sk-l.w40 { width: 40%; } .sk-l.w50 { width: 50%; } .sk-l.w80 { width: 80%; } .sk-l.w90 { width: 90%; }
+.sk-hours { display: flex; gap: 10px; overflow: hidden; }
+/* (the hours' pills their own width, as the hours are, however wide the card: not stretched into discs) */
+.sk-hours i { flex: 0 0 52px; height: 86px; border-radius: 999px; }
+.sk-chart { height: 120px; border-radius: 14px; }
+.sk-big { height: 40px; width: 60%; border-radius: 10px; }
+.sk-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sk-tiles .card { border-radius: 24px; min-height: 136px; }
+@keyframes sk { to { transform: translateX(100%); } }
+/* when the forecast arrives, the hero eases up into place (only what's on screen: an animation on a card still
+   off it can leave it unpainted; backwards fill, so nothing's left behind) */
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+main:not([data-empty]) .hero { animation: rise 0.7s var(--spring) backwards; }
+.ins.rise { animation: rise 0.6s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
+/* swiping between places (app.js placeSwipe): the page follows the finger, then turns to the next place, its picture
+   carried off as the next one's comes in beside it (each moved by the swipe's own speed: none of the browser's own
+   fades), or springs back */
+.hero { touch-action: pan-y pinch-zoom; }
+main.paging > .col { will-change: translate; }
+::view-transition-group(page) { animation: none; }
+::view-transition-image-pair(page) { isolation: auto; }
+::view-transition-old(page), ::view-transition-new(page) { animation: none; mix-blend-mode: normal; }
+/* a new temperature rolls in */
+.hero-temp.roll-up { animation: roll-up 0.6s var(--spring); }
+.hero-temp.roll-down { animation: roll-down 0.6s var(--spring); }
+@keyframes roll-up { from { transform: translateY(0.28em); opacity: 0; filter: blur(6px); } }
+@keyframes roll-down { from { transform: translateY(-0.28em); opacity: 0; filter: blur(6px); } }
+/* which place, of the saved ones (an arrow for My Location) */
+.dots { display: flex; gap: 7px; align-items: center; margin: 0 0 6px 2px; height: 10px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.35); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.dots i.on { background: #fff; transform: scale(1.15); }
+.dots i.gps { width: 9px; height: 9px; background: none; color: rgba(255, 255, 255, 0.45); display: grid; place-items: center; }
+.dots i.gps.on { color: #fff; }
+.dots i svg { display: block; }
+@media (prefers-reduced-motion: reduce) { main:not([data-empty]) .hero, .hero-temp.roll-up, .hero-temp.roll-down, .ins.rise { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sk i::after, main[data-empty="loading"] .hero-temp::after { animation: none; } .icon-btn.busy .g { animation: none; } }
+
+/* ---------- cards ---------- */
+.card { border-radius: var(--r-card); padding: 16px var(--card-x) 18px; min-width: 0; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.card-title, .section-title { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 0 0 10px; display: flex; align-items: center; gap: 7px; }
+.card-head .card-title { margin: 0; }
+.section-title { margin: 4px 0 10px; padding: 0 4px; width: fit-content; }
+/* (no glass of its own: a heading over the tiles, as each card's is inside it) */
+.section-title { background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.section-title::before { display: none; }
+.ct-icon { display: inline-flex; color: var(--text-3); }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.stack:empty { display: none; }
+
+/* segmented control: a glass track with a lens that glides to the choice */
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 999px; min-width: 200px; background-color: rgba(0, 0, 0, 0.16); }
+.seg::before { content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 3); border-radius: 999px; z-index: 0;
+  transform: translateX(calc(var(--seg-i, 0) * 100%)); transition: transform 0.42s var(--glide);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.16));
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
+@media (prefers-reduced-motion: reduce) { .seg::before { transition: none; } }
+.seg button { position: relative; z-index: 3; border: 0; background: none; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; min-height: 38px; transition: color 0.3s, opacity 0.15s; }
+.seg button[aria-selected="true"] { color: #fff; }
+/* (each a finger's 44 points tall, reaching over the track's edge) */
+.seg button::after { content: ""; position: absolute; inset: -3px 0; }
+.seg button:not([aria-selected="true"]):active { opacity: 0.6; }
+
+/* hour strip */
+/* the hours: they swipe to the card's edges, fading there, but rest and snap inside its margins
+   (the space at the end is a spacer: browsers differ on padding at the end of a scrolling row) */
+.strip { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x proximity; margin: 12px calc(-1 * var(--card-x)) 6px; padding: 2px 0 8px var(--card-x); scroll-padding-inline: var(--card-x); scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
+.strip:focus-visible { -webkit-mask-image: none; mask-image: none; outline-offset: -2px; }
+.strip::after { content: ""; flex: none; width: calc(var(--card-x) - 4px); }
+.strip::-webkit-scrollbar { display: none; }
+.hour { flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 999px; scroll-snap-align: start; }
+.hour .h-time { font-size: 13px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
+.hour.now .h-time { color: #fff; }
+.hour .h-temp { font-size: 17px; font-weight: 600; }
+.hour .h-pop { font-size: 12px; color: var(--tint-blue); font-weight: 650; min-height: 16px; }
+.hour.sunev .h-temp { font-size: 13px; font-weight: 600; color: var(--text-2); }
+.chart-note { font-size: 12.5px; color: var(--text-3); margin: 4px 0 0; }
+
+/* charts */
+.chart { position: relative; width: 100%; outline-offset: 4px; touch-action: pan-y pinch-zoom; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.c-grid { stroke: rgba(255, 255, 255, 0.13); stroke-width: 1; }
+.c-daysep { stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
+.c-night { fill: rgba(0, 0, 0, 0.16); }
+.c-ytick, .c-xtick { fill: rgba(255, 255, 255, 0.72); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* scale labels inside a chart, in the middle of their bands: legible over the bars */
+.c-ytick.c-in { fill: rgba(255, 255, 255, 0.85); font-weight: 600; paint-order: stroke; stroke: rgba(14, 22, 38, 0.55); stroke-width: 3px; stroke-linejoin: round; }
+.c-day { fill: #fff; font-weight: 650; }
+.c-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.c-band { opacity: 0.22; }
+.c-col { opacity: 0.95; }
+.c-now { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; }
+.c-nowtext { fill: rgba(255, 255, 255, 0.85); font-size: 10.5px; font-weight: 650; }
+.c-label { fill: #fff; font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: rgba(10, 16, 28, 0.55); stroke-width: 3px; }
+.c-dot, .c-crossdot { stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+/* a new chart draws in (charts.js): the line traced from the left, its range fading in behind it, columns
+   growing from the baseline one after another with a little spring, then the labels */
+/* (--t0: drawn again part way through, it carries on from there) */
+.c-enter .c-line { stroke-dasharray: 1 1; animation: c-draw 1.1s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.c-enter .c-band { animation: c-fade 0.9s ease-out backwards; animation-delay: calc(0.3s + var(--t0, 0ms)); }
+.c-enter .c-col { transform-box: fill-box; transform-origin: 50% 100%; animation: c-grow 0.6s var(--spring) backwards; animation-delay: calc(var(--k, 0) * 14ms + var(--t0, 0ms)); }
+.c-enter .c-dot, .c-enter .c-label { transform-box: fill-box; transform-origin: 50% 50%; animation: c-pop 0.45s var(--spring) backwards; animation-delay: calc(0.8s + var(--t0, 0ms)); }
+@keyframes c-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes c-fade { from { opacity: 0; } }
+@keyframes c-grow { from { transform: scaleY(0); } }
+@keyframes c-pop { from { opacity: 0; transform: scale(0.5); } }
+
+/* ---------- motion, once, as things come into view (app.js motion()) ---------- */
+/* the 16 days: each bar sweeps out from the low to the high, row after row; today's dot lands after */
+.pre .d-fill { transform: scaleX(0); transform-origin: 0 50%; }
+.play .d-fill { transform-origin: 0 50%; animation: sweep 0.8s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 50ms + var(--t0, 0ms)); }
+.pre .d-now { opacity: 0; }
+.play .d-now { animation: land 0.5s var(--spring) backwards; animation-delay: calc(0.5s + var(--i, 0) * 50ms + var(--t0, 0ms)); }
+/* the compass needle swings round to the wind and settles, as a real one does */
+.compass .needle-g { transform-box: view-box; transform-origin: 40px 40px; }
+.pre .compass .needle-g { transform: rotate(-150deg); }
+.play .compass .needle-g { animation: swing 1.4s cubic-bezier(0.3, 1.45, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+/* the sun's path traced from sunrise to now, then the sun; at night, the sun below the horizon */
+.pre .sunarc .done { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
+.play .sunarc .done { stroke-dasharray: 1 1; animation: c-draw 1.3s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.pre .sunarc .sun, .pre .sunarc .under { opacity: 0; }
+.sunarc .sun { transform-box: fill-box; transform-origin: 50% 50%; }
+.play .sunarc .sun { animation: c-pop 0.5s var(--spring) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
+.play .sunarc .under { animation: c-fade 0.8s ease-out backwards; animation-delay: var(--t0, 0ms); }
+.play .sunarc .sun.down { animation-delay: calc(0.35s + var(--t0, 0ms)); }
+/* the UV and air knobs slide along to their reading */
+.pre .meter i { opacity: 0; }
+.play .meter i { animation: knob 1s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+/* the thermometer fills up from its bulb, the humidity bar fills along, the pressure needle swings round to its reading */
+.thermo .th-fill { transform-box: fill-box; transform-origin: 50% 100%; }
+.pre .thermo .th-fill { transform: scaleY(0); }
+.pre .fbar i { transform: scaleX(0); transform-origin: 0 50%; }
+.play .thermo .th-fill { animation: fill-up 1s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.play .fbar i { transform-origin: 0 50%; animation: sweep 0.9s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.pre .dial .dl-needle-g { transform: rotate(var(--sw, 0deg)); }
+.play .dial .dl-needle-g { animation: dial 1.3s cubic-bezier(0.3, 1.35, 0.45, 1) backwards; animation-delay: var(--t0, 0ms); }
+/* the tide comes in: its water rises, its line traces along, then where it is now */
+.tidec .tc-water { transform-box: fill-box; transform-origin: 50% 100%; }
+.pre .tidec .tc-water { transform: scaleY(0); }
+.pre .tidec .tc-line { stroke-dasharray: 1 1; stroke-dashoffset: 1; }
+.pre .tidec .tc-here, .pre .tidec .tc-mark { opacity: 0; }
+.tidec .tc-here, .tidec .tc-mark { transform-box: fill-box; transform-origin: 50% 50%; }
+.play .tidec .tc-water { animation: fill-up 1.1s var(--spring) backwards; animation-delay: var(--t0, 0ms); }
+.play .tidec .tc-line { stroke-dasharray: 1 1; animation: c-draw 1.2s cubic-bezier(0.32, 0.72, 0.24, 1) backwards; animation-delay: var(--t0, 0ms); }
+.play .tidec .tc-mark { animation: c-pop 0.4s var(--spring) backwards; animation-delay: calc(0.9s + var(--t0, 0ms)); }
+.play .tidec .tc-here { animation: c-pop 0.5s var(--spring) backwards; animation-delay: calc(1.05s + var(--t0, 0ms)); }
+@keyframes fill-up { from { transform: scaleY(0); } }
+@keyframes dial { from { transform: rotate(var(--sw, 0deg)); } }
+@keyframes sweep { from { transform: scaleX(0); } }
+@keyframes land { from { opacity: 0; scale: 0.3; } }
+@keyframes swing { from { transform: rotate(-150deg); } }
+/* (moved, not laid out afresh each frame: from the start of the meter, its width (cqw) times how far along it is) */
+@keyframes knob { from { transform: translateX(calc(-50% - var(--at, 0) * 1cqw)); opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .pre .d-fill, .pre .compass .needle-g, .pre .thermo .th-fill, .pre .fbar i, .pre .dial .dl-needle-g, .pre .rbars rect, .pre .tidec .tc-water { transform: none; } .pre .d-now, .pre .sunarc .sun, .pre .sunarc .under, .pre .meter i, .pre .tidec .tc-here, .pre .tidec .tc-mark { opacity: 1; } .pre .sunarc .done, .pre .tidec .tc-line { stroke-dashoffset: 0; }
+  .play .d-fill, .play .d-now, .play .compass .needle-g, .play .sunarc .done, .play .sunarc .sun, .play .sunarc .under, .play .meter i, .play .thermo .th-fill, .play .fbar i, .play .dial .dl-needle-g, .play .rbars rect, .play .tidec .tc-water, .play .tidec .tc-line, .play .tidec .tc-mark, .play .tidec .tc-here { animation: none; }
+  .tile.opens, .tile.opens:active { transition: none; transform: none; }
+}
+
+/* ---------- the cards settle into place as they're scrolled up into view ---------- */
+/* (tied to the scroll itself, so nothing waits or is left behind; only where scroll-linked animation is
+   understood in full, and not with Reduce Motion) */
+@supports (animation-timeline: view()) and (animation-range: entry 0% entry 160px) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* (not the radar while it's full screen: fixed in place, there's no scroll for it to follow) */
+    main .card:not(.radar-big), main .ins, main .tile {
+      animation: settle cubic-bezier(0.2, 0.7, 0.3, 1) both; animation-timeline: view(); animation-range: entry 0% entry 160px;
+    }
+  }
+}
+@keyframes settle { from { opacity: 0.2; transform: translateY(28px) scale(0.965); } }
+/* a day's sheet: the parts of the day come in one after another as it rises */
+dialog.day-sheet[open] .part { animation: rise 0.55s var(--spring) backwards; }
+dialog.day-sheet[open] .part:nth-child(2) { animation-delay: 0.05s; }
+dialog.day-sheet[open] .part:nth-child(3) { animation-delay: 0.1s; }
+dialog.day-sheet[open] .part:nth-child(4) { animation-delay: 0.15s; }
+@media (prefers-reduced-motion: reduce) { dialog.day-sheet[open] .part { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .c-enter .c-line, .c-enter .c-band, .c-enter .c-col, .c-enter .c-dot, .c-enter .c-label { animation: none; } }
+.c-crossline { stroke: rgba(255, 255, 255, 0.7); stroke-width: 1; }
+.c-hit { cursor: crosshair; }
+.c-tip { position: absolute; z-index: 3; pointer-events: none; --tint: rgba(14, 22, 38, 0.72); border-radius: 14px; padding: 7px 11px; font-size: 12.5px; white-space: nowrap; }
+.c-tip-title { color: var(--text-3); font-size: 11.5px; margin-bottom: 2px; }
+.c-tip-row { display: flex; gap: 6px; align-items: baseline; }
+.c-tip-row b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.c-tip-row span { color: var(--text-2); }
+
+/* nowcast */
+.nowcast-text { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.nowcast .card-head { margin-bottom: 10px; }
+/* where the radar's timing the next hours: said quietly, beside the title */
+.nc-src { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-2); background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22); }
+.nc-src .ct-icon svg { width: 13px; height: 13px; }
+
+/* ---------- 16 days ---------- */
+.days { list-style: none; margin: 0 -8px; padding: 0; }
+.days li + li { border-top: 1px solid var(--line); margin-top: 0; }
+.days li { padding: 0; }
+.days li.far { border-top: 0; }
+.far-note { display: block; font-size: 11.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); padding: 14px 8px 6px; border-bottom: 1px solid var(--line); }
+/* (every row the same height, whether or not there's a chance of rain under its icon) */
+.day-row { display: grid; grid-template-columns: 4.6em 40px 2.6em 1fr 2.6em; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 58px; }
+@media (hover: hover) { .day-row:hover { background-color: rgba(255, 255, 255, 0.07); } }
+.day-row:active { background-color: rgba(255, 255, 255, 0.1); }
+.d-name { font-weight: 600; font-size: 16px; line-height: 1.15; }
+.d-name small { display: block; font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+.d-name small.unsure { color: #ffd68a; }
+.d-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 44px; line-height: 1; }
+.d-icon > span:first-child { display: block; line-height: 0; }
+.d-pop { font-size: 11.5px; font-weight: 650; color: var(--tint-blue); margin-top: 1px; }
+.d-lo { text-align: right; color: var(--text-3); font-weight: 560; font-variant-numeric: tabular-nums; }
+.d-hi { font-weight: 650; font-variant-numeric: tabular-nums; }
+/* the days by rain or by wind: when it falls, an hour a bar, and its chance and how much; or the wind, a line, with its
+   gusts a band above it, and the strongest of each */
+.days.v-rain .day-row, .days.v-wind .day-row { grid-template-columns: 4.6em 40px 1fr 4.6em; }
+.d-chart { display: block; height: 26px; min-width: 0; }
+.d-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.dr rect { fill: var(--rain); }
+.dr rect.dry { fill: rgba(255, 255, 255, 0.22); }
+.dw .band { fill: rgba(63, 214, 194, 0.3); }
+.dw .line { fill: none; stroke: #3fd6c2; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.d-val { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.d-val b { font-weight: 650; font-size: 16px; }
+.d-val b.rain { color: var(--tint-blue); }
+.d-val b small.u { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.d-val > small { font-size: 12px; color: var(--text-3); font-weight: 500; }
+/* the days' own switch: icons only, small */
+.seg.icons { min-width: 0; grid-template-columns: repeat(3, 44px); }
+.seg.icons button { padding: 0; display: grid; place-items: center; }
+#daily .card-head { margin-bottom: 4px; }
+.d-bar { position: relative; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
+.d-fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #7cc4ff, #8ee6a8, #ffd166, #ff9a4d, #ff5d5d); background-size: var(--span, 100%) 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.d-now { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
+
+/* ---------- insights ---------- */
+/* the app's own insights, in one card: a row each, its title and a line of what it says (a tap for the rest) */
+.ins-card { padding-bottom: 6px; }
+.insights { display: flex; flex-direction: column; margin: 0 -4px; }
+.ins-row { overflow: hidden; }
+.ins-row + .ins-row { border-top: 0.5px solid var(--line); }
+.ins-head { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: flex-start; gap: 11px; padding: 10px 4px; cursor: pointer; border-radius: 12px; -webkit-tap-highlight-color: transparent; }
+.ins-head:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.ins-row.whole .ins-head { cursor: default; }
+.ins-row .ins-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; margin-top: 1px; }
+.ins-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ins-title { font-size: 15px; font-weight: 650; line-height: 1.3; }
+.ins-line, .ins-short { font-size: 14px; line-height: 1.4; color: var(--text-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+.ins-row.open .ins-line, .ins-row.fold .ins-line { -webkit-line-clamp: unset; }
+/* one with its own short line: that, folded; the whole of it, open (fading in), and while it folds away */
+.ins-row.has-short .ins-line, .ins-row.has-short.open .ins-short, .ins-row.has-short.fold .ins-short { display: none; }
+.ins-row.has-short.open .ins-line, .ins-row.has-short.fold .ins-line { display: block; }
+.ins-row.has-short.open .ins-line { animation: c-fade 0.3s ease-out; }
+.ins-chev { flex: none; display: inline-flex; margin-top: 8px; color: var(--text-3); transition: transform 0.4s var(--glide); }
+.ins-row.open .ins-chev { transform: rotate(180deg); }
+.ins-row.whole .ins-chev { visibility: hidden; }
+/* open, a way on to its day or its hours (and one that goes somewhere is never just its line: always opens) */
+.ins-go { all: unset; box-sizing: border-box; display: none; align-items: center; gap: 4px; margin: -4px 0 10px 45px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--tint-blue); background: rgba(159, 208, 255, 0.12); cursor: pointer; }
+.ins-go span { display: inline-grid; transform: rotate(-90deg); }
+.ins-row.open .ins-go, .ins-row.fold .ins-go { display: inline-flex; }
+.ins-go:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.ins-row.rise, .days li.rise { animation: rise 0.6s var(--spring) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
+.ins-more { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 11px 0 8px; border-top: 0.5px solid var(--line); font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.ins-more:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }
+.ins-more:active { opacity: 0.6; }
+@media (hover: hover) { .ins-head:hover, .ins-more:hover { background: rgba(255, 255, 255, 0.05); } .ins-row.whole .ins-head:hover { background: none; } }
+@media (prefers-reduced-motion: reduce) { .ins-row.rise, .days li.rise, .ins-row.has-short.open .ins-line { animation: none; } .ins-chev { transition: none; } }
+.ins { border-radius: 22px; padding: 13px 15px 14px; display: grid; grid-template-columns: 32px 1fr; gap: 2px 11px; }
+.ins-icon { grid-row: span 2; width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1); }
+.ins h3 { margin: 0; font-size: 15.5px; font-weight: 650; line-height: 1.3; }
+.ins p { margin: 0; font-size: 14.5px; color: var(--text-2); line-height: 1.42; }
+/* warnings: glass tinted by what they're about */
+.ins[data-level="alert"] { --tint: rgba(130, 24, 18, 0.58); --rim: linear-gradient(135deg, rgba(255, 150, 140, 0.85), rgba(255, 90, 79, 0.25) 35%, rgba(255, 90, 79, 0.1) 65%, rgba(255, 150, 140, 0.6)); }
+.ins[data-level="alert"] .ins-icon { background: linear-gradient(180deg, #ff7a70, #e8453a); color: #fff; }
+.ins[data-level="warn"] { --tint: rgba(104, 66, 4, 0.56); --rim: linear-gradient(135deg, rgba(255, 214, 138, 0.85), rgba(255, 176, 32, 0.25) 35%, rgba(255, 176, 32, 0.1) 65%, rgba(255, 214, 138, 0.6)); }
+.ins[data-level="warn"] .ins-icon { background: linear-gradient(180deg, #ffc94d, #f5a10f); color: #241700; }
+.ins[data-level="good"] .ins-icon, .ins-row[data-level="good"] .ins-icon { background: linear-gradient(180deg, rgba(52, 199, 89, 0.45), rgba(52, 199, 89, 0.2)); color: #d5fbe0; }
+.ins[data-level="tip"] .ins-icon, .ins-row[data-level="tip"] .ins-icon { background: linear-gradient(180deg, rgba(93, 178, 255, 0.45), rgba(93, 178, 255, 0.2)); color: #e1f0ff; }
+.ins .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-right: 6px; }
+/* official warnings: in their own colour, the whole card opening the warning (from its title, so it's said as a button) */
+.ins.official > p { grid-column: 2; }
+.ins.official .ins-from { font-size: 13px; color: var(--text-3); margin-bottom: 2px; }
+.ins-open { all: unset; cursor: pointer; }
+.ins-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.ins-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
+.ins.official:active { transform: scale(0.985); transition: transform 0.12s; }
+.ins.official[data-colour="yellow"] { --tint: rgba(132, 102, 0, 0.66); --rim: linear-gradient(135deg, rgba(255, 238, 150, 0.85), rgba(255, 214, 10, 0.25) 35%, rgba(255, 214, 10, 0.1) 65%, rgba(255, 238, 150, 0.6)); }
+.ins.official[data-colour="yellow"] .ins-icon { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
+.ins.official[data-colour="orange"] .ins-icon { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
+
+/* ---------- best times ---------- */
+.win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* (an odd one out at the end across the row, rather than a gap beside it; three to a row, the last row's one or two
+   share it) */
+.win-grid > .win:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (min-width: 640px) and (max-width: 979px) {
+  .win-grid { grid-template-columns: repeat(6, 1fr); }
+  .win-grid > .win, .win-grid > .win:last-child:nth-child(odd) { grid-column: span 2; }
+  .win-grid > .win:last-child:nth-child(3n+1) { grid-column: 1 / -1; }
+  .win-grid > .win:nth-last-child(2):nth-child(3n+1), .win-grid > .win:nth-last-child(2):nth-child(3n+1) + .win { grid-column: span 3; }
+}
+.win { border-radius: var(--r-inner); padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* the name and its rating side by side, the rating on a line of its own when the name needs the room */
+/* the same lines in every card (what, when and how good, the hours, why), so side by side they line up */
+.win-name { font-weight: 650; font-size: 14.5px; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.win-name > span:first-child { display: inline-flex; flex: none; }
+.win-rate { flex: none; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.win-rate[data-r="Great"] { background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; }
+.win-rate[data-r="Good"] { background-color: rgba(93, 178, 255, 0.34); color: #e1f0ff; }
+.win-rate[data-r="Fair"] { background-color: rgba(255, 204, 110, 0.24); color: #ffeccb; }
+.win-rate[data-r="Poor"] { color: var(--text-2); background-color: rgba(255, 255, 255, 0.06); }
+.win-day { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.win-time { font-size: 16px; font-weight: 650; line-height: 1.3; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.win-text { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
+/* the ones not worth it today or tomorrow: named in a line, under the rest (a tap shows them, faded) */
+.win.poor { opacity: 0.62; }
+.win-poor { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 0; padding: 10px 0; min-height: 44px; font-size: 13.5px; line-height: 1.4; color: var(--text-2); cursor: pointer; }
+.win-poor b { font-weight: 600; color: var(--text-3); }
+.win-poor > span:last-child { flex: none; display: inline-flex; color: var(--text-3); }
+.win-poor:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
+.win-grid:empty { display: none; }
+.win-grid:empty + .win-poor { margin-top: 0; }
+
+/* ---------- this time of year ---------- */
+.facts { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.facts li { font-size: 13px; color: var(--text-3); }
+.facts b { display: block; font-size: 16px; color: #fff; font-weight: 620; }
+.r-wide { fill: rgba(255, 255, 255, 0.14); }
+.r-mid { fill: rgba(255, 255, 255, 0.24); }
+.r-mean { stroke: #fff; stroke-width: 2; }
+.r-record { stroke: #ff9a6b; stroke-width: 2; }
+.r-value { fill: var(--temp); stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+.r-text { fill: var(--text-2); font-size: 11.5px; }
+.r-small { fill: var(--text-3); font-size: 11px; }
+.r-vtext { fill: #fff; font-size: 12.5px; font-weight: 700; }
+
+/* ---------- tiles ---------- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (min-width: 640px) and (max-width: 979px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+.tile { border-radius: 24px; padding: 13px 14px; min-height: 136px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tile.wide { grid-column: span 2; }
+.tile h3 { margin: 0 0 2px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+.tile .big, .detail-now .big { font-size: 30px; font-weight: 500; line-height: 1.1; }
+.tile .big small, .detail-now .big small { font-size: 15px; font-weight: 500; color: var(--text-2); margin-left: 3px; }
+.tile p, .detail-now p { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.35; }
+.tile .sub { margin-top: auto; }
+.detail-now .sub { margin-top: 6px; }
+.meter { position: relative; container-type: inline-size; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: linear-gradient(90deg, #34c759, #d7e34b, #ffb020, #ff5a4f, #b45cff); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+.meter i { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(10, 16, 28, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35); transform: translateX(-50%); }
+.compass { width: 74px; height: 74px; margin: 4px auto 0; display: block; }
+.compass .ring { fill: rgba(255, 255, 255, 0.05); stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; }
+.compass .tick { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1; }
+.compass text { fill: var(--text-3); font-size: 9px; font-weight: 700; }
+.compass .needle { fill: #fff; }
+.wind-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+/* a tile that opens: its title a button over all of it, a little chevron to say so; it gives under a finger */
+.tile.opens { cursor: pointer; transition: transform 0.5s var(--spring), filter 0.25s; }
+.tile.opens:active { transform: scale(0.97); filter: brightness(1.12); transition-duration: 0.12s; }
+.tile-open { all: unset; flex: 1; min-width: 0; cursor: pointer; }
+.tile-open::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; }
+.tile-open:focus-visible::after { outline: 2px solid #fff; outline-offset: 2px; }
+.tile-chev { display: inline-flex; flex: none; transform: rotate(-90deg); opacity: 0.8; }
+@media (hover: hover) { .tile.opens:hover { filter: brightness(1.08); } }
+/* a tile in full, in its own sheet: what it says now, a little larger, then its hours */
+.detail-now { border-radius: var(--r-inner); padding: 14px 16px 15px; display: flex; flex-direction: column; gap: 3px; }
+.detail-now .big { font-size: 40px; }
+.detail-now .big small { font-size: 18px; }
+.detail-now p { font-size: 14.5px; }
+.detail-now .meter, .detail-now .fbar { margin: 10px 0 5px; }
+.detail-about { margin: 16px 2px 4px; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.detail-sheet .sheet-head h2 { display: flex; align-items: center; gap: 8px; }
+/* which tile of them it is (a swipe sideways for the next) */
+.detail-dots { display: flex; justify-content: center; gap: 7px; margin: -4px 0 6px; }
+.detail-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); transition: background-color 0.3s, transform 0.4s var(--spring); }
+.detail-dots i.on { background: #fff; transform: scale(1.15); }
+/* the rain tile's next 24 hours, an hour a bar */
+.rbars { display: block; width: 100%; height: 26px; margin: 8px 0 2px; }
+.rbars rect { fill: #5aa9f0; }
+.rbars rect.dry { fill: rgba(255, 255, 255, 0.18); }
+.rbars rect { transform-box: fill-box; transform-origin: 50% 100%; }
+.pre .rbars rect { transform: scaleY(0); }
+.play .rbars rect { animation: fill-up 0.8s var(--spring) backwards; animation-delay: calc(0.1s + var(--t0, 0ms)); }
+.dt-icon { display: inline-flex; color: var(--text-3); }
+.ways { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; text-align: center; }
+.way { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 12px; }
+.way .w-time { font-size: 12px; font-weight: 600; color: var(--text-3); }
+.way .w-arrow { display: inline-flex; color: #fff; }
+.way b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+/* feels like: a thermometer */
+.thermo { width: 40px; height: 74px; display: block; margin: 2px 6px 0 0; }
+.thermo .th-glass { fill: rgba(255, 255, 255, 0.07); stroke: rgba(255, 255, 255, 0.34); stroke-width: 1.4; }
+.thermo .th-mark { fill: #fff; }
+/* humidity: a bar filled to it */
+.fbar { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px; background: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 0.5px 0 rgba(255, 255, 255, 0.1); }
+.fbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.fbar.wet i { background: linear-gradient(90deg, #a9dcff, #5aa9f0 60%, #2f74d0); }
+/* pressure: a dial */
+.dial { width: 74px; height: 74px; display: block; }
+.tile .dial { width: 64px; height: 64px; margin-right: 2px; }
+/* the smallest phones (320 across): the tiles' dials and figures a little smaller so they fit their tile, a best time's
+   day and rating free to wrap, and the days' rows a little tighter */
+@media (max-width: 359px) {
+  .tile .compass, .tile .dial { width: 52px; height: 52px; }
+  .tile .big, .detail-now .big { font-size: 26px; }
+  .win-day { flex-wrap: wrap; }
+  .win-time { white-space: normal; }
+  .day-row { grid-template-columns: 3.9em 34px 2.4em 1fr 2.4em; gap: 6px; }
+  .days.v-rain .day-row, .days.v-wind .day-row { grid-template-columns: 3.9em 34px 1fr 4.2em; }
+}
+.dial .dl-ticks { stroke: rgba(255, 255, 255, 0.4); stroke-width: 1.2; stroke-linecap: round; fill: none; }
+.dial .dl-needle { stroke: #fff; stroke-width: 3.2; stroke-linecap: round; }
+.dial .dl-needle-g { transform-box: view-box; transform-origin: 40px 40px; }
+.dial .dl-way { stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+/* visibility: a scale from fog to clear, its ends named */
+.meter.clear { background: linear-gradient(90deg, rgba(190, 198, 210, 0.35), rgba(190, 210, 230, 0.7) 45%, #8fd0ff); }
+.ends { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--text-3); margin-top: -1px; }
+.sunarc { width: 100%; max-width: 340px; height: auto; display: block; margin: 4px auto; }
+.sunarc .arc { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.sunarc .done { fill: none; stroke: #ffd166; stroke-width: 2; }
+.sunarc .hz { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; }
+.sunarc .sun { fill: #ffd166; stroke: rgba(14, 22, 36, 0.9); stroke-width: 2; }
+.sunarc .under { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.sunarc .sun.down { fill: #ffd166; opacity: 0.55; }
+/* the sun's tile: its path across the sky under when it next sets or rises; bigger in its sheet */
+.tile .sunarc { margin: 2px auto 0; }
+.detail-now .sunarc { max-width: 260px; margin: 6px 0 0; }
+.kv.moons dd span { display: inline-block; vertical-align: -3px; margin-right: 6px; }
+.moon-row { display: flex; align-items: center; gap: 10px; margin: 2px 0; }
+/* the sea: how warm, the waves, and the tide's next day as a little curve */
+.sea-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tidec { width: 168px; max-width: 54vw; height: auto; display: block; overflow: visible; }
+.tidec .tc-water { fill: rgba(90, 200, 250, 0.2); }
+.tidec .tc-line { fill: none; stroke: #5ac8fa; stroke-width: 2; stroke-linecap: round; }
+.tidec .tc-mark { fill: #5ac8fa; stroke: rgba(14, 22, 36, 0.9); stroke-width: 1.2; }
+.tidec .tc-now { stroke: rgba(255, 255, 255, 0.35); stroke-width: 1; stroke-dasharray: 2 3; }
+.tidec .tc-here { fill: #fff; stroke: rgba(14, 22, 36, 0.9); stroke-width: 1.6; }
+.detail-now .tidec { width: 200px; }
+.kv.tides { margin: 10px 0 2px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 13px; color: var(--text-2); margin: 0; }
+.kv dt { color: var(--text-3); }
+.kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #fff; }
+
+/* ---------- foot: small print, as the Weather app has it (no panel; centred and quiet) ---------- */
+.foot { max-width: 1180px; margin: 6px auto 0; padding: 0 var(--pad) 22px; font-size: 11.5px; line-height: 1.5; color: #fff; text-align: center;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 10px rgba(0, 0, 0, 0.25); }   /* (to read over a pale sky too) */
+.foot p { margin: 2px auto; max-width: 60ch; }
+/* (the words small, the places to tap not: each reaches past its words, without moving the lines apart) */
+.foot .link { font-size: inherit; padding: 13px 4px; margin: -13px -4px; }
+/* (its links and buttons alike, Refresh too: underlined in the line's own colour, as the Weather app's are) */
+.foot a, .foot .link { color: inherit; font-weight: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.45); text-underline-offset: 2px; }
+.foot a { padding: 13px 2px; margin: -13px -2px; }
+.foot a:active { opacity: 0.55; }
+/* a plain button: tinted text, as on iOS */
+.link { background: none; border: 0; padding: 4px 2px; cursor: pointer; color: var(--tint-blue); font-size: inherit; font-weight: 600; }
+.link:active { opacity: 0.55; transition-duration: 0.08s; }
+
+/* ---------- sheets: floating glass ---------- */
+/* (fixed, as a modal dialog is by default, so it stays put if the page behind scrolls, as when a keyboard opens) */
+dialog.sheet { position: fixed; --tint: rgba(26, 34, 52, 0.74); padding: 0; color: var(--text); width: calc(100% - 16px); max-width: 560px; max-height: 86vh; max-height: 86svh;
+  border-radius: 34px; margin: auto 8px 8px; overflow: hidden;
+  -webkit-backdrop-filter: blur(34px) saturate(190%); backdrop-filter: blur(34px) saturate(190%);
+  box-shadow: var(--edge), 0 30px 80px -10px rgba(0, 0, 0, 0.55); }
+/* opening, it comes up from below on iOS's own curve (not faded in: Safari leaves a fading pane of glass unblurred,
+   then snaps it frosted); the dim fades in with it */
+dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in 0.5s var(--glide); transition: transform 0.45s var(--glide); }
+dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.38); }
+dialog.sheet[open]::backdrop { animation: dim-in 0.5s var(--glide); }
+@keyframes sheet-in { from { transform: translateY(calc(100% + 12px)); } }
+@keyframes dim-in { from { opacity: 0; } }
+/* closing: it slides away (from wherever a finger left it), the dim going with it; dragged, it follows the finger */
+dialog.sheet.closing { animation: sheet-out 0.36s var(--glide) forwards; pointer-events: none; }
+dialog.sheet.closing::backdrop { animation: dim-out 0.36s var(--glide) forwards; }
+dialog.sheet.dragging { transition: none; }
+@keyframes sheet-out { from { transform: translateY(var(--from, 0px)); } to { transform: translateY(calc(100% + 12px)); } }
+@keyframes dim-out { to { opacity: 0; } }
+@media (min-width: 700px) {
+  @keyframes sheet-in { from { transform: translateY(24px) scale(0.98); opacity: 0; } }
+  @keyframes sheet-out { to { transform: translateY(24px) scale(0.98); opacity: 0; } }
+}
+/* while a sheet is up, the page behind steps back, and holds still: its glass unblurred, and nothing on it (or the
+   sky) moving (under the dim it looks the same, and the sheet's own glass isn't blurred afresh every frame) */
+.page { transition: transform 0.5s var(--glide); }
+/* (named one by one, the panes of glass and the hero's icon, the one thing on the page that moves of itself: a rule
+   for everything on the page would have every one of its thousands of parts restyled as a sheet came and went) */
+body.sheet-up .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .map-zoom, .radar-centre, .radar-credit, .rc-t, .radar-dry),
+body.sheet-up .top::before,
+/* (and the same behind the radar full screen, its map over all of it: all but the radar's own) */
+body.no-scroll .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg):not(.radar, .radar *), body.no-scroll .top::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; animation-play-state: paused !important; }
+@property --recede { syntax: "<number>"; inherits: false; initial-value: 1; }
+body.sheet-up .page { transform: translateY(calc(var(--recede, 1) * 10px)) scale(calc(1 - var(--recede, 1) * 0.06)); }
+body.sheet-drag .page { transition: none; }
+@media (min-width: 700px) { body.sheet-up .page { transform: scale(calc(1 - var(--recede, 1) * 0.025)); } }
+/* (the radar full screen stays put under a sheet: a page that steps back would carry it with it) */
+body.sheet-up .page:has(.radar-big) { transform: none; }
+@media (min-width: 700px) { dialog.sheet { margin: auto; max-height: 84vh; } }
+/* places: always the same height on a phone, so it doesn't jump as results come and go */
+@media (max-width: 699px) { #places { height: 86vh; height: 86svh; } }
+@media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.closing, dialog.sheet[open]::backdrop, dialog.sheet.closing::backdrop { animation: none; } .page, body.sheet-up .page { transition: none; transform: none; } }
+/* the header stays put; what scrolls up under it fades away (the scroll edge) */
+.sheet-head { position: relative; z-index: 4; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 4px; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 16px); mask-image: linear-gradient(180deg, transparent, #000 16px); }
+/* the grabber */
+.sheet-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(255, 255, 255, 0.32); }
+@media (min-width: 700px) { .sheet-head::before { display: none; } }
+.sheet-head h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.sheet-head h2:focus { outline: none; }
+.sheet-sub { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); margin: 18px 0 6px; }
+/* search: a capsule */
+.search input { width: 100%; padding: 12px 16px 12px 42px; border-radius: 999px; font-size: 16px; background-color: rgba(118, 118, 128, 0.26);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-opacity='.7' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M20 20l-4.2-4.2'/%3E%3C/svg%3E"), var(--sheen);
+  background-repeat: no-repeat; background-position: 14px center, 0 0; background-size: 18px, auto; }
+.search input::placeholder { color: var(--text-3); }
+.search input:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5), 0 0 0 3px rgba(159, 208, 255, 0.45); }
+.results, .saved { list-style: none; margin: 8px 0 0; padding: 0; }
+.results li + li, .saved li + li { border-top: 1px solid var(--line); }
+.row-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 8px; background: none; border: 0; border-radius: 16px; cursor: pointer; text-align: left; min-height: 50px; }
+@media (hover: hover) { .row-btn:hover { background-color: rgba(255, 255, 255, 0.07); } }
+.row-btn .rb-main { flex: 1; min-width: 0; }
+.row-btn .rb-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-btn .rb-sub { font-size: 13px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-btn[aria-current="true"] .rb-name::after { content: " · showing"; font-weight: 500; color: var(--text-3); font-size: 13px; }
+/* the saved places: a card each, in its own sky (iOS's Weather list); swiped left, it narrows to make room for a Delete
+   beside it, a rounded button of its own (iOS 27's swipe actions), so nothing on it is cut off */
+.saved { display: flex; flex-direction: column; gap: 10px; }
+.saved li + li { border-top: 0; }
+.pc-li { position: relative; }
+.place-card { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 12px; width: 100%; min-height: 104px; padding: 14px 16px 12px; border: 0; border-radius: 22px; cursor: pointer; text-align: left; color: #fff;
+  background: linear-gradient(160deg, var(--pa, #3a5a86), var(--pb, #22324c)); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4), inset 0 -1px 0.5px rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.3);
+  transition: width 0.35s var(--glide); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
+.place-card[aria-current="true"] { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), inset 0 1px 0.5px rgba(255, 255, 255, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.3); }
+.pc-li.swiped .place-card, .pc-li:has(.pc-del:focus-visible) .place-card { width: calc(100% - 100px); }
+.pc-l, .pc-r { display: flex; flex-direction: column; min-width: 0; }
+.pc-r { align-items: flex-end; justify-content: space-between; }
+.pc-name { font-size: 21px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-here { display: inline-grid; vertical-align: 1px; }
+.pc-sub { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); margin-top: 2px; }
+.pc-cond { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.85); margin-top: auto; padding-top: 10px; }
+.pc-temp { font-size: 44px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
+.pc-hl { font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.85); white-space: pre; }
+.pc-del { position: absolute; inset: 0 0 0 auto; width: 92px; border: 0; border-radius: 22px; background: #ff453a; color: #fff; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer;
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3); transform: scale(0.6); opacity: 0; transition: transform 0.35s var(--spring), opacity 0.2s; }
+.pc-li.swiped .pc-del, .pc-del:focus-visible { transform: none; opacity: 1; }
+.pc-del:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.pc-bin { display: none; position: absolute; z-index: 2; right: 10px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.35); color: #fff; place-items: center; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .pc-li:hover .pc-bin { display: grid; } .pc-li:hover .pc-r { visibility: hidden; } }
+.place-card[data-sky="clear-day"] { --pa: #3d86d6; --pb: #1f5fae; } .place-card[data-sky="partly-day"] { --pa: #4c7fb8; --pb: #2c5f99; }
+.place-card[data-sky="cloudy-day"] { --pa: #6a7d93; --pb: #43566c; } .place-card[data-sky="rain-day"] { --pa: #4f6176; --pb: #303f52; }
+.place-card[data-sky="snow-day"] { --pa: #7d93ad; --pb: #4f6580; } .place-card[data-sky="fog"] { --pa: #858f9b; --pb: #59626e; } .place-card[data-sky="storm"] { --pa: #3a4256; --pb: #1c2130; }
+.place-card[data-sky="clear-night"] { --pa: #1b2950; --pb: #070d22; } .place-card[data-sky="partly-night"] { --pa: #22305a; --pb: #0c1428; }
+.place-card[data-sky="cloudy-night"] { --pa: #2e3747; --pb: #151b27; } .place-card[data-sky="rain-night"] { --pa: #283142; --pb: #10151f; } .place-card[data-sky="snow-night"] { --pa: #36435e; --pb: #1b2335; }
+@media (prefers-reduced-motion: reduce) { .place-card, .pc-del { transition: none; } }
+#use-location { color: var(--tint-blue); font-weight: 600; margin-top: 4px; }
+
+/* settings: groups */
+fieldset.opt { border: 0; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+fieldset.opt legend { font-size: 13px; color: var(--text-3); font-weight: 600; margin-bottom: 8px; padding: 0 4px; }
+fieldset.opt label { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; cursor: pointer; font-size: 15px; min-height: 42px; }
+/* a choice of one (°C or °F…): a segmented control, a lens of glass gliding to the chosen one (which, and how
+   many there are, found with :has) */
+fieldset.opt:has(> .choice) { display: block; }
+.choice { position: relative; isolation: isolate; --n: 2; --i: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; padding: 3px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.18); }
+.choice:has(> label:nth-child(3)) { --n: 3; }
+.choice:has(> label:nth-child(4)) { --n: 4; }
+.choice:has(> label:nth-child(2) > input:checked) { --i: 1; }
+.choice:has(> label:nth-child(3) > input:checked) { --i: 2; }
+.choice:has(> label:nth-child(4) > input:checked) { --i: 3; }
+.choice::before { content: ""; position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 999px;
+  transform: translateX(calc(var(--i) * 100%)); transition: transform 0.42s var(--glide);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.7), inset 0 -1px 0.5px rgba(255, 255, 255, 0.16), 0 4px 12px -2px rgba(0, 0, 0, 0.3); }
+.choice:not(:has(input:checked))::before { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .choice::before { transition: none; } }
+.choice > label { z-index: 1; }
+fieldset.opt label:has(input[type="radio"]) { justify-content: center; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-height: 36px; padding: 7px 8px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+fieldset.opt label:has(input[type="radio"]:checked) { color: #fff; }
+fieldset.opt input[type="radio"] { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+fieldset.opt label:has(input[type="radio"]:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
+/* switches */
+label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12px; }
+.switch input[type="checkbox"] { -webkit-appearance: none; appearance: none; order: 9; margin: 0 0 0 auto; flex: none; position: relative; width: 52px; height: 32px; border-radius: 999px; cursor: pointer;
+  background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), inset 0 1px 2px rgba(0, 0, 0, 0.25); transition: background-color 0.3s; }
+.switch input[type="checkbox"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: 28px; height: 28px; border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #eef1f6); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.12), inset 0 -1px 1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.45s var(--spring), width 0.25s var(--spring); }
+.switch input[type="checkbox"]:checked { background: var(--good); }
+.switch input[type="checkbox"]:checked::before { transform: translateX(20px); }
+/* pressed, the knob stretches like a drop of glass */
+.switch input[type="checkbox"]:active::before { width: 34px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 244, 250, 0.82)); }
+.switch input[type="checkbox"]:checked:active::before { transform: translateX(14px); }
+.switch input[type="checkbox"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.commute .times { display: flex; gap: 8px; flex-wrap: wrap; }
+/* a time to choose (app.js fillTimes: a quarter of an hour apart, said as the Clock setting says them), in a chip */
+select.at { -webkit-appearance: none; appearance: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 10px;
+  padding: 5px 10px; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25); cursor: pointer; }
+select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+fieldset.opt label.at-row { width: 100%; }
+.at-row select.at { margin-left: auto; }
+
+/* the day */
+/* the days along the top of a day's sheet, as Weather has them: the day, and its date in a circle when it's the one shown */
+.day-strip { flex: none; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 6px 14px 4px; scroll-padding-inline: 14px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 14px), transparent); }
+.day-strip::-webkit-scrollbar { display: none; }
+.ds-day { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 46px; min-height: 52px; padding: 4px 2px; border: 0; background: none; border-radius: 14px; cursor: pointer; color: var(--text-2); }
+.ds-day span { font-size: 11.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-3); }
+.ds-day b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background-color 0.3s, color 0.3s, transform 0.4s var(--spring); }
+.ds-day[aria-current] b { background: #fff; color: #0d1626; transform: scale(1.06); }
+.ds-day[aria-current] span { color: #fff; }
+.ds-day:active b { transform: scale(0.9); }
+/* a day slides in from the side it was moved to (by the arrow keys or the strip; swiped, it follows the finger: app.js) */
+#day-body, #detail-body { touch-action: pan-y pinch-zoom; }
+#day-body.from-right, #detail-body.from-right { animation: from-right 0.45s var(--spring); }
+#day-body.from-left, #detail-body.from-left { animation: from-left 0.45s var(--spring); }
+@keyframes from-right { from { opacity: 0; transform: translateX(36px); } }
+@keyframes from-left { from { opacity: 0; transform: translateX(-36px); } }
+@media (prefers-reduced-motion: reduce) { #day-body.from-right, #day-body.from-left, #detail-body.from-right, #detail-body.from-left { animation: none; } .ds-day b { transition: none; } }
+.day-top { display: flex; align-items: center; gap: 12px; margin: 2px 0 10px; }
+.day-top .wi { width: 58px; height: 58px; }
+.day-top .dt-main { font-size: 18px; font-weight: 650; }
+.day-top .dt-sub { color: var(--text-2); }
+.day-desc { font-size: 16px; line-height: 1.5; margin: 0 0 14px; }
+.parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.part { border-radius: var(--r-inner); padding: 9px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.part .p-name { font-size: 12px; color: var(--text-3); font-weight: 600; }
+.part .p-temp { font-weight: 650; }
+.part .p-pop { font-size: 12px; color: var(--tint-blue); font-weight: 600; min-height: 15px; }
+.day-section { margin: 18px 0 6px; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); font-weight: 650; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stats + .models, .stats + .stats, .conf + .stats { margin-top: 10px; }
+.stat { border-radius: 16px; padding: 10px 12px; }
+.stat span { display: block; font-size: 12px; color: var(--text-3); }
+.stat b { font-size: 16px; font-weight: 620; }
+.models { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.models th { text-align: left; font-size: 12px; color: var(--text-3); font-weight: 600; padding: 4px 0; }
+.models td, .models th { padding: 7px 4px; border-bottom: 1px solid var(--line); }
+.models td:not(:first-child), .models th:not(:first-child) { text-align: right; }
+.conf { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
+.conf-bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); position: relative; overflow: hidden; box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.3); }
+.conf-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #7cc4ff, var(--tint-blue)); border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.conf b { font-size: 14px; }
+
+/* ---------- radar ---------- */
+/* a button's two glyphs (play and pause; full screen and back) in one place: the one shown grows in as the other
+   shrinks and blurs away, as iOS swaps its symbols */
+.icon-btn > .g-on, .icon-btn > .g-off { grid-area: 1 / 1; position: relative; z-index: 3; transition: opacity 0.2s, transform 0.42s var(--spring), filter 0.2s; }
+[data-on="1"] > .g-off, [data-on="0"] > .g-on, :not([data-on]) > .g-on { opacity: 0; transform: scale(0.3); filter: blur(4px); }
+@media (prefers-reduced-motion: reduce) { .icon-btn > .g-on, .icon-btn > .g-off { transition: none; } }
+/* full screen: the card grows from its place (a view transition, radar.js) on iOS's curve, what's in it changing over
+   quickly at the start rather than the two showing through each other all the way */
+::view-transition-group(radar) { animation-duration: 0.42s; animation-timing-function: var(--glide); }
+::view-transition-old(radar), ::view-transition-new(radar) { animation-duration: 0.16s; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
+.radar-note { margin: 8px 0 0; font-size: 15px; font-weight: 600; }
+.radar-note:empty { display: none; }
+.radar-wrap { position: relative; margin-top: 12px; }
+.radar-map { isolation: isolate; height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
+.radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
+.radar-chip[data-kind="model"] { background-color: rgba(255, 204, 110, 0.78); color: #2a1d00; }
+/* its word, Radar or Forecast: the one not said lies over it, out of sight (the radar's above, as it's before; the
+   forecast's below), so going from one to the other, one rises away as the other rises in, and back (radar.js chipTo) */
+/* (the one going quickly, the one coming a moment after, so they hardly cross) */
+.radar-chip .rc-l { display: block; transition: opacity 0.3s var(--glide) 0.07s, transform 0.5s var(--glide), filter 0.3s var(--glide) 0.07s; }
+.radar-chip:not([data-kind="model"]) .rc-l[data-k="model"], .radar-chip[data-kind="model"] .rc-l[data-k="radar"] {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0; filter: blur(2px); transform: translateY(10px) scale(0.9);
+  transition: opacity 0.15s, transform 0.4s var(--glide), filter 0.15s; }
+.radar-chip[data-kind="model"] .rc-l[data-k="radar"] { transform: translateY(-10px) scale(0.9); }
+@media (prefers-reduced-motion: reduce) { .radar-chip .rc-l { transition: opacity 0.2s; transform: none !important; filter: none !important; } }
+/* "Tap to explore": at the map's foot with its scale and its ©, as far in from the edge, the same height as the ©; in
+   once the credits have folded away (they share the foot) */
+.radar-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none; display: inline-flex; align-items: center; height: 26px; padding: 0 12px; white-space: nowrap; font-size: 12.5px; font-weight: 600; border-radius: 999px; background-color: rgba(14, 22, 38, 0.5); }
+.radar-hint:not([hidden]) { animation: hint-in 0.45s var(--glide) both; }
+@keyframes hint-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .radar-hint:not([hidden]) { animation: none; } }
+/* the dock, as Apple's Weather map has it: play, and what's on show (its kind over its day and time), then the
+   timeline; in the card under the map, full screen a glass panel over the map's foot */
+.radar { --fill: #fff; --rest: rgba(255, 255, 255, 0.18); --tick: rgba(255, 255, 255, 0.5); --panel: rgba(26, 30, 40, 0.74); --ink: #fff; --ink-2: var(--text-2); }
+.radar.light-map.radar-big { --fill: #1c1c1e; --rest: rgba(60, 60, 67, 0.16); --tick: rgba(60, 60, 67, 0.4); --panel: rgba(250, 250, 252, 0.8); --ink: #1c1c1e; --ink-2: rgba(60, 60, 67, 0.72); }
+.radar-dock { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "play time" "track track"; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.radar-bar { display: contents; }
+.radar-play { grid-area: play; }
+.radar-track { grid-area: track; min-width: 0; }
+/* the timeline: a groove filled up to where it is (no knob to speak of: the fill's end is it), a tick at each real
+   frame, and Now marked; positions are along the thumb's travel (14px in from each end), so the marks meet it */
+/* (44 tall to press, in the space of 30: it reaches 7px into the space above and below) */
+.radar-slider { --f: 1; --nowf: 1; -webkit-appearance: none; appearance: none; width: 100%; height: 44px; margin: -7px 0; display: block; background: transparent; cursor: pointer; }
+.radar-slider::-webkit-slider-runnable-track { height: 8px; border-radius: 999px;
+  --pos: calc(14px + (100% - 28px) * var(--f)); --now: calc(14px + (100% - 28px) * var(--nowf));
+  background:
+    linear-gradient(90deg, transparent calc(var(--now) - 1px), var(--tick) calc(var(--now) - 1px) calc(var(--now) + 1px), transparent calc(var(--now) + 1px)),
+    linear-gradient(90deg, var(--fill) 0 var(--pos), transparent var(--pos)),
+    var(--rest); }
+.radar-slider::-moz-range-track { height: 8px; border-radius: 999px; background: var(--rest); }
+.radar-slider::-moz-range-progress { height: 8px; border-radius: 999px; background: var(--fill); }
+/* (the thumb: the fill's rounded end, a size up when it's held) */
+.radar-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -3px; border-radius: 50%; border: 0;
+  background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); transition: transform 0.4s var(--spring); }
+.radar-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: 0; background: var(--fill); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.radar-slider:active::-webkit-slider-thumb { transform: scale(1.5); }
+.radar-slider:focus-visible { outline: none; }
+.radar-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--tint-blue), 0 1px 4px rgba(0, 0, 0, 0.3); }
+.radar-scale { position: relative; height: 20px; margin: 2px 14px 0; }
+.rs-l { position: absolute; top: 2px; transform: translateX(-50%); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rs-now { color: var(--ink); font-weight: 700; }
+/* (a tick on the track at each real frame: the minutes between are worked out; lost under the fill once it's passed) */
+.rs-t { position: absolute; top: -19px; width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: var(--tick); pointer-events: none; }
+/* the readout: what's on show over its day and time and how long ago or ahead */
+.radar-time { grid-area: time; margin: 0; min-width: 0; font-variant-numeric: tabular-nums; color: var(--ink); }
+.radar-time .rt-k { display: block; font-size: 16px; font-weight: 650; line-height: 1.25; }
+.radar-time .rt-rel { display: block; font-size: 13px; color: var(--ink-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the legend: the radar's colours as one bar, light to extreme, and snow's beside it (radar.js: --stops, --at) */
+.radar-legend { display: flex; align-items: flex-start; gap: 14px; margin: 12px 0 0; font-size: 11.5px; color: var(--text-2); }
+.rl-title { display: none; }
+.rl-rain { flex: 1; min-width: 0; }
+.rl-bar { display: block; height: 8px; border-radius: 999px; background: linear-gradient(90deg, var(--stops)); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
+.rl-words { position: relative; height: 16px; margin-top: 4px; }
+.rl-words span { position: absolute; top: 0; left: var(--at); transform: translateX(-50%); white-space: nowrap; }
+.rl-words span:first-child { transform: none; left: 0; }
+.rl-words span:last-child { transform: translateX(-100%); left: 100%; }
+.rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
+
+/* full screen, as Apple's Weather map: the map to every edge, an × top left, its controls top right, the legend in a
+   panel under the ×, and the dock in glass at the foot */
+.radar.radar-big { position: fixed; inset: 0; z-index: 20; border-radius: 0; display: block; padding: 0; overflow: hidden; --tint: rgba(10, 16, 28, 0.9); --top: calc(env(safe-area-inset-top) + 12px);
+  -webkit-backdrop-filter: none; backdrop-filter: none; }
+.radar.radar-big::before { display: none; }
+.radar.radar-big .card-title, .radar.radar-big .radar-note { display: none; }
+.radar.radar-big .radar-full { position: absolute; z-index: 600; top: var(--top); left: max(16px, env(safe-area-inset-left)); width: 44px; height: 44px; }
+.radar.radar-big .radar-wrap { position: absolute; inset: 0; margin: 0; }
+.radar.radar-big .radar-map { height: 100%; border-radius: 0; box-shadow: none; }
+.radar.radar-big .map-ctl { top: var(--top); right: max(16px, env(safe-area-inset-right)); }
+.radar.radar-big .radar-dry { top: calc(var(--top) + 10px); }
+.radar.radar-big .map-scale, .radar.radar-big .radar-credit { bottom: calc(env(safe-area-inset-bottom) + 168px); }
+.radar.radar-big .map-scale { left: max(16px, env(safe-area-inset-left)); }
+.radar.radar-big .radar-credit { right: max(16px, env(safe-area-inset-right)); }
+.radar.radar-big .radar-legend, .radar.radar-big .radar-dock {
+  position: absolute; z-index: 600; color: var(--ink); background-color: var(--panel); -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 32px -8px rgba(0, 0, 0, 0.35); }
+.radar.radar-big .radar-legend { top: calc(var(--top) + 58px); left: max(16px, env(safe-area-inset-left)); margin: 0; flex-direction: column; gap: 10px; padding: 12px 16px 12px 14px; border-radius: 18px; font-size: 13px; color: var(--ink-2); }
+.radar.radar-big .rl-title { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+.radar.radar-big .rl-rain { flex: none; display: flex; gap: 10px; height: 132px; }
+.radar.radar-big .rl-rain .rl-bar { width: 6px; height: 100%; background: linear-gradient(0deg, var(--stops)); }
+.radar.radar-big .rl-words { width: 72px; height: 100%; margin: 0; }
+.radar.radar-big .rl-words span { left: 0; top: auto; bottom: var(--at); transform: translateY(50%); }
+.radar.radar-big .rl-words span:first-child { transform: none; bottom: 0; }
+.radar.radar-big .rl-words span:last-child { transform: none; left: 0; top: 0; bottom: auto; }
+.radar.radar-big .rl-snow { flex-direction: row; align-items: center; gap: 10px; width: auto; }
+.radar.radar-big .rl-snow .rl-bar { width: 6px; height: 22px; background: linear-gradient(0deg, var(--stops)); }
+.radar.radar-big .radar-dock { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 12px); margin: 0 auto; max-width: 560px; padding: 14px 16px 8px; border-radius: 28px; }
+.radar.light-map.radar-big .radar-play, .radar.light-map.radar-big .radar-full { background-color: rgba(120, 120, 128, 0.16); color: #1c1c1e; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.radar.light-map.radar-big .radar-full { background-color: rgba(255, 255, 255, 0.8); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
+.radar.radar-big .radar-status { display: none; }
+.radar-status { margin-top: 8px; }
+.radar-status:empty { display: none; }
+.radar.said-above:not(.radar-big) .radar-note { display: none; }
+body.no-scroll { overflow: hidden; }
+.radar .leaflet-container { background: #0e1420; font: inherit; }
+/* OpenStreetMap's map, turned dark (the radar above it keeps its colours), where the vector map can't be drawn */
+/* the radar's tiles, drawn smooth (Leaflet asks Safari to keep tiles crisp, which would show their pixels) */
+.radar .rv-tiles .leaflet-tile { image-rendering: auto; }
+.radar .base-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.85) saturate(0.35); }
+/* the vector map fades in once the country's drawn, not land-coloured first with the sea filling in after */
+.radar-map .maplibregl-canvas { opacity: 0; transition: opacity 0.4s ease; }
+.radar-map.drawn .maplibregl-canvas { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .radar-map .maplibregl-canvas { transition: none; } }
+/* the map's controls, in glass on it: zoom in and out in one capsule, back to the place below it */
+.map-ctl { position: absolute; top: 10px; right: 10px; z-index: 500; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.map-zoom { display: flex; flex-direction: column; border-radius: 22px; background-color: rgba(14, 22, 38, 0.42); }
+.map-zoom > :first-child { border-radius: 22px 22px 0 0; }
+.map-zoom > :last-child { border-radius: 0 0 22px 22px; }
+.map-zoom button { position: relative; z-index: 3; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
+.map-zoom button + button { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+.map-zoom button:disabled { color: rgba(255, 255, 255, 0.35); cursor: default; }
+/* the map's buttons give under a finger and spring back, as the rest do */
+.map-zoom button { transition: background-color 0.2s, transform 0.42s var(--spring), color 0.2s; }
+.map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
+@media (hover: hover) { .map-zoom button:not(:disabled):hover { background: rgba(255, 255, 255, 0.12); } }
+.map-in, .map-out { position: relative; }
+.map-in::after, .map-out::after, .radar-centre::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
+.radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50%; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
+.radar-centre svg { position: relative; z-index: 3; }
+/* the scale: a bracket drawn on the map, as Maps does */
+.map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 11px; font-weight: 650; line-height: 1.3;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
+/* the place, as Apple's Weather map marks it: its temperature and sky in a bubble the colour of how warm it is
+   (radar.js mark), pointing down to a dot at the very spot, its name under that */
+.map-pin { position: relative; width: 0; height: 0; pointer-events: none; color: #fff; }
+.mp-dot { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; background: #fff; border: 1.5px solid var(--pin, #3f72c6); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.mp-bubble { position: absolute; left: 0; bottom: 11px; transform: translateX(-50%); width: 54px; height: 54px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid #fff;
+  background: var(--pin, #3f72c6); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32); display: grid; justify-items: center; align-content: center; gap: 1px; }
+.mp-bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 6px solid transparent; border-top: 7px solid #fff; border-bottom: 0; }
+.mp-t { font-size: 17px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; padding-left: 0.2em; }
+.mp-i { display: block; width: 22px; height: 22px; }
+.mp-i svg { width: 22px; height: 22px; display: block; }
+.mp-name { position: absolute; left: 0; top: 8px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 600;
+  text-shadow: 0 0 2px rgba(8, 11, 17, 0.9), 0 0 6px rgba(8, 11, 17, 0.6); }
+.light-map .mp-name { color: #1c1c1e; text-shadow: 0 0 2px #fff, 0 0 6px rgba(255, 255, 255, 0.9); }
+/* (before the page has its temperature: the dot alone) */
+.map-pin:not([data-on="1"]) .mp-bubble, .map-pin:not([data-on="1"]) .mp-name { display: none; }
+.map-pin-at { width: 0 !important; height: 0 !important; }
+/* the radar's chip (Radar or Forecast): said in the dock now, as Apple's map says it; kept for its state */
+.radar-chip { display: none !important; }
+/* on the day map, the controls on it in light glass, their ink dark, as Apple's */
+.radar.light-map .radar-map, .radar.light-map .leaflet-container { background: #f2f1ee; }
+.radar.light-map .map-zoom, .radar.light-map .radar-centre, .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
+  background-color: rgba(255, 255, 255, 0.8); color: #1c1c1e; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
+.radar.light-map .map-zoom button { color: #1c1c1e; }
+.radar.light-map .map-zoom button + button { box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.1); }
+.radar.light-map .map-zoom button:disabled { color: rgba(60, 60, 67, 0.3); }
+.radar.light-map .map-scale { color: #1c1c1e; border-color: rgba(28, 28, 30, 0.8); text-shadow: 0 0 2px #fff, 0 0 5px rgba(255, 255, 255, 0.9); box-shadow: none; }
+.radar.light-map .base-tiles { filter: saturate(0.2) brightness(1.04) contrast(0.92); }
+/* the map's credits: in full for a few seconds as it first appears, then a © (that opens them all) */
+.radar-credit { position: absolute; right: 10px; bottom: 10px; z-index: 500; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 13px; cursor: pointer;
+  color: #fff; font: inherit; font-size: 11px; line-height: 1; background-color: rgba(14, 22, 38, 0.5); transition: transform 0.42s var(--spring), filter 0.25s; }
+.radar-credit > .rc-c { position: relative; z-index: 3; font-size: 13px; font-weight: 600; }
+/* (its names in a line or two (radar.js credited), in glass reaching left from the ©: the © itself never changes size, so
+   nothing moves as they fold away into it, clipped back to it) */
+.radar-credit .rc-t { position: absolute; right: 0; bottom: 0; z-index: 1; box-sizing: border-box; min-height: 26px; padding: 4px 28px 4px 10px; border-radius: 13px; white-space: pre; text-align: left; line-height: 1.3;
+  color: inherit; background-color: rgba(14, 22, 38, 0.62); -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35);
+  clip-path: inset(0 round 13px); transition: clip-path 0.6s var(--glide), opacity 0.3s 0.25s; pointer-events: none; }
+.radar.light-map .radar-credit .rc-t { background-color: rgba(255, 255, 255, 0.82); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1); }
+.radar-credit.folded .rc-t { clip-path: inset(0 0 0 calc(100% - 26px) round 13px); opacity: 0; }
+.radar-credit:active { transform: scale(0.88); filter: brightness(1.18); transition-duration: 0.1s; }
+@media (hover: hover) { .radar-credit.folded:hover .rc-t, .radar-credit.folded:focus-visible .rc-t { clip-path: inset(0 round 13px); opacity: 1; transition: clip-path 0.4s var(--glide), opacity 0.15s; } }
+/* (a picture over the map fading away under the next: mapleaf.js fadeOut) */
+.radar .rv-was { transition: opacity 0.26s ease; }
+@media (prefers-reduced-motion: reduce) { .radar .rv-was { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .radar-credit, .radar-credit .rc-t { transition: none; } }
+
+/* ---------- credits ---------- */
+/* each source a row in a group, as Settings lists them; out to its site */
+.credits { list-style: none; margin: 0; padding: 0 14px; border-radius: 18px; }
+.credits li + li { border-top: 1px solid var(--line); }
+/* an official warning, in full */
+.warn-from { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.warn-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px;
+  background: linear-gradient(180deg, #ffc94d, #f5a10f); color: #241700; }
+.warning-sheet[data-colour="yellow"] .warn-badge { background: linear-gradient(180deg, #ffe45c, #f2c200); color: #231c00; }
+.warning-sheet[data-colour="orange"] .warn-badge { background: linear-gradient(180deg, #ffad5c, #ff8a00); color: #2a1300; }
+.warning-sheet[data-colour="red"] .warn-badge { background: linear-gradient(180deg, #ff7a70, #e8453a); color: #fff; }
+.warn-when { margin: 4px 0 0; font-size: 14px; color: var(--text-3); }
+.warn-headline { margin: 14px 0 0; font-size: 17px; font-weight: 600; line-height: 1.38; }
+#warning-body > p:not([class]) { margin: 0 0 10px; font-size: 15px; line-height: 1.5; color: var(--text-2); }
+.warn-list { margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.5; color: var(--text-2); }
+.warn-list li { margin: 0 0 6px; }
+.warn-link { margin: 16px 0 0; }
+.warn-link a { display: inline-flex; align-items: center; min-height: 44px; color: var(--tint-blue); font-weight: 600; text-decoration: none; }
+.credits a { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; color: inherit; text-decoration: none; transition: opacity 0.2s; }
+.credits a:active { opacity: 0.55; transition-duration: 0.08s; }
+.credits a > span { flex: 1; min-width: 0; }
+.credits b { display: block; font-weight: 600; }
+.credits small { display: block; margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--text-3); }
+.credits .cr-out { flex: none; color: var(--text-3); }
+/* (Open-Meteo's credit, as it asks for it, over the sources it brings) */
+.credits-lead { margin: 0 4px 10px; font-size: 13px; line-height: 1.4; color: var(--text-2); }
+.credits-lead a { color: var(--tint-blue); text-decoration: none; }
+.credits-note { margin: 22px 4px 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
+
+/* ---------- accuracy ---------- */
+.models.acc td { white-space: nowrap; }
+.best { margin-left: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background-color: rgba(52, 199, 89, 0.34); color: #d8fbe2; vertical-align: 1px; display: inline-block; }
+.tuned-note { color: #cfe7ff; margin: -4px 0 12px; }
+.models .tuned-row td { color: #cfe7ff; font-weight: 650; }
+
+/* ---------- settings: notifications, activities ---------- */
+fieldset.opt .note { width: 100%; margin: 2px 4px 0; font-size: 13px; color: var(--text-2); }
+fieldset.opt .note:empty { display: none; }
+.pill-btn { border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.pill-btn > * { position: relative; z-index: 3; }
+.acts-list { list-style: none; margin: 0 0 4px; padding: 0 16px; width: 100%; border-radius: 22px; }
+.act { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 12px; padding: 10px 0; }
+.act + .act { border-top: 0.5px solid var(--line); }
+.act label.switch { grid-column: 1 / -1; padding: 2px 0; min-height: 36px; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; font-weight: 600; gap: 10px; }
+.act-icon { display: inline-flex; color: var(--text-2); }
+.act-lim { font-size: 13px; color: var(--text-3); }
+.act-edit { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; width: 100%; padding: 12px; border-radius: var(--r-inner); margin: 4px 0; }
+.fld { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-3); background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 0 !important; min-height: 0 !important; border-radius: 0 !important; }
+fieldset.opt label.fld { align-items: stretch; }
+.fld.wide { grid-column: span 2; }
+.fld-in { display: flex; align-items: center; gap: 6px; }
+.fld input, .fld select, .acts-add select { background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 12px; padding: 9px 11px; color: #fff; font-size: 15px; width: 100%; min-width: 0; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22); }
+.fld input:focus, .fld select:focus, .acts-add select:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(159, 208, 255, 0.45); }
+.fld small { color: var(--text-3); }
+.act-btns { grid-column: span 2; display: flex; gap: 16px; align-items: center; }
+.link.danger { color: #ffb3ad; }
+.acts-add { display: flex !important; align-items: center; gap: 10px; width: 100%; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 4px 0 !important; color: var(--text-2); border-radius: 0 !important; }
+.acts-add select { width: auto; flex: 1; }
+select option { color: #fff; background: #1c2434; }
+
+/* ---------- when transparency is turned down, or contrast up ---------- */
+@media (prefers-reduced-transparency: reduce) {
+  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
+  .map-zoom, .radar-centre, .radar-credit, .top::before, .radar-dry {
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
+  .top::before { background: rgb(20, 28, 44); }
+  .radar.radar-big .radar-legend, .radar.radar-big .radar-dock { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(28, 32, 42); }
+  .radar.light-map.radar-big .radar-legend, .radar.light-map.radar-big .radar-dock { background-color: rgb(248, 248, 250); }
+  .top.scrolled .place, .top.scrolled .icon-btn { background-color: rgb(52, 62, 80); }
+  .card, .ins, .tile, .section-title, dialog.sheet, .c-tip { background-color: rgb(28, 36, 52); }
+  .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
+  .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
+  .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
+  .icon-btn, .place, .pill-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .map-zoom,
+  .radar-credit { background-color: rgb(52, 62, 80); }
+}
+@media (prefers-contrast: more) {
+  :root { --text-2: #fff; --text-3: rgba(255, 255, 255, 0.88); --line: rgba(255, 255, 255, 0.3); }
+  body { --tint: rgba(10, 14, 24, 0.7); }
+  dialog.sheet, .c-tip { --tint: rgba(10, 14, 24, 0.85); }
+  .card::before, .ins::before, .tile::before, .icon-btn::before, .place::before { background: rgba(255, 255, 255, 0.6); }
+}
