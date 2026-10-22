@@ -12,6 +12,7 @@ import { radar, rainAt } from "./radar.js";
 import { blend } from "./rainmap.js";
 import { oneRain } from "./agree.js";
 import { inForce, covered, colourOf, titleOf, badgeOf, spanOf, glyphOf } from "./official.js";
+import * as A from "./account.js";
 
 const $ = (id) => document.getElementById(id);
 function h(tag, attrs = {}, ...kids) {
@@ -44,7 +45,6 @@ function loadSettings() {
   const d = {
     ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true,
     activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
-    notify: { rain: false, brief: false, warn: false, briefAt: "07:00", place: null },
   };
   // (only values the app knows: a damaged or out-of-date one falls back to the default)
   const k = store.get("wx:settings"), o = k && typeof k === "object" && !Array.isArray(k) ? k : {};
@@ -53,15 +53,27 @@ function loadSettings() {
     temp: one(o.temp, ["c", "f"], d.temp), wind: one(o.wind, ["mph", "kmh", "ms", "kn"], d.wind), precip: one(o.precip, ["mm", "in"], d.precip),
     pressure: one(o.pressure, ["hpa", "inhg", "mmhg"], d.pressure), clock: one(o.clock, ["12", "24"], d.clock), tune: o.tune !== false,
     glass: one(o.glass, ["clear", "standard", "tinted"], "standard"),
-    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: obj(o.notify, d.notify),
+    commute: obj(o.commute, d.commute), extras: obj(o.extras, d.extras), notify: notifyOf(o.notify),
     activities: Array.isArray(o.activities) ? o.activities.filter((a) => a && typeof a === "object" && typeof a.name === "string") : d.activities,
   };
   S.f = makeFormat(S.settings);
   document.body.dataset.glass = S.settings.glass;
 }
-const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); document.body.dataset.glass = S.settings.glass; };
+// Which notifications for which places: { places: [{ lat, lon, name, gps?, rain, warn }], brief: { lat, lon, name, gps? }
+// or null, briefAt, endpoint (this device's push address, while it has them), devId (the server's name for it), syncedAt }
+// (kept from before as one place, for whichever were on: the same, for that place)
+function notifyOf(n) {
+  n = n && typeof n === "object" && !Array.isArray(n) ? n : {};
+  const spot = (p) => (p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? { lat: p.lat, lon: p.lon, name: String(p.name || ""), ...(p.gps ? { gps: true } : {}) } : null);
+  const at = /^\d\d:\d\d$/.test(n.briefAt || "") ? n.briefAt : "07:00", keep = { endpoint: n.endpoint || null, devId: n.devId || null, syncedAt: n.syncedAt || 0 };
+  if (!Array.isArray(n.places)) { const p = spot(n.place); return { places: p && (n.rain || n.warn) ? [{ ...p, rain: !!n.rain, warn: !!n.warn }] : [], brief: p && n.brief ? p : null, briefAt: at, ...keep }; }
+  const places = n.places.map((x) => { const p = spot(x); return p && (x.rain || x.warn) ? { ...p, rain: !!x.rain, warn: !!x.warn } : null; }).filter(Boolean);
+  return { places, brief: n.brief && typeof n.brief === "object" ? spot(n.brief) : null, briefAt: at, ...keep };
+}
+// (kept, and signed in, sent to the account soon after: inStepSoon)
+const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); document.body.dataset.glass = S.settings.glass; inStepSoon(); };
 const place = () => S.places[S.cur] || null;
-const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur", S.cur); };
+const savePlaces = () => { store.set("wx:places", S.places); store.set("wx:cur", S.cur); inStepSoon(); };
 
 /* ---------- start ---------- */
 async function start() {
@@ -112,6 +124,10 @@ async function start() {
     navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch(() => {});
     setTimeout(keepNotify, 4000);
   }
+  // your account: signed in, as it was last time, till the server says (and whether you've signed in elsewhere on the site)
+  const k = store.get("wx:acct");
+  if (k?.handle) S.acct = { name: k.name, handle: k.handle, devices: k.devices || [], state: "ok" };
+  pull();
 }
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
@@ -185,6 +201,7 @@ function opened() {
   if (newApp) { location.reload(); return; }
   openedAt = Date.now();
   if ("serviceWorker" in navigator && Date.now() - appAt > 60e3) { appAt = Date.now(); navigator.serviceWorker.getRegistration().then((r) => r?.update()).catch(() => {}); }
+  if (Date.now() - pulledAt > 60e3) pull();
   check(true);
 }
 function check(opening = false) {
@@ -1493,9 +1510,13 @@ async function locate(quiet = false) {
     // (found quietly, as it's opened: the place being looked at stays the one looked at; and still in the same square
     // of the forecast's, what's being asked for already is what's wanted)
     const mine = !quiet || !S.places.length || !!place()?.gps, same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
+    // (My Location's notifications, if it has any, follow it)
     const named = (name) => {
-      const n = S.settings.notify;
-      if (notifying(n) && n.place?.gps && (cell(n.place.lat, n.place.lon) !== cell(lat, lon) || n.place.name !== name)) { n.place = { lat, lon, name, gps: true }; saveSettings(); syncNotify().catch(() => {}); }
+      const n = S.settings.notify, moved = (q) => q?.gps && (cell(q.lat, q.lon) !== cell(lat, lon) || q.name !== name);
+      const all = [...n.places, n.brief].filter(moved);
+      if (!all.length) return;
+      for (const q of all) Object.assign(q, { lat, lon, name });
+      saveSettings(); notifySaved().catch(() => {});
     };
     // (named as it was, until the new name's found, if it's not gone far; "My Location" if it has)
     const as = was || (same ? before : null);
@@ -1520,6 +1541,7 @@ async function locate(quiet = false) {
 // what the page says of a place now, in peek()'s (data.js) form
 const onPage = (wx) => { const now = nowWall(wx.place.offset), c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now); return c && { temp: c.temp, code: c.code, isDay: c.isDay, offset: wx.place.offset, hi: d?.tmax ?? null, lo: d?.tmin ?? null }; };
 function drawSaved() {
+  drawInStep();
   const f = S.f, box = $("saved"), had = document.activeElement?.closest?.("#saved .pc-li"), at = had ? [...box.children].indexOf(had) : -1;
   box.replaceChildren(...S.places.map((p, i) => {
     // (the place on show as the page has it, its sky and its high and low the same as there; the rest as last kept)
@@ -1531,7 +1553,12 @@ function drawSaved() {
         h("span", { class: "pc-sub" }, [p.gps && p.name !== "My Location" ? "My Location" : p.region?.split(",")[0], k ? f.time(Date.now() + k.offset * 1000) : null].filter(Boolean).join(" · ")),
         k ? h("span", { class: "pc-cond" }, label(k.code, k.isDay)) : null),
       h("span", { class: "pc-r" }, k ? h("span", { class: "pc-temp" }, f.temp(k.temp)) : null, k && k.hi != null ? h("span", { class: "pc-hl" }, `H ${f.temp(k.hi)}  L ${f.temp(k.lo)}`) : null));
-    const remove = () => { const was = place(); S.places.splice(i, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go(); };
+    const remove = () => {
+      const was = place(), n = S.settings.notify, k = nkey(p);
+      S.places.splice(i, 1); S.cur = Math.max(0, S.places.indexOf(was)); savePlaces(); drawSaved(); if (was !== place()) go();
+      // (its notifications go with it)
+      if (n.places.some((e) => nkey(e) === k) || (n.brief && nkey(n.brief) === k)) { n.places = n.places.filter((e) => nkey(e) !== k); if (n.brief && nkey(n.brief) === k) n.brief = null; saveSettings(); notifySaved().catch(() => {}); }
+    };
     const li = h("li", { class: "pc-li" }, card, S.places.length > 1 ? [h("button", { class: "pc-del", type: "button", "aria-label": `Remove ${p.name}`, onclick: remove }, h("span", { svg: glyph("trash", 20) }), "Delete"),
       h("button", { class: "pc-bin", type: "button", "aria-label": `Remove ${p.name}`, svg: glyph("trash", 16), onclick: remove })] : null);
     if (S.places.length > 1) swipeOpen(li, card);
@@ -1584,6 +1611,7 @@ function onSearch(now = false) {
 
 /* ---------- settings ---------- */
 function drawSettings() {
+  drawAccount();
   const form = $("settings-form");
   for (const k of ["temp", "wind", "precip", "pressure", "clock", "glass"]) { const r = form.querySelector(`input[name="${k}"][value="${S.settings[k]}"]`); if (r) r.checked = true; }
   form.commute.checked = !!S.settings.commute?.on;
@@ -1605,7 +1633,7 @@ function readSettings(e) {
   if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
   // notifications speak your units too
   const n = S.settings.notify;
-  if (notifying(n) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
+  if ((notifying(n) || n.endpoint) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
 }
 
 // The page behind redrawn once the next frame is out, so a choice's lens has begun to glide (started, it runs by
@@ -1637,7 +1665,7 @@ function nudge() {
 // Settings, open at one of its parts
 function openSettingsAt(id) {
   $("settings-btn").click();
-  setTimeout(() => { const el = $(id); el?.scrollIntoView({ block: "start", behavior: calm.matches ? "auto" : "smooth" }); el?.querySelector("input")?.focus({ preventScroll: true }); }, 450);
+  setTimeout(() => { const el = $(id); el?.scrollIntoView({ block: "start", behavior: calm.matches ? "auto" : "smooth" }); el?.querySelector("button, input")?.focus({ preventScroll: true }); }, 450);
 }
 // why this phone can't have them, if it can't
 function notifyWhy() {
@@ -1662,7 +1690,8 @@ async function post(path, body) {
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
 }
-// tell the server what this phone wants (or that it wants nothing)
+// tell the server what this device wants (or that it wants nothing); signed in, it's the account's choices this device
+// gets (functions/_wxacct.js), and it's one of the account's devices
 // (one at a time, each with the settings as they are when its turn comes: two quick changes can't race each other)
 let syncs = Promise.resolve();
 function syncNotify() {
@@ -1670,31 +1699,33 @@ function syncNotify() {
   syncs = run.catch(() => {});
   return run;
 }
+const canShow = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && Notification.permission === "granted";
 async function syncNow() {
   const n = S.settings.notify;
-  if (!notifying(n)) {
+  if (!S.acct && !notifying(n)) {
     const sub = "serviceWorker" in navigator ? await pushSub(false).catch(() => null) : null;
     if (sub) { await post("/api/weather/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
-    n.endpoint = null; saveSettings();
+    n.endpoint = n.devId = null; saveSettings();
     return;
   }
+  // (signed in, nothing on yet and nothing here before: nothing to tell)
+  if (!canShow() || (S.acct && !notifying(n) && !n.endpoint)) return;
   const sub = await pushSub(true), j = sub.toJSON();
-  await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, place: n.place, rain: n.rain, brief: n.brief, warn: !!n.warn, briefAt: n.briefAt, was: n.endpoint || undefined,
+  const r = await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, places: n.places, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
     units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
-  n.endpoint = j.endpoint; n.syncedAt = Date.now(); saveSettings();
+  n.endpoint = j.endpoint; n.devId = r.id || null; n.syncedAt = Date.now(); saveSettings();
 }
-// with notifications on, now and then (and whenever the browser's changed this phone's subscription), the server's told
-// again, so they keep coming (it forgets phones it hasn't heard from in months)
+// with notifications on, now and then (and whenever the browser's changed this device's subscription), the server's told
+// again, so they keep coming (it forgets devices it hasn't heard from in months)
 async function keepNotify() {
   const n = S.settings.notify;
-  if (!notifying(n) || !("serviceWorker" in navigator) || !("Notification" in window) || Notification.permission !== "granted") return;
+  if ((!notifying(n) && !n.endpoint) || !canShow()) return;
   try {
     const sub = await pushSub(false);
     if (sub && sub.endpoint === n.endpoint && Date.now() - (n.syncedAt || 0) < 7 * 864e5) return;
     await syncNotify();
   } catch (_) {}
 }
-const hereForNotify = () => { const p = place(); return p ? { lat: p.lat, lon: p.lon, name: p.name, gps: !!p.gps } : null; };
 // a time to choose, as "HH:MM": every quarter of an hour, said as the Clock setting says them (and the one chosen,
 // should it be between)
 function fillTimes(sel, at) {
@@ -1703,36 +1734,230 @@ function fillTimes(sel, at) {
   sel.replaceChildren(...list.map((v) => h("option", { value: v }, atText(v))));
   sel.value = at;
 }
-// (any of them on: rain alerts, official warnings, the briefing)
-const notifying = (n) => !!(n.rain || n.brief || n.warn);
+// (any of them on: rain alerts or official warnings for a place, the briefing)
+const notifying = (n) => !!(n.places.length || n.brief);
 const atText = (at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return S.f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };
-async function onNotify() {
-  const form = $("settings-form"), n = S.settings.notify, st = $("notify-status");
-  const want = { rain: form.rain.checked, brief: form.brief.checked, warn: form.warn.checked, briefAt: form.briefAt.value || "07:00" };
-  if ((want.rain && !n.rain) || (want.brief && !n.brief) || (want.warn && !n.warn)) {
-    const why = notifyWhy();
-    if (why) { st.textContent = why; drawNotify(true); return; }
-    // asked straight away, while the tap still counts (Safari won't ask otherwise)
-    const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-    if (perm !== "granted") { st.textContent = "Notifications weren't allowed."; drawNotify(true); return; }
-    if (!notifying(n) || !n.place) n.place = hereForNotify();
-  }
-  Object.assign(n, want);
-  saveSettings();
+// a place, as notifications know it (My Location: wherever it is now)
+const nkey = (p) => A.nkeyOf(p);
+const nname = (p) => (p.gps ? "My Location" : p.name);
+const spotOf = (p) => ({ lat: p.lat, lon: p.lon, name: p.name, ...(p.gps ? { gps: true } : {}) });
+// Allowed to show them here? (asked straight away, while the tap still counts: Safari won't ask otherwise.) Signed in,
+// a choice is the account's whether or not this device can show it: its other devices will. → [go on?, a word to say]
+async function allowed() {
+  const why = notifyWhy(), perm = why ? "denied" : Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+  if (perm === "granted") return [true, ""];
+  const said = why || "Notifications weren't allowed.";
+  return S.acct ? [true, `${said} Your other devices will still get them.`] : [false, said];
+}
+const and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+function onText() {
+  const n = S.settings.notify, rain = n.places.filter((p) => p.rain).map(nname), warn = n.places.filter((p) => p.warn).map(nname);
+  const on = [rain.length ? `rain alerts for ${and(rain)}` : "", warn.length ? `official warnings for ${and(warn)}` : "", n.brief ? `a briefing at ${atText(n.briefAt)} for ${nname(n.brief)}` : ""].filter(Boolean);
+  return on.length ? `On: ${and(on)}.` : "Off.";
+}
+// a choice made: kept, and (signed in) the account's first, then this device told
+async function notifySaved() {
+  if (!S.acct) return syncNotify();
+  await keepInStep();
+  if (!hereToo() && canShow()) { await syncNotify(); refreshDevices(); }
+}
+async function notifyChanged(note = "") {
+  saveSettings(); drawNotify(true);
+  const st = $("notify-status");
   st.textContent = "Saving…";
-  try {
-    await syncNotify();
-    const on = [n.rain ? "rain alerts" : "", n.warn ? "official warnings" : "", n.brief ? `a briefing at ${atText(n.briefAt)}` : ""].filter(Boolean);
-    st.textContent = on.length ? `On: ${on.length > 1 ? `${on.slice(0, -1).join(", ")} and ${on.at(-1)}` : on[0]}.` : "Off.";
-  } catch (err) { st.textContent = `Couldn't save that just now (${err.message}).`; }
-  drawNotify(true);
+  try { await notifySaved(); st.textContent = `${onText()}${note ? ` ${note}` : ""}`; }
+  catch (err) { st.textContent = `Couldn't save that just now (${err.message}).`; }
+  drawNotify(true); drawAccount();
+}
+// rain alerts or official warnings (k) for a place, on or off
+async function togglePlace(p, k) {
+  const n = S.settings.notify, key = nkey(p), e = n.places.find((x) => nkey(x) === key), on = !e?.[k];
+  let note = "";
+  if (on) { const [go, said] = await allowed(); if (!go) { $("notify-status").textContent = said; return; } note = said; }
+  if (e) e[k] = on; else n.places.push({ ...spotOf(p), rain: k === "rain", warn: k === "warn" });
+  n.places = n.places.filter((x) => x.rain || x.warn);
+  await notifyChanged(note);
+}
+// the briefing: on or off, for which place, at what time
+async function onNotify() {
+  const form = $("settings-form"), n = S.settings.notify;
+  let note = "";
+  if (form.brief.checked && !n.brief) { const [go, said] = await allowed(); if (!go) { form.brief.checked = false; $("notify-status").textContent = said; return; } note = said; }
+  const key = form.briefFor.value, p = S.places.find((x) => nkey(x) === key) || (n.brief && nkey(n.brief) === key ? n.brief : place());
+  n.brief = form.brief.checked && p ? spotOf(p) : null;
+  n.briefAt = form.briefAt.value || "07:00";
+  await notifyChanged(note);
 }
 function drawNotify(keepStatus = false) {
-  const n = S.settings.notify, form = $("settings-form"), p = place(), on = notifying(n);
-  form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; form.warn.checked = !!n.warn; fillTimes(form.briefAt, n.briefAt || "07:00");
-  $("notify-place").textContent = on && n.place ? `For ${n.place.gps ? `My Location (${n.place.name})` : n.place.name}.` : "For the place on screen when you turn them on.";
-  $("notify-here").hidden = !(on && n.place && p && cell(p.lat, p.lon) !== cell(n.place.lat, n.place.lon));
-  if (!keepStatus) $("notify-status").textContent = on ? "" : notifyWhy() || "";
+  const n = S.settings.notify, form = $("settings-form"), mine = (p) => n.places.find((e) => nkey(e) === nkey(p)) || {};
+  // each saved place, and any notified of that isn't saved (from before)
+  const rows = [...S.places, ...n.places.filter((e) => !S.places.some((p) => nkey(p) === nkey(e)))];
+  $("notify-places").replaceChildren(...rows.map((p) => {
+    const e = mine(p), name = nname(p);
+    const chip = (k, text) => h("button", { class: "np-chip", type: "button", "data-k": k, "aria-pressed": String(!!e[k]), "aria-label": `${text} for ${name}`, onclick: () => togglePlace(p, k) }, text);
+    return h("li", { class: "np-row", "data-key": nkey(p) }, h("span", { class: "np-name" }, name, p.gps && p.name !== "My Location" ? h("small", {}, p.name) : null), chip("rain", "Rain"), chip("warn", "Warnings"));
+  }));
+  form.brief.checked = !!n.brief;
+  const opts = S.places.map((p) => h("option", { value: nkey(p) }, nname(p)));
+  if (n.brief && !S.places.some((p) => nkey(p) === nkey(n.brief))) opts.push(h("option", { value: nkey(n.brief) }, n.brief.name));
+  form.briefFor.replaceChildren(...opts);
+  form.briefFor.value = n.brief ? nkey(n.brief) : place() ? nkey(place()) : "";
+  fillTimes(form.briefAt, n.briefAt || "07:00");
+  if (!keepStatus) $("notify-status").textContent = notifying(n) ? onText() : S.acct ? "" : notifyWhy() || "";
+}
+
+/* ---------- your account ---------- */
+// Signed in to your georgefarrowgreen.com account (weather/account.js), your saved places, settings and notifications are
+// kept with it, in step on every device you're signed in on. S.acct: { name, handle, devices, state } while signed in;
+// kept (wx:acct) with the version last in step and what was kept then (snap), so a change made meanwhile, here or on
+// another device, is put together with the other's rather than either being lost.
+const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities"];
+const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
+const PASSKEY = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"/><path d="M2.5 20c.8-3 2.9-4.6 5.5-4.6 1.1 0 2.1.3 3 .8M16.5 8.5a2.5 2.5 0 1 1 0 5v5l1.5-1.5 1.5 1.5v-3.2"/></svg>';
+const TICK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg>';
+// (an object's keys in order, so the same settings always read the same)
+const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
+// what's here, as it's kept with the account (My Location is each device's own)
+const mine = () => ({
+  places: S.places.filter((p) => !p.gps).map((p) => ({ name: p.name, region: p.region || "", lat: p.lat, lon: p.lon })),
+  settings: Object.fromEntries(SYNCED.map((k) => [k, S.settings[k]])),
+  notify: { places: S.settings.notify.places, brief: S.settings.notify.brief, briefAt: S.settings.notify.briefAt },
+});
+const snapOf = (d) => ({ places: (d.places || []).map(A.keyOf), settings: canon(d.settings || null), notify: d.notify || null });
+const sameAs = (now, snap) => canon(now.places.map(A.keyOf)) === canon(snap.places) && canon(now.settings) === snap.settings && !A.notifyChanges(now.notify, snap.notify).length;
+// the account's and this device's put together (first: just signed in, so all of this device's is new to the account;
+// the account's settings, if it has any)
+function combine(theirs, now, snap, first = false) {
+  const tn = theirs.notify || { places: [], brief: null }, theirSettings = theirs.settings && Object.keys(theirs.settings).length ? theirs.settings : null;
+  return {
+    places: A.mergePlaces(theirs.places || [], now.places, first ? [] : snap.places),
+    settings: first ? theirSettings || now.settings : canon(now.settings) !== snap.settings ? now.settings : theirSettings || now.settings,
+    notify: A.mergeNotify(tn, now.notify, first ? A.notifyChanges(now.notify, tn).filter((k) => k === "brief" ? !tn.brief : !tn.places.some((q) => nkey(q) === k)) : A.notifyChanges(now.notify, snap.notify)),
+  };
+}
+// taken up here: the places (My Location first, as ever, and the one on show still on show), settings and notifications
+function takeUp(d) {
+  const here = place(), gps = S.places.find((p) => p.gps), units = canon([S.settings.temp, S.settings.wind, S.settings.precip, S.settings.clock]);
+  const list = d.places.map((p) => ({ ...(S.places.find((x) => !x.gps && A.keyOf(x) === A.keyOf(p)) || {}), ...p }));
+  if (gps || list.length) S.places = gps ? [gps, ...list] : list;
+  const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && A.keyOf(p) === A.keyOf(here)));
+  S.cur = Math.max(0, at);
+  store.set("wx:places", S.places); store.set("wx:cur", S.cur);
+  const n = S.settings.notify;
+  const theirs = Object.fromEntries(SYNCED.filter((k) => d.settings && k in d.settings).map((k) => [k, d.settings[k]]));
+  store.set("wx:settings", { ...S.settings, ...theirs, notify: { ...d.notify, endpoint: n.endpoint, devId: n.devId, syncedAt: n.syncedAt } });
+  loadSettings();
+  if (here && at < 0) go(); else if (S.wx) render();
+  if (units !== canon([S.settings.temp, S.settings.wind, S.settings.precip, S.settings.clock]) && notifying(S.settings.notify)) syncNotify().catch(() => {});
+  drawSaved(); if ($("settings").open) drawSettings();
+}
+// Sending what's changed here (one at a time; a change while one's going goes after it), and if the account's moved on
+// meanwhile, putting the two together and sending that
+let stepping = null, stepAgain = false, stepTimer = 0;
+function inStepSoon() { if (!S.acct) return; clearTimeout(stepTimer); stepTimer = setTimeout(() => keepInStep().catch(() => {}), 1200); }
+function keepInStep() {
+  if (stepping) { stepAgain = true; return stepping; }
+  stepping = (async () => { try { do { stepAgain = false; await stepOnce(); } while (stepAgain); } finally { stepping = null; } })();
+  return stepping;
+}
+async function stepOnce() {
+  for (let tries = 0; tries < 3; tries++) {
+    const k = store.get("wx:acct");
+    if (!k || !S.acct) return;
+    const now = mine();
+    if (sameAs(now, k.snap)) { inStep("ok"); return; }
+    inStep("saving");
+    let r;
+    try { r = await A.save(k.ver, now); }
+    catch (e) { if (e.status === 401) signedOut(); else inStep(e.offline ? "waiting" : "error"); throw e; }
+    if (!r.conflict) { store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) }); inStep("ok"); return; }
+    takeUp(combine(r.data, now, k.snap));
+    store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) });
+  }
+}
+function inStep(state) { if (!S.acct || S.acct.state === state) return; S.acct.state = state; drawInStep(); drawAccount(); }
+// The account as the server has it (on opening, and again on coming back after a minute): signed out elsewhere, signed
+// in elsewhere on the site, or changed on another device
+let pulledAt = 0;
+async function pull() {
+  pulledAt = Date.now();
+  let r;
+  try { r = await A.me(); } catch (_) { if (S.acct && S.acct.state === "ok") inStep("waiting"); return; }
+  if (!r.signedIn) { if (S.acct || store.get("wx:acct")) signedOut(); return; }
+  await adopt(r);
+}
+async function adopt(r) {
+  const k = store.get("wx:acct"), fresh = !k || k.handle !== r.handle;
+  S.acct = { name: r.name, handle: r.handle, devices: r.devices || [], state: S.acct?.state || "ok" };
+  if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
+  else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
+  store.set("wx:acct", { handle: r.handle, name: r.name, devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
+  drawAccount(); drawInStep();
+  try { await keepInStep(); } catch (_) {}
+  // (this device, if it shows notifications, one of the account's)
+  if (fresh && canShow() && (notifying(S.settings.notify) || S.settings.notify.endpoint)) { await syncNotify().catch(() => {}); refreshDevices(); }
+}
+async function refreshDevices() {
+  try { const r = await A.me(); if (r.signedIn && S.acct) { S.acct.devices = r.devices || []; const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, devices: S.acct.devices }); drawAccount(); } } catch (_) {}
+}
+// this device among the account's that get its notifications
+const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
+function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
+async function signIn(how, email, password) {
+  const said = $("acct-said"), btns = [...$("acct").querySelectorAll("button")];
+  said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
+  try { await adopt(how === "passkey" ? await A.withPasskey() : await A.withPassword(email, password)); }
+  catch (e) { const s2 = $("acct-said"); if (s2) { s2.textContent = e.message; s2.classList.add("bad"); } }
+  finally { btns.forEach((b) => (b.disabled = false)); }
+}
+async function signOutHere() {
+  const said = $("acct-said");
+  said.classList.remove("bad"); said.textContent = "Signing out…";
+  try { await A.signOut(S.settings.notify.endpoint); signedOut(); }
+  catch (e) { said.textContent = e.message; said.classList.add("bad"); }
+}
+// this device getting the account's notifications too
+async function sendHere() {
+  const [go, said] = await allowed();
+  if (!go || !canShow()) { $("acct-said").textContent = said; return; }
+  try { await syncNotify(); await refreshDevices(); } catch (e) { $("acct-said").textContent = `Couldn't do that just now (${e.message}).`; }
+}
+const STATES = { ok: "In step", saving: "Saving…", waiting: "Will go up when you're online", error: "Couldn't save just now" };
+function drawAccount() {
+  const box = $("acct"); if (!box) return;
+  const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
+  $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
+  if (!a) {
+    const form = h("form", { class: "acct-form", hidden: true, onsubmit: (e) => { e.preventDefault(); signIn("password", form.email.value.trim(), form.password.value); } },
+      h("input", { type: "email", name: "email", autocomplete: "username", placeholder: "Email", "aria-label": "Email", required: true, autocapitalize: "off", spellcheck: "false" }),
+      h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", required: true }),
+      h("button", { class: "acct-btn primary", type: "submit" }, "Sign in"));
+    box.replaceChildren(...[
+      h("div", { class: "acct-card" }, h("span", { class: "acct-ic", svg: PERSON }),
+        h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Your places on every device"),
+          h("span", {}, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."))),
+      A.passkeysWork() ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
+      h("button", { class: "acct-btn", type: "button", id: "acct-password", "aria-expanded": "false", onclick: (e) => { form.hidden = !form.hidden; e.currentTarget.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) form.email.focus(); } }, "Sign in with email and password"),
+      form, said].filter(Boolean));
+    return;
+  }
+  const n = S.settings.notify, to = a.devices.map((d) => (d.id === n.devId ? "This device" : d.label));
+  box.replaceChildren(...[
+    h("div", { class: "acct-card in" }, h("span", { class: "acct-av", "aria-hidden": "true" }, (String(a.name || "").trim()[0] || "?").toUpperCase()),
+      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com account`))),
+    h("ul", { class: "acct-rows" },
+      h("li", {}, h("span", {}, "Places and settings"), h("span", { class: a.state === "ok" ? "acct-ok" : "", id: "acct-state" }, a.state === "ok" ? h("span", { svg: TICK }) : null, STATES[a.state] || STATES.ok)),
+      h("li", {}, h("span", {}, "Notifications go to"), h("span", {}, to.length ? and(to) : "No devices yet"))),
+    notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn", type: "button", id: "acct-here", onclick: sendHere }, "Send notifications here too") : null,
+    h("button", { class: "acct-btn", type: "button", id: "acct-out", onclick: signOutHere }, "Sign out"),
+    said].filter(Boolean));
+}
+// beside "Saved" in Places: that they're in step with the account
+function drawInStep() {
+  const sub = document.querySelector("#places .sheet-sub");
+  if (!sub) return;
+  const a = S.acct;
+  sub.replaceChildren("Saved", ...(a ? [h("span", { class: "sync-line" }, a.state === "ok" ? [h("span", { svg: TICK }), "In step with your account"] : STATES[a.state])] : []));
 }
 
 /* ---------- your activities ---------- */
@@ -1989,8 +2214,7 @@ function wire() {
   $("locate-btn").addEventListener("click", () => locate());
   $("settings-btn").addEventListener("click", () => { drawSettings(); openSheet($("settings")); });
   $("settings-form").addEventListener("change", readSettings);
-  for (const k of ["rain", "brief", "warn", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
-  $("notify-here").addEventListener("click", () => { S.settings.notify.place = hereForNotify(); saveSettings(); $("notify-status").textContent = "Saving…"; syncNotify().then(() => { $("notify-status").textContent = "Moved to this place."; }, (e) => { $("notify-status").textContent = `Couldn't save that just now (${e.message}).`; }); drawNotify(true); });
+  for (const k of ["brief", "briefFor", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
   $("act-add").addEventListener("change", addAct);
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
   // (full screen, it closes with an ×, as Apple's Weather map does)

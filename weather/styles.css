@@ -959,6 +959,47 @@ select.at { -webkit-appearance: none; appearance: none; font: inherit; font-vari
 select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 fieldset.opt label.at-row { width: 100%; }
 .at-row select.at { margin-left: auto; }
+/* notifications for each saved place: rain alerts and official warnings, each a chip; and the briefing's place */
+.np { list-style: none; margin: 0 0 4px; padding: 0 4px; width: 100%; display: grid; }
+.np-row { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+.np-row + .np-row { border-top: 0.5px solid rgba(255, 255, 255, 0.1); }
+.np-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-name small { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.np-chip { flex: none; font: inherit; font-size: 13px; font-weight: 600; min-height: 34px; padding: 0 13px; border-radius: 999px; border: 0; cursor: pointer; color: var(--text-2);
+  background-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); transition: background-color 0.2s, color 0.2s; }
+.np-chip[aria-pressed="true"] { color: #fff; background-color: #2f6fde; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.np-chip:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.brief-for select.at { max-width: 60%; text-overflow: ellipsis; }
+#notify-set:not(:has(input[name="brief"]:checked)) .at-row { opacity: 0.5; }
+
+/* your account (weather/account.js), at the top of Settings: signed out, what it's for and how to sign in; signed in,
+   who, whether your places are in step, and where notifications go */
+.acct { display: grid; gap: 10px; margin: 2px 0 22px; }
+.acct-card { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 20px; background-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+.acct-ic, .acct-av { flex: none; display: grid; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(160deg, #6fb0ff, #2b62d6); box-shadow: 0 4px 14px -4px rgba(45, 111, 224, 0.7); }
+.acct-ic { width: 44px; height: 44px; }
+.acct-av { width: 48px; height: 48px; font-size: 21px; font-weight: 700; }
+.acct-txt { display: grid; gap: 3px; min-width: 0; }
+.acct-txt b { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.acct-txt span { font-size: 13.5px; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
+.acct-btn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 18px; border-radius: 999px; border: 0; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; color: var(--text); background-color: rgba(255, 255, 255, 0.1); }
+.acct-btn.primary { background: linear-gradient(180deg, #4f95ff, #2563d9); color: #fff; box-shadow: 0 8px 22px -10px rgba(37, 99, 217, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.acct-btn:disabled { opacity: 0.55; cursor: default; }
+.acct-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.acct-btn > span { display: inline-grid; }
+.acct-form { display: grid; gap: 8px; }
+.acct-form input { font: inherit; font-size: 16px; color: inherit; min-height: 46px; padding: 0 16px; border-radius: 14px; border: 0; background-color: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.16); }
+.acct-form input:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.acct-rows { list-style: none; margin: 0; padding: 2px 16px; border-radius: 18px; background-color: rgba(255, 255, 255, 0.06); }
+.acct-rows li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; font-size: 14.5px; }
+.acct-rows li + li { border-top: 0.5px solid rgba(255, 255, 255, 0.12); }
+.acct-rows li > span:last-child { color: var(--text-2); text-align: right; display: inline-flex; gap: 5px; align-items: center; min-width: 0; }
+.acct-ok { color: #7fe0a0 !important; }
+.acct-said { margin: 0 4px; font-size: 13px; line-height: 1.4; color: var(--text-2); }
+.acct-said:empty { display: none; }
+.acct-said.bad { color: #ffb4a8; }
+/* the places in step with the account, said beside "Saved" */
+.sync-line { margin-left: 8px; font-size: 12px; font-weight: 600; color: #7fe0a0; display: inline-flex; gap: 4px; align-items: center; text-transform: none; letter-spacing: 0; }
 
 /* the day */
 /* the days along the top of a day's sheet, as Weather has them: the day, and its date in a circle when it's the one shown */

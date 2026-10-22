@@ -3,11 +3,14 @@ import { db, DAY } from "./_pigeon.js";
 import { removeFromGroups } from "./_groups.js";
 import { dropReacts } from "./_reacts.js";
 import { keepSentTo } from "./_retention.js";
+import { dropAccount } from "./_wxpush.js";
 
 export const avatarKey = (id) => `pigeon-avatars/${id}`;
 
 export async function removeAccount(env, id) {
   await dropReacts(env, { user: id });
+  // (and what the site's other apps kept with the account: functions/_account.js)
+  await dropAccount(env, id);
   await removeFromGroups(env, id);
   const D = await db(env);
   if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));

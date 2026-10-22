@@ -32,3 +32,4 @@ lookup
 secscreens
 insights
 wxapp
+wxacct

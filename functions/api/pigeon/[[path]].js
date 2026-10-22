@@ -25,6 +25,7 @@ import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
+import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn } from "../../_account.js";
 import { storageReport } from "../../_retention.js";
 import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
@@ -114,7 +115,8 @@ async function signup({ request, env, waitUntil }) {
   }
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
   waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
-  return json({ token: await issueSession(env, id, request), me: meView(u, t) });
+  const token = await issueSession(env, id, request);
+  return withSession(json({ token, me: meView(u, t) }), request, env, token);
 }
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
@@ -157,41 +159,31 @@ async function confirmResend({ request, env }) {
 // The salt is public input to the phone's password stretching. Unknown emails
 // get a stable made-up salt, so this can't be used to test who has an account.
 async function salt({ request, env }) {
-  await limit(env, "salt:" + clientIp(request), 60, 15 * 60e3);
-  const email = String((await body(request)).email || "").trim().toLowerCase();
-  const u = await (await db(env)).prepare("SELECT salt FROM pg_users WHERE email = ?").bind(email).first();
-  const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);       // (worked out either way, so the time taken says nothing)
-  return json({ salt: u ? u.salt : "a2:" + b64url(fake.slice(0, 16)) });
+  return json({ salt: await saltFor(env, request, (await body(request)).email) });
 }
 
+// (the checks are the site's, the same wherever its account's signed in to: functions/_account.js)
 async function login({ request, env, waitUntil }) {
-  const b = await body(request);
-  const email = String(b.email || "").trim().toLowerCase();
-  await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
-  if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
-  // Only wrong passwords count against an account, and only from where they were tried: 30 an hour
-  // from one address holds that address back, and only a spread-out guessing (300 an hour, from
-  // many addresses at once) holds back the account itself. So guessing elsewhere can't lock you out.
-  const em = hex(await sha256(email)).slice(0, 32), D = await db(env), now0 = Date.now();
-  const here = "loginacct:" + em + ":" + hex(await sha256(clientIp(request))).slice(0, 16), acct = "loginacct:" + em;
-  for (const [key, max] of [[here, 30], [acct, 300]]) {
-    const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
-    if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);
-  }
-  const u = await D.prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
-  if (!u || !(await proofOk(env, b.proof, u.proof_hash))) {
-    await limit(env, here, 30, 60 * 60e3).catch(() => {}); await limit(env, acct, 300, 60 * 60e3).catch(() => {});
-    throw new HttpError(401, "That email and password don’t match an account.");
-  }
+  const u = await passwordUser(env, request, await body(request));
   const token = await issueSession(env, u.id, request);
-  waitUntil(notifySignIn(env, u, request, "Password", linkOrigin(request)).catch(() => {}));
-  return json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
+  waitUntil(tellSignIn(env, u, request, "Password", linkOrigin(request)).catch(() => {}));
+  return withSession(json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) }), request, env, token);
 }
 
 async function logout({ request, env }) {
   const u = await requireUser(request, env);
   await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
-  return json({ ok: true });
+  // (the browser's sign-in for the whole site too, if it's this one: functions/_account.js)
+  const c = cookieToken(request, env);
+  return c && hex(await sha256(c)) === u.sessionHash ? withoutSession(json({ ok: true }), request, env) : json({ ok: true });
+}
+// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): that sign-in, to carry on
+// with once the key's unlocked (the password-locked key: the password unlocks it on the phone)
+async function resume({ request, env }) {
+  sameOrigin(request);
+  const u = await cookieUser(request, env, true);
+  if (!u) return json({ signedIn: false });
+  return json({ signedIn: true, token: u.token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), salt: u.salt });
 }
 
 // The password-locked key, for a signed-in phone that needs to unlock it again
@@ -409,12 +401,12 @@ async function deleteMe({ request, env }) {
   const u = await requireUser(request, env);
   requireFresh(u);
   await removeAccount(env, u.id);
-  return json({ ok: true });
+  return withoutSession(json({ ok: true }), request, env);
 }
 
 /* ---------------- passkeys ---------------- */
 async function passkeyOptions({ request, env }) {
-  const b = await body(request), rpId = rpIdFor(request);
+  const b = await body(request), rpId = rpIdFor(request, env);
   if (b.mode === "register") {
     const u = await requireUser(request, env);
     requireFresh(u);
@@ -483,7 +475,7 @@ async function reauth({ request, env }) {
   else if (b.authenticatorData) {
     await checkClientData(env, request, b, "webauthn.get", "login");
     const cred = await D.prepare("SELECT * FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id || ""), u.id).first();
-    ok = !!cred && await verifyAssertion(cred, request, b);
+    ok = !!cred && await verifyAssertion(cred, request, b, env);
   }
   if (!ok) throw new HttpError(401, b.proof ? "That password isn’t right." : "That passkey didn’t check out.", "password");
   await D.prepare("UPDATE pg_sessions SET auth_at = ? WHERE hash = ?").bind(Date.now(), u.sessionHash).run();
@@ -503,19 +495,10 @@ async function passkeyVault({ request, env }) {
 }
 
 async function passkeyLogin({ request, env, waitUntil }) {
-  await limit(env, "pklogin:" + clientIp(request), 20, 15 * 60e3);
-  const b = await body(request);
-  await checkClientData(env, request, b, "webauthn.get", "login");
-  const D = await db(env);
-  const cred = await D.prepare("SELECT * FROM pg_passkeys WHERE id = ?").bind(String(b.id || "")).first();
-  if (!cred) throw new HttpError(401, "This passkey isn’t linked to an InFlight account any more.");
-  if (!(await verifyAssertion(cred, request, b))) throw new HttpError(401, "The passkey signature didn’t check out.");
-  const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();
-  if (!u) throw new HttpError(401, "This account no longer exists.");
-  await D.prepare("UPDATE pg_passkeys SET used_at = ? WHERE id = ?").bind(Date.now(), cred.id).run();
+  const b = await body(request), { u, cred } = await passkeyUser(env, request, b);
   const token = await issueSession(env, u.id, request);
-  waitUntil(notifySignIn(env, u, request, "Passkey", linkOrigin(request)).catch(() => {}));
-  return json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt });
+  waitUntil(tellSignIn(env, u, request, "Passkey", linkOrigin(request)).catch(() => {}));
+  return withSession(json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt }), request, env, token);
 }
 
 async function passkeyDelete({ request, env }) {
@@ -1200,24 +1183,6 @@ async function notifyPasswordChanged(env, u, how, origin) {
 // A new sign-in: the account's phones are told at once, and its email too, so a sign-in
 // that wasn't you is seen (Account → Privacy & Security → Signed-in Phones signs it out).
 // Roughly where from is the country, as Cloudflare has it (the sign-in itself keeps its city too, for Signed-In Phones).
-async function notifySignIn(env, u, request, how, origin) {
-  const device = deviceOf(request) || "a new phone";
-  let where = regionOf(request.cf?.country);
-  if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
-  const on = `${device}${where ? ` in ${where}` : ""}`;
-  await pushTo(env, u.id, { title: "New sign-in", body: `Your InFlight account was signed in on ${on}. Not you? Sign it out in Privacy & Security.`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
-  if (!emailReady(env) || !u.email_ok) return;
-  const { text, html } = emailBody({
-    origin, icon: "shield", title: "A new sign-in",
-    preheader: `@${u.handle} was signed in on ${on}.`,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, your InFlight account was just signed in on ${on}.`,
-      "If this was you, there’s nothing to do. If not, sign it out in Account → Privacy & Security → Signed-in Phones and change your password."],
-    rows: [["Account", `@${u.handle}`], ["On", device], ...(where ? [["Where", where.replace(/^the /, "")]] : []), ["How", how], ["When", ukTime(Date.now())]],
-    button: { label: "Review Your Account", url: appLink(origin, "#account") },
-  });
-  await sendEmail(env, { to: u.email, subject: "A new sign-in to InFlight", text, html }).catch(() => {});
-}
-
 // Has a password turned up in a data breach? Pwned Passwords, asked through here with
 // only the first 5 characters of the password's SHA-1 (k-anonymity): the phone checks
 // the answers itself, so neither this server nor theirs ever sees the password or its
@@ -1327,7 +1292,8 @@ async function resetComplete({ request, env, waitUntil }) {
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
   waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  return json({ token: await issueSession(env, u.id, request), me: meView(updated, t) });
+  const token = await issueSession(env, u.id, request);
+  return withSession(json({ token, me: meView(updated, t) }), request, env, token);
 }
 
 /* ---------------- admin ----------------
@@ -1560,7 +1526,7 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": signup, "GET invite-check": inviteCheck, "POST admin-invite": adminInvite, "GET admin-invites": adminInvites, "POST admin-invite-revoke": adminInviteRevoke, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": signup, "GET invite-check": inviteCheck, "POST admin-invite": adminInvite, "GET admin-invites": adminInvites, "POST admin-invite-revoke": adminInviteRevoke, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
@@ -1581,17 +1547,22 @@ const ROUTES = {
 };
 
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
+// (and the tests' own addresses for the app: CHAT_HOST, functions/_app.js)
+const hostOk = (h, env) => HOSTS.test(h) || String(env.CHAT_HOST || "").split(",").includes(h);
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");
   // (the scheduled notify job calls the site's .pages.dev address, past the custom domain's bot checks: only that, there)
-  if (!HOSTS.test(url.hostname) && !(parts[0] === "notify-tick" && url.hostname === "georgefarrowgreen.pages.dev")) return json({ error: "Not found." }, 404);
+  if (!hostOk(url.hostname, ctx.env) && !(parts[0] === "notify-tick" && url.hostname === "georgefarrowgreen.pages.dev")) return json({ error: "Not found." }, 404);
   const handler = ROUTES[`${ctx.request.method} ${parts[0]}`];
   // pigeons land on a timer; let ordinary traffic notice them (at most once a minute)
   if (ctx.env.DB && parts[0] !== "notify-tick") ctx.waitUntil(maybeTick(ctx.env, linkOrigin(ctx.request)).catch((e) => console.error("pigeon tick", e && e.message)));
   try {
     if (!handler) throw new HttpError(404, "Not found.");
     const trips0 = TRIPS.n, res = await handler(ctx, parts[1]);
+    // signed in here from before the site's sign-in was shared, or since signed out elsewhere with this still going: this
+    // sign-in given to the browser for the site too (functions/_account.js), now it's checked
+    if (parts[0] === "sync" && res.ok && !cookieToken(ctx.request, ctx.env)) withSession(res, ctx.request, ctx.env, /^Bearer (.+)$/.exec(ctx.request.headers.get("Authorization") || "")[1]);
     if (ctx.env.PIGEON_COUNT_DB) try { res.headers.set("X-DB-Trips", String(TRIPS.n - trips0)); } catch (_) {}   // (tests: what it cost)
     return res;
   } catch (e) {

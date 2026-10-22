@@ -4,7 +4,7 @@
 // and then the models'.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dbzOf, mmhOf, rgbaFor, hexFor, shade, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf, rainValues, colour, palette, gridAt } from "../../../weather/rainmap.js";
+import { dbzOf, mmhOf, rgbaFor, hexFor, shade, grid, paint, timeline, LEGEND, decode, ramp, resample, motion, along, blend, partsAt, tileOf, cornerOf, rainValues, colour, palette, gridAt, rainSaid } from "../../../weather/rainmap.js";
 
 test("rain rate ↔ reflectivity (Marshall and Palmer)", () => {
   assert.ok(Math.abs(dbzOf(1) - 23.01) < 0.01);
@@ -317,4 +317,30 @@ test("smoothing from the codes stitched together: the same, byte for byte", () =
     assert.ok(a.some((v, i) => i % 4 === 1 && v > 0), "(some rain in it)");
     assert.ok(a.every((v, i) => v === b[i]), `the same at ${x0},${y0} over ${span}`);
   }
+});
+
+test("the rain about a place in words: nearest, how heavy, which way, and when it might be here", () => {
+  const w = 768, c = w / 2, seen = new Uint8Array(w * w), blank = new Uint8Array(w * w);
+  // (a patch of rain at a given dBZ, centred dx, dy pixels from the place: east and south positive)
+  const patch = (dx, dy, dbz, snow = false) => { const a = new Uint8Array(w * w); for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) a[(c + dy + y) * w + c + dx + x] = (snow ? 111 : 11) + dbz; return a; };
+  // no rain anywhere the radar sees: how far it's clear (half the square, at 51.5°: about 290 km)
+  assert.equal(rainSaid(blank, seen, 51.5), "No rain within about 290 km.");
+  // where the radar doesn't see the place: nothing said
+  const unseen = new Uint8Array(w * w); unseen[c * w + c] = 1;
+  assert.equal(rainSaid(blank, unseen, 51.5), "");
+  // and only as far as it sees: blind from 60 pixels east (about 45 km at 51.5°)
+  const part = new Uint8Array(w * w); for (let y = 0; y < w; y++) for (let x = c + 60; x < w; x++) part[y * w + x] = 1;
+  assert.equal(rainSaid(blank, part, 51.5), "No rain within about 50 km.");
+  // rain over the place
+  assert.equal(rainSaid(patch(0, 0, 30), seen, 51.5), "Moderate rain here now.");
+  // 40 pixels west (about 30 km at 51.5°), heavy, not moving that we know of
+  assert.equal(rainSaid(patch(-46, 0, 40), seen, 51.5), "Heavy rain about 30 km to the west.");
+  // the same, coming east at a pixel a minute (about 45 km/h): here in about 40 minutes
+  assert.equal(rainSaid(patch(-46, 0, 40), seen, 51.5, { vx: 1, vy: 0 }), "Heavy rain about 30 km to the west, moving east at about 45 km/h: it could be here in about 40 minutes.");
+  // going north, past: not this way
+  assert.equal(rainSaid(patch(-46, 0, 40), seen, 51.5, { vx: 0, vy: -1 }), "Heavy rain about 30 km to the west, moving north at about 45 km/h, not this way.");
+  // light snow to the north-east (its nearest edge about 25 km away)
+  assert.equal(rainSaid(patch(30, -30, 15, true), seen, 51.5), "Light snow about 25 km to the north-east.");
+  // too faint to count (under 15 dBZ): as if dry
+  assert.equal(rainSaid(patch(0, 0, 10), seen, 51.5), "No rain within about 290 km.");
 });

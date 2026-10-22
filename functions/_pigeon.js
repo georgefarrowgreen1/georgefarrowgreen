@@ -54,7 +54,7 @@ export function drawMystery() {
 export const DEFAULT_KM = 500;           // if the recipient hasn't set a roost
 export const HANDLE_EVERY = DAY;         // handles can change once a day
 export const MAX_AVATAR = 400 * 1024;    // the phone sends a 512px JPEG, well under this
-const SESSION_TTL = 180 * DAY;
+export const SESSION_TTL = 180 * DAY;
 
 const enc = new TextEncoder();
 
@@ -465,14 +465,19 @@ export const londonDay = (t) => Math.floor((t + londonOffset(t)) / DAY);
 export async function requireUser(request, env) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
   if (!m) throw new HttpError(401, "Please sign in.", "session");
-  const D = await db(env), h = hex(await sha256(m[1])), t = Date.now();
+  return sessionUser(env, m[1]);
+}
+// The account a session's token is for (and that it's still going), however it came: a bearer token, or the site's
+// cookie (functions/_account.js). (inflight: InFlight itself is being used, a day of it noted for its Insights)
+export async function sessionUser(env, token, inflight = true) {
+  const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here)
   const u = await D.prepare("SELECT u.*, s.seen_at AS s_seen, s.auth_at AS s_auth FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.hash = ?").bind(h).first();
   if (!u || t - u.s_seen > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
   // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
   if (t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
     D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h),
-    D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)]);
+    ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
   u.sessionHash = h; u.authAt = u.s_auth || 0; delete u.s_seen; delete u.s_auth;
   return u;
 }
@@ -639,14 +644,20 @@ function derToRawEcdsa(der) {
   const out = new Uint8Array(64); out.set(pad(readInt()), 0); out.set(pad(readInt()), 32);
   return out;
 }
-// Passkeys belong to georgefarrowgreen.com, whichever of InFlight's addresses you're at
-// (georgefarrowgreen.com/pigeon or chat.georgefarrowgreen.com): one passkey works at both
+// Passkeys belong to the site, georgefarrowgreen.com, whichever of its apps' addresses you're at (the site's own,
+// chat. or weather.): one passkey works at all of them (functions/_account.js). A passkey's answer is only taken at the
+// address it was given at, though, but for InFlight's two (georgefarrowgreen.com/pigeon and chat.), which are one app.
+// (ACCOUNT_SITE in the environment: tests, which stand in a site of their own, over plain http)
 const RP_SITE = "georgefarrowgreen.com", ADDRESSES = new Set([RP_SITE, "chat." + RP_SITE]);
-export function rpIdFor(request) { const h = new URL(request.url).hostname; return ADDRESSES.has(h) ? RP_SITE : h; }
-function originOk(origin, request) {
+export function rpIdFor(request, env) {
+  const h = new URL(request.url).hostname, site = env?.ACCOUNT_SITE || RP_SITE;
+  return [site, `chat.${site}`, `weather.${site}`].includes(h) ? site : h;
+}
+function originOk(origin, request, env) {
   try {
     const o = new URL(origin), here = new URL(request.url);
     if (/(^|\.)localhost$/.test(o.hostname) || o.hostname === "127.0.0.1") return here.hostname === o.hostname;   // local testing
+    if (env?.ACCOUNT_SITE && o.host === here.host) return true;                                                    // (and the tests' site)
     return o.protocol === "https:" && (o.host === here.host || (ADDRESSES.has(o.host) && ADDRESSES.has(here.host)));
   } catch (_) { return false; }
 }
@@ -667,11 +678,11 @@ export async function checkClientData(env, request, b, type, mode, userId) {
   await takeChallenge(env, b.challenge, mode, userId);
   let cd;
   try { cd = JSON.parse(new TextDecoder().decode(fromB64url(b.clientDataJSON))); } catch (_) { cd = {}; }
-  if (cd.type !== type || cd.challenge !== b.challenge || !originOk(cd.origin, request)) throw new HttpError(400, "The passkey response didn’t match this site.");
+  if (cd.type !== type || cd.challenge !== b.challenge || !originOk(cd.origin, request, env)) throw new HttpError(400, "The passkey response didn’t match this site.");
 }
-export async function verifyAssertion(cred, request, b) {
+export async function verifyAssertion(cred, request, b, env) {
   const authData = fromB64url(b.authenticatorData);
-  const rpHash = await sha256(rpIdFor(request));
+  const rpHash = await sha256(rpIdFor(request, env));
   for (let i = 0; i < 32; i++) if (authData[i] !== rpHash[i]) return false;
   if (!(authData[32] & 0x01)) return false;                     // user present
   if (!(authData[32] & 0x04)) return false;                     // and verified (Face ID, Touch ID or the phone's passcode)

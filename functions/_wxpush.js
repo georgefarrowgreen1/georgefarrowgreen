@@ -1,5 +1,8 @@
 // Weather's notifications: a heads-up when rain is about to start, a morning
-// briefing, and an official warning as it's issued, for one place per phone. Sent with InFlight's Web Push
+// briefing, and an official warning as it's issued, for the places each phone or computer wants them for (a device:
+// wx_devs; each of its places a row of wx_subs, with what's been told there). Signed in to the site's account
+// (functions/_account.js), the choices are the account's (functions/_wxacct.js), and every device signed in to it with
+// notifications on gets them. Sent with the site's Web Push
 // (functions/_notify.js: encrypted to the phone, so the push service sees
 // nothing of what it says) and worded by the app's own code (weather/alerts.js),
 // so a notification says what the app would.
@@ -17,8 +20,8 @@
 // unsubscribes, its push service says it's gone or keeps failing, or nothing's
 // been heard of it for four months.
 //
-// Turning them on sends a first notification ("Notifications on"), and the phone
-// is only kept if that arrives: so only a real phone can take one of the places.
+// Turning them on sends a first notification ("Notifications on"), and the device
+// is only kept if that arrives: so only a real phone or computer can take one of the places.
 // Each notification is claimed before it's sent (so a tick that runs over, or
 // two at once, can't send it twice) and given back if it doesn't go.
 //
@@ -34,6 +37,8 @@ import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
 
 const MAX_SUBS = 300, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
+// (a device's places with notifications: as many as a list of saved places is likely to want)
+export const MAX_PLACES = 12;
 // what Open-Meteo is asked each tick, in its own measure: a place's rain is one call, its whole forecast about seven
 // (its free service allows 10,000 a day: this keeps the ticks to about 8,000 at most)
 const BUDGET = 55, COST_FULL = 7;
@@ -53,7 +58,23 @@ export async function wxdb(env) {
     ]);
     // columns added since the table was first made (an older table gains them and keeps its rows)
     // (warn: official warnings wanted; told: those already told of, alerts.js warningAlert)
-    for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER", "warn INTEGER NOT NULL DEFAULT 0", "told TEXT"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
+    // (dev: the device's, a row for each of its places)
+    for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER", "warn INTEGER NOT NULL DEFAULT 0", "told TEXT", "dev TEXT"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
+    // The devices: each one's push address and keys, its units, its briefing's time, and the account it's signed in to
+    // (if it is: user_id). A device from before (one place, its row's id its own) becomes one here, once.
+    await env.DB.batch([
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS wx_devs (dev TEXT PRIMARY KEY, endpoint TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, user_id TEXT,
+        label TEXT, units TEXT, brief_at TEXT, created INTEGER, updated INTEGER)`),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS wx_devs_user ON wx_devs (user_id)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS wx_subs_dev ON wx_subs (dev)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS wx_accts (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, ver INTEGER NOT NULL, updated INTEGER)"),
+    ]);
+    if (!(await env.DB.prepare("SELECT 1 FROM wx_meta WHERE k = 'devs_v1'").first())) await env.DB.batch([
+      env.DB.prepare("UPDATE wx_subs SET dev = id WHERE dev IS NULL"),
+      env.DB.prepare(`INSERT OR IGNORE INTO wx_devs (dev, endpoint, p256dh, auth, units, brief_at, created, updated)
+        SELECT dev, endpoint, p256dh, auth, units, brief_at, created, updated FROM wx_subs`),
+      env.DB.prepare("INSERT OR IGNORE INTO wx_meta (k, v) VALUES ('devs_v1', '1')"),
+    ]);
     // (each day's hours at the airport: temperature, dew point, wind and gusts, for tuning more than the highs and lows)
     await env.DB.prepare("ALTER TABLE wx_obs ADD COLUMN hours TEXT").run().catch(() => {});
   })().catch((e) => { ready = null; throw e; });
@@ -86,58 +107,142 @@ async function checkSub(sub) {
   return { endpoint: sub.endpoint, ...keys };
 }
 
-// { sub: { endpoint, keys: { p256dh, auth } }, place: { lat, lon, name }, rain, brief, warn, briefAt: "07:00", units: {...}, was?: the endpoint before }
-export async function subscribe(env, b) {
-  const s = await checkSub(b.sub), p = b.place;
-  if (!p || typeof p.lat !== "number" || typeof p.lon !== "number" || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180) throw new HttpError(400, "Bad place.");
-  const lat = r2(p.lat), lon = r2(p.lon);
-  const name = String(p.name || "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").trim().slice(0, 60);
+// What a device wants, made safe: { places: [{ lat, lon, name, rain, warn }] (each with one or the other, two decimal
+// places, at most MAX_PLACES), brief: { lat, lon, name } or null, briefAt: "HH:MM" }. From an app from before (one place,
+// for whichever were on: { place, rain, warn, brief }) as the same.
+const cleanName = (v) => String(v || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, 60);
+const spotOf = (p) => (p && typeof p === "object" && typeof p.lat === "number" && typeof p.lon === "number" && Number.isFinite(p.lat) && Number.isFinite(p.lon)
+  && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180 ? { lat: r2(p.lat), lon: r2(p.lon), name: cleanName(p.name), ...(p.gps ? { gps: true } : {}) } : null);
+export function wantOf(b) {
+  if (!b || typeof b !== "object") b = {};
   const briefAt = /^([01]\d|2[0-3]):[0-5]\d$/.test(b.briefAt || "") ? b.briefAt : "07:00";
-  const U = b.units && typeof b.units === "object" ? b.units : {};
-  const units = JSON.stringify({ temp: U.temp === "f" ? "f" : "c", wind: ["mph", "kmh", "ms", "kn"].includes(U.wind) ? U.wind : "mph", precip: U.precip === "in" ? "in" : "mm", clock: U.clock === "12" ? "12" : "24" });
-  const rain = b.rain ? 1 : 0, brief = b.brief ? 1 : 0, warn = b.warn ? 1 : 0;
-  const D = await wxdb(env), id = await idOf(s.endpoint), t = Date.now();
-  // the browser gave this phone a new subscription: its place moves over from the old one (no need to say hello again)
-  const was = typeof b.was === "string" && b.was.length <= 1000 && b.was !== s.endpoint ? await idOf(b.was) : null;
-  if (was) await D.prepare("UPDATE wx_subs SET id = ?1, endpoint = ?2, p256dh = ?3, auth = ?4, fails = 0 WHERE id = ?5 AND NOT EXISTS (SELECT 1 FROM wx_subs WHERE id = ?1)")
-    .bind(id, s.endpoint, s.p256dh, s.auth, was).run();
-  if (!rain && !brief && !warn) { await D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(id).run(); return { ok: true, on: false }; }
-  const have = await D.prepare("SELECT 1 FROM wx_subs WHERE id = ?").bind(id).first();
-  if (!have) {
-    if ((await D.prepare("SELECT COUNT(*) AS n FROM wx_subs").first()).n >= MAX_SUBS) throw new HttpError(429, "Notifications are full right now.");
-    // a new phone: a first notification, to say they're on; it's only kept if that arrives
-    const f = makeFormat(JSON.parse(units)), [hh, mm] = briefAt.split(":").map(Number);
-    const parts = [rain ? "rain alerts" : "", warn ? "official warnings" : "", brief ? `a briefing at ${f.time(Date.UTC(2000, 0, 1, hh, mm))}` : ""].filter(Boolean);
-    const what = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
-    const r = await pushToSub(env, s, { title: "Notifications on", body: `${what[0].toUpperCase()}${what.slice(1)}${name ? ` for ${name}` : ""}.`, tag: "wx-on", ttl: 600, url: linkTo(lat, lon, name) });
-    if (r !== "sent") throw new HttpError(400, "This phone's notifications couldn't be reached. Try again in a moment.");
-    const ins = await D.prepare(`INSERT INTO wx_subs (id, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, created, updated, last_ok, warn)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?12, ?14 WHERE (SELECT COUNT(*) FROM wx_subs) < ?13
-      ON CONFLICT(id) DO UPDATE SET lat = ?5, lon = ?6, name = ?7, rain = ?8, brief = ?9, brief_at = ?10, units = ?11, updated = ?12, warn = ?14, told = NULL`)
-      .bind(id, s.endpoint, s.p256dh, s.auth, lat, lon, name, rain, brief, briefAt, units, t, MAX_SUBS, warn).run();
-    if (!ins.meta?.changes && !(await D.prepare("SELECT 1 FROM wx_subs WHERE id = ?").bind(id).first())) throw new HttpError(429, "Notifications are full right now.");
-    return { ok: true, on: true };
+  if (!Array.isArray(b.places) && b.place) {        // (the app from before)
+    const p = spotOf(b.place);
+    if (!p) throw new HttpError(400, "Bad place.");
+    return { places: b.rain || b.warn ? [{ ...p, rain: !!b.rain, warn: !!b.warn }] : [], brief: b.brief ? p : null, briefAt };
   }
-  // (warnings turned on, or the place moved: those in force there taken as told when it's next looked at, not sent)
-  await D.prepare(`UPDATE wx_subs SET endpoint = ?2, p256dh = ?3, auth = ?4, lat = ?5, lon = ?6, name = ?7, rain = ?8, brief = ?9, brief_at = ?10, units = ?11, updated = ?12,
-      tz_off = CASE WHEN abs(lat - ?5) > 0.05 OR abs(lon - ?6) > 0.05 THEN NULL ELSE tz_off END,
-      told = CASE WHEN ?13 = 0 OR warn = 0 OR abs(lat - ?5) > 0.005 OR abs(lon - ?6) > 0.005 THEN NULL ELSE told END, warn = ?13 WHERE id = ?1`)
-    .bind(id, s.endpoint, s.p256dh, s.auth, lat, lon, name, rain, brief, briefAt, units, t, warn).run();
-  return { ok: true, on: true };
+  const seen = new Set(), places = [];
+  for (const x of Array.isArray(b.places) ? b.places : []) {
+    const p = spotOf(x), k = p && `${p.lat},${p.lon}`;
+    if (!p || seen.has(k) || !(x.rain || x.warn)) continue;
+    seen.add(k); places.push({ ...p, rain: !!x.rain, warn: !!x.warn });
+  }
+  if (places.length > MAX_PLACES) throw new HttpError(400, `Notifications can be on for ${MAX_PLACES} places at most.`);
+  const brief = b.brief && typeof b.brief === "object" ? spotOf(b.brief) : null;
+  if (b.brief && typeof b.brief === "object" && !brief) throw new HttpError(400, "Bad place.");
+  return { places, brief, briefAt };
+}
+const wanted = (w) => w.places.length > 0 || !!w.brief;
+function unitsOf(U) {
+  U = U && typeof U === "object" ? U : {};
+  return JSON.stringify({ temp: U.temp === "f" ? "f" : "c", wind: ["mph", "kmh", "ms", "kn"].includes(U.wind) ? U.wind : "mph", precip: U.precip === "in" ? "in" : "mm", clock: U.clock === "12" ? "12" : "24" });
+}
+// "Rain alerts and official warnings for London and 2 more places." (what a device has just been given)
+function onText(w, units) {
+  const f = makeFormat(JSON.parse(units)), [hh, mm] = w.briefAt.split(":").map(Number);
+  const kinds = [w.places.some((p) => p.rain) ? "rain alerts" : "", w.places.some((p) => p.warn) ? "official warnings" : "", w.brief ? `a briefing at ${f.time(Date.UTC(2000, 0, 1, hh, mm))}` : ""].filter(Boolean);
+  if (!kinds.length) return "Notifications you turn on will come here.";
+  const names = [...new Set([...w.places.map((p) => p.name), w.brief?.name].filter(Boolean))];
+  const what = kinds.length > 1 ? `${kinds.slice(0, -1).join(", ")} and ${kinds.at(-1)}` : kinds[0];
+  return `${what[0].toUpperCase()}${what.slice(1)}${names.length ? ` for ${names[0]}${names.length > 1 ? ` and ${names.length - 1} more place${names.length > 2 ? "s" : ""}` : ""}` : ""}.`;
+}
+// A device's rows made to match what it wants (dv: its wx_devs row): places no longer wanted gone, the rest kept with what's
+// been told there (warnings turned on, or a new place: those in force there are taken as told when it's next looked at)
+async function setRows(D, dv, w, t) {
+  const rows = new Map();
+  for (const p of w.places) rows.set(`${p.lat},${p.lon}`, { ...p, brief: 0 });
+  if (w.brief) { const k = `${w.brief.lat},${w.brief.lon}`; rows.set(k, { rain: false, warn: false, ...w.brief, ...rows.get(k), brief: 1 }); }
+  const { results: have } = await D.prepare("SELECT id, lat, lon, warn FROM wx_subs WHERE dev = ?").bind(dv.dev).all();
+  const steps = [], had = new Map(have.map((h) => [`${h.lat},${h.lon}`, h]));
+  for (const [k, h] of had) if (!rows.has(k)) steps.push(D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(h.id));
+  for (const [k, r] of rows) {
+    const h = had.get(k), rain = r.rain ? 1 : 0, warn = r.warn ? 1 : 0;
+    if (h) steps.push(D.prepare(`UPDATE wx_subs SET endpoint = ?2, p256dh = ?3, auth = ?4, name = ?5, rain = ?6, brief = ?7, brief_at = ?8, units = ?9, updated = ?10,
+        told = CASE WHEN ?11 = 0 OR warn = 0 THEN NULL ELSE told END, warn = ?11 WHERE id = ?1`)
+      .bind(h.id, dv.endpoint, dv.p256dh, dv.auth, r.name, rain, r.brief, w.briefAt, dv.units, t, warn));
+    else steps.push(D.prepare(`INSERT INTO wx_subs (id, dev, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, created, updated, last_ok, warn)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?13, ?14)`)
+      .bind(`${dv.dev}:${k}`, dv.dev, dv.endpoint, dv.p256dh, dv.auth, r.lat, r.lon, r.name, rain, r.brief, w.briefAt, dv.units, t, warn));
+  }
+  if (steps.length) await D.batch(steps);
+}
+// A device moved to a new push address by its browser (was: the old one): its places go with it
+async function moveDev(D, from, s, to, t) {
+  const r = await D.prepare("UPDATE wx_devs SET dev = ?1, endpoint = ?2, p256dh = ?3, auth = ?4, updated = ?5 WHERE dev = ?6 AND NOT EXISTS (SELECT 1 FROM wx_devs WHERE dev = ?1)")
+    .bind(to, s.endpoint, s.p256dh, s.auth, t, from).run();
+  if (!r.meta?.changes) return false;
+  await D.prepare("UPDATE wx_subs SET dev = ?1, id = ?1 || ':' || lat || ',' || lon, endpoint = ?2, p256dh = ?3, auth = ?4, fails = 0 WHERE dev = ?5").bind(to, s.endpoint, s.p256dh, s.auth, from).run();
+  return true;
+}
+// The account's choices (functions/_wxacct.js), for each of its devices
+export async function applyAccount(env, userId, notify) {
+  const D = await wxdb(env), w = wantOf(notify), t = Date.now();
+  const { results: devs } = await D.prepare("SELECT * FROM wx_devs WHERE user_id = ?").bind(userId).all();
+  for (const dv of devs) await setRows(D, { ...dv }, w, t);
+}
+// The devices signed in to an account that get its notifications: [{ id, label }]
+export async function devicesOf(env, userId) {
+  const { results } = await (await wxdb(env)).prepare("SELECT dev, label FROM wx_devs WHERE user_id = ? ORDER BY created").bind(userId).all();
+  return results.map((d) => ({ id: d.dev, label: d.label || "A device" }));
+}
+
+// A device's notifications: { sub: { endpoint, keys: { p256dh, auth } }, places: [{ lat, lon, name, rain, warn }],
+// brief: { lat, lon, name } | null, briefAt: "07:00", units: {...}, was?: the endpoint before } (or, from an app from
+// before, one place: { place, rain, warn, brief }). user: the account the browser's signed in to on the site, if it
+// is (functions/_account.js): then it's the account's choices this device gets (account: its notify), and this device is
+// one of the account's; label: what to call it ("iPhone · Safari")
+export async function subscribe(env, b, user = null, account = null, label = "") {
+  const s = await checkSub(b.sub), w = wantOf(user ? account || {} : b), units = unitsOf(b.units);
+  const D = await wxdb(env), dev = await idOf(s.endpoint), t = Date.now();
+  // the browser gave this device a new push address: its places move over from the old one (no need to say hello again)
+  const was = typeof b.was === "string" && b.was.length <= 1000 && b.was !== s.endpoint ? await idOf(b.was) : null;
+  if (was) await moveDev(D, was, s, dev, t);
+  // (signed out with nothing wanted: forgotten)
+  if (!user && !wanted(w)) { await D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?").bind(dev), D.prepare("DELETE FROM wx_devs WHERE dev = ?").bind(dev)]); return { ok: true, on: false }; }
+  let dv = await D.prepare("SELECT * FROM wx_devs WHERE dev = ?").bind(dev).first();
+  if (!dv) {
+    if ((await D.prepare("SELECT COUNT(*) AS n FROM wx_devs").first()).n >= MAX_SUBS) throw new HttpError(429, "Notifications are full right now.");
+    // a new device: a first notification, to say they're on; it's only kept if that arrives
+    const r = await pushToSub(env, s, { title: "Notifications on", body: onText(w, units), tag: "wx-on", ttl: 600, url: w.places[0] ? linkTo(w.places[0].lat, w.places[0].lon, w.places[0].name) : "./" });
+    if (r !== "sent") throw new HttpError(400, "This device's notifications couldn't be reached. Try again in a moment.");
+    const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9 WHERE (SELECT COUNT(*) FROM wx_devs) < ?10 ON CONFLICT(dev) DO NOTHING`)
+      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t, MAX_SUBS).run();
+    if (!ins.meta?.changes && !(await D.prepare("SELECT 1 FROM wx_devs WHERE dev = ?").bind(dev).first())) throw new HttpError(429, "Notifications are full right now.");
+  } else {
+    await D.prepare("UPDATE wx_devs SET endpoint = ?2, p256dh = ?3, auth = ?4, user_id = ?5, label = COALESCE(?6, label), units = ?7, brief_at = ?8, updated = ?9 WHERE dev = ?1")
+      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t).run();
+  }
+  dv = { dev, endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, units };
+  await setRows(D, dv, w, t);
+  return { ok: true, on: true, id: dev };
 }
 export async function unsubscribe(env, endpoint) {
   if (typeof endpoint !== "string" || endpoint.length > 1000) throw new HttpError(400, "Bad request.");
-  await (await wxdb(env)).prepare("DELETE FROM wx_subs WHERE id = ?").bind(await idOf(endpoint)).run();
+  const D = await wxdb(env), dev = await idOf(endpoint);
+  await D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?").bind(dev), D.prepare("DELETE FROM wx_devs WHERE dev = ?").bind(dev)]);
   return { ok: true };
 }
-// the browser replaced a phone's subscription by itself (sw.js, pushsubscriptionchange): its place moves to the new one
+// signed out of the account on a device: it keeps what it has, as its own (user: the account it was signed in to)
+export async function leaveAccount(env, endpoint, userId) {
+  if (typeof endpoint !== "string" || endpoint.length > 1000) return;
+  await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL WHERE dev = ? AND user_id = ?").bind(await idOf(endpoint), userId).run();
+}
+// the browser replaced a device's subscription by itself (sw.js, pushsubscriptionchange): its places move to the new one
 export async function moveSub(env, b) {
   if (typeof b.was !== "string" || b.was.length > 1000) throw new HttpError(400, "Bad request.");
   const s = await checkSub(b.sub), D = await wxdb(env), from = await idOf(b.was), to = await idOf(s.endpoint);
   if (from === to) return { ok: true, moved: false };
-  const r = await D.prepare("UPDATE wx_subs SET id = ?1, endpoint = ?2, p256dh = ?3, auth = ?4, fails = 0, updated = ?5 WHERE id = ?6 AND NOT EXISTS (SELECT 1 FROM wx_subs WHERE id = ?1)")
-    .bind(to, s.endpoint, s.p256dh, s.auth, Date.now(), from).run();
-  return { ok: true, moved: !!r.meta?.changes };
+  return { ok: true, moved: await moveDev(D, from, s, to, Date.now()) };
+}
+// An account gone (functions/_accounts.js): what Weather kept with it, and its devices' notifications
+export async function dropAccount(env, userId) {
+  const D = await wxdb(env);
+  await D.batch([
+    D.prepare("DELETE FROM wx_subs WHERE dev IN (SELECT dev FROM wx_devs WHERE user_id = ?)").bind(userId),
+    D.prepare("DELETE FROM wx_devs WHERE user_id = ?").bind(userId),
+    D.prepare("DELETE FROM wx_accts WHERE user_id = ?").bind(userId),
+  ]);
 }
 
 // The tick: one at a time (a lease, given back at the end; it lapses by itself if a tick dies part way)
@@ -155,6 +260,8 @@ async function tick(env, D, t) {
   if (at.getUTCHours() === 3 && at.getUTCMinutes() < 10) await D.batch([
     D.prepare("DELETE FROM wx_obs WHERE day < ?").bind(new Date(t - OBS_DAYS * 864e5).toISOString().slice(0, 10)),
     D.prepare("DELETE FROM wx_subs WHERE max(coalesce(updated, 0), coalesce(last_ok, 0)) < ?").bind(t - KEEP_IDLE),
+    // (and devices with nothing left: not signed in, or not heard from in months)
+    D.prepare("DELETE FROM wx_devs WHERE (user_id IS NULL OR coalesce(updated, 0) < ?) AND NOT EXISTS (SELECT 1 FROM wx_subs s WHERE s.dev = wx_devs.dev)").bind(t - KEEP_IDLE),
   ]);
   const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1").all();
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
@@ -217,7 +324,7 @@ async function warnNotify(env, D, s, t, out, cache) {
   const r = await pushToSub(env, s, { ...alert, url: linkTo(s.lat, s.lon, s.name), ttl: 6 * 3600, urgency: "high" });
   if (r === "sent") { out.warn++; await D.prepare("UPDATE wx_subs SET fails = 0, last_ok = ?2 WHERE id = ?1").bind(s.id, t).run(); return; }
   await giveBack(D, s, "told", json);
-  if (r === "gone") { await D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(s.id).run(); out.gone++; }
+  if (r === "gone") { await forget(D, s); out.gone++; }
 }
 // The places asked about in a tick ([key, { full }] each), within the budget: whole forecasts first, then rain (in a
 // shuffled order, so the places left for the next tick aren't always the same ones)
@@ -226,6 +333,8 @@ export function budgeted(cells, budget = BUDGET, rnd = Math.random) {
   let spend = 0;
   return order.filter(([, c]) => { const cost = c.full ? COST_FULL : 1; if (spend + cost > budget) return false; spend += cost; return true; });
 }
+// a device its push service says is gone: all its places, and it
+const forget = (D, s) => D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?").bind(s.dev || s.id), D.prepare("DELETE FROM wx_devs WHERE dev = ?").bind(s.dev || s.id)]);
 const claim = async (D, s, col, v) => !!(await D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(v, s.id, s[col] ?? null).run()).meta?.changes;
 const giveBack = (D, s, col, v) => D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(s[col] ?? null, s.id, v).run();
 // (rain: the radar's say on the next couple of hours here, if it was read: rainmap.js radarAt)
@@ -253,7 +362,7 @@ async function notify(env, D, s, j, t, out, rain = null) {
     }
   }
   // gone: forgotten; arrived: all's well; failed: one more strike (five in a row, and it's forgotten)
-  if (got.includes("gone")) { await D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(s.id).run(); out.gone++; }
+  if (got.includes("gone")) { await forget(D, s); out.gone++; }
   else if (got.includes("sent")) await D.prepare("UPDATE wx_subs SET fails = 0, last_ok = ?2 WHERE id = ?1").bind(s.id, t).run();
   else if (got.includes("error")) {
     const r = await D.prepare("DELETE FROM wx_subs WHERE id = ?1 AND fails + 1 >= ?2").bind(s.id, MAX_FAILS).run();

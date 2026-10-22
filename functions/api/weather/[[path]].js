@@ -5,14 +5,19 @@
 //   GET  /api/weather/obs          the nearest airport's daily highs and lows (functions/_wxobs.js)
 //   GET  /api/weather/warnings     official warnings for a place, from its weather service (functions/_wxwarn.js)
 //   GET  /api/weather/key          the key push subscriptions are made with
-//   POST /api/weather/subscribe    rain alerts and a morning briefing for a place (functions/_wxpush.js)
+//   POST /api/weather/subscribe    rain alerts, official warnings and a morning briefing for your places (functions/_wxpush.js)
 //   POST /api/weather/unsubscribe
+//   GET  /api/weather/me           the site's account, as Weather has it: who, and your places, settings and
+//   PUT  /api/weather/me           notifications kept with it (functions/_wxacct.js)
+//   POST /api/weather/signin/...   signing in to it: salt and password, or options and passkey
+//   POST /api/weather/signout
 //   POST /api/weather/move         a phone's subscription replaced by its browser (weather/sw.js)
 //   POST /api/weather/tick         send what's due (the scheduler: .github/workflows/weather-tick.yml)
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
 import { HttpError, limit, clientIp, HOUR } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
-import { subscribe, unsubscribe, moveSub, wxTick, publicKey } from "../../_wxpush.js";
+import { unsubscribe, moveSub, wxTick, publicKey } from "../../_wxpush.js";
+import { ACCOUNT_ROUTES, subscribeHere } from "../../_wxacct.js";
 import { obsFor } from "../../_wxobs.js";
 import { warningsAt } from "../../_wxwarn.js";
 
@@ -61,10 +66,11 @@ const ROUTES = {
     return json(await warningsAt(env, lat, lon));
   },
   "GET key": async ({ env }) => json({ key: await publicKey(env) }),
-  "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribe(env, await body(request))); },
+  "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribeHere(request, env, await body(request))); },
   "POST unsubscribe": async ({ request, env }) => { sameOrigin(request); return json(await unsubscribe(env, (await body(request)).endpoint)); },
   "POST move": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await moveSub(env, await body(request))); },
   "POST tick": async ({ request, env }) => { tickAuthOk(request, env, env.WEATHER_TICK_SECRET || env.PIGEON_TICK_SECRET); return json(await wxTick(env)); },
+  ...ACCOUNT_ROUTES,
 };
 
 export async function onRequest(ctx) {

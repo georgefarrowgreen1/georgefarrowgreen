@@ -1779,7 +1779,7 @@ async function forget() {
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", sessN: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map(),
     avatars: new Map(), viewedOnce: new Set(), q: "", fq: "", news: null, newsAt: 0, replyTo: null, sched: null, via: null, pick: null, birdPick: null, player: null,
-    syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0 });
+    syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0, resumable: null });
   clearAttach();
   await idb.del("session");
 }
@@ -1806,9 +1806,16 @@ async function checkInvite() {
 }
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
+// Signed in to the account elsewhere on the site, in this browser (functions/_account.js): that sign-in, to carry on
+// with once the password's unlocked the key here
+async function resumeCheck() {
+  try { const r = await api("resume", { method: "POST" }); if (r.signedIn && !S.me) { S.resumable = r; if (S.view === "welcome") render(); } } catch (_) {}
+}
 function inviteHtml() {
   const st = S.inviteState, enter = (label) => `<button class="btn wide wglow" data-act="to" data-id="signup">${label}</button>`;
   const signin = `<button class="wquiet" data-act="to" data-id="signin">Sign in</button>`;
+  const r = S.resumable;
+  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.me.name)} (@${esc(r.me.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="resume">Continue as ${esc(first(r.me.name))}</button>${signin}</div></div>`;
   if (!st) { checkInvite(); return `<div class="wcta"><div class="stack">${signin}</div></div>`; }
   if (st.open || st.ok) return `<div class="wcta">${S.invite && !st.open ? `<p class="invited">You’ve been invited.</p>` : ""}<div class="stack">${enter(S.invite && !st.open ? "Enter" : "Begin")}${signin}</div></div>`;
   return `<div class="wcta"><p class="invonly">${S.invite ? esc(st.error || "That invite doesn’t work.") : "By invitation only."}</p><div class="stack">${signin}</div></div>`;
@@ -4662,7 +4669,7 @@ function vAuth() {
       </div>`;
     case "unlock": return `<div class="auth night">${navbar("", { left: backBtn("cancelunlock") })}
         <h1 class="large">Unlock Messages</h1>
-        <p class="sub">Your passkey signed you in. Enter your password once so this phone can unlock your encryption key.</p>
+        <p class="sub">${S.pendingUnlock?.resumed ? "You’re already signed in to your georgefarrowgreen.com account here." : "Your passkey signed you in."} Enter your password once so this phone can unlock your encryption key.</p>
         <form data-form="unlock" novalidate>
           <div class="group mt-s">${field("password", "Password", "password", "current-password")}</div>${ferr}
           <div class="pad"><button class="btn wide">Unlock</button></div>
@@ -7541,6 +7548,7 @@ async function onClick1(e, t) {
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
+    case "resume": if (!S.resumable) return; S.pendingUnlock = { ...S.resumable, resumed: true }; return go("unlock");
     case "signout": {
       const waiting = S.outbox.filter((o) => !o.err).length;
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });
@@ -8665,6 +8673,8 @@ async function start() {
     S.pins = (await idb.get("pins:" + saved.me.id)) || {};
     if (!Object.keys(S.pins).length) await restorePins();
     else if (!(await idb.get("pinsup:" + saved.me.id).catch(() => null))) savePins();      // trusted before backups: save them now
+    // (that sign-in ended while the app was closed, signed out elsewhere: the welcome, as from the start)
+    if (!S.token) { movedNote(); resumeCheck(); } else {
     S.view = S.pendingAdd ? "friends" : "messages";
     if (lockPrefs()) S.locked = true;               // the app lock: locked before anything is drawn
     await cacheLoad();                             // what you saw last time, at once
@@ -8684,7 +8694,8 @@ async function start() {
       else if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }
       refreshPush(); autoLocate(); movedNote();
     } catch (e) { console.error("start", e); }
-  } else { go("welcome"); movedNote(); }
+    }
+  } else { go("welcome"); movedNote(); resumeCheck(); }
   // a reset or add-a-friend link opened while InFlight is already open in this tab
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;

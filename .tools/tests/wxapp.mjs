@@ -82,7 +82,7 @@ function hoursGrid(url) {
 function fieldGrid(url) {
   const n = new URL(url).searchParams.get('latitude').split(',').length, side = Math.round(Math.sqrt(n)), h0 = Math.floor(Date.now() / H) * H - 3 * H;
   const time = Array.from({ length: 16 }, (_, k) => new Date(h0 + k * H).toISOString().slice(0, 16));
-  return Array.from({ length: n }, (_, i) => ({ hourly: { time, temperature_2m: time.map((_, k) => 6 + Math.floor(i / side) + (i % side) * 0.5 + k * 0.3), wind_speed_10m: time.map(() => 10 + (side - 1 - (i % side)) * 4), wind_gusts_10m: time.map(() => 20 + (side - 1 - (i % side)) * 6), wind_direction_10m: time.map(() => 225) } }));
+  return Array.from({ length: n }, (_, i) => ({ hourly: { time, temperature_2m: time.map((_, k) => 6 + Math.floor(i / side) + (i % side) * 0.5 + k * 0.3), wind_speed_10m: time.map(() => 10 + (side - 1 - (i % side)) * 4), wind_gusts_10m: time.map(() => 20 + (side - 1 - (i % side)) * 6), wind_direction_10m: time.map(() => 225), uv_index: time.map(() => 1 + (i % side) * 0.8) } }));
 }
 // the stand-in for Open-Meteo (the server's notifications), the Aviation Weather Center (its airport reports), and
 // MeteoAlarm, the National Weather Service and the Environment Agency (official warnings: mocks/wxwarnings.mjs)
@@ -688,8 +688,8 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const pick = async (k) => { await p.click('#radar .map-layers'); await p.click(`#radar .layer-menu [data-kind="${k}"]`); };
   await p.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); });
   await p.click('#radar .map-layers');
-  ok(await p.isVisible('#radar .layer-menu') && (await p.getAttribute('#radar .map-layers', 'aria-expanded')) === 'true' && (await p.locator('#radar .layer-menu button').allTextContents()).join() === 'Precipitation,Temperature,Wind,Air quality',
-    'the layers button opens its menu: precipitation, temperature, wind, air quality');
+  ok(await p.isVisible('#radar .layer-menu') && (await p.getAttribute('#radar .map-layers', 'aria-expanded')) === 'true' && (await p.locator('#radar .layer-menu button').allTextContents()).join() === 'Precipitation,Temperature,Wind,Air quality,UV index',
+    'the layers button opens its menu: precipitation, temperature, wind, air quality, UV index');
   await p.keyboard.press('Escape');
   ok(!(await p.isVisible('#radar .layer-menu')), 'and Escape closes it');
   const asked = tiles.field || 0;
@@ -715,8 +715,17 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const words = await p.textContent('#radar .rl-words');
   ok(aq.title === 'Air quality' && aq.legend === 'Air quality (European index)' && words === 'GoodFairModeratePoorVery poor' && /^\d+$/.test(aq.bubble) && !aq.flow && aq.max === '840' && /^Air quality [A-Z][a-z]+day \d\d:\d\d · now$/.test(aq.label) && (tiles.aq || 0) === 1,
     'air quality: the European index over the region by the hour, its bubble the index there', JSON.stringify({ ...aq, words }));
+  // the UV index, from the same models' grid as the temperature and wind (not asked for again), in the WHO's bands
+  await pick('uv');
+  const uv = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'uv' && document.querySelector('.map-pin')?.dataset.kind === 'temp', null, { timeout: 8000 }).then(st, st);
+  const uvWords = await p.textContent('#radar .rl-words');
+  ok(uv.title === 'UV index' && uv.legend === 'UV index' && uvWords === 'LowModerateHighVery highExtreme' && /^\d+$/.test(uv.bubble) && !uv.flow && /^UV index [A-Z][a-z]+day \d\d:\d\d · now$/.test(uv.label) && (tiles.field || 0) === asked + 1,
+    'the UV index: low to extreme, its bubble the index there, from the grid already asked for', JSON.stringify({ ...uv, uvWords }));
   await pick('rain');
   const rain = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'rain', null, { timeout: 5000 }).then(st, st);
+  // the rain about the place in words, for a screen reader: the map's description
+  const said = await p.evaluate(() => [document.querySelector('#radar .radar-map').getAttribute('aria-describedby'), document.getElementById('radar-said').textContent]);
+  ok(said[0] === 'radar-said' && /^(.+ (rain|snow)|Drizzle).+\.$|^No rain within about \d+ km\.$/.test(said[1]), 'the rain about here, in words, as the map\'s description', JSON.stringify(said));
   ok(rain.title === 'Rain radar' && rain.legend === 'Precipitation' && rain.kind === '' && !rain.flow && Number(rain.max) >= 230 && rain.kept === 'rain' && /^(Latest radar|Radar|Forecast|Estimated) /.test(rain.label),
     'and back to the rain, as it was', JSON.stringify(rain));
   // the rain on to twelve hours or so ahead: after the next two hours, the models' hours (a step every three minutes
@@ -918,7 +927,7 @@ await p.click('input[name="wind"][value="mph"]');
 // the times to choose, said as the clock's set: 07:00, or 7am (not the browser's own 12-hour box), the label on one line
 {
   const said = () => p.evaluate(() => ({ brief: document.querySelector('select[name="briefAt"]').selectedOptions[0]?.textContent, pm: document.querySelector('select[name="pm"]').selectedOptions[0]?.textContent,
-    line: Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height - document.querySelector('input[name="rain"]').closest('label').getBoundingClientRect().height), n: document.querySelector('select[name="briefAt"]').options.length }));
+    line: Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height - document.querySelector('input[name="tune"]').closest('label').getBoundingClientRect().height), n: document.querySelector('select[name="briefAt"]').options.length }));
   const h24 = await said();
   await p.click('input[name="clock"][value="12"]'); await p.waitForTimeout(300);
   const h12 = await said();
@@ -1208,9 +1217,10 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   const at = new Date(Math.floor((Date.now() - 5 * 60e3) / 900e3) * 900e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
   await p.selectOption('select[name="briefAt"]', hhmm);
   await p.check('input[name="brief"]');
-  await p.check('input[name="rain"]');
-  await p.waitForFunction(() => /^On: rain alerts and a briefing/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
-  ok(/For London\./.test(await p.textContent('#notify-place')), 'notifications on, for London', await p.textContent('#notify-status'));
+  await p.waitForFunction(() => /^On: a briefing/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
+  await p.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="rain"]');
+  await p.waitForFunction(() => /^On: rain alerts for London and a briefing at \d\d:\d\d for London\.$/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 }).catch(() => {});
+  ok(/^On: rain alerts for London and a briefing at \d\d:\d\d for London\.$/.test(await p.textContent('#notify-status')) && await p.inputValue('select[name="briefFor"]') === '51.51,-0.13', 'notifications on, for London: its rain alerts from its own row, and the briefing for it', await p.textContent('#notify-status'));
   const quiet = (() => { const h = new Date().getUTCHours(); return h >= 22 || h < 7; })();
   const t1 = await tick();
   ok(t1.status === 200 && t1.subs === 1 && t1.brief === 1 && t1.rain === (quiet ? 0 : 1), 'the tick sends what\'s due', JSON.stringify(t1));
@@ -1221,7 +1231,9 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   if (!quiet) ok(rain && /^Rain in about \d+ min$/.test(rain.title) && /^London: Rain starting in about/.test(rain.body), 'the rain alert, decrypted', rain && `${rain.title} — ${rain.body}`);
   const t2 = await tick();
   ok(t2.rain === 0 && t2.brief === 0, 'and neither again straight away', JSON.stringify(t2));
-  await p.uncheck('input[name="rain"]'); await p.uncheck('input[name="brief"]');
+  await p.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="rain"]');
+  await p.waitForFunction(() => /^On: a briefing/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
+  await p.uncheck('input[name="brief"]');
   await p.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
   ok((await tick()).subs === 0, 'turned off: the server forgets the phone');
   await ctx.close();
@@ -1232,12 +1244,12 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     const second = 'https://fcm.googleapis.com/fcm/send/weather-test-device-2';
     const { ctx: c2, p: p2 } = await open({}, { push: { endpoint: second, p256dh: b64u(pub), auth: b64u(authK) } });
     await p2.evaluate(() => navigator.serviceWorker.ready);
-    await p2.click('#settings-btn'); await p2.check('input[name="rain"]');
+    await p2.click('#settings-btn'); await p2.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="rain"]');
     await p2.waitForFunction(() => /^On: rain alerts/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
     const t3 = await tick(), alert = (await mine(second)).find((n) => n.tag === 'rain');
     ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in (about \d+ min|a few minutes)$/.test(alert.title) && /^London: Rain starting (in about \d+ min|any minute)/.test(alert.body),
       'the rain alert from the radar, where it sees: rain coming that the models don\'t have', `${JSON.stringify(t3)} ${alert ? `${alert.title} — ${alert.body}` : 'none'}`);
-    await p2.uncheck('input[name="rain"]');
+    await p2.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="rain"]');
     await p2.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
     await c2.close();
     wxScenario = { rainIn: 30 }; radarScenario = null;
@@ -1248,8 +1260,8 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     const third = 'https://fcm.googleapis.com/fcm/send/weather-test-device-3';
     const { ctx: c3, p: p3 } = await open({}, { push: { endpoint: third, p256dh: b64u(pub), auth: b64u(authK) } });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.click('#settings-btn'); await p3.check('input[name="warn"]');
-    await p3.waitForFunction(() => /^On: official warnings\.$/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
+    await p3.click('#settings-btn'); await p3.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="warn"]');
+    await p3.waitForFunction(() => /^On: official warnings for London\.$/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
     const hello = (await mine(third)).find((n) => n.tag === 'wx-on');
     const w1 = await tick(), w2 = await tick();
     warnExtra = true;
@@ -1258,7 +1270,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     ok(hello?.body === 'Official warnings for London.' && w1.warn === 0 && w2.warn === 0 && w3.warn === 1 && w4.warn === 0 && sent.length === 1 && sent[0].title === 'Amber wind warning' && /^London: Met Office · Until \d\d:\d\d\. Gusts of 60 to 70 mph are likely\.$/.test(sent[0].body),
       'official warnings: none for those in force as they\'re turned on, then one newly issued, once', `${hello?.body} | ${[w1, w2, w3, w4].map((t) => t.warn).join(',')} | ${sent.map((n) => `${n.title} — ${n.body}`).join(' / ')}`);
     warnExtra = false;
-    await p3.uncheck('input[name="warn"]');
+    await p3.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="warn"]');
     await p3.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
     await c3.close();
   }

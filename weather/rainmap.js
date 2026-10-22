@@ -422,6 +422,43 @@ export function driftOf(older, newer, mins, w = AROUND) {
   const m = older && newer && mins > 0 ? motion(older, newer, w, w) : null;
   return m && m.score >= 0.35 ? { vx: m.dx / mins, vy: m.dy / mins } : null;
 }
+// The rain about a place in words, from the latest radar (codes, w × w about the place) and where it sees (cover, the
+// same square: 0 where it sees): the nearest rain and how heavy, how far and which way, and with its track (drift: zoom
+// 7's pixels a minute), which way it's going and when it might be here. "" where the radar doesn't see the place.
+const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+const toward = (dx, dy) => COMPASS[Math.round(((Math.atan2(dx, -dy) * 180) / Math.PI + 360) / 45) % 8];
+export function rainSaid(codes, cover, lat, drift = null, w = AROUND) {
+  const c0 = w / 2, at = (x, y) => Math.round(y) * w + Math.round(x), kmPx = (40075 / 2 ** 15) * Math.cos((lat * Math.PI) / 180);
+  if (!codes || !cover || cover[at(c0, c0)]) return "";
+  // (every other pixel: the nearest rain of 15 dBZ or more, and the nearest place the radar doesn't see)
+  let best = null, blind = Infinity;
+  for (let y = 0; y < w; y += 2) for (let x = 0; x < w; x += 2) {
+    const d = Math.hypot(x - c0, y - c0);
+    if (cover[y * w + x]) { blind = Math.min(blind, d); continue; }
+    const c = codes[y * w + x]; if (!c) continue;
+    const dbz = c > 100 ? c - 111 : c - 11;
+    if (dbz >= 15 && (!best || d < best.d)) best = { d, x: x - c0, y: y - c0, dbz, snow: c > 100 };
+  }
+  if (!best || best.d > blind) {
+    const km = Math.min(c0, blind) * kmPx;
+    return km < 20 ? "" : `No rain within about ${Math.round(km / 10) * 10} km.`;
+  }
+  const band = [...LEGEND].reverse().find((l) => best.dbz >= l.dbz)?.label || "Drizzle";
+  const what = band === "Drizzle" ? (best.snow ? "Light snow" : "Drizzle") : `${band} ${best.snow ? "snow" : "rain"}`, km = best.d * kmPx;
+  if (km < 3) return `${what} here now.`;
+  let text = `${what} about ${km < 7.5 ? Math.round(km) : Math.round(km / 5) * 5} km to the ${toward(best.x, best.y)}`;
+  const v = drift ? Math.hypot(drift.vx, drift.vy) : 0, kmh = v * kmPx * 60;
+  if (kmh >= 5) {
+    text += `, moving ${toward(drift.vx, drift.vy)} at about ${Math.round(kmh / 5) * 5} km/h`;
+    // (how much of that is toward here: coming more or less this way, when it would be here at that pace)
+    const closing = -(best.x * drift.vx + best.y * drift.vy) / (best.d * v);
+    if (closing > 0.5) {
+      const mins = (km / (kmh * closing)) * 60;
+      if (mins < 180) text += `: it could be here in about ${mins < 60 ? `${Math.max(5, Math.round(mins / 5) * 5)} minutes` : mins < 90 ? "an hour" : `${Math.round(mins / 30) / 2} hours`}`;
+    } else text += ", not this way";
+  }
+  return `${text}.`;
+}
 // The rain at a place over the next two hours from the radar, worked out the same way in the app (radar.js) and for
 // the rain alerts on the server (functions/_wxradar.js): from RainViewer's list of frames (rv), a tile's codes by its
 // address (get(url) → a promise of them, or of null), and the time now (ms). Where the radar sees (its coverage), its

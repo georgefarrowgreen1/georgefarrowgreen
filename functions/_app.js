@@ -25,8 +25,8 @@ export const SECURITY = {
 };
 const FOREVER = "public, max-age=31536000, immutable";
 export const CHAT_HOST = "chat.georgefarrowgreen.com";
-// (CHAT_HOST in the environment: tests, which run the new address on a local name)
-export const isChat = (url, env) => url.hostname === (env.CHAT_HOST || CHAT_HOST);
+// (CHAT_HOST in the environment: tests, which run the new address on local names, a comma between them)
+export const isChat = (url, env) => (env.CHAT_HOST || CHAT_HOST).split(",").includes(url.hostname);
 // the app's own paths, as they are at the new address ("/api/pigeon/…" is the API's, and stays)
 const atRoot = (text) => text.replace(/(?<![\w.-])\/pigeon\//g, "/");
 

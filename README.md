@@ -330,9 +330,11 @@ so there's nothing to set up beyond the address.
   drawn); it holds still under a sheet; with reduced motion it doesn't play by itself (`weather/radar.js`, `weather/mapgl.js`,
   `weather/mapstyle.js`, `weather/mapleaf.js`, `weather/rainmap.js`).
   **Its layers**, as Apple's Weather map has them (the button under its zoom; kept as chosen): the rain, the
-  **temperature**, the **wind** or the **air quality**, the first two from Open-Meteo's models over a grid of their
+  **temperature**, the **wind**, the **air quality** or the **UV index**, the first two (and the UV index, in the same
+  request) from Open-Meteo's models over a grid of their
   own (11 × 11 places about 750 km across, by the hour from two hours ago to twelve on, eased between the hours;
-  asked for once a half hour), the air quality (the European index, as the page says it, in the European Environment
+  asked for once a half hour), the UV index in the WHO's bands and colours (low green, moderate yellow, high orange,
+  very high red, extreme violet; a reading says "UV 6, high"), the air quality (the European index, as the page says it, in the European Environment
   Agency's colours, good to extremely poor) from Open-Meteo's air quality service over the same grid; the temperature
   also over a finer grid about the place (13 × 13, about 18 km apart: the lie of the land shows in it, the fells
   cooler than the coast), drawn over the region's and fading into it at its edges,
@@ -409,7 +411,10 @@ so there's nothing to set up beyond the address.
   the page, its sky, the hours' first) is raining or not as the next four hours
   have it, so it never says "Overcast" over a card saying the rain stops in 25
   minutes; and the hour now's in, partly gone, is wet if what's left of it is.
-- **Notifications** (Settings → Notifications, for one place per phone; until
+- **Notifications** (Settings → Notifications: rain alerts and official warnings
+  for each saved place, a Rain and a Warnings button on each place's row, and the
+  briefing for the place you choose; signed in, the account's choices, sent to
+  every device signed in to it that has notifications on; until
   they're on, a word about them on the page, once, put away for a month with
   "Not now"): a
   heads-up when rain is about to start within the hour ("Rain in about 20 min",
@@ -438,7 +443,38 @@ so there's nothing to set up beyond the address.
   a briefing is due; and each tick asks no more than Open-Meteo's free
   allowance spread over a day (briefings first; places left over wait ten
   minutes, in a different order each time). Each connection can only ask the
-  API so often.
+  API so often. Each device's notifications are a row a place
+  (`functions/_wxpush.js`: wx_devs, the device; wx_subs, its places, each with
+  what's been told there), at most 12 places a device; an app from before (one
+  place) is still understood.
+- **The rain in words**, for a screen reader: the radar map's description is the
+  rain about the place from the latest radar, "Light rain about 25 km to the west,
+  moving east at about 30 km/h: it could be here in about 50 minutes", "Moderate
+  rain here now", or "No rain within about 290 km" (only as far as the radar
+  sees; nothing where it doesn't see the place) (`weather/rainmap.js` rainSaid).
+- **Your account** (top of Settings): signed in with your georgefarrowgreen.com
+  account, your saved places, settings and notification choices are kept with
+  it and are the same on every device you're signed in on; the app works just
+  the same without. The sign-in is the site's own (below, *One account*):
+  signed in on the site anywhere in this browser, Weather is too; or it signs in
+  itself, with a passkey (the site's: one made anywhere on the site works here)
+  or an email and password (stretched on the device as everywhere on the site,
+  Argon2id via a copy of hash-wasm's build, `weather/argon2.js`; the password
+  never leaves it). Signed in, it shows who, whether your places are in step
+  ("In step", "Saving…", "Will go up when you're online"), which devices get
+  your notifications (and "Send notifications here too" where this one doesn't),
+  and Sign out, which signs the browser out of the account; and Places says
+  "In step with your account". What's kept is one record with a version
+  (`functions/_wxacct.js`, wx_accts: the places, the settings, the notification
+  choices; at most 50 places and 48 KB); a change goes up a moment after it's
+  made, from the version it was made from, and if another device got there first
+  the two are put together (the account's places, less those taken away here
+  since, plus those added here; settings changed here win; notifications place
+  by place) and sent again (`weather/account.js`). Signing in on a device with
+  places of its own keeps them all. My Location is each device's own. Signing
+  out keeps everything on the device, and its notifications go on as its own.
+  The page never holds the sign-in (the browser does, out of its reach), and the
+  account's API answers only Weather's own pages.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
@@ -1421,6 +1457,24 @@ the safety number screen (the warning's Check button opens it). Everyone in a
 group has a safety number, friends of friends too: tap them in the group's
 info. Every change to who's in a group (made, added, left, renamed) shows as a
 line in its chat, so no one can be slipped in without everyone seeing.
+
+**One account for the site.** The same account (email, password, passkeys) signs in to every app on
+georgefarrowgreen.com, and one sign-in serves them all in a browser (`functions/_account.js`). Each sign-in starts a
+session as before and also gives it to the browser as a cookie for the whole site (`__Secure-account`, Domain
+georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signing in to one app
+signs you in to the others in that browser, and signing out of any of them (or deleting the account, or a password
+reset) ends it for all. InFlight keeps its own copy of the session as before (a bearer token, which its API still
+needs: the cookie alone opens nothing of InFlight's); it gives an existing sign-in to the cookie the first time it syncs
+after this change; and, opened signed out where the browser's signed in elsewhere on the site, its welcome says
+"Signed in as …" with **Continue as …**, which asks only for the password to unlock the key on this phone (`POST
+/api/pigeon/resume`, answering only InFlight's own pages). Apps that keep nothing themselves ask with the cookie,
+only from their own pages (the browser's Origin is checked), and only for their own things. Passkeys are made for the
+site (rpId georgefarrowgreen.com) at chat., the site's own address and weather., so one passkey works at all of them;
+an answer from one is taken only at the address it was given at. The password and passkey checks, with their limits
+and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the same whichever
+app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app signs in on its
+own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`, chat. and weather.
+mapped to this machine: `.tools/tests/wxacct.mjs`).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the

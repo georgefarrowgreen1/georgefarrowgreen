@@ -3,6 +3,7 @@
 // on preview and local addresses it's at /weather/ (functions/weather/_middleware.js).
 // Its files only use relative addresses, so they work the same at either.
 //
+// (WebAssembly runs: a password's stretched on the phone when you sign in to your account, weather/account.js.)
 // It asks Open-Meteo (the forecast, and its archive of past forecasts), BigDataCloud
 // (a name for where you are) and RainViewer (the radar) straight from the browser,
 // and draws the radar over OpenFreeMap's vector map (its tiles, fonts and relief; or
@@ -11,8 +12,8 @@
 import { notFound } from "./_app.js";
 
 export const WEATHER_HOST = "weather.georgefarrowgreen.com";
-// (WEATHER_HOST in the environment: tests, which run the app's own address on a local name)
-export const isWeather = (url, env) => url.hostname === (env.WEATHER_HOST || WEATHER_HOST);
+// (WEATHER_HOST in the environment: tests, which run the app's own address on local names, a comma between them)
+export const isWeather = (url, env) => (env.WEATHER_HOST || WEATHER_HOST).split(",").includes(url.hostname);
 
 const CONNECT = [
   "https://api.open-meteo.com", "https://ensemble-api.open-meteo.com", "https://air-quality-api.open-meteo.com", "https://marine-api.open-meteo.com",
@@ -21,7 +22,7 @@ const CONNECT = [
 ];
 const IMAGES = ["https://tilecache.rainviewer.com", "https://tile.openstreetmap.org", "https://tiles.openfreemap.org"];
 export const WX_SECURITY = {
-  "Content-Security-Policy": `default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob: ${IMAGES.join(" ")}; font-src 'self'; connect-src 'self' ${CONNECT.join(" ")}; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com; style-src 'self'; img-src 'self' data: blob: ${IMAGES.join(" ")}; font-src 'self'; connect-src 'self' ${CONNECT.join(" ")}; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
   "Permissions-Policy": "geolocation=(self), microphone=(), camera=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
