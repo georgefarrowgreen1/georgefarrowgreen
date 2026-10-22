@@ -3307,6 +3307,10 @@ const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => 
     ${val != null ? `<span class="val">${val}</span>` : ""}${chev ? I.chev.replace('class="ico"', 'class="ico chev"') : ""}</${t}>`;
 };
 const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
+// The account's own page (account.<site>, beside chat.<site>), where your password, passkeys and devices are for every
+// app on the site; none where InFlight's served at an address of another kind
+const accountPage = () => location.hostname.startsWith("chat.") ? `${location.origin.replace("//chat.", "//account.")}/`
+  : location.hostname === "georgefarrowgreen.com" ? "https://account.georgefarrowgreen.com/" : null;
 const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
@@ -5398,6 +5402,7 @@ function drawSheet(refresh) {
           ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed</span>' : "" })}
           ${pk ? cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || "Off", chev: true }) : ""}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
+          ${accountPage() ? `<a class="cell has-icon" id="to-account" href="${accountPage()}"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Profile, passkeys and devices, for every app on the site</span></span>${chevSm}</a>` : ""}
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">

@@ -33,3 +33,4 @@ secscreens
 insights
 wxapp
 wxacct
+acctpage

@@ -651,13 +651,13 @@ function derToRawEcdsa(der) {
   return out;
 }
 // Passkeys belong to the site, georgefarrowgreen.com, whichever of its apps' addresses you're at (the site's own,
-// chat. or weather.): one passkey works at all of them (functions/_account.js). A passkey's answer is only taken at the
+// chat., weather. or account.): one passkey works at all of them (functions/_account.js). A passkey's answer is only taken at the
 // address it was given at, though, but for InFlight's two (georgefarrowgreen.com/pigeon and chat.), which are one app.
 // (ACCOUNT_SITE in the environment: tests, which stand in a site of their own, over plain http)
 const RP_SITE = "georgefarrowgreen.com", ADDRESSES = new Set([RP_SITE, "chat." + RP_SITE]);
 export function rpIdFor(request, env) {
   const h = new URL(request.url).hostname, site = env?.ACCOUNT_SITE || RP_SITE;
-  return [site, `chat.${site}`, `weather.${site}`].includes(h) ? site : h;
+  return [site, `chat.${site}`, `weather.${site}`, `account.${site}`].includes(h) ? site : h;
 }
 function originOk(origin, request, env) {
   try {

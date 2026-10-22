@@ -11,12 +11,12 @@
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
-import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, linkOrigin, hex, sha256 } from "./_pigeon.js";
-import { cookieUser, sameOrigin, withSession, withCookie, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn, cookieToken } from "./_account.js";
+import { HttpError } from "./_pigeon.js";
+import { cookieUser, withCookie, cookieToken } from "./_account.js";
+import { accountRoutes, json, body, signedIn } from "./_accountapi.js";
 import { deviceOf } from "./_pigeon.js";
 import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
 import { isWeather } from "./_wxapp.js";
-import { setName, setHandle, putPhoto, dropPhoto, photoOf } from "./_profile.js";
 
 const MAX_SAVED = 50, MAX_DATA = 48 * 1024;
 const cleanText = (v, n) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").trim().slice(0, n);
@@ -55,28 +55,6 @@ async function view(env, u) {
   const k = await kept(env, u.id);
   return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
 }
-// (answers about the account: never kept by anything in between)
-const json = (o, status = 200) => { const r = pjson(o, status); r.headers.set("Cross-Origin-Resource-Policy", "same-origin"); return r; };
-async function body(request, max = 64 * 1024) {
-  if (Number(request.headers.get("Content-Length")) > max) throw new HttpError(413, "Too big.");
-  const text = await request.text();
-  if (text.length > max) throw new HttpError(413, "Too big.");
-  try { const b = JSON.parse(text || "{}"); if (b && typeof b === "object" && !Array.isArray(b)) return b; } catch (_) {}
-  throw new HttpError(400, "Bad request.");
-}
-async function signedIn(request, env) {
-  const u = await cookieUser(request, env);
-  if (!u) throw new HttpError(401, "Not signed in.");
-  return u;
-}
-// a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's
-async function started(request, env, waitUntil, u, how) {
-  const token = await issueSession(env, u.id, request);
-  waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), false).catch(() => {}));
-  // (the session's own token's never given out here: only the cookie's)
-  return withSession(json(await view(env, u)), request, env, hex(await sha256(token)));
-}
-
 export const ACCOUNT_ROUTES = {
   // who's signed in (and what's kept), or { signedIn: false }; the cookie's life renewed while it's used
   "GET me": async ({ request, env }) => {
@@ -100,53 +78,9 @@ export const ACCOUNT_ROUTES = {
     if (JSON.stringify(data.notify) !== JSON.stringify(was.data.notify)) await applyAccount(env, u.id, data.notify);
     return json({ ver: base + 1, data });
   },
-  // the profile: your photo (as an image, for this page only), and changes to it, your name and your handle
-  "GET me/photo": async ({ request, env }) => {
-    const u = await signedIn(request, env), res = await photoOf(env, u.id, { "Cross-Origin-Resource-Policy": "same-origin" });
-    return res || json({ error: "No photo." }, 404);
-  },
-  "PUT me/photo": async ({ request, env }) => {
-    sameOrigin(request);
-    const u = await signedIn(request, env), t = await putPhoto(env, u, request);
-    return json(await view(env, { ...u, avatar_at: t }));
-  },
-  "DELETE me/photo": async ({ request, env }) => {
-    sameOrigin(request);
-    const u = await signedIn(request, env);
-    await dropPhoto(env, u);
-    return json(await view(env, { ...u, avatar_at: null }));
-  },
-  "PATCH me/profile": async ({ request, env }) => {
-    sameOrigin(request);
-    const u = await signedIn(request, env), b = await body(request, 4096), now = { ...u };
-    if (b.name !== undefined) now.name = await setName(env, u, b.name);
-    if (b.handle !== undefined) now.handle = await setHandle(env, u, b.handle);
-    return json(await view(env, now));
-  },
-  "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },
-  "POST signin/password": async ({ request, env, waitUntil }) => {
-    sameOrigin(request);
-    return started(request, env, waitUntil, await passwordUser(env, request, await body(request)), "Password");
-  },
-  "POST signin/options": async ({ request, env }) => {
-    sameOrigin(request);
-    await limit(env, "pkopt:" + clientIp(request), 60, 15 * 60e3);
-    return json({ challenge: await newChallenge(env, "login"), rpId: rpIdFor(request, env) });
-  },
-  "POST signin/passkey": async ({ request, env, waitUntil }) => {
-    sameOrigin(request);
-    return started(request, env, waitUntil, (await passkeyUser(env, request, await body(request))).u, "Passkey");
-  },
-  // signing out: the site's sign-in ended (so everywhere it was shared); this device's notifications stay, as its own
-  "POST signout": async ({ request, env }) => {
-    sameOrigin(request);
-    const u = await cookieUser(request, env), b = await body(request);
-    if (u) {
-      await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
-      if (b.endpoint) await leaveAccount(env, b.endpoint, u.id);
-    }
-    return withoutSession(json({ ok: true }), request, env);
-  },
+  // signing in and out, and the profile, as on every such page on the site (functions/_accountapi.js); signed out
+  // here, this device's notifications stay, as its own
+  ...accountRoutes(view, { onSignOut: (env, u, b) => (b.endpoint ? leaveAccount(env, b.endpoint, u.id) : null) }),
 };
 // Turning notifications on (or changing them) on a device: signed in, as the account's choices, and the device one of
 // the account's; signed out, as its own

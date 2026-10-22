@@ -1,0 +1,14 @@
+{
+  "name": "Your georgefarrowgreen.com account",
+  "short_name": "Account",
+  "description": "One sign-in for every app on georgefarrowgreen.com: your profile, password, passkeys and devices.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1024",
+  "theme_color": "#0b1024",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

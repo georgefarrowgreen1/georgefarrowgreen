@@ -146,6 +146,42 @@ Sign in with Face ID / Touch ID / a security key instead of typing the password.
 - Passkey assertions are verified server-side (challenge, origin, RP-ID hash,
   user-presence flag, and signature).
 
+## Your account (account.georgefarrowgreen.com)
+
+One page for the georgefarrowgreen.com account every app on the site signs in with (`account/`, served at the
+address's root by `functions/_acctapp.js`; its API is `/api/account/`, `functions/api/account/[[path]].js`, answered
+only there). In keeping with the apps: iOS 27's Liquid Glass (panels of glass with a bright rim, blurred enough to read
+over anything) over a night sky with drifting light and a slow twinkle of stars (a dawn sky in light mode); grouped
+lists as Settings has them; a large title that gives way to the bar as the page scrolls; sheets that come up from below
+(swipe one down by its top, or Esc) while the page steps back; and everything rising into place. Still with Reduce
+Motion, solid with Reduce Transparency.
+
+- **Signed out:** sign in with a passkey (the site's: one made in any app works here) or your email and password
+  (stretched on the device as everywhere on the site; the password never leaves it). New accounts are made in
+  InFlight.
+- **Signed in:** your profile (photo, name, handle, email) with **Edit profile**; **Your apps** (a tile for each, with
+  what it keeps of yours, opening it); **Sign-in and security**: your **password** (a new one: the old one's proof gets
+  the key it locks, which the page unlocks and locks anew with the new one, so nothing locked changes hands; a
+  password from a data breach is said as it's typed, by Pwned Passwords' first-5-characters check; every other device
+  is signed out), **passkeys** (add one, take one away) and **signed-in devices** (each with where and when, and
+  Sign out for one or all the others); **Sign out** (of every app on the site, in this browser); and **Delete
+  account** (typed to confirm: everything, in every app).
+- What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, the account
+  deleted) asks you to show it's you first if you last did more than 10 minutes ago (a passkey or your password), then
+  carries on with what you were doing. Changes to the password and passkeys are emailed to the account, as the
+  account's (no app named).
+- The page acts only with the site's sign-in (the HttpOnly cookie, never in the page's reach), and only from its own
+  address: anything that changes something is refused from any other page, the apps' included. Its rules allow
+  nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
+  `argon2.js`) and the apps' icons.
+- Weather's Settings (Password, passkeys and devices) and InFlight's Privacy & Security (Your Account) link here.
+- Tests: `.tools/tests/acctpage.mjs` (signed in from InFlight, the profile and photo, a new password that InFlight
+  then opens with on a new phone, passkeys after showing it's you, devices, signing in both ways, light mode and a wide
+  screen, deleting the account, the API only here and only from here).
+
+**Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
+else: it's the same deployment, routed by its address.
+
 ## Weather (weather.georgefarrowgreen.com)
 
 A forecast that explains itself, in `weather/`: no build step, no keys, no
@@ -463,6 +499,7 @@ so there's nothing to set up beyond the address.
   never leaves it). Signed in, it shows who, whether your places are in step
   ("In step", "Saving…", "Will go up when you're online"), which devices get
   your notifications (and "Send notifications here too" where this one doesn't),
+  **Password, passkeys and devices** (the account's own page, account.<site>),
   and Sign out, which signs the browser out of the account; and Places says
   "In step with your account". What's kept is one record with a version
   (`functions/_wxacct.js`, wx_accts: the places, the settings, the notification
@@ -1479,13 +1516,15 @@ welcome says "Signed in as …" with **Continue as …**, which asks for the pas
 /api/pigeon/resume`, from InFlight's own pages only) starts InFlight's own session in place of the cookie's, and the
 password unlocks the key on the phone. Apps that keep nothing themselves (Weather) ask with the cookie, only from
 their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
-made for the site (rpId georgefarrowgreen.com) at chat., the site's own address and weather., so one passkey works at
+made for the site (rpId georgefarrowgreen.com) at chat., the site's own address, weather. and account., so one passkey works at
 all of them; an answer from one is taken only at the address it was given at. The profile (photo, name, handle, email) is the
 account's, one set of rules for every app (`functions/_profile.js`). The password and passkey checks, with
 their limits and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the
 same whichever app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app
 signs in on its own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
-chat. and weather. mapped to this machine: `.tools/tests/wxacct.mjs`).
+chat., weather. and account. mapped to this machine: `.tools/tests/wxacct.mjs`, `acctpage.mjs`). The account's own
+page, account.georgefarrowgreen.com (above), is where its password, passkeys and signed-in devices are for every app
+(Privacy & Security → Your Account).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the

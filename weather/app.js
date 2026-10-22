@@ -1966,9 +1966,12 @@ function drawAccount() {
       h("li", {}, h("span", {}, "Places and settings"), h("span", { class: a.state === "ok" ? "acct-ok" : "", id: "acct-state" }, a.state === "ok" ? h("span", { svg: TICK }) : null, STATES[a.state] || STATES.ok)),
       h("li", {}, h("span", {}, "Notifications go to"), h("span", {}, to.length ? and(to) : "No devices yet"))),
     notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn", type: "button", id: "acct-here", onclick: sendHere }, "Send notifications here too") : null,
+    accountPage() ? h("a", { class: "acct-btn", id: "acct-manage", href: accountPage() }, "Password, passkeys and devices") : null,
     h("button", { class: "acct-btn", type: "button", id: "acct-out", onclick: signOutHere }, "Sign out"),
     said].filter(Boolean));
 }
+// The account's own page (account.<site>, beside weather.<site>): your password, passkeys and signed-in devices
+const accountPage = () => (location.hostname.startsWith("weather.") ? `${location.origin.replace("//weather.", "//account.")}/` : null);
 // Your photo (the account's: the same in every app on the site), or your initial
 const avatarOf = (a, url = a.photoAt ? A.photoUrl(a.photoAt) : null) => h("span", { class: "acct-av", "aria-hidden": "true" },
   url ? h("img", { src: url, alt: "", width: "48", height: "48", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase());
