@@ -374,3 +374,6 @@ footer.foot a { color: var(--text-2); text-decoration: none; }
   .page, .toast, .meter i { transition: none; }
   body.sheet-up .page { transform: none; }
 }
+
+/* back to InFlight, when it sent you here to edit your profile */
+.backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; }

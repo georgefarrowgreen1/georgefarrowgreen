@@ -21,6 +21,25 @@ const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
 const S = { me: null, settled: false, pulled: 0 };
+// Opened from InFlight (its profile's Edit): a sign-in handed over by a code in the address's # (good once, for a
+// minute: taken out of the address at once, so it's never in the history or a bookmark), what to open, and the way
+// back. (Kept for the visit, so a reload still knows the way back.)
+const HANDOFF = (() => {
+  const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
+  if (!code) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  if (p.get("from") === "inflight") try { sessionStorage.setItem("acct-from", "inflight"); } catch (_) {}
+  return { code, open: p.get("open") };
+})();
+const fromApp = () => { try { return sessionStorage.getItem("acct-from") === "inflight"; } catch (_) { return false; } };
+// (sent here only to edit your profile: Done and Cancel go straight back)
+const justEditing = () => HANDOFF?.open === "profile" && fromApp();
+// back to InFlight: this window closed where InFlight opened it, else InFlight opened here
+function backToApp() {
+  try { sessionStorage.removeItem("acct-from"); } catch (_) {}
+  try { window.close(); } catch (_) {}
+  setTimeout(() => { location.href = siteUrl("chat"); }, 250);
+}
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
@@ -117,7 +136,11 @@ try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t 
 // ---- the page ----
 async function load() {
   await fromLink();
-  try { S.me = await call("me"); S.pulled = Date.now(); }
+  if (HANDOFF) {
+    try { S.me = await post("handoff", { code: HANDOFF.code }); }
+    catch (e) { setTimeout(() => toast(e.message, true), 400); }
+  }
+  try { if (!S.me?.signedIn) S.me = await call("me"); S.pulled = Date.now(); }
   catch (e) {
     main.removeAttribute("aria-busy");
     return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
@@ -126,6 +149,7 @@ async function load() {
   }
   if (S.me.prefs) theme(S.me.prefs.appearance);
   render();
+  if (HANDOFF?.open === "profile" && S.me?.signedIn) openSheet(profileView);
 }
 // A link from one of the account's emails: confirming the email, a new email, or keeping the account. The link's own
 // token is what counts, so it works signed in or not, in whichever browser the email opens it in.
@@ -152,7 +176,7 @@ function render() {
   const rise = !S.settled; S.settled = true;
   let i = 0;
   const r = (el) => { if (rise) { el.classList.add("rise"); el.style.setProperty("--i", i++); } return el; };
-  main.replaceChildren(...(S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)));
+  main.replaceChildren(...(S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)).filter(Boolean));
   if (rise) S.riseUntil = Date.now() + i * 70 + 950;
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
@@ -184,6 +208,7 @@ function signedIn(r) {
     h("img", { src: img, alt: "", width: 54, height: 54 }), h("b", { text: name }), h("span", { text: what }),
     h("span.open", {}, "Open", icon("open", 15, 2.4)));
   return [
+    fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), "InFlight")),
     r(h("h1.large", { text: "Account" })),
     r(h("section.hero.glass", { "aria-label": "Your profile" }, avatar(m),
       h("h2", { text: m.name }),
@@ -491,10 +516,11 @@ function profileView() {
     const changes = {};
     if (name.value.trim() !== m.name) changes.name = name.value.trim();
     if (handle.value.trim().replace(/^@/, "").toLowerCase() !== m.handle) changes.handle = handle.value.trim().replace(/^@/, "").toLowerCase();
-    if (!Object.keys(changes).length) return closeSheet();
+    if (!Object.keys(changes).length) return justEditing() ? backToApp() : closeSheet();
     try {
       S.me = await busy(done, "Saving…", () => call("me/profile", { method: "PATCH", body: changes }));
       closeSheet(); render(); toast(changes.handle ? `You’re @${S.me.handle} now.` : "Profile saved.");
+      if (justEditing()) setTimeout(backToApp, 1100);         // (back to InFlight, where it shows already)
     } catch (e) { say(said, e.message, e.field === "handle" ? handle : name); }
   }
   async function changePhoto(f) {
@@ -507,7 +533,7 @@ function profileView() {
   }
   for (const i of [name, handle]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
   return { title: "Edit profile",
-    left: h("button.link", { type: "button", onclick: closeSheet }, "Cancel"), right: done,
+    left: h("button.link", { type: "button", onclick: () => (justEditing() ? backToApp() : closeSheet()) }, "Cancel"), right: done,
     body: [
       h("div.photo-row", {}, pic, h("div.photo-acts", {},
         h("button.pill", { type: "button", onclick: () => file.click() }, icon("camera", 17), m.photoAt ? "Change photo" : "Add a photo"),

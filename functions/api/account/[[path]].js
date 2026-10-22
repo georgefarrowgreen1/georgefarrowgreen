@@ -15,12 +15,13 @@
 //   POST /api/account/export          everything kept with the account that can be read, as a file
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
+//   POST /api/account/handoff         signed in by a code from InFlight (good once, for a minute): to edit your profile
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
 import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, verifyAssertion, b64url, fromB64url,
-  linkOrigin, emailReady, emailBody, sendEmail, ukTime, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, SITE, ACCOUNT_APP } from "../../_pigeon.js";
-import { cookieUser, withCookie, withoutSession, sameOrigin } from "../../_account.js";
+  linkOrigin, emailReady, emailBody, sendEmail, ukTime, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, SITE, ACCOUNT_APP, issueSession } from "../../_pigeon.js";
+import { cookieUser, withCookie, withoutSession, sameOrigin, withSession } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount } from "../../_acctapp.js";
@@ -86,6 +87,24 @@ async function sendConfirm(env, u, request) {
 }
 
 const ROUTES = {
+  // a sign-in handed over from InFlight: the code used up (good once, for a minute, and only while the sign-in it came from
+  // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
+  // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)
+  "POST handoff": async ({ request, env }) => {
+    sameOrigin(request);
+    await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
+    const D = await db(env), t = Date.now(), code = String((await body(request)).code || "");
+    const h = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? hex(await sha256(code)) : "";
+    const row = h && await D.prepare("DELETE FROM pg_handoff WHERE hash = ? RETURNING user_id, session, expires").bind(h).first();
+    const from = row && row.expires >= t && await D.prepare("SELECT 1 FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, row.user_id).first();
+    if (!from) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
+    const now = await cookieUser(request, env);
+    if (now?.id === row.user_id) return withCookie(json(await view(env, now)), request, env, now.token);
+    const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
+    await D.prepare("UPDATE pg_sessions SET auth_at = 0 WHERE hash = ?").bind(hash).run();          // (never counts as showing it's you)
+    const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
+    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: 0 })), request, env, hash);
+  },
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env, false, { deleting: true });
     if (!u) return json({ signedIn: false });

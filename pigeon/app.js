@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.7";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.8";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1769,7 +1769,7 @@ async function forget() {
   // nothing of this account carries on into the next one: sound, the mic, location, drafts, searches, news
   try { S.player?.pause(); } catch (_) {}
   if (rec) recStop(false);
-  stopLocWatch(); dropAvatarDraft(); airEl = null;
+  stopLocWatch(); airEl = null;
   try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem("inflight-badges"); localStorage.removeItem("inflight-pushsub"); localStorage.removeItem(OPENED_KEY); } catch (_) {}
   openedFor = null;
   if (S.me?.id) { await idb.del("cache:" + S.me.id).catch(() => {}); await idb.del("outbox:" + S.me.id).catch(() => {});
@@ -2392,6 +2392,9 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.8", at: Date.UTC(2026, 9, 23), title: "Your profile, on your account", items: [
+    ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your georgefarrowgreen.com account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
+  ] },
   { v: "1.2.7", at: Date.UTC(2026, 9, 22), title: "Tidier", items: [
     ["compass", "teal", "Look Up lets go", "The camera and Where I Am always go off when you leave Look Up, however you leave it, and when you switch away from the app."],
     ["phone", "blue", "Sign out, sure?", "Signing out another phone asks first, and says which one and roughly where it is."],
@@ -3092,7 +3095,7 @@ function mount() {
     </form>
     <nav class="tabbar" aria-label="Sections"></nav>
     <input type="file" accept="image/*" id="file-lib" hidden>
-    <input type="file" accept="image/*" id="av-lib" hidden>
+
     <div class="layer"></div>
     <div class="poplayer"></div>
     <div class="toasts"></div>`;
@@ -5403,7 +5406,7 @@ function drawSheet(refresh) {
           ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed</span>' : "" })}
           ${pk ? cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || "Off", chev: true }) : ""}
           ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
-          ${accountPage() ? `<a class="cell has-icon" id="to-account" href="${accountPage()}"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Profile, passkeys and devices, for every app on the site</span></span>${chevSm}</a>` : ""}
+          ${accountPage() ? `<button type="button" class="cell has-icon" id="to-account" data-act="accountopen"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Profile, passkeys and devices, for every app on the site</span></span>${chevSm}</button>` : ""}
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">
@@ -5944,18 +5947,13 @@ function drawSheet(refresh) {
         { left: { label: "Cancel", act: "close" }, right: { label: "Link", form: "askpw-form" } });
       return;
     case "profile": {
-      const u = S.me, wait = u.handleNextAt && u.handleNextAt > now() ? u.handleNextAt - now() : 0;
-      // unsaved name and handle survive redraws and trips to Notifications or Privacy & Security
-      const keep = $("#f-name", $layer) ? { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value } : S.profileDraft;
-      const old = $(".sheet .body", $layer), top = old && $("#profile-form", $layer) ? old.scrollTop : 0;
+      // Your photo, name and handle are your georgefarrowgreen.com account's, the same in every app: they're shown here,
+      // and changed on the account's own page (Edit Profile: opened signed in, straight to them, and back here after)
+      const u = S.me, old = $(".sheet .body", $layer), top = old && $(".mehead", $layer) ? old.scrollTop : 0;
       $layer.innerHTML = sheetHtml("My Profile", `
-        <div class="profile-head"><button type="button" class="avedit" data-act="avmenu">${S.avatarDraft ? `<span class="av xl" aria-hidden="true"><img src="${S.avatarDraft.url}" alt=""></span>` : avatar(u, "xl")}<span>${S.avatarDraft ? "New Photo" : u.avatarAt ? "Edit Photo" : "Add Photo"}</span></button></div>
-        <form id="profile-form" data-form="profile" novalidate>
-          <div class="ghead">Name</div><div class="group">${field("name", "Name", "text", "name")}</div>
-          <div class="ghead">Handle</div><div class="group">${field("handle", "handle", "text", "username", "@")}</div>
-          <div class="gfoot">${wait ? `You can change your handle once a day. Next change in ${fmtDur(wait)}.` : "Friends find you by your handle. You can change it once a day."}</div>${ferr}
-        </form>
-        <div class="gfoot mt">Your friends, and people you’ve sent a friend request to, can see your photo.</div>
+        <div class="profile-head mehead">${avatar(u, "xl")}<span class="name">${esc(u.name)}</span><span class="sub">@${esc(u.handle)}</span>
+          ${accountPage() ? `<button type="button" class="btn small tinted meedit" data-act="accountedit">${I.person}Edit Profile</button>` : ""}</div>
+        <div class="gfoot mehint">Your photo, name and handle are your georgefarrowgreen.com account’s, the same in every app. Your friends, and people you’ve sent a request to, see them.</div>
         <div class="ghead">Location</div>
         ${u.moon ? ((w, d) => `<div class="group">
           ${cell({ icon: w === "mars" ? I.up : I.moon, tile: w === "mars" ? "red" : "indigo", label: `On ${BODIES[w].name}`, val: esc((u.place || "").replace(/, (the Moon|Mars)$/, "")), sub: d })}
@@ -5981,13 +5979,8 @@ function drawSheet(refresh) {
         </div>`}
         <div class="gfoot">${u.moon ? "Choosing somewhere on Earth brings you home." : "Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile."}</div>
         <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
-        <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>`,
-        { left: { label: "Close", act: "close" }, right: { label: "Done", form: "profile-form" } });
+        <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>`);
       if (top) $(".sheet .body", $layer).scrollTop = top;
-      $("#f-name", $layer).value = keep ? keep.name : u.name;
-      $("#f-name", $layer).maxLength = 50;
-      $("#f-handle", $layer).value = keep ? keep.handle : u.handle;
-      if (wait) $("#f-handle", $layer).disabled = true;
       return;
     }
     case "moonpick": {
@@ -7304,7 +7297,7 @@ async function onClick1(e, t) {
     case "addfriend": S.sheet = { type: "addfriend" }; return renderSheet();
     case "safetylist": S.sheet = { type: "safetylist" }; return renderSheet();
     case "securitysheet": {
-      keepProfileDraft(); S.sheet = { type: "security" }; renderSheet();
+      S.sheet = { type: "security" }; renderSheet();
       // how many places you're signed in, for its row (quietly: the row just has no number if this fails)
       // (put straight into its row, not a redraw: that would replace the sheet under your finger)
       api("sessions").then(({ sessions }) => {
@@ -7321,7 +7314,7 @@ async function onClick1(e, t) {
     case "close":
       if (S.sheet?.type === "askpw") S.sheet.resolve(null);
       if (S.sheet?.type === "reauth") { const r = S.sheet.resolve; S.sheet = S.sheet.back || null; renderSheet(); return r(false); }
-      S.sheet = null; S.profileDraft = null; dropAvatarDraft(); return renderSheet();
+      S.sheet = null; return renderSheet();
     case "closepop": return closePop();
     case "submit": return $("#" + id, $layer)?.requestSubmit();
     case "map": S.sheet = { type: "map", id }; return renderSheet();
@@ -7461,9 +7454,6 @@ async function onClick1(e, t) {
     case "attachmenu":
       if (!S.gifsOn) { haptic("tick"); return $("#file-lib")?.click(); }
       return openMenu(t, [{ label: "Photo", icon: I.photo, act: "pick", id: "file-lib" }, { label: "GIF", icon: `<span class="gifico" aria-hidden="true">GIF</span>`, act: "gifs" }]);
-    case "avmenu":
-      if (!S.me.avatarAt && !S.avatarDraft) return $("#av-lib")?.click();
-      return openMenu(t, [{ label: "Change Photo", icon: I.photo, act: "pick", id: "av-lib" }, { label: "Remove Photo", icon: I.trash, act: "avdel", destructive: true }]);
     case "pick": return $("#" + id)?.click();
     case "trust": return trustNewKey(id);
     case "decline": {
@@ -7566,7 +7556,7 @@ async function onClick1(e, t) {
     case "moved": return movedNote(true);
     case "movego": if (!standalone()) { e?.preventDefault?.(); location.href = `${NEW_HOME}/${S.view === "welcome" ? location.hash : ""}`; } return;
     case "movecopy": try { await navigator.clipboard.writeText(NEW_HOME + "/"); toast("Address copied."); } catch (_) { toast(esc(NEW_HOME.replace(/^https?:\/\//, ""))); } return;
-    case "appearancesheet": keepProfileDraft(); S.sheet = { type: "appearance" }; return renderSheet();
+    case "appearancesheet": S.sheet = { type: "appearance" }; return renderSheet();
     case "theme": setTheme(id); render(); return renderSheet();
     case "pigeon": S.pick = id; renderCompose(); if (S.sheet?.type === "flysheet") renderSheet(); return;
     case "flysheet": haptic("tick"); S.sheet = { type: "flysheet", chat: S.chat }; return renderSheet();
@@ -7626,7 +7616,7 @@ async function onClick1(e, t) {
       catch (err) { S.me = { ...S.me, [id]: !on }; renderSheet(); toast(esc(err.message)); }
       return;
     }
-    case "notifysheet": keepProfileDraft(); S.sheet = { type: "notifications" }; return renderSheet();
+    case "notifysheet": S.sheet = { type: "notifications" }; return renderSheet();
     case "npref": return setNotify({ [id]: !S.me.notify?.[id] });
     case "pushtoggle": return S.pushOn ? pushDisable() : pushEnable();
     case "pushtest":
@@ -7644,12 +7634,8 @@ async function onClick1(e, t) {
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       return;
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
-    case "profile": S.sheet = { type: "profile" }; renderSheet(); S.profileDraft = null; return;
-    case "avdel":
-      if (S.avatarDraft) { dropAvatarDraft(); return renderSheet(true); }   // a photo you haven't saved yet just goes
-      try { S.me = (await api("avatar", { method: "DELETE" })).me; renderSheet(true); render(); }
-      catch (err) { showErr(err.message); }
-      return;
+    case "profile": S.sheet = { type: "profile" }; return renderSheet();
+    case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
     case "resetcancel": S.resetToken = null; S.resetInfo = null; S.resetFrom = null; return location.reload();
     case "resetkeep": case "resetfresh":
       try { await resetWith(t.dataset.act === "resetkeep" ? "keep" : "fresh", t); }
@@ -7661,7 +7647,6 @@ const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone alr
 
 async function onChange(e) {
   const el = e.target;
-  if (el.id === "av-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAvatar(f); }
   if (el.id === "file-lib" && el.files[0]) { const f = el.files[0]; el.value = ""; return setAttach(f); }
   if (el.dataset.act === "quiethour") return setNotify({ [el.dataset.id]: Number(el.value) });
   if (el.dataset.act === "lockafter") { const lp = lockPrefs(); if (lp) setLockPrefs({ ...lp, after: Number(el.value) || 0 }); return renderSheet(); }
@@ -7730,8 +7715,17 @@ async function saveFix(force) {
 }
 // My Profile holds name and handle (saved with Done) next to settings that save
 // as soon as they change (location, notifications, security).
-function keepProfileDraft() {
-  if (S.sheet?.type === "profile" && $("#f-name", $layer)) S.profileDraft = { name: $("#f-name", $layer).value, handle: $("#f-handle", $layer).value };
+// Your account's page, opened signed in as you: a code good once, for a minute, handed over in the address's # (the
+// page swaps it for a sign-in of its own, in whichever browser it opens in, and takes it out of the address). The window's
+// opened at once, from the tap (a phone won't open one later), and sent on when the code's back.
+async function openAccount(open) {
+  const page = accountPage(); if (!page) return;
+  const w = window.open("", "_blank");
+  try {
+    const { code } = await api("account-link", { method: "POST" });
+    const url = `${page}#${new URLSearchParams({ handoff: code, from: "inflight", ...(open ? { open } : {}) })}`;
+    if (w && !w.closed) w.location.href = url; else location.href = url;
+  } catch (err) { w?.close(); toast(esc(err.message)); }
 }
 const refreshProfile = () => { if (S.sheet?.type === "profile") renderSheet(true); };
 async function savePlace(lat, lon, place) {
@@ -7868,23 +7862,6 @@ async function submitForm(e, form, kind) {
     const keep = $("[data-act=resetkeep]");
     try { await resetWith(keep ? "keep" : "fresh", keep || $("[data-act=resetfresh]")); }
     catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
-  } else if (kind === "profile") {
-    const name = String(v.name || "").trim(), handle = String(v.handle ?? S.me.handle).trim().replace(/^@/, "").toLowerCase();
-    if (!name) return showErr("Your name can’t be empty.", "name");
-    if (!/^[a-z0-9_]{3,20}$/.test(handle)) return showErr("Handles use 3 to 20 letters, numbers or underscores.", "handle");
-    const changes = {};
-    if (name !== S.me.name) changes.name = name;
-    if (handle !== S.me.handle) changes.handle = handle;
-    const photo = !!S.avatarDraft;
-    if (!Object.keys(changes).length && !photo) { S.sheet = null; return renderSheet(); }
-    try {
-      await busyBtn(btn, "Saving…", async () => {
-        if (photo) await uploadAvatarDraft();
-        if (Object.keys(changes).length) S.me = (await api("me", { method: "PATCH", body: changes })).me;
-      });
-      S.sheet = null; S.profileDraft = null; renderSheet(); render();
-      toast(changes.handle ? `Saved. Friends now find you as @${esc(S.me.handle)}.` : photo && !changes.name ? "Profile photo updated." : "Profile saved.");
-    } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "changepw") {
     if (!v.current) return showErr("Enter your current password.", "current");
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
@@ -7939,37 +7916,6 @@ async function afterSignIn() {
   if (S.pendingAdd) { go("friends"); S.sheet = { type: "addfriend" }; return renderSheet(); }
   go("messages");
   if (S.pendingLink) { const h = S.pendingLink; S.pendingLink = null; openLink(h); }   // the link you came in on
-}
-// Profile pictures: centre-cropped square, 512px JPEG (which also drops location metadata).
-// A ring fills around your photo in My Profile while it uploads.
-// A new profile photo is only a preview until you tap Done; then it uploads,
-// with a slim bar under it that fills smoothly.
-async function uploadAvatarDraft() {
-  const d = S.avatarDraft, b = $(".avedit", $layer);
-  if (b && !$(".avbar", b)) b.insertAdjacentHTML("beforeend", '<i class="avbar" role="progressbar" aria-label="Uploading photo"><b></b></i>');
-  b?.classList.add("uploading");
-  const bar = b && $(".avbar b", b);
-  const fill = smoothProgress((x) => { if (bar) bar.style.transform = `scaleX(${x})`; });
-  fill.set(0.02);
-  try {
-    const r = await api("avatar", { method: "POST", blob: d.blob, onProgress: (f) => fill.set(f) });
-    fill.set(1); await new Promise((res) => setTimeout(res, 300));
-    S.me = r.me; S.avatars.set(`${S.me.id}:${S.me.avatarAt}`, d.url); S.avatarDraft = null;
-  } finally { fill.stop(); b?.classList.remove("uploading"); b && $(".avbar", b)?.remove(); }
-}
-function dropAvatarDraft() { if (S.avatarDraft) { URL.revokeObjectURL(S.avatarDraft.url); S.avatarDraft = null; } }
-async function setAvatar(file) {
-  try {
-    const bmp = await loadBitmap(file);
-    const side = Math.min(bmp.width, bmp.height), size = Math.min(512, side);
-    const c = document.createElement("canvas"); c.width = c.height = size;
-    c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
-    const jpg = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
-    if (!jpg) throw new Error("That picture couldn’t be read. Try another one.");
-    dropAvatarDraft();
-    S.avatarDraft = { blob: jpg, url: URL.createObjectURL(jpg) };   // uploads when you tap Done
-    renderSheet(true);
-  } catch (err) { showErr(err.message || "That picture couldn’t be read. Try another one."); }
 }
 // Animated GIFs keep every frame: they're sent as they are (sealed like any
 // photo) instead of being redrawn as a still JPEG. Only the picture, its timing
