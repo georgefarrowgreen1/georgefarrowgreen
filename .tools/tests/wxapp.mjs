@@ -934,9 +934,12 @@ await p.waitForFunction(() => document.getElementById('place-name').textContent 
 await p.waitForTimeout(600);
 ok((await p.textContent('#place-name')) === 'Edinburgh' && !(await p.evaluate(() => document.getElementById('places').open)), 'a place found by search: Enter takes the first found (even before they\'re back)');
 // and the place it was is on the map too, a small bubble (its temperature now, as the list of places has it) that goes to it
+// (once the map's made: the radar in sight)
 {
-  const other = await p.waitForFunction(() => document.querySelector('.map-other')?.getAttribute('aria-label'), null, { timeout: 8000 }).then((h) => h.jsonValue(), () => null);
+  await p.locator('#radar').scrollIntoViewIfNeeded();
+  const other = await p.waitForFunction(() => document.querySelector('.map-other')?.getAttribute('aria-label'), null, { timeout: 15000 }).then((h) => h.jsonValue(), () => null);
   ok(/^London: -?\d+°\. Show it$/.test(other || '') && (await p.locator('.map-other').count()) === 1, 'the other saved place on the map, a bubble with its temperature', other);
+  await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
 }
 await p.click('#place-btn');
 ok((await p.locator('#saved li').count()) === 2, 'both places saved');
