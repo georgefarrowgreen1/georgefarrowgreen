@@ -70,8 +70,10 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   // areas drawn over it (official warnings: areas()), each in its colour, under the names and over the radar's and the
   // models' pictures (put in under them: UNDER)
   map.addSource("areas", { type: "geojson", data: NONE });
-  map.addLayer({ id: "areas-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": light ? 0.16 : 0.13 } }, ABOVE_RAIN);
-  map.addLayer({ id: "areas-line", type: "line", source: "areas", paint: { "line-color": ["get", "colour"], "line-width": 1.6, "line-opacity": 0.9 } }, ABOVE_RAIN);
+  // (one still to come: hardly filled, and dashed)
+  map.addLayer({ id: "areas-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": ["case", ["get", "soon"], 0.05, light ? 0.16 : 0.13] } }, ABOVE_RAIN);
+  map.addLayer({ id: "areas-line", type: "line", source: "areas", filter: ["!", ["get", "soon"]], paint: { "line-color": ["get", "colour"], "line-width": 1.6, "line-opacity": 0.9 } }, ABOVE_RAIN);
+  map.addLayer({ id: "areas-soon", type: "line", source: "areas", filter: ["get", "soon"], paint: { "line-color": ["get", "colour"], "line-width": 1.8, "line-opacity": 0.95, "line-dasharray": [2, 2] } }, ABOVE_RAIN);
   const UNDER = "areas-fill";
   // the place: its bubble (radar.js; else a dot), with room kept round it that names step aside from: the bubble
   // above it and its name below
@@ -106,7 +108,9 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
 
-  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null, mixCorners = null, was = null, wasFade = 0, fld = null, fldAt = "", fldOf = null;
+  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null, mixCorners = null, was = null, wasFade = 0, flow = null, flowAt = "";
+  // (the fields' layers, by slot: "field", the region's; "fine", a finer one about the place over it)
+  const fields = new Map();
   const corners = ([[s, w], [n, e]]) => [[w, n], [e, n], [e, s], [w, s]];
   // (a layer's opacity, at once, or faded to it over a quarter of a second)
   const INSTANT = { duration: 0, delay: 0 }, GENTLY = { duration: calm ? 0 : 260, delay: 0 };
@@ -184,18 +188,36 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
     },
     // temperature or wind over the map, in place of the rain (radar.js, its layers): a picture over bounds, drawn again
     // as it changes; null: none
-    field(canvas, bounds, value = 1) {
-      if (!canvas) { if (fld) opacity("field", 0); return; }
+    // (slot: "field", or "fine", a finer picture about the place, over it)
+    field(canvas, bounds, value = 1, slot = "field") {
+      let f = fields.get(slot);
+      if (!canvas) { if (f) opacity(slot, 0); return; }
       const c = corners(bounds), key = c.join();
-      if (fld && fldOf !== canvas) { map.removeLayer("field"); map.removeSource("field"); fld = null; }
-      if (!fld) {
-        told.delete("field");
-        map.addSource("field", { type: "canvas", canvas, coordinates: c, animate: false });
-        map.addLayer({ id: "field", type: "raster", source: "field", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0, "raster-resampling": "linear" } }, UNDER);
-        fld = map.getSource("field"); fldAt = key; fldOf = canvas;
-      } else if (key !== fldAt) { fld.setCoordinates(c); fldAt = key; }
-      fld.play(); fld.pause(); map.triggerRepaint();
-      opacity("field", value, true);
+      if (f && f.of !== canvas) { map.removeLayer(slot); map.removeSource(slot); f = null; }
+      if (!f) {
+        told.delete(slot);
+        map.addSource(slot, { type: "canvas", canvas, coordinates: c, animate: false });
+        map.addLayer({ id: slot, type: "raster", source: slot, paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0, "raster-resampling": "linear" } }, UNDER);
+        // (the finer over the region's)
+        if (slot === "field" && map.getLayer("fine")) map.moveLayer("fine", UNDER);
+        f = { src: map.getSource(slot), at: key, of: canvas }; fields.set(slot, f);
+      } else if (key !== f.at) { f.src.setCoordinates(c); f.at = key; }
+      f.src.play(); f.src.pause(); map.triggerRepaint();
+      opacity(slot, value, true);
+    },
+    // the wind's flow: a picture of what's in sight, drawn into the map under its names as it changes (null: none)
+    flow(canvas, bounds) {
+      if (!canvas) { if (flow) map.setLayoutProperty("flow", "visibility", "none"); return; }
+      const c = corners(bounds), key = c.join();
+      if (!flow) {
+        map.addSource("flow", { type: "canvas", canvas, coordinates: c, animate: false });
+        map.addLayer({ id: "flow", type: "raster", source: "flow", paint: { "raster-fade-duration": 0, "raster-resampling": "linear" } }, ABOVE_RAIN);
+        flow = map.getSource("flow"); flowAt = key;
+      } else {
+        if (key !== flowAt) { flow.setCoordinates(c); flowAt = key; }
+        map.setLayoutProperty("flow", "visibility", "visible");
+      }
+      flow.play(); flow.pause(); map.triggerRepaint();
     },
     // room kept under the place's bubble, where its name is, that names step aside from: as wide as the name
     room(w) {
@@ -227,9 +249,9 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
         remove: () => { mk.remove(); marks.delete(id); markRooms(); },
       };
     },
-    // areas: [{ rings: [[lat, lon, lat, lon, …], …], colour }]
+    // areas: [{ rings: [[lat, lon, lat, lon, …], …], colour, soon (not in force yet) }]
     areas(list) {
-      map.getSource("areas").setData({ type: "FeatureCollection", features: list.map((a) => ({ type: "Feature", properties: { colour: a.colour },
+      map.getSource("areas").setData({ type: "FeatureCollection", features: list.map((a) => ({ type: "Feature", properties: { colour: a.colour, soon: !!a.soon },
         geometry: { type: "MultiPolygon", coordinates: a.rings.map((r) => { const ring = []; for (let i = 0; i + 1 < r.length; i += 2) ring.push([r[i + 1], r[i]]); return [ring]; }) } })) });
     },
     // the names kept clear of these: [{ x, y, w, h }], pixels from the map's top left

@@ -52,7 +52,8 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       el.onselectstart = L.Util.falseFn; el.onmousemove = L.Util.falseFn;
     },
   });
-  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null, was = null, fld = null, fldAt = "", fldOf = null;
+  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null, was = null;
+  const fields = new Map();
   return {
     kind: "leaflet",
     credit: ["OpenStreetMap"],
@@ -89,13 +90,15 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       mix.setOpacity(opacity);
     },
     // temperature or wind over the map, in place of the rain (radar.js, its layers); null: none
-    field(canvas, bounds, opacity = 1) {
-      if (!canvas) { fld?.setOpacity(0); return; }
+    field(canvas, bounds, opacity = 1, slot = "field") {
+      let f = fields.get(slot);
+      if (!canvas) { f?.layer.setOpacity(0); return; }
       const key = bounds.join();
-      if (fld && fldOf !== canvas) { map.removeLayer(fld); fld = null; }
-      if (!fld) { fld = new Canvas(canvas, bounds, { opacity: 0, interactive: false, className: "rv-field" }).addTo(map); fldAt = key; fldOf = canvas; }
-      else if (key !== fldAt) { fld.setBounds(L.latLngBounds(bounds)); fldAt = key; }
-      fld.setOpacity(opacity);
+      if (f && f.of !== canvas) { map.removeLayer(f.layer); f = null; }
+      if (!f) { f = { layer: new Canvas(canvas, bounds, { opacity: 0, interactive: false, className: `rv-field rv-${slot}` }).addTo(map), at: key, of: canvas }; fields.set(slot, f); }
+      else if (key !== f.at) { f.layer.setBounds(L.latLngBounds(bounds)); f.at = key; }
+      if (slot === "fine") f.layer.bringToFront();
+      f.layer.setOpacity(opacity);
     },
     bounds() { const b = map.getBounds(); return [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; },
     box(bounds, opacity = 0) {
@@ -114,7 +117,7 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
     areas(list) {
       if (areas) map.removeLayer(areas);
       areas = L.layerGroup(list.map((a) => L.polygon(a.rings.map((r) => { const ring = []; for (let i = 0; i + 1 < r.length; i += 2) ring.push([r[i], r[i + 1]]); return ring; }),
-        { pane: "areas", color: a.colour, weight: 1.6, opacity: 0.9, fillColor: a.colour, fillOpacity: 0.13, interactive: false }))).addTo(map);
+        { pane: "areas", color: a.colour, weight: a.soon ? 1.8 : 1.6, opacity: 0.9, dashArray: a.soon ? "5 5" : null, fillColor: a.colour, fillOpacity: a.soon ? 0.05 : 0.13, interactive: false }))).addTo(map);
     },
     // (its names are in its pictures: nothing to keep clear)
     clear() {},

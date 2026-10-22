@@ -634,15 +634,37 @@ const pinHue = (temp) => {
   const f = t1 > t0 ? Math.min(1, Math.max(0, (temp - t0) / (t1 - t0))) : 0;
   return `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * f)).join(",")})`;
 };
-// a saved place at a glance (peek), kept a minute: its whole kept forecast is read to get it, not one to read every drawing
+// a saved place at a glance (peek), kept a minute: its whole kept forecast is read to get it, not one to read every
+// drawing; for one that's never been opened here, its weather now as asked for with the others' (glanceAll)
 const glances = new Map();
 const glance = (q) => {
   const id = cell(q.lat, q.lon), had = glances.get(id);
   if (had && Date.now() - had.at < 60e3) return had.k;
-  const k = peek(q);
+  const k = peek(q) || store.get("wx:glances")?.[id] || null;
   glances.set(id, { at: Date.now(), k });
   return k;
 };
+// The saved places with no forecast kept here (added on another visit, say): their weather now, all of them in one
+// request, once a half hour at most, kept (wx:glances); then the map's bubbles and the list of places drawn again
+let glancedAt = 0;
+async function glanceAll() {
+  const want = S.places.filter((q) => !peek(q));
+  if (!want.length || Date.now() - glancedAt < 30 * 60e3) return;
+  glancedAt = Date.now();
+  try {
+    const q = new URLSearchParams({ latitude: want.map((x) => x.lat).join(","), longitude: want.map((x) => x.lon).join(","), current: "temperature_2m,weather_code,is_day", timezone: "auto" });
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return;
+    const j = await r.json(), list = Array.isArray(j) ? j : [j], kept = store.get("wx:glances") || {};
+    want.forEach((x, i) => { const c = list[i]?.current; if (c && Number.isFinite(c.temperature_2m)) kept[cell(x.lat, x.lon)] = { temp: c.temperature_2m, code: c.weather_code, isDay: c.is_day === 1, offset: list[i].utc_offset_seconds || 0, hi: null, lo: null, at: Date.now() }; });
+    // (those no longer saved let go)
+    const saved = new Set(S.places.map((x) => cell(x.lat, x.lon)));
+    for (const id of Object.keys(kept)) if (!saved.has(id)) delete kept[id];
+    store.set("wx:glances", kept); glances.clear();
+    if (S.wx) pinOnMap(S.wx, nowWall(S.wx.place.offset));
+    if ($("places").open) drawSaved();
+  } catch (_) {}
+}
 function pinOnMap(wx, now) {
   const c = wx.current || I.hourAt(wx, now), p = place();
   if (!S.radar || !c) return;
@@ -650,6 +672,7 @@ function pinOnMap(wx, now) {
   // the other saved places on the map too, their temperature now as the list of them has it, each a way to go to it;
   // and the official warnings' areas, where their services draw them
   const here = cell(wx.place.lat, wx.place.lon);
+  glanceAll();
   S.radar.others(S.places.map((q, i) => ({ q, i })).filter(({ q, i }) => i !== S.cur && cell(q.lat, q.lon) !== here).map(({ q, i }) => {
     const k = glance(q);
     return { name: q.gps ? "My Location" : q.name, lat: q.lat, lon: q.lon, temp: k ? S.f.temp(k.temp) : "", colour: k ? pinHue(k.temp) : null, go: () => { S.cur = i; savePlaces(); go(); } };
@@ -1500,9 +1523,9 @@ function drawSaved() {
   const f = S.f, box = $("saved"), had = document.activeElement?.closest?.("#saved .pc-li"), at = had ? [...box.children].indexOf(had) : -1;
   box.replaceChildren(...S.places.map((p, i) => {
     // (the place on show as the page has it, its sky and its high and low the same as there; the rest as last kept)
-    const k = i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : peek(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
+    const k = i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : glance(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
     const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
-      "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}${i === S.cur ? ", showing" : ""}`,
+      "aria-label": `${p.name}${k ? `: ${f.temp(k.temp)}, ${label(k.code, k.isDay)}${k.hi != null ? `, high ${f.temp(k.hi)}, low ${f.temp(k.lo)}` : ""}` : ""}${i === S.cur ? ", showing" : ""}`,
       onclick: () => { if (li.classList.contains("swiped")) { li.classList.remove("swiped"); return; } S.cur = i; savePlaces(); closeSheet($("places")); go(); } },
       h("span", { class: "pc-l" }, h("span", { class: "pc-name" }, p.gps ? [h("span", { class: "pc-here", svg: glyph("arrow", 12) }), " "] : null, p.name),
         h("span", { class: "pc-sub" }, [p.gps && p.name !== "My Location" ? "My Location" : p.region?.split(",")[0], k ? f.time(Date.now() + k.offset * 1000) : null].filter(Boolean).join(" · ")),

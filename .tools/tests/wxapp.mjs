@@ -65,6 +65,12 @@ function modelGrid(url) {
   const time = Array.from({ length: 9 }, (_, k) => new Date(q0 + k * 900e3).toISOString().slice(0, 16));
   return Array.from({ length: n }, (_, i) => ({ minutely_15: { time, precipitation: time.map((_, k) => (i % 9 < 4 ? 0.3 + k * 0.1 : 0)), snowfall: time.map(() => 0) } }));
 }
+// the air quality on the field's grid, by the hour: fair, a little worse to the east
+function aqGrid(url) {
+  const n = new URL(url).searchParams.get('latitude').split(',').length, side = Math.round(Math.sqrt(n)), h0 = Math.floor(Date.now() / H) * H - 3 * H;
+  const time = Array.from({ length: 16 }, (_, k) => new Date(h0 + k * H).toISOString().slice(0, 16));
+  return Array.from({ length: n }, (_, i) => ({ hourly: { time, european_aqi: time.map(() => 22 + (i % side) * 2) } }));
+}
 // the models' hours of rain on the radar's grid, from this hour on: none for the first four, then a band over the western half
 function hoursGrid(url) {
   const n = new URL(url).searchParams.get('latitude').split(',').length, h0 = Math.floor(Date.now() / H) * H;
@@ -155,6 +161,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
   await p.route(/open-meteo\.com|bigdatacloud/, (r) => {
     const u = r.request().url(), j = (o) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o), headers: { 'Access-Control-Allow-Origin': '*' } });
     if (u.includes('ensemble-api')) return j(F.ensemble(now, sc));
+    if (u.includes('air-quality') && u.includes('past_hours')) { tiles.aq = (tiles.aq || 0) + 1; return j(aqGrid(u)); }
     if (u.includes('air-quality')) return j(F.air(now));
     if (u.includes('marine-api')) return j(F.marine(now, u));
     if (u.includes('archive-api')) return j(F.archive(now));
@@ -162,6 +169,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
     if (u.includes('previous-runs-api')) return j(previousRuns(u));
     if (u.includes('forecast_minutely_15=9')) { tiles.grid++; return j(modelGrid(u)); }
+    if (u.includes('hourly=temperature_2m&past_hours')) { tiles.fine = (tiles.fine || 0) + 1; return j(fieldGrid(u)); }
     if (u.includes('hourly=precipitation%2Csnowfall')) { tiles.hours = (tiles.hours || 0) + 1; return j(hoursGrid(u)); }
     if (u.includes('hourly=temperature_2m%2Cwind_speed_10m%2Cwind_direction_10m')) { tiles.field = (tiles.field || 0) + 1; return j(fieldGrid(u)); }
     if (u.includes('models=')) return j(F.models(now, sc));
@@ -556,6 +564,9 @@ ok((await p.locator('#radar .radar-legend .rl-bar').count()) === 2 && /Light.*He
 await p.waitForFunction(() => document.querySelector('#radar .radar-map').classList.contains('drawn'), null, { timeout: 8000 }).catch(() => {});
 ok(tiles.tilejson > 0 && tiles.vector > 0 && tiles.map === 0 && await p.evaluate(() => document.querySelector('#radar .radar-map').classList.contains('drawn')),
   'the vector map: OpenFreeMap\'s tiles (and none of OpenStreetMap\'s own)', JSON.stringify(tiles));
+// (a press on one of the map's buttons that the card keeps out of sight on a phone: there for full screen)
+const press = (pg, sel) => pg.evaluate((sel) => document.querySelector(sel).click(), sel);
+ok(!(await p.isVisible('#radar .map-in')) && !(await p.isVisible('#radar .radar-centre')) && await p.isVisible('#radar .map-layers'), 'on a phone, in the card (a tap opens it full screen), the layers button alone');
 ok(await p.locator('#radar .map-zoom button').count() === 2 && await p.locator('#radar .radar-centre').count() === 1 && /^\d+ mi$/.test(await p.textContent('#radar .map-scale')),
   'buttons to zoom in and out and back to the place, and a scale (in miles, as the wind is)', await p.textContent('#radar .map-scale'));
 ok(await p.evaluate(() => { const c = document.querySelector('#radar .maplibregl-canvas'); return document.querySelectorAll('[role="region"][aria-label="Rain radar map"]').length === 1 && c.getAttribute('aria-label') === 'Rain radar map'; }), 'named once for a screen reader (its canvas, not its frame too)');
@@ -625,14 +636,14 @@ ok(/^Latest radar [A-Z][a-z]+day \d\d:\d0 · (\d+ min ago|now)$/.test(await p.te
 // closer in than the radar's tiles go, it's smoothed: drawn in its own blue, with an edge that fades rather than steps
 const scale0 = await p.textContent('#radar .map-scale');
 ok(scale0 === '10 mi', 'it opens close in: 10 miles to the scale', scale0);
-await p.click('#radar .map-in'); await p.waitForTimeout(450);
+await press(p, '#radar .map-in'); await p.waitForTimeout(450);
 await p.waitForFunction(() => __tiles.filter((t) => t.rain > 1000).length >= 4, null, { timeout: 15000, polling: 250 }).catch(() => {});
 const drawn = await p.evaluate(() => __tiles.reduce((a, t) => ({ rain: a.rain + t.rain, soft: a.soft + t.soft, blue: a.blue + t.blue, tiles: a.tiles + 1 }), { rain: 0, soft: 0, blue: 0, tiles: 0 }));
 ok(drawn.rain > 1000 && drawn.blue > drawn.rain * 0.9 && drawn.soft > 100, 'enlarged, the radar is smoothed: rain in its own blue, with soft edges', JSON.stringify(drawn));
 ok(await p.textContent('#radar .map-scale') !== scale0 && !(await p.isDisabled('#radar .map-in')) && !(await p.isDisabled('#radar .map-out')), 'zoomed in a step, the scale shorter', `${scale0} → ${await p.textContent('#radar .map-scale')}`);
-await p.click('#radar .map-in'); await p.waitForTimeout(450);
+await press(p, '#radar .map-in'); await p.waitForTimeout(450);
 ok(await p.isDisabled('#radar .map-in'), 'and a step more, no closer than the radar\'s worth seeing (zoom in greys out)');
-await p.click('#radar .radar-centre'); await p.waitForTimeout(900);
+await press(p, '#radar .radar-centre'); await p.waitForTimeout(900);
 ok(await p.textContent('#radar .map-scale') === scale0, 'back to the place at its own zoom', await p.textContent('#radar .map-scale'));
 await p.waitForTimeout(600);
 const after = await p.evaluate(() => ({ label: document.querySelector('#radar .radar-time').textContent, gl: __glread() }));
@@ -666,18 +677,18 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
 {
   const st = () => p.evaluate(() => { const c = document.getElementById('radar'), pin = document.querySelector('.map-pin'); return { layer: c.dataset.layer, title: c.querySelector('.card-title').textContent.trim(),
     legend: c.querySelector('.rl-title')?.textContent, kind: pin?.dataset.kind || '', bubble: pin?.querySelector('.mp-bubble').textContent, max: c.querySelector('.radar-slider').max, label: c.querySelector('.radar-time').textContent,
-    flow: !c.querySelector('.wind-flow')?.hidden, ticks: c.querySelectorAll('.rs-t').length, kept: localStorage.getItem('wx:maplayer'), pressed: c.querySelector('.layer-menu [aria-pressed="true"]')?.dataset.kind }; });
+    flow: !c.querySelector('.wind-flow')?.hidden, inMap: !!c.querySelector('.wind-flow.in-map'), ticks: c.querySelectorAll('.rs-t').length, kept: localStorage.getItem('wx:maplayer'), pressed: c.querySelector('.layer-menu [aria-pressed="true"]')?.dataset.kind }; });
   const pick = async (k) => { await p.click('#radar .map-layers'); await p.click(`#radar .layer-menu [data-kind="${k}"]`); };
   await p.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); });
   await p.click('#radar .map-layers');
-  ok(await p.isVisible('#radar .layer-menu') && (await p.getAttribute('#radar .map-layers', 'aria-expanded')) === 'true' && (await p.locator('#radar .layer-menu button').allTextContents()).join() === 'Precipitation,Temperature,Wind',
-    'the layers button opens its menu: precipitation, temperature, wind');
+  ok(await p.isVisible('#radar .layer-menu') && (await p.getAttribute('#radar .map-layers', 'aria-expanded')) === 'true' && (await p.locator('#radar .layer-menu button').allTextContents()).join() === 'Precipitation,Temperature,Wind,Air quality',
+    'the layers button opens its menu: precipitation, temperature, wind, air quality');
   await p.keyboard.press('Escape');
   ok(!(await p.isVisible('#radar .layer-menu')), 'and Escape closes it');
   const asked = tiles.field || 0;
   await pick('wind');
   const wind = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'wind' && document.querySelector('.map-pin')?.dataset.kind === 'wind', null, { timeout: 15000 }).then(st, st);
-  ok(wind.layer === 'wind' && wind.title === 'Wind' && wind.legend === 'Wind (mph)' && /^[NESW]{1,3}\d+MPH$/.test(wind.bubble) && wind.flow && wind.max === '840' && wind.ticks === 15 && /^Wind [A-Z][a-z]+day \d\d:\d\d · now$/.test(wind.label) && wind.kept === 'wind' && wind.pressed === 'wind' && (tiles.field || 0) === asked + 1,
+  ok(wind.layer === 'wind' && wind.title === 'Wind' && wind.legend === 'Wind (mph)' && /^[NESW]{1,3}\d+MPH$/.test(wind.bubble) && wind.flow && wind.inMap && wind.max === '840' && wind.ticks === 15 && /^Wind [A-Z][a-z]+day \d\d:\d\d · now$/.test(wind.label) && wind.kept === 'wind' && wind.pressed === 'wind' && (tiles.field || 0) === asked + 1,
     'the wind: flowing over the map, its bubble which way and how strong, by the hour two hours back to twelve on, and kept', JSON.stringify(wind));
   // and its gusts, chosen beside its colours (and kept): the colours, the bubble and the words of them
   await p.click('#radar .rl-switch button:nth-child(2)');
@@ -690,6 +701,13 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const temp = await p.waitForFunction(() => document.querySelector('.map-pin')?.dataset.kind === 'temp', null, { timeout: 5000 }).then(st, st);
   ok(temp.layer === 'temp' && temp.title === 'Temperature' && /^Temperature \(°[CF]\)$/.test(temp.legend) && /^-?\d+°$/.test(temp.bubble) && !temp.flow && temp.max === '840' && (tiles.field || 0) === asked + 1,
     'the temperature: its bubble the temperature there, from the same models\' grid (not asked for again)', JSON.stringify(temp));
+  for (let k = 0; k < 25 && !tiles.fine; k++) await p.waitForTimeout(200);
+  ok((tiles.fine || 0) >= 1, 'and a finer grid of it about the place, over the region\'s', `${tiles.fine} asked`);
+  await pick('aq');
+  const aq = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'aq' && document.querySelector('.map-pin')?.dataset.kind === 'temp', null, { timeout: 8000 }).then(st, st);
+  const words = await p.textContent('#radar .rl-words');
+  ok(aq.title === 'Air quality' && aq.legend === 'Air quality (European index)' && words === 'GoodFairModeratePoorVery poor' && /^\d+$/.test(aq.bubble) && !aq.flow && aq.max === '840' && /^Air quality [A-Z][a-z]+day \d\d:\d\d · now$/.test(aq.label) && (tiles.aq || 0) === 1,
+    'air quality: the European index over the region by the hour, its bubble the index there', JSON.stringify({ ...aq, words }));
   await pick('rain');
   const rain = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'rain', null, { timeout: 5000 }).then(st, st);
   ok(rain.title === 'Rain radar' && rain.legend === 'Precipitation' && rain.kind === '' && !rain.flow && Number(rain.max) >= 230 && rain.kept === 'rain' && /^(Latest radar|Radar|Forecast|Estimated) /.test(rain.label),
@@ -702,6 +720,8 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   await p.evaluate(() => { __mixes.length = 0; const s = document.querySelector('#radar .radar-slider'); s.value = String(Number(s.dataset.split) + 120); s.dispatchEvent(new Event('input')); });
   await p.waitForFunction(() => __mixes.length > 0, null, { timeout: 8000 }).catch(() => {});
   const later = await p.evaluate(() => { if (!window.__mix) return 0; const d = __mix.getContext('2d').getImageData(0, 0, __mix.width, __mix.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 60) n++; return n; });
+  const hourlyMark = await p.evaluate(() => [document.querySelectorAll('#radar .rs-div').length, document.querySelector('#radar .rs-hourly')?.textContent]);
+  ok(hourlyMark[0] === 1 && hourlyMark[1] === 'Hourly', 'where the models\' hours begin, marked on the timeline', JSON.stringify(hourlyMark));
   ok(tl.split >= 230 && tl.max - tl.split >= 180 && /^Forecast [A-Z][a-z]+day \d\d:\d\d · in 1[12] h( \d+ min)?$/.test(end) && (tiles.hours || 0) >= 1 && later > 2000,
     'the rain on to twelve hours ahead: the models\' hours after the next two, drawn from their grid', `${JSON.stringify(tl)}; ${end}; ${tiles.hours} asked; ${later} pixels of rain six hours on`);
   // full screen, a tap reads the weather there (at the time on show), and the warning it's in; a tap on that puts it away
@@ -712,6 +732,9 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   const pin = await p.locator('.map-pin .mp-dot').boundingBox();
   await p.mouse.click(pin.x + pin.width / 2 + 3, pin.y + pin.height / 2 + 30);
   const read = await p.waitForFunction(() => document.querySelector('.map-read')?.textContent, null, { timeout: 3000 }).then((h) => h.jsonValue(), () => '');
+  const placed = await p.evaluate(() => { const r = document.querySelector('.map-read .mr-b').getBoundingClientRect(), b = document.querySelector('.map-pin .mp-bubble').getBoundingClientRect(), n = document.querySelector('.map-pin .mp-name').getBoundingClientRect();
+    const hit = (a, c) => a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom; return { bubble: hit(r, b), name: hit(r, n), cls: document.querySelector('.map-read').className, inside: r.left >= 0 && r.right <= innerWidth }; });
+  ok(!placed.bubble && !placed.name && placed.inside && /side|below/.test(placed.cls), 'tapped just under the place, the reading keeps clear of its bubble and name', JSON.stringify(placed));
   ok(/^(No rain|Drizzle|(Light|Moderate|Heavy|Very heavy|Extreme) rain)Yellow rain warning$/.test(read), 'full screen, a tap reads the rain there, and the warning it\'s in (its area drawn)', read);
   await p.click('.map-read .mr-b');
   ok(!(await p.locator('.map-read').count()), 'and a tap on it puts it away');
@@ -753,7 +776,7 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   await p5.locator('#radar').scrollIntoViewIfNeeded();
   await p5.waitForFunction(() => Number(document.querySelector('#radar .radar-slider').max) >= 18, null, { timeout: 15000 }).catch(() => {});
   await p5.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); });
-  await p5.click('#radar .map-out'); await p5.waitForTimeout(400); await p5.click('#radar .map-out'); await p5.waitForTimeout(800);
+  await press(p5, '#radar .map-out'); await p5.waitForTimeout(400); await press(p5, '#radar .map-out'); await p5.waitForTimeout(800);
   // (each read once it's drawn afresh: its rain somewhere other than the last one read)
   const seen = async (back, was = null) => {
     await toMinute(p5, back);
@@ -807,7 +830,7 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   ok(max >= 180 && chip === 'Forecast' && /^Forecast /.test(end) && (tiles.grid > before) === grid && !(await p6.textContent('#radar .radar-status')), what, `${max} minutes, ${chip}, ${end}, ${tiles.grid - before} grid`);
   if (grid) {
     // and between the models' quarter hours, the two blended: their rain there, not a blank map
-    await p6.click('#radar .map-out'); await p6.waitForTimeout(600);
+    await press(p6, '#radar .map-out'); await p6.waitForTimeout(600);
     await p6.evaluate(() => { __mixes.length = 0; const s = document.querySelector('#radar .radar-slider'); s.value = String(Number(s.dataset.split || s.max) - 7); s.dispatchEvent(new Event('input')); });
     await p6.waitForFunction(() => __mixes.length > 0, null, { timeout: 8000 }).catch(() => {});
     const rain = await p6.evaluate(() => { if (!window.__mix) return 0; const d = __mix.getContext('2d').getImageData(0, 0, __mix.width, __mix.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 60) n++; return n; });
@@ -827,7 +850,7 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   ok(/^Map data © OpenStreetMap, RainViewer/.test(await p3.getAttribute('#radar .radar-credit', 'aria-label')), 'credited as such', await p3.getAttribute('#radar .radar-credit', 'aria-label'));
   await p3.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); });
   await toMinute(p3);
-  await p3.click('#radar .map-in'); await p3.waitForTimeout(400); await p3.click('#radar .map-in');
+  await press(p3, '#radar .map-in'); await p3.waitForTimeout(400); await press(p3, '#radar .map-in');
   const smoothed = () => [...document.querySelectorAll('#radar .rv-tiles canvas.leaflet-tile')].some((c) => c.getContext('2d').getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 150));
   await p3.waitForFunction(smoothed, null, { timeout: 15000, polling: 250 }).catch(() => {});
   await p3.waitForTimeout(500);

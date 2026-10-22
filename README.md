@@ -330,12 +330,17 @@ so there's nothing to set up beyond the address.
   drawn); it holds still under a sheet; with reduced motion it doesn't play by itself (`weather/radar.js`, `weather/mapgl.js`,
   `weather/mapstyle.js`, `weather/mapleaf.js`, `weather/rainmap.js`).
   **Its layers**, as Apple's Weather map has them (the button under its zoom; kept as chosen): the rain, the
-  **temperature** or the **wind**, the two from Open-Meteo's models over a grid of their own (11 × 11 places about
-  750 km across, by the hour from two hours ago to twelve on, eased between the hours; asked for once a half hour),
+  **temperature**, the **wind** or the **air quality**, the first two from Open-Meteo's models over a grid of their
+  own (11 × 11 places about 750 km across, by the hour from two hours ago to twelve on, eased between the hours;
+  asked for once a half hour), the air quality (the European index, as the page says it, in the European Environment
+  Agency's colours, good to extremely poor) from Open-Meteo's air quality service over the same grid; the temperature
+  also over a finer grid about the place (13 × 13, about 18 km apart: the lie of the land shows in it, the fells
+  cooler than the coast), drawn over the region's and fading into it at its edges,
   the map opening out to the region for them and back in again for the rain. The temperature's colours run from
   purple through green to red; the wind's a blue that pales the stronger it is, and over it the wind **flows**:
   specks carried along it on the screen, each with a trail that tapers, brighter the stronger, kept clear of the
-  place's bubble, and held while a sheet's up or the map's out of sight (with reduced motion, still arrows instead).
+  place's bubble, and held while a sheet's up or the map's out of sight (with reduced motion, still arrows instead);
+  on the vector map, drawn into the map itself under its names, so they stay readable.
   The place's bubble follows the layer: the temperature there at the time on show, in its colour; or which way the
   wind's from and how strong ("WSW 14 MPH"). Each has its legend in round values in the units chosen ("Wind (mph)",
   0 to 75) and its own timeline, a tick each hour. The wind's has a choice of **Wind or Gusts** beside its colours
@@ -352,7 +357,13 @@ so there's nothing to set up beyond the address.
   on it puts it away. **Official warnings' areas** are drawn on it in their colours while they're in force at the time
   on show, where their services draw them (MeteoAlarm's feeds, the National Weather Service's alerts with a drawn
   area, the Environment Agency's flood areas): the server sends each outline made light for the map (points that
-  hardly change its shape left out, no more than 120 a ring, to 3 decimal places).
+  hardly change its shape left out, no more than 120 a ring, to 3 decimal places); one starting within a day and a
+  half of the time on show is drawn dashed till then, and a tap in it says when it starts ("Yellow wind warning from
+  Friday 10:00"). The reading keeps clear of the place's own bubble and name: beside its spot, or under it, where over
+  it would cover them. The saved places never opened on this phone have their weather now asked for together (one
+  request, once a half hour at most), so each has its bubble, and the list of places its temperature. On a phone the
+  card shows the layers button alone (a tap there opens the map full screen, with all its buttons), and the rain's
+  timeline marks where the models' hours begin ("Hourly").
 - **Forecast accuracy here, and a forecast tuned by it** (the card only where
   there's an airport near enough to check against): the server collects
   the nearest airport's weather reports (METAR, within 40 km; the Aviation

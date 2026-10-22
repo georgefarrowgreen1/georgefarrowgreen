@@ -1022,6 +1022,8 @@ fieldset.opt label.at-row { width: 100%; }
 .wind-flow { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; border-radius: var(--r-inner); }
 .radar.radar-big .wind-flow { border-radius: 0; }
 .wind-flow[hidden] { display: none; }
+/* (on the vector map, drawn into the map itself, under its names: radar.js intoMap) */
+.wind-flow.in-map { visibility: hidden; }
 .radar-map { isolation: isolate; height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
 .radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
 .radar-chip[data-kind="model"] { background-color: rgba(255, 204, 110, 0.78); color: #2a1d00; }
@@ -1072,6 +1074,9 @@ fieldset.opt label.at-row { width: 100%; }
 .rs-now { color: var(--ink); font-weight: 700; }
 /* (a tick on the track at each real frame: the minutes between are worked out; lost under the fill once it's passed) */
 .rs-t { position: absolute; top: -19px; width: 2px; height: 4px; margin-left: -1px; border-radius: 1px; background: var(--tick); pointer-events: none; }
+/* (where the models' hours begin, after the next two: a hairline across the track, and "Hourly" over it) */
+.rs-div { position: absolute; top: -23px; width: 1.5px; height: 12px; margin-left: -0.75px; border-radius: 1px; background: var(--ink-2); opacity: 0.7; pointer-events: none; }
+.rs-hourly { position: absolute; top: -38px; transform: translateX(4px); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; pointer-events: none; }
 /* the readout: what's on show over its day and time and how long ago or ahead */
 .radar-time { grid-area: time; margin: 0; min-width: 0; font-variant-numeric: tabular-nums; color: var(--ink); }
 .radar-time .rt-k { display: block; font-size: 16px; font-weight: 650; line-height: 1.25; }
@@ -1173,6 +1178,9 @@ body.no-scroll { overflow: hidden; }
 .radar.light-map .layer-menu button { color: #1c1c1e; }
 .radar.light-map .layer-menu button[aria-pressed="true"] { background: rgba(0, 0, 0, 0.07); }
 @media (prefers-reduced-motion: reduce) { .layer-menu { animation: none; } }
+/* on a phone, in the card (where a tap opens the map full screen, to pinch and pan), no zoom or back-to-the-place:
+   the layers alone; full screen, all of them */
+@media (pointer: coarse) { .radar:not(.radar-big) :is(.map-zoom, .radar-centre) { display: none; } }
 /* the scale: a bracket drawn on the map, as Maps does */
 .map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 11px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
@@ -1217,10 +1225,10 @@ body.no-scroll { overflow: hidden; }
 .map-other:focus-visible .mo-b { outline: 2px solid #fff; outline-offset: 2px; }
 /* a reading where the map's tapped (radar.js readAt): the layer's say there, and any warning it's in, over a dot */
 .map-read { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
-.mr-b { position: absolute; left: 0; bottom: 9px; transform: translateX(-50%); display: grid; gap: 2px; padding: 6px 11px 7px; border-radius: 12px; white-space: nowrap; text-align: center;
+.mr-b { position: absolute; left: 0; bottom: 12px; transform: translateX(-50%); display: grid; gap: 2px; width: max-content; max-width: 210px; padding: 6px 11px 7px; border-radius: 12px; white-space: nowrap; text-align: center;
   color: #fff; background-color: rgba(18, 24, 36, 0.86); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 6px 18px -4px rgba(0, 0, 0, 0.45); animation: read-in 0.22s var(--glide); }
 .mr-v { font-size: 13.5px; font-weight: 650; line-height: 1.15; }
-.mr-w { font-size: 11px; font-weight: 650; line-height: 1.15; color: #ffd60a; }
+.mr-w { font-size: 11px; font-weight: 650; line-height: 1.15; color: #ffd60a; white-space: normal; }
 .mr-w:empty { display: none; }
 .map-read[data-warn="amber"] .mr-w, .map-read[data-warn="orange"] .mr-w { color: #ffb340; }
 .map-read[data-warn="red"] .mr-w { color: #ff6961; }
@@ -1229,6 +1237,19 @@ body.no-scroll { overflow: hidden; }
 .light-map .mr-w { color: #a07800; }
 .light-map .map-read[data-warn="amber"] .mr-w, .light-map .map-read[data-warn="orange"] .mr-w { color: #b85c00; }
 .light-map .map-read[data-warn="red"] .mr-w { color: #c4271d; }
+/* (a point down to its spot; beside it, or under it, where over it would cover the place's own bubble or name) */
+.mr-b::after { content: ""; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: rgba(18, 24, 36, 0.86); border-bottom: 0; }
+.map-read:is(.side, .side-l) .mr-b { bottom: auto; top: 0; transform: translateY(-50%); animation: none; }
+.map-read.side .mr-b { left: 14px; }
+.map-read.side-l .mr-b { left: auto; right: 14px; }
+.map-read.below .mr-b { bottom: auto; top: 30px; animation: none; }
+.map-read.side .mr-b::after { left: -6px; top: 50%; bottom: auto; transform: translateY(-50%); border: 6px solid transparent; border-right-color: rgba(18, 24, 36, 0.86); border-left: 0; }
+.map-read.side-l .mr-b::after { left: auto; right: -6px; top: 50%; bottom: auto; transform: translateY(-50%); border: 6px solid transparent; border-left-color: rgba(18, 24, 36, 0.86); border-right: 0; }
+.map-read.below .mr-b::after { bottom: auto; top: -6px; border: 6px solid transparent; border-bottom-color: rgba(18, 24, 36, 0.86); border-top: 0; }
+.light-map .mr-b::after { border-top-color: rgba(255, 255, 255, 0.92); }
+.light-map .map-read.side .mr-b::after { border-top-color: transparent; border-right-color: rgba(255, 255, 255, 0.92); }
+.light-map .map-read.side-l .mr-b::after { border-top-color: transparent; border-left-color: rgba(255, 255, 255, 0.92); }
+.light-map .map-read.below .mr-b::after { border-top-color: transparent; border-bottom-color: rgba(255, 255, 255, 0.92); }
 @keyframes read-in { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.94); } }
 @media (prefers-reduced-motion: reduce) { .mr-b { animation: none; } .mo-b { transition: none; } }
 /* (before the page has its temperature: the dot alone) */
