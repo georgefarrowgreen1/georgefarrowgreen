@@ -3,7 +3,9 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 const [,, S] = process.argv;
 const URL = process.env.APPURL || 'http://localhost:8788/pigeon/';
-const sql = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
+const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
+// (again, a moment later, if the local database is busy with the server's own writes: as lib.mjs's)
+const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
 const errs = []; let fails = 0;
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
