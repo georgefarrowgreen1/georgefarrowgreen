@@ -1882,7 +1882,12 @@ let pulledAt = 0;
 async function pull() {
   pulledAt = Date.now();
   let r;
-  try { r = await A.me(); } catch (_) { if (S.acct && S.acct.state === "ok") inStep("waiting"); return; }
+  try { r = await A.me(); }
+  catch (e) {
+    // (no account here at all: a preview of the site, say)
+    if (e.status === 404) { S.noAcct = true; signedOut(); return; }
+    if (S.acct && S.acct.state === "ok") inStep("waiting"); return;
+  }
   if (!r.signedIn) { if (S.acct || store.get("wx:acct")) signedOut(); return; }
   await adopt(r);
 }
@@ -1925,6 +1930,7 @@ async function sendHere() {
 const STATES = { ok: "In step", saving: "Saving…", waiting: "Will go up when you're online", error: "Couldn't save just now" };
 function drawAccount() {
   const box = $("acct"); if (!box) return;
+  box.hidden = !!S.noAcct;
   const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
   $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
   if (!a) {
