@@ -580,8 +580,10 @@ await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('credits').open);
 // playing: on minute by minute, as smoothly as the screen goes (not ten minutes a step)
 {
+  // (over the radar's hours and the next two: after those, the models' hours go a step every three minutes, an hour a beat)
   const seen = await p.evaluate(async () => { const s = document.querySelector('#radar .radar-slider'), out = []; for (let k = 0; k < 80; k++) { out.push(Number(s.value)); await new Promise((r) => setTimeout(r, 50)); } return out; });
-  const steps = seen.slice(1).map((v, k) => v - seen[k]).filter((d) => d > 0);
+  const split = Number(await p.getAttribute('#radar .radar-slider', 'data-split')) || Infinity;
+  const steps = seen.slice(1).map((v, k) => (v <= split ? v - seen[k] : 0)).filter((d) => d > 0);
   ok(steps.length >= 10 && steps.every((d) => d <= 4), 'playing, it runs on minute by minute', `${steps.length} moves, the largest ${Math.max(...steps)} min`);
 }
 const was = await p.getAttribute('#radar .radar-play', 'data-on');
@@ -611,7 +613,7 @@ ok(/^Latest radar [A-Z][a-z]+day \d\d:\d0 · (\d+ min ago|now)$/.test(await p.te
 {
   await toMinute(p, 5);
   await p.waitForFunction(() => (window.__glread?.()?.solid ?? 0) > 1000, null, { timeout: 10000 }).catch(() => {});
-  const mid = await p.evaluate(() => ({ label: document.querySelector('#radar .radar-time').textContent, gl: __glread(), step: document.querySelector('#radar .radar-slider').step, ticks: document.querySelectorAll('#radar .rs-t').length }));
+  const mid = await p.evaluate(() => ({ label: document.querySelector('#radar .radar-time').textContent, gl: __glread(), step: document.querySelector('#radar .radar-slider').step, ticks: document.querySelectorAll('#radar .rs-t:not(.rs-h)').length }));
   ok(/^Radar [A-Z][a-z]+day \d\d:\d5 · \d+ min ago$/.test(mid.label) && mid.gl?.solid > 1000 && mid.gl.w % 256 === 0 && mid.step === '1' && mid.ticks === 13,
     'the slider to the minute: between two frames, blended on the graphics chip, a tick under each of the radar\'s 13 frames', JSON.stringify(mid));
   await p.focus('#radar .radar-slider');
@@ -711,7 +713,7 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   await p.mouse.click(pin.x + pin.width / 2 + 3, pin.y + pin.height / 2 + 30);
   const read = await p.waitForFunction(() => document.querySelector('.map-read')?.textContent, null, { timeout: 3000 }).then((h) => h.jsonValue(), () => '');
   ok(/^(No rain|Drizzle|(Light|Moderate|Heavy|Very heavy|Extreme) rain)Yellow rain warning$/.test(read), 'full screen, a tap reads the rain there, and the warning it\'s in (its area drawn)', read);
-  await p.click('.map-read');
+  await p.click('.map-read .mr-b');
   ok(!(await p.locator('.map-read').count()), 'and a tap on it puts it away');
   await p.keyboard.press('Escape');
   await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).catch(() => {});

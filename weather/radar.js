@@ -1012,7 +1012,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     if (kind !== "rain") return hoursScale(pos, mark);
     for (const f of frames) if (f.kind === "radar" || (f.kind === "model" && src.model)) mark(f.t, "", "rs-t");
     // (and after the split, the models' hours: a tick at each)
-    if (split < tEnd) for (let t = Math.ceil(split / 3600e3) * 3600e3; t <= tEnd; t += 3600e3) mark(t, "", "rs-t");
+    if (split < tEnd) for (let t = Math.ceil(split / 3600e3) * 3600e3; t <= tEnd; t += 3600e3) mark(t, "", "rs-t rs-h");
     // and under it, as Apple's has it, the clock: Now, and the hours (the half hours too, where there's room; every two or
     // three hours over the models' hours), none so near Now, the ends or each other that they'd crowd
     const nowAt = mark(tNow, "Now", "rs-l rs-now"), b = nowAt.getBoundingClientRect();
