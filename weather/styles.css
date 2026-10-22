@@ -91,7 +91,7 @@ a { color: inherit; }
 }
 /* controls */
 .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-.map-zoom, .radar-centre, .radar-credit {
+.map-zoom, :is(.radar-centre, .map-layers), .radar-credit {
   position: relative; isolation: isolate; border: 0;
   background-color: var(--tint-ctl);
   background-image: var(--sheen), var(--body);
@@ -102,7 +102,7 @@ a { color: inherit; }
 .win-rate, .best { -webkit-backdrop-filter: none; backdrop-filter: none; }
 /* the rim: a hairline that's bright where the light catches it, top left and bottom right */
 .card::before, .ins::before, .tile::before, .section-title::before, dialog.sheet::before, .c-tip::before,
-.icon-btn::before, .place::before, .pill-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, .radar-centre::before, .radar-credit::before, .win-rate::before, .best::before {
+.icon-btn::before, .place::before, .pill-btn::before, .seg::after, .radar-chip::before, .map-zoom::before, :is(.radar-centre, .map-layers)::before, .radar-credit::before, .win-rate::before, .best::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
   background: var(--rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
@@ -114,15 +114,15 @@ a { color: inherit; }
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
 /* give under a finger, spring back (buttons); rows and choices light a little instead (shrinking, they'd lurch) */
-.icon-btn, .place, .pill-btn, .day-row, .row-btn, .radar-centre, .link {
+.icon-btn, .place, .pill-btn, .day-row, .row-btn, :is(.radar-centre, .map-layers), .link {
   transition: transform 0.5s var(--spring), background-color 0.25s, filter 0.25s;
 }
-.icon-btn:active, .place:active, .pill-btn:active, .radar-centre:active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
+.icon-btn:active, .place:active, .pill-btn:active, :is(.radar-centre, .map-layers):active { transform: scale(0.92); filter: brightness(1.18); transition-duration: 0.12s; }
 fieldset.opt label { transition: filter 0.2s, color 0.25s; }
 fieldset.opt label:active { filter: brightness(1.15); transition-duration: 0.08s; }
 .day-row:active, .row-btn:active { transform: scale(0.985); transition-duration: 0.12s; }
 @media (hover: hover) {
-  .icon-btn:hover, .place:hover, .pill-btn:hover, .radar-centre:hover { filter: brightness(1.15); }
+  .icon-btn:hover, .place:hover, .pill-btn:hover, :is(.radar-centre, .map-layers):hover { filter: brightness(1.15); }
 }
 
 /* ---------- the sky ---------- */
@@ -226,18 +226,20 @@ body:is(.sheet-up, .deep, .no-scroll) :is(.sky-fx, .sky-clouds, .sky-flash), bod
 #place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
 /* the line under the name: where it is, and once the big temperature has scrolled away, the temperature and sky
-   (crossfading with the scroll, as iOS Weather's large title collapses) */
+   (crossfading as it goes, as iOS Weather's large title collapses: .top.collapsed, app.js) */
 .place-line { display: grid; font-size: 12px; line-height: 15px; color: var(--text-3); }
-.place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.2s; }
-.place-sub { opacity: calc(1 - var(--cs, 0)); }
-.place-now { opacity: var(--cs, 0); color: var(--text-2); font-weight: 600; }
+.place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.28s var(--glide); }
+.top.collapsed .place-sub { opacity: 0; }
+.place-now { opacity: 0; color: var(--text-2); font-weight: 600; }
+.top.collapsed .place-now { opacity: 1; }
 .place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
 /* with nothing to say under the name, it stays one line: the temperature slides in beside the name instead
    (the pill never changes height) */
 .place.no-sub .place-line { display: none; }
 .place-temp { display: none; }
 .place.no-sub .place-temp { display: inline-block; flex: none; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
-  max-width: calc(var(--cs, 0) * 3.2em); margin-left: calc(var(--cs, 0) * 7px); opacity: var(--cs, 0); }
+  max-width: 0; margin-left: 0; opacity: 0; transition: max-width 0.4s var(--glide), margin-left 0.4s var(--glide), opacity 0.28s var(--glide); }
+.top.collapsed .place.no-sub .place-temp { max-width: 3.2em; margin-left: 7px; opacity: 1; }
 .top-actions { display: flex; gap: 10px; }
 /* pull to refresh (app.js pullToRefresh): iOS's spinner, in the gap that opens above the bar, its ticks coming in one by
    one as the page is pulled, a little pop when letting go would refresh, then turning, each tick fainter than the one
@@ -843,7 +845,7 @@ dialog.sheet.dragging { transition: none; }
 .page { transition: transform 0.5s var(--glide); }
 /* (named one by one, the panes of glass and the hero's icon, the one thing on the page that moves of itself: a rule
    for everything on the page would have every one of its thousands of parts restyled as a sheet came and went) */
-body.sheet-up .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .map-zoom, .radar-centre, .radar-credit, .rc-t, .radar-dry),
+body.sheet-up .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .map-zoom, :is(.radar-centre, .map-layers), .radar-credit, .rc-t, .radar-dry, .layer-menu),
 body.sheet-up .top::before,
 /* (and the same behind the radar full screen, its map over all of it: all but the radar's own) */
 body.no-scroll .page :is(.card, .ins, .tile, .section-title, .c-tip, .icon-btn, .place, .pill-btn, .seg):not(.radar, .radar *), body.no-scroll .top::before { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; animation-play-state: paused !important; }
@@ -1015,6 +1017,11 @@ fieldset.opt label.at-row { width: 100%; }
 .radar-note { margin: 8px 0 0; font-size: 15px; font-weight: 600; }
 .radar-note:empty { display: none; }
 .radar-wrap { position: relative; margin-top: 12px; }
+/* (the wind's arrows over the map, under its controls: radar.js arrows) */
+/* the wind's flow over the map (radar.js): over the map, under its controls */
+.wind-flow { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; border-radius: var(--r-inner); }
+.radar.radar-big .wind-flow { border-radius: 0; }
+.wind-flow[hidden] { display: none; }
 .radar-map { isolation: isolate; height: 320px; border-radius: var(--r-inner); overflow: hidden; background: #0e1420; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px -8px rgba(0, 0, 0, 0.5); }
 .radar-chip { position: absolute; top: 10px; right: 10px; z-index: 500; pointer-events: none; box-sizing: border-box; display: inline-flex; justify-content: center; overflow: hidden; white-space: nowrap; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 11px; border-radius: 999px; color: #fff; background-color: rgba(14, 22, 38, 0.5); transition: background-color 0.4s var(--glide), color 0.4s var(--glide); }
 .radar-chip[data-kind="model"] { background-color: rgba(255, 204, 110, 0.78); color: #2a1d00; }
@@ -1137,9 +1144,24 @@ body.no-scroll { overflow: hidden; }
 .map-zoom button:not(:disabled):active { background: rgba(255, 255, 255, 0.22); transform: scale(0.86); transition-duration: 0.1s; }
 @media (hover: hover) { .map-zoom button:not(:disabled):hover { background: rgba(255, 255, 255, 0.12); } }
 .map-in, .map-out { position: relative; }
-.map-in::after, .map-out::after, .radar-centre::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
-.radar-centre { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50%; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
-.radar-centre svg { position: relative; z-index: 3; }
+.map-in::after, .map-out::after, :is(.radar-centre, .map-layers)::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
+:is(.radar-centre, .map-layers) { width: 36px; height: 36px; display: grid; place-items: center; color: #fff; border-radius: 50%; cursor: pointer; padding: 0; background-color: rgba(14, 22, 38, 0.42); }
+:is(.radar-centre, .map-layers) svg { position: relative; z-index: 3; }
+/* the map's layers, chosen from a little menu of glass by its button (radar.js setKind) */
+.layer-wrap { position: relative; }
+.layer-menu { position: absolute; right: 46px; top: 0; z-index: 600; display: flex; flex-direction: column; min-width: 156px; padding: 5px; border-radius: 16px;
+  background-color: rgba(14, 22, 38, 0.72); -webkit-backdrop-filter: var(--blur-ctl); backdrop-filter: var(--blur-ctl); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 10px 26px -8px rgba(0, 0, 0, 0.5);
+  transform-origin: 100% 0; animation: menu-in 0.22s var(--glide); }
+.layer-menu[hidden] { display: none; }
+@keyframes menu-in { from { opacity: 0; transform: scale(0.92); } }
+.layer-menu button { -webkit-appearance: none; appearance: none; border: 0; background: none; color: #fff; font: inherit; font-size: 14px; font-weight: 500; text-align: left; padding: 9px 12px; border-radius: 11px; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.layer-menu button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.16); font-weight: 650; }
+.layer-menu button[aria-pressed="true"]::after { content: ""; width: 5px; height: 10px; margin: -3px 2px 0 auto; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.layer-menu button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.radar.light-map .layer-menu { background-color: rgba(255, 255, 255, 0.84); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 10px 26px -8px rgba(0, 0, 0, 0.25); }
+.radar.light-map .layer-menu button { color: #1c1c1e; }
+.radar.light-map .layer-menu button[aria-pressed="true"] { background: rgba(0, 0, 0, 0.07); }
+@media (prefers-reduced-motion: reduce) { .layer-menu { animation: none; } }
 /* the scale: a bracket drawn on the map, as Maps does */
 .map-scale { position: absolute; left: 10px; bottom: 12px; z-index: 500; pointer-events: none; box-sizing: border-box; white-space: nowrap; color: #fff; border: 2px solid rgba(255, 255, 255, 0.9); border-top: 0; border-radius: 0 0 3px 3px; padding: 0 6px 1px; font-size: 11px; font-weight: 650; line-height: 1.3;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 6px rgba(0, 0, 0, 0.5); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
@@ -1153,6 +1175,15 @@ body.no-scroll { overflow: hidden; }
 .mp-t { font-size: 17px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; padding-left: 0.2em; }
 .mp-i { display: block; width: 22px; height: 22px; }
 .mp-i svg { width: 22px; height: 22px; display: block; }
+/* on the temperature's layer, the temperature there at the time on show, alone; on the wind's, as Apple's has it, a
+   white bubble: which way it's from, how strong, and in what ("WSW / 14 / MPH") */
+.mp-dir, .mp-u { display: none; }
+.map-pin[data-kind] .mp-i { display: none; }
+.map-pin[data-kind="temp"] .mp-t { font-size: 19px; }
+.map-pin[data-kind="wind"] .mp-bubble { background: #fff; color: #1c1c1e; gap: 0; }
+.map-pin[data-kind="wind"] :is(.mp-dir, .mp-u) { display: block; font-size: 9.5px; font-weight: 700; line-height: 1.1; letter-spacing: 0.02em; }
+.map-pin[data-kind="wind"] .mp-t { font-size: 18px; padding-left: 0; line-height: 1.05; }
+.map-pin[data-kind="wind"] .mp-dot { border-color: #2c6cb8; }
 .mp-name { position: absolute; left: 0; top: 8px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 600;
   text-shadow: 0 0 2px rgba(8, 11, 17, 0.9), 0 0 6px rgba(8, 11, 17, 0.6); }
 .light-map .mp-name { color: #1c1c1e; text-shadow: 0 0 2px #fff, 0 0 6px rgba(255, 255, 255, 0.9); }
@@ -1163,7 +1194,7 @@ body.no-scroll { overflow: hidden; }
 .radar-chip { display: none !important; }
 /* on the day map, the controls on it in light glass, their ink dark, as Apple's */
 .radar.light-map .radar-map, .radar.light-map .leaflet-container { background: #f2f1ee; }
-.radar.light-map .map-zoom, .radar.light-map .radar-centre, .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
+.radar.light-map .map-zoom, .radar.light-map :is(.radar-centre, .map-layers), .radar.light-map .radar-credit, .radar.light-map .radar-hint, .radar.light-map .radar-dry {
   background-color: rgba(255, 255, 255, 0.8); color: #1c1c1e; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
 .radar.light-map .map-zoom button { color: #1c1c1e; }
 .radar.light-map .map-zoom button + button { box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.1); }
@@ -1251,7 +1282,7 @@ select option { color: #fff; background: #1c2434; }
 /* ---------- when transparency is turned down, or contrast up ---------- */
 @media (prefers-reduced-transparency: reduce) {
   .card, .ins, .tile, .section-title, dialog.sheet, .c-tip, .icon-btn, .place, .pill-btn, .seg, .radar-chip, .radar-hint, .search input, fieldset.opt label, .win-rate, .best,
-  .map-zoom, .radar-centre, .radar-credit, .top::before, .radar-dry {
+  .map-zoom, :is(.radar-centre, .map-layers), .radar-credit, .top::before, .radar-dry {
     -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background-image: none !important; }
   .top::before { background: rgb(20, 28, 44); }
   .radar.radar-big .radar-legend, .radar.radar-big .radar-dock { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(28, 32, 42); }
@@ -1261,7 +1292,7 @@ select option { color: #fff; background: #1c2434; }
   .ins[data-level="alert"] { background-color: rgb(96, 24, 20); }
   .ins[data-level="warn"] { background-color: rgb(84, 56, 8); }
   .ins.official[data-colour="yellow"] { background-color: rgb(94, 74, 4); }
-  .icon-btn, .place, .pill-btn, .radar-chip, .radar-hint, fieldset.opt label, .radar-centre, .map-zoom,
+  .icon-btn, .place, .pill-btn, .radar-chip, .radar-hint, fieldset.opt label, :is(.radar-centre, .map-layers), .map-zoom,
   .radar-credit { background-color: rgb(52, 62, 80); }
 }
 @media (prefers-contrast: more) {

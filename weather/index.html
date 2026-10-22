@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-59" />
+  <meta name="app-version" content="wx-60" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -214,6 +214,7 @@
         </fieldset>
         <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
           <label class="switch"><input type="checkbox" name="rain" /> Rain alerts</label>
+          <label class="switch"><input type="checkbox" name="warn" /> Official warnings</label>
           <label class="switch"><input type="checkbox" name="brief" /> Morning briefing</label>
           <label class="at-row">Briefing time <select class="at" name="briefAt"><option value="07:00">07:00</option></select></label>
           <p class="note" id="notify-place"></p>

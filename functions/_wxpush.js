@@ -1,12 +1,13 @@
-// Weather's notifications: a heads-up when rain is about to start, and a
-// morning briefing, for one place per phone. Sent with InFlight's Web Push
+// Weather's notifications: a heads-up when rain is about to start, a morning
+// briefing, and an official warning as it's issued, for one place per phone. Sent with InFlight's Web Push
 // (functions/_notify.js: encrypted to the phone, so the push service sees
 // nothing of what it says) and worded by the app's own code (weather/alerts.js),
 // so a notification says what the app would.
 //
 // A tick (.github/workflows/weather-tick.yml, every 10 minutes) looks at each
 // place that needs it: rain alerts outside the quiet hours (22:00 to 07:00 there),
-// briefings around their time (with any official warnings: functions/_wxwarn.js). For rain it asks only for the next few hours'
+// briefings around their time (with any official warnings: functions/_wxwarn.js), and each place's warnings (its
+// weather service's feeds, kept a few minutes for all: a warning new, or raised, since the last told). For rain it asks only for the next few hours'
 // rain (one small request for every place at once); the whole forecast only
 // where a briefing is due; and no more each tick than Open-Meteo's free service
 // allows over a day (the rest wait for the next). Where there's radar, the next
@@ -27,7 +28,7 @@ import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
 import { HttpError, fromB64url } from "./_pigeon.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf } from "../weather/format.js";
-import { rainAlert, briefDue, briefing, isQuiet, RAIN_GAP } from "../weather/alerts.js";
+import { rainAlert, briefDue, briefing, warningAlert, isQuiet, RAIN_GAP } from "../weather/alerts.js";
 import { blend } from "../weather/rainmap.js";
 import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
@@ -51,7 +52,8 @@ export async function wxdb(env) {
       env.DB.prepare("CREATE TABLE IF NOT EXISTS wx_meta (k TEXT PRIMARY KEY, v TEXT)"),
     ]);
     // columns added since the table was first made (an older table gains them and keeps its rows)
-    for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
+    // (warn: official warnings wanted; told: those already told of, alerts.js warningAlert)
+    for (const col of ["fails INTEGER NOT NULL DEFAULT 0", "last_ok INTEGER", "warn INTEGER NOT NULL DEFAULT 0", "told TEXT"]) await env.DB.prepare(`ALTER TABLE wx_subs ADD COLUMN ${col}`).run().catch(() => {});
     // (each day's hours at the airport: temperature, dew point, wind and gusts, for tuning more than the highs and lows)
     await env.DB.prepare("ALTER TABLE wx_obs ADD COLUMN hours TEXT").run().catch(() => {});
   })().catch((e) => { ready = null; throw e; });
@@ -84,7 +86,7 @@ async function checkSub(sub) {
   return { endpoint: sub.endpoint, ...keys };
 }
 
-// { sub: { endpoint, keys: { p256dh, auth } }, place: { lat, lon, name }, rain, brief, briefAt: "07:00", units: {...}, was?: the endpoint before }
+// { sub: { endpoint, keys: { p256dh, auth } }, place: { lat, lon, name }, rain, brief, warn, briefAt: "07:00", units: {...}, was?: the endpoint before }
 export async function subscribe(env, b) {
   const s = await checkSub(b.sub), p = b.place;
   if (!p || typeof p.lat !== "number" || typeof p.lon !== "number" || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180) throw new HttpError(400, "Bad place.");
@@ -93,31 +95,34 @@ export async function subscribe(env, b) {
   const briefAt = /^([01]\d|2[0-3]):[0-5]\d$/.test(b.briefAt || "") ? b.briefAt : "07:00";
   const U = b.units && typeof b.units === "object" ? b.units : {};
   const units = JSON.stringify({ temp: U.temp === "f" ? "f" : "c", wind: ["mph", "kmh", "ms", "kn"].includes(U.wind) ? U.wind : "mph", precip: U.precip === "in" ? "in" : "mm", clock: U.clock === "12" ? "12" : "24" });
-  const rain = b.rain ? 1 : 0, brief = b.brief ? 1 : 0;
+  const rain = b.rain ? 1 : 0, brief = b.brief ? 1 : 0, warn = b.warn ? 1 : 0;
   const D = await wxdb(env), id = await idOf(s.endpoint), t = Date.now();
   // the browser gave this phone a new subscription: its place moves over from the old one (no need to say hello again)
   const was = typeof b.was === "string" && b.was.length <= 1000 && b.was !== s.endpoint ? await idOf(b.was) : null;
   if (was) await D.prepare("UPDATE wx_subs SET id = ?1, endpoint = ?2, p256dh = ?3, auth = ?4, fails = 0 WHERE id = ?5 AND NOT EXISTS (SELECT 1 FROM wx_subs WHERE id = ?1)")
     .bind(id, s.endpoint, s.p256dh, s.auth, was).run();
-  if (!rain && !brief) { await D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(id).run(); return { ok: true, on: false }; }
+  if (!rain && !brief && !warn) { await D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(id).run(); return { ok: true, on: false }; }
   const have = await D.prepare("SELECT 1 FROM wx_subs WHERE id = ?").bind(id).first();
   if (!have) {
     if ((await D.prepare("SELECT COUNT(*) AS n FROM wx_subs").first()).n >= MAX_SUBS) throw new HttpError(429, "Notifications are full right now.");
     // a new phone: a first notification, to say they're on; it's only kept if that arrives
     const f = makeFormat(JSON.parse(units)), [hh, mm] = briefAt.split(":").map(Number);
-    const what = [rain ? "rain alerts" : "", brief ? `a briefing at ${f.time(Date.UTC(2000, 0, 1, hh, mm))}` : ""].filter(Boolean).join(" and ");
+    const parts = [rain ? "rain alerts" : "", warn ? "official warnings" : "", brief ? `a briefing at ${f.time(Date.UTC(2000, 0, 1, hh, mm))}` : ""].filter(Boolean);
+    const what = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
     const r = await pushToSub(env, s, { title: "Notifications on", body: `${what[0].toUpperCase()}${what.slice(1)}${name ? ` for ${name}` : ""}.`, tag: "wx-on", ttl: 600, url: linkTo(lat, lon, name) });
     if (r !== "sent") throw new HttpError(400, "This phone's notifications couldn't be reached. Try again in a moment.");
-    const ins = await D.prepare(`INSERT INTO wx_subs (id, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, created, updated, last_ok)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?12 WHERE (SELECT COUNT(*) FROM wx_subs) < ?13
-      ON CONFLICT(id) DO UPDATE SET lat = ?5, lon = ?6, name = ?7, rain = ?8, brief = ?9, brief_at = ?10, units = ?11, updated = ?12`)
-      .bind(id, s.endpoint, s.p256dh, s.auth, lat, lon, name, rain, brief, briefAt, units, t, MAX_SUBS).run();
+    const ins = await D.prepare(`INSERT INTO wx_subs (id, endpoint, p256dh, auth, lat, lon, name, rain, brief, brief_at, units, created, updated, last_ok, warn)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?12, ?14 WHERE (SELECT COUNT(*) FROM wx_subs) < ?13
+      ON CONFLICT(id) DO UPDATE SET lat = ?5, lon = ?6, name = ?7, rain = ?8, brief = ?9, brief_at = ?10, units = ?11, updated = ?12, warn = ?14, told = NULL`)
+      .bind(id, s.endpoint, s.p256dh, s.auth, lat, lon, name, rain, brief, briefAt, units, t, MAX_SUBS, warn).run();
     if (!ins.meta?.changes && !(await D.prepare("SELECT 1 FROM wx_subs WHERE id = ?").bind(id).first())) throw new HttpError(429, "Notifications are full right now.");
     return { ok: true, on: true };
   }
+  // (warnings turned on, or the place moved: those in force there taken as told when it's next looked at, not sent)
   await D.prepare(`UPDATE wx_subs SET endpoint = ?2, p256dh = ?3, auth = ?4, lat = ?5, lon = ?6, name = ?7, rain = ?8, brief = ?9, brief_at = ?10, units = ?11, updated = ?12,
-      tz_off = CASE WHEN abs(lat - ?5) > 0.05 OR abs(lon - ?6) > 0.05 THEN NULL ELSE tz_off END WHERE id = ?1`)
-    .bind(id, s.endpoint, s.p256dh, s.auth, lat, lon, name, rain, brief, briefAt, units, t).run();
+      tz_off = CASE WHEN abs(lat - ?5) > 0.05 OR abs(lon - ?6) > 0.05 THEN NULL ELSE tz_off END,
+      told = CASE WHEN ?13 = 0 OR warn = 0 OR abs(lat - ?5) > 0.005 OR abs(lon - ?6) > 0.005 THEN NULL ELSE told END, warn = ?13 WHERE id = ?1`)
+    .bind(id, s.endpoint, s.p256dh, s.auth, lat, lon, name, rain, brief, briefAt, units, t, warn).run();
   return { ok: true, on: true };
 }
 export async function unsubscribe(env, endpoint) {
@@ -151,7 +156,7 @@ async function tick(env, D, t) {
     D.prepare("DELETE FROM wx_obs WHERE day < ?").bind(new Date(t - OBS_DAYS * 864e5).toISOString().slice(0, 10)),
     D.prepare("DELETE FROM wx_subs WHERE max(coalesce(updated, 0), coalesce(last_ok, 0)) < ?").bind(t - KEEP_IDLE),
   ]);
-  const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1").all();
+  const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1").all();
   const local = (s) => t + (s.tz_off || 0) * 1000, due = (s) => !!s.brief && briefDue(local(s), s.brief_at, s.last_brief);
   // briefings first (they're kept to their time), and only so many a tick (the rest wait ten minutes)
   const need = subs.filter((s) => s.tz_off == null || (s.rain && !isQuiet(local(s))) || due(s)).sort((a, b) => due(b) - due(a)).slice(0, PER_TICK);
@@ -181,12 +186,38 @@ async function tick(env, D, t) {
   const radar = radarForTick(env, t), rains = new Map(), spot = (s) => `${s.lat},${s.lon}`;
   const could = (s) => s.rain && (s.tz_off == null || !isQuiet(local(s))) && !(s.last_rain && t - s.last_rain < RAIN_GAP);
   for (const s of need) if (rains.size < RADAR_PLACES && !rains.has(spot(s)) && (could(s) || due(s))) rains.set(spot(s), radar.at(s.lat, s.lon));
-  const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, radar: rains.size, rain: 0, brief: 0, gone: 0 };
+  const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, radar: rains.size, rain: 0, brief: 0, warn: 0, gone: 0 };
   for (const s of need) {
     // (one phone's trouble doesn't stop the others')
     try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s))); } catch (e) { console.error("weather tick:", e && e.message); }
   }
+  // official warnings, every tick, for each place that wants them (once its clock's known, for saying when): each
+  // place's asked for once a tick, however many phones are there
+  const warned = new Map();
+  for (const s of subs) {
+    if (!s.warn || s.tz_off == null) continue;
+    try { await warnNotify(env, D, s, t, out, warned); } catch (e) { console.error("weather tick: warnings", e && e.message); }
+  }
   return out;
+}
+// A warning new, or raised, since the last told (alerts.js warningAlert), sent; the record of what's been told kept
+// either way (and claimed before it's sent, as the others are, so it can't go twice)
+async function warnNotify(env, D, s, t, out, cache) {
+  const k = `${s.lat},${s.lon}`;
+  if (!cache.has(k)) cache.set(k, warningsAt(env, s.lat, s.lon, t).then((r) => r.warnings).catch(() => null));
+  const list = await cache.get(k);
+  if (!list) return;          // (not to be had this tick: nothing's taken as told)
+  let told = null, units = {};
+  try { told = s.told ? JSON.parse(s.told) : null; } catch (_) {}
+  try { units = JSON.parse(s.units || "{}"); } catch (_) {}
+  const off = s.tz_off || 0, { alert, told: next } = warningAlert(list, told, t + off * 1000, t, makeFormat(units), off, s.name);
+  const json = JSON.stringify(next);
+  if (!alert) { if (json !== s.told) await D.prepare("UPDATE wx_subs SET told = ?2 WHERE id = ?1").bind(s.id, json).run(); return; }
+  if (!(await claim(D, s, "told", json))) return;
+  const r = await pushToSub(env, s, { ...alert, url: linkTo(s.lat, s.lon, s.name), ttl: 6 * 3600, urgency: "high" });
+  if (r === "sent") { out.warn++; await D.prepare("UPDATE wx_subs SET fails = 0, last_ok = ?2 WHERE id = ?1").bind(s.id, t).run(); return; }
+  await giveBack(D, s, "told", json);
+  if (r === "gone") { await D.prepare("DELETE FROM wx_subs WHERE id = ?").bind(s.id).run(); out.gone++; }
 }
 // The places asked about in a tick ([key, { full }] each), within the budget: whole forecasts first, then rain (in a
 // shuffled order, so the places left for the next tick aren't always the same ones)
