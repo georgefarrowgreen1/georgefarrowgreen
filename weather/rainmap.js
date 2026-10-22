@@ -281,8 +281,8 @@ export function motion(older, newer, w, h, { cell = 6, reach = 9, min = 15 } = {
 
 // The grid the forecast's frames are made from: n × n points, about 220 km across (points about
 // 28 km apart), around a place (rows from north to south, each from west to east)
-export function grid(lat, lon, n = 9, halfLat = 1) {
-  const halfLon = Math.min(4, halfLat / Math.max(0.25, Math.cos((lat * Math.PI) / 180)));
+export function grid(lat, lon, n = 9, halfLat = 1, maxLon = 4) {
+  const halfLon = Math.min(maxLon, halfLat / Math.max(0.25, Math.cos((lat * Math.PI) / 180)));
   const north = Math.min(85, lat + halfLat), south = Math.max(-85, lat - halfLat), west = lon - halfLon, east = lon + halfLon;
   const lats = [], lons = [];
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
@@ -470,4 +470,48 @@ export function blend(minutely, steps, at, offset = 0) {
     const code = precip >= 0.05 ? (isWetCode(q.code) ? q.code : rate(precip * 4, snow)) : isWetCode(q.code) && share >= 0.5 ? 3 : q.code;
     return { ...q, precip, code, radar: share };
   });
+}
+
+// Temperature and wind over the map, as Apple's Weather map has them (radar.js, its layers): the models' values at the
+// grid's points (above), eased between as the rain is, each in a colour for it; fading out at the grid's edges, where
+// there's nothing further to say. Stops: [value, [r, g, b]] (temperature °C, wind km/h)
+export const TEMP_STOPS = [[-25, [92, 52, 160]], [-15, [86, 92, 210]], [-5, [70, 145, 230]], [0, [96, 190, 236]], [5, [104, 210, 196]], [10, [126, 214, 120]],
+  [15, [206, 222, 92]], [20, [246, 200, 70]], [25, [245, 154, 58]], [30, [236, 102, 58]], [35, [214, 58, 62]], [42, [158, 30, 76]]];
+// (the wind in blues, as Apple's is: calm a deep blue, lighter as it strengthens, a gale near white)
+export const WIND_STOPS = [[0, [26, 78, 152]], [10, [33, 96, 174]], [20, [44, 116, 194]], [35, [62, 142, 212]], [50, [94, 168, 224]], [70, [138, 196, 236]], [95, [188, 222, 246]], [130, [236, 246, 252]]];
+// the colour for a value, between the stops either side of it
+export function tint(v, stops) {
+  if (!(v > stops[0][0])) return stops[0][1];
+  for (let k = 1; k < stops.length; k++) {
+    const [b, cb] = stops[k];
+    if (v <= b) { const [a, ca] = stops[k - 1], f = (v - a) / (b - a); return ca.map((x, j) => Math.round(x + (cb[j] - x) * f)); }
+  }
+  return stops[stops.length - 1][1];
+}
+// a field's values at a time: each point's, between the hours either side (times: ms, one per hour; series: an array
+// of the points' values for each)
+export function fieldAt(times, series, t) {
+  if (!times?.length) return null;
+  if (t <= times[0]) return series[0];
+  if (t >= times[times.length - 1]) return series[series.length - 1];
+  let k = 1; while (times[k] < t) k++;
+  const f = (t - times[k - 1]) / (times[k] - times[k - 1]), a = series[k - 1], b = series[k];
+  return a.map((x, j) => (x == null || b[j] == null ? x ?? b[j] : x + (b[j] - x) * f));
+}
+// Paint a field into an RGBA buffer (w × h, over the grid's box on a Web Mercator map), as paint() does the rain
+export function paintField(buf, w, h, g, values, stops, alpha = 140) {
+  const yN = merc(g.north), yS = merc(g.south), n = g.n, edge = 0.1;
+  for (let y = 0; y < h; y++) {
+    const my = yN + ((yS - yN) * (y + 0.5)) / h, lat = (360 / Math.PI) * Math.atan(Math.exp(my)) - 90;
+    const fy = Math.min(n - 1, Math.max(0, ((g.north - lat) / (g.north - g.south)) * (n - 1))), r0 = Math.min(n - 2, Math.floor(fy)), ty = ease(fy - r0);
+    const vy = (y + 0.5) / h, ey = Math.min(1, Math.min(vy, 1 - vy) / edge);
+    for (let x = 0; x < w; x++) {
+      const fx = ((x + 0.5) / w) * (n - 1), c0 = Math.min(n - 2, Math.floor(fx)), tx = ease(fx - c0);
+      const at = (r, c) => values[r * n + c] ?? 0;
+      const v = (at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx) * (1 - ty) + (at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx) * ty;
+      const vx = (x + 0.5) / w, e = Math.min(ey, Math.min(1, Math.min(vx, 1 - vx) / edge)), c = tint(v, stops), o = (y * w + x) * 4;
+      buf[o] = c[0]; buf[o + 1] = c[1]; buf[o + 2] = c[2]; buf[o + 3] = Math.round(alpha * ease(e));
+    }
+  }
+  return buf;
 }

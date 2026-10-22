@@ -93,7 +93,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
 
-  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null, mixCorners = null, was = null, wasFade = 0;
+  let layers = [], on = -1, mix = null, mixAt = "", mixOf = null, mixCorners = null, was = null, wasFade = 0, fld = null, fldAt = "", fldOf = null;
   const corners = ([[s, w], [n, e]]) => [[w, n], [e, n], [e, s], [w, s]];
   // (a layer's opacity, at once, or faded to it over a quarter of a second)
   const INSTANT = { duration: 0, delay: 0 }, GENTLY = { duration: calm ? 0 : 260, delay: 0 };
@@ -169,6 +169,21 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       on = -1;
       opacity("mix", value);
     },
+    // temperature or wind over the map, in place of the rain (radar.js, its layers): a picture over bounds, drawn again
+    // as it changes; null: none
+    field(canvas, bounds, value = 1) {
+      if (!canvas) { if (fld) opacity("field", 0); return; }
+      const c = corners(bounds), key = c.join();
+      if (fld && fldOf !== canvas) { map.removeLayer("field"); map.removeSource("field"); fld = null; }
+      if (!fld) {
+        told.delete("field");
+        map.addSource("field", { type: "canvas", canvas, coordinates: c, animate: false });
+        map.addLayer({ id: "field", type: "raster", source: "field", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0, "raster-resampling": "linear" } }, ABOVE_RAIN);
+        fld = map.getSource("field"); fldAt = key; fldOf = canvas;
+      } else if (key !== fldAt) { fld.setCoordinates(c); fldAt = key; }
+      fld.play(); fld.pause(); map.triggerRepaint();
+      opacity("field", value, true);
+    },
     // room kept under the place's bubble, where its name is, that names step aside from: as wide as the name
     room(w) {
       const W = Math.max(64, Math.ceil((w + 12) / 8) * 8);
@@ -198,6 +213,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       smooth && !calm ? map.easeTo({ ...to, duration: 650 }) : map.jumpTo(to);
     },
     zoomBy(d) { map.easeTo({ zoom: Math.round(map.getZoom()) + d, duration: calm ? 0 : 300 }); },
+    zoomTo(z) { map.easeTo({ zoom: z - 1, duration: calm ? 0 : 600 }); },
     // full screen: dragged and pinched, and zoomed with a wheel
     explore(yes) {
       if (touch) for (const h of [map.dragPan, map.touchZoomRotate]) yes ? h.enable() : h.disable();

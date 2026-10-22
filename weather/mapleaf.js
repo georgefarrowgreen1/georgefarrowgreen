@@ -49,7 +49,7 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       el.onselectstart = L.Util.falseFn; el.onmousemove = L.Util.falseFn;
     },
   });
-  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null, was = null;
+  let layers = [], box = null, on = -1, mix = null, mixAt = "", mixOf = null, was = null, fld = null, fldAt = "", fldOf = null;
   return {
     kind: "leaflet",
     credit: ["OpenStreetMap"],
@@ -85,6 +85,15 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       on = -1;
       mix.setOpacity(opacity);
     },
+    // temperature or wind over the map, in place of the rain (radar.js, its layers); null: none
+    field(canvas, bounds, opacity = 1) {
+      if (!canvas) { fld?.setOpacity(0); return; }
+      const key = bounds.join();
+      if (fld && fldOf !== canvas) { map.removeLayer(fld); fld = null; }
+      if (!fld) { fld = new Canvas(canvas, bounds, { opacity: 0, interactive: false, className: "rv-field" }).addTo(map); fldAt = key; fldOf = canvas; }
+      else if (key !== fldAt) { fld.setBounds(L.latLngBounds(bounds)); fldAt = key; }
+      fld.setOpacity(opacity);
+    },
     bounds() { const b = map.getBounds(); return [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]; },
     box(bounds, opacity = 0) {
       if (bounds !== undefined) {
@@ -98,6 +107,7 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
     clear() {},
     view(la, lo, smooth = false) { map.setView([la, lo], zoom, { animate: smooth && !calm }); },
     zoomBy(d) { d > 0 ? map.zoomIn() : map.zoomOut(); },
+    zoomTo(z) { map.setZoom(z); },
     explore(yes) {
       if (touch) yes ? map.dragging.enable() : map.dragging.disable();
       yes ? map.scrollWheelZoom.enable() : map.scrollWheelZoom.disable();

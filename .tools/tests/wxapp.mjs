@@ -65,6 +65,13 @@ function modelGrid(url) {
   const time = Array.from({ length: 9 }, (_, k) => new Date(q0 + k * 900e3).toISOString().slice(0, 16));
   return Array.from({ length: n }, (_, i) => ({ minutely_15: { time, precipitation: time.map((_, k) => (i % 9 < 4 ? 0.3 + k * 0.1 : 0)), snowfall: time.map(() => 0) } }));
 }
+// the models' temperature and wind on the radar's 9 × 9 grid, by the hour: warmer to the south and east, the wind
+// stronger to the west, from the south-west
+function fieldGrid(url) {
+  const n = new URL(url).searchParams.get('latitude').split(',').length, side = Math.round(Math.sqrt(n)), h0 = Math.floor(Date.now() / H) * H - 3 * H;
+  const time = Array.from({ length: 16 }, (_, k) => new Date(h0 + k * H).toISOString().slice(0, 16));
+  return Array.from({ length: n }, (_, i) => ({ hourly: { time, temperature_2m: time.map((_, k) => 6 + Math.floor(i / side) + (i % side) * 0.5 + k * 0.3), wind_speed_10m: time.map(() => 10 + (side - 1 - (i % side)) * 4), wind_direction_10m: time.map(() => 225) } }));
+}
 // the stand-in for Open-Meteo (the server's notifications), the Aviation Weather Center (its airport reports), and
 // MeteoAlarm, the National Weather Service and the Environment Agency (official warnings: mocks/wxwarnings.mjs)
 let wxScenario = { rainIn: 30 }, radarScenario = null, warnExtra = false;
@@ -149,6 +156,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (u.includes('bigdatacloud')) return j({ city: 'London', locality: 'Soho', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' });
     if (u.includes('previous-runs-api')) return j(previousRuns(u));
     if (u.includes('forecast_minutely_15=9')) { tiles.grid++; return j(modelGrid(u)); }
+    if (u.includes('hourly=temperature_2m%2Cwind_speed_10m%2Cwind_direction_10m')) { tiles.field = (tiles.field || 0) + 1; return j(fieldGrid(u)); }
     if (u.includes('models=')) return j(F.models(now, sc));
     if (u.includes('daily=')) asked.forecast++;
     return j(F.forecast(now, sc));
@@ -578,8 +586,12 @@ const toMinute = (pg, back = 0) => pg.evaluate((back) => { const s = document.qu
 const toNow = (pg, on = 0) => pg.evaluate((on) => { const s = document.querySelector('#radar .radar-slider'); s.value = String(Math.round(s.max * parseFloat(s.style.getPropertyValue('--nowf'))) + on); s.dispatchEvent(new Event('input')); }, on);
 {
   const gapOf = await p.evaluate(() => { const s = document.querySelector('#radar .radar-slider'); return Math.round(s.max * parseFloat(s.style.getPropertyValue('--nowf'))) - 120; });
-  await toNow(p); const now = await p.textContent('#radar .radar-time'), nowChip = await chipSays(p);
-  await toNow(p, 1); const next = await p.textContent('#radar .radar-time'), nextChip = await chipSays(p);
+  // (set and read in one go: the clock moving on to the next minute in between would move Now under it)
+  const atNow = (on) => p.evaluate((on) => {
+    const s = document.querySelector('#radar .radar-slider'); s.value = String(Math.round(s.max * parseFloat(s.style.getPropertyValue('--nowf'))) + on); s.dispatchEvent(new Event('input'));
+    return [document.querySelector('#radar .radar-time').textContent, [...document.querySelectorAll('#radar .radar-chip .rc-l')].filter((x) => getComputedStyle(x).position !== 'absolute').map((x) => x.textContent).join('|')];
+  }, on);
+  const [now, nowChip] = await atNow(0), [next, nextChip] = await atNow(1);
   ok(/^(Latest radar|Radar) [A-Z][a-z]+day \d\d:\d\d · now$/.test(now) && nowChip === 'Radar' && /^Forecast [A-Z][a-z]+day \d\d:\d\d · in 1 min$/.test(next) && nextChip === 'Forecast',
     'Now is now: the radar up to it (carried on from its latest meanwhile), the forecast after it', `${now} (${nowChip}) | ${next} (${nextChip}); now ${gapOf} min after the latest radar`);
   await toMinute(p, -1); const gap = await p.textContent('#radar .radar-time'), gapChip = await chipSays(p);
@@ -640,6 +652,33 @@ ok(fills, 'the map filling it, edge to edge');
 await p.screenshot({ path: `${out}/wx-radar.png` });
 await p.keyboard.press('Escape');
 ok(await p.waitForFunction(() => !document.getElementById('radar').classList.contains('radar-big'), null, { timeout: 3000 }).then(() => true, () => false), 'and back');
+// the map's layers, as Apple's: the wind, flowing, its bubble saying which way and how strong, by the hour from two hours
+// ago to twelve on; the temperature, its bubble the temperature there; and back to the rain, each kept as chosen
+{
+  const st = () => p.evaluate(() => { const c = document.getElementById('radar'), pin = document.querySelector('.map-pin'); return { layer: c.dataset.layer, title: c.querySelector('.card-title').textContent.trim(),
+    legend: c.querySelector('.rl-title')?.textContent, kind: pin?.dataset.kind || '', bubble: pin?.querySelector('.mp-bubble').textContent, max: c.querySelector('.radar-slider').max, label: c.querySelector('.radar-time').textContent,
+    flow: !c.querySelector('.wind-flow')?.hidden, ticks: c.querySelectorAll('.rs-t').length, kept: localStorage.getItem('wx:maplayer'), pressed: c.querySelector('.layer-menu [aria-pressed="true"]')?.dataset.kind }; });
+  const pick = async (k) => { await p.click('#radar .map-layers'); await p.click(`#radar .layer-menu [data-kind="${k}"]`); };
+  await p.evaluate(() => { const b = document.querySelector('#radar .radar-play'); if (b.dataset.on === '1') b.click(); });
+  await p.click('#radar .map-layers');
+  ok(await p.isVisible('#radar .layer-menu') && (await p.getAttribute('#radar .map-layers', 'aria-expanded')) === 'true' && (await p.locator('#radar .layer-menu button').allTextContents()).join() === 'Precipitation,Temperature,Wind',
+    'the layers button opens its menu: precipitation, temperature, wind');
+  await p.keyboard.press('Escape');
+  ok(!(await p.isVisible('#radar .layer-menu')), 'and Escape closes it');
+  const asked = tiles.field || 0;
+  await pick('wind');
+  const wind = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'wind' && document.querySelector('.map-pin')?.dataset.kind === 'wind', null, { timeout: 15000 }).then(st, st);
+  ok(wind.layer === 'wind' && wind.title === 'Wind' && wind.legend === 'Wind (mph)' && /^[NESW]{1,3}\d+MPH$/.test(wind.bubble) && wind.flow && wind.max === '840' && wind.ticks === 15 && /^Wind [A-Z][a-z]+day \d\d:\d\d · now$/.test(wind.label) && wind.kept === 'wind' && wind.pressed === 'wind' && (tiles.field || 0) === asked + 1,
+    'the wind: flowing over the map, its bubble which way and how strong, by the hour two hours back to twelve on, and kept', JSON.stringify(wind));
+  await pick('temp');
+  const temp = await p.waitForFunction(() => document.querySelector('.map-pin')?.dataset.kind === 'temp', null, { timeout: 5000 }).then(st, st);
+  ok(temp.layer === 'temp' && temp.title === 'Temperature' && /^Temperature \(°[CF]\)$/.test(temp.legend) && /^-?\d+°$/.test(temp.bubble) && !temp.flow && temp.max === '840' && (tiles.field || 0) === asked + 1,
+    'the temperature: its bubble the temperature there, from the same models\' grid (not asked for again)', JSON.stringify(temp));
+  await pick('rain');
+  const rain = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'rain', null, { timeout: 5000 }).then(st, st);
+  ok(rain.title === 'Rain radar' && rain.legend === 'Precipitation' && rain.kind === '' && !rain.flow && Number(rain.max) >= 230 && rain.kept === 'rain' && /^(Latest radar|Radar|Forecast|Estimated) /.test(rain.label),
+    'and back to the rain, as it was', JSON.stringify(rain));
+}
 // on a phone the page scrolls past the map in its card, and a tap opens it full screen, to pan and pinch
 {
   await p.locator('#radar').scrollIntoViewIfNeeded(); await p.waitForTimeout(500);
