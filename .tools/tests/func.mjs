@@ -117,7 +117,7 @@ await B.p.waitForTimeout(1500);
 ok(/"photo": 2/.test(sql("SELECT photo FROM pg_msgs WHERE photo > 0")), 'server marks the photo deleted');
 
 // ---- George: sign out, back in with the passkey alone ----
-await A.p.click('.chatnav .back'); await tab(A, 'account'); await A.p.click('[data-act=profile]'); await A.p.waitForSelector('.sheet [data-act=signout]'); await A.p.waitForTimeout(400); await A.p.click('.sheet [data-act=signout]'); await A.p.click('.asheet [data-act=signoutgo]');
+await A.p.click('.chatnav .back'); await tab(A, 'account'); await A.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await A.p.click('#screen > main.view [data-act=signout]'); await A.p.click('.asheet [data-act=signoutgo]');
 await A.p.waitForSelector('.welcome');
 await A.p.click('[data-act=to][data-id=signin]'); await A.p.click('[data-act=pkget]'); await A.p.waitForSelector('.tabs', { timeout: 20000 });
 await A.p.click('.mrow'); await A.p.waitForTimeout(1500);

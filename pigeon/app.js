@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.8";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.9";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -2392,6 +2392,10 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.9", at: Date.UTC(2026, 9, 23), title: "Your account, at the top", items: [
+    ["person", "blue", "The same card as Weather", "Account opens with your photo, name and handle, as Weather’s Settings do. Tap it for your account’s page, already signed in."],
+    ["pin", "teal", "Location has its own row", "Where you are is under Settings now, and Sign Out is at the foot of Account."],
+  ] },
   { v: "1.2.8", at: Date.UTC(2026, 9, 23), title: "Your profile, on your account", items: [
     ["person", "blue", "One profile, everywhere", "Your photo, name and handle are your georgefarrowgreen.com account’s. Edit Profile opens your account, already signed in, and brings you straight back."],
   ] },
@@ -3468,8 +3472,8 @@ function vAccount() {
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
-    <div class="group"><button class="cell me-cell" data-act="profile">${avatar(u, "l")}
-      <span class="ctext"><span class="name one">${esc(first(u.name))}</span><span class="csub one">@${esc(u.handle)}${u.place ? ` · ${esc(u.place)}` : ""}</span><span class="csub one">Edit Profile</span></span>${chevSm}</button></div>
+    <div class="group">${((who) => accountPage() ? `<button type="button" class="cell me-cell" data-act="accountopen" aria-label="Your account: ${esc(u.name)}, @${esc(u.handle)}">${who}${chevSm}</button>` : `<div class="cell me-cell">${who}</div>`)(
+      `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)} · georgefarrowgreen.com</span></span>`)}</div>
     ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "InFlight Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
     <div class="ghead">Today’s Pigeons</div>
     <div class="lgrid">${tile("rocket", "Rocket", "9× faster")}${tile("turbo", "Turbo", "3× faster")}${tile("swift", "Swift", "2× faster")}${tile("mystery", "Mystery", "Any pigeon")}</div>
@@ -3489,7 +3493,10 @@ function vAccount() {
       ${notifyCell(u)}
       ${cell({ act: "securitysheet", icon: I.shield, tile: "green", label: "Privacy &amp; Security", chev: true })}
       ${cell({ act: "appearancesheet", icon: I.contrast, tile: "blue", label: "Appearance", val: THEME_NAMES[theme()], chev: true })}
+      ${cell({ act: "profile", icon: u.moon ? (worldOf(u) === "mars" ? I.up : I.moon) : I.pin, tile: u.moon ? (worldOf(u) === "mars" ? "red" : "indigo") : "teal", label: "Location", val: esc((u.place || "Not set").replace(/, (the Moon|Mars)$/, "")), chev: true })}
     </div>
+    <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
+    <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>
     <p class="aver"><button type="button" class="averbtn" data-act="whatsnew" aria-label="InFlight ${APP_VERSION}: what’s new">InFlight ${APP_VERSION}${chevSm}</button><button type="button" class="alink" data-act="creditsheet">Map &amp; Weather Data</button></p>
     <div class="gap"></div>`;
 }
@@ -5947,14 +5954,10 @@ function drawSheet(refresh) {
         { left: { label: "Cancel", act: "close" }, right: { label: "Link", form: "askpw-form" } });
       return;
     case "profile": {
-      // Your photo, name and handle are your georgefarrowgreen.com account's, the same in every app: they're shown here,
-      // and changed on the account's own page (Edit Profile: opened signed in, straight to them, and back here after)
-      const u = S.me, old = $(".sheet .body", $layer), top = old && $(".mehead", $layer) ? old.scrollTop : 0;
-      $layer.innerHTML = sheetHtml("My Profile", `
-        <div class="profile-head mehead">${avatar(u, "xl")}<span class="name">${esc(u.name)}</span><span class="sub">@${esc(u.handle)}</span>
-          ${accountPage() ? `<button type="button" class="btn small tinted meedit" data-act="accountedit">${I.person}Edit Profile</button>` : ""}</div>
-        <div class="gfoot mehint">Your photo, name and handle are your georgefarrowgreen.com account’s, the same in every app. Your friends, and people you’ve sent a request to, see them.</div>
-        <div class="ghead">Location</div>
+      // Where you are (your photo, name and handle are your account's: the card at the top of Account opens its page)
+      // (the sheet's still called "profile" inside: Back from the Moon and Mars, and refreshProfile, come here)
+      const u = S.me, old = $(".sheet .body", $layer), top = old && $(".locsheet", $layer) ? old.scrollTop : 0;
+      $layer.innerHTML = sheetHtml("Location", `<div class="locsheet"></div>
         ${u.moon ? ((w, d) => `<div class="group">
           ${cell({ icon: w === "mars" ? I.up : I.moon, tile: w === "mars" ? "red" : "indigo", label: `On ${BODIES[w].name}`, val: esc((u.place || "").replace(/, (the Moon|Mars)$/, "")), sub: d })}
           ${cell({ act: "moonpick", id: w, icon: I.pin, tile: w === "mars" ? "red" : "indigo", label: `Move on ${BODIES[w].name}`, chev: true })}
@@ -5977,9 +5980,7 @@ function drawSheet(refresh) {
           ${cell({ act: "moonpick", id: "moon", icon: I.moon, tile: "indigo", label: "Go to the Moon", sub: "Only lunar pigeons fly there", chev: true })}
           ${cell({ act: "moonpick", id: "mars", icon: I.up, tile: "red", label: "Go to Mars", sub: "Only laser pigeons reach it, at the speed of light", chev: true })}
         </div>`}
-        <div class="gfoot">${u.moon ? "Choosing somewhere on Earth brings you home." : "Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile."}</div>
-        <div class="group mt">${cell({ act: "signout", label: "Sign Out", cls: "center destructive" })}</div>
-        <div class="group mt">${cell({ act: "delask", label: "Delete Account", cls: "center destructive" })}</div>`);
+        <div class="gfoot">${u.moon ? "Choosing somewhere on Earth brings you home." : "Pigeons fly from here, and pigeons already on their way to you follow when you move. Only your friends see it, and only to within about a mile."}</div>`);
       if (top) $(".sheet .body", $layer).scrollTop = top;
       return;
     }

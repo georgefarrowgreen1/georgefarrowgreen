@@ -32,37 +32,40 @@ await A.p.click('[data-form=signup] .btn'); await A.p.waitForSelector('#city', {
 await A.p.selectOption('#city', 'London'); await A.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 }); await A.p.click('[data-act=onbdone]'); await A.p.waitForSelector('.tabs');
 const token = (await A.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }))).token;
 
-// ---- 1. My Profile: your details, and the way to change them (no fields of its own) ----
-await A.p.click('[data-act=tab][data-id=account]'); await A.p.click('#screen > main.view [data-act=profile]'); await A.p.waitForSelector('.sheet .mehead'); await A.p.waitForTimeout(700);
-const prof = await text(A.p, '.sheet');
-ok(/Rowan Hale/.test(prof) && /@rowan/.test(prof) && /Edit Profile/.test(prof) && /Location/.test(prof) && /Sign Out/.test(prof), 'My Profile: photo, name and handle as the account has them, Edit Profile, and the rest as it was', prof.slice(0, 200));
-ok(!(await A.p.$('.sheet input#f-name, .sheet input#f-handle, .sheet .avedit, .sheet form#profile-form')), 'no name, handle or photo to edit here');
-await shot(A.p, '01-my-profile');
+// ---- 1. Account: a card as Weather's (photo, name, "@handle · georgefarrowgreen.com"); Location, Sign Out and Delete
+// Account below ----
+await A.p.click('[data-act=tab][data-id=account]'); await A.p.waitForSelector('#screen > main.view .me-cell'); await A.p.waitForTimeout(600);
+const card = await text(A.p, '#screen > main.view .me-cell');
+ok(/Rowan Hale/.test(card) && /@rowan · georgefarrowgreen\.com/.test(card) && !/Edit Profile/.test(card), 'Account: your photo, name and "@handle · georgefarrowgreen.com", as in Weather', card);
+ok(!!(await A.p.$('#screen > main.view [data-act=profile]')) && /London/.test(await text(A.p, '#screen > main.view [data-act=profile]')) && !!(await A.p.$('#screen > main.view [data-act=signout]')) && !!(await A.p.$('#screen > main.view [data-act=delask]')),
+  'Location its own row (where you are), and Sign Out and Delete Account at the foot');
+await A.p.click('#screen > main.view [data-act=profile]'); await A.p.waitForSelector('.sheet [data-act=locate]'); await A.p.waitForTimeout(500);
+ok(/Location/.test(await text(A.p, '.sheet header')) && !(await A.p.$('.sheet input#f-name, .sheet .avedit, .sheet [data-act=signout]')), 'Location: just where you are (no name, handle or photo to edit)');
+await A.p.click('.sheet header [data-act=close]'); await A.p.waitForTimeout(500);
+await shot(A.p, '01-account');
 
-// ---- 2. Edit Profile: the account's page, signed in, straight to editing ----
+// ---- 2. the card: the account's page, signed in ----
 // (this browser has no sign-in for the site: the page opens in a fresh one, as from a Home Screen app)
 await A.ctx.clearCookies();
-const [pop] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('.sheet [data-act=accountedit]')]);
-await pop.waitForSelector('#sheet[open] .sheet-body', { timeout: 20000 }).catch(async () => { await shot(pop, 'zz-pop'); console.log('POPURL', pop.url(), await text(pop, 'body'), await text(pop, '#toast'), JSON.stringify(errs)); }); await pop.waitForTimeout(800);
+const [pop] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view .me-cell')]);
+await pop.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await pop.waitForTimeout(900);
 ok(pop.url() === `${ACCT}/`, 'the account\'s page, the code already gone from the address', pop.url());
-const sheet = await text(pop, '#sheet');
-ok(/Edit profile/.test(sheet) && await pop.$eval('#sheet input[autocomplete=name]', (e) => e.value) === 'Rowan Hale', 'signed in as you, at Edit profile', sheet.slice(0, 120));
-ok(!!(await pop.$('.backapp')) && (await pop.locator('.backapp').innerText()).includes('InFlight'), 'with the way back to InFlight');
+ok(/Rowan Hale/.test(await text(pop)) && !!(await pop.$('.backapp')), 'signed in as you, with the way back to InFlight');
 const dev = rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n;
 ok(dev === 2, 'a sign-in of its own (seen in Signed-in devices)', String(dev));
 ok(!(await pop.evaluate(async () => (await (await fetch('/api/account/me')).json()).fresh)), 'which doesn\'t count as showing it\'s you (a password change still asks)');
-await shot(pop, '02-edit-profile');
-// a new name, Done: saved, and back to InFlight
-await pop.fill('#sheet input[autocomplete=name]', 'Rowan Ash Hale');
-const closed = pop.waitForEvent('close', { timeout: 8000 }).then(() => true, () => false);
-await pop.click('#sheet .done');
-ok(await closed, 'Done: saved, and the page goes, back to InFlight');
+await shot(pop, '02-account-page');
+// Edit profile, there
+await pop.click('.hero .pill'); await pop.waitForSelector('#sheet[open] .sheet-body'); await pop.waitForTimeout(600);
+await pop.fill('#sheet input[autocomplete=name]', 'Rowan Ash Hale'); await pop.click('#sheet .done'); await pop.waitForTimeout(1200);
 ok(rows(`SELECT name FROM pg_users WHERE handle = 'rowan'`)[0].name === 'Rowan Ash Hale', 'the new name is the account\'s');
-// InFlight, shown again, has it
+// back to InFlight
+const closed = pop.waitForEvent('close', { timeout: 8000 }).then(() => true, () => false);
+await pop.click('.backapp');
+ok(await closed, 'InFlight: the page goes, back to the app');
 await A.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await A.p.waitForTimeout(2500);
-ok(/Rowan Ash Hale/.test(await text(A.p, '.sheet')), 'and InFlight shows it when you\'re back', (await text(A.p, '.sheet')).slice(0, 80));
+ok(/Rowan Ash Hale/.test(await text(A.p, '#screen > main.view .me-cell')), 'and InFlight shows the new name', await text(A.p, '#screen > main.view .me-cell'));
 await shot(A.p, '03-back');
-
 // ---- 3. the code: once, for a minute, and only at the account's page ----
 // (a code from InFlight's own API, as the app asks for one)
 const c1 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
@@ -82,13 +85,12 @@ const noAuth = await A.p.evaluate(async () => (await fetch('/api/pigeon/account-
 ok(noAuth === 401, 'and only a signed-in InFlight can ask for one', String(noAuth));
 
 // ---- 4. Privacy & Security's Your Account: the account's page, signed in too ----
-await A.p.click('.sheet header [data-act=close]').catch(() => {}); await A.p.waitForTimeout(500);
 await A.ctx.clearCookies();
 await A.p.click('#screen > main.view [data-act=securitysheet]'); await A.p.waitForSelector('.sheet #to-account');
 const [pop2] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('.sheet #to-account')]);
 await pop2.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await pop2.waitForTimeout(800);
-ok(/Rowan Ash Hale/.test(await text(pop2)) && !(await pop2.$('#sheet[open]')), 'Your Account: the page, signed in (nothing opened over it)');
-await shot(pop2, '04-account');
+ok(/Rowan Ash Hale/.test(await text(pop2)) && !(await pop2.$('#sheet[open]')), 'Privacy & Security\'s Your Account: the page, signed in too');
+
 
 ok(errs.length === 0, 'no errors on any page', errs.slice(0, 4).join(' | '));
 await b.close();

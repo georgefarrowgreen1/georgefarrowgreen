@@ -735,9 +735,11 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.8
+## InFlight (chat.georgefarrowgreen.com) — 1.2.9
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.2.9** (the account's card, as Weather's): Account opens with the same card as Weather's Settings (your photo, your name, "@handle · georgefarrowgreen.com" and a chevron), and it opens your account's page, signed in, as Weather's does. Where you are is its own row (Settings → Location, the sheet that was My Profile); Sign Out and Delete Account are at the foot of Account.
 
 **1.2.8** (your profile, on your account): your photo, name and handle are the georgefarrowgreen.com account's, so My Profile shows them and Edit Profile changes them on the account's page (account.georgefarrowgreen.com) rather than in InFlight. It opens signed in, whatever browser it opens in (a Home Screen app's links open in the browser, which has its own cookies): InFlight asks for a code (`POST /api/pigeon/account-link`, good once, for a minute, in `pg_handoff`), puts it in the address's `#` (never sent to a server), and the page swaps it for a sign-in of its own (`POST /api/account/handoff`, only at the account's address and from its own page; it takes the code out of the address at once). That sign-in shows in Signed-in devices and never counts as having just shown it's you, so a new password or passkey still asks. The page opens straight at Edit profile with the way back to InFlight; Done or Cancel closes it, and InFlight shows the change as you come back. Privacy & Security's Your Account opens the page the same way (`.tools/tests/acctlink.mjs`).
 

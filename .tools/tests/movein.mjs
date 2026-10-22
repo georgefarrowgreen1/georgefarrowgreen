@@ -39,7 +39,7 @@ ok(!errs.some((e) => /Content Security Policy|frame/i.test(e)), 'no CSP or frami
 
 // signing out at the new address doesn't bring the old sign-in back
 await p.reload(); await p.waitForSelector('.tabs'); await p.click('[data-act=tab][data-id=account]'); await p.waitForTimeout(600);
-await p.click('[data-act=profile]'); await p.waitForSelector('.sheet [data-act=signout]'); await p.waitForTimeout(400); await p.click('.sheet [data-act=signout]'); await p.waitForSelector('[data-act=signoutgo]'); await p.click('[data-act=signoutgo]');
+await p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await p.click('#screen > main.view [data-act=signout]'); await p.waitForSelector('[data-act=signoutgo]'); await p.click('[data-act=signoutgo]');
 await p.waitForSelector('.welcome', { timeout: 10000 }); await p.reload();
 ok(await p.waitForSelector('.welcome', { timeout: 10000 }).then(() => true, () => false), 'signed out here stays signed out');
 

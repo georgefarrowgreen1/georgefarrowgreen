@@ -102,8 +102,9 @@ ok(/Password changed/.test(await txt('.toast').catch(() => '')), 'the right one 
 
 // deleting the account
 stale();
-await G.click('[data-act=profile]').catch(() => {}); await G.waitForSelector('.sheet [data-act=delask]'); await G.waitForTimeout(600); await G.locator('.sheet [data-act=delask]').scrollIntoViewIfNeeded();
-await G.click('.sheet [data-act=delask]'); await G.waitForSelector('.asheet [data-act=delgo]'); await G.click('.asheet [data-act=delgo]');
+if (await G.$('.sheet')) { await G.click('.sheet header [data-act=close]').catch(() => {}); await G.waitForTimeout(500); }
+await G.click('[data-act=tab][data-id=account]').catch(() => {}); await G.waitForSelector('#screen > main.view [data-act=delask]'); await G.locator('#screen > main.view [data-act=delask]').scrollIntoViewIfNeeded();
+await G.click('#screen > main.view [data-act=delask]'); await G.waitForSelector('.asheet [data-act=delgo]'); await G.click('.asheet [data-act=delgo]');
 await G.waitForSelector('#reauth-form', { timeout: 8000 });
 await G.fill('#f-password', 'a new long password'); await G.click('.sheet .nbtn.r');
 await G.waitForSelector('.welcome', { timeout: 15000 });

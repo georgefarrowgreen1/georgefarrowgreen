@@ -361,8 +361,6 @@ html.kbup .compose{padding-bottom:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ---------- account ---------- */
-.me-cell{min-height:88px;gap:14px}
-.me-cell .name{font-size:20px;line-height:25px;font-weight:600}
 .dots{display:flex;gap:3px}
 .dots i{width:7px;height:7px;border-radius:50%;background:var(--orange)}
 .dots i.e{background:var(--fill-2)}
@@ -623,7 +621,7 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .cell .csub .mono{font-family:var(--mono);font-size:13px;letter-spacing:.3px}
 @media (max-width:360px){
   .cell .val .mono,.cell .val.mono{font-size:13px;letter-spacing:-.3px}
-  .me-cell .name{font-size:19px}
+  .me-cell .name{font-size:17px}
 }
 /* short phones: the welcome screen fits without scrolling */
 @media (max-height:640px){
@@ -2205,10 +2203,10 @@ details.learn p{margin:6px 0 0}
 .vbar{display:block;height:4px;margin-top:7px;border-radius:2px;background:color-mix(in srgb,var(--green) 16%,transparent);overflow:hidden}
 .vbar b{display:block;height:100%;border-radius:2px;background:var(--green)}
 
-/* My Profile: your photo, name and handle, as your account has them, and the way to change them there */
-.mehead{gap:4px;padding-bottom:2px}
-.mehead .av{margin-bottom:6px}
-.mehead .sub{font-size:16px}
-.meedit{margin-top:12px;gap:6px}
-.meedit .ico{font-size:17px}
-.mehint{margin-top:14px;text-align:center}
+/* Account's card, as Weather's: your photo, your name, "@handle · georgefarrowgreen.com", and on to your account's page */
+.me-cell{min-height:80px;gap:14px;padding-top:14px;padding-bottom:14px}
+.me-cell .av.l{width:52px;height:52px;font-size:21px}
+.me-cell .ctext{gap:3px}
+.me-cell .name{font-size:17px;line-height:22px;font-weight:650}
+.me-cell .csub{font-size:14px}
+.locsheet{height:6px}

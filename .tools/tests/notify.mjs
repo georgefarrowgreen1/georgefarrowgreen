@@ -235,8 +235,8 @@ await G.p.evaluate(() => localStorage.removeItem('inflight-pushsub'));   // (a d
 await G.p.reload(); await G.p.waitForSelector('.tabs'); await G.p.click('[data-act=tab][data-id=account]');
 // the subscription is re-sent on launch, so it comes back
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 1'), 'reopening the app re-registers this phone');
-if (!(await G.p.$('.sheet [data-act=signout]'))) { await G.p.click('.sheet [data-act=close]').catch(() => {}); await G.p.waitForTimeout(400); await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.click('[data-act=profile]'); await G.p.waitForSelector('.sheet [data-act=signout]'); await G.p.waitForTimeout(400); }
-await G.p.click('.sheet [data-act=signout]'); await G.p.click('.asheet [data-act=signoutgo]'); await G.p.waitForSelector('.welcome');
+if (await G.p.$('.sheet')) { await G.p.click('.sheet [data-act=close]').catch(() => {}); await G.p.waitForTimeout(400); }
+await G.p.click('[data-act=tab][data-id=account]').catch(() => {}); await G.p.locator('#screen > main.view [data-act=signout]').scrollIntoViewIfNeeded(); await G.p.click('#screen > main.view [data-act=signout]'); await G.p.click('.asheet [data-act=signoutgo]'); await G.p.waitForSelector('.welcome');
 ok(sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'signing out stops notifications to this phone');
 // a sign-in that ends elsewhere (password reset, sign out everywhere) also stops them
 await G.p.click('[data-act=to][data-id=signin]'); await G.p.fill('#f-email', 'george@example.com'); await G.p.fill('#f-password', 'a long test password');
