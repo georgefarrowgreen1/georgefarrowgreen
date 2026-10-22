@@ -161,6 +161,13 @@ export async function idleAccounts(env, D, t, origin) {
   return { warned, deleted };
 }
 
+// Accounts whose owners asked for them to be deleted, a week on (functions/api/account), and not kept since
+export async function dueDeletions(env, D, t) {
+  const { results } = await D.prepare("SELECT id, handle FROM pg_users WHERE delete_at IS NOT NULL AND delete_at <= ? LIMIT 5").bind(t).all();
+  for (const u of results) { await removeAccount(env, u.id); await adminLog(env, "deleted", u.id, `@${u.handle}`).catch(() => {}); }
+  return results.length;
+}
+
 // All of it, at most every ten minutes
 export async function housekeeping(env, D, t, origin) {
   // claimed in one step, so two ticks at once can't both run it (and send the same warning twice)
@@ -170,7 +177,8 @@ export async function housekeeping(env, D, t, origin) {
   const purged = await keepMonth(env, D, t).catch((e) => { console.error("pigeon keep", e && e.message); return 0; });
   const files = await sweepFiles(env, D, t).catch((e) => { console.error("pigeon files", e && e.message); return 0; });
   const accounts = await idleAccounts(env, D, t, origin).catch((e) => { console.error("pigeon idle", e && e.message); return {}; });
-  return { purged, files, ...accounts };
+  const asked = await dueDeletions(env, D, t).catch((e) => { console.error("pigeon deletions", e && e.message); return 0; });
+  return { purged, files, ...accounts, asked };
 }
 
 // The admin's look at what's kept: rows in each table, the database's size, and the files in storage

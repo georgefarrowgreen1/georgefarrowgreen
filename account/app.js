@@ -7,6 +7,12 @@
 //
 // The password is stretched here as everywhere on the site (crypto.js, InFlight's own, served here too): it never leaves
 // this device, only a proof of it. A new one locks your key anew with it, here, so nothing that's locked changes hands.
+//
+// Also: a security check-up (email confirmed, a passkey, the password against data breaches, devices long unused), your
+// email (confirming it, changing it), recent activity, passkeys' names and where they're saved, preferences for every app
+// (appearance; Weather's units), your data as a file, and deleting the account in 7 days unless it's kept. The page keeps
+// up with changes made elsewhere when you come back to it. Links in the account's emails open here (#confirm=, #email=,
+// #keep=).
 
 import { E2E, b64url, fromB64url } from "./crypto.js";
 
@@ -14,7 +20,7 @@ const API = "/api/account";
 const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
-const S = { me: null, settled: false };
+const S = { me: null, settled: false, pulled: 0 };
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
@@ -49,6 +55,16 @@ const ICONS = {
   face: '<path d="M4 8.5V6.5A2.5 2.5 0 0 1 6.5 4h2M15.5 4h2A2.5 2.5 0 0 1 20 6.5v2M20 15.5v2a2.5 2.5 0 0 1-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 0 1 4 17.5v-2M9 9.2v1.2M15 9.2v1.2M12.2 9.2v3.8h-1M9.2 15.6c1.6 1.3 4 1.3 5.6 0"/>',
   person: '<circle cx="12" cy="8.6" r="3.9"/><path d="M4.6 20c1.2-3.6 4-5.6 7.4-5.6s6.2 2 7.4 5.6"/>',
   shield: '<path d="M12 3.2 19.5 6v5.6c0 4.7-3.2 7.9-7.5 9.2-4.3-1.3-7.5-4.5-7.5-9.2V6z"/><path d="m8.8 12 2.3 2.3 4.2-4.6"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  download: '<path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/>',
+  contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
+  ruler: '<path d="M3.5 15.5 15.5 3.5l5 5-12 12z"/><path d="m7.5 11.5 2 2m1-5 2 2m1-5 2 2"/>',
+  trash: '<path d="M4.5 7h15M10 11v6m4-6v6M6.5 7l.9 11.3a2 2 0 0 0 2 1.7h5.2a2 2 0 0 0 2-1.7L17.5 7M9.5 7V4.5h5V7"/>',
+  alert: '<path d="M12 4 21 19.5H3z"/><path d="M12 10v4.2M12 17h.01"/>',
+  signin: '<path d="M14.5 4.5h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-3M10.5 16.5 15 12l-4.5-4.5M15 12H4.5"/>',
+  signout: '<path d="M9.5 19.5h-3a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2h3M15.5 16.5 20 12l-4.5-4.5M20 12H9.5"/>',
+  pencil: '<path d="M4.5 19.5 5.3 15.6 15.8 5.1a2 2 0 0 1 2.8 0l.3.3a2 2 0 0 1 0 2.8L8.4 18.7z"/>',
+  undo: '<path d="M9 14 4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/>',
 };
 function icon(name, size = 20, width = 2) {
   const t = document.createElement("template");
@@ -86,27 +102,65 @@ function ago(t) {
 }
 const day = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
 
+// ---- appearance: the account's (Automatic, Light or Dark, as InFlight has it), remembered here for next time ----
+function theme(pref) {
+  const root = document.documentElement;
+  if (pref === "light" || pref === "dark") root.dataset.theme = pref; else delete root.dataset.theme;
+  try { localStorage.setItem("acct:appearance", pref || "auto"); } catch (_) {}
+  const top = isDark() ? "#0b1024" : "#eef1fb";
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", top);
+  stars.start?.();
+}
+const isDark = () => (document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : dark.matches);
+try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (_) {}
+
 // ---- the page ----
 async function load() {
-  try { S.me = await call("me"); }
+  await fromLink();
+  try { S.me = await call("me"); S.pulled = Date.now(); }
   catch (e) {
     main.removeAttribute("aria-busy");
     return main.replaceChildren(h("div.welcome.rise", {}, h("div.mark", {}, icon("shield", 44, 1.8)), h("h1", { text: "Can’t reach your account" }),
       h("p", { text: e.offline ? "You’re offline. Your account will be here when you’re back online." : e.message }),
       h("button.pill", { type: "button", onclick: () => location.reload() }, "Try again")));
   }
+  if (S.me.prefs) theme(S.me.prefs.appearance);
   render();
 }
+// A link from one of the account's emails: confirming the email, a new email, or keeping the account. The link's own
+// token is what counts, so it works signed in or not, in whichever browser the email opens it in.
+async function fromLink() {
+  const m = /^#(confirm|email|keep)=([A-Za-z0-9_-]{40,50})$/.exec(location.hash);
+  if (!m) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  const [, kind, token] = m;
+  try {
+    const r = await post({ confirm: "email/confirm", email: "email/change-confirm", keep: "delete/keep" }[kind], { token });
+    S.said = { kind, text: kind === "confirm" ? "Your email is confirmed." : kind === "email" ? `Your account’s email is now ${r.email}.` : "Your account is staying. Sign in to carry on." };
+  } catch (e) { S.said = { kind, bad: true, text: e.message }; }
+}
+// (and one opened in a tab where the page is already open)
+addEventListener("hashchange", async () => {
+  if (!/^#(confirm|email|keep)=/.test(location.hash)) return;
+  await fromLink();
+  try { S.me = await call("me"); S.pulled = Date.now(); } catch (_) {}
+  if (sheetEl.open) closeSheet();
+  S.settled = false; render();
+});
 function render() {
-  // (settling into place the first time each way round: signed in, or out)
+  // (settling into place the first time each way round: signed in, out, or being deleted)
   const rise = !S.settled; S.settled = true;
   let i = 0;
   const r = (el) => { if (rise) { el.classList.add("rise"); el.style.setProperty("--i", i++); } return el; };
-  main.replaceChildren(...(S.me?.signedIn ? signedIn(r) : signedOut(r)));
+  main.replaceChildren(...(S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)));
+  if (rise) S.riseUntil = Date.now() + i * 70 + 950;
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
   scrolled();
+  if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
 }
+// the page drawn again with what's new, once it's settled into place (what changed behind the scenes)
+function patch() { clearTimeout(S.patchT); S.patchT = setTimeout(render, Math.max(0, (S.riseUntil || 0) - Date.now())); }
 function avatar(m, small) {
   const el = h(small ? "div.avatar.small" : "div.avatar", { "aria-hidden": "true" }, [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?");
   if (m.photoAt) el.append(h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "", decoding: "async" }));
@@ -115,13 +169,14 @@ function avatar(m, small) {
 function section(title, group, foot) {
   return h("section.section", {}, title && h("h3", { text: title }), group, foot && h("p.foot", { text: foot }));
 }
-function row({ icon: ic, tint, title, sub, value, onclick, label }) {
-  return h("button.row", { type: "button", onclick, "aria-label": label },
+function row({ icon: ic, tint, title, sub, value, onclick, label, cls = "" }) {
+  return h("button.row" + cls, { type: "button", onclick, "aria-label": label },
     h(`span.ic.${tint}`, {}, icon(ic, 19)),
     h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })),
     value != null && h("span.val", { text: String(value) }),
     h("span.chev", {}, icon("chev", 16, 2.4)));
 }
+const unitsSaid = (u) => [u.temp === "f" ? "°F" : "°C", { mph: "mph", kmh: "km/h", ms: "m/s", kn: "knots" }[u.wind], u.precip].join(" · ");
 
 function signedIn(r) {
   const m = S.me, n = m.apps?.weather?.places || 0;
@@ -135,19 +190,81 @@ function signedIn(r) {
       h("div.who", { text: `@${m.handle}` }),
       m.email && h("div.mail", {}, icon("mail", 15), h("span", { text: m.email })),
       h("button.pill", { type: "button", onclick: () => openSheet(profileView) }, "Edit profile"))),
+    (!m.emailOk || m.emailNew) && r(banner(m)),
+    r(checkup(m)),
     r(section("Your apps", h("div.apps", {},
       app("InFlight", "/apps/inflight.png", "Letters carried by pigeon, end-to-end encrypted.", siteUrl("chat")),
       app("Weather", "/apps/weather.png", n ? `${n} saved ${n === 1 ? "place" : "places"}, in step on every device.` : "Forecasts, radar and alerts, in step on every device.", siteUrl("weather"))))),
     r(section("Sign-in and security", h("div.group.glass", {},
+      row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", onclick: () => openSheet(emailView) }),
       row({ icon: "key", tint: "blue", title: "Password", value: "Change", onclick: () => openSheet(passwordView) }),
       row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || "None", onclick: () => openSheet(passkeysView) }),
-      row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length, onclick: () => openSheet(devicesView) })),
-      "Your password and passkeys sign you in to every app on the site.")),
+      row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length, onclick: () => openSheet(devicesView) }),
+      row({ icon: "clock", tint: "grey", title: "Recent activity", onclick: () => openSheet(activityView) })),
+      "Your email, password and passkeys sign you in to every app on the site.")),
+    r(section("Preferences", h("div.group.glass", {},
+      row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
+      row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) })),
+      "For every app on the site that has them.")),
+    r(section("Your data", h("div.group.glass", {},
+      row({ icon: "download", tint: "green", title: "Download your data", onclick: () => openSheet(exportView) })))),
     r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")),
       "Signs you out of every app on the site, in this browser.")),
     r(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => openSheet(deleteView) }, "Delete account")))),
     r(h("footer.foot", {}, h("div", { text: `Your account since ${new Date(m.since).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` }),
       h("a", { href: siteUrl(""), text: "georgefarrowgreen.com" }))),
+  ].filter(Boolean);
+}
+// Your email isn't confirmed (or a new one's waiting to be): said up top, with what to do
+function banner(m) {
+  const sending = async (b) => {
+    try { await busy(b, "Sending…", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); }
+    catch (e) { toast(e.message, true); }
+  };
+  return m.emailNew
+    ? h("section.banner.glass", { role: "status" }, h("span.ic.blue", {}, icon("mail", 19)),
+      h("span.tx", {}, h("b", { text: "Confirm your new email" }), h("small", { text: `We sent a link to ${m.emailNew}. Your email changes when you open it.` })),
+      h("button.mini.go", { type: "button", onclick: () => openSheet(emailView) }, "Details"))
+    : h("section.banner.warn.glass", { role: "status" }, h("span.ic.amber", {}, icon("alert", 19)),
+      h("span.tx", {}, h("b", { text: "Confirm your email" }), h("small", { text: "So password resets and security notes reach you. We’ll send a link to it." })),
+      h("button.mini.go", { type: "button", onclick: (e) => sending(e.currentTarget) }, "Send link"));
+}
+// The security check-up: what keeps the account safe, done or to do, with a ring for how far along
+function checkup(m) {
+  const stale = m.devices.filter((d) => d.stale).length, pw = m.password || {};
+  const items = [
+    { ok: m.emailOk, label: m.emailOk ? "Email confirmed" : "Confirm your email", go: "Send link", act: async (b) => {
+      try { await busy(b, "", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); } catch (e) { toast(e.message, true); } } },
+    { ok: m.passkeys.length > 0, label: m.passkeys.length ? `Passkey saved${m.passkeys.length > 1 ? ` (${m.passkeys.length})` : ""}` : "Add a passkey", go: "Add", act: () => openSheet(passkeysView) },
+    { ok: pw.leaked === false, label: pw.leaked ? "Password found in a data breach" : pw.leaked === false ? "Password not in a known data breach" : "Check your password for data breaches",
+      go: pw.leaked ? "Change" : "Check", act: () => openSheet(pw.leaked ? passwordView : checkView) },
+    { ok: !stale, label: stale ? `${stale} device${stale > 1 ? "s" : ""} unused for 3 months` : "No devices left unused", go: "Review", act: () => openSheet(devicesView) },
+  ];
+  const todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
+  const ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  ring.setAttribute("viewBox", "0 0 64 64"); ring.setAttribute("aria-hidden", "true"); ring.classList.add("ring");
+  ring.innerHTML = `<circle class="trk" cx="32" cy="32" r="27"/><circle class="arc" cx="32" cy="32" r="27" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/>`;
+  return h(`section.checkup.glass${todo ? ".todo" : ".ok"}`, { "aria-label": "Security check-up" },
+    h("div.ck-top", {}, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
+      h("span.tx", {}, h("b", { text: todo ? `${todo} thing${todo > 1 ? "s" : ""} to do` : "Well protected" }),
+        h("small", { text: todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on." }))),
+    h("div.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
+      h("span.ck-dot", { "aria-hidden": "true" }, x.ok && icon("check", 13, 3)), h("span.ck-t", { text: x.label }),
+      !x.ok && h("button.mini.go", { type: "button", onclick: (e) => x.act(e.currentTarget) }, x.go)))));
+}
+// Being deleted: when, and keeping it
+function deleting(r) {
+  const m = S.me;
+  return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark.red", {}, icon("trash", 44, 1.7)))),
+    r(h("h1", { text: "Your account is being deleted" })),
+    r(h("p", { text: `On ${new Date(m.deleteAt).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}, @${m.handle} and everything kept with it, in every app on the site, will be deleted. Until then, you can keep it.` })),
+    r(h("div.signin.glass", {},
+      h("button.btn", { type: "button", onclick: async (e) => {
+        try { S.me = await busy(e.currentTarget, "Keeping it…", () => post("delete/cancel")); S.settled = false; theme(S.me.prefs?.appearance); render(); toast("Your account is staying."); }
+        catch (err) { toast(err.message, true); }
+      } }, icon("undo", 20, 2.2), "Keep my account"),
+      h("button.btn.quiet", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
   ];
 }
 
@@ -161,11 +278,14 @@ function signedOut(r) {
     if (!email.value.trim()) return say(said, "Enter your email.", email);
     if (!pw.value) return say(said, "Enter your password.", pw);
     try {
+      let proof;
       const m = await busy(go, "Signing in…", async () => {
         const { salt } = await post("signin/salt", { email: email.value.trim() });
-        return post("signin/password", { email: email.value.trim(), proof: (await E2E.fromPassword(pw.value, salt)).proof });
+        ({ proof } = await E2E.fromPassword(pw.value, salt));
+        return post("signin/password", { email: email.value.trim(), proof });
       });
       welcome(m);
+      if (!m.deleting) checkQuietly(pw.value, proof);
     } catch (err) { say(said, err.message, err.field === "email" ? email : pw); }
   } }, field("Email", email), field("Password", pw), go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: async (e) => {
@@ -193,12 +313,20 @@ async function signInWithPasskey() {
     authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
 }
 function welcome(m) {
-  S.me = m; S.settled = false; render(); scrollTo(0, 0);
+  S.me = m; S.settled = false; S.pulled = Date.now();
+  if (m.prefs) theme(m.prefs.appearance);
+  render(); scrollTo(0, 0);
   toast(`Welcome back, ${String(m.name).trim().split(/\s+/)[0]}.`);
+}
+// The password just typed, checked against data breaches (only 5 characters of its hash asked), and how it went kept
+// with the account (with its proof), for the check-up
+async function checkQuietly(pw, proof) {
+  try { const n = await leakedCount(pw); S.me = await post("password/checked", { proof, leaked: n > 0 }); patch(); } catch (_) {}
 }
 async function signOut(btn) {
   try { await busy(btn, "Signing out…", () => post("signout")); }
   catch (e) { if (!e.offline) return toast(e.message, true); }
+  if (sheetEl.open) closeSheet();
   S.me = { signedIn: false }; S.settled = false; render(); scrollTo(0, 0);
   toast("Signed out.");
 }
@@ -217,7 +345,7 @@ async function busy(btn, label, fn) {
   finally { btn.disabled = was; btn.replaceChildren(...kids); }
 }
 let toastT = 0;
-function toast(text, bad) {
+function toast(text, bad, ms = 2800) {
   const top = !!toastEl.showPopover;
   toastEl.replaceChildren(bad ? icon("x", 18, 2.4) : icon("check", 18, 2.4), h("span", { text }));
   toastEl.classList.toggle("bad", !!bad);
@@ -225,13 +353,13 @@ function toast(text, bad) {
   if (top && !toastEl.matches(":popover-open")) { toastEl.showPopover(); void toastEl.offsetWidth; }
   toastEl.classList.add("on");
   clearTimeout(toastT);
-  toastT = setTimeout(() => { toastEl.classList.remove("on"); toastT = setTimeout(() => top && toastEl.matches(":popover-open") && toastEl.hidePopover(), 600); }, 2800);
+  toastT = setTimeout(() => { toastEl.classList.remove("on"); toastT = setTimeout(() => top && toastEl.matches(":popover-open") && toastEl.hidePopover(), 600); }, ms);
 }
 if (toastEl.showPopover) toastEl.popover = "manual";
 // a button that asks once more before it acts ("Remove" → "Remove?"), going back after a moment
-function twice(label, sure, act) {
+function twice(label, sure, act, spec = "button.mini") {
   let t = 0;
-  const b = h("button.mini", { type: "button", onclick: () => {
+  const b = h(spec, { type: "button", onclick: () => {
     if (!b.classList.contains("sure")) { b.classList.add("sure"); b.textContent = sure; clearTimeout(t); t = setTimeout(() => { b.classList.remove("sure"); b.textContent = label; }, 3500); return; }
     clearTimeout(t); act(b);
   } }, label);
@@ -340,7 +468,11 @@ function confirmView(ok, back) {
     h("form.form", { onsubmit: async (e) => {
       e.preventDefault(); say(said, "");
       if (!pw.value) return say(said, "Enter your password.", pw);
-      try { await busy(go, "Checking…", async () => post("reauth", { proof: (await E2E.fromPassword(pw.value, m.salt)).proof })); ok(); }
+      try {
+        let proof;
+        await busy(go, "Checking…", async () => { ({ proof } = await E2E.fromPassword(pw.value, m.salt)); return post("reauth", { proof }); });
+        ok(); checkQuietly(pw.value, proof);
+      }
       catch (err) { say(said, err.message, pw); }
     } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go),
     said] };
@@ -471,30 +603,44 @@ function passwordView() {
     said] };
 }
 
-// ---- passkeys ----
+// ---- passkeys: each with its name (yours to change) and where it's saved ----
 function passkeysView() {
   const m = S.me, said = h("p.said", { role: "alert" }), can = !!(window.PublicKeyCredential && navigator.credentials?.create);
   const list = m.passkeys.length
-    ? h("div.group", {}, m.passkeys.map((p) => {
-      const el = h("div.row", {}, h("span.ic.indigo", {}, icon("passkey", 19)),
-        h("span.tx", {}, h("b", { text: p.label }), h("small", { text: `Added ${day(p.createdAt)}${p.usedAt ? ` · used ${ago(p.usedAt)}` : ""}` })),
-        twice("Remove", "Remove?", async (b) => {
-          try {
-            const next = await freshly(() => busy(b, "", () => post("passkeys/remove", { id: p.id })));
-            await leave(el); S.me = next; redraw(); render(); toast("Passkey removed.");
-          } catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
-        }));
-      return el;
-    }))
+    ? h("div.group", {}, m.passkeys.map((p) => h("button.row", { type: "button", onclick: () => pushSheet(() => passkeyView(p.id)) },
+      h("span.ic.indigo", {}, icon("passkey", 19)),
+      h("span.tx", {}, h("b", { text: p.label }), h("small", { text: [p.provider, `added ${day(p.createdAt)}`].filter(Boolean).join(" · ") })),
+      h("span.chev", {}, icon("chev", 16, 2.4)))))
     : h("div.group", {}, h("div.empty", { text: "No passkeys yet." }));
   return { title: "Passkeys", body: [
     h("p", { text: "A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site. Nothing to remember, and nothing for anyone to steal." }),
     list,
     can && h("button.btn", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
-      try { await freshly(() => busy(b, "Waiting for your device…", addPasskey)); redraw(); render(); toast("Passkey added."); }
+      try { await freshly(() => busy(b, "Waiting for your device…", addPasskey)); redraw(); patch(); toast("Passkey added."); }
       catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
     } }, icon("plus", 19, 2.4), "Add a passkey"),
+    said] };
+}
+// One passkey: its name, where it's saved, when it was added and last used, and taking it away
+function passkeyView(id) {
+  const p = S.me.passkeys.find((x) => x.id === id), said = h("p.said", { role: "alert" });
+  if (!p) return { title: "Passkey", body: [h("div.empty", { text: "This passkey has been taken away." })] };
+  const name = h("input", { type: "text", value: p.label, maxlength: "40", autocomplete: "off", enterkeyhint: "done", "aria-label": "Name" });
+  const save = h("button.link.done", { type: "button", onclick: async () => {
+    if (name.value.trim() === p.label) return popSheet();
+    try { S.me = await busy(save, "Saving…", () => post("passkeys/rename", { id, label: name.value })); patch(); popSheet(); toast("Renamed."); }
+    catch (e) { say(said, e.message, name); }
+  } }, "Save");
+  name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save.click(); } });
+  const info = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
+  return { title: p.label, right: save, body: [
+    h("div.form", {}, field("Name", name)),
+    h("div.group", {}, info("Saved in", p.provider || "Not known"), info("Added", day(p.createdAt)), info("Last used", p.usedAt ? ago(p.usedAt) : "Not yet")),
+    h("div.group", {}, twice("Remove passkey", "Remove it? Tap again", async (b) => {
+      try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); patch(); popSheet(); toast("Passkey removed."); }
+      catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
+    }, "button.row.action.danger")),
     said] };
 }
 async function addPasskey() {
@@ -512,54 +658,252 @@ async function addPasskey() {
   }
   const r = cred.response, spki = r.getPublicKey?.(), alg = r.getPublicKeyAlgorithm?.();
   if (!spki) throw new Error("This browser can’t save passkeys here yet.");
-  S.me = await post("passkeys", { challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(r.clientDataJSON) });
+  // (the authenticator data says where it's saved: iCloud Keychain, Google Password Manager…)
+  S.me = await post("passkeys", { challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(r.clientDataJSON),
+    authenticatorData: r.getAuthenticatorData ? b64url(r.getAuthenticatorData()) : undefined });
 }
 
-// ---- signed-in devices ----
+// ---- signed-in devices: each with where and when; those unused for 3 months marked, to sign out in one go ----
 function devicesView() {
-  const m = S.me, others = m.devices.filter((d) => !d.current);
-  const end = async (b, body, el) => {
+  const m = S.me, others = m.devices.filter((d) => !d.current), stale = others.filter((d) => d.stale);
+  const end = async (b, body, rows) => {
     try {
       const next = await freshly(() => busy(b, "", () => post("devices/end", body)));
-      if (el) await leave(el); else await Promise.all([...sheetEl.querySelectorAll(".row:not(.current)")].map(leave));
-      S.me = next; redraw(); render(); toast(el ? "Signed out." : "Your other devices were signed out.");
+      await Promise.all(rows.map(leave));
+      S.me = next; redraw(); patch();
+      toast(body.id ? "Signed out." : body.stale ? `${stale.length} unused device${stale.length > 1 ? "s were" : " was"} signed out.` : "Your other devices were signed out.");
     } catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
   };
+  const rows = m.devices.map((d) => {
+    const el = h(d.current ? "div.row.current" : "div.row", {},
+      h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
+      h("span.tx", {}, h("b", {}, d.label, d.current && h("span.tag", { text: "This browser" })),
+        h(d.stale ? "small.warn" : "small", { text: [d.place, d.current ? "Active now" : d.stale ? `Not used for ${monthsSince(d.seenAt)}` : `Active ${ago(d.seenAt)}`].filter(Boolean).join(" · ") })),
+      !d.current && twice("Sign out", "Sign out?", (b) => end(b, { id: d.id }, [el])));
+    el.dataset.stale = d.stale ? "1" : "";
+    return el;
+  });
   return { title: "Signed-in devices", body: [
     h("p", { text: "Everywhere your account’s signed in. Signing a device out signs it out of every app on the site." }),
-    h("div.group", {}, m.devices.map((d) => {
-      const el = h(d.current ? "div.row.current" : "div.row", {},
-        h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
-        h("span.tx", {}, h("b", {}, d.label, d.current && h("span.tag", { text: "This browser" })),
-          h("small", { text: [d.place, d.current ? "Active now" : `Active ${ago(d.seenAt)}`].filter(Boolean).join(" · ") })),
-        !d.current && twice("Sign out", "Sign out?", (b) => end(b, { id: d.id }, el)));
-      return el;
-    })),
-    others.length > 1 && h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: (e) => end(e.currentTarget, { others: true }) }, "Sign out of all other devices")),
+    h("div.group", {}, rows),
+    (stale.length > 0 || others.length > 1) && h("div.group", {},
+      stale.length > 0 && h("button.row.action", { type: "button", onclick: (e) => end(e.currentTarget, { stale: true }, rows.filter((r) => r.dataset.stale)) },
+        `Sign out ${stale.length} unused device${stale.length > 1 ? "s" : ""}`),
+      others.length > 1 && h("button.row.action.danger", { type: "button", onclick: (e) => end(e.currentTarget, { others: true }, rows.filter((r) => !r.classList.contains("current"))) }, "Sign out of all other devices")),
     h("p.said", { role: "alert" })] };
 }
+const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) / (30.44 * 86400e3))); return n >= 24 ? `${Math.floor(n / 12)} years` : `${n} months`; };
 
-// ---- deleting the account ----
+// ---- recent activity: the last 30 days, newest first, by day ----
+const DID = {
+  signin: (e) => (e.detail === "Passkey" ? "Signed in with a passkey" : e.detail === "Password" ? "Signed in with your password" : "Signed in"),
+  signup: () => "Account made", password: () => "Password changed", reset: () => "Password reset by email",
+  "passkey-add": (e) => `Passkey added${e.detail ? `: ${e.detail}` : ""}`, "passkey-remove": (e) => `Passkey removed${e.detail ? `: ${e.detail}` : ""}`,
+  "signout-device": (e) => `Signed out ${e.detail || "a device"}`, "signout-others": () => "Signed out of all other devices",
+  "signout-stale": (e) => `Signed out ${e.detail || "some"} unused device${e.detail === "1" ? "" : "s"}`,
+  "email-confirmed": () => "Email confirmed", "email-change-asked": (e) => `New email asked for${e.detail ? `: ${e.detail}` : ""}`,
+  "email-changed": (e) => `Email changed${e.detail ? ` to ${e.detail}` : ""}`, export: () => "Your data downloaded",
+  "delete-asked": () => "Deletion asked for", "delete-cancelled": () => "Deletion called off",
+};
+const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], password: ["key", "blue"], reset: ["key", "amber"], "passkey-add": ["passkey", "indigo"],
+  "passkey-remove": ["passkey", "grey"], "signout-device": ["signout", "grey"], "signout-others": ["signout", "grey"], "signout-stale": ["signout", "grey"],
+  "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
+  "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"] };
+function activityView() {
+  const box = h("div.activity", { "aria-busy": "true" }, h("div.empty", {}, h("span.spin")));
+  call("activity").then(({ events }) => {
+    if (!box.isConnected) return;
+    box.removeAttribute("aria-busy");
+    if (!events.length) return box.replaceChildren(h("div.group", {}, h("div.empty", { text: "Nothing in the last 30 days." })));
+    const byDay = new Map();
+    for (const e of events) { const k = dayWord(e.at); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); }
+    box.replaceChildren(...[...byDay].map(([k, list]) => h("div.day.swap", {},
+      h("h4", { text: k }),
+      h("div.group", {}, list.map((e) => { const [ic, tint] = KIND_LOOK[e.kind] || ["clock", "grey"];
+        return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 18)),
+          h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }),
+            h("small", { text: [new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), e.app, e.device, e.place].filter(Boolean).join(" · ") }))); })))));
+  }).catch((e) => { if (box.isConnected) box.replaceChildren(h("div.group", {}, h("div.empty", { text: e.message }))); });
+  return { title: "Recent activity", body: [
+    h("p", { text: "What’s happened to your account in the last 30 days, in every app on the site. Something you don’t recognise? Change your password." }),
+    box] };
+}
+const dayWord = (t) => {
+  const d = new Date(t), today = new Date(), y = new Date(Date.now() - 86400e3);
+  return d.toDateString() === today.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+};
+
+// ---- your email: confirmed or not, and a new one (a link to it; it changes only when that's opened) ----
+function emailView() {
+  const m = S.me, said = h("p.said", { role: "alert" });
+  const input = h("input", { type: "email", autocomplete: "email", inputmode: "email", autocapitalize: "none", spellcheck: "false", placeholder: "you@example.com" });
+  const go = h("button.btn", { type: "submit" }, "Send a link to it");
+  const status = h("div.group", {},
+    h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: m.email })),
+      m.emailOk ? h("span.badge", {}, "Confirmed") : h("button.mini.go", { type: "button", onclick: async (e) => {
+        try { await busy(e.currentTarget, "", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); } catch (err) { say(said, err.message); }
+      } }, "Send link")));
+  return { title: "Email", body: [
+    h("p", { text: "Your email signs you in, and gets password resets and security notes, for every app on the site." }),
+    status,
+    !m.emailOk && h("p.hint", { text: "Not confirmed yet: open the link we send to it." }),
+    m.emailNew && h("div.pending.glass", {}, h("span.ic.blue", {}, icon("mail", 18)),
+      h("span.tx", {}, h("b", { text: `Waiting for ${m.emailNew}` }), h("small", { text: "Open the link we sent there (it lasts 2 days). Until then, nothing changes." })),
+      h("button.mini", { type: "button", onclick: async (e) => {
+        try { S.me = await busy(e.currentTarget, "", () => post("email/cancel")); redraw(); patch(); toast("Cancelled. Your email stays as it is."); } catch (err) { say(said, err.message); }
+      } }, "Cancel")),
+    h("form.form", { onsubmit: async (e) => {
+      e.preventDefault(); say(said, "");
+      const email = input.value.trim();
+      if (!email) return say(said, "Enter the new email.", input);
+      try { S.me = await freshly(() => busy(go, "Sending…", () => post("email/change", { email }))); redraw(); patch(); toast(`A link is on its way to ${email}.`); }
+      catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message, sheetEl.querySelector("input[type=email]")); }
+    } }, field(m.emailNew ? "Or another new email" : "New email", input), go),
+    said] };
+}
+
+// ---- checking the password against data breaches (it's typed here; only 5 characters of its hash are asked) ----
+function checkView() {
+  const m = S.me, said = h("p.said", { role: "alert" });
+  const pw = h("input", { type: "password", autocomplete: "current-password" });
+  const go = h("button.btn", { type: "submit" }, "Check");
+  return { title: "Check your password", body: [
+    h("p", { text: "See if your password has turned up in a known data breach. It’s checked here, on this device: only the first 5 characters of a scrambled copy of it are sent to Have I Been Pwned, so neither they nor the site learn it." }),
+    h("form.form", { onsubmit: async (e) => {
+      e.preventDefault(); say(said, "");
+      if (!pw.value) return say(said, "Enter your password.", pw);
+      try {
+        const n = await busy(go, "Checking…", async () => {
+          const { proof } = await E2E.fromPassword(pw.value, m.salt), n = await leakedCount(pw.value);
+          S.me = await post("password/checked", { proof, leaked: n > 0 });
+          return n;
+        });
+        patch();
+        if (n) { say(said, leakedSay(n).replace("Choose another.", "Change it now.")); sheetEl.querySelector(".sheet-body").append(h("button.btn.danger", { type: "button", onclick: () => pushSheet(passwordView) }, "Change password")); }
+        else { closeSheet(); toast("Your password isn’t in any known data breach."); }
+      } catch (err) { say(said, err.message, pw); }
+    } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Your password", pw), go),
+    said] };
+}
+
+// ---- preferences, for every app on the site that has them ----
+const APPEAR = [["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]];
+async function setPrefs(changes) {
+  try { S.me = await call("prefs", { method: "PUT", body: changes }); patch(); }
+  catch (e) { toast(e.message, true); }
+}
+function appearanceView() {
+  const m = S.me;
+  const opts = APPEAR.map(([k, label]) => h(`button.appear${m.prefs.appearance === k ? ".on" : ""}`, { type: "button", "aria-pressed": String(m.prefs.appearance === k), onclick: () => {
+    m.prefs.appearance = k; theme(k);
+    for (const b of sheetEl.querySelectorAll(".appear")) { const on = b === opts[APPEAR.findIndex(([x]) => x === k)]; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }
+    setPrefs({ appearance: k });
+  } }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
+  return { title: "Appearance", body: [
+    h("div.appears", {}, opts),
+    h("p.hint", { text: "Here and in InFlight, on every device you’re signed in on. Automatic follows your device’s light or dark setting. (Weather’s look follows the sky.)" })] };
+}
+// what this device would choose, where the account has nothing yet (as Weather does)
+function unitsHere() {
+  const lang = navigator.language || "en-GB";
+  if (/^en-US|^en-LR|^my/i.test(lang)) return { temp: "f", wind: "mph", precip: "in", pressure: "inhg", clock: "12" };
+  if (/^en-GB|^en-IE/i.test(lang)) return { temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" };
+  return { temp: "c", wind: "kmh", precip: "mm", pressure: "hpa", clock: /^en-(AU|NZ|CA|IN|PH)/i.test(lang) ? "12" : "24" };
+}
+const UNIT_OPTS = [
+  ["temp", "Temperature", [["c", "°C"], ["f", "°F"]]],
+  ["wind", "Wind", [["mph", "mph"], ["kmh", "km/h"], ["ms", "m/s"], ["kn", "knots"]]],
+  ["precip", "Rain", [["mm", "mm"], ["in", "in"]]],
+  ["pressure", "Pressure", [["hpa", "hPa"], ["inhg", "inHg"], ["mmhg", "mmHg"]]],
+  ["clock", "Time", [["24", "24-hour"], ["12", "12-hour"]]],
+];
+// a segmented control, its thumb sliding to what's chosen
+function seg(name, opts, value, onpick) {
+  const thumb = h("span.thumb", { "aria-hidden": "true" }), el = h("div.seg", { role: "radiogroup", "aria-label": name }, thumb);
+  const place = (k) => { el.style.setProperty("--n", opts.length); el.style.setProperty("--k", Math.max(0, opts.findIndex(([v]) => v === k))); };
+  for (const [v, label] of opts) el.append(h("button", { type: "button", role: "radio", "aria-checked": String(v === value), onclick: () => {
+    for (const b of el.querySelectorAll("button")) b.setAttribute("aria-checked", String(b.textContent === label));
+    place(v); onpick(v);
+  } }, label));
+  place(value);
+  return el;
+}
+function unitsView() {
+  const m = S.me, u = { ...unitsHere(), ...(m.prefs.units || {}) };
+  return { title: "Units", body: [
+    h("p", { text: "For Weather, on every device it’s signed in on: forecasts, the map and notifications." }),
+    h("div.units", {}, UNIT_OPTS.map(([k, label, opts]) => h("div.unit", {}, h("span", { text: label }), seg(label, opts, u[k], (v) => { u[k] = v; setPrefs({ units: { [k]: v } }); })))),
+  ] };
+}
+
+// ---- your data, as a file ----
+function exportView() {
+  const said = h("p.said", { role: "alert" });
+  const go = h("button.btn", { type: "button", onclick: async () => {
+    say(said, "");
+    try {
+      const data = await freshly(() => busy(go, "Gathering it…", () => post("export")));
+      const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })), download: `georgefarrowgreen-account-${S.me.handle}.json` });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      toast("Your data is downloading.");
+    } catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
+  } }, icon("download", 20, 2.2), "Download your data");
+  return { title: "Your data", body: [
+    h("p", { text: "Everything kept with your account that can be read, in one file (JSON):" }),
+    h("ul.gone", {},
+      h("li", { text: "Your profile and photo, sign-in (passkeys, devices) and recent activity" }),
+      h("li", { text: "InFlight: friends, groups, passport, birds, settings, and how many pigeons you’ve sent and had" }),
+      h("li", { text: "Weather: your saved places, settings and notifications" })),
+    h("p.hint", { text: "Your InFlight letters aren’t included: they’re end-to-end encrypted, with keys only your phones have. The server can’t read them." }),
+    go, said] };
+}
+
+// ---- deleting the account: in 7 days, unless you keep it ----
 function deleteView() {
   const m = S.me, said = h("p.said", { role: "alert" });
   const sure = h("input", { type: "text", autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: m.handle, "aria-label": `Type ${m.handle} to confirm` });
   const go = h("button.btn.danger", { type: "submit", disabled: true }, "Delete account");
   sure.addEventListener("input", () => { go.disabled = sure.value.trim().replace(/^@/, "").toLowerCase() !== m.handle; });
   return { title: "Delete account", body: [
-    h("p", { text: "This deletes your account and everything kept with it, in every app on the site. It can’t be undone." }),
+    h("p", { text: "This deletes your account and everything kept with it, in every app on the site:" }),
     h("ul.gone", {}, h("li", { text: "InFlight: your letters, friends and keys" }), h("li", { text: "Weather: your saved places and notifications" }),
       h("li", { text: "Your profile, password and passkeys" })),
+    h("p", { text: "It’s signed out everywhere now and deleted in 7 days. Until then you can keep it: sign in here, or use the link we’ll email you." }),
     h("form.form", { onsubmit: async (e) => {
       e.preventDefault(); say(said, "");
       const confirm = sure.value.trim();
       try {
-        await freshly(() => busy(go, "Deleting…", () => post("delete", { confirm })));
+        const r = await freshly(() => busy(go, "Deleting…", () => post("delete", { confirm })));
         S.me = { signedIn: false }; S.settled = false; closeSheet(); render(); scrollTo(0, 0);
-        toast("Your account was deleted.");
+        toast(`Your account will be deleted on ${new Date(r.deleteAt).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.`, false, 6000);
       } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
     } }, field(`Type ${m.handle} to confirm`, h("div.at", {}, "@", sure)), go),
     said] };
 }
+
+// ---- keeping up with changes made elsewhere: looked at again on coming back to the page, and now and then ----
+async function refresh() {
+  if (document.hidden || !S.me || Date.now() - S.pulled < 15000) return;
+  S.pulled = Date.now();
+  let m;
+  try { m = await call("me"); } catch (_) { return; }
+  const was = S.me, same = (x) => JSON.stringify({ ...x, fresh: 0, devices: x.devices?.map((d) => ({ ...d, seenAt: 0 })) });
+  if (!!was.signedIn !== !!m.signedIn || !!was.deleting !== !!m.deleting) {
+    if (sheetEl.open) closeSheet();
+    S.me = m; S.settled = false; render();
+    if (was.signedIn && !m.signedIn) toast("You were signed out.", true);
+    return;
+  }
+  if (m.signedIn && same(was) !== same(m)) {
+    S.me = m;
+    if (m.prefs && m.prefs.appearance !== was.prefs?.appearance) theme(m.prefs.appearance);
+    patch();
+  }
+}
+document.addEventListener("visibilitychange", refresh);
+addEventListener("focus", refresh);
+setInterval(refresh, 60000);
 
 // ---- the large title, giving way to the bar ----
 let ticking = false;
@@ -593,8 +937,9 @@ function stars() {
     }
   };
   const frame = (t) => { raf = 0; if (t - last > 66) { last = t; paint(t); } go(); };
-  const go = () => { if (!raf && dark.matches && !still.matches && !document.hidden) raf = requestAnimationFrame(frame); };
-  const start = () => { if (!dark.matches) return; fit(); paint(performance.now()); go(); };
+  const go = () => { if (!raf && isDark() && !still.matches && !document.hidden) raf = requestAnimationFrame(frame); };
+  const start = () => { if (!isDark()) return; fit(); paint(performance.now()); go(); };
+  stars.start = start;
   seed();
   addEventListener("resize", start);
   document.addEventListener("visibilitychange", go);

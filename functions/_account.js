@@ -20,6 +20,7 @@ import { HttpError, db, sha256, hex, b64url, clientIp, limit, serverSecret, sess
   deviceOf, regionOf, emailReady, emailBody, sendEmail, ukTime, appLink } from "./_pigeon.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
+import { logEvent } from "./_activity.js";
 
 const SITE = "georgefarrowgreen.com";
 export const siteOf = (env) => env?.ACCOUNT_SITE || SITE;
@@ -62,11 +63,17 @@ export function withoutSession(res, request, env) {
 }
 // The account the browser's signed in to on the site, from its cookie (null if none, or if it's ended). (inflight: asked
 // by InFlight, so a day of it; another app's use keeps the sign-in going without counting as InFlight's)
-export async function cookieUser(request, env, inflight = false) {
+// An account being deleted (functions/api/account) is signed in only on its own page, to keep it (deleting).
+export async function cookieUser(request, env, inflight = false, { deleting = false } = {}) {
   const token = cookieToken(request, env);
   if (!token) return null;
-  try { const u = await sessionUser(env, token, inflight, true); u.token = token; return u; }
+  try { const u = await sessionUser(env, token, inflight, true); u.token = token; return u.delete_at && !deleting ? null : u; }
   catch (e) { if (e instanceof HttpError && e.status === 401) return null; throw e; }
+}
+// (said only to someone who's shown it's their account)
+function refuseDeleting(u) {
+  const on = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "Europe/London" }).format(u.delete_at);
+  throw new HttpError(403, `This account is being deleted on ${on}. To keep it, sign in at account.georgefarrowgreen.com.`, "deleting");
 }
 // A request that acts on the cookie's account must come from the app's own pages (the browser says where from): a
 // page elsewhere on the site would send the cookie too
@@ -84,8 +91,9 @@ export async function saltFor(env, request, email) {
   const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);       // (worked out either way, so the time taken says nothing)
   return u ? u.salt : "a2:" + b64url(fake.slice(0, 16));
 }
-// The account an email and its password's proof are for, or a 401 (with the same limits wherever it's tried)
-export async function passwordUser(env, request, b) {
+// The account an email and its password's proof are for, or a 401 (with the same limits wherever it's tried). One being
+// deleted only where it can be kept (deleting).
+export async function passwordUser(env, request, b, { deleting = false } = {}) {
   const email = String(b.email || "").trim().toLowerCase();
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
   if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
@@ -103,10 +111,11 @@ export async function passwordUser(env, request, b) {
     await limit(env, here, 30, 60 * 60e3).catch(() => {}); await limit(env, acct, 300, 60 * 60e3).catch(() => {});
     throw new HttpError(401, "That email and password don’t match an account.");
   }
+  if (u.delete_at && !deleting) refuseDeleting(u);
   return u;
 }
 // The account a passkey's answer signs in to: { u, cred }, or a 401
-export async function passkeyUser(env, request, b) {
+export async function passkeyUser(env, request, b, { deleting = false } = {}) {
   await limit(env, "pklogin:" + clientIp(request), 20, 15 * 60e3);
   await checkClientData(env, request, b, "webauthn.get", "login");
   const D = await db(env);
@@ -115,6 +124,7 @@ export async function passkeyUser(env, request, b) {
   if (!(await verifyAssertion(cred, request, b, env))) throw new HttpError(401, "The passkey signature didn’t check out.");
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(cred.user_id).first();
   if (!u) throw new HttpError(401, "This account no longer exists.");
+  if (u.delete_at && !deleting) refuseDeleting(u);
   await D.prepare("UPDATE pg_passkeys SET used_at = ? WHERE id = ?").bind(Date.now(), cred.id).run();
   return { u, cred };
 }
@@ -122,6 +132,7 @@ export async function passkeyUser(env, request, b) {
 // "A new sign-in", to the account's phones and by email. In InFlight (inflight), as InFlight says it, with where to
 // sign it out; anywhere else on the site, as the account's.
 export async function tellSignIn(env, u, request, how, origin, inflight = true) {
+  await logEvent(env, u.id, "signin", request, how);
   const device = deviceOf(request) || "a new phone";
   let where = regionOf(request.cf?.country);
   if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
@@ -129,7 +140,7 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true) 
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
   if (!emailReady(env) || !u.email_ok) return;
   const { text, html } = emailBody({
-    origin, icon: "shield", title: "A new sign-in",
+    origin, icon: "shield", title: "A new sign-in", brand: inflight ? "inflight" : "account",
     preheader: `@${u.handle} was signed in on ${on}.`,
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${account.toLowerCase()} was just signed in on ${on}.`,
       inflight ? "If this was you, there’s nothing to do. If not, sign it out in Account → Privacy & Security → Signed-in Phones and change your password."

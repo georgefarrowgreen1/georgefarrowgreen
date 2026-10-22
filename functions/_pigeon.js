@@ -328,6 +328,17 @@ const MIGRATIONS = [
   // isn't a key to InFlight's API
   "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
   "CREATE INDEX IF NOT EXISTS pg_sessions_site ON pg_sessions(site_hash)",
+  // the account's own page (functions/api/account): what's happened to the account lately (functions/_activity.js), kept
+  // 30 days; where each passkey's saved (its provider, from the passkey); a new email waiting to be confirmed (a hash of
+  // its link's token); whether the password's been checked against data breaches; and a deletion asked for, with the
+  // hash of the email link that keeps the account
+  "CREATE TABLE IF NOT EXISTS pg_events (user_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, app TEXT, device TEXT, place TEXT, detail TEXT)",
+  "CREATE INDEX IF NOT EXISTS pg_events_user ON pg_events(user_id, at)",
+  "ALTER TABLE pg_passkeys ADD COLUMN provider TEXT",
+  "ALTER TABLE pg_users ADD COLUMN email_new TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_code TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN pw_leaked INTEGER", "ALTER TABLE pg_users ADD COLUMN pw_checked_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",
+  "CREATE INDEX IF NOT EXISTS pg_users_delete ON pg_users(delete_at) WHERE delete_at IS NOT NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -469,7 +480,10 @@ export const londonDay = (t) => Math.floor((t + londonOffset(t)) / DAY);
 export async function requireUser(request, env) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
   if (!m) throw new HttpError(401, "Please sign in.", "session");
-  return sessionUser(env, m[1]);
+  const u = await sessionUser(env, m[1]);
+  // (an account being deleted is signed in only on its own page, to keep it: functions/api/account)
+  if (u.delete_at) throw new HttpError(401, "This account is being deleted. To keep it, sign in at account.georgefarrowgreen.com.", "session");
+  return u;
 }
 // The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
 // browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
@@ -790,7 +804,9 @@ export function linkOrigin(request) {
 export const APP = "https://chat.georgefarrowgreen.com";
 export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;
 export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
-export function emailBody({ title, lines = [], button, icon = "bird", rows = [], footer, unsub, origin = SITE, preheader }) {
+// (brand "account": the site's account, for what's the account's rather than InFlight's: its own name, icon and link)
+export const ACCOUNT_APP = "https://account.georgefarrowgreen.com";
+export function emailBody({ title, lines = [], button, icon = "bird", rows = [], footer, unsub, origin = SITE, preheader, brand = "inflight" }) {
   const text = [title, ...lines, ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
     footer || "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
   const e = escHtml, font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
@@ -812,8 +828,11 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
 <table role="presentation" class="ml-bg" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f7"><tr><td align="center" style="padding:28px 14px 36px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px">
   <tr><td align="center" style="padding:0 0 18px">
-    <a href="${e(origin)}/pigeon/" style="text-decoration:none"><img src="${e(origin)}/pigeon/icon-192.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;border-radius:9px">
-    <span class="ml-t" style="vertical-align:middle;margin-left:8px;font-size:19px;font-weight:700;letter-spacing:-.2px;color:#1c1c1e">InFlight</span></a>
+    ${brand === "account"
+      ? `<a href="${e(origin === SITE ? ACCOUNT_APP : origin + "/account")}/" style="text-decoration:none"><img src="${e(origin === SITE ? ACCOUNT_APP : origin + "/account")}/icon-180.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;border-radius:9px">
+    <span class="ml-t" style="vertical-align:middle;margin-left:8px;font-size:19px;font-weight:700;letter-spacing:-.2px;color:#1c1c1e">georgefarrowgreen.com</span></a>`
+      : `<a href="${e(origin)}/pigeon/" style="text-decoration:none"><img src="${e(origin)}/pigeon/icon-192.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;border-radius:9px">
+    <span class="ml-t" style="vertical-align:middle;margin-left:8px;font-size:19px;font-weight:700;letter-spacing:-.2px;color:#1c1c1e">InFlight</span></a>`}
   </td></tr>
   <tr><td class="ml-card" align="center" style="background:#ffffff;border-radius:28px;padding:32px 26px 28px">
     <img src="${e(origin)}/pigeon/mail/${e(icon)}.png" width="64" height="64" alt="" style="display:block;margin:0 auto 18px;border:0">

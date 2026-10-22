@@ -181,6 +181,13 @@ export async function applyAccount(env, userId, notify) {
   for (const dv of devs) await setRows(D, { ...dv }, w, t);
 }
 // The devices signed in to an account that get its notifications: [{ id, label }]
+// New units for an account (set on its own page): its devices' notifications say them from now on
+export async function unitsForAccount(env, userId, U) {
+  const D = await wxdb(env), units = unitsOf(U);
+  await D.batch([
+    D.prepare("UPDATE wx_subs SET units = ?2 WHERE dev IN (SELECT dev FROM wx_devs WHERE user_id = ?1)").bind(userId, units),
+    D.prepare("UPDATE wx_devs SET units = ?2 WHERE user_id = ?1").bind(userId, units)]);
+}
 export async function devicesOf(env, userId) {
   const { results } = await (await wxdb(env)).prepare("SELECT dev, label FROM wx_devs WHERE user_id = ? ORDER BY created").bind(userId).all();
   return results.map((d) => ({ id: d.dev, label: d.label || "A device" }));

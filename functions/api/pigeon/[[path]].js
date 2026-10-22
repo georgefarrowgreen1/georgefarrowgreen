@@ -30,6 +30,7 @@ import { cleanName, waitText, setName, setHandle, putPhoto, dropPhoto, photoOf }
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
 import { storageReport } from "../../_retention.js";
+import { logEvent, providerOf } from "../../_activity.js";
 import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
@@ -110,6 +111,7 @@ async function signup({ request, env, waitUntil }) {
   }
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
   waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
+  waitUntil(logEvent(env, id, "signup", request));
   const token = await issueSession(env, id, request);
   return withSession(json({ token, me: meView(u, t) }), request, env, await hashOf(token));
 }
@@ -132,7 +134,7 @@ async function sendConfirm(env, u, origin) {
   await sendEmail(env, { to: u.email, subject: "Confirm your email for InFlight", text, html });
   return true;
 }
-async function confirmEmail({ request, env }) {
+async function confirmEmail({ request, env, waitUntil }) {
   await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
   const token = String((await body(request)).token || "");
   if (!/^[A-Za-z0-9_-]{40,50}$/.test(token)) throw new HttpError(400, "This confirm link isn’t valid.");
@@ -140,6 +142,7 @@ async function confirmEmail({ request, env }) {
   if (!u) throw new HttpError(400, "This confirm link has already been used, or a newer one was sent.");
   if (Date.now() - (u.email_sent || 0) > CONFIRM_TTL) throw new HttpError(410, "This confirm link has expired. Send a new one from Privacy & Security.");
   await D.prepare("UPDATE pg_users SET email_ok = ?, email_code = NULL WHERE id = ?").bind(Date.now(), u.id).run();
+  waitUntil(logEvent(env, u.id, "email-confirmed", request));
   return json({ ok: true, handle: u.handle });
 }
 async function confirmResend({ request, env }) {
@@ -401,10 +404,11 @@ async function passkeyRegister({ request, env, waitUntil }) {
   await checkClientData(env, request, b, "webauthn.create", "register", u.id);
   if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type InFlight doesn’t support.");
   if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
-  const D = await db(env);
+  const D = await db(env), provider = providerOf(b.authenticatorData);
   if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), Date.now()).run();
+  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now()).run();
+  waitUntil(logEvent(env, u.id, "passkey-add", request, provider || String(b.label || "Passkey").slice(0, 40)));
   waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), linkOrigin(request)).catch(() => {}));
   return json({ ok: true });
 }
@@ -428,15 +432,17 @@ async function pinsPut({ request, env }) {
   await (await db(env)).prepare("UPDATE pg_users SET pins = ? WHERE id = ?").bind(s, u.id).run();
   return json({ ok: true });
 }
-async function sessionsEnd({ request, env }) {
+async function sessionsEnd({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env);
   requireFresh(u);                 // a stolen sign-in mustn't be able to throw the real one out
-  if (b.others) await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash).run();
+  if (b.others) { await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash).run(); waitUntil(logEvent(env, u.id, "signout-others", request)); }
   else {
     const id = String(b.id || "");
     if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(400, "That sign-in wasn’t found.");
+    const s = await D.prepare("SELECT label FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).first();
     await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).run();
+    if (s) waitUntil(logEvent(env, u.id, "signout-device", request, s.label || "A phone or browser"));
   }
   return json({ ok: true });
 }
@@ -476,11 +482,13 @@ async function passkeyLogin({ request, env, waitUntil }) {
   return withSession(json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt }), request, env, await hashOf(token));
 }
 
-async function passkeyDelete({ request, env }) {
+async function passkeyDelete({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   requireFresh(u);
-  const b = await body(request);
-  await (await db(env)).prepare("DELETE FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id), u.id).run();
+  const b = await body(request), D = await db(env);
+  const pk = await D.prepare("SELECT label, provider FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id), u.id).first();
+  await D.prepare("DELETE FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(String(b.id), u.id).run();
+  if (pk) waitUntil(logEvent(env, u.id, "passkey-remove", request, pk.label || pk.provider || "Passkey"));
   return json({ ok: true });
 }
 
@@ -1195,10 +1203,12 @@ async function changePassword({ request, env, waitUntil }) {
   const vault = checkNewSecret(b);
   const D = await db(env);
   await D.batch([
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), u.id),
+    // (checked against data breaches on the phone first, so none it's found in: the account's page counts it checked)
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_leaked = 0, pw_checked_at = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), Date.now(), u.id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
+  waitUntil(logEvent(env, u.id, "password", request));
   waitUntil(notifyPasswordChanged(env, u, "In the app", linkOrigin(request)));
   return json({ ok: true });
 }
@@ -1265,6 +1275,7 @@ async function resetComplete({ request, env, waitUntil }) {
   if (fresh) steps.push(D.prepare("UPDATE pg_users SET pins = NULL WHERE id = ?").bind(u.id));     // sealed to the old key: no use now
   await D.batch(steps);
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
+  waitUntil(logEvent(env, u.id, "reset", request));
   waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   const token = await issueSession(env, u.id, request);

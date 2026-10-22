@@ -18,13 +18,14 @@ export async function body(request, max = 64 * 1024) {
   try { const b = JSON.parse(text || "{}"); if (b && typeof b === "object" && !Array.isArray(b)) return b; } catch (_) {}
   throw new HttpError(400, "Bad request.");
 }
-export async function signedIn(request, env) {
-  const u = await cookieUser(request, env);
+export async function signedIn(request, env, { deleting = false } = {}) {
+  const u = await cookieUser(request, env, false, { deleting });
   if (!u) throw new HttpError(401, "Not signed in.", "session");
   return u;
 }
 
-export function accountRoutes(view, { onSignOut = null } = {}) {
+// (deleting: an account being deleted signs in here, to keep it: the account's own page)
+export function accountRoutes(view, { onSignOut = null, deleting = false } = {}) {
   // a sign-in done here: the site's, given to the browser, and said to the account's phones and email as the account's
   // (the session's own token's never given out here: only the cookie's)
   async function started(request, env, waitUntil, u, how) {
@@ -36,7 +37,7 @@ export function accountRoutes(view, { onSignOut = null } = {}) {
     "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },
     "POST signin/password": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
-      return started(request, env, waitUntil, await passwordUser(env, request, await body(request)), "Password");
+      return started(request, env, waitUntil, await passwordUser(env, request, await body(request), { deleting }), "Password");
     },
     "POST signin/options": async ({ request, env }) => {
       sameOrigin(request);
@@ -45,12 +46,12 @@ export function accountRoutes(view, { onSignOut = null } = {}) {
     },
     "POST signin/passkey": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
-      return started(request, env, waitUntil, (await passkeyUser(env, request, await body(request))).u, "Passkey");
+      return started(request, env, waitUntil, (await passkeyUser(env, request, await body(request), { deleting })).u, "Passkey");
     },
     // signing out: the site's sign-in ended (so everywhere it was shared)
     "POST signout": async ({ request, env }) => {
       sameOrigin(request);
-      const u = await cookieUser(request, env), b = await body(request);
+      const u = await cookieUser(request, env, false, { deleting: true }), b = await body(request);
       if (u) {
         await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
         if (onSignOut) await onSignOut(env, u, b);

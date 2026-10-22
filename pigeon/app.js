@@ -2006,7 +2006,8 @@ async function addPasskey() {
   const spki = resp.getPublicKey?.(), alg = resp.getPublicKeyAlgorithm?.();
   if (!spki) throw new Error("This browser can’t save passkeys for InFlight yet.");
   await api("passkey-register", { method: "POST", body: {
-    challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(resp.clientDataJSON), label: deviceLabel() } });
+    challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(resp.clientDataJSON), label: deviceLabel(),
+    authenticatorData: resp.getAuthenticatorData ? b64url(resp.getAuthenticatorData()) : undefined } });
   let secret = prfResult(cred);
   const ext = cred.getClientExtensionResults?.().prf;
   if (!secret && ext?.enabled) {
@@ -8459,13 +8460,15 @@ function keepTheme(t) {
   applyTheme(t);
 }
 // After each sync: the account's choice wins; an account that has never
-// chosen takes this phone's.
+// chosen takes this phone's, if it was chosen here (not just the default: the
+// account's appearance is every app's on the site, so only a choice is kept).
 function syncTheme() {
   if (!S.me) return;
   const mine = S.me.appearance;
   if (THEMES.includes(mine)) { if (mine !== theme()) { keepTheme(mine); if (S.view === "account" || S.sheet?.type === "appearance") { render(); renderSheet(); } } }
-  else if (!S.themeSent) { S.themeSent = true; api("me", { method: "PATCH", body: { appearance: theme() } }).then((r) => { S.me = r.me; }).catch(() => {}); }
+  else if (!S.themeSent && chosenTheme()) { S.themeSent = true; api("me", { method: "PATCH", body: { appearance: theme() } }).then((r) => { S.me = r.me; }).catch(() => {}); }
 }
+function chosenTheme() { try { return THEMES.includes(localStorage.getItem("inflight-theme")); } catch (_) { return false; } }
 function applyTheme(t = theme()) {
   document.documentElement.setAttribute("data-theme", t);
   const dark = t === "dark" || (t === "auto" && window.matchMedia?.("(prefers-color-scheme: dark)").matches);

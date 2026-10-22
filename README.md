@@ -159,25 +159,59 @@ Motion, solid with Reduce Transparency.
 - **Signed out:** sign in with a passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it). New accounts are made in
   InFlight.
-- **Signed in:** your profile (photo, name, handle, email) with **Edit profile**; **Your apps** (a tile for each, with
-  what it keeps of yours, opening it); **Sign-in and security**: your **password** (a new one: the old one's proof gets
-  the key it locks, which the page unlocks and locks anew with the new one, so nothing locked changes hands; a
-  password from a data breach is said as it's typed, by Pwned Passwords' first-5-characters check; every other device
-  is signed out), **passkeys** (add one, take one away) and **signed-in devices** (each with where and when, and
-  Sign out for one or all the others); **Sign out** (of every app on the site, in this browser); and **Delete
-  account** (typed to confirm: everything, in every app).
-- What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, the account
-  deleted) asks you to show it's you first if you last did more than 10 minutes ago (a passkey or your password), then
-  carries on with what you were doing. Changes to the password and passkeys are emailed to the account, as the
-  account's (no app named).
+- **Signed in:** your profile (photo, name, handle, email) with **Edit profile**; a **security check-up** (a ring and
+  four rows: email confirmed, a passkey saved, the password not in a known data breach, no devices left unused for 3
+  months, each with a one-tap fix); **Your apps** (a tile for each, with what it keeps of yours, opening it);
+  **Sign-in and security**, **Preferences**, **Your data**, **Sign out** (of every app on the site, in this browser) and
+  **Delete account**.
+- **Email.** Not confirmed: a banner up top sends a confirm link (the same one InFlight sends, said as the account's).
+  A new email: a link to it (good for 2 days) and a word to the old one (the new one half hidden); nothing changes until
+  the link's opened, then the old one's told. The links open the page (`#confirm=`, `#email=`, `#keep=`): their token is
+  what counts, so they work signed in or not, in whichever browser the email opens them in.
+- **Password.** A new one: the old one's proof gets the key it locks, which the page unlocks and locks anew with the new
+  one, so nothing locked changes hands; a password from a data breach is said as it's typed (Pwned Passwords, only the
+  first 5 characters of its SHA-1 asked); every other device is signed out. **Checked against data breaches** from the
+  check-up, or quietly whenever it's typed here (signing in, showing it's you): how it went is kept with its proof
+  (`pg_users.pw_leaked`, `pw_checked_at`), so only someone who knows it can say. A password changed in InFlight counts
+  as checked (InFlight won't take one from a breach).
+- **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
+  Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
+  `functions/_activity.js` providerOf; InFlight sends it too now).
+- **Signed-in devices:** each with where and when; those unused for 3 months are marked, with **Sign out N unused
+  devices**, as well as one at a time or all the others.
+- **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken
+  away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each
+  with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from InFlight's own sign-in and
+  security too).
+- **Preferences, for every app on the site that has them:** **Appearance** (Automatic, Light, Dark): this page and
+  InFlight, which already kept it with the account (InFlight now keeps it only once it's been chosen, not its default).
+  **Units** (temperature, wind, rain, pressure, time): Weather's, kept in its record for the account so every device
+  it's signed in on takes them up, and its notifications say them at once.
+- **Your data:** everything kept with the account that can be read, as one JSON file: the profile and photo, sign-in
+  and recent activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had; Weather's
+  places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted, with keys only your
+  phones have.
+- **Deleting the account** (typed to confirm) signs it out everywhere and deletes it in 7 days, with an email to keep it.
+  Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
+  email's link keeps it too. A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
+  dueDeletions). (InFlight's own Delete Account, in the app, still deletes at once.)
+- **Keeping up:** the page looks again when you come back to it (and every minute while it's open), so a device
+  signed out elsewhere, or a change made in another app, shows without a reload.
+- What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, a new email,
+  your data, the account deleted) asks you to show it's you first if you last did more than 10 minutes ago (a passkey or
+  your password), then carries on with what you were doing. Changes to the password, passkeys and email are emailed to
+  the account, as the account's (its own name and icon at the top, no app named; so is a sign-in from Weather or here).
 - The page acts only with the site's sign-in (the HttpOnly cookie, never in the page's reach), and only from its own
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
   nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
   `argon2.js`) and the apps' icons.
 - Weather's Settings (Password, passkeys and devices) and InFlight's Privacy & Security (Your Account) link here.
-- Tests: `.tools/tests/acctpage.mjs` (signed in from InFlight, the profile and photo, a new password that InFlight
-  then opens with on a new phone, passkeys after showing it's you, devices, signing in both ways, light mode and a wide
-  screen, deleting the account, the API only here and only from here).
+- Tests: `.tools/tests/acctpage.mjs` (67 checks: signed in from InFlight, the check-up, the email confirmed and changed
+  by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
+  phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
+  other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
+  screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here) and
+  `unit/activity.test.mjs` (passkey providers).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
 else: it's the same deployment, routed by its address.
