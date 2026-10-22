@@ -210,7 +210,7 @@ ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,
 // ---- 5. Signed in to Weather only: InFlight in the same browser offers to carry on, after the password ----
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('[data-act=resume]', { timeout: 20000 }).catch(() => {});
 const offer = await K.p.evaluate(() => document.querySelector('.welcome')?.innerText.replace(/\s+/g, ' '));
-ok(/Signed in as Sam Taylor \(@samt\)/i.test(offer || '') && /Continue as Sam/.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: "Continue as Sam" (no other app named)', offer);
+ok(/Signed in as Sam Taylor \(@sam\)/i.test(offer || '') && /Continue as Sam/.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: "Continue as Sam" (no other app named)', offer);
 await K.p.click('[data-act=resume]'); await K.p.waitForSelector('[data-form=unlock]');
 ok(await K.p.waitForFunction(() => /already signed in to your georgefarrowgreen\.com account/.test(document.querySelector('[data-form=unlock]')?.closest('.auth')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false), 'it asks only for the password, to unlock the key here');
 await K.p.fill('#f-password', PW); await K.p.click('[data-form=unlock] .btn'); await K.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
