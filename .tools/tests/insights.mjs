@@ -26,8 +26,13 @@ msg('m3', as.me.id, bs.me.id, now - 3 * 3600e3, now - 20 * 60e3, { pigeon: 'stan
 msg('m4', bs.me.id, as.me.id, now - 3600e3, now + 5 * 3600e3, { pigeon: 'standard', notified_at: null });
 one(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, pigeon, sent_at) VALUES ('g1', '${g.group.id}', '${as.me.id}', 'x', 'x', 'standard', ${now - 2 * 3600e3})`);
 for (const u of [bs.me.id, cs.me.id]) one(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, notified_at) VALUES ('g1', '${u}', 'x', 400, ${now - 30 * 60e3}, ${now - 29 * 60e3})`);
-// accounts of different ages: Ben joined 10 days ago and is still here; Cal joined 12 days ago and left that day
-one(`UPDATE pg_users SET created_at = ${now - 10 * DAY} WHERE id = '${bs.me.id}'`);
+// accounts of different ages: Ben joined 16 days ago, used it in his second week, and is here today; Cal joined
+// 12 days ago and left that day (the London days each used it, as the app notes them)
+const today = one(`SELECT MAX(day) AS d FROM pg_active`)[0].d;
+ok(one(`SELECT COUNT(*) AS n FROM pg_active WHERE day = ${today}`)[0].n === 3, 'signing in notes the day each used it');
+one(`UPDATE pg_users SET created_at = ${now - 16 * DAY} WHERE id = '${bs.me.id}'`);
+one(`DELETE FROM pg_active WHERE user_id IN ('${bs.me.id}', '${cs.me.id}')`);
+one(`INSERT INTO pg_active (day, user_id) VALUES (${today - 16}, '${bs.me.id}'), (${today - 9}, '${bs.me.id}'), (${today}, '${bs.me.id}'), (${today - 12}, '${cs.me.id}')`);
 one(`UPDATE pg_users SET created_at = ${now - 12 * DAY}, seen_at = ${now - 12 * DAY + 3600e3} WHERE id = '${cs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${now - 12 * DAY + 3600e3} WHERE user_id = '${cs.me.id}'`);
 
 // the admin
@@ -38,11 +43,14 @@ const x = await ad.evaluate(async () => (await fetch('/api/pigeon/admin-insights
 console.log(JSON.stringify({ people: x.people, retention: x.retention, kinds: x.kinds, health: x.health, features: x.features, adoption: x.adoption }));
 ok(x.people.total === 3 && x.people.today === 2 && x.people.week === 2 && x.people.month === 3, 'people: 3 accounts, 2 here today and this week, 3 this month', JSON.stringify(x.people));
 ok(x.retention.old === 2 && x.retention.back === 1, 'came back after a week: Ben yes, Cal no (1 of 2)', JSON.stringify(x.retention));
-ok(x.retention.weeks.length === 1 && x.retention.weeks[0].weeksAgo === 1 && x.retention.weeks[0].joined === 2, 'by week joined: both 1–2 weeks ago', JSON.stringify(x.retention.weeks));
+const [w1, w2] = x.retention.weeks;
+ok(x.retention.weeks.length === 2 && w1.weeksAgo === 1 && w1.joined === 1 && w1.back === 0 && w1.secondWeek === undefined && w2.weeksAgo === 2 && w2.joined === 1 && w2.secondWeek === 1,
+  'by week joined: Cal 1–2 weeks ago (his second week not over yet), Ben 2–3 weeks ago, who used it in his second week', JSON.stringify(x.retention.weeks));
 const sent = x.days.sent, n = sent.length;
 ok(n === 30 && sent.reduce((a, b) => a + b, 0) === 5 && sent[n - 1] === 3 && sent[n - 1 - 5] === 1 && sent[n - 1 - 12] === 1, '5 pigeons on their days: 3 today, 1 five days ago, 1 twelve days ago (a group pigeon counts once)', sent.join(','));
-ok(x.days.active[n - 1] === 2 && x.days.active[n - 1 - 5] === 2 && x.days.active[n - 1 - 12] === 1, 'people active each day: sent or opened one', x.days.active.join(','));
-ok(x.days.joined[n - 1] === 1 && x.days.joined[n - 1 - 10] === 1 && x.days.joined[n - 1 - 12] === 1, 'new accounts on the days they joined', x.days.joined.join(','));
+const act = x.days.active;
+ok(act[n - 1] === 2 && act[n - 1 - 5] === 2 && act[n - 1 - 9] === 1 && act[n - 1 - 12] === 2 && act[n - 1 - 16] === 1, 'people active each day: opened the app, or sent or opened a pigeon', act.join(','));
+ok(x.days.joined[n - 1] === 1 && x.days.joined[n - 1 - 16] === 1 && x.days.joined[n - 1 - 12] === 1, 'new accounts on the days they joined', x.days.joined.join(','));
 const kind = Object.fromEntries(x.kinds.map((k) => [k.kind, k.n]));
 ok(kind.standard === 4 && kind.swift === 1, 'kinds: 4 standard, 1 swift', JSON.stringify(x.kinds));
 ok(x.features.total === 5 && x.features.group === 1, 'of 5 pigeons, 1 to a group', JSON.stringify(x.features));
@@ -53,7 +61,7 @@ ok(!/Ann|Ben|Cal|ann@|One|Two|London|New York/.test(JSON.stringify(x)), 'no name
 // the panel
 await ad.click('[data-a=insights]'); await ad.waitForSelector('#layer .chart', { timeout: 15000 }); await ad.waitForTimeout(900);
 const txt = (await ad.locator('#layer').innerText()).replace(/\s+/g, ' ');
-ok(/Today/.test(txt) && /50%/.test(txt) && /Pigeons sent 5 in 30 days/.test(txt) && /Joined 1–2 weeks ago/.test(txt) && /1 landing not told yet/.test(txt), 'Insights: the figures, the charts, coming back, and the late landing', txt.slice(0, 400));
+ok(/Today/.test(txt) && /50%/.test(txt) && /Pigeons sent 5 in 30 days/.test(txt) && /Joined 1–2 weeks ago 0 of 1 · 0%/.test(txt) && /Joined 2–3 weeks ago 1 of 1 · 100%/.test(txt) && /1 landing not told yet/.test(txt), 'Insights: the figures, the charts, coming back, and the late landing', txt.slice(0, 400));
 ok(await ad.locator('#layer .chart').count() === 3 && await ad.locator('#layer .cslot').count() === 90, 'three charts of 30 days each');
 const hs = await ad.evaluate(() => [...document.querySelectorAll('#layer .chart[data-chart=sent] .cslot i')].map((i) => Math.round(i.offsetHeight / i.parentElement.offsetHeight * 100)));
 ok(hs[29] === 100 && hs[24] === 33 && hs[17] === 33 && hs[0] === 0, 'each column as tall as its day’s figure (today 3 of a scale of 3, the others 1)', hs.join(','));

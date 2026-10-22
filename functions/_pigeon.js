@@ -261,7 +261,11 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gmsgs ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_gdeliv ADD COLUMN coarse INTEGER",
   "ALTER TABLE pg_sessions ADD COLUMN label TEXT",           // what it's signed in on ("iPhone · Safari"), for the list of signed-in phones
-  "ALTER TABLE pg_sessions ADD COLUMN place TEXT",           // roughly where it signed in ("London, United Kingdom", as Cloudflare has it), for the same list
+  "ALTER TABLE pg_sessions ADD COLUMN place TEXT",
+  // the London days each account used the app (a row a day, kept 60 days), for the admin's Insights
+  "CREATE TABLE IF NOT EXISTS pg_active (day INTEGER NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (day, user_id)) WITHOUT ROWID",
+  // what a pigeon's way said (round storms, hours sheltering, a ship), kept when the way itself is blurred a month on
+  ...["pg_msgs", "pg_gdeliv"].flatMap((t) => ["w_dodged INTEGER", "w_shelter INTEGER", "w_ship INTEGER"].map((c) => `ALTER TABLE ${t} ADD COLUMN ${c}`)),           // roughly where it signed in ("London, United Kingdom", as Cloudflare has it), for the same list
   // cheers (functions/_cheers.js): who cheered it on, how many times each (JSON), and the time it saved
   "ALTER TABLE pg_msgs ADD COLUMN cheer_by TEXT",
   "ALTER TABLE pg_msgs ADD COLUMN cheer_ms INTEGER",
@@ -437,8 +441,10 @@ export function placeOf(request) {
 }
 export async function issueSession(env, userId, request) {
   const token = randomToken(32), t = Date.now();
-  await (await db(env)).prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request)).run();
+  const D = await db(env);
+  await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request)),
+    D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), userId)]);
   return token;
 }
 // The few things a stolen sign-in mustn't be enough for (adding a passkey,
@@ -449,6 +455,13 @@ export function requireFresh(u) {
   if (!(Date.now() - (u.authAt || 0) < FRESH)) throw new HttpError(403, "Confirm it’s you first.", "reauth");
 }
 // Bearer tokens (not cookies), so there is no cross-site request forgery to defend against.
+// London's offset from UTC at a moment, in ms (summer time and all), and the London day a moment falls on
+export function londonOffset(t) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    .formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(t / MIN) * MIN;
+}
+export const londonDay = (t) => Math.floor((t + londonOffset(t)) / DAY);
 export async function requireUser(request, env) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
   if (!m) throw new HttpError(401, "Please sign in.", "session");
@@ -456,7 +469,10 @@ export async function requireUser(request, env) {
   // the session and its account in one look (every request starts here)
   const u = await D.prepare("SELECT u.*, s.seen_at AS s_seen, s.auth_at AS s_auth FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.hash = ?").bind(h).first();
   if (!u || t - u.s_seen > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
-  if (t - u.s_seen > HOUR) await D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h).run();
+  // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
+  if (t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
+    D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h),
+    D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)]);
   u.sessionHash = h; u.authAt = u.s_auth || 0; delete u.s_seen; delete u.s_auth;
   return u;
 }

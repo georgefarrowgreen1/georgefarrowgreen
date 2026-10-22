@@ -52,6 +52,20 @@ ok(!one(`SELECT 1 FROM pg_reacts WHERE msg_id = '${old1}'`).length, 'and the rea
 const lines = one(`SELECT id, grp, km, dodged, shelter_ms, from_place, to_place FROM pg_flights WHERE sender = '${as.me.id}' ORDER BY grp`);
 ok(lines.length === 3 && lines[0].dodged === 1 && Math.round(lines[0].shelter_ms / 3600e3) === 3 && lines.filter((l) => l.grp).length === 2, 'what each pigeon did is kept: one line each (went round storms, 3 hours sheltering)', JSON.stringify(lines));
 
+// (landed 46 days ago, so the clean-up takes it even without a passport stamp)
+const b0 = now() - 48 * DAY, b1 = now() - 46 * DAY;
+// 1b. one whose way is blurred (a month on, the hourly blur) before the clean-up gets to it: what its way said is kept
+one(`INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, notified_at, pigeon, legs) VALUES ('blur1', '${as.me.id}', '${bs.me.id}', 'x', 4000, ${b0}, ${b1}, ${b1}, 'standard',
+  json_array(json_array(51.5, -0.1, ${b0}, 's'), json_array(52, -20, ${b0 + 3600e3}, 'h'), json_array(52, -20, ${b0 + 3 * 3600e3}, 'h'), json_array(45, -60, ${b0 + 5 * 3600e3}, 'b'), json_array(40.7, -74, ${b1})))`);
+one(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('keep_at', '${now()}')`); one("DELETE FROM pg_meta WHERE k = 'blur_at'");
+await K.tick();
+const blurred = one(`SELECT legs, w_dodged, w_shelter, w_ship FROM pg_msgs WHERE id = 'blur1'`)[0];
+ok(blurred && blurred.legs === null && blurred.w_dodged === 1 && Math.round(blurred.w_shelter / 3600e3) === 2 && blurred.w_ship === 1, 'blurred first: its way goes, what it said stays (round storms, 2 hours sheltering, a ship)', JSON.stringify(blurred));
+await housekeep();
+const kept = one(`SELECT dodged, shelter_ms, ship FROM pg_flights WHERE id = 'blur1'`)[0];
+ok(kept && kept.dodged === 1 && Math.round(kept.shelter_ms / 3600e3) === 2 && kept.ship === 1, 'and its line says so', JSON.stringify(kept));
+one(`DELETE FROM pg_flights WHERE id = 'blur1'`);       // (so the log below is as it was)
+
 // 2. the flight log, badges and passport don't change
 const [, logA1] = await api(as.token, 'flight-log'), [, logB1] = await api(bs.token, 'flight-log');
 const after = pick(logA1);
@@ -80,15 +94,21 @@ one(`UPDATE pg_users SET seen_at = ${nearly}, created_at = ${nearly - DAY} WHERE
 const m0 = mails().length; await housekeep();
 const warn = mails().slice(m0).filter((m) => /will be deleted soon/.test(m.subject || '') && JSON.stringify(m.to).includes('cal@example.com'));
 ok(warn.length === 1 && /sign in before then/.test(warn[0].text || ''), 'almost a year unused: an email says the account will be deleted, and how to keep it', warn.map((m) => m.subject).join(' | '));
+// (a much older one, warned only now, is given a date at least a week away, never one gone by)
 ok(!!one(`SELECT 1 FROM pg_users WHERE id = '${cs.me.id}'`).length, 'it isn’t deleted yet');
 await housekeep();
 ok(mails().slice(m0).filter((m) => /will be deleted soon/.test(m.subject || '')).length === 1, 'and only one email');
+// (and a pigeon Ann sent Cal three days ago, landed, plus one still flying to Cal)
+one(`INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at, notified_at, pigeon) VALUES ('tocal', '${as.me.id}', '${cs.me.id}', 'x', 340, ${now() - 3 * DAY}, ${now() - 3 * DAY + 3600e3}, ${now() - 3 * DAY + 3600e3}, 'standard'),
+  ('tocal2', '${as.me.id}', '${cs.me.id}', 'x', 340, ${now() - 3600e3}, ${now() + 3600e3}, NULL, 'standard')`);
 // a week on, still unused: deleted
 one(`UPDATE pg_users SET warned_at = ${now() - 7 * DAY}, seen_at = ${now() - yr - DAY}, created_at = ${now() - yr - 2 * DAY} WHERE id = '${cs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${now() - yr - DAY} WHERE user_id = '${cs.me.id}'`);
 await housekeep();
 ok(!one(`SELECT 1 FROM pg_users WHERE id = '${cs.me.id}'`).length && !one(`SELECT 1 FROM pg_links WHERE a = '${cs.me.id}' OR b = '${cs.me.id}'`).length, 'a year unused and a week after the email: the account is deleted');
 ok(!!one(`SELECT 1 FROM pg_admin_log WHERE action = 'idle-deleted'`).length, 'the admin log says so');
 ok(!!one(`SELECT 1 FROM pg_flights WHERE id = '${oldG}:${cs.me.id}' AND recipient IS NULL`).length, 'Ann’s pigeon to Cal stays in her log, unnamed');
+ok(!!one(`SELECT 1 FROM pg_flights WHERE id = 'tocal' AND recipient IS NULL AND sender = '${as.me.id}'`).length && !one(`SELECT 1 FROM pg_flights WHERE id = 'tocal2'`).length && !one(`SELECT 1 FROM pg_msgs WHERE id IN ('tocal', 'tocal2')`).length,
+  'and so does the one she sent him three days ago (one still flying to him just goes)');
 // Ben is warned, then opens the app: kept, and the warning forgotten
 one(`UPDATE pg_users SET seen_at = ${nearly}, created_at = ${nearly - DAY} WHERE id = '${bs.me.id}'`); one(`UPDATE pg_sessions SET seen_at = ${nearly} WHERE user_id = '${bs.me.id}'`);
 await housekeep();
@@ -104,7 +124,7 @@ await ad.goto('http://localhost:8788/pigeon/admin/'); await ad.waitForSelector('
 await ad.waitForSelector('[data-a=storage]', { timeout: 15000 }); await ad.click('[data-a=storage]');
 await ad.waitForFunction(() => /Database/.test(document.querySelector('#layer')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const panel = (await ad.locator('#layer').innerText()).replace(/\s+/g, ' ');
-ok(/Database \d/.test(panel) && /pg_flights 3/.test(panel) && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage panel: the database’s size, rows per table, what’s waiting to go', panel.slice(0, 240));
+ok(/Database \d/.test(panel) && /pg_flights 4/.test(panel) && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage panel: the database’s size, rows per table, what’s waiting to go', panel.slice(0, 240));
 await ad.screenshot({ path: `${out}/storage-panel.png` });
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);

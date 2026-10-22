@@ -12,7 +12,7 @@
      picture) are found and deleted, a page at a time.
    - An account nobody has signed in to for a year is deleted, after an email a week before saying so. Signing in
      (or the app checking in) in that week keeps it. */
-import { DAY, MIN, sendEmail, emailReady, emailBody, appLink, groupPhotoKey, adminLog } from "./_pigeon.js";
+import { DAY, MIN, sendEmail, emailReady, emailBody, appLink, groupPhotoKey, adminLog, londonDay } from "./_pigeon.js";
 import { stampPassports } from "./_passport.js";
 import { settleBirds } from "./_birds.js";
 import { removeAccount } from "./_accounts.js";
@@ -28,11 +28,13 @@ const EVERY = 10 * MIN, BATCH = 100;
 // went round storms, time sheltering (a shelter's two ends are the same spot), crossed by ship; and its space legs
 // without the Earth part it flew first (only for its passport, stamped by now)
 const at = (v, i) => `json_extract(${v}.value, '$[${i}]')`;
-const WAY = (legs) => `
-  CASE WHEN json_valid(${legs}) THEN EXISTS (SELECT 1 FROM json_each(${legs}) l WHERE ${at("l", 3)} = 's' OR (${at("l", 3)} = 'r' AND ${at("l", 4)} = 's')) ELSE 0 END,
-  CASE WHEN json_valid(${legs}) THEN (SELECT COALESCE(SUM(${at("b", 2)} - ${at("a", 2)}), 0) FROM json_each(${legs}) a JOIN json_each(${legs}) b ON b.key = a.key + 1
-    WHERE ${at("a", 3)} = 'h' AND ${at("b", 3)} = 'h' AND ${at("a", 0)} = ${at("b", 0)}) ELSE 0 END,
-  CASE WHEN json_valid(${legs}) THEN EXISTS (SELECT 1 FROM json_each(${legs}) l WHERE ${at("l", 3)} = 'b') ELSE 0 END`;
+export const WAY_PARTS = (legs) => [
+  `CASE WHEN json_valid(${legs}) THEN EXISTS (SELECT 1 FROM json_each(${legs}) l WHERE ${at("l", 3)} = 's' OR (${at("l", 3)} = 'r' AND ${at("l", 4)} = 's')) ELSE 0 END`,
+  `CASE WHEN json_valid(${legs}) THEN (SELECT COALESCE(SUM(${at("b", 2)} - ${at("a", 2)}), 0) FROM json_each(${legs}) a JOIN json_each(${legs}) b ON b.key = a.key + 1
+    WHERE ${at("a", 3)} = 'h' AND ${at("b", 3)} = 'h' AND ${at("a", 0)} = ${at("b", 0)}) ELSE 0 END`,
+  `CASE WHEN json_valid(${legs}) THEN EXISTS (SELECT 1 FROM json_each(${legs}) l WHERE ${at("l", 3)} = 'b') ELSE 0 END`];
+// (a way blurred a month after landing, functions/_notify.js blurOld, keeps what it said in w_dodged / w_shelter / w_ship)
+const WAY = (legs, p = "") => WAY_PARTS(legs).map((x, i) => `COALESCE(${p}${["w_dodged", "w_shelter", "w_ship"][i]}, ${x})`).join(",\n  ");
 const MOON = (m) => `CASE WHEN json_valid(${m}) THEN json_remove(${m}, '$.ground', '$.prev.ground') END`;
 const COLS = "id, msg_id, sender, recipient, grp, group_id, pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, from_place, to_place, risky, from_lon, to_lon, wx_ms, dodged, shelter_ms, ship, moon";
 const done = (cut, p = "") => `((${p}lost_at IS NOT NULL AND ${p}lost_at < ${cut}) OR (${p}lost_at IS NULL AND ${p}deliver_at < ${cut}))`;
@@ -76,7 +78,7 @@ export async function keepMonth(env, D, t, batch = BATCH) {
     await D.batch([
       // (no place it went for a group pigeon: it could be someone who isn't the sender's friend)
       D.prepare(`INSERT OR IGNORE INTO pg_flights (${COLS}) SELECT m.id || ':' || d.user_id, m.id, m.sender, d.user_id, 1, m.group_id, m.pigeon, d.km, m.sent_at,
-        d.deliver_at, d.lost_at, d.recalled, d.wind, m.from_place, NULL, m.risky, m.from_lon, d.to_lon, d.wx_ms, ${WAY("d.legs")}, ${MOON("d.moon")}
+        d.deliver_at, d.lost_at, d.recalled, d.wind, m.from_place, NULL, m.risky, m.from_lon, d.to_lon, d.wx_ms, ${WAY("d.legs", "d.")}, ${MOON("d.moon")}
         FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.id IN ${IDS}`).bind(ids),
       D.prepare(`DELETE FROM pg_reacts WHERE msg_id IN ${IDS}`).bind(ids),
       D.prepare(`DELETE FROM pg_flyover WHERE msg_id IN ${IDS}`).bind(ids),
@@ -89,9 +91,15 @@ export async function keepMonth(env, D, t, batch = BATCH) {
     n += grp.length;
   }
   // a group's history goes with its messages; the admin's after six months
-  await D.batch([D.prepare("DELETE FROM pg_gevents WHERE at < ?").bind(t - GEVENTS_MS), D.prepare("DELETE FROM pg_admin_log WHERE at < ?").bind(t - ADMIN_LOG_MS)]).catch(() => {});
+  await D.batch([D.prepare("DELETE FROM pg_gevents WHERE at < ?").bind(t - GEVENTS_MS), D.prepare("DELETE FROM pg_admin_log WHERE at < ?").bind(t - ADMIN_LOG_MS),
+    D.prepare("DELETE FROM pg_active WHERE day < ?").bind(londonDay(t) - 60)]).catch(() => {});        // (days used: 60 kept)
   return n;
 }
+
+// An account going (functions/_accounts.js): the pigeons its friends sent it that have landed stay in their senders'
+// logs as lines, unnamed, as older ones already do
+export const keepSentTo = (D, id, t) => D.prepare(`INSERT OR IGNORE INTO pg_flights (${COLS}) SELECT id, id, sender, NULL, 0, NULL, pigeon, km, sent_at, deliver_at,
+  lost_at, recalled, wind, from_place, to_place, risky, from_lon, to_lon, wx_ms, ${WAY("legs")}, ${MOON("moon")} FROM pg_msgs WHERE recipient = ?1 AND sender != ?1 AND ${done("?2")}`).bind(id, t);
 
 // Files nothing points to: a page of storage looked through each run (where it got to kept in pg_meta), each file
 // checked against what should have it. Only files over a day old, so one being sent right now is never touched.
@@ -131,7 +139,8 @@ export async function idleAccounts(env, D, t, origin) {
     const { results } = await D.prepare(`SELECT u.id, u.name, u.handle, u.email, ${LAST} AS last FROM pg_users u
       WHERE u.warned_at IS NULL AND u.email IS NOT NULL AND ${LAST} < ?1 LIMIT 10`).bind(t - (IDLE_MS - WARN_MS)).all();
     for (const u of results) {
-      const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(u.last + IDLE_MS);
+      // (never a day already gone: one long unused, or emails that were off for a while, still gets its week)
+      const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(Math.max(u.last + IDLE_MS, t + WARN_MS));
       const { text, html } = emailBody({ origin, title: "Your InFlight account will be deleted soon",
         lines: [`Hi ${String(u.name || "").split(/\s+/)[0] || "there"}, nobody has signed in to your InFlight account for almost a year, so it will be deleted on ${when}, with your friends, pigeons, passport and badges.`,
           "To keep it, just open InFlight and sign in before then."],
@@ -154,9 +163,10 @@ export async function idleAccounts(env, D, t, origin) {
 
 // All of it, at most every ten minutes
 export async function housekeeping(env, D, t, origin) {
-  const last = await D.prepare("SELECT v FROM pg_meta WHERE k = 'keep_at'").first();
-  if (last && t - Number(last.v) < EVERY) return null;
-  await D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('keep_at', ?)").bind(String(t)).run();
+  // claimed in one step, so two ticks at once can't both run it (and send the same warning twice)
+  await D.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('keep_at', '0')").run();
+  const claim = await D.prepare("UPDATE pg_meta SET v = ?1 WHERE k = 'keep_at' AND CAST(v AS INTEGER) <= ?2").bind(String(t), t - EVERY).run();
+  if (!claim.meta?.changes) return null;
   const purged = await keepMonth(env, D, t).catch((e) => { console.error("pigeon keep", e && e.message); return 0; });
   const files = await sweepFiles(env, D, t).catch((e) => { console.error("pigeon files", e && e.message); return 0; });
   const accounts = await idleAccounts(env, D, t, origin).catch((e) => { console.error("pigeon idle", e && e.message); return {}; });
@@ -166,7 +176,7 @@ export async function housekeeping(env, D, t, origin) {
 // The admin's look at what's kept: rows in each table, the database's size, and the files in storage
 export const TABLES = ["pg_users", "pg_msgs", "pg_gmsgs", "pg_gdeliv", "pg_flights", "pg_reacts", "pg_near", "pg_flyover", "pg_stamped", "pg_passport", "pg_postmarks",
   "pg_feathers", "pg_birds", "pg_links", "pg_groups", "pg_group_members", "pg_gevents", "pg_sessions", "pg_push", "pg_passkeys", "pg_streaks", "pg_ids",
-  "pg_limits", "pg_wxcache", "pg_admin_log", "pg_vanish", "pg_invites"];
+  "pg_limits", "pg_wxcache", "pg_admin_log", "pg_vanish", "pg_invites", "pg_active"];
 export async function storageReport(env, D, t) {
   const res = await D.batch(TABLES.map((x) => D.prepare(`SELECT COUNT(*) AS n FROM ${x}`)));
   const tables = TABLES.map((name, i) => ({ name, rows: res[i].results?.[0]?.n ?? 0 })).sort((a, b) => b.rows - a.rows);

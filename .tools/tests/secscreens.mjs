@@ -122,7 +122,9 @@ await p.click('.sheet [data-act=sessionssheet]'); await p.waitForSelector('.shee
 const many = await txt('.sheet .body');
 ok(/3 Places Signed In/.test(many) && /One is new today/.test(many) && await p.locator('.sheet .newtag').count() === 1 && /Windows · Edge New/i.test(many) && /near Lagos, Nigeria/.test(many) && /Mac · Chrome/.test(many), 'three places: the one from today marked New, each with roughly where', many.slice(0, 400));
 await shot('sessions-many');
-await p.click('.sheet .sessrow.fresh [data-act=sessend]'); await p.waitForFunction(() => document.querySelectorAll('.sheet .sessrow').length === 2, null, { timeout: 10000 }); await slow(1200);
+await p.click('.sheet .sessrow.fresh [data-act=sessend]'); await p.waitForSelector('.asheet [data-act=sessendgo]');
+ok(/Sign out Windows · Edge near Lagos, Nigeria\?/.test(await p.locator('.asheet').innerText()), 'signing one out asks first, naming it and where', await p.locator('.asheet').innerText());
+await p.click('.asheet [data-act=sessendgo]'); await p.waitForFunction(() => document.querySelectorAll('.sheet .sessrow').length === 2, null, { timeout: 10000 }); await slow(1200);
 ok(/2 Places Signed In/.test(await txt('.sheet .sesshero')) && !(await p.$('.sheet .newtag')) && !one(`SELECT 1 FROM pg_sessions WHERE hash = '${'b'.repeat(64)}'`).length, 'signing the new one out: gone, here and on the server');
 await p.click('.sheet header [data-act=securitysheet]'); await slow(700);
 await p.keyboard.press('Escape'); await slow(500);

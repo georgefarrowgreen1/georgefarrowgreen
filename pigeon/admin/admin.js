@@ -305,10 +305,10 @@ function vInsights() {
       ${columns("active", "People active", x.days.active, "person")}
       ${columns("joined", "New accounts", x.days.joined, "new account")}
     </div>
-    <div class="gfoot">Active on a day: sent a pigeon or opened one. Tap a day for its figure.</div>
+    <div class="gfoot">Active on a day: opened the app, or sent or opened a pigeon. Tap a day for its figure.</div>
     <div class="ghead">Coming Back</div>
-    <div class="group meters">${R.weeks.length ? R.weeks.map((w) => meter(`Joined ${wk(w.weeksAgo)}`, w.back, w.joined, `${num(w.back)} of ${num(w.joined)} · ${pct(w.back, w.joined)}%`)).join("") : `<div class="meter none">No one joined 1–7 weeks ago yet</div>`}</div>
-    <div class="gfoot">Of the people who joined each week, how many were still using InFlight a week later.</div>
+    <div class="group meters">${R.weeks.length ? R.weeks.map((w) => { const n = w.secondWeek ?? w.back; return meter(`Joined ${wk(w.weeksAgo)}`, n, w.joined, `${num(n)} of ${num(w.joined)} · ${pct(n, w.joined)}%`); }).join("") : `<div class="meter none">No one joined 1–7 weeks ago yet</div>`}</div>
+    <div class="gfoot">Of the people who joined each week, how many used InFlight in their second week (or, for weeks before days used were noted, at any point after their first).</div>
     <div class="ghead">Pigeons, Last 30 Days <span class="gcount">${num(F.total)}</span></div>
     <div class="group meters">${x.kinds.length ? x.kinds.map((k) => meter(esc(KINDS[k.kind] || k.kind[0].toUpperCase() + k.kind.slice(1)), k.n, kindsN)).join("") : `<div class="meter none">None sent yet</div>`}</div>
     <div class="ghead">Features Used</div>
@@ -334,12 +334,15 @@ function vInsights() {
         : cell({ icon: I.check, tile: "green", label: "Every landing told on time", sub: "None waiting more than 15 minutes" })}
     </div>
     <div class="gfoot">Totals over everyone, never who sent what to whom. Counted ${fmtSeen(x.at)}.</div>
-    <div class="group mt">${cell({ a: "insightsrefresh", label: "Count Again", cls: "blue center" })}</div>`;
+    <div class="group mt">${cell({ a: "insightsrefresh", label: A.insBusy ? "Counting…" : "Count Again", cls: `blue center${A.insBusy ? " busy" : ""}` })}</div>`;
 }
-async function loadInsights() {
-  A.ins = null; A.insErr = null; if (A.sheet?.type === "insights") drawSheet();
+// (counting again keeps what's shown, and where you'd scrolled to, until the new figures are in)
+async function loadInsights(again) {
+  if (again && A.ins) A.insBusy = true; else A.ins = null;
+  A.insErr = null; if (A.sheet?.type === "insights") drawSheet();
   try { A.ins = await call("/api/pigeon/admin-insights"); }
-  catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); A.insErr = err.message; }
+  catch (err) { if (err.status === 401) return vSignIn("Your admin session ended. Sign in again."); A.insErr = err.message; if (again) toast(esc(err.message), true); }
+  A.insBusy = false;
   if (A.sheet?.type === "insights") drawSheet();
 }
 // a column's figure: on hover with a mouse, or a tap
@@ -436,7 +439,7 @@ document.addEventListener("click", async (e) => {
   if (act === "storage") { openSheet({ type: "storage" }); return loadStorage(); }
   if (act === "storagerefresh") return loadStorage();
   if (act === "insights") { openSheet({ type: "insights" }); return loadInsights(); }
-  if (act === "insightsrefresh") return loadInsights();
+  if (act === "insightsrefresh") return loadInsights(true);
   if (act === "delask") return openSheet({ type: "delete", id });
   if (act === "deleteback") return openSheet({ type: "user", id });
   if (act === "signout") { await fetch("/api/logout", { method: "POST" }); return vSignIn(); }
