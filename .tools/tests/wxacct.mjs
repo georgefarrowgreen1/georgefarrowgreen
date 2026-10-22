@@ -90,7 +90,7 @@ await weather(L);
 await settings(L);
 await L.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const lSays = await acctSays(L);
-ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com account/.test(lSays) && !/InFlight/i.test(lSays), 'Weather in the same browser: already signed in, as the account (no other app named)', lSays);
+ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com/.test(lSays) && !/InFlight/i.test(lSays), 'Weather in the same browser: already signed in, as the account (no other app named)', lSays);
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');

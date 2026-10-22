@@ -1952,7 +1952,7 @@ function drawAccount() {
   const n = S.settings.notify, to = a.devices.map((d) => (d.id === n.devId ? "This device" : d.label));
   // (who, and the way to everything else about the account: its own page, where the profile, email, password, passkeys
   // and devices are)
-  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com account`))];
+  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com`))];
   box.replaceChildren(...[
     accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...who, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
       : h("div", { class: "acct-card in" }, ...who),
