@@ -569,7 +569,10 @@ const press = (pg, sel) => pg.evaluate((sel) => document.querySelector(sel).clic
 {
   const card = await p.evaluate(() => { const v = (s) => { const e = document.querySelector(`#radar ${s}`); if (!e) return 'none'; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
     return { zoomIn: v('.map-in'), centre: v('.radar-centre'), layers: v('.map-layers'), coarse: matchMedia('(pointer: coarse)').matches, cls: document.getElementById('radar').className }; });
-  ok(card.zoomIn === false && card.centre === false && card.layers === true, 'on a phone, in the card (a tap opens it full screen), the layers button alone', JSON.stringify(card));
+  // (as the browser says its pointer is: a finger, the layers button alone, a tap opening the map full screen; a mouse, all
+  // of them, as it zooms and pans in the card)
+  ok(card.layers === true && (card.coarse ? card.zoomIn === false && card.centre === false : card.zoomIn === true && card.centre === true),
+    'in the card, the layers button alone with a finger (a tap opens it full screen), all of them with a mouse', JSON.stringify(card));
 }
 ok(await p.locator('#radar .map-zoom button').count() === 2 && await p.locator('#radar .radar-centre').count() === 1 && /^\d+ mi$/.test(await p.textContent('#radar .map-scale')),
   'buttons to zoom in and out and back to the place, and a scale (in miles, as the wind is)', await p.textContent('#radar .map-scale'));
