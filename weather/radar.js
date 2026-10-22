@@ -576,6 +576,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const c = fg ? (fg.n * fg.n - 1) / 2 : 0, tEl = pin.querySelector(".mp-t");
     const v = kind === "temp" && field ? fieldAt(field.times, field.temp, fieldT)?.[c] : null;
     pin.dataset.kind = kind === "wind" && field ? "wind" : v != null ? "temp" : "";
+    if (pin.dataset.kind !== "wind") pin.querySelector(".mp-dir").textContent = pin.querySelector(".mp-u").textContent = "";
     if (pin.dataset.kind === "temp") { tEl.textContent = temp(v); pin.style.setProperty("--pin", `rgb(${tint(v, TEMP_STOPS).join(",")})`); return; }
     if (pin.dataset.kind === "wind") {
       const W = windsNow(), speed = Math.hypot(W.u[c], W.v[c]), from = ((Math.atan2(-W.u[c], -W.v[c]) * 180) / Math.PI + 360) % 360;
