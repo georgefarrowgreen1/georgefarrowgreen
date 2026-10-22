@@ -22,7 +22,7 @@ export const ACCT_SECURITY = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 // what it shares with the rest of the site: its address here → where it's kept
-const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
+const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/qr.js": "/pigeon/qr.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
 const PAGE = /^\/account\/(index\.html)?$/;
 
 export async function accountHost(ctx, url) {

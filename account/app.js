@@ -87,6 +87,8 @@ const ICONS = {
   signout: '<path d="M9.5 19.5h-3a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2h3M15.5 16.5 20 12l-4.5-4.5M20 12H9.5"/>',
   pencil: '<path d="M4.5 19.5 5.3 15.6 15.8 5.1a2 2 0 0 1 2.8 0l.3.3a2 2 0 0 1 0 2.8L8.4 18.7z"/>',
   undo: '<path d="M9 14 4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/>',
+  qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
+  share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
 };
 function icon(name, size = 20, width = 2) {
   const t = document.createElement("template");
@@ -207,22 +209,28 @@ const unitsSaid = (u) => [u.temp === "f" ? "°F" : "°C", { mph: "mph", kmh: "km
 
 function signedIn(r) {
   const m = S.me, n = m.apps?.weather?.places || 0;
-  const app = (name, img, what, href) => h("a.app.glass", { href },
+  // (each app's tile opens what it keeps of yours, and the way into it)
+  const app = (id, name, img, what) => h("button.app.glass", { type: "button", onclick: () => openSheet(() => appView(id)) },
     h("img", { src: img, alt: "", width: 54, height: 54 }), h("b", { text: name }), h("span", { text: what }),
-    h("span.open", {}, "Open", icon("open", 15, 2.4)));
-  return [
+    h("span.open", {}, "Details", icon("chev", 15, 2.4)));
+  // (two columns on a wide screen: who you are and how safe, beside everything else)
+  const a = [
     fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name)),
     r(h("h1.large", { text: "Account" })),
-    r(h("section.hero.glass", { "aria-label": "Your profile" }, avatar(m),
+    r(h("section.hero.glass", { "aria-label": "Your profile" }, avatarButton(m),
       h("h2", { text: m.name }),
       h("div.who", { text: `@${m.handle}` }),
       m.email && h("div.mail", {}, icon("mail", 15), h("span", { text: m.email })),
-      h("button.pill", { type: "button", onclick: () => openSheet(profileView) }, "Edit profile"))),
+      h("div.hero-acts", {},
+        h("button.pill", { type: "button", onclick: () => openSheet(profileView) }, "Edit profile"),
+        h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code")))),
     (!m.emailOk || m.emailNew) && r(banner(m)),
     r(checkup(m)),
+  ];
+  const b = [
     r(section("Your apps", h("div.apps", {},
-      app("InFlight", "/apps/inflight.png", "Letters carried by pigeon, end-to-end encrypted.", siteUrl("chat")),
-      app("Weather", "/apps/weather.png", n ? `${n} saved ${n === 1 ? "place" : "places"}, in step on every device.` : "Forecasts, radar and alerts, in step on every device.", siteUrl("weather"))))),
+      app("inflight", "InFlight", "/apps/inflight.png", "Letters carried by pigeon, end-to-end encrypted."),
+      app("weather", "Weather", "/apps/weather.png", n ? `${n} saved ${n === 1 ? "place" : "places"}, in step on every device.` : "Forecasts, radar and alerts, in step on every device.")))),
     r(section("Sign-in and security", h("div.group.glass", {},
       row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", onclick: () => openSheet(emailView) }),
       row({ icon: "key", tint: "blue", title: "Password", value: "Change", onclick: () => openSheet(passwordView) }),
@@ -241,8 +249,58 @@ function signedIn(r) {
     r(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => openSheet(deleteView) }, "Delete account")))),
     r(h("footer.foot", {}, h("div", { text: `Your account since ${new Date(m.since).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` }),
       h("a", { href: siteUrl(""), text: "georgefarrowgreen.com" }))),
-  ].filter(Boolean);
+  ];
+  return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
+// Your photo, tapped: a new one, straight from the picker (the camera badge says so)
+function avatarButton(m) {
+  const file = h("input.vh", { type: "file", accept: "image/*", tabindex: "-1", "aria-hidden": "true", onchange: () => file.files[0] && heroPhoto(file.files[0], btn) });
+  const btn = h("button.avatar-btn", { type: "button", "aria-label": m.photoAt ? "Change your photo" : "Add a photo", onclick: () => file.click() },
+    avatar(m), h("span.cam", { "aria-hidden": "true" }, icon("camera", 15, 2.2)));
+  return [btn, file];
+}
+async function heroPhoto(f, btn) {
+  btn.querySelector(".avatar")?.append(h("span.spin.on-photo"));
+  try { const jpeg = await asPhoto(f); S.me = await call("me/photo", { method: "PUT", body: jpeg, type: "image/jpeg" }); render(); toast("Photo updated."); }
+  catch (e) { btn.querySelector(".spin")?.remove(); toast(e.message, true); }
+}
+// Your code: a QR code of the link that adds you in InFlight, to show a friend (or share the link itself)
+function codeView() {
+  const m = S.me, link = `${siteUrl("chat")}#add=${m.handle}`, qr = h("div.qr");
+  import("./qr.js").then(({ qrSvg }) => { qr.innerHTML = qrSvg(link, { dark: "#0d1020", light: "#ffffff", title: `Add @${m.handle} in InFlight` }); }).catch(() => {});
+  return { title: "Your code", body: [
+    h("div.code-card", {}, avatar(m, true), h("b", { text: m.name }), h("span", { text: `@${m.handle}` }), qr),
+    h("p.hint.center", { text: "A friend points their phone’s camera at it to add you in InFlight." }),
+    h("div.code-acts", {},
+      navigator.share && h("button.btn", { type: "button", onclick: () => navigator.share({ title: `${m.name} on InFlight`, text: `Add me on InFlight: @${m.handle}`, url: link }).catch(() => {}) }, icon("share", 19, 2), "Share"),
+      h("button.btn" + (navigator.share ? ".quiet" : ""), { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(link); toast("Link copied."); } catch (_) { toast(link); } } }, "Copy link")),
+  ] };
+}
+const notifySaid = (n) => [n?.places && `${n.places} ${n.places === 1 ? "place" : "places"}`, n?.brief && "morning brief"].filter(Boolean).join(" · ") || "Off";
+// An app: what it keeps of yours, in a word or two, and the way into it
+function appView(id) {
+  const m = S.me, ap = m.apps || {}, inflight = id === "inflight";
+  const head = h("div.app-head", {}, h("img", { src: inflight ? "/apps/inflight.png" : "/apps/weather.png", alt: "", width: 64, height: 64 }),
+    h("b", { text: inflight ? "InFlight" : "Weather" }), h("span", { text: inflight ? "Letters carried by pigeon" : "A forecast that explains itself" }));
+  const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
+  const open = h("a.btn", { href: siteUrl(inflight ? "chat" : "weather") }, `Open ${inflight ? "InFlight" : "Weather"}`, icon("open", 18, 2.4));
+  if (inflight) {
+    const f = ap.inflight || {};
+    return { title: "", body: [head,
+      h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.sent || 0, f.sent === 1 ? "pigeon sent" : "pigeons sent"),
+        stat(f.places || 0, f.places === 1 ? "place in your passport" : "places in your passport"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups")),
+      h("p.hint", { text: "Your letters are end-to-end encrypted: only your phones can read them, so they’re not counted here." }), open] };
+  }
+  const w = ap.weather || {}, names = w.placeNames || [];
+  return { title: "", body: [head,
+    h("div.group", {},
+      h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Saved places" })), h("span.val", { text: String(w.places || 0) })),
+      names.length > 0 && h("div.row.plain.places", {}, h("span.tx", {}, h("small", { text: names.join(" · ") + (w.places > names.length ? ` · and ${w.places - names.length} more` : "") }))),
+      h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications" })), h("span.val", { text: notifySaid(w.notify) })),
+      h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Units" })), h("span.val", { text: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }) }))),
+    h("p.hint", { text: "Kept with your account, so they’re the same on every device you use Weather on." }), open] };
+}
+
 // Your email isn't confirmed (or a new one's waiting to be): said up top, with what to do
 function banner(m) {
   const sending = async (b) => {
@@ -269,11 +327,15 @@ function checkup(m) {
     { ok: !stale, label: stale ? `${stale} device${stale > 1 ? "s" : ""} unused for 3 months` : "No devices left unused", go: "Review", act: () => openSheet(devicesView) },
   ];
   const todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
+  // (all done: folded away to a line, opened with a tap)
+  if (!todo && !S.ckOpen) return h("button.checkup.glass.ok.folded", { type: "button", "aria-expanded": "false", onclick: () => { S.ckOpen = true; patch(); } },
+    h("span.ck-badge", { "aria-hidden": "true" }, icon("shield", 20, 2)), h("span.tx", {}, h("b", { text: "Well protected" }), h("small", { text: "All 4 checks done" })),
+    h("span.chev", {}, icon("chev", 16, 2.4)));
   const ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ring.setAttribute("viewBox", "0 0 64 64"); ring.setAttribute("aria-hidden", "true"); ring.classList.add("ring");
   ring.innerHTML = `<circle class="trk" cx="32" cy="32" r="27"/><circle class="arc" cx="32" cy="32" r="27" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/>`;
   return h(`section.checkup.glass${todo ? ".todo" : ".ok"}`, { "aria-label": "Security check-up" },
-    h("div.ck-top", {}, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
+    h(todo ? "div.ck-top" : "button.ck-top", todo ? {} : { type: "button", "aria-expanded": "true", onclick: () => { S.ckOpen = false; patch(); } }, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
       h("span.tx", {}, h("b", { text: todo ? `${todo} thing${todo > 1 ? "s" : ""} to do` : "Well protected" }),
         h("small", { text: todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on." }))),
     h("div.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
@@ -313,7 +375,7 @@ function signedOut(r) {
         return post("signin/password", { email: email.value.trim(), proof });
       });
       welcome(m);
-      if (!m.deleting) checkQuietly(pw.value, proof);
+      if (!m.deleting) { checkQuietly(pw.value, proof); maybeNudge(m); }
     } catch (err) { say(said, err.message, err.field === "email" ? email : pw); }
   } }, field("Email", email), field("Password", pw), go);
   const pk = passkeysWork() && h("button.btn", { type: "button", onclick: async (e) => {
@@ -345,6 +407,24 @@ function welcome(m) {
   if (m.prefs) theme(m.prefs.appearance);
   render(); scrollTo(0, 0);
   toast(`Welcome back, ${String(m.name).trim().split(/\s+/)[0]}.`);
+}
+// Signed in with a password and no passkey yet: a word about one, once a month at most
+function maybeNudge(m) {
+  if (!passkeysWork() || !window.PublicKeyCredential || m.passkeys?.length) return;
+  try { if (Date.now() - Number(localStorage.getItem("acct:nudged") || 0) < 30 * 86400e3) return; } catch (_) {}
+  setTimeout(() => { if (!sheetEl.open && S.me?.signedIn && !S.me.passkeys.length) openSheet(nudgeView); }, 1500);
+}
+function nudgeView() {
+  const later = () => { try { localStorage.setItem("acct:nudged", String(Date.now())); } catch (_) {} closeSheet(); };
+  const add = h("button.btn", { type: "button", onclick: async () => {
+    try { await freshly(() => busy(add, "Waiting for your device…", addPasskey)); closeSheet(); patch(); toast("Passkey added. Next time, just look at your phone."); }
+    catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
+  } }, icon("face", 21, 1.9), "Add a passkey");
+  return { title: "", right: h("button.x", { type: "button", "aria-label": "Not now", onclick: later }, icon("x", 17, 2.6)), body: [
+    h("div.nudge", {}, h("div.nudge-art", { "aria-hidden": "true" }, icon("face", 56, 1.5)),
+      h("h3", { text: "Sign in faster next time" }),
+      h("p", { text: "A passkey signs you in with Face ID or Touch ID, in every app on the site. Nothing to type, and nothing for anyone to steal." })),
+    add, h("button.btn.quiet", { type: "button", onclick: later }, "Not now"), h("p.said", { role: "alert" })] };
 }
 // The password just typed, checked against data breaches (only 5 characters of its hash asked), and how it went kept
 // with the account (with its proof), for the check-up
@@ -392,6 +472,26 @@ function twice(label, sure, act, spec = "button.mini") {
     clearTimeout(t); act(b);
   } }, label);
   return b;
+}
+// A row that slides left to show what it does (sign out, remove), as a list does on a phone; the button's there
+// for a keyboard too
+function swipeable(row, label, act) {
+  const act_ = h("button.swipe-act", { type: "button", tabindex: "-1", onclick: (e) => act(e.currentTarget) }, label);
+  const box = h("div.swipe", {}, act_, row), W = 92;
+  let x0 = 0, y0 = 0, dx = 0, open = false, how = null;
+  const set = (v, still_) => { box.classList.toggle("dragging", !!still_); box.style.setProperty("--dx", `${v}px`); };
+  row.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") return; x0 = e.clientX; y0 = e.clientY; how = null; });
+  row.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "mouse" || !x0) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!how && Math.abs(mx) + Math.abs(my) > 8) how = Math.abs(mx) > Math.abs(my) ? "x" : "y";
+    if (how !== "x") return;
+    dx = Math.max(-W * 1.6, Math.min(0, (open ? -W : 0) + mx)); set(dx, true);
+  });
+  const done = () => { if (how === "x") { open = dx < -W / 2; set(open ? -W : 0); box.classList.toggle("open", open); } x0 = 0; how = null; };
+  row.addEventListener("pointerup", done); row.addEventListener("pointercancel", done);
+  row.addEventListener("click", (e) => { if (open) { e.preventDefault(); e.stopImmediatePropagation(); open = false; set(0); box.classList.remove("open"); } }, true);
+  return box;
 }
 async function leave(el) {
   if (!el?.isConnected || still.matches) return;
@@ -637,10 +737,13 @@ function passwordView() {
 function passkeysView() {
   const m = S.me, said = h("p.said", { role: "alert" }), can = !!(window.PublicKeyCredential && navigator.credentials?.create);
   const list = m.passkeys.length
-    ? h("div.group", {}, m.passkeys.map((p) => h("button.row", { type: "button", onclick: () => pushSheet(() => passkeyView(p.id)) },
+    ? h("div.group", {}, m.passkeys.map((p) => swipeable(h("button.row", { type: "button", onclick: () => pushSheet(() => passkeyView(p.id)) },
       h("span.ic.indigo", {}, icon("passkey", 19)),
       h("span.tx", {}, h("b", { text: p.label }), h("small", { text: [p.provider, `added ${day(p.createdAt)}`].filter(Boolean).join(" · ") })),
-      h("span.chev", {}, icon("chev", 16, 2.4)))))
+      h("span.chev", {}, icon("chev", 16, 2.4))), "Remove", async (b) => {
+        try { S.me = await freshly(() => busy(b, "", () => post("passkeys/remove", { id: p.id }))); await leave(b.parentNode); redraw(); patch(); toast("Passkey removed."); }
+        catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
+      })))
     : h("div.group", {}, h("div.empty", { text: "No passkeys yet." }));
   return { title: "Passkeys", body: [
     h("p", { text: "A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site. Nothing to remember, and nothing for anyone to steal." }),
@@ -711,7 +814,7 @@ function devicesView() {
         h(d.stale ? "small.warn" : "small", { text: [d.place, d.current ? "Active now" : d.stale ? `Not used for ${monthsSince(d.seenAt)}` : `Active ${ago(d.seenAt)}`].filter(Boolean).join(" · ") })),
       !d.current && twice("Sign out", "Sign out?", (b) => end(b, { id: d.id }, [el])));
     el.dataset.stale = d.stale ? "1" : "";
-    return el;
+    return d.current ? el : swipeable(el, "Sign out", (b) => end(b, { id: d.id }, [b.parentNode]));
   });
   return { title: "Signed-in devices", body: [
     h("p", { text: "Everywhere your account’s signed in. Signing a device out signs it out of every app on the site." }),
@@ -752,11 +855,37 @@ function activityView() {
       h("div.group", {}, list.map((e) => { const [ic, tint] = KIND_LOOK[e.kind] || ["clock", "grey"];
         return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 18)),
           h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }),
-            h("small", { text: [new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), e.app, e.device, e.place].filter(Boolean).join(" · ") }))); })))));
+            h("small", { text: [new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), e.app, e.device, e.place].filter(Boolean).join(" · ") })),
+          elsewhere(e) && h("button.mini", { type: "button", onclick: () => pushSheet(() => notMeView(e)) }, "Not you?")); })))));
   }).catch((e) => { if (box.isConnected) box.replaceChildren(h("div.group", {}, h("div.empty", { text: e.message }))); });
   return { title: "Recent activity", body: [
     h("p", { text: "What’s happened to your account in the last 30 days, in every app on the site. Something you don’t recognise? Change your password." }),
     box] };
+}
+// (a sign-in with a password from a device or place other than this browser's: a passkey one needs your own device)
+function elsewhere(e) {
+  const here = S.me.devices.find((d) => d.current);
+  return e.kind === "signin" && e.detail !== "Passkey" && here && (e.device !== here.label || (e.place && e.place !== here.place));
+}
+// A sign-in you don't recognise: everywhere else signed out, then a new password, in two steps
+function notMeView(e) {
+  const said = h("p.said", { role: "alert" });
+  const go = h("button.btn.danger", { type: "button", onclick: async () => {
+    try {
+      S.me = await freshly(() => busy(go, "Signing out…", () => post("devices/end", { others: true })));
+      patch(); toast("Every other device was signed out."); pushSheet(passwordView);
+    } catch (err) { if (!err.quiet) say(said, err.message); }
+  } }, "Secure my account");
+  const step = (n, t, sub) => h("li", {}, h("span.n", { text: String(n) }), h("span.tx", {}, h("b", { text: t }), h("small", { text: sub })));
+  return { title: "Not you?", body: [
+    h("div.group", {}, h("div.row.plain", {}, h("span.ic.amber", {}, icon("signin", 18)),
+      h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }),
+        h("small", { text: [`${dayWord(e.at)}, ${new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`, e.app, e.device, e.place].filter(Boolean).join(" · ") })))),
+    h("p", { text: "If this wasn’t you, someone may know your password. Two steps put it right:" }),
+    h("ol.steps", {},
+      step(1, "Sign out everywhere else", "Every device but this one, in every app on the site."),
+      step(2, "Choose a new password", "So whoever it was can’t sign back in.")),
+    go, said] };
 }
 const dayWord = (t) => {
   const d = new Date(t), today = new Date(), y = new Date(Date.now() - 86400e3);

@@ -39,6 +39,17 @@ async function weatherOf(env, userId) {
   let data = null; try { data = r ? JSON.parse(r.data) : null; } catch (_) {}
   return { ver: r?.ver || 0, data };
 }
+// What InFlight keeps of yours, in a word or two each (its letters can't be read: just how many)
+async function inflightOf(D, id) {
+  const one = (q) => D.prepare(q).bind(id).first().then((r) => r?.n || 0).catch(() => 0);
+  const [friends, groups, sent, places] = await Promise.all([
+    one("SELECT COUNT(*) AS n FROM pg_links WHERE (a = ?1 OR b = ?1) AND status = 'ok'"),
+    one("SELECT COUNT(*) AS n FROM pg_group_members WHERE user_id = ?1"),
+    one("SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = ?1"),
+    one("SELECT COUNT(*) AS n FROM pg_passport WHERE user_id = ?1"),
+  ]);
+  return { friends, groups, sent, places };
+}
 // The account as its page shows it (one being deleted: only that, and who)
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
@@ -58,7 +69,9 @@ async function view(env, u) {
     devices: ss.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, since: x.created_at, seenAt: x.seen_at,
       current: x.hash === u.sessionHash, stale: x.hash !== u.sessionHash && t - x.seen_at > STALE })),
     prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
-    apps: { weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0 } },
+    apps: { weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
+      notify: { places: (wx.data?.notify?.places || []).length, brief: !!wx.data?.notify?.brief } },
+      inflight: await inflightOf(D, u.id) },
   };
 }
 // a word to the account's email (as the account's: the same whichever app), or to another address (to)
