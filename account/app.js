@@ -375,8 +375,11 @@ async function leave(el) {
 const Sheet = { stack: [], cancel: null };
 function openSheet(view) {
   Sheet.stack = [view]; draw(false);
-  if (!sheetEl.open) { sheetEl.showModal(); document.body.classList.add("sheet-up"); }
+  // (the sheet itself takes the focus, not a field in it, so a phone's keyboard doesn't jump up before you ask for it,
+  // nor a button, with a ring round it)
+  if (!sheetEl.open) { sheetEl.showModal(); sheetEl.focus({ preventScroll: true }); document.body.classList.add("sheet-up"); }
 }
+sheetEl.tabIndex = -1;
 function pushSheet(view) { Sheet.stack.push(view); draw(true); }
 function popSheet() { Sheet.stack.pop(); if (Sheet.stack.length) draw(true); else closeSheet(); }
 const redraw = () => sheetEl.open && Sheet.stack.length && draw(false);
@@ -384,8 +387,6 @@ function draw(swap) {
   const v = Sheet.stack.at(-1)(), deep = Sheet.stack.length > 1;
   const left = v.left || (deep ? h("button.link.back", { type: "button", onclick: () => (v.onBack || popSheet)() }, h("span.vh", { text: "Back" }), icon("back", 22, 2.4)) : null);
   const right = v.right || h("button.x", { type: "button", "aria-label": "Close", onclick: closeSheet }, icon("x", 17, 2.6));
-  // (the sheet's own button first, so a phone's keyboard doesn't jump up before you ask for it)
-  (left || right).setAttribute("autofocus", "");
   const body = h("div.sheet-body", {}, ...v.body);
   if (swap && !still.matches) body.classList.add("swap");
   sheetEl.replaceChildren(h("div.grab", { "aria-hidden": "true" }), h("div.sheet-head", {}, h("div.l", {}, left), h("h2", { id: "sheet-title", text: v.title }), h("div.r", {}, right)), body);
@@ -905,14 +906,14 @@ document.addEventListener("visibilitychange", refresh);
 addEventListener("focus", refresh);
 setInterval(refresh, 60000);
 
-// ---- the large title, giving way to the bar ----
+// ---- glass behind the status bar, once the page has scrolled under it ----
 let ticking = false;
 function scrolled() {
   if (ticking) return;
   ticking = true;
   requestAnimationFrame(() => {
     ticking = false;
-    const t = Math.min(1, Math.max(0, (scrollY - (S.me?.signedIn ? 6 : 120)) / 38));
+    const t = Math.min(1, Math.max(0, scrollY / 24));
     document.documentElement.style.setProperty("--bar", t.toFixed(3));
   });
 }

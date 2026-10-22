@@ -152,7 +152,7 @@ One page for the georgefarrowgreen.com account every app on the site signs in wi
 address's root by `functions/_acctapp.js`; its API is `/api/account/`, `functions/api/account/[[path]].js`, answered
 only there). In keeping with the apps: iOS 27's Liquid Glass (panels of glass with a bright rim, blurred enough to read
 over anything) over a night sky with drifting light and a slow twinkle of stars (a dawn sky in light mode); grouped
-lists as Settings has them; a large title that gives way to the bar as the page scrolls; sheets that come up from below
+lists as Settings has them; a large title that scrolls with the page (glass behind the status bar once it's under it); sheets that come up from below
 (swipe one down by its top, or Esc) while the page steps back; and everything rising into place. Still with Reduce
 Motion, solid with Reduce Transparency.
 

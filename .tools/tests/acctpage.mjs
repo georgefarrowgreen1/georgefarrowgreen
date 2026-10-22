@@ -87,8 +87,8 @@ ok(/Confirm your email/.test(await text(L, '.banner')), 'and the email not yet c
 await shot(L, '01-signed-in');
 // the large title giving way to the bar
 await L.p.evaluate(() => scrollTo(0, 400)); await settle(L, 500);
-const bar = await L.p.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--bar')));
-ok(bar === 1, 'scrolled: the title moves up into the bar', String(bar));
+const bar = await L.p.evaluate(() => ({ glass: Number(getComputedStyle(document.documentElement).getPropertyValue('--bar')), header: !!document.querySelector('header, .bar'), title: document.querySelector('.large').getBoundingClientRect().bottom }));
+ok(bar.glass === 1 && !bar.header && bar.title < 0, 'scrolled: the large title goes with the page (no bar to take it), glass behind the status bar', JSON.stringify(bar));
 await shot(L, '02-scrolled');
 await L.p.evaluate(() => scrollTo(0, 0)); await settle(L, 300);
 
@@ -132,6 +132,8 @@ await shot(L, '07-checkup');
 await L.p.click('.hero .pill'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 700);
 const recedes = await L.p.evaluate(() => getComputedStyle(document.getElementById('page')).transform);
 ok(recedes !== 'none', 'a sheet comes up and the page steps back', recedes);
+const focus = await L.p.evaluate(() => ({ on: document.activeElement?.id, ring: getComputedStyle(document.activeElement).outlineStyle }));
+ok(focus.on === 'sheet' && focus.ring === 'none', 'the sheet takes the focus itself: no ring round its first button, no keyboard', JSON.stringify(focus));
 await shot(L, '03-edit-profile');
 await L.p.fill('#sheet .field:has-text("Name") input', 'Rowan Ash Hale');
 await L.p.fill('#sheet .at input', 'rowan_h');

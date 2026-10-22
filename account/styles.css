@@ -1,7 +1,7 @@
 /* Your georgefarrowgreen.com account: one page for the account every app on the site signs in with. In keeping with
    them: iOS 27's Liquid Glass (panels of glass with a bright rim and a darker hairline round it, blurred enough to read
    over anything) over a sky of slow light (stars on a dark night, dawn in light mode); grouped lists as iOS's Settings
-   has them; a large title that gives way to the bar as the page scrolls; sheets that come up from below and step the
+   has them; a large title that goes with the page, glass behind the status bar once it's scrolled under; sheets that come up from below and step the
    page back; and everything settling into place. All of it still with Reduce Motion, solid with Reduce Transparency. */
 
 :root {
@@ -61,6 +61,8 @@ button, input { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
 :focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+/* (a sheet takes the focus itself when it opens: no ring round it, nor round its first button) */
+dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 .vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .noscript { text-align: center; padding: 80px 24px; color: var(--text-2); }
 
@@ -77,25 +79,21 @@ a { color: inherit; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .stars { display: none; } }
 :root[data-theme="light"] .stars { display: none; }
 
-/* ---- the bar, and the page under it ---- */
-.bar { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: calc(52px + var(--top)); padding-top: var(--top); display: grid; place-items: center;
-  pointer-events: none; }
-.bar::before { content: ""; position: absolute; inset: 0; opacity: var(--bar, 0); background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
-  box-shadow: 0 0.5px 0 var(--line); transition: opacity 0.2s linear; }
-.bar-title { position: relative; font: 600 17px/1 var(--font); letter-spacing: -0.4px; opacity: var(--bar, 0); transform: translateY(calc((1 - var(--bar, 0)) * 6px)); }
+/* ---- behind the status bar (where the page runs under it): glass, once the page has scrolled under it ---- */
+.status { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: var(--top); pointer-events: none; opacity: var(--bar, 0);
+  background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); transition: opacity 0.2s linear; }
 .page { transform-origin: 50% 0; transition: transform 0.5s var(--glide), filter 0.5s var(--glide), border-radius 0.5s var(--glide); }
 body.sheet-up .page { transform: scale(0.94) translateY(calc(var(--top) + 10px)); border-radius: 28px; filter: brightness(0.86); }
-main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 64px) max(16px, env(safe-area-inset-right, 0px)) calc(48px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-@media (min-width: 760px) { main { padding-top: calc(var(--top) + 84px); } }
+main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16px, env(safe-area-inset-right, 0px)) calc(48px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+@media (min-width: 760px) { main { padding-top: calc(var(--top) + 72px); } }
 
-/* ---- the large title ---- */
-.large { margin: 0 4px 18px; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; transform-origin: 0 50%;
-  opacity: calc(1 - var(--bar, 0)); transform: scale(calc(1 - var(--bar, 0) * 0.06)); }
+/* ---- the large title, going with the page as it scrolls ---- */
+.large { margin: 0 4px 18px; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; }
 .lede { margin: -10px 4px 22px; color: var(--text-2); font-size: 15px; line-height: 1.4; max-width: 46ch; }
 
 /* ---- glass: the hero, the groups, the sheet ---- */
 .glass { position: relative; background: var(--sheen), var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
-@media (prefers-reduced-transparency: reduce) { .glass, .bar::before, dialog.sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-strong); } }
+@media (prefers-reduced-transparency: reduce) { .glass, .status, dialog.sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-strong); } }
 
 /* ---- settling in: each part of the page rising into place, one after another ---- */
 .rise { opacity: 0; transform: translateY(18px) scale(0.985); animation: rise 0.8s var(--glide) forwards; animation-delay: calc(var(--i, 0) * 70ms + 40ms); }
@@ -173,7 +171,7 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn .spin, .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.link { border: 0; background: none; padding: 8px; color: var(--tint-text); font-weight: 500; font-size: 16px; }
+.link { border: 0; background: none; padding: 8px; border-radius: 12px; color: var(--tint-text); font-weight: 500; font-size: 16px; }
 
 /* ---- signed out ---- */
 .welcome { display: grid; justify-items: center; text-align: center; gap: 10px; padding-top: 4vh; }
