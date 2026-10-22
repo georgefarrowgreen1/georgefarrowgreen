@@ -11,7 +11,7 @@
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
-import { HttpError, limit, deviceOf } from "./_pigeon.js";
+import { HttpError, limit, deviceOf, db, randomToken, hex, sha256 } from "./_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, cookieToken } from "./_account.js";
 import { accountRoutes, json, body, signedIn } from "./_accountapi.js";
 import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
@@ -76,6 +76,17 @@ export const ACCOUNT_ROUTES = {
     // (the notifications, for each of the account's devices, if they've changed)
     if (JSON.stringify(data.notify) !== JSON.stringify(was.data.notify)) await applyAccount(env, u.id, data.notify);
     return json({ ver: base + 1, data });
+  },
+  // The account's own page, opened signed in as you (from the account's card): a code good once, for a minute, for this
+  // sign-in, which the page swaps for one of its own (functions/api/account handoff), in whichever browser it opens in
+  "POST account-link": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), D = await db(env), t = Date.now();
+    await limit(env, "handoff:" + u.id, 30, 15 * 60e3);
+    const code = randomToken(24);
+    await D.batch([D.prepare("DELETE FROM pg_handoff WHERE expires < ?").bind(t),
+      D.prepare("INSERT INTO pg_handoff (hash, user_id, session, expires) VALUES (?, ?, ?, ?)").bind(hex(await sha256(code)), u.id, u.sessionHash, t + 60e3)]);
+    return json({ code });
   },
   // signing in and out, and the profile, as on every such page on the site (functions/_accountapi.js); signed out
   // here, this device's notifications stay, as its own

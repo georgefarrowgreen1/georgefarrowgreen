@@ -19,37 +19,9 @@ export const signOut = (endpoint) => call("signout", { method: "POST", body: { e
 // a change, made from version base: { ver, data } as kept now; or { conflict, ver, data } where it's moved on meanwhile
 export const save = (base, data) => call("me", { method: "PUT", body: { base, data } });
 
-// ---- your profile (the account's, the same in every app on the site) ----
-// changes to your name or handle ({ name?, handle? }); a new photo (a JPEG); no photo. Each → the account, as me()
-export const setProfile = (changes) => call("me/profile", { method: "PATCH", body: changes });
-export async function setPhoto(jpeg) {
-  let r;
-  try { r = await fetch(`${API}/me/photo`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: jpeg, credentials: "same-origin", signal: AbortSignal.timeout(30000) }); }
-  catch (_) { throw Object.assign(new Error("You're offline. Try again when you're back online."), { offline: true }); }
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(j.error || `Something went wrong (${r.status}).`), { status: r.status });
-  return j;
-}
-export const dropPhoto = () => call("me/photo", { method: "DELETE" });
+// ---- the account's own page, opened signed in as you: a code good once, for a minute (functions/_wxacct.js) ----
+export const accountLink = () => call("account-link", { method: "POST", body: {} });
 export const photoUrl = (at) => `${API}/me/photo?v=${at}`;
-// A picture as a profile photo: the middle square of it, at most 512 pixels across, as a JPEG (which leaves out
-// anything else in the file, where it was taken among it)
-export async function asPhoto(file) {
-  let img;
-  try { img = await createImageBitmap(file); }
-  catch (_) {
-    const url = URL.createObjectURL(file);
-    try { img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; }); }
-    catch (_) { throw new Error("That picture couldn't be read. Try another one."); }
-    finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
-  }
-  const w = img.width, h = img.height, side = Math.min(w, h), size = Math.min(512, side), c = document.createElement("canvas");
-  c.width = c.height = size;
-  c.getContext("2d").drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
-  const jpg = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.85));
-  if (!jpg) throw new Error("That picture couldn't be read. Try another one.");
-  return jpg;
-}
 
 // ---- signing in ----
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

@@ -205,7 +205,7 @@ Motion, solid with Reduce Transparency.
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
   nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
   `argon2.js`) and the apps' icons.
-- Weather's Settings (Password, passkeys and devices) and InFlight's Privacy & Security (Your Account) link here.
+- Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over), with the way back to the app.
 - Tests: `.tools/tests/acctpage.mjs` (67 checks: signed in from InFlight, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
@@ -530,11 +530,16 @@ so there's nothing to set up beyond the address.
   itself, with a passkey (the site's: one made anywhere on the site works here)
   or an email and password (stretched on the device as everywhere on the site,
   Argon2id via a copy of hash-wasm's build, `weather/argon2.js`; the password
-  never leaves it). Signed in, it shows who, whether your places are in step
-  ("In step", "Saving…", "Will go up when you're online"), which devices get
-  your notifications (and "Send notifications here too" where this one doesn't),
-  **Password, passkeys and devices** (the account's own page, account.<site>),
-  and Sign out, which signs the browser out of the account; and Places says
+  never leaves it). Signed in, it's kept simple: **one card for the account**
+  (your photo, name and @handle) that opens the account's own page
+  (account.<site>, where the profile, email, password, passkeys and devices
+  are), signed in as you in whichever browser it opens in (Weather asks for a
+  code good once, for a minute, `POST /api/weather/account-link`, and the page
+  swaps it for a sign-in of its own, as InFlight's Edit Profile does; the page
+  shows the way back to Weather); then whether your places are in step ("In
+  step", "Saving…", "Will go up when you're online"), which devices get your
+  notifications (and "Send notifications here too" where this one doesn't),
+  and a quiet Sign out, which signs the browser out of the account; and Places says
   "In step with your account". What's kept is one record with a version
   (`functions/_wxacct.js`, wx_accts: the places, the settings, the notification
   choices; at most 50 places and 48 KB); a change goes up a moment after it's
@@ -546,13 +551,9 @@ so there's nothing to set up beyond the address.
   out keeps everything on the device, and its notifications go on as its own.
   The page never holds the sign-in (the browser does, out of its reach), and the
   account's API answers only Weather's own pages. **Your profile** is the
-  account's, the same in every app on the site: Weather shows your photo, name,
-  @handle and email, and **Edit profile** changes the photo (the middle square,
-  at most 512 pixels, as a JPEG: nothing else in the file goes), the name and the
-  handle by the same rules as anywhere on the site (`functions/_profile.js`: a
-  name that can't pass for a web address, a handle once a day, its old one held
-  30 days, 20 photos a day); changed in either app, it's changed in the other.
-  The email is your sign-in, shown as it is.
+  account's, the same in every app on the site: Weather shows your photo, name
+  and @handle, and they're changed on the account's page (by the site's rules,
+  `functions/_profile.js`); changed anywhere, Weather shows it when you're back.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you

@@ -1907,16 +1907,9 @@ async function refreshDevices() {
 }
 // who, as the account has them: name, handle, email, the photo's time (and the account's own id, to know it again)
 const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, email: r.email || "", photoAt: r.photoAt || null });
-// a change to the profile made here, as the server's sent it back
-function profileNow(r) {
-  if (!S.acct) return;
-  Object.assign(S.acct, profileOf(r));
-  const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, ...profileOf(r) });
-  drawAccount();
-}
 // this device among the account's that get its notifications
 const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
-function signedOut() { store.del("wx:acct"); S.acct = null; editing = false; newPhoto = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
+function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
 async function signIn(how, email, password) {
   const said = $("acct-said"), btns = [...$("acct").querySelectorAll("button")];
   said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
@@ -1957,58 +1950,35 @@ function drawAccount() {
     return;
   }
   const n = S.settings.notify, to = a.devices.map((d) => (d.id === n.devId ? "This device" : d.label));
+  // (who, and the way to everything else about the account: its own page, where the profile, email, password, passkeys
+  // and devices are)
+  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com account`))];
   box.replaceChildren(...[
-    h("div", { class: "acct-card in" }, avatarOf(a),
-      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com account`))),
-    editing ? profileForm(a) : h("button", { class: "acct-btn", type: "button", id: "acct-edit", onclick: () => { editing = true; drawAccount(); $("acct-name")?.focus(); } }, "Edit profile"),
+    accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...who, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
+      : h("div", { class: "acct-card in" }, ...who),
     h("ul", { class: "acct-rows" },
-      a.email ? h("li", {}, h("span", {}, "Email"), h("span", { class: "acct-mail" }, a.email)) : null,
       h("li", {}, h("span", {}, "Places and settings"), h("span", { class: a.state === "ok" ? "acct-ok" : "", id: "acct-state" }, a.state === "ok" ? h("span", { svg: TICK }) : null, STATES[a.state] || STATES.ok)),
       h("li", {}, h("span", {}, "Notifications go to"), h("span", {}, to.length ? and(to) : "No devices yet"))),
     notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn", type: "button", id: "acct-here", onclick: sendHere }, "Send notifications here too") : null,
-    accountPage() ? h("a", { class: "acct-btn", id: "acct-manage", href: accountPage() }, "Password, passkeys and devices") : null,
-    h("button", { class: "acct-btn", type: "button", id: "acct-out", onclick: signOutHere }, "Sign out"),
+    h("button", { class: "acct-btn quiet", type: "button", id: "acct-out", onclick: signOutHere }, "Sign out"),
     said].filter(Boolean));
 }
-// The account's own page (account.<site>, beside weather.<site>): your password, passkeys and signed-in devices
+// The account's own page (account.<site>, beside weather.<site>), opened signed in as you: a code good once, for a
+// minute, handed over in the address's # (the page swaps it for a sign-in of its own, in whichever browser it opens in,
+// a Home Screen app's included, and takes it out of the address). The window's opened at once, from the tap (a phone
+// won't open one later), and sent on when the code's back.
 const accountPage = () => (location.hostname.startsWith("weather.") ? `${location.origin.replace("//weather.", "//account.")}/` : null);
+async function openAccount() {
+  const w = window.open("", "_blank");
+  try {
+    const { code } = await A.accountLink();
+    const url = `${accountPage()}#${new URLSearchParams({ handoff: code, from: "weather" })}`;
+    if (w && !w.closed) w.location.href = url; else location.href = url;
+  } catch (e) { w?.close(); const said = $("acct-said"); if (said) { said.textContent = e.message; said.classList.add("bad"); } }
+}
 // Your photo (the account's: the same in every app on the site), or your initial
 const avatarOf = (a, url = a.photoAt ? A.photoUrl(a.photoAt) : null) => h("span", { class: "acct-av", "aria-hidden": "true" },
   url ? h("img", { src: url, alt: "", width: "48", height: "48", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase());
-// Editing your profile: a new photo (or none), your name, your handle. Saved, it's the account's, so the same in every
-// app on the site.
-let editing = false, newPhoto = null;
-function profileForm(a) {
-  const shown = newPhoto === "none" ? null : newPhoto ? newPhoto.url : a.photoAt ? A.photoUrl(a.photoAt) : null;
-  const pick = h("input", { type: "file", accept: "image/*", id: "acct-photo-file", hidden: true, onchange: async (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    try { const jpg = await A.asPhoto(f); if (newPhoto?.url) URL.revokeObjectURL(newPhoto.url); newPhoto = { jpg, url: URL.createObjectURL(jpg) }; drawAccount(); $("acct-photo")?.focus(); }
-    catch (err) { $("acct-said").textContent = err.message; $("acct-said").classList.add("bad"); }
-  } });
-  const done = () => { if (newPhoto?.url) URL.revokeObjectURL(newPhoto.url); newPhoto = null; editing = false; drawAccount(); $("acct-edit")?.focus(); };
-  const form = h("form", { class: "acct-form acct-profile", onsubmit: async (e) => {
-    e.preventDefault();
-    const said = $("acct-said"), btns = [...form.querySelectorAll("button")], name = form.elements.namedItem("name").value.trim(), handle = form.elements.namedItem("handle").value.trim().replace(/^@/, "");
-    said.classList.remove("bad"); said.textContent = "Saving…"; btns.forEach((b) => (b.disabled = true));
-    try {
-      let r = null;
-      if (newPhoto === "none" && a.photoAt) r = await A.dropPhoto();
-      else if (newPhoto?.jpg) r = await A.setPhoto(newPhoto.jpg);
-      const changes = { ...(name !== a.name ? { name } : {}), ...(handle.toLowerCase() !== a.handle ? { handle } : {}) };
-      if (Object.keys(changes).length) r = await A.setProfile(changes);
-      if (r) profileNow(r);
-      done();
-      $("acct-said").textContent = r ? "Saved. It's the same everywhere you use your account." : "";
-    } catch (err) { said.textContent = err.message; said.classList.add("bad"); btns.forEach((b) => (b.disabled = false)); }
-  } },
-    h("div", { class: "acct-photo-row" }, avatarOf(a, shown),
-      h("button", { class: "acct-btn small", type: "button", id: "acct-photo", onclick: () => pick.click() }, shown ? "Change photo" : "Add photo"),
-      shown ? h("button", { class: "acct-btn small quiet", type: "button", id: "acct-nophoto", onclick: () => { if (newPhoto?.url) URL.revokeObjectURL(newPhoto.url); newPhoto = "none"; drawAccount(); } }, "Remove") : null, pick),
-    h("label", { class: "acct-field" }, h("span", {}, "Name"), h("input", { type: "text", name: "name", id: "acct-name", value: a.name, maxlength: "50", autocomplete: "name", required: true })),
-    h("label", { class: "acct-field" }, h("span", {}, "Handle"), h("span", { class: "acct-at" }, "@", h("input", { type: "text", name: "handle", value: a.handle, maxlength: "20", autocomplete: "username", autocapitalize: "off", spellcheck: "false", required: true }))),
-    h("div", { class: "acct-form-btns" }, h("button", { class: "acct-btn primary", type: "submit" }, "Save"), h("button", { class: "acct-btn", type: "button", onclick: done }, "Cancel")));
-  return form;
-}
 // beside "Saved" in Places: that they're in step with the account
 function drawInStep() {
   const sub = document.querySelector("#places .sheet-sub");

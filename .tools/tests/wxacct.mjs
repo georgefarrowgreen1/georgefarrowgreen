@@ -94,7 +94,7 @@ ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com account/.test(lSa
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
-ok(await L.p.getAttribute('#acct-manage', 'href') === 'http://account.gfg.test:8788/', 'Password, passkeys and devices: on the account\'s own page', await L.p.getAttribute('#acct-manage', 'href'));
+ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage')) && !/Email/.test(lSays), 'one card for the account (its page has the rest: no profile editor, email or other buttons here)', lSays);
 await closeSheet(L);
 
 // ---- 2. A phone with places of its own: signed in to Weather with email and password; the two lots put together ----
@@ -152,19 +152,29 @@ const hellos = readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').fil
 ok(hellos.length === 2, 'each device said hello once ("Notifications on")', String(hellos.length));
 await closeSheet(L);
 
-// ---- 3b. The profile is the account's: a photo and a name set in Weather are InFlight's, and the other way ----
+// ---- 3b. The profile is the account's: the card opens the account's page, signed in, where it's changed; Weather and
+// InFlight show it ----
 {
-  const jpeg = Buffer.from((await P.p.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await settings(P);
-  await P.p.click('#acct-edit');
-  await P.p.setInputFiles('#acct-photo-file', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
-  await P.p.waitForSelector('#acct .acct-photo-row img', { timeout: 10000 }).catch(() => {});
-  await P.p.fill('#acct-name', 'Sam T');
-  await P.p.click('#acct .acct-profile button[type=submit]');
-  await P.p.waitForFunction(() => /^Saved/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  const [W] = await Promise.all([P.ctx.waitForEvent('page'), P.p.click('#acct-open')]);
+  await W.waitForURL(/account\.gfg\.test:8788\/$/, { timeout: 20000 }).catch(() => {});
+  await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
+  await W.waitForTimeout(1200);
+  const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
+  ok(/^http:\/\/account\.gfg\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
+  const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
+  await W.click('.hero .pill'); await W.waitForSelector('#sheet[open] .sheet-body'); await W.waitForTimeout(600);
+  await W.setInputFiles('#sheet input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await W.waitForSelector('.hero .avatar img', { timeout: 15000 }).catch(() => {});
+  await W.fill('#sheet .field:has-text("Name") input', 'Sam T'); await W.click('#sheet .link.done');
+  await W.waitForFunction(() => /Sam T\b/.test(document.querySelector('.hero')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+  await W.close();
   const row = rows("SELECT name, avatar_at FROM pg_users WHERE handle = 'sam'")[0];
-  const shown = await P.p.evaluate(() => ({ name: document.getElementById('acct-title')?.textContent, img: document.querySelector('#acct .acct-card img')?.naturalWidth || 0, mail: document.querySelector('#acct .acct-mail')?.textContent }));
-  ok(row?.name === 'Sam T' && row.avatar_at && shown.name === 'Sam T' && shown.img === 512 && shown.mail === 'sam@example.com', 'a photo (a 512-pixel square) and a new name, set in Weather: the account\'s, shown with the email', JSON.stringify({ row, shown }));
+  await P.p.reload(); await P.p.waitForSelector('.day-row'); await P.p.waitForTimeout(1500);
+  await settings(P);
+  await P.p.waitForFunction(() => document.getElementById('acct-title')?.textContent === 'Sam T', null, { timeout: 10000 }).catch(() => {});
+  const shown = await P.p.evaluate(() => ({ name: document.getElementById('acct-title')?.textContent, img: document.querySelector('#acct .acct-card img')?.naturalWidth || 0 }));
+  ok(row?.name === 'Sam T' && row.avatar_at && shown.name === 'Sam T' && shown.img === 512, 'changed there: the account\'s, and Weather shows it (the photo a 512-pixel square)', JSON.stringify({ row, shown }));
   // InFlight has them too, on its own sign-in (the laptop's), and a change there is Weather's
   const C = await L.ctx.newPage(); await C.goto(`${CHAT}/`); await C.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});
   const inflight = await C.evaluate(async () => {
@@ -180,15 +190,11 @@ await closeSheet(L);
   await P.p.reload(); await P.p.waitForSelector('.day-row'); await P.p.waitForTimeout(1500);
   await settings(P);
   ok(await P.p.textContent('#acct-title') === 'Sam Taylor', 'and the name changed back in InFlight is Weather\'s', await P.p.textContent('#acct-title'));
-  // the handle, by the account's rules: changed here, then not again for a day
-  await P.p.click('#acct-edit'); await P.p.fill('#acct input[name=handle]', 'samt'); await P.p.click('#acct .acct-profile button[type=submit]');
-  await P.p.waitForFunction(() => /^Saved/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
-  await P.p.click('#acct-edit'); await P.p.fill('#acct input[name=handle]', 'samtaylor'); await P.p.click('#acct .acct-profile button[type=submit]');
-  await P.p.waitForFunction(() => /once a day/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
-  ok(rows("SELECT handle FROM pg_users WHERE email = 'sam@example.com'")[0]?.handle === 'samt' && /You can change your handle once a day/.test(await P.p.textContent('#acct-said')), 'the handle, changed in Weather by the account\'s rules: then not again for a day', await P.p.textContent('#acct-said'));
   await closeSheet(P);
   const noPic = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me/photo', headers: { Host: 'weather.gfg.test:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
   ok(noPic === 401, 'the photo only for whoever\'s signed in', String(noPic));
+  const xl = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/account-link', method: 'POST', headers: { Host: 'weather.gfg.test:8788', Origin: 'http://chat.gfg.test:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end('{}'); });
+  ok(xl === 403, 'a code only for Weather\'s own pages', String(xl));
 }
 
 // ---- 4. A passkey made in InFlight signs in to Weather, on another browser ----

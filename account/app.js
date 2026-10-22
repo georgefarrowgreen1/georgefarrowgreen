@@ -21,24 +21,27 @@ const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
 const S = { me: null, settled: false, pulled: 0 };
-// Opened from InFlight (its profile's Edit): a sign-in handed over by a code in the address's # (good once, for a
-// minute: taken out of the address at once, so it's never in the history or a bookmark), what to open, and the way
-// back. (Kept for the visit, so a reload still knows the way back.)
+// Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
+// (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
+// and the way back. (Kept for the visit, so a reload still knows the way back.)
+const APPS = { inflight: { name: "InFlight", sub: "chat" }, weather: { name: "Weather", sub: "weather" } };
 const HANDOFF = (() => {
   const p = new URLSearchParams(location.hash.slice(1)), code = p.get("handoff");
   if (!code) return null;
   history.replaceState(null, "", location.pathname + location.search);
-  if (p.get("from") === "inflight") try { sessionStorage.setItem("acct-from", "inflight"); } catch (_) {}
+  if (APPS[p.get("from")]) try { sessionStorage.setItem("acct-from", p.get("from")); } catch (_) {}
   return { code, open: p.get("open") };
 })();
-const fromApp = () => { try { return sessionStorage.getItem("acct-from") === "inflight"; } catch (_) { return false; } };
+// (which app sent you here: InFlight's profile, or Weather's account card)
+function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
 const justEditing = () => HANDOFF?.open === "profile" && fromApp();
 // back to InFlight: this window closed where InFlight opened it, else InFlight opened here
 function backToApp() {
+  const app = APPS[fromApp()] || APPS.inflight;
   try { sessionStorage.removeItem("acct-from"); } catch (_) {}
   try { window.close(); } catch (_) {}
-  setTimeout(() => { location.href = siteUrl("chat"); }, 250);
+  setTimeout(() => { location.href = siteUrl(app.sub); }, 250);
 }
 
 // ---- building the page ----
@@ -208,7 +211,7 @@ function signedIn(r) {
     h("img", { src: img, alt: "", width: 54, height: 54 }), h("b", { text: name }), h("span", { text: what }),
     h("span.open", {}, "Open", icon("open", 15, 2.4)));
   return [
-    fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), "InFlight")),
+    fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name)),
     r(h("h1.large", { text: "Account" })),
     r(h("section.hero.glass", { "aria-label": "Your profile" }, avatar(m),
       h("h2", { text: m.name }),
