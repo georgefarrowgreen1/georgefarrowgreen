@@ -77,8 +77,13 @@ await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', {
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
 ok(/Your apps/i.test(home) && /InFlight/.test(home) && /Weather/.test(home), 'your apps: both of them', home);
-const links = await L.p.$$eval('.app', (a) => a.map((x) => x.getAttribute('href')));
-ok(links.join() === `${CHAT}/,${WX}/`, 'each app\'s tile opens it, on this site', links.join());
+// (each app's tile opens what it keeps of yours, and the way into it: acctmore.mjs)
+const links = [];
+for (const name of ['InFlight', 'Weather']) {
+  await L.p.click(`main button.app:has(b:text-is("${name}"))`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);
+  links.push(await L.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))); await closeSheet(L);
+}
+ok(links.join() === `${CHAT}/,${WX}/`, 'each app\'s tile opens its sheet, and that the app, on this site', links.join());
 ok(/Passkeys 1/.test(home) && /Signed-in devices 1/.test(home), 'sign-in and security: the passkey made in InFlight, and this device', home.match(/Passkeys \S+|Signed-in devices \S+/g)?.join(' | '));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
 const ck = await text(L, '.checkup');

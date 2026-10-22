@@ -159,11 +159,20 @@ Motion, solid with Reduce Transparency.
 - **Signed out:** sign in with a passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it). New accounts are made in
   InFlight.
-- **Signed in:** your profile (photo, name, handle, email) with **Edit profile**; a **security check-up** (a ring and
-  four rows: email confirmed, a passkey saved, the password not in a known data breach, no devices left unused for 3
-  months, each with a one-tap fix); **Your apps** (a tile for each, with what it keeps of yours, opening it);
-  **Sign-in and security**, **Preferences**, **Your data**, **Sign out** (of every app on the site, in this browser) and
-  **Delete account**.
+- **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
+  camera badge) to pick a new one straight away. A **security check-up** (a ring and four rows: email confirmed, a
+  passkey saved, the password not in a known data breach, no devices left unused for 3 months, each with a one-tap fix),
+  folded to one line ("Well protected, all 4 checks done") when there's nothing to do, opened with a tap. **Your apps**
+  (a tile for each); **Sign-in and security**, **Preferences**, **Your data**, **Sign out** (of every app on the site, in
+  this browser) and **Delete account**. On a wide screen (1000 pixels and up), two columns: the profile and check-up
+  stay in view on the left while the rest scrolls on the right.
+- **Your code:** a QR code of the link that adds you in InFlight (`#add=handle`, drawn by InFlight's own `pigeon/qr.js`,
+  shared here as `/qr.js`), for a friend's camera, with **Share** (where the browser has a share sheet) and **Copy link**.
+- **Your apps:** each tile opens a sheet of what that app keeps of yours, and **Open** to go to it. InFlight: how many
+  friends, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have
+  gone after a month), places in your passport and groups; counts only, as its letters are end-to-end encrypted.
+  Weather: its saved places (the first few by name), its notifications (how many places, and the morning brief) and
+  units.
 - **Email.** Not confirmed: a banner up top sends a confirm link (the same one InFlight sends, said as the account's).
   A new email: a link to it (good for 2 days) and a word to the old one (the new one half hidden); nothing changes until
   the link's opened, then the old one's told. The links open the page (`#confirm=`, `#email=`, `#keep=`): their token is
@@ -176,13 +185,17 @@ Motion, solid with Reduce Transparency.
   as checked (InFlight won't take one from a breach).
 - **Passkeys:** each with a name of your own (tap it to change it, or take it away) and where it's saved (iCloud
   Keychain, Google Password Manager, 1Password and so on, from the AAGUID in the authenticator data a new one comes with:
-  `functions/_activity.js` providerOf; InFlight sends it too now).
+  `functions/_activity.js` providerOf; InFlight sends it too now). Signed in here with a password, with no passkey yet,
+  on a device that can make one (Face ID, Touch ID, Windows Hello: it asks the browser), a sheet offers one, at most
+  once a month on that device.
 - **Signed-in devices:** each with where and when; those unused for 3 months are marked, with **Sign out N unused
-  devices**, as well as one at a time or all the others.
+  devices**, as well as one at a time or all the others. On a touch screen a device's row slides left to show
+  **Sign out**, and a passkey's to show **Remove**, as lists do on a phone (the buttons stay, for a keyboard).
 - **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken
   away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each
   with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from InFlight's own sign-in and
-  security too).
+  security too). A password sign-in from another device or place has **Not you?**: it signs every other device out,
+  then asks for a new password. Passkey sign-ins don't, as a passkey needs your own device.
 - **Preferences, for every app on the site that has them:** **Appearance** (Automatic, Light, Dark): this page and
   InFlight, which already kept it with the account (InFlight now keeps it only once it's been chosen, not its default).
   **Units** (temperature, wind, rain, pressure, time): Weather's, kept in its record for the account so every device
@@ -210,7 +223,10 @@ Motion, solid with Reduce Transparency.
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
-  screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here) and
+  screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
+  `.tools/tests/acctmore.mjs` (37 checks: the photo from its badge, your code and its link, each app's sheet and its
+  counts, the passkey offer only where one can be made, the check-up folded and opened, "Not you?" only on another
+  device's password sign-in, rows slid to sign out and remove, two columns on a wide screen) and
   `unit/activity.test.mjs` (passkey providers).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing

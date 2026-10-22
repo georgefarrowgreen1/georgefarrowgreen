@@ -1,0 +1,218 @@
+// The account page's newer touches (acctpage.mjs has the rest): the photo changed by tapping it; your code (a QR code of
+// the link that adds you in InFlight, and the link copied); what each app keeps of yours, in its sheet (InFlight's
+// counts, pigeons sent counted as its log does; Weather's places, notifications and units); a word about a passkey after
+// a password sign-in, only where the device can make one, and one made from it; the check-up folded to a line when all's
+// done, and opened; "Not you?" on a password sign-in from another device (not a passkey one, nor this browser's), which
+// signs everywhere else out then asks for a new password; device and passkey rows slid to sign out and remove; and two
+// columns on a wide screen. The site's addresses are stood in for by gfg.test, as in acctpage.mjs.
+import { chromium } from 'playwright';
+import { execSync } from 'child_process';
+import { writeFileSync } from 'fs';
+const [,, S, out] = process.argv;
+const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
+const sql0 = (q) => { writeFileSync(`${S}/acctmore.sql`, q); return execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --file ${S}/acctmore.sql --json`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString(); };
+const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
+const rows = (q) => JSON.parse(sql(q))[0].results;
+let fails = 0; const errs = [];
+const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
+
+const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${ACCT}`] });
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const WINDOWS = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+// a phone (with Face ID, as it were: a passkey can be made on it), or a laptop that can't make one
+async function browser(name, { laptop = false } = {}) {
+  const ctx = await b.newContext(laptop ? { viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1, locale: 'en-GB', userAgent: WINDOWS, colorScheme: 'dark' }
+    : { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'en-GB', isMobile: true, hasTouch: true, userAgent: IPHONE, colorScheme: 'dark' });
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ACCT });
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => errs.push(`${name}: ${e.message}`));
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 40[13]|Cross-Origin-Opener-Policy header has been ignored/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
+  const cdp = await ctx.newCDPSession(p);
+  if (!laptop) {
+    await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  }
+  return { ctx, p, cdp, name };
+}
+const shot = (x, n) => x.p.screenshot({ path: `${out}/${n}.png` });
+const settle = (x, ms = 900) => x.p.waitForTimeout(ms);
+const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
+const sheetText = (x) => text(x, '#sheet');
+const openRow = async (x, title) => { await x.p.click(`main .row:has(b:text-is("${title}"))`); await x.p.waitForSelector('#sheet[open] .sheet-body'); await settle(x, 700); };
+const closeSheet = async (x) => { await x.p.click('#sheet .sheet-head .x'); await x.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(x, 300); };
+const account = async (x) => { await x.p.goto('about:blank'); await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
+const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
+const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 2500 }).catch(() => null)) { await x.p.fill('#sheet input[type=password]', pw); await x.p.click('#sheet form .btn'); } };
+const signIn = async (x) => {
+  await x.p.fill('main input[type=email]', 'rowan@example.com'); await x.p.fill('main input[type=password]', PW); await x.p.click('main form .btn');
+  await waitText(x, /Rowan Hale/);
+};
+const signOut = async (x) => { await x.p.click('main .row.action:text-is("Sign out")'); await x.p.waitForSelector('main input[type=password]', { timeout: 15000 }); await settle(x, 500); };
+// a finger dragged sideways (or up) across what's at sel
+async function drag(x, sel, dx, dy = 0) {
+  const r = await x.p.$eval(sel, (el) => { const b = el.getBoundingClientRect(); return { x: b.right - 40, y: b.top + b.height / 2 }; });
+  const at = (i) => [{ x: r.x + (dx * i) / 10, y: r.y + (dy * i) / 10, id: 1 }];
+  await x.cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+  for (let i = 1; i <= 10; i++) { await x.cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(i) }); await x.p.waitForTimeout(16); }
+  await x.cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await settle(x, 700);
+}
+
+// ---- 1. Signed up in InFlight, without a passkey; what it's done there and in Weather, as if over months ----
+const P = await browser('phone');
+await P.p.goto(`${CHAT}/`); await P.p.waitForSelector('.welcome', { timeout: 20000 }); await P.p.click('[data-act=to][data-id=signup]');
+await P.p.fill('#f-name', 'Rowan Hale'); await P.p.fill('#f-handle', 'rowan'); await P.p.fill('#f-email', 'rowan@example.com'); await P.p.fill('#f-password', PW);
+await P.p.click('[data-form=signup] .btn'); await P.p.waitForSelector('#city', { state: 'attached', timeout: 30000 });
+await P.p.selectOption('#city', 'London'); await P.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 }); await P.p.click('[data-act=onbdone]'); await P.p.waitForSelector('.tabs', { timeout: 20000 });
+const uid = rows("SELECT id FROM pg_users WHERE handle = 'rowan'")[0].id, t = Date.now(), DAY = 86400e3;
+// 4 friends (and one asked, not yet a friend), 2 groups; 3 pigeons now, a group pigeon to 2 people, and 4 whose messages
+// went after a month (9 sent, as its log counts them); 6 places stamped; 3 of Weather's places, 1 notifying, and the brief
+const wx = { places: [['London', 51.51, -0.13], ['Edinburgh', 55.95, -3.19], ['St Ives', 50.21, -5.48]].map(([name, lat, lon]) => ({ name, lat, lon })), settings: { temp: 'c', wind: 'kmh' },
+  notify: { places: [{ name: 'London', lat: 51.51, lon: -0.13, rain: true, warn: true }], brief: { name: 'London', lat: 51.51, lon: -0.13 }, briefAt: '07:00' } };
+const n = (k, f) => Array.from({ length: k }, (_, i) => f(i + 1)).join(',\n  ');
+sql(`
+INSERT INTO pg_links (a, b, status, created_at) VALUES ${n(4, (i) => `('${i % 2 ? uid : 'friend' + i}', '${i % 2 ? 'friend' + i : uid}', 'ok', ${t})`)}, ('${uid}', 'asked1', 'pending', ${t});
+INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES ('g1', '${uid}', '${uid}', ${t}), ('g2', '${uid}', 'friend1', ${t});
+INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at) VALUES ${n(3, (i) => `('m${i}', '${uid}', 'friend${i}', 'x', 50, ${t - i * DAY}, ${t - i * DAY + 3600e3})`)};
+INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at) VALUES ('in1', 'friend1', '${uid}', 'x', 50, ${t - DAY}, ${t - DAY + 3600e3});
+INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, pigeon, sent_at) VALUES ('gm1', 'g1', '${uid}', 'x', 'k', 'standard', ${t - DAY});
+INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at) VALUES ('gm1', 'friend1', 'w', 40, ${t}), ('gm1', 'friend2', 'w', 60, ${t});
+INSERT INTO pg_flights (id, msg_id, sender, recipient, sent_at) VALUES ${n(4, (i) => `('f${i}', 'f${i}', '${uid}', 'friend1', ${t - (40 + i) * DAY})`)};
+INSERT INTO pg_passport (user_id, place, first_at) VALUES ${n(6, (i) => `('${uid}', 'Place ${i}', ${t - i * DAY})`)};
+CREATE TABLE IF NOT EXISTS wx_accts (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, ver INTEGER NOT NULL, updated INTEGER);
+INSERT INTO wx_accts (user_id, data, ver, updated) VALUES ('${uid}', '${JSON.stringify(wx)}', 1, ${t});
+`);
+await account(P);
+ok(/Rowan Hale/.test(await text(P)), 'the account page, signed in from InFlight');
+
+// ---- 2. Your photo: tapped, and a new one straight from the picker ----
+ok(await P.p.$('main .hero button.avatar-btn .cam') && /Add a photo/.test(await P.p.$eval('main .avatar-btn', (e) => e.getAttribute('aria-label'))), 'the photo: a button, with a camera badge');
+const jpeg = Buffer.from((await P.p.evaluate(() => {
+  const c = document.createElement('canvas'); c.width = c.height = 300; const g = c.getContext('2d');
+  g.fillStyle = '#d9637a'; g.fillRect(0, 0, 300, 300); g.fillStyle = '#ffe2a8'; g.beginPath(); g.arc(150, 170, 60, 0, 7); g.fill();
+  return c.toDataURL('image/jpeg', 0.9);
+})).split(',')[1], 'base64');
+const [chooser] = await Promise.all([P.p.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), P.p.click('main .avatar-btn')]);
+ok(!!chooser, 'tapping it opens the picker, with no sheet in the way', String(await P.p.$('#sheet[open]')));
+if (chooser) await chooser.setFiles({ name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+await P.p.waitForSelector('main .hero .avatar img', { timeout: 15000 }).catch(() => {});
+ok(!!(await P.p.$('main .hero .avatar img')) && !!rows(`SELECT avatar_at FROM pg_users WHERE id = '${uid}'`)[0].avatar_at && /Photo updated/.test(await text(P, '#toast')),
+  'the new photo, saved and shown', await text(P, '#toast'));
+ok(/Change your photo/.test(await P.p.$eval('main .avatar-btn', (e) => e.getAttribute('aria-label'))), 'and the button now says it changes it');
+await shot(P, '01-photo');
+
+// ---- 3. Your code: the link that adds you in InFlight, as a QR code, and copied ----
+await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);
+const link = `${CHAT}/#add=rowan`;
+const drawn = await P.p.evaluate(async (l) => {
+  const svg = document.querySelector('#sheet .qr svg'); if (!svg) return null;
+  const { qrSvg } = await import('./qr.js');
+  const want = new DOMParser().parseFromString(qrSvg(l), 'image/svg+xml').querySelector('path').getAttribute('d');
+  return { same: svg.querySelector('path')?.getAttribute('d') === want, label: svg.getAttribute('aria-label') };
+}, link);
+ok(drawn?.same && /@rowan/.test(drawn.label), 'your code: a QR code of the link that adds you in InFlight', JSON.stringify(drawn));
+ok(/Rowan Hale/.test(await sheetText(P)) && /@rowan/.test(await sheetText(P)) && /add you in InFlight/.test(await sheetText(P)), 'with who it adds, and what it does');
+await P.p.click('#sheet .btn:has-text("Copy link")'); await settle(P, 400);
+const copied = await P.p.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
+ok(copied === link && /Link copied/.test(await text(P, '#toast')), 'the link, copied', copied);
+await shot(P, '02-code');
+await closeSheet(P);
+
+// ---- 4. Each app's sheet: what it keeps of yours, and the way into it ----
+await P.p.click('main button.app:has(b:text-is("InFlight"))'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
+const inf = await sheetText(P);
+ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'InFlight: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
+ok(/end-to-end encrypted/.test(inf) && (await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${CHAT}/`, 'the letters not counted (they can\'t be read here), and the way in', inf);
+ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'InFlight', 'the sheet named, for a screen reader');
+await shot(P, '03-app-inflight');
+await closeSheet(P);
+await P.p.click('main button.app:has(b:text-is("Weather"))'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
+const wxs = await sheetText(P);
+ok(/Saved places 3/.test(wxs) && /London · Edinburgh · St Ives/.test(wxs) && /Notifications 1 place · morning brief/.test(wxs) && /Units °C · km\/h/.test(wxs), 'Weather: its places by name, notifications, units', wxs);
+ok((await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${WX}/`, 'and the way in');
+await shot(P, '04-app-weather');
+await closeSheet(P);
+
+// ---- 5. Signed in with a password, and no passkey: a word about one (here, where one can be made), and one made ----
+const ck0 = await text(P, 'main .checkup');
+ok(!(await P.p.$('main .checkup.folded')) && /things to do/.test(ck0), 'with things to do, the check-up stays open', ck0);
+await signOut(P); await signIn(P);
+await P.p.waitForSelector('#sheet .nudge', { timeout: 8000 }).catch(() => {}); await settle(P, 600);
+ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-in: a word about a passkey', await sheetText(P));
+ok(Number(await P.p.evaluate(() => localStorage.getItem('acct:nudged'))) > t, 'noted, so it\'s not said again for a month');
+await shot(P, '05-nudge');
+await P.p.click('#sheet .btn:has-text("Add a passkey")'); await confirmIfAsked(P, PW);
+await P.p.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 }).catch(() => {}); await settle(P, 900);
+ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).length === 1 && /Passkeys 1/.test(await text(P)), 'a passkey made from it', await text(P, '#toast'));
+// (a laptop that can't make one isn't asked)
+const L = await browser('laptop', { laptop: true });
+await account(L); await signIn(L); await settle(L, 2200);
+ok(!(await L.p.$('#sheet[open]')), 'a laptop with no way to make a passkey isn\'t asked');
+
+// ---- 6. All done: the check-up folded to a line, opened with a tap, and folded again ----
+sql(`UPDATE pg_users SET email_ok = ${t}, pw_checked_at = ${t}, pw_leaked = 0 WHERE id = '${uid}'`);
+await account(P);
+ok(/Well protected/.test(await text(P, 'main .checkup.folded')) && /All 4 checks done/.test(await text(P, 'main .checkup.folded')) && !(await P.p.$('main .ck-list')), 'all done: the check-up is a line', await text(P, 'main .checkup'));
+await shot(P, '06-checkup-folded');
+await P.p.click('main .checkup.folded'); await settle(P, 400);
+ok((await P.p.$$('main .ck-row.ok')).length === 4 && await P.p.evaluate(() => document.activeElement?.matches('button.ck-top') && document.activeElement.getAttribute('aria-expanded') === 'true'), 'tapped: all four, and the keyboard still on it');
+await P.p.click('main button.ck-top'); await settle(P, 400);
+ok(!!(await P.p.$('main .checkup.folded')) && await P.p.evaluate(() => document.activeElement?.matches('.checkup.folded')), 'and folded again');
+
+// ---- 7. "Not you?": a password sign-in from the laptop (not a passkey one from elsewhere, nor this phone's own) ----
+sql(`INSERT INTO pg_events (user_id, at, kind, app, device, place, detail) VALUES ('${uid}', ${t - DAY}, 'signin', 'Weather', 'Mac · Safari', 'Leeds, United Kingdom', 'Passkey')`);
+await openRow(P, 'Recent activity'); await P.p.waitForSelector('#sheet .day', { timeout: 10000 }).catch(() => {}); await settle(P, 500);
+const flagged = await P.p.$$eval('#sheet .activity .row', (rs) => rs.filter((r) => r.querySelector('.mini')).map((r) => r.querySelector('small').textContent));
+ok(flagged.length === 1 && /Windows · Chrome/.test(flagged[0]), 'only the laptop\'s password sign-in asks "Not you?"', JSON.stringify(flagged));
+await shot(P, '07-activity');
+await P.p.click('#sheet .mini:text-is("Not you?")'); await P.p.waitForSelector('#sheet .steps'); await settle(P, 600);
+ok(/Signed in with your password/.test(await sheetText(P)) && /Windows · Chrome/.test(await sheetText(P)) && /Sign out everywhere else/.test(await sheetText(P)) && /Choose a new password/.test(await sheetText(P)), 'what happened, and the two steps', await sheetText(P));
+await shot(P, '08-not-you');
+await P.p.click('#sheet .btn.danger'); await confirmIfAsked(P, PW);
+await P.p.waitForSelector('#sheet h2:text-is("Change password")', { timeout: 15000 }).catch(() => {}); await settle(P, 500);
+ok(rows(`SELECT hash FROM pg_sessions WHERE user_id = '${uid}'`).length === 1, 'every other device signed out');
+ok(/Change password/.test(await text(P, '#sheet h2')), 'then on to a new password', await text(P, '#sheet h2'));
+await account(L);
+ok(!!(await L.p.$('main input[type=password]')), 'the laptop: signed out');
+await P.p.evaluate(() => document.querySelector('#sheet')?.close()); await settle(P, 300);
+
+// ---- 8. Rows slid to show what they do: a device signed out, a passkey removed ----
+await signIn(L);
+sql(`INSERT INTO pg_passkeys (id, user_id, public_key, alg, created_at, label, provider) SELECT 'spare-key', user_id, public_key, alg, ${t - DAY}, 'Old phone', 'Google Password Manager' FROM pg_passkeys WHERE user_id = '${uid}'`);
+await account(P);
+await openRow(P, 'Signed-in devices');
+ok((await P.p.$$('#sheet .swipe')).length === 1 && await P.p.$eval('#sheet .row.current', (e) => !e.closest('.swipe')), 'other devices slide; this one doesn\'t');
+await drag(P, '#sheet .swipe > .row', 0, -60);
+ok(!(await P.p.$('#sheet .swipe.open')), 'up and down: no slide');
+await drag(P, '#sheet .swipe > .row', -150);
+ok(!!(await P.p.$('#sheet .swipe.open')) && /Sign out/.test(await text(P, '#sheet .swipe-act')), 'slid: Sign out');
+await shot(P, '09-device-slid');
+await P.p.click('#sheet .swipe-act'); await confirmIfAsked(P, PW); await settle(P, 1200);
+ok(rows(`SELECT hash FROM pg_sessions WHERE user_id = '${uid}'`).length === 1 && (await P.p.$$('#sheet .swipe')).length === 0, 'the laptop signed out by it', String(rows(`SELECT hash FROM pg_sessions WHERE user_id = '${uid}'`).length));
+await closeSheet(P);
+await openRow(P, 'Passkeys'); await settle(P, 600);
+await drag(P, '#sheet .swipe:has(b:text-is("Old phone")) > .row', -150);
+ok(/Remove/.test(await text(P, '#sheet .swipe.open .swipe-act')), 'a passkey slid: Remove');
+// (a tap on it, open, closes it rather than opening it)
+await P.p.click('#sheet .swipe.open > .row', { position: { x: 180, y: 20 } }); await settle(P, 600);
+ok(!(await P.p.$('#sheet .swipe.open')) && /Passkeys/.test(await text(P, '#sheet h2')), 'tapped while open: closed, still the list');
+await drag(P, '#sheet .swipe:has(b:text-is("Old phone")) > .row', -150);
+await P.p.click('#sheet .swipe.open .swipe-act'); await confirmIfAsked(P, PW); await settle(P, 1200);
+ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).map((r) => r.id).join() !== '' && !rows(`SELECT id FROM pg_passkeys WHERE id = 'spare-key'`).length, 'removed by it, the other kept');
+await closeSheet(P);
+
+// ---- 9. A wide screen: two columns, who you are and how safe beside the rest; one on a phone ----
+await account(L); await signIn(L); await settle(L, 900);
+const cols = await L.p.evaluate(() => { const a = document.querySelector('.col-a').getBoundingClientRect(), b = document.querySelector('.col-b').getBoundingClientRect(); return { a: [a.left, a.right, a.top], b: [b.left, b.top] }; });
+ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two columns, side by side', JSON.stringify(cols));
+await shot(L, '10-wide');
+await L.p.evaluate(() => scrollTo(0, 700)); await settle(L, 400);
+ok((await L.p.evaluate(() => document.querySelector('.hero').getBoundingClientRect().top)) > 0, 'scrolled: the profile stays in view');
+const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
+ok(one >= 0, 'a phone: one column', String(one));
+
+console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');
+ok(!errs.length, 'no page errors');
+console.log(`FAILS ${fails}`);
+await b.close();

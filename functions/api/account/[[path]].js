@@ -39,14 +39,27 @@ async function weatherOf(env, userId) {
   let data = null; try { data = r ? JSON.parse(r.data) : null; } catch (_) {}
   return { ver: r?.ver || 0, data };
 }
+// What InFlight keeps of yours, as how many (its letters can't be read here, nor anywhere but your own phones): friends,
+// groups, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have gone
+// after a month), and places in your passport
+async function inflightOf(D, id) {
+  const r = await D.prepare(`SELECT
+      (SELECT COUNT(*) FROM pg_links WHERE (a = ?1 OR b = ?1) AND status = 'ok') AS friends,
+      (SELECT COUNT(*) FROM pg_group_members WHERE user_id = ?1) AS groups,
+      (SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1) + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1)
+        + (SELECT COUNT(*) FROM pg_flights WHERE sender = ?1) AS sent,
+      (SELECT COUNT(*) FROM pg_passport WHERE user_id = ?1) AS places`).bind(id).first().catch(() => null);
+  return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
+}
 // The account as its page shows it (one being deleted: only that, and who)
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare("SELECT hash, label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all(),
     weatherOf(env, u.id),
+    inflightOf(D, u.id),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -58,7 +71,12 @@ async function view(env, u) {
     devices: ss.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, since: x.created_at, seenAt: x.seen_at,
       current: x.hash === u.sessionHash, stale: x.hash !== u.sessionHash && t - x.seen_at > STALE })),
     prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
-    apps: { weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0 } },
+    // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; InFlight's counts)
+    apps: {
+      weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
+        notify: { places: (wx.data?.notify?.places || []).length, brief: !!wx.data?.notify?.brief } },
+      inflight,
+    },
   };
 }
 // a word to the account's email (as the account's: the same whichever app), or to another address (to)

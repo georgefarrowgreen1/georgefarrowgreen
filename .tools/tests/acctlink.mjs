@@ -61,7 +61,8 @@ await pop.fill('#sheet input[autocomplete=name]', 'Rowan Ash Hale'); await pop.c
 ok(rows(`SELECT name FROM pg_users WHERE handle = 'rowan'`)[0].name === 'Rowan Ash Hale', 'the new name is the account\'s');
 // back to InFlight
 const closed = pop.waitForEvent('close', { timeout: 8000 }).then(() => true, () => false);
-await pop.click('.backapp');
+// (the page can close before the click's done with it)
+await pop.click('.backapp').catch((e) => { if (!/closed/.test(e.message)) throw e; });
 ok(await closed, 'InFlight: the page goes, back to the app');
 await A.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await A.p.waitForTimeout(2500);
 ok(/Rowan Ash Hale/.test(await text(A.p, '#screen > main.view .me-cell')), 'and InFlight shows the new name', await text(A.p, '#screen > main.view .me-cell'));

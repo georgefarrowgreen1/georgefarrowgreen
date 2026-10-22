@@ -377,3 +377,86 @@ footer.foot a { color: var(--text-2); text-decoration: none; }
 
 /* back to InFlight, when it sent you here to edit your profile */
 .backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; }
+
+/* ---- your photo, tapped to change it (the camera badge says so) ---- */
+.avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform 0.3s var(--spring); }
+.avatar-btn:active { transform: scale(0.95); }
+.avatar-btn .avatar { margin: 0; }
+.avatar-btn .cam { position: absolute; right: -2px; bottom: 2px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(180deg, var(--tint), var(--tint-deep)); box-shadow: 0 0 0 3px var(--glass-strong), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
+.hero-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 14px; }
+.hero-acts .pill { margin: 0; }
+
+/* ---- the check-up, folded to a line when all's done ---- */
+button.checkup, button.ck-top { width: 100%; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.ck-top { background: none; padding: 0 0 12px; }
+.checkup.folded { display: flex; align-items: center; gap: 13px; padding: 13px 16px; }
+.checkup.folded .tx { flex: 1; display: grid; gap: 1px; }
+.checkup.folded .tx b { font: 600 16px/1.2 var(--font-d); }
+.checkup.folded .tx small { font-size: 13.5px; color: var(--text-2); }
+.checkup.folded .chev { color: var(--text-3); }
+.ck-badge { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: linear-gradient(180deg, #5fe39b, var(--good)); }
+
+/* ---- your code ---- */
+.code-card { display: grid; justify-items: center; gap: 2px; padding: 22px 18px 20px; border-radius: var(--r-group); background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); text-align: center; }
+.code-card .avatar { margin-bottom: 8px; }
+.code-card b { font: 700 20px/1.2 var(--font-d); }
+.code-card span { color: var(--text-2); font-size: 15px; }
+.qr { width: min(220px, 62vw); aspect-ratio: 1; margin-top: 16px; padding: 12px; border-radius: 20px; background: #fff; box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55); }
+.qr svg { display: block; width: 100%; height: 100%; }
+.qr-none { display: grid; place-items: center; height: 100%; padding: 12px; text-align: center; font-size: 14px; color: #3a405c; }
+.hint.center { text-align: center; margin-top: -2px; }
+.code-acts { display: grid; gap: 10px; }
+
+/* ---- an app's sheet ---- */
+button.app { border: 0; font: inherit; text-align: left; cursor: pointer; }
+a.btn { text-decoration: none; }
+.app-head { display: grid; justify-items: center; gap: 4px; text-align: center; padding: 4px 0 2px; }
+.app-head img { width: 76px; height: 76px; border-radius: 18px; margin-bottom: 8px; box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.app-head b { font: 700 24px/1.15 var(--font-d); }
+.app-head span { color: var(--text-2); font-size: 15px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat { display: grid; gap: 2px; align-content: start; padding: 14px 16px; border-radius: 16px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
+.stat b { font: 700 28px/1.1 var(--font-d); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13.5px; color: var(--text-2); line-height: 1.3; }
+.row.places { min-height: 0; padding-top: 0; }
+.row.places::before { display: none; }
+
+/* ---- a sign-in you don't recognise ---- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; }
+.steps .n { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700; color: var(--tint-text);
+  background: color-mix(in srgb, var(--tint) 15%, transparent); }
+.steps .tx { display: grid; gap: 2px; }
+.steps .tx b { font-weight: 600; font-size: 16px; }
+.steps .tx small { color: var(--text-2); font-size: 14px; }
+.activity .row .mini { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+
+/* ---- a passkey, after a password sign-in ---- */
+.nudge { display: grid; justify-items: center; text-align: center; gap: 8px; padding: 6px 4px 4px; }
+.nudge-art { width: 104px; height: 104px; border-radius: 30px; display: grid; place-items: center; color: #fff; margin-bottom: 6px;
+  background: linear-gradient(160deg, #8c8cff, #5146e0 60%, #7b3fd8); box-shadow: 0 18px 40px -16px #5146e0, inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.nudge h3 { margin: 0; font: 700 24px/1.2 var(--font-d); }
+.nudge p { margin: 0; color: var(--text-2); font-size: 15.5px; line-height: 1.45; max-width: 32ch; }
+
+/* ---- rows that slide to show what they do ---- */
+.swipe { position: relative; overflow: hidden; --dx: 0px; }
+.swipe + .swipe::before, .swipe + .row::before, .row + .swipe::before { content: ""; position: absolute; z-index: 2; top: 0; left: 62px; right: 0; height: 0.5px; background: var(--line); }
+/* (the row slides off over nothing; what it does fills exactly the room it leaves, so the row needs no background) */
+.swipe > .row { touch-action: pan-y; transform: translateX(var(--dx)); transition: transform 0.4s var(--spring); }
+.swipe.dragging > .row { transition: none; }
+.swipe.open .row .mini, .swipe.dragging .row .mini { opacity: 0; transition: opacity 0.2s; }
+.swipe-act { position: absolute; inset: 0 0 0 auto; width: calc(-1 * var(--dx)); overflow: hidden; border: 0; display: grid; place-items: center; padding: 0;
+  color: #fff; background: var(--danger); font: 600 15px/1 var(--font); white-space: nowrap; transition: width 0.4s var(--spring); }
+.swipe.dragging .swipe-act { transition: none; }
+.swipe-act .spin { width: 16px; height: 16px; }
+.swipe.leaving { animation: leave 0.4s var(--glide) forwards; }
+@media (prefers-reduced-motion: reduce) { .swipe > .row, .swipe-act { transition: none; } .swipe.leaving { animation: none; } }
+
+/* ---- two columns on a wide screen: who you are and how safe, beside everything else ---- */
+@media (min-width: 1000px) {
+  main:has(.cols) { max-width: 1060px; }
+  .cols { display: grid; grid-template-columns: 380px 1fr; gap: 28px; align-items: start; }
+  .col-a { position: sticky; top: calc(var(--top) + 24px); }
+  .col-a .large { margin-bottom: 18px; }
+}
