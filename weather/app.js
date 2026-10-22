@@ -1804,6 +1804,7 @@ function drawNotify(keepStatus = false) {
   form.briefFor.value = n.brief ? nkey(n.brief) : place() ? nkey(place()) : "";
   fillTimes(form.briefAt, n.briefAt || "07:00");
   if (!keepStatus) $("notify-status").textContent = notifying(n) ? onText() : S.acct ? "" : notifyWhy() || "";
+  drawNotifyAcct();
 }
 
 /* ---------- your account ---------- */
@@ -1869,7 +1870,7 @@ async function stepOnce() {
     inStep("saving");
     let r;
     try { r = await A.save(k.ver, now); }
-    catch (e) { if (e.status === 401) signedOut(); else inStep(e.offline ? "waiting" : "error"); throw e; }
+    catch (e) { if (e.status === 401) signedOutElsewhere(); else inStep(e.offline ? "waiting" : "error"); throw e; }
     if (!r.conflict) { store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) }); inStep("ok"); return; }
     takeUp(combine(r.data, now, k.snap));
     store.set("wx:acct", { ...k, ver: r.ver, snap: snapOf(r.data) });
@@ -1888,7 +1889,7 @@ async function pull() {
     if (e.status === 404) { S.noAcct = true; signedOut(); return; }
     if (S.acct && S.acct.state === "ok") inStep("waiting"); return;
   }
-  if (!r.signedIn) { if (S.acct || store.get("wx:acct")) signedOut(); return; }
+  if (!r.signedIn) { if (S.acct || store.get("wx:acct")) signedOutElsewhere(); return; }
   await adopt(r);
 }
 async function adopt(r) {
@@ -1910,6 +1911,13 @@ const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, em
 // this device among the account's that get its notifications
 const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
 function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
+// Signed out somewhere else (the account's page, or another app on the site): this device's notifications stay, as its
+// own, as when it's signed out here
+function signedOutElsewhere() {
+  const n = S.settings.notify;
+  if (n.endpoint && n.devId) A.leave(n.endpoint).catch(() => {});
+  signedOut();
+}
 async function signIn(how, email, password) {
   const said = $("acct-said"), btns = [...$("acct").querySelectorAll("button")];
   said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
@@ -1917,17 +1925,11 @@ async function signIn(how, email, password) {
   catch (e) { const s2 = $("acct-said"); if (s2) { s2.textContent = e.message; s2.classList.add("bad"); } }
   finally { btns.forEach((b) => (b.disabled = false)); }
 }
-async function signOutHere() {
-  const said = $("acct-said");
-  said.classList.remove("bad"); said.textContent = "Signing out…";
-  try { await A.signOut(S.settings.notify.endpoint); signedOut(); }
-  catch (e) { said.textContent = e.message; said.classList.add("bad"); }
-}
 // this device getting the account's notifications too
 async function sendHere() {
   const [go, said] = await allowed();
-  if (!go || !canShow()) { $("acct-said").textContent = said; return; }
-  try { await syncNotify(); await refreshDevices(); } catch (e) { $("acct-said").textContent = `Couldn't do that just now (${e.message}).`; }
+  if (!go || !canShow()) { $("notify-status").textContent = said; return; }
+  try { await syncNotify(); await refreshDevices(); } catch (e) { $("notify-status").textContent = `Couldn't do that just now (${e.message}).`; }
 }
 const STATES = { ok: "In step", saving: "Saving…", waiting: "Will go up when you're online", error: "Couldn't save just now" };
 function drawAccount() {
@@ -1949,19 +1951,27 @@ function drawAccount() {
       form, said].filter(Boolean));
     return;
   }
-  const n = S.settings.notify, to = a.devices.map((d) => (d.id === n.devId ? "This device" : d.label));
-  // (who, and the way to everything else about the account: its own page, where the profile, email, password, passkeys
-  // and devices are)
-  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com`))];
+  // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
+  // there), and how your places and settings are doing, said only when there's something to say
+  const said2 = a.state !== "ok" && STATES[a.state];
+  const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name),
+    h("span", { id: "acct-state", class: a.state === "error" ? "acct-bad" : "" }, `@${a.handle} · ${said2 || "georgefarrowgreen.com"}`))];
   box.replaceChildren(...[
     accountPage() ? h("button", { class: "acct-card in go", type: "button", id: "acct-open", onclick: openAccount }, ...who, h("span", { class: "acct-chev", svg: glyph("chevron", 16) }))
       : h("div", { class: "acct-card in" }, ...who),
-    h("ul", { class: "acct-rows" },
-      h("li", {}, h("span", {}, "Places and settings"), h("span", { class: a.state === "ok" ? "acct-ok" : "", id: "acct-state" }, a.state === "ok" ? h("span", { svg: TICK }) : null, STATES[a.state] || STATES.ok)),
-      h("li", {}, h("span", {}, "Notifications go to"), h("span", {}, to.length ? and(to) : "No devices yet"))),
-    notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn", type: "button", id: "acct-here", onclick: sendHere }, "Send notifications here too") : null,
-    h("button", { class: "acct-btn quiet", type: "button", id: "acct-out", onclick: signOutHere }, "Sign out"),
     said].filter(Boolean));
+  drawNotifyAcct();
+}
+// Where notifications go, signed in (in Notifications): the account's devices, and this one if it isn't among them yet
+function drawNotifyAcct() {
+  const box = $("notify-acct"); if (!box) return;
+  const a = S.acct, n = S.settings.notify;
+  if (!a) return box.replaceChildren();
+  const to = a.devices.map((d) => (d.id === n.devId ? "this device" : d.label));
+  box.replaceChildren(...[
+    to.length ? h("p", { class: "note", id: "notify-where" }, `Notifications go to ${and(to)}.`) : null,
+    notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn small", type: "button", id: "acct-here", onclick: sendHere }, "Send them here too") : null,
+  ].filter(Boolean));
 }
 // The account's own page (account.<site>, beside weather.<site>), opened signed in as you: a code good once, for a
 // minute, handed over in the address's # (the page swaps it for a sign-in of its own, in whichever browser it opens in,

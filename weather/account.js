@@ -1,8 +1,8 @@
 // Your georgefarrowgreen.com account, in Weather: signing in (a passkey, or your email and password), and keeping your
 // saved places, settings and notifications in step with it, so they're the same on every phone and computer you're
 // signed in on (functions/_wxacct.js). The sign-in is the site's: signed in anywhere on it in this browser, Weather is
-// too, and signing out here signs you out there. The page never holds the sign-in itself (the browser keeps it, out of
-// any page's reach); it asks with it.
+// too, and signing out (on the account's own page) signs you out everywhere on it in this browser. The page never holds
+// the sign-in itself (the browser keeps it, out of any page's reach); it asks with it.
 
 const API = "/api/weather";
 async function call(path, { method = "GET", body } = {}) {
@@ -15,7 +15,8 @@ async function call(path, { method = "GET", body } = {}) {
 }
 // who's signed in, and what's kept: { signedIn, name, handle, ver, data: { places, settings, notify }, devices }
 export const me = () => call("me");
-export const signOut = (endpoint) => call("signout", { method: "POST", body: { endpoint: endpoint || undefined } });
+// this device's notifications its own again, signed out somewhere else (its push address is what shows it's this device)
+export const leave = (endpoint) => call("leave", { method: "POST", body: { endpoint } });
 // a change, made from version base: { ver, data } as kept now; or { conflict, ver, data } where it's moved on meanwhile
 export const save = (base, data) => call("me", { method: "PUT", body: { base, data } });
 

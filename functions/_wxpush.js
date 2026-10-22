@@ -235,6 +235,12 @@ export async function leaveAccount(env, endpoint, userId) {
   if (typeof endpoint !== "string" || endpoint.length > 1000) return;
   await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL WHERE dev = ? AND user_id = ?").bind(await idOf(endpoint), userId).run();
 }
+// A device signed out of its account somewhere else (its push address shows it's this device): its notifications its own
+export async function leaveAny(env, endpoint) {
+  if (typeof endpoint !== "string" || !endpoint || endpoint.length > 1000) throw new HttpError(400, "Bad request.");
+  await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL WHERE dev = ?").bind(await idOf(endpoint)).run();
+  return { ok: true };
+}
 // the browser replaced a device's subscription by itself (sw.js, pushsubscriptionchange): its places move to the new one
 export async function moveSub(env, b) {
   if (typeof b.was !== "string" || b.was.length > 1000) throw new HttpError(400, "Bad request.");

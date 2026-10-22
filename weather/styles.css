@@ -1003,6 +1003,10 @@ a.acct-btn { text-decoration: none; }
 .acct-card .acct-txt { flex: 1; }
 .acct-chev { flex: none; display: inline-grid; color: var(--text-2); }
 .acct-chev svg { transform: rotate(-90deg); }
+.acct-bad { color: #ffb4a8 !important; }
+.notify-acct { display: grid; gap: 8px; justify-items: start; }
+.notify-acct:empty { display: none; }
+.notify-acct .note { margin: 0; }
 .acct-card.go .acct-txt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .acct-av { overflow: hidden; }
 .acct-av img { width: 100%; height: 100%; object-fit: cover; display: block; }

@@ -530,17 +530,20 @@ so there's nothing to set up beyond the address.
   itself, with a passkey (the site's: one made anywhere on the site works here)
   or an email and password (stretched on the device as everywhere on the site,
   Argon2id via a copy of hash-wasm's build, `weather/argon2.js`; the password
-  never leaves it). Signed in, it's kept simple: **one card for the account**
-  (your photo, name and @handle) that opens the account's own page
-  (account.<site>, where the profile, email, password, passkeys and devices
-  are), signed in as you in whichever browser it opens in (Weather asks for a
+  never leaves it). Signed in, it's just **one card for the account** (your
+  photo, name and @handle, and a word on your places and settings only when
+  there's something to say: "Saving…", "Will go up when you're online",
+  "Couldn't save just now") that opens the account's own page
+  (account.<site>: the profile, email, password, passkeys, devices, and signing
+  out), signed in as you in whichever browser it opens in (Weather asks for a
   code good once, for a minute, `POST /api/weather/account-link`, and the page
   swaps it for a sign-in of its own, as InFlight's Edit Profile does; the page
-  shows the way back to Weather); then whether your places are in step ("In
-  step", "Saving…", "Will go up when you're online"), which devices get your
-  notifications (and "Send notifications here too" where this one doesn't),
-  and a quiet Sign out, which signs the browser out of the account; and Places says
-  "In step with your account". What's kept is one record with a version
+  shows the way back to Weather). Where notifications go is said in
+  Notifications ("Notifications go to this device and Mac · Chrome", with "Send
+  them here too" where this one isn't among them). Signed out there (or
+  anywhere on the site), Weather notices the next time it asks, and this
+  device's notifications stay, as its own (`POST /api/weather/leave`, by its
+  push address). Places says "In step with your account". What's kept is one record with a version
   (`functions/_wxacct.js`, wx_accts: the places, the settings, the notification
   choices; at most 50 places and 48 KB); a change goes up a moment after it's
   made, from the version it was made from, and if another device got there first

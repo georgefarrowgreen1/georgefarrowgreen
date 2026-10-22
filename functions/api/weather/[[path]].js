@@ -7,6 +7,7 @@
 //   GET  /api/weather/key          the key push subscriptions are made with
 //   POST /api/weather/subscribe    rain alerts, official warnings and a morning briefing for your places (functions/_wxpush.js)
 //   POST /api/weather/unsubscribe
+//   POST /api/weather/leave           a device signed out of its account elsewhere: its notifications its own
 //   GET  /api/weather/me           the site's account, as Weather has it: who, and your places, settings and
 //   PUT  /api/weather/me           notifications kept with it (functions/_wxacct.js)
 //   POST /api/weather/signin/...   signing in to it: salt and password, or options and passkey
@@ -16,7 +17,7 @@
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
 import { HttpError, limit, clientIp, HOUR } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
-import { unsubscribe, moveSub, wxTick, publicKey } from "../../_wxpush.js";
+import { unsubscribe, moveSub, wxTick, publicKey, leaveAny } from "../../_wxpush.js";
 import { ACCOUNT_ROUTES, subscribeHere } from "../../_wxacct.js";
 import { isWeather } from "../../_wxapp.js";
 import { obsFor } from "../../_wxobs.js";
@@ -69,6 +70,7 @@ const ROUTES = {
   "GET key": async ({ env }) => json({ key: await publicKey(env) }),
   "POST subscribe": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await subscribeHere(request, env, await body(request))); },
   "POST unsubscribe": async ({ request, env }) => { sameOrigin(request); return json(await unsubscribe(env, (await body(request)).endpoint)); },
+  "POST leave": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await leaveAny(env, (await body(request)).endpoint)); },
   "POST move": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await moveSub(env, await body(request))); },
   "POST tick": async ({ request, env }) => { tickAuthOk(request, env, env.WEATHER_TICK_SECRET || env.PIGEON_TICK_SECRET); return json(await wxTick(env)); },
   // (the account's only at Weather's own address: not the site's, nor a preview's)

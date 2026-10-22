@@ -94,7 +94,7 @@ ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com/.test(lSays) && !
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
-ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage')) && !/Email/.test(lSays), 'one card for the account (its page has the rest: no profile editor, email or other buttons here)', lSays);
+ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email, rows or Sign out here)', lSays);
 await closeSheet(L);
 
 // ---- 2. A phone with places of its own: signed in to Weather with email and password; the two lots put together ----
@@ -133,8 +133,9 @@ const devs = () => rows("SELECT d.dev, d.label, (SELECT handle FROM pg_users WHE
 const subs = () => rows('SELECT dev, name, rain, warn, brief FROM wx_subs ORDER BY name');
 await waitFor(() => devs().length === 1);
 ok(devs().length === 1 && devs()[0].who === 'sam' && /iPhone/.test(devs()[0].label) && subs().length === 1 && subs()[0].name === 'Edinburgh' && subs()[0].rain === 1, 'the phone is one of the account\'s devices, with Edinburgh\'s rain alerts', JSON.stringify([devs(), subs()]));
-await waitFor(async () => /Notifications go to This device/.test(await acctSays(P)), 8000);
-ok(/Notifications go to This device/.test(await acctSays(P)), 'and Settings says notifications go to this device', await acctSays(P));
+const whereTo = (x) => x.p.evaluate(() => document.getElementById('notify-acct')?.innerText.replace(/\s+/g, ' ').trim());
+await waitFor(async () => /Notifications go to this device/.test(await whereTo(P)), 8000);
+ok(/Notifications go to this device\./.test(await whereTo(P)), 'and Notifications says they go to this device', await whereTo(P));
 await closeSheet(P);
 // the laptop: Edinburgh's rain on there too (the account's), and "here too" puts the laptop among the devices
 await L.p.reload(); await L.p.waitForSelector('.day-row'); await L.p.waitForTimeout(1500);
@@ -215,13 +216,33 @@ await K.p.click('[data-act=resume]'); await K.p.waitForSelector('[data-form=unlo
 ok(await K.p.waitForFunction(() => /already signed in to your georgefarrowgreen\.com account/.test(document.querySelector('[data-form=unlock]')?.closest('.auth')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false), 'it asks only for the password, to unlock the key here');
 await K.p.fill('#f-password', PW); await K.p.click('[data-form=unlock] .btn'); await K.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
 ok(!!(await K.p.$('.tabs')), 'and InFlight is open, on the same sign-in');
-// ---- 6. Signing out of Weather signs out of InFlight there too ----
+// ---- 6. Signing out (on the account's page) signs out of Weather and InFlight there too ----
+await K.p.goto('http://account.gfg.test:8788/'); await K.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
+await K.p.click('.row.action:text-is("Sign out")'); await K.p.waitForFunction(() => /Sign in/.test(document.querySelector('main')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 await weather(K); await settings(K);
-await K.p.click('#acct-out');
 await K.p.waitForFunction(() => /Your places on every device/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
-ok(/Your places on every device/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out of Weather: the places stay here', await acctSays(K));
+ok(/Your places on every device/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed out on the account\'s page: Weather is too, and the places stay here', await acctSays(K));
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('.welcome', { timeout: 20000 }).catch(async () => { await K.p.screenshot({ path: `${out}/signedout-inflight.png` }); console.log('DEBUG inflight after weather signout:', (await K.p.evaluate(() => document.body.innerText.slice(0, 300))).replace(/\s+/g, ' ')); });
 ok(!!(await K.p.$('.welcome')) && !(await K.p.$('[data-act=resume]')), 'and InFlight in that browser is signed out too');
+
+// ---- 6b. A device with the account's notifications, signed out on the account's page: Weather notices, and they
+// stay, as its own ----
+const T = await browser('tablet', { push: true });
+await weather(T); await settings(T);
+await T.p.click('#acct-password'); await T.p.fill('#acct input[name=email]', 'sam@example.com'); await T.p.fill('#acct input[name=password]', PW);
+await T.p.click('#acct .acct-form button[type=submit]');
+await T.p.waitForSelector('#acct-here', { timeout: 30000 }).catch(() => {});
+await T.p.click('#acct-here');
+const tDev = () => rows("SELECT d.dev, d.user_id, (SELECT COUNT(*) FROM wx_subs s WHERE s.dev = d.dev) AS n FROM wx_devs d WHERE d.label LIKE '%' ORDER BY created DESC")[0];
+await waitFor(() => tDev()?.user_id && tDev()?.n > 0);
+const t1 = tDev();
+ok(t1?.user_id && t1.n > 0, 'the tablet: one of the account\'s devices, with its notifications', JSON.stringify(t1));
+await T.p.goto('http://account.gfg.test:8788/'); await T.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 });
+await T.p.click('.row.action:text-is("Sign out")'); await T.p.waitForTimeout(1500);
+await weather(T); await T.p.waitForTimeout(2500);
+const t2 = rows(`SELECT user_id, (SELECT COUNT(*) FROM wx_subs s WHERE s.dev = d.dev) AS n FROM wx_devs d WHERE dev = '${t1.dev}'`)[0];
+ok(t2 && !t2.user_id && t2.n === t1.n, 'signed out there: Weather notices, and the tablet\'s notifications stay, its own', JSON.stringify(t2));
+const tSubs = t2?.n || 0;
 
 // ---- 7. The account's own rules ----
 const call = (method, path, body, { origin = WX, cookie: c = '' } = {}) => new Promise((done, fail) => {
@@ -232,6 +253,7 @@ const call = (method, path, body, { origin = WX, cookie: c = '' } = {}) => new P
   r.on('error', fail); if (data) r.write(data); r.end();
 });
 const lc = (await L.ctx.cookies(WX)).find((c) => c.name === 'account');
+ok((await call('POST', '/api/weather/leave', { endpoint: 'https://fcm.googleapis.com/fcm/send/acct-tablet' }, { origin: CHAT })).status === 403, 'a device left only from Weather\'s own pages');
 ok(JSON.parse((await call('GET', '/api/weather/me', null)).body).signedIn === false, 'no sign-in: nobody');
 ok((await call('PUT', '/api/weather/me', { base: 1, data: {} }, { cookie: `account=${lc.value}`, origin: CHAT })).status === 403, 'a change from another address on the site is turned away, sign-in or not');
 const stale = await call('PUT', '/api/weather/me', { base: 1, data: { places: [{ name: 'Leeds', lat: 53.8, lon: -1.55 }] } }, { cookie: `account=${lc.value}` });
@@ -272,7 +294,7 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   const del = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/me', method: 'DELETE', headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${tk}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); r.end(); });
   ok(del.status === 200 && /account=;.*Max-Age=0/.test(String(del.cookie)), 'deleting the account signs the browser out of the site', `${del.status} ${del.body.slice(0, 80)}`);
   const left = rows("SELECT (SELECT COUNT(*) FROM wx_accts) AS a, (SELECT COUNT(*) FROM wx_devs WHERE user_id IS NOT NULL) AS d, (SELECT COUNT(*) FROM wx_subs WHERE dev LIKE '%') AS s")[0];
-  ok(left.a === 0 && left.d === 0 && left.s === 1, 'and what Weather kept with it goes (only the device that never signed in keeps its own)', JSON.stringify(left));
+  ok(left.a === 0 && left.d === 0 && left.s === 1 + tSubs, 'and what Weather kept with it goes (only the devices not with it keep their own)', JSON.stringify(left));
 }
 
 await L.p.screenshot({ path: `${out}/wxacct-laptop.png` }).catch(() => {});
