@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mergePlaces, mergeNotify, notifyChanges, keyOf, nkeyOf } from "../../../weather/account.js";
-import { cookieToken, withSession, withoutSession } from "../../../functions/_account.js";
+import { cookieToken, withCookie, withoutSession } from "../../../functions/_account.js";
 import { cleanData } from "../../../functions/_wxacct.js";
 import { wantOf } from "../../../functions/_wxpush.js";
 
@@ -59,9 +59,11 @@ test("a device's notifications: a place each, and the app from before's one plac
 
 test("the site's sign-in, as a cookie: the whole site's where the address is the site's, out of any page's reach", () => {
   const req = (url, cookie) => new Request(url, { headers: cookie ? { Cookie: cookie } : {} });
-  const set = (url, env = {}) => withSession(new Response("{}"), req(url), env, "t".repeat(43)).headers.get("Set-Cookie");
+  const set = (url, env = {}) => withCookie(new Response("{}"), req(url), env, "t".repeat(43)).headers.get("Set-Cookie");
   assert.match(set("https://weather.georgefarrowgreen.com/api/weather/me"), /^__Secure-account=t{43}; Path=\/; Domain=georgefarrowgreen\.com; HttpOnly; SameSite=Lax; Secure; Max-Age=15552000$/);
   assert.match(set("https://chat.georgefarrowgreen.com/api/pigeon/login"), /Domain=georgefarrowgreen\.com/);
+  // the site's own addresses: Secure whatever the request came over
+  assert.match(set("http://weather.georgefarrowgreen.com/api/weather/me"), /^__Secure-account=.*; Secure; /);
   // a preview's address, or this machine's: that address alone, and without Secure over plain http
   assert.doesNotMatch(set("https://abc.georgefarrowgreen.pages.dev/api/weather/me"), /Domain=/);
   assert.match(set("http://localhost:8788/api/pigeon/login"), /^account=t{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age/);

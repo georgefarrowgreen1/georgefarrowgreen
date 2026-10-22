@@ -3,17 +3,20 @@
 //
 // Each app's sign-in starts a session (pg_sessions: functions/_pigeon.js) and gives it to the browser as a cookie for
 // the whole site as well: HttpOnly (no page's own script can read it), SameSite=Lax, and Secure. So signing in to one
-// app signs you in to the others in that browser, and signing out of any of them ends the session for them all. An
-// app that keeps its own copy of the session (InFlight's bearer token, for its keys and its messages) carries on with
-// that, and takes the cookie up when it has none of its own (resume); one that keeps nothing (Weather) asks with the
-// cookie each time, for its own things only, and only from its own pages (sameOrigin).
+// app signs you in to the others in that browser, and signing out of any of them ends the session for them all. The
+// cookie carries a token of its own for the session (site_hash), not the session's bearer token: it opens nothing of
+// InFlight's. An app that keeps its own copy of the session (InFlight's bearer token, for its keys and its messages)
+// carries on with that; with none, it can start one from the cookie's session only with the password (resume); one that
+// keeps nothing (Weather) asks with the cookie each time, for its own things only, and only from its own pages
+// (sameOrigin). The cookie's only given in answer to a sign-in from the app's own pages: a sign-in another site sends
+// in your browser (with its own account) can't sign the browser in.
 //
 // (A web app added to an iPhone's Home Screen keeps cookies of its own, apart from Safari's and from other such apps,
 // so there each app is signed in to separately; with a passkey, that's one tap.)
 //
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
-import { HttpError, db, sha256, hex, b64url, clientIp, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL,
+import { HttpError, db, sha256, hex, b64url, clientIp, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, randomToken,
   deviceOf, regionOf, emailReady, emailBody, sendEmail, ukTime, appLink } from "./_pigeon.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
@@ -23,10 +26,11 @@ export const siteOf = (env) => env?.ACCOUNT_SITE || SITE;
 
 // The cookie: for the whole site where the address is the site's (production's, or the tests'); for that address
 // alone anywhere else (a preview's, localhost)
+// (Secure on the site's own addresses whatever the request came over; plain only for local tests over http)
 function cookieOf(request, env) {
-  const u = new URL(request.url), site = siteOf(env), https = u.protocol === "https:";
-  const whole = u.hostname === site || u.hostname.endsWith(`.${site}`);
-  return { name: https ? "__Secure-account" : "account", attrs: `Path=/${whole ? `; Domain=${site}` : ""}; HttpOnly; SameSite=Lax${https ? "; Secure" : ""}` };
+  const u = new URL(request.url), site = siteOf(env), whole = u.hostname === site || u.hostname.endsWith(`.${site}`);
+  const secure = u.protocol === "https:" || (whole && !env?.ACCOUNT_SITE);
+  return { name: secure ? "__Secure-account" : "account", attrs: `Path=/${whole ? `; Domain=${site}` : ""}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
 }
 export function cookieToken(request, env) {
   const { name } = cookieOf(request, env);
@@ -36,8 +40,17 @@ export function cookieToken(request, env) {
   }
   return null;
 }
-// a response that signs the browser in (token: the session's), or out
-export function withSession(res, request, env, token) {
+// A response that signs the browser in to the site: the session (sessionHash) given a cookie token of its own, but only
+// in answer to the app's own pages (the browser says where a request's from; sure: known otherwise, as by a bearer token
+// a page of another site couldn't send)
+export async function withSession(res, request, env, sessionHash, sure = false) {
+  if (!sure && request.headers.get("Origin") !== new URL(request.url).origin) return res;
+  const token = randomToken(32);
+  await (await db(env)).prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(hex(await sha256(token)), sessionHash).run();
+  return withCookie(res, request, env, token);
+}
+// (the cookie itself, renewed: token, the cookie's own)
+export function withCookie(res, request, env, token) {
   const { name, attrs } = cookieOf(request, env);
   res.headers.append("Set-Cookie", `${name}=${token}; ${attrs}; Max-Age=${Math.floor(SESSION_TTL / 1000)}`);
   return res;
@@ -52,7 +65,7 @@ export function withoutSession(res, request, env) {
 export async function cookieUser(request, env, inflight = false) {
   const token = cookieToken(request, env);
   if (!token) return null;
-  try { const u = await sessionUser(env, token, inflight); u.token = token; return u; }
+  try { const u = await sessionUser(env, token, inflight, true); u.token = token; return u; }
   catch (e) { if (e instanceof HttpError && e.status === 401) return null; throw e; }
 }
 // A request that acts on the cookie's account must come from the app's own pages (the browser says where from): a

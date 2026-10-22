@@ -1806,16 +1806,16 @@ async function checkInvite() {
 }
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
-// Signed in to the account elsewhere on the site, in this browser (functions/_account.js): that sign-in, to carry on
-// with once the password's unlocked the key here
+// Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as once the
+// password's given (which unlocks the key here, and starts this app's own sign-in on the same session)
 async function resumeCheck() {
-  try { const r = await api("resume", { method: "POST" }); if (r.signedIn && !S.me) { S.resumable = r; if (S.view === "welcome") render(); } } catch (_) {}
+  try { const r = await api("resume", { method: "POST", body: {} }); if (r.signedIn && !S.me) { S.resumable = r; if (S.view === "welcome") render(); } } catch (_) {}
 }
 function inviteHtml() {
   const st = S.inviteState, enter = (label) => `<button class="btn wide wglow" data-act="to" data-id="signup">${label}</button>`;
   const signin = `<button class="wquiet" data-act="to" data-id="signin">Sign in</button>`;
   const r = S.resumable;
-  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.me.name)} (@${esc(r.me.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="resume">Continue as ${esc(first(r.me.name))}</button>${signin}</div></div>`;
+  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.name)} (@${esc(r.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="resume">Continue as ${esc(first(r.name))}</button>${signin}</div></div>`;
   if (!st) { checkInvite(); return `<div class="wcta"><div class="stack">${signin}</div></div>`; }
   if (st.open || st.ok) return `<div class="wcta">${S.invite && !st.open ? `<p class="invited">You’ve been invited.</p>` : ""}<div class="stack">${enter(S.invite && !st.open ? "Enter" : "Begin")}${signin}</div></div>`;
   return `<div class="wcta"><p class="invonly">${S.invite ? esc(st.error || "That invite doesn’t work.") : "By invitation only."}</p><div class="stack">${signin}</div></div>`;
@@ -1981,8 +1981,10 @@ async function signInPasskey() {
   go("unlock");
 }
 async function unlockWithPassword(password) {
-  const r = S.pendingUnlock;
-  const { lockKey } = await E2E.fromPassword(password, r.salt);
+  let r = S.pendingUnlock;
+  const { lockKey, proof } = await E2E.fromPassword(password, r.salt);
+  // (signed in elsewhere on the site: the password's proof starts this app's sign-in, with the key to unlock)
+  if (r.resumed) r = await api("resume", { method: "POST", body: { proof } });
   let ecdh;
   try { ({ ecdh } = await E2E.unlock(lockKey, r.vault)); }
   catch (_) { throw Object.assign(new Error("That password didn’t unlock your key."), { field: "password" }); }
@@ -7548,7 +7550,7 @@ async function onClick1(e, t) {
       catch (err) { if (!err.cancelled) toast(esc(err.message)); }
       await sync(); return renderSheet();
     case "cancelunlock": S.pendingUnlock = null; return go("welcome");
-    case "resume": if (!S.resumable) return; S.pendingUnlock = { ...S.resumable, resumed: true }; return go("unlock");
+    case "resume": if (!S.resumable) return; S.pendingUnlock = { salt: S.resumable.salt, resumed: true }; return go("unlock");
     case "signout": {
       const waiting = S.outbox.filter((o) => !o.err).length;
       return openActions({ message: `You’ll need your password or a passkey to sign in again.${waiting ? ` ${waiting === 1 ? "One pigeon is" : `${waiting} pigeons are`} still waiting for signal and won’t be sent.` : ""}`, actions: [{ label: "Sign Out", act: "signoutgo", destructive: true }] });

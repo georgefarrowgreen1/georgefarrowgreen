@@ -18,6 +18,7 @@ import { HttpError, limit, clientIp, HOUR } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { unsubscribe, moveSub, wxTick, publicKey } from "../../_wxpush.js";
 import { ACCOUNT_ROUTES, subscribeHere } from "../../_wxacct.js";
+import { isWeather } from "../../_wxapp.js";
 import { obsFor } from "../../_wxobs.js";
 import { warningsAt } from "../../_wxwarn.js";
 
@@ -70,7 +71,8 @@ const ROUTES = {
   "POST unsubscribe": async ({ request, env }) => { sameOrigin(request); return json(await unsubscribe(env, (await body(request)).endpoint)); },
   "POST move": async ({ request, env }) => { sameOrigin(request); await limit(env, `wxsub:${clientIp(request)}`, 30, HOUR); return json(await moveSub(env, await body(request))); },
   "POST tick": async ({ request, env }) => { tickAuthOk(request, env, env.WEATHER_TICK_SECRET || env.PIGEON_TICK_SECRET); return json(await wxTick(env)); },
-  ...ACCOUNT_ROUTES,
+  // (the account's only at Weather's own address: not the site's, nor a preview's)
+  ...Object.fromEntries(Object.entries(ACCOUNT_ROUTES).map(([k, fn]) => [k, (ctx) => (isWeather(new URL(ctx.request.url), ctx.env) ? fn(ctx) : json({ error: "Not found." }, 404))])),
 };
 
 export async function onRequest(ctx) {

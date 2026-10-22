@@ -324,6 +324,10 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_gdeliv_space ON pg_gdeliv(deliver_at) WHERE moon IS NOT NULL",
   // an account unused for almost a year: when it was told it would be deleted (functions/_retention.js)
   "ALTER TABLE pg_users ADD COLUMN warned_at INTEGER",
+  // the session's token for the browser's cookie for the whole site (functions/_account.js): its own, so the cookie
+  // isn't a key to InFlight's API
+  "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
+  "CREATE INDEX IF NOT EXISTS pg_sessions_site ON pg_sessions(site_hash)",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -467,18 +471,20 @@ export async function requireUser(request, env) {
   if (!m) throw new HttpError(401, "Please sign in.", "session");
   return sessionUser(env, m[1]);
 }
-// The account a session's token is for (and that it's still going), however it came: a bearer token, or the site's
-// cookie (functions/_account.js). (inflight: InFlight itself is being used, a day of it noted for its Insights)
-export async function sessionUser(env, token, inflight = true) {
+// The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
+// browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
+// used, a day of it noted for its Insights)
+export async function sessionUser(env, token, inflight = true, site = false) {
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here)
-  const u = await D.prepare("SELECT u.*, s.seen_at AS s_seen, s.auth_at AS s_auth FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.hash = ?").bind(h).first();
+  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.auth_at AS s_auth FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
   if (!u || t - u.s_seen > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
   // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
   if (t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
-    D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, h),
+    D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
-  u.sessionHash = h; u.authAt = u.s_auth || 0; delete u.s_seen; delete u.s_auth;
+  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0;
+  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth;
   return u;
 }
 

@@ -26,6 +26,8 @@ import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
 import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn } from "../../_account.js";
+// (a session's hash, from its token)
+const hashOf = async (token) => hex(await sha256(token));
 import { storageReport } from "../../_retention.js";
 import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
@@ -116,7 +118,7 @@ async function signup({ request, env, waitUntil }) {
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
   waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
   const token = await issueSession(env, id, request);
-  return withSession(json({ token, me: meView(u, t) }), request, env, token);
+  return withSession(json({ token, me: meView(u, t) }), request, env, await hashOf(token));
 }
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
@@ -167,7 +169,7 @@ async function login({ request, env, waitUntil }) {
   const u = await passwordUser(env, request, await body(request));
   const token = await issueSession(env, u.id, request);
   waitUntil(tellSignIn(env, u, request, "Password", linkOrigin(request)).catch(() => {}));
-  return withSession(json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) }), request, env, token);
+  return withSession(json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) }), request, env, await hashOf(token));
 }
 
 async function logout({ request, env }) {
@@ -175,15 +177,22 @@ async function logout({ request, env }) {
   await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
   // (the browser's sign-in for the whole site too, if it's this one: functions/_account.js)
   const c = cookieToken(request, env);
-  return c && hex(await sha256(c)) === u.sessionHash ? withoutSession(json({ ok: true }), request, env) : json({ ok: true });
+  return c && u.siteHash && (await hashOf(c)) === u.siteHash ? withoutSession(json({ ok: true }), request, env) : json({ ok: true });
 }
-// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): that sign-in, to carry on
-// with once the key's unlocked (the password-locked key: the password unlocks it on the phone)
+// Signed in elsewhere on the site, in this browser, and not here (functions/_account.js): who (and the salt for the
+// password), to carry on as; then, with the password's proof, this app's own sign-in, on the same session (the cookie's
+// moved to it), and the password-locked key, which the password unlocks on the phone. The cookie alone gets no more.
 async function resume({ request, env }) {
   sameOrigin(request);
-  const u = await cookieUser(request, env, true);
+  const u = await cookieUser(request, env, true), b = await body(request).catch(() => ({}));
   if (!u) return json({ signedIn: false });
-  return json({ signedIn: true, token: u.token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault), salt: u.salt });
+  if (!b.proof) return json({ signedIn: true, name: u.name, handle: u.handle, salt: u.salt });
+  await limit(env, "reauth:" + u.id, 10, 15 * 60e3);
+  if (!(await proofOk(env, b.proof, u.proof_hash))) throw new HttpError(401, "That password didn’t unlock your key.", "password");
+  const token = await issueSession(env, u.id, request), D = await db(env);
+  await D.batch([D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(u.siteHash, await hashOf(token)),
+    D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash)]);
+  return json({ token, me: meView(u, Date.now()), vault: await openVault(env, u.id, u.vault) });
 }
 
 // The password-locked key, for a signed-in phone that needs to unlock it again
@@ -498,7 +507,7 @@ async function passkeyLogin({ request, env, waitUntil }) {
   const b = await body(request), { u, cred } = await passkeyUser(env, request, b);
   const token = await issueSession(env, u.id, request);
   waitUntil(tellSignIn(env, u, request, "Passkey", linkOrigin(request)).catch(() => {}));
-  return withSession(json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt }), request, env, token);
+  return withSession(json({ token, me: meView(u, Date.now()), pkVault: await openVault(env, u.id, cred.vault), vault: await openVault(env, u.id, u.vault), salt: u.salt }), request, env, await hashOf(token));
 }
 
 async function passkeyDelete({ request, env }) {
@@ -1293,7 +1302,7 @@ async function resetComplete({ request, env, waitUntil }) {
   waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
   const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
   const token = await issueSession(env, u.id, request);
-  return withSession(json({ token, me: meView(updated, t) }), request, env, token);
+  return withSession(json({ token, me: meView(updated, t) }), request, env, await hashOf(token));
 }
 
 /* ---------------- admin ----------------
@@ -1562,7 +1571,11 @@ export async function onRequest(ctx) {
     const trips0 = TRIPS.n, res = await handler(ctx, parts[1]);
     // signed in here from before the site's sign-in was shared, or since signed out elsewhere with this still going: this
     // sign-in given to the browser for the site too (functions/_account.js), now it's checked
-    if (parts[0] === "sync" && res.ok && !cookieToken(ctx.request, ctx.env)) withSession(res, ctx.request, ctx.env, /^Bearer (.+)$/.exec(ctx.request.headers.get("Authorization") || "")[1]);
+    // (once a session: a browser that won't keep it isn't asked again every sync)
+    if (parts[0] === "sync" && res.ok && !cookieToken(ctx.request, ctx.env)) {
+      const h = await hashOf(/^Bearer (.+)$/.exec(ctx.request.headers.get("Authorization") || "")[1]);
+      if (!(await (await db(ctx.env)).prepare("SELECT site_hash FROM pg_sessions WHERE hash = ?").bind(h).first())?.site_hash) await withSession(res, ctx.request, ctx.env, h, true);
+    }
     if (ctx.env.PIGEON_COUNT_DB) try { res.headers.set("X-DB-Trips", String(TRIPS.n - trips0)); } catch (_) {}   // (tests: what it cost)
     return res;
   } catch (e) {

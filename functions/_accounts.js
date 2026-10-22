@@ -9,8 +9,6 @@ export const avatarKey = (id) => `pigeon-avatars/${id}`;
 
 export async function removeAccount(env, id) {
   await dropReacts(env, { user: id });
-  // (and what the site's other apps kept with the account: functions/_account.js)
-  await dropAccount(env, id);
   await removeFromGroups(env, id);
   const D = await db(env);
   if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(id));
@@ -45,4 +43,6 @@ export async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_handles_held WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
+  // (and what the site's other apps kept with the account, now no session can add to it: functions/_account.js)
+  await dropAccount(env, id);
 }

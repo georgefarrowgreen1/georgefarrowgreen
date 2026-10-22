@@ -9,9 +9,10 @@
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
 import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, linkOrigin, hex, sha256 } from "./_pigeon.js";
-import { cookieUser, sameOrigin, withSession, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn, cookieToken } from "./_account.js";
+import { cookieUser, sameOrigin, withSession, withCookie, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn, cookieToken } from "./_account.js";
 import { deviceOf } from "./_pigeon.js";
 import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
+import { isWeather } from "./_wxapp.js";
 
 const MAX_SAVED = 50, MAX_DATA = 48 * 1024;
 const cleanText = (v, n) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").trim().slice(0, n);
@@ -67,7 +68,8 @@ async function signedIn(request, env) {
 async function started(request, env, waitUntil, u, how) {
   const token = await issueSession(env, u.id, request);
   waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), false).catch(() => {}));
-  return withSession(json(await view(env, u)), request, env, token);
+  // (the session's own token's never given out here: only the cookie's)
+  return withSession(json(await view(env, u)), request, env, hex(await sha256(token)));
 }
 
 export const ACCOUNT_ROUTES = {
@@ -75,7 +77,7 @@ export const ACCOUNT_ROUTES = {
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env);
     if (!u) return json({ signedIn: false });
-    return withSession(json(await view(env, u)), request, env, u.token);
+    return withCookie(json(await view(env, u)), request, env, u.token);
   },
   // a change: { base (the version it was made from), data }; 409 with what's kept now if that's moved on
   "PUT me": async ({ request, env }) => {
@@ -112,7 +114,7 @@ export const ACCOUNT_ROUTES = {
     sameOrigin(request);
     const u = await cookieUser(request, env), b = await body(request);
     if (u) {
-      await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(hex(await sha256(u.token))).run();
+      await (await db(env)).prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.sessionHash).run();
       if (b.endpoint) await leaveAccount(env, b.endpoint, u.id);
     }
     return withoutSession(json({ ok: true }), request, env);
@@ -121,6 +123,6 @@ export const ACCOUNT_ROUTES = {
 // Turning notifications on (or changing them) on a device: signed in, as the account's choices, and the device one of
 // the account's; signed out, as its own
 export async function subscribeHere(request, env, b) {
-  const u = cookieToken(request, env) ? await cookieUser(request, env) : null;
+  const u = cookieToken(request, env) && isWeather(new URL(request.url), env) ? await cookieUser(request, env) : null;
   return subscribe(env, b, u, u ? (await kept(env, u.id)).data.notify : null, u ? deviceOf(request) : "");
 }

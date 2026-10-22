@@ -1460,21 +1460,24 @@ line in its chat, so no one can be slipped in without everyone seeing.
 
 **One account for the site.** The same account (email, password, passkeys) signs in to every app on
 georgefarrowgreen.com, and one sign-in serves them all in a browser (`functions/_account.js`). Each sign-in starts a
-session as before and also gives it to the browser as a cookie for the whole site (`__Secure-account`, Domain
+session as before and also gives the browser a cookie for the whole site (`__Secure-account`, Domain
 georgefarrowgreen.com, HttpOnly, SameSite=Lax, Secure; 180 days, renewed while it's used), so signing in to one app
 signs you in to the others in that browser, and signing out of any of them (or deleting the account, or a password
-reset) ends it for all. InFlight keeps its own copy of the session as before (a bearer token, which its API still
-needs: the cookie alone opens nothing of InFlight's); it gives an existing sign-in to the cookie the first time it syncs
-after this change; and, opened signed out where the browser's signed in elsewhere on the site, its welcome says
-"Signed in as …" with **Continue as …**, which asks only for the password to unlock the key on this phone (`POST
-/api/pigeon/resume`, answering only InFlight's own pages). Apps that keep nothing themselves ask with the cookie,
-only from their own pages (the browser's Origin is checked), and only for their own things. Passkeys are made for the
-site (rpId georgefarrowgreen.com) at chat., the site's own address and weather., so one passkey works at all of them;
-an answer from one is taken only at the address it was given at. The password and passkey checks, with their limits
-and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the same whichever
-app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app signs in on its
-own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`, chat. and weather.
-mapped to this machine: `.tools/tests/wxacct.mjs`).
+reset) ends it for all. The cookie holds a token of its own for the session (`pg_sessions.site_hash`), not the
+session's bearer token, so it opens nothing of InFlight's; and it's only given in answer to a sign-in from the app's
+own pages (the browser's Origin), so a sign-in another site sends in your browser, even with a good password, can't
+sign the browser in. InFlight keeps its own bearer token as before; it gives an existing sign-in a cookie the first
+time it syncs after this change; and, opened signed out where the browser's signed in elsewhere on the site, its
+welcome says "Signed in as …" with **Continue as …**, which asks for the password: its proof (`POST
+/api/pigeon/resume`, from InFlight's own pages only) starts InFlight's own session in place of the cookie's, and the
+password unlocks the key on the phone. Apps that keep nothing themselves (Weather) ask with the cookie, only from
+their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
+made for the site (rpId georgefarrowgreen.com) at chat., the site's own address and weather., so one passkey works at
+all of them; an answer from one is taken only at the address it was given at. The password and passkey checks, with
+their limits and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the
+same whichever app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app
+signs in on its own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,
+chat. and weather. mapped to this machine: `.tools/tests/wxacct.mjs`).
 
 **Accounts.** Email + password, plus optional passkeys. The password is
 stretched on the phone (PBKDF2, 600,000 rounds): half of the result locks the

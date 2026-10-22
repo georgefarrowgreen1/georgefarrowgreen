@@ -192,6 +192,19 @@ const stale = await call('PUT', '/api/weather/me', { base: 1, data: { places: [{
 ok(stale.status === 409 && JSON.parse(stale.body).ver > 1, 'a change from an old version is told the account\'s moved on (not taken)', `${stale.status}`);
 const resumeElsewhere = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/resume', method: 'POST', headers: { Host: 'chat.gfg.test:8788', Origin: WX, Cookie: `account=${lc.value}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
 ok(resumeElsewhere.status === 403 && !/token/.test(resumeElsewhere.body), 'InFlight hands its sign-in only to its own pages', `${resumeElsewhere.status}`);
+// the cookie is the site's sign-in for the browser, not a key to InFlight: as InFlight's bearer token it opens nothing
+const asBearer = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/sync', headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${lc.value}` } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+ok(asBearer === 401, 'the cookie isn\'t a key to InFlight\'s API', String(asBearer));
+// a sign-in sent from another site (with a good password: its own account's, say) doesn't sign the browser in
+{
+  const proof = await K.p.evaluate(async () => { const { E2E } = await import('/crypto.js'); const { salt } = await (await fetch('/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'sam@example.com' }) })).json(); return (await E2E.fromPassword('a long test password', salt)).proof; }).catch((e) => String(e));
+  const login = (origin) => new Promise((done) => { const data = JSON.stringify({ email: 'sam@example.com', proof }); const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/login', method: 'POST', headers: { Host: 'chat.gfg.test:8788', Origin: origin, 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data) } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode, cookie: res.headers['set-cookie'] })); }); r.write(data); r.end(); });
+  const evil = await login('https://evil.example'), own = await login(CHAT);
+  ok(evil.status === 200 && !evil.cookie && own.status === 200 && /account=/.test(String(own.cookie)), 'a sign-in sent from another site doesn\'t sign the browser in (one from InFlight\'s own pages does)', `${evil.status} ${evil.cookie} | ${own.status}`);
+}
+// the account's API only at Weather's own address (not the site's, nor a preview's)
+const atSite = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me', headers: { Host: 'localhost:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+ok(atSite === 404, 'the account isn\'t answered at the site\'s own address', String(atSite));
 const old = await call('POST', '/api/weather/subscribe', { sub: { endpoint: 'https://fcm.googleapis.com/fcm/send/acct-before', keys: { p256dh: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U', auth: 'tBHItJI5svbpez7KI4CCXg' } }, place: { lat: 52.2, lon: 0.12, name: 'Cambridge' }, rain: true, brief: true });
 const cam = rows("SELECT name, rain, brief FROM wx_subs WHERE name = 'Cambridge'");
 ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief === 1, 'the app from before (one place) still turns them on', `${old.status} ${JSON.stringify(cam)}`);

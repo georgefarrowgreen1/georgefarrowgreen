@@ -723,9 +723,10 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
     'the UV index: low to extreme, its bubble the index there, from the grid already asked for', JSON.stringify({ ...uv, uvWords }));
   await pick('rain');
   const rain = await p.waitForFunction(() => document.getElementById('radar').dataset.layer === 'rain', null, { timeout: 5000 }).then(st, st);
-  // the rain about the place in words, for a screen reader: the map's description
+  // the rain about the place in words, for a screen reader, is the map's description: nothing where the radar doesn't
+  // see the place (as here; where it does, below)
   const said = await p.evaluate(() => [document.querySelector('#radar .radar-map').getAttribute('aria-describedby'), document.getElementById('radar-said').textContent]);
-  ok(said[0] === 'radar-said' && /^(.+ (rain|snow)|Drizzle).+\.$|^No rain within about \d+ km\.$/.test(said[1]), 'the rain about here, in words, as the map\'s description', JSON.stringify(said));
+  ok(said[0] === 'radar-said' && said[1] === '', 'the rain in words is the map\'s description, and says nothing where the radar doesn\'t see', JSON.stringify(said));
   ok(rain.title === 'Rain radar' && rain.legend === 'Precipitation' && rain.kind === '' && !rain.flow && Number(rain.max) >= 230 && rain.kept === 'rain' && /^(Latest radar|Radar|Forecast|Estimated) /.test(rain.label),
     'and back to the rain, as it was', JSON.stringify(rain));
   // the rain on to twelve hours or so ahead: after the next two hours, the models' hours (a step every three minutes
@@ -786,6 +787,11 @@ ok(await p.waitForFunction(() => !document.getElementById('radar').classList.con
   ok(/^Rain starting (in about (5|10|15|20|25|30) min|any minute)/.test(said) && /^Rain on the way from about \d\d:\d\d/.test(brief),
     'the next hours from the radar, where it sees: rain coming that the models don\'t have', `${said} | ${brief.slice(0, 60)}`);
   ok(await p5.isVisible('#nowcast-src') && (await p5.textContent('#nowcast-src')).trim() === 'Radar', 'and the card says it\'s the radar\'s timing');
+  // and where the radar sees, the rain about here in words: the block to the west, coming east, and when it might be here
+  await p5.locator('#radar').scrollIntoViewIfNeeded();
+  await p5.waitForFunction(() => document.getElementById('radar-said').textContent !== '', null, { timeout: 15000 }).catch(() => {});
+  const words = await p5.textContent('#radar-said');
+  ok(/^Moderate rain about \d+ km to the west, moving east at about \d+ km\/h: it could be here in about (\d+ minutes|an hour)\.$/.test(words), 'where the radar sees: the rain about here in words, for a screen reader', words);
   // the minutes between, where the rain's moving (here a block of it, coming east two of zoom 7's pixels a minute): moved
   // along its way and blended, it's one block half way along, as solid as in the frames, not two faint ones (zoomed out to
   // see it whole)
