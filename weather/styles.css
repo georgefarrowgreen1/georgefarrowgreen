@@ -226,18 +226,20 @@ body:is(.sheet-up, .deep, .no-scroll) :is(.sky-fx, .sky-clouds, .sky-flash), bod
 #place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .place-name::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-3px); margin-left: 6px; flex: none; }
 /* the line under the name: where it is, and once the big temperature has scrolled away, the temperature and sky
-   (crossfading with the scroll, as iOS Weather's large title collapses) */
+   (crossfading as it goes, as iOS Weather's large title collapses: .top.collapsed, app.js) */
 .place-line { display: grid; font-size: 12px; line-height: 15px; color: var(--text-3); }
-.place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.2s; }
-.place-sub { opacity: calc(1 - var(--cs, 0)); }
-.place-now { opacity: var(--cs, 0); color: var(--text-2); font-weight: 600; }
+.place-line > * { grid-area: 1 / 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 0.28s var(--glide); }
+.top.collapsed .place-sub { opacity: 0; }
+.place-now { opacity: 0; color: var(--text-2); font-weight: 600; }
+.top.collapsed .place-now { opacity: 1; }
 .place-now:empty, .place-line:has(.place-sub:empty):has(.place-now:empty) { display: none; }
 /* with nothing to say under the name, it stays one line: the temperature slides in beside the name instead
    (the pill never changes height) */
 .place.no-sub .place-line { display: none; }
 .place-temp { display: none; }
 .place.no-sub .place-temp { display: inline-block; flex: none; overflow: hidden; white-space: nowrap; color: var(--text-2); font-weight: 600;
-  max-width: calc(var(--cs, 0) * 3.2em); margin-left: calc(var(--cs, 0) * 7px); opacity: var(--cs, 0); }
+  max-width: 0; margin-left: 0; opacity: 0; transition: max-width 0.4s var(--glide), margin-left 0.4s var(--glide), opacity 0.28s var(--glide); }
+.top.collapsed .place.no-sub .place-temp { max-width: 3.2em; margin-left: 7px; opacity: 1; }
 .top-actions { display: flex; gap: 10px; }
 /* pull to refresh (app.js pullToRefresh): iOS's spinner, in the gap that opens above the bar, its ticks coming in one by
    one as the page is pulled, a little pop when letting go would refresh, then turning, each tick fainter than the one

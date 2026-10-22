@@ -486,21 +486,38 @@ function render() {
   if (!S.modeChosen) { const v = viewFor(wx, now); if (v !== S.mode) showMode(v); }
   // (each part drawn by itself: a fault in one, on some odd piece of the forecast, leaves the others as they should be)
   const part = (fn, ...a) => { try { fn(...a); } catch (e) { console.error(e); } };
+  const my = ++drawing, key = cell(wx.place.lat, wx.place.lon);
+  // (the place drawn again with something new near the top (a warning come in, say) while the page is at the top: what's
+  // under it glides down to its new place rather than jumping there)
+  const glide = drawnFor === key && scrollY < 40 && !calm.matches, blocks = glide ? [...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden) : [];
+  const was = new Map(blocks.map((x) => [x, x.getBoundingClientRect().top]));
   part(sky, wx, now);
   part(hero, wx, now);
   part(pinOnMap, wx, now);
   part(nowcast, wx, now);
   part(cards, wx, now);
-  part(hourly, wx, now);
-  part(daily, wx, now);
-  part(windows, wx, now);
   part(nudge);
-  part(accuracy, wx);
-  part(climate, wx, now);
-  part(tiles, wx, now);
+  part(hourly, wx, now);
   status();
-  balance(`${cell(wx.place.lat, wx.place.lon)}|${!!wx.climate}|${!!wx.skill?.station}`);
+  const rest = () => {
+    part(daily, wx, now);
+    part(windows, wx, now);
+    part(accuracy, wx);
+    part(climate, wx, now);
+    part(tiles, wx, now);
+    balance(`${key}|${!!wx.climate}|${!!wx.skill?.station}`);
+  };
+  // a place's first drawing, on a phone: what's on the screen first, and the rest (all below it) a moment after, once
+  // that's shown, rather than all at once before anything is; unless it's been drawn again meanwhile (all of it then)
+  if (drawnFor !== key && !twoCols.matches) { drawnFor = key; requestAnimationFrame(() => setTimeout(() => { if (my === drawing) rest(); }, 0)); return; }
+  drawnFor = key;
+  rest();
+  for (const [x, t] of was) {
+    const r = x.getBoundingClientRect(), d = t - r.top;
+    if (Math.abs(d) > 2 && !x.hidden && r.top < innerHeight) x.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 480, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", composite: "add" });
+  }
 }
+let drawing = 0, drawnFor = "";
 // A wide screen's two columns kept about level: the radar (after the next 48 hours, or after Right now), the 15 days
 // (at the foot of either) and this time of year (under the 15 days, or after the best times) each on whichever side
 // does it. Worked out once a place's forecast is in (and again as its climate and its accuracy come), and as the
@@ -1953,8 +1970,9 @@ function wire() {
   const onScroll = () => {
     ticking = 0;
     // (on its side, the weather now stays in sight on the left: the bar needn't take it up)
-    const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40))), cs = Math.min(1, Math.max(0, (c - 0.55) / 0.35));
-    heroEl.style.setProperty("--c", c.toFixed(3)); top.style.setProperty("--cs", (cs * cs * (3 - 2 * cs)).toFixed(3));
+    // (the bar's taken up once the big one's mostly gone: a crossfade of its own, not one restyled with every frame of the scroll)
+    const c = sideways.matches ? 0 : Math.min(1, Math.max(0, scrollY / Math.max(80, heroEl.offsetHeight - 40)));
+    heroEl.style.setProperty("--c", c.toFixed(3)); top.classList.toggle("collapsed", c >= 0.72);
     heroEl.classList.toggle("away", c >= 0.99);          // (scrolled out of sight: its icon stops moving)
     document.body.classList.toggle("deep", c >= 0.99);   // (and the sky behind the cards: styles.css)
     top.classList.toggle("scrolled", scrollY > 8);
