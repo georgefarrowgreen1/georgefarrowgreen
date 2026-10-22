@@ -67,7 +67,7 @@ function modelGrid(url) {
 }
 // the stand-in for Open-Meteo (the server's notifications), the Aviation Weather Center (its airport reports), and
 // MeteoAlarm, the National Weather Service and the Environment Agency (official warnings: mocks/wxwarnings.mjs)
-let wxScenario = { rainIn: 30 }, radarScenario = null;
+let wxScenario = { rainIn: 30 }, radarScenario = null, warnExtra = false;
 http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), send = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
   if (u.pathname === '/v1/forecast') { const n = (u.searchParams.get('latitude') || '').split(',').length, one = F.forecast(Date.now(), wxScenario); return send(n > 1 ? Array(n).fill(one) : one); }
@@ -77,7 +77,7 @@ http.createServer((req, res) => {
   const rf = /^\/v2\/radar\/f(\d+)\/512\/6\/(\d+)\/(\d+)\//.exec(u.pathname), cover = u.pathname.startsWith('/v2/coverage/');
   if (rf || cover) { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(cover ? (radarScenario ? SEEN_512 : UNSEEN_512) : radarScenario ? blockTile(+rf[1], +rf[2], +rf[3]) : SEEN_512); }
   if (u.pathname === '/api/data/stationinfo') return send([{ icaoId: 'EGLC', site: 'London City Arpt', lat: 51.505, lon: 0.055, siteType: ['METAR', 'TAF'] }, { icaoId: 'EGKB', site: 'London/Biggin Hill Arpt', lat: 51.33, lon: 0.033, siteType: ['METAR'] }]);
-  if (u.pathname === '/api/v1/warnings/feeds-united-kingdom') return send(OW.ukFeed(Date.now()));
+  if (u.pathname === '/api/v1/warnings/feeds-united-kingdom') return send(OW.ukFeed(Date.now(), { extra: warnExtra }));
   if (u.pathname.startsWith('/api/v1/warnings/feeds-')) return send({ warnings: [] });
   if (u.pathname === '/flood-monitoring/id/floods') return send(OW.eaFloods(+u.searchParams.get('lat'), +u.searchParams.get('long'), Date.now()));
   const ea = /^\/flood-monitoring\/id\/floodAreas\/([\w-]+)\/polygon$/.exec(u.pathname);
@@ -1125,6 +1125,26 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     await p2.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
     await c2.close();
     wxScenario = { rainIn: 30 }; radarScenario = null;
+  }
+  // official warnings as they're issued: turned on, those in force already aren't sent (they're on the page); one newly
+  // issued is, once; at any hour if it's amber
+  {
+    const third = 'https://fcm.googleapis.com/fcm/send/weather-test-device-3';
+    const { ctx: c3, p: p3 } = await open({}, { push: { endpoint: third, p256dh: b64u(pub), auth: b64u(authK) } });
+    await p3.evaluate(() => navigator.serviceWorker.ready);
+    await p3.click('#settings-btn'); await p3.check('input[name="warn"]');
+    await p3.waitForFunction(() => /^On: official warnings\.$/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
+    const hello = (await mine(third)).find((n) => n.tag === 'wx-on');
+    const w1 = await tick(), w2 = await tick();
+    warnExtra = true;
+    const w3 = await tick(), w4 = await tick();
+    const sent = (await mine(third)).filter((n) => n.tag === 'warn');
+    ok(hello?.body === 'Official warnings for London.' && w1.warn === 0 && w2.warn === 0 && w3.warn === 1 && w4.warn === 0 && sent.length === 1 && sent[0].title === 'Amber wind warning' && /^London: Met Office · Until \d\d:\d\d\. Gusts of 60 to 70 mph are likely\.$/.test(sent[0].body),
+      'official warnings: none for those in force as they\'re turned on, then one newly issued, once', `${hello?.body} | ${[w1, w2, w3, w4].map((t) => t.warn).join(',')} | ${sent.map((n) => `${n.title} — ${n.body}`).join(' / ')}`);
+    warnExtra = false;
+    await p3.uncheck('input[name="warn"]');
+    await p3.waitForFunction(() => document.getElementById('notify-status').textContent === 'Off.', null, { timeout: 10000 });
+    await c3.close();
   }
 }
 

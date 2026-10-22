@@ -15,7 +15,7 @@
 // Cloudflare's cache for everyone; the place asked about isn't kept at all. Only warnings yellow or
 // above (MeteoAlarm's green is "nothing in particular"), in force or to come, and not since replaced.
 //
-// METEOALARM_URL, NWS_URL, EA_URL: tests only.
+// METEOALARM_URL, NWS_URL, EA_URL, WARN_TTL (how long a feed's kept, in seconds; 0, not at all): tests only.
 
 import { HttpError } from "./_pigeon.js";
 
@@ -198,14 +198,14 @@ async function floodsAt(env, lat, lon) {
 }
 
 // a feed, shaped: from the cache, or asked for and kept for TTL (an answer that it's outside its map: none, kept too)
-async function shaped(url, shape) {
-  const cache = typeof caches !== "undefined" && caches.default ? caches.default : null;
+async function shaped(url, shape, ttl = TTL) {
+  const cache = ttl > 0 && typeof caches !== "undefined" && caches.default ? caches.default : null;
   const key = new Request(`${url}${url.includes("?") ? "&" : "?"}shaped=2`);
   if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) return hit.json(); }
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
   if (!r.ok && r.status !== 400 && r.status !== 404) throw new Error(`${new URL(url).hostname} ${r.status}`);
   const out = r.ok ? shape(await r.json()) : [];
-  if (cache) await cache.put(key, new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${TTL}` } })).catch(() => {});
+  if (cache) await cache.put(key, new Response(JSON.stringify(out), { headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ttl}` } })).catch(() => {});
   return out;
 }
 
@@ -213,12 +213,13 @@ async function shaped(url, shape) {
 // failed, an error (502), so a phone keeps the warnings it had rather than being told there are none
 export async function warningsAt(env, lat, lon, now = Date.now()) {
   const ma = env.METEOALARM_URL || "https://feeds.meteoalarm.org", nws = env.NWS_URL || "https://api.weather.gov";
+  const ttl = env.WARN_TTL != null && env.WARN_TTL !== "" ? Number(env.WARN_TTL) : TTL;
   const feeds = [...new Set(FEEDS.filter(([, b]) => inBox(lat, lon, b)).map(([slug]) => slug))];
-  const asks = feeds.map((slug) => shaped(`${ma}/api/v1/warnings/feeds-${slug}`, (j) => shapeMeteoalarm(j, now))
+  const asks = feeds.map((slug) => shaped(`${ma}/api/v1/warnings/feeds-${slug}`, (j) => shapeMeteoalarm(j, now), ttl)
     .then((list) => list.filter((w) => w.polys.some((p) => inside(lat, lon, p))))
     .catch((e) => { console.error("weather warnings:", slug, e && e.message); return null; }));
   if (NWS_BOXES.some((b) => inBox(lat, lon, b))) {
-    asks.push(shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon, now))
+    asks.push(shaped(`${nws}/alerts/active?point=${lat},${lon}`, (j) => shapeNws(j, lat, lon, now), ttl)
       .catch((e) => { console.error("weather warnings: NWS", e && e.message); return null; }));
   }
   if (inBox(lat, lon, EA_BOX)) asks.push(floodsAt(env, lat, lon).catch((e) => { console.error("weather warnings: floods", e && e.message); return null; }));

@@ -44,7 +44,7 @@ function loadSettings() {
   const d = {
     ...defaults(), commute: { on: false, am: "08:00", pm: "17:30" }, tune: true,
     activities: I.DEFAULT_ACTIVITIES.map((a) => ({ ...a })), extras: { laundry: true, stars: true, sunset: true },
-    notify: { rain: false, brief: false, briefAt: "07:00", place: null },
+    notify: { rain: false, brief: false, warn: false, briefAt: "07:00", place: null },
   };
   // (only values the app knows: a damaged or out-of-date one falls back to the default)
   const k = store.get("wx:settings"), o = k && typeof k === "object" && !Array.isArray(k) ? k : {};
@@ -1425,7 +1425,7 @@ async function locate(quiet = false) {
     const mine = !quiet || !S.places.length || !!place()?.gps, same = quiet && before && cell(before.lat, before.lon) === cell(lat, lon);
     const named = (name) => {
       const n = S.settings.notify;
-      if ((n.rain || n.brief) && n.place?.gps && (cell(n.place.lat, n.place.lon) !== cell(lat, lon) || n.place.name !== name)) { n.place = { lat, lon, name, gps: true }; saveSettings(); syncNotify().catch(() => {}); }
+      if (notifying(n) && n.place?.gps && (cell(n.place.lat, n.place.lon) !== cell(lat, lon) || n.place.name !== name)) { n.place = { lat, lon, name, gps: true }; saveSettings(); syncNotify().catch(() => {}); }
     };
     // (named as it was, until the new name's found, if it's not gone far; "My Location" if it has)
     const as = was || (same ? before : null);
@@ -1535,7 +1535,7 @@ function readSettings(e) {
   if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
   // notifications speak your units too
   const n = S.settings.notify;
-  if ((n.rain || n.brief) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
+  if (notifying(n) && units !== ["temp", "wind", "precip", "clock"].map((k) => S.settings[k]).join()) syncNotify().catch(() => {});
 }
 
 // The page behind redrawn once the next frame is out, so a choice's lens has begun to glide (started, it runs by
@@ -1555,11 +1555,11 @@ const b64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "
 // iPhone not yet running Weather from its Home Screen, how to get there first)
 function nudge() {
   const box = $("nudge"), n = S.settings.notify, away = store.get("wx:nudge");
-  if (n.rain || n.brief || (away && Date.now() - away < 30 * DAY)) { box.hidden = true; return; }
+  if (notifying(n) || (away && Date.now() - away < 30 * DAY)) { box.hidden = true; return; }
   if (!box.hidden && box.childElementCount) return;
   const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
   box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h2", { id: "nudge-title" }, "Get rain alerts"),
-    h("p", {}, why || "A heads-up here before rain starts, and a morning briefing if you'd like one."),
+    h("p", {}, why || "A heads-up here before rain starts, official warnings as they're issued, and a morning briefing if you'd like one."),
     h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify-set"); } }, "Turn on"),
       h("button", { class: "link", type: "button", onclick: done }, why ? "OK" : "Not now")));
   box.hidden = false;
@@ -1602,14 +1602,14 @@ function syncNotify() {
 }
 async function syncNow() {
   const n = S.settings.notify;
-  if (!n.rain && !n.brief) {
+  if (!notifying(n)) {
     const sub = "serviceWorker" in navigator ? await pushSub(false).catch(() => null) : null;
     if (sub) { await post("/api/weather/unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
     n.endpoint = null; saveSettings();
     return;
   }
   const sub = await pushSub(true), j = sub.toJSON();
-  await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, place: n.place, rain: n.rain, brief: n.brief, briefAt: n.briefAt, was: n.endpoint || undefined,
+  await post("/api/weather/subscribe", { sub: { endpoint: j.endpoint, keys: j.keys }, place: n.place, rain: n.rain, brief: n.brief, warn: !!n.warn, briefAt: n.briefAt, was: n.endpoint || undefined,
     units: { temp: S.settings.temp, wind: S.settings.wind, precip: S.settings.precip, clock: S.settings.clock } });
   n.endpoint = j.endpoint; n.syncedAt = Date.now(); saveSettings();
 }
@@ -1617,7 +1617,7 @@ async function syncNow() {
 // again, so they keep coming (it forgets phones it hasn't heard from in months)
 async function keepNotify() {
   const n = S.settings.notify;
-  if (!(n.rain || n.brief) || !("serviceWorker" in navigator) || !("Notification" in window) || Notification.permission !== "granted") return;
+  if (!notifying(n) || !("serviceWorker" in navigator) || !("Notification" in window) || Notification.permission !== "granted") return;
   try {
     const sub = await pushSub(false);
     if (sub && sub.endpoint === n.endpoint && Date.now() - (n.syncedAt || 0) < 7 * 864e5) return;
@@ -1633,30 +1633,33 @@ function fillTimes(sel, at) {
   sel.replaceChildren(...list.map((v) => h("option", { value: v }, atText(v))));
   sel.value = at;
 }
+// (any of them on: rain alerts, official warnings, the briefing)
+const notifying = (n) => !!(n.rain || n.brief || n.warn);
 const atText = (at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return S.f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };
 async function onNotify() {
   const form = $("settings-form"), n = S.settings.notify, st = $("notify-status");
-  const want = { rain: form.rain.checked, brief: form.brief.checked, briefAt: form.briefAt.value || "07:00" };
-  if ((want.rain && !n.rain) || (want.brief && !n.brief)) {
+  const want = { rain: form.rain.checked, brief: form.brief.checked, warn: form.warn.checked, briefAt: form.briefAt.value || "07:00" };
+  if ((want.rain && !n.rain) || (want.brief && !n.brief) || (want.warn && !n.warn)) {
     const why = notifyWhy();
     if (why) { st.textContent = why; drawNotify(true); return; }
     // asked straight away, while the tap still counts (Safari won't ask otherwise)
     const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     if (perm !== "granted") { st.textContent = "Notifications weren't allowed."; drawNotify(true); return; }
-    if (!(n.rain || n.brief) || !n.place) n.place = hereForNotify();
+    if (!notifying(n) || !n.place) n.place = hereForNotify();
   }
   Object.assign(n, want);
   saveSettings();
   st.textContent = "Saving…";
   try {
     await syncNotify();
-    st.textContent = n.rain || n.brief ? `On: ${[n.rain ? "rain alerts" : "", n.brief ? `a briefing at ${atText(n.briefAt)}` : ""].filter(Boolean).join(" and ")}.` : "Off.";
+    const on = [n.rain ? "rain alerts" : "", n.warn ? "official warnings" : "", n.brief ? `a briefing at ${atText(n.briefAt)}` : ""].filter(Boolean);
+    st.textContent = on.length ? `On: ${on.length > 1 ? `${on.slice(0, -1).join(", ")} and ${on.at(-1)}` : on[0]}.` : "Off.";
   } catch (err) { st.textContent = `Couldn't save that just now (${err.message}).`; }
   drawNotify(true);
 }
 function drawNotify(keepStatus = false) {
-  const n = S.settings.notify, form = $("settings-form"), p = place(), on = n.rain || n.brief;
-  form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; fillTimes(form.briefAt, n.briefAt || "07:00");
+  const n = S.settings.notify, form = $("settings-form"), p = place(), on = notifying(n);
+  form.rain.checked = !!n.rain; form.brief.checked = !!n.brief; form.warn.checked = !!n.warn; fillTimes(form.briefAt, n.briefAt || "07:00");
   $("notify-place").textContent = on && n.place ? `For ${n.place.gps ? `My Location (${n.place.name})` : n.place.name}.` : "For the place on screen when you turn them on.";
   $("notify-here").hidden = !(on && n.place && p && cell(p.lat, p.lon) !== cell(n.place.lat, n.place.lon));
   if (!keepStatus) $("notify-status").textContent = on ? "" : notifyWhy() || "";
@@ -1916,7 +1919,7 @@ function wire() {
   $("locate-btn").addEventListener("click", () => locate());
   $("settings-btn").addEventListener("click", () => { drawSettings(); openSheet($("settings")); });
   $("settings-form").addEventListener("change", readSettings);
-  for (const k of ["rain", "brief", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
+  for (const k of ["rain", "brief", "warn", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
   $("notify-here").addEventListener("click", () => { S.settings.notify.place = hereForNotify(); saveSettings(); $("notify-status").textContent = "Saving…"; syncNotify().then(() => { $("notify-status").textContent = "Moved to this place."; }, (e) => { $("notify-status").textContent = `Couldn't save that just now (${e.message}).`; }); drawNotify(true); });
   $("act-add").addEventListener("change", addAct);
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;

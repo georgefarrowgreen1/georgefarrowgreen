@@ -23,10 +23,12 @@ function alert(id, { msgType = 'Alert', status = 'Actual', references = null, le
     },
   };
 }
-export function ukFeed(now = Date.now()) {
+// (extra: an amber wind warning for London too, as one newly issued)
+export function ukFeed(now = Date.now(), { extra = false } = {}) {
   const day = Math.floor(now / D) * D;
   return {
     warnings: [
+      ...(extra ? [alert('ldn-wind', { level: '3; orange; Severe', type: '1; Wind', event: 'Amber wind warning', onset: now, expires: now + 6 * H, headline: 'Gusts of 60 to 70 mph are likely.' })] : []),
       alert('ldn-rain', { msgType: 'Update', references: 'https://www.metoffice.gov.uk,ldn-rain-old,2026-01-01T00:00:00+00:00', type: '10; Rain', event: 'Yellow rain warning', onset: now - H, expires: now + 5 * H,
         headline: 'Heavy rain may lead to some flooding and travel disruption.', description: 'Rain will turn heavy this afternoon.\n\nFor further details see the Met Office website.',
         instruction: 'Check road conditions\nbefore you travel.', impacts: ['Spray and flooding could make journeys longer', 'Some interruption to power is possible'] }),

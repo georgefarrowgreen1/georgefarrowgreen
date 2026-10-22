@@ -120,3 +120,42 @@ test("the morning briefing says the official warning, and not the app's own on t
   assert.match(b, /Met Office: yellow wind warning until 15:00\./);
   assert.doesNotMatch(b, /Warning: (damaging gusts|gales)/i, "the app's own gales warning stands aside");
 });
+
+// A warning as it's issued: told once, the worst first; a warning raised (yellow to amber) told again; reissued or
+// downgraded, not; yellow ones held over the quiet hours; turned on with warnings in force, those taken as told
+test("warning notifications: new or raised, once each, yellow not overnight", async () => {
+  const { warningAlert } = await import("../../../weather/alerts.js");
+  const iso = (t) => new Date(t).toISOString();
+  const w = (id, level, event, more = {}) => ({ id, level, event, via: "MeteoAlarm", issuer: "Met Office", type: 1, onset: iso(NOW - H), expires: iso(NOW + 12 * H), headline: "Gusts of 50 to 60 mph.", ...more });
+  const day = NOW, night = Date.UTC(2026, 9, 19, 23, 30);
+  // just turned on: what's in force is taken as told, nothing sent
+  let r = warningAlert([w("a", 2, "Yellow wind warning")], null, day, day, f, 0, "London");
+  assert.equal(r.alert, null); assert.deepEqual(Object.keys(r.told), ["a"]);
+  // the same again: nothing
+  r = warningAlert([w("a", 2, "Yellow wind warning")], r.told, day, day, f, 0, "London");
+  assert.equal(r.alert, null);
+  // raised to amber (a new warning of the same, replacing it): told, as raised
+  let told = r.told;
+  r = warningAlert([w("b", 3, "Amber wind warning")], told, day, day, f, 0, "London");
+  assert.equal(r.alert.title, "Raised to amber: wind warning"); assert.equal(r.alert.tag, "warn");
+  assert.match(r.alert.body, /^London: Met Office · Until 21:00\. Gusts of 50 to 60 mph\.$/);
+  // and back down to yellow, or the amber reissued: not news
+  told = r.told;
+  assert.equal(warningAlert([w("c", 2, "Yellow wind warning")], told, day, day, f, 0, "London").alert, null);
+  assert.equal(warningAlert([w("b2", 3, "Amber wind warning")], told, day, day, f, 0, "London").alert, null);
+  // something new besides: the worst said, and how many more
+  r = warningAlert([w("b", 3, "Amber wind warning"), w("d", 2, "Yellow rain warning", { type: 10 }), w("e", 4, "Red snow warning", { type: 2 })], told, day, day, f, 0, "London");
+  assert.equal(r.alert.title, "Red snow warning"); assert.match(r.alert.body, /\(and 1 more\)$/);
+  // overnight: a new yellow one waits for the morning (not taken as told), an amber one doesn't wait
+  const quiet = warningAlert([w("f", 2, "Yellow fog warning", { type: 4, expires: iso(night + 12 * H) })], {}, night, night, f, 0, "");
+  assert.equal(quiet.alert, null); assert.equal(quiet.told.f, undefined, "left to tell in the morning");
+  assert.equal(warningAlert([w("f", 2, "Yellow fog warning", { type: 4 })], quiet.told, day, day, f, 0, "").alert.title, "Yellow fog warning");
+  assert.equal(warningAlert([w("g", 3, "Amber wind warning", { expires: iso(night + 6 * H) })], {}, night, night, f, 0, "").alert.title, "Amber wind warning");
+  // the US's, named by kind: a Watch become a Warning is said by its new name
+  const nws = (id, level, event) => ({ id, level, event, via: "NWS", issuer: "NWS New York NY", onset: iso(NOW), expires: iso(NOW + 6 * H) });
+  const t1 = warningAlert([nws("n1", 2, "Flood Watch")], null, day, day, f, 0, "").told;
+  assert.equal(warningAlert([nws("n2", 3, "Flood Warning")], t1, day, day, f, 0, "").alert.title, "Flood Warning");
+  // what's told of is let go once it's over
+  const old = { gone: [3, "wind", NOW - H] };
+  assert.equal(warningAlert([], old, day, day, f, 0, "").told.gone, undefined);
+});
