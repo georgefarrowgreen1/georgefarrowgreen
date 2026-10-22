@@ -42,12 +42,17 @@ async function weatherOf(env, userId) {
 // What InFlight keeps of yours, as how many (its letters can't be read here, nor anywhere but your own phones): friends,
 // groups, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have gone
 // after a month), and places in your passport
+const SENT = `(SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1) + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1)
+  + (SELECT COUNT(*) FROM pg_flights WHERE sender = ?1)`;
+// (and had: those that have landed, as its log counts them; ?2 is now)
+const HAD = `(SELECT COUNT(*) FROM pg_msgs WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL)
+  + (SELECT COUNT(*) FROM pg_gdeliv WHERE user_id = ?1 AND deliver_at <= ?2 AND lost_at IS NULL)
+  + (SELECT COUNT(*) FROM pg_flights WHERE recipient = ?1 AND deliver_at <= ?2 AND lost_at IS NULL)`;
 async function inflightOf(D, id) {
   const r = await D.prepare(`SELECT
       (SELECT COUNT(*) FROM pg_links WHERE (a = ?1 OR b = ?1) AND status = 'ok') AS friends,
       (SELECT COUNT(*) FROM pg_group_members WHERE user_id = ?1) AS groups,
-      (SELECT COUNT(*) FROM pg_msgs WHERE sender = ?1) + (SELECT COUNT(*) FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1)
-        + (SELECT COUNT(*) FROM pg_flights WHERE sender = ?1) AS sent,
+      ${SENT} AS sent,
       (SELECT COUNT(*) FROM pg_passport WHERE user_id = ?1) AS places`).bind(id).first().catch(() => null);
   return { friends: r?.friends || 0, groups: r?.groups || 0, sent: r?.sent || 0, places: r?.places || 0 };
 }
@@ -371,14 +376,13 @@ const ROUTES = {
     await limit(env, "export:" + u.id, 10, DAY);
     const D = await db(env), all = (q, ...a) => D.prepare(q).bind(...a).all().then((r) => r.results).catch(() => []);
     const one = (q, ...a) => D.prepare(q).bind(...a).first().catch(() => null);
-    const [pks, ss, events, friends, groups, sent, got, passport, birds, wx, wxDevices] = await Promise.all([
+    const [pks, ss, events, friends, groups, pigeons, passport, birds, wx, wxDevices] = await Promise.all([
       all("SELECT label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ?", u.id),
       all("SELECT label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ?", u.id),
       activityOf(env, u.id),
       all("SELECT x.handle, x.name, l.created_at FROM pg_links l JOIN pg_users x ON x.id = CASE WHEN l.a = ?1 THEN l.b ELSE l.a END WHERE (l.a = ?1 OR l.b = ?1) AND l.status = 'ok'", u.id),
       all("SELECT g.name, m.joined_at FROM pg_group_members m JOIN pg_groups g ON g.id = m.group_id WHERE m.user_id = ?", u.id),
-      one("SELECT COUNT(*) AS n FROM pg_msgs WHERE sender = ?", u.id),
-      one("SELECT COUNT(*) AS n FROM pg_msgs WHERE recipient = ?", u.id),
+      one(`SELECT ${SENT} AS sent, ${HAD} AS received`, u.id, Date.now()),
       all("SELECT place, first_at, n FROM pg_passport WHERE user_id = ?", u.id),
       all("SELECT name, created_at, km FROM pg_birds WHERE owner = ?", u.id),
       weatherOf(env, u.id),
@@ -401,7 +405,7 @@ const ROUTES = {
         place: u.place || null, location: u.lat != null ? { lat: u.lat, lon: u.lon, approximate: !!u.loc_approx } : null,
         friends: friends.map((f) => ({ handle: f.handle, name: f.name, since: iso(f.created_at) })),
         groups: groups.map((g) => ({ name: g.name, joinedAt: iso(g.joined_at) })),
-        pigeons: { sent: sent?.n || 0, received: got?.n || 0 },
+        pigeons: { sent: pigeons?.sent || 0, received: pigeons?.received || 0 },
         passport: passport.map((p) => ({ place: p.place, firstAt: iso(p.first_at), times: p.n })),
         birds: birds.map((x) => ({ name: x.name, hatchedAt: iso(x.created_at), km: Math.round(x.km || 0) })),
         settings: { notifications: prefsOf(u), emailWhenPigeonsLand: !!u.notify_email, showWhenOnline: !u.hide_online, readReceipts: !u.no_receipts,

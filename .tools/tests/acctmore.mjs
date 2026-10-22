@@ -4,10 +4,12 @@
 // a password sign-in, only where the device can make one, and one made from it; the check-up folded to a line when all's
 // done, and opened; "Not you?" on a password sign-in from another device (not a passkey one, nor this browser's), which
 // signs everywhere else out then asks for a new password; device and passkey rows slid to sign out and remove; and two
-// columns on a wide screen. The site's addresses are stood in for by gfg.test, as in acctpage.mjs.
+// columns on a wide screen; and your data as a PDF (read back by poppler: its pages, text, pictures, and a place name
+// Helvetica can't show, drawn as a picture of itself), or as JSON. The site's addresses are stood in for by gfg.test,
+// as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync } from 'fs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => { writeFileSync(`${S}/acctmore.sql`, q); return execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --file ${S}/acctmore.sql --json`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString(); };
@@ -67,11 +69,16 @@ await P.p.click('[data-form=signup] .btn'); await P.p.waitForSelector('#city', {
 await P.p.selectOption('#city', 'London'); await P.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 }); await P.p.click('[data-act=onbdone]'); await P.p.waitForSelector('.tabs', { timeout: 20000 });
 const uid = rows("SELECT id FROM pg_users WHERE handle = 'rowan'")[0].id, t = Date.now(), DAY = 86400e3;
 // 4 friends (and one asked, not yet a friend), 2 groups; 3 pigeons now, a group pigeon to 2 people, and 4 whose messages
-// went after a month (9 sent, as its log counts them); 6 places stamped; 3 of Weather's places, 1 notifying, and the brief
-const wx = { places: [['London', 51.51, -0.13], ['Edinburgh', 55.95, -3.19], ['St Ives', 50.21, -5.48]].map(([name, lat, lon]) => ({ name, lat, lon })), settings: { temp: 'c', wind: 'kmh' },
+// went after a month (9 sent, as its log counts them; and 1 had); 6 places stamped; 4 of Weather's places (one Helvetica
+// can't show), 1 notifying, and the brief
+const wx = { places: [['London', 51.51, -0.13], ['Edinburgh', 55.95, -3.19], ['St Ives', 50.21, -5.48], ['Łódź', 51.76, 19.46]].map(([name, lat, lon]) => ({ name, lat, lon })), settings: { temp: 'c', wind: 'kmh' },
   notify: { places: [{ name: 'London', lat: 51.51, lon: -0.13, rain: true, warn: true }], brief: { name: 'London', lat: 51.51, lon: -0.13 }, briefAt: '07:00' } };
 const n = (k, f) => Array.from({ length: k }, (_, i) => f(i + 1)).join(',\n  ');
+const FRIENDS = ['Ada Marsh', 'Ben Okafor', 'Chloé Durand', 'Dev Patel'];
 sql(`
+INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES ${n(4, (i) => `('friend${i}', 'friend${i}', '${FRIENDS[i - 1]}', 'friend${i}@example.com', 'x', 'x', 'x', 'x', 0, 0, ${t})`)};
+INSERT INTO pg_groups (id, name, created_by, created_at) VALUES ('g1', 'Book club', '${uid}', ${t}), ('g2', 'Climbing', 'friend1', ${t});
+INSERT INTO pg_birds (id, owner, name, created_at, km) VALUES ('b1', '${uid}', 'Pip', ${t - 20 * DAY}, 1234.5);
 INSERT INTO pg_links (a, b, status, created_at) VALUES ${n(4, (i) => `('${i % 2 ? uid : 'friend' + i}', '${i % 2 ? 'friend' + i : uid}', 'ok', ${t})`)}, ('${uid}', 'asked1', 'pending', ${t});
 INSERT INTO pg_group_members (group_id, user_id, added_by, joined_at) VALUES ('g1', '${uid}', '${uid}', ${t}), ('g2', '${uid}', 'friend1', ${t});
 INSERT INTO pg_msgs (id, sender, recipient, ct, km, sent_at, deliver_at) VALUES ${n(3, (i) => `('m${i}', '${uid}', 'friend${i}', 'x', 50, ${t - i * DAY}, ${t - i * DAY + 3600e3})`)};
@@ -129,7 +136,7 @@ await shot(P, '03-app-inflight');
 await closeSheet(P);
 await P.p.click('main button.app:has(b:text-is("Weather"))'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
 const wxs = await sheetText(P);
-ok(/Saved places 3/.test(wxs) && /London · Edinburgh · St Ives/.test(wxs) && /Notifications 1 place · morning brief/.test(wxs) && /Units °C · km\/h/.test(wxs), 'Weather: its places by name, notifications, units', wxs);
+ok(/Saved places 4/.test(wxs) && /London · Edinburgh · St Ives · Łódź/.test(wxs) && /Notifications 1 place · morning brief/.test(wxs) && /Units °C · km\/h/.test(wxs), 'Weather: its places by name, notifications, units', wxs);
 ok((await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${WX}/`, 'and the way in');
 await shot(P, '04-app-weather');
 await closeSheet(P);
@@ -211,6 +218,34 @@ await L.p.evaluate(() => scrollTo(0, 700)); await settle(L, 400);
 ok((await L.p.evaluate(() => document.querySelector('.hero').getBoundingClientRect().top)) > 0, 'scrolled: the profile stays in view');
 const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
 ok(one >= 0, 'a phone: one column', String(one));
+
+// ---- 10. Your data: as a PDF to read and keep, and as JSON ----
+await account(P);
+await openRow(P, 'Download your data');
+ok(/Download as PDF/.test(await sheetText(P)) && /Download as JSON/.test(await sheetText(P)), 'your data: as a PDF, or as JSON');
+await shot(P, '11-data');
+const [dl] = await Promise.all([P.p.waitForEvent('download', { timeout: 60000 }), (async () => { await P.p.click('#sheet .btn:has-text("Download as PDF")'); await confirmIfAsked(P, PW); })()]);
+const pdfPath = `${out}/data.pdf`; await dl.saveAs(pdfPath);
+const sh = (c) => { try { return execSync(c, { stdio: 'pipe' }).toString(); } catch (e) { return 'ERROR ' + e.stderr; } };
+const info = sh(`pdfinfo "${pdfPath}"`), pages = Number(/Pages:\s+(\d+)/.exec(info)?.[1] || 0);
+ok(dl.suggestedFilename() === 'georgefarrowgreen-account-rowan.pdf' && pages >= 2 && /Title:\s+Your data · Rowan Hale/.test(info), 'a PDF, named for you, of a few pages', `${dl.suggestedFilename()} ${pages} pages`);
+const strict = sh(`python3 -c "import pypdf,sys; r=pypdf.PdfReader(sys.argv[1], strict=True); print(len(r.pages))" "${pdfPath}"`).trim();
+ok(strict === String(pages), 'well formed (read strictly)', strict.slice(0, 200));
+const words = sh(`pdftotext -layout "${pdfPath}" -`).replace(/[ \t]+/g, ' ');
+for (const [re, what] of [[/Your data/, 'its title'], [/Rowan Hale/, 'your name'], [/@rowan/, 'handle'], [/rowan@example\.com Confirmed/, 'email, confirmed'], [/Sign-in and security/, 'sign-in'],
+  [/Signed in with your password/, 'recent activity, in words'], [/Preferences/, 'preferences'], [/\b4 2 9 1\b/, 'InFlight\'s figures (friends, groups, sent, had)'], [/Chloé Durand @friend3/, 'friends, by name'], [/Book club/, 'groups'], [/Pip .*1,235 km/, 'birds'], [/pigeons sent/, '...named'],
+  [/Place 1/, 'the passport'], [/A pigeon lands On/, 'InFlight\'s notifications'], [/St Ives 50\.21° N 5\.48° W/, 'Weather\'s places'], [/07:00, for London/, 'the morning brief'],
+  [/°C · km\/h · mm/, 'units'], [new RegExp(`Page 1 of ${pages}`), 'page numbers']]) ok(re.test(words), `the PDF: ${what}`, re.test(words) ? '' : words.slice(0, 600));
+ok(!/Łódź/.test(words) && !/\?\?d\?/.test(words), 'a name Helvetica can\'t show: not as broken text...');
+const imgs = sh(`pdfimages -list "${pdfPath}"`).trim().split('\n').slice(2);
+ok(imgs.length >= 4 && imgs.some((l) => /\bjpeg\b/.test(l) && /\b64\b|\b512\b|\b300\b/.test(l)) && imgs.some((l) => /\bimage\b.*\brgb\b.*\b(8)\b/.test(l) && !/jpeg/.test(l)),
+  '...but drawn as a picture of itself; and your photo and the apps\' icons in it', imgs.join(' | '));
+sh(`pdftoppm -r 70 -png "${pdfPath}" "${out}/pdf-page"`);
+const [dj] = await Promise.all([P.p.waitForEvent('download', { timeout: 30000 }), (async () => { await P.p.click('#sheet .btn:has-text("Download as JSON")'); await confirmIfAsked(P, PW); })()]);
+const json = JSON.parse(readFileSync(await dj.path(), 'utf8'));
+ok(dj.suggestedFilename() === 'georgefarrowgreen-account-rowan.json' && json.inflight?.pigeons?.sent === 9 && json.inflight.pigeons.received === 1 && json.weather?.places?.length === 4,
+  'and as JSON: pigeons sent and had counted as InFlight\'s log counts them', JSON.stringify(json.inflight?.pigeons));
+await closeSheet(P);
 
 console.log(errs.length ? 'PAGE ERRORS\n' + errs.join('\n') : 'no page errors');
 ok(!errs.length, 'no page errors');

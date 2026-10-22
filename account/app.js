@@ -10,7 +10,7 @@
 //
 // Also: a security check-up (email confirmed, a passkey, the password against data breaches, devices long unused), your
 // email (confirming it, changing it), recent activity, passkeys' names and where they're saved, preferences for every app
-// (appearance; Weather's units), your data as a file, and deleting the account in 7 days unless it's kept. The page keeps
+// (appearance; Weather's units), your data as a PDF (datapdf.js) or a JSON file, and deleting the account in 7 days unless it's kept. The page keeps
 // up with changes made elsewhere when you come back to it. Links in the account's emails open here (#confirm=, #email=,
 // #keep=).
 //
@@ -1015,24 +1015,33 @@ function unitsView() {
 // ---- your data, as a file ----
 function exportView() {
   const said = h("p.said", { role: "alert" });
-  const go = h("button.btn", { type: "button", onclick: async () => {
-    say(said, "");
+  // (as a PDF to read and keep, written here from what the export gives: datapdf.js; or as it is, for another app)
+  const get = (kind) => async (e) => {
+    const b = e.currentTarget; say(said, "");
     try {
-      const data = await freshly(() => busy(go, "Gathering it…", () => post("export")));
-      const a = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })), download: `georgefarrowgreen-account-${S.me.handle}.json` });
+      const file = await freshly(() => busy(b, kind === "pdf" ? "Making your PDF…" : "Gathering it…", async () => {
+        const data = await post("export");
+        if (kind === "json") return new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const { dataPdf } = await import("./datapdf.js");
+        return dataPdf(data, { did: (x) => (DID[x.kind] || (() => x.kind))(x), units: (u) => unitsSaid({ ...unitsHere(), ...u }) });
+      }));
+      const a = h("a", { href: URL.createObjectURL(file), download: `georgefarrowgreen-account-${S.me.handle}.${kind}` });
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 30000);
       toast("Your data is downloading.");
-    } catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
-  } }, icon("download", 20, 2.2), "Download your data");
+    } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
+  };
   return { title: "Your data", body: [
-    h("p", { text: "Everything kept with your account that can be read, in one file (JSON):" }),
+    h("p", { text: "Everything kept with your account that can be read, as a PDF to read and keep:" }),
     h("ul.gone", {},
       h("li", { text: "Your profile and photo, sign-in (passkeys, devices) and recent activity" }),
       h("li", { text: "InFlight: friends, groups, passport, birds, settings, and how many pigeons you’ve sent and had" }),
       h("li", { text: "Weather: your saved places, settings and notifications" })),
     h("p.hint", { text: "Your InFlight letters aren’t included: they’re end-to-end encrypted, with keys only your phones have. The server can’t read them." }),
-    go, said] };
+    h("button.btn", { type: "button", onclick: get("pdf") }, icon("download", 20, 2.2), "Download as PDF"),
+    h("button.btn.quiet", { type: "button", onclick: get("json") }, "Download as JSON"),
+    h("p.hint.center", { text: "JSON is the same data, in a form other apps can read." }),
+    said] };
 }
 
 // ---- deleting the account: in 7 days, unless you keep it ----

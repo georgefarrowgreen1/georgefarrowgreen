@@ -200,10 +200,15 @@ Motion, solid with Reduce Transparency.
   InFlight, which already kept it with the account (InFlight now keeps it only once it's been chosen, not its default).
   **Units** (temperature, wind, rain, pressure, time): Weather's, kept in its record for the account so every device
   it's signed in on takes them up, and its notifications say them at once.
-- **Your data:** everything kept with the account that can be read, as one JSON file: the profile and photo, sign-in
-  and recent activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had; Weather's
-  places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted, with keys only your
-  phones have.
+- **Your data:** everything kept with the account that can be read: the profile and photo, sign-in and recent
+  activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
+  them); Weather's places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted,
+  with keys only your phones have. **As a PDF** to read and keep: A4, your profile up top, then each part as rows and
+  tables, page numbers at the foot. It's written in the browser from what the export gives, with no library
+  (`account/pdf.js` writes the file, `account/datapdf.js` sets it out): the text is Helvetica, which every PDF reader
+  has, so nothing's embedded and it stays text you can select and search; anything Helvetica can't show (a Polish place
+  name, another alphabet, an emoji in a name) is drawn as a picture of itself by the page's canvas. **Or as JSON**, the
+  same data in a form other apps can read.
 - **Deleting the account** (typed to confirm) signs it out everywhere and deletes it in 7 days, with an email to keep it.
   Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
   email's link keeps it too. A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
@@ -224,10 +229,11 @@ Motion, solid with Reduce Transparency.
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
-  `.tools/tests/acctmore.mjs` (37 checks: the photo from its badge, your code and its link, each app's sheet and its
+  `.tools/tests/acctmore.mjs` (61 checks: the photo from its badge, your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up folded and opened, "Not you?" only on another
-  device's password sign-in, rows slid to sign out and remove, two columns on a wide screen) and
-  `unit/activity.test.mjs` (passkey providers).
+  device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
+  back by poppler and pypdf, and as JSON), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
+  wrapping, every object where the cross-reference table says) and `unit/activity.test.mjs` (passkey providers).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
 else: it's the same deployment, routed by its address.

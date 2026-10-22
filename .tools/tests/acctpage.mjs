@@ -290,7 +290,7 @@ await closeSheet(L);
 ok(/°F · km\/h/.test(await text(L)), 'and said on the page', (await text(L)).match(/Units [^A-Z]*/)?.[0]);
 await openRow(L, 'Download your data');
 await shot(L, '15-data');
-const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 30000 }), (async () => { await L.p.click('#sheet .btn'); await confirmIfAsked(L, PW2); })()]);
+const [dl] = await Promise.all([L.p.waitForEvent('download', { timeout: 30000 }), (async () => { await L.p.click('#sheet .btn:has-text("Download as JSON")'); await confirmIfAsked(L, PW2); })()]);
 const data = JSON.parse(readFileSync(await dl.path(), 'utf8'));
 ok(data.account?.handle === 'rowan_h' && data.account.email === 'rowan.hale@example.com' && /^data:image\/jpeg;base64,/.test(data.account.photo || '') && Array.isArray(data.inflight?.friends)
   && data.weather?.settings?.temp === 'f' && data.signIn?.passkeys?.length === 1 && /encrypted/.test(data.about) && dl.suggestedFilename() === 'georgefarrowgreen-account-rowan_h.json',
