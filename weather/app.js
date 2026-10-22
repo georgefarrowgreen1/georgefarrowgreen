@@ -126,7 +126,7 @@ async function start() {
   }
   // your account: signed in, as it was last time, till the server says (and whether you've signed in elsewhere on the site)
   const k = store.get("wx:acct");
-  if (k?.handle) S.acct = { name: k.name, handle: k.handle, devices: k.devices || [], state: "ok" };
+  if (k?.handle) S.acct = { ...profileOf(k), devices: k.devices || [], state: "ok" };
   pull();
 }
 function addPlace(p, makeCurrent = true) {
@@ -1892,11 +1892,11 @@ async function pull() {
   await adopt(r);
 }
 async function adopt(r) {
-  const k = store.get("wx:acct"), fresh = !k || k.handle !== r.handle;
-  S.acct = { name: r.name, handle: r.handle, devices: r.devices || [], state: S.acct?.state || "ok" };
+  const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle);
+  S.acct = { ...profileOf(r), devices: r.devices || [], state: S.acct?.state || "ok" };
   if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
   else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
-  store.set("wx:acct", { handle: r.handle, name: r.name, devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
+  store.set("wx:acct", { ...profileOf(r), devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
   drawAccount(); drawInStep();
   try { await keepInStep(); } catch (_) {}
   // (this device, if it shows notifications, one of the account's)
@@ -1905,9 +1905,18 @@ async function adopt(r) {
 async function refreshDevices() {
   try { const r = await A.me(); if (r.signedIn && S.acct) { S.acct.devices = r.devices || []; const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, devices: S.acct.devices }); drawAccount(); } } catch (_) {}
 }
+// who, as the account has them: name, handle, email, the photo's time (and the account's own id, to know it again)
+const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, email: r.email || "", photoAt: r.photoAt || null });
+// a change to the profile made here, as the server's sent it back
+function profileNow(r) {
+  if (!S.acct) return;
+  Object.assign(S.acct, profileOf(r));
+  const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, ...profileOf(r) });
+  drawAccount();
+}
 // this device among the account's that get its notifications
 const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
-function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
+function signedOut() { store.del("wx:acct"); S.acct = null; editing = false; newPhoto = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
 async function signIn(how, email, password) {
   const said = $("acct-said"), btns = [...$("acct").querySelectorAll("button")];
   said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
@@ -1949,14 +1958,53 @@ function drawAccount() {
   }
   const n = S.settings.notify, to = a.devices.map((d) => (d.id === n.devId ? "This device" : d.label));
   box.replaceChildren(...[
-    h("div", { class: "acct-card in" }, h("span", { class: "acct-av", "aria-hidden": "true" }, (String(a.name || "").trim()[0] || "?").toUpperCase()),
+    h("div", { class: "acct-card in" }, avatarOf(a),
       h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name), h("span", {}, `@${a.handle} · georgefarrowgreen.com account`))),
+    editing ? profileForm(a) : h("button", { class: "acct-btn", type: "button", id: "acct-edit", onclick: () => { editing = true; drawAccount(); $("acct-name")?.focus(); } }, "Edit profile"),
     h("ul", { class: "acct-rows" },
+      a.email ? h("li", {}, h("span", {}, "Email"), h("span", { class: "acct-mail" }, a.email)) : null,
       h("li", {}, h("span", {}, "Places and settings"), h("span", { class: a.state === "ok" ? "acct-ok" : "", id: "acct-state" }, a.state === "ok" ? h("span", { svg: TICK }) : null, STATES[a.state] || STATES.ok)),
       h("li", {}, h("span", {}, "Notifications go to"), h("span", {}, to.length ? and(to) : "No devices yet"))),
     notifying(n) && !hereToo() && !notifyWhy() ? h("button", { class: "acct-btn", type: "button", id: "acct-here", onclick: sendHere }, "Send notifications here too") : null,
     h("button", { class: "acct-btn", type: "button", id: "acct-out", onclick: signOutHere }, "Sign out"),
     said].filter(Boolean));
+}
+// Your photo (the account's: the same in every app on the site), or your initial
+const avatarOf = (a, url = a.photoAt ? A.photoUrl(a.photoAt) : null) => h("span", { class: "acct-av", "aria-hidden": "true" },
+  url ? h("img", { src: url, alt: "", width: "48", height: "48", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase());
+// Editing your profile: a new photo (or none), your name, your handle. Saved, it's the account's, so the same in every
+// app on the site.
+let editing = false, newPhoto = null;
+function profileForm(a) {
+  const shown = newPhoto === "none" ? null : newPhoto ? newPhoto.url : a.photoAt ? A.photoUrl(a.photoAt) : null;
+  const pick = h("input", { type: "file", accept: "image/*", id: "acct-photo-file", hidden: true, onchange: async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    try { const jpg = await A.asPhoto(f); if (newPhoto?.url) URL.revokeObjectURL(newPhoto.url); newPhoto = { jpg, url: URL.createObjectURL(jpg) }; drawAccount(); $("acct-photo")?.focus(); }
+    catch (err) { $("acct-said").textContent = err.message; $("acct-said").classList.add("bad"); }
+  } });
+  const done = () => { if (newPhoto?.url) URL.revokeObjectURL(newPhoto.url); newPhoto = null; editing = false; drawAccount(); $("acct-edit")?.focus(); };
+  const form = h("form", { class: "acct-form acct-profile", onsubmit: async (e) => {
+    e.preventDefault();
+    const said = $("acct-said"), btns = [...form.querySelectorAll("button")], name = form.elements.namedItem("name").value.trim(), handle = form.elements.namedItem("handle").value.trim().replace(/^@/, "");
+    said.classList.remove("bad"); said.textContent = "Saving…"; btns.forEach((b) => (b.disabled = true));
+    try {
+      let r = null;
+      if (newPhoto === "none" && a.photoAt) r = await A.dropPhoto();
+      else if (newPhoto?.jpg) r = await A.setPhoto(newPhoto.jpg);
+      const changes = { ...(name !== a.name ? { name } : {}), ...(handle.toLowerCase() !== a.handle ? { handle } : {}) };
+      if (Object.keys(changes).length) r = await A.setProfile(changes);
+      if (r) profileNow(r);
+      done();
+      $("acct-said").textContent = r ? "Saved. It's the same everywhere you use your account." : "";
+    } catch (err) { said.textContent = err.message; said.classList.add("bad"); btns.forEach((b) => (b.disabled = false)); }
+  } },
+    h("div", { class: "acct-photo-row" }, avatarOf(a, shown),
+      h("button", { class: "acct-btn small", type: "button", id: "acct-photo", onclick: () => pick.click() }, shown ? "Change photo" : "Add photo"),
+      shown ? h("button", { class: "acct-btn small quiet", type: "button", id: "acct-nophoto", onclick: () => { if (newPhoto?.url) URL.revokeObjectURL(newPhoto.url); newPhoto = "none"; drawAccount(); } }, "Remove") : null, pick),
+    h("label", { class: "acct-field" }, h("span", {}, "Name"), h("input", { type: "text", name: "name", id: "acct-name", value: a.name, maxlength: "50", autocomplete: "name", required: true })),
+    h("label", { class: "acct-field" }, h("span", {}, "Handle"), h("span", { class: "acct-at" }, "@", h("input", { type: "text", name: "handle", value: a.handle, maxlength: "20", autocomplete: "username", autocapitalize: "off", spellcheck: "false", required: true }))),
+    h("div", { class: "acct-form-btns" }, h("button", { class: "acct-btn primary", type: "submit" }, "Save"), h("button", { class: "acct-btn", type: "button", onclick: done }, "Cancel")));
+  return form;
 }
 // beside "Saved" in Places: that they're in step with the account
 function drawInStep() {

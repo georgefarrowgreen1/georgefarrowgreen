@@ -26,6 +26,7 @@ import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
 import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn } from "../../_account.js";
+import { cleanName, waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
 import { storageReport } from "../../_retention.js";
@@ -52,14 +53,6 @@ function meView(u, t) {
 }
 
 /* ---------------- accounts ---------------- */
-// Names go into emails and notifications other people get, so they can't look
-// like a web address, an email or a handle.
-function cleanName(v, empty) {
-  const name = String(v || "").normalize("NFC").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().replace(/\s+/g, " ").slice(0, 50);
-  if (!name) throw new HttpError(400, empty, "name");
-  if (/[@/\\:<>]|\.\S|www\./i.test(name)) throw new HttpError(400, "Names can’t include web addresses or symbols like @ / :", "name");
-  return name;
-}
 // Invite only: an account needs a one-time invite link from the site owner (a
 // server with PIGEON_OPEN_SIGNUP=1, for testing, lets anyone in).
 const INVITE_RE = /^[A-Za-z0-9_-]{40,50}$/;
@@ -213,10 +206,6 @@ async function vaultByProof({ request, env }) {
   return json({ vault: await openVault(env, u.id, u.vault), salt: u.salt });
 }
 
-function waitText(ms) {
-  const all = Math.max(1, Math.ceil(ms / 60e3)), h = Math.floor(all / 60), m = all % 60;      // (whole minutes first, so never "23h 60m")
-  return h ? `${h}h ${m}m` : `${m} minute${m === 1 ? "" : "s"}`;
-}
 // The recipient has moved: every pigeon flying to them turns in mid-air and
 // heads for the new spot from wherever it is now, at its own speed. The turn
 // point is kept so the map can draw the path. A pigeon still can't take
@@ -303,22 +292,9 @@ async function reroute(env, u, p, t, waitUntil) {
 async function updateMe({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env), t = Date.now();
-  if (b.handle !== undefined) {
-    const handle = String(b.handle).trim().replace(/^@/, "").toLowerCase();
-    if (!HANDLE_RE.test(handle)) throw new HttpError(400, "Use 3 to 20 letters, numbers or underscores.", "handle");
-    if (handle !== u.handle) {
-      if (u.handle_at && t - u.handle_at < HANDLE_EVERY) throw new HttpError(429, `You can change your handle once a day. Try again in ${waitText(u.handle_at + HANDLE_EVERY - t)}.`, "handle");
-      if (await handleTaken(D, handle, u.id)) throw new HttpError(409, `@${handle} is taken.`, "handle");
-      // the old one stays yours for 30 days: no one else can take it and get your friends' requests
-      try { await D.batch([D.prepare("UPDATE pg_users SET handle = ?, handle_at = ? WHERE id = ?").bind(handle, t, u.id), holdHandle(D, u.handle, u.id),
-        D.prepare("DELETE FROM pg_handles_held WHERE handle = ? AND user_id = ?").bind(handle, u.id)]); }
-      catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, `@${handle} is taken.`, "handle"); throw e; }
-    }
-  }
-  if (b.name !== undefined) {
-    const name = cleanName(b.name, "Your name can’t be empty.");
-    await D.prepare("UPDATE pg_users SET name = ? WHERE id = ?").bind(name, u.id).run();
-  }
+  // (the profile's rules are the site's, the same in every app: functions/_profile.js)
+  if (b.handle !== undefined) await setHandle(env, u, b.handle);
+  if (b.name !== undefined) await setName(env, u, b.name);
   if (b.appearance !== undefined) {
     if (!["light", "dark", "auto"].includes(b.appearance)) throw new HttpError(400, "Choose Light, Dark or Automatic.");
     await D.prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
@@ -373,22 +349,12 @@ async function updateMe({ request, env, waitUntil }) {
    them, and people they've sent a friend request to. Asking to be someone's friend shows you nothing of
    them until they say yes. */
 async function putAvatar({ request, env }) {
-  const u = await requireUser(request, env);
-  if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
-  await limit(env, "avatar:" + u.id, 20, DAY);
-  if (Number(request.headers.get("Content-Length")) > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.length > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
-  if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Profile pictures must be JPEG images.");
-  const t = Date.now();
-  await env.BIO_R2.put(avatarKey(u.id), bytes, { httpMetadata: { contentType: "image/jpeg" } });
-  await (await db(env)).prepare("UPDATE pg_users SET avatar_at = ? WHERE id = ?").bind(t, u.id).run();
+  const u = await requireUser(request, env), t = await putPhoto(env, u, request);
   return json({ me: meView({ ...u, avatar_at: t }, t) });
 }
 async function deleteAvatar({ request, env }) {
   const u = await requireUser(request, env);
-  if (env.BIO_R2) await env.BIO_R2.delete(avatarKey(u.id));
-  await (await db(env)).prepare("UPDATE pg_users SET avatar_at = NULL WHERE id = ?").bind(u.id).run();
+  await dropPhoto(env, u);
   return json({ me: meView({ ...u, avatar_at: null }, Date.now()) });
 }
 async function getAvatar({ request, env }, id) {
@@ -401,9 +367,9 @@ async function getAvatar({ request, env }, id) {
         AND NOT EXISTS (SELECT 1 FROM pg_links k WHERE k.status = 'blocked' AND ((k.a = ?1 AND k.b = ?2) OR (k.a = ?2 AND k.b = ?1))) LIMIT 1`).bind(u.id, id).first();   // (never across a block)
     if (!l) throw new HttpError(404, "No picture.");
   }
-  const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(id)));
-  if (!obj) throw new HttpError(404, "No picture.");
-  return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+  const res = await photoOf(env, id);
+  if (!res) throw new HttpError(404, "No picture.");
+  return res;
 }
 
 async function deleteMe({ request, env }) {

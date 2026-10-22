@@ -3,6 +3,9 @@
 // the site's. It never holds the session itself: each request carries the site's cookie, and only from Weather's own
 // pages.
 //
+// Your profile is the account's (functions/_profile.js): your photo, name and handle shown here, and changed here as in
+// any app on the site, by the same rules; your email (your sign-in) shown as it is.
+//
 // What it keeps with the account: your saved places, your settings, and which notifications you want for which places
 // (wx_accts: functions/_wxpush.js), so they're the same on every phone and computer you're signed in on. One record with
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
@@ -13,6 +16,7 @@ import { cookieUser, sameOrigin, withSession, withCookie, withoutSession, saltFo
 import { deviceOf } from "./_pigeon.js";
 import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
 import { isWeather } from "./_wxapp.js";
+import { setName, setHandle, putPhoto, dropPhoto, photoOf } from "./_profile.js";
 
 const MAX_SAVED = 50, MAX_DATA = 48 * 1024;
 const cleanText = (v, n) => String(v ?? "").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, "").trim().slice(0, n);
@@ -45,10 +49,11 @@ async function kept(env, userId) {
   if (!r) return { ver: 0, data: EMPTY };
   try { return { ver: r.ver, data: JSON.parse(r.data) }; } catch (_) { return { ver: r.ver, data: EMPTY }; }
 }
-// The account as Weather shows it: who, what's kept, and which devices get its notifications
+// The account as Weather shows it: who (the profile: name, handle, email, and when the photo was set, if there is one),
+// what's kept, and which devices get its notifications
 async function view(env, u) {
   const k = await kept(env, u.id);
-  return { signedIn: true, name: u.name, handle: u.handle, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
 }
 // (answers about the account: never kept by anything in between)
 const json = (o, status = 200) => { const r = pjson(o, status); r.headers.set("Cross-Origin-Resource-Policy", "same-origin"); return r; };
@@ -94,6 +99,29 @@ export const ACCOUNT_ROUTES = {
     // (the notifications, for each of the account's devices, if they've changed)
     if (JSON.stringify(data.notify) !== JSON.stringify(was.data.notify)) await applyAccount(env, u.id, data.notify);
     return json({ ver: base + 1, data });
+  },
+  // the profile: your photo (as an image, for this page only), and changes to it, your name and your handle
+  "GET me/photo": async ({ request, env }) => {
+    const u = await signedIn(request, env), res = await photoOf(env, u.id, { "Cross-Origin-Resource-Policy": "same-origin" });
+    return res || json({ error: "No photo." }, 404);
+  },
+  "PUT me/photo": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), t = await putPhoto(env, u, request);
+    return json(await view(env, { ...u, avatar_at: t }));
+  },
+  "DELETE me/photo": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    await dropPhoto(env, u);
+    return json(await view(env, { ...u, avatar_at: null }));
+  },
+  "PATCH me/profile": async ({ request, env }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env), b = await body(request, 4096), now = { ...u };
+    if (b.name !== undefined) now.name = await setName(env, u, b.name);
+    if (b.handle !== undefined) now.handle = await setHandle(env, u, b.handle);
+    return json(await view(env, now));
   },
   "POST signin/salt": async ({ request, env }) => { sameOrigin(request); return json({ salt: await saltFor(env, request, (await body(request)).email) }); },
   "POST signin/password": async ({ request, env, waitUntil }) => {

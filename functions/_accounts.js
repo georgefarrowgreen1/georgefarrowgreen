@@ -5,7 +5,8 @@ import { dropReacts } from "./_reacts.js";
 import { keepSentTo } from "./_retention.js";
 import { dropAccount } from "./_wxpush.js";
 
-export const avatarKey = (id) => `pigeon-avatars/${id}`;
+import { avatarKey } from "./_profile.js";
+export { avatarKey };
 
 export async function removeAccount(env, id) {
   await dropReacts(env, { user: id });

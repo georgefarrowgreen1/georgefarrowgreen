@@ -151,6 +151,45 @@ const hellos = readFileSync(`${S}/pushbox.jsonl`, 'utf8').trim().split('\n').fil
 ok(hellos.length === 2, 'each device said hello once ("Notifications on")', String(hellos.length));
 await closeSheet(L);
 
+// ---- 3b. The profile is the account's: a photo and a name set in Weather are InFlight's, and the other way ----
+{
+  const jpeg = Buffer.from((await P.p.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
+  await settings(P);
+  await P.p.click('#acct-edit');
+  await P.p.setInputFiles('#acct-photo-file', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await P.p.waitForSelector('#acct .acct-photo-row img', { timeout: 10000 }).catch(() => {});
+  await P.p.fill('#acct-name', 'Sam T');
+  await P.p.click('#acct .acct-profile button[type=submit]');
+  await P.p.waitForFunction(() => /^Saved/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  const row = rows("SELECT name, avatar_at FROM pg_users WHERE handle = 'sam'")[0];
+  const shown = await P.p.evaluate(() => ({ name: document.getElementById('acct-title')?.textContent, img: document.querySelector('#acct .acct-card img')?.naturalWidth || 0, mail: document.querySelector('#acct .acct-mail')?.textContent }));
+  ok(row?.name === 'Sam T' && row.avatar_at && shown.name === 'Sam T' && shown.img === 512 && shown.mail === 'sam@example.com', 'a photo (a 512-pixel square) and a new name, set in Weather: the account\'s, shown with the email', JSON.stringify({ row, shown }));
+  // InFlight has them too, on its own sign-in (the laptop's), and a change there is Weather's
+  const C = await L.ctx.newPage(); await C.goto(`${CHAT}/`); await C.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});
+  const inflight = await C.evaluate(async () => {
+    const tk = await new Promise((ok2) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => ok2(g.result?.token); }; });
+    const h = { Authorization: `Bearer ${tk}`, 'Content-Type': 'application/json' };
+    const me = (await (await fetch('/api/pigeon/sync', { headers: h })).json()).me;
+    const pic = await fetch(`/api/pigeon/avatar/${me.id}?v=${me.avatarAt}`, { headers: h });
+    await fetch('/api/pigeon/me', { method: 'PATCH', headers: h, body: JSON.stringify({ name: 'Sam Taylor' }) });
+    return { name: me.name, avatarAt: me.avatarAt, pic: pic.status, type: pic.headers.get('content-type') };
+  });
+  ok(inflight.name === 'Sam T' && inflight.avatarAt === row.avatar_at && inflight.pic === 200 && inflight.type === 'image/jpeg', 'InFlight has the same name and photo', JSON.stringify(inflight));
+  await C.close();
+  await P.p.reload(); await P.p.waitForSelector('.day-row'); await P.p.waitForTimeout(1500);
+  await settings(P);
+  ok(await P.p.textContent('#acct-title') === 'Sam Taylor', 'and the name changed back in InFlight is Weather\'s', await P.p.textContent('#acct-title'));
+  // the handle, by the account's rules: changed here, then not again for a day
+  await P.p.click('#acct-edit'); await P.p.fill('#acct input[name=handle]', 'samt'); await P.p.click('#acct .acct-profile button[type=submit]');
+  await P.p.waitForFunction(() => /^Saved/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  await P.p.click('#acct-edit'); await P.p.fill('#acct input[name=handle]', 'samtaylor'); await P.p.click('#acct .acct-profile button[type=submit]');
+  await P.p.waitForFunction(() => /once a day/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  ok(rows("SELECT handle FROM pg_users WHERE email = 'sam@example.com'")[0]?.handle === 'samt' && /You can change your handle once a day/.test(await P.p.textContent('#acct-said')), 'the handle, changed in Weather by the account\'s rules: then not again for a day', await P.p.textContent('#acct-said'));
+  await closeSheet(P);
+  const noPic = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/me/photo', headers: { Host: 'weather.gfg.test:8788' } }, (res) => { res.resume(); res.on('end', () => done(res.statusCode)); }); r.end(); });
+  ok(noPic === 401, 'the photo only for whoever\'s signed in', String(noPic));
+}
+
 // ---- 4. A passkey made in InFlight signs in to Weather, on another browser ----
 const K = await browser('keyring');
 const kcdp = await K.ctx.newCDPSession(K.p); await kcdp.send('WebAuthn.enable');
@@ -164,7 +203,7 @@ ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,
 // ---- 5. Signed in to Weather only: InFlight in the same browser offers to carry on, after the password ----
 await K.p.goto(`${CHAT}/`); await K.p.waitForSelector('[data-act=resume]', { timeout: 20000 }).catch(() => {});
 const offer = await K.p.evaluate(() => document.querySelector('.welcome')?.innerText.replace(/\s+/g, ' '));
-ok(/Signed in as Sam Taylor \(@sam\)/i.test(offer || '') && /Continue as Sam/.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: "Continue as Sam" (no other app named)', offer);
+ok(/Signed in as Sam Taylor \(@samt\)/i.test(offer || '') && /Continue as Sam/.test(offer || '') && !/Weather/.test(offer || ''), 'InFlight, signed in elsewhere on the site: "Continue as Sam" (no other app named)', offer);
 await K.p.click('[data-act=resume]'); await K.p.waitForSelector('[data-form=unlock]');
 ok(await K.p.waitForFunction(() => /already signed in to your georgefarrowgreen\.com account/.test(document.querySelector('[data-form=unlock]')?.closest('.auth')?.textContent || ''), null, { timeout: 5000 }).then(() => true, () => false), 'it asks only for the password, to unlock the key here');
 await K.p.fill('#f-password', PW); await K.p.click('[data-form=unlock] .btn'); await K.p.waitForSelector('.tabs', { timeout: 30000 }).catch(() => {});
@@ -222,7 +261,7 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   await L.p.goto(`${CHAT}/`); await L.p.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});
   const tk = await L.p.evaluate(() => new Promise((ok2) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => ok2(g.result?.token); }; }));
   // (deleting needs it shown it's you in the last ten minutes: as if the password had just been asked for)
-  sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = (SELECT id FROM pg_users WHERE handle = 'sam')`);
+  sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = (SELECT id FROM pg_users WHERE email = 'sam@example.com')`);
   const del = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/pigeon/me', method: 'DELETE', headers: { Host: 'chat.gfg.test:8788', Authorization: `Bearer ${tk}` } }, (res) => { let t = ''; res.on('data', (x) => (t += x)); res.on('end', () => done({ status: res.statusCode, body: t, cookie: res.headers['set-cookie'] })); }); r.end(); });
   ok(del.status === 200 && /account=;.*Max-Age=0/.test(String(del.cookie)), 'deleting the account signs the browser out of the site', `${del.status} ${del.body.slice(0, 80)}`);
   const left = rows("SELECT (SELECT COUNT(*) FROM wx_accts) AS a, (SELECT COUNT(*) FROM wx_devs WHERE user_id IS NOT NULL) AS d, (SELECT COUNT(*) FROM wx_subs WHERE dev LIKE '%') AS s")[0];

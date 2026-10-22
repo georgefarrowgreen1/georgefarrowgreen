@@ -474,7 +474,14 @@ so there's nothing to set up beyond the address.
   places of its own keeps them all. My Location is each device's own. Signing
   out keeps everything on the device, and its notifications go on as its own.
   The page never holds the sign-in (the browser does, out of its reach), and the
-  account's API answers only Weather's own pages.
+  account's API answers only Weather's own pages. **Your profile** is the
+  account's, the same in every app on the site: Weather shows your photo, name,
+  @handle and email, and **Edit profile** changes the photo (the middle square,
+  at most 512 pixels, as a JPEG: nothing else in the file goes), the name and the
+  handle by the same rules as anywhere on the site (`functions/_profile.js`: a
+  name that can't pass for a web address, a handle once a day, its old one held
+  30 days, 20 photos a day); changed in either app, it's changed in the other.
+  The email is your sign-in, shown as it is.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
@@ -1473,7 +1480,8 @@ welcome says "Signed in as …" with **Continue as …**, which asks for the pas
 password unlocks the key on the phone. Apps that keep nothing themselves (Weather) ask with the cookie, only from
 their own pages, at their own address (not the site's, nor a preview's), and only for their own things. Passkeys are
 made for the site (rpId georgefarrowgreen.com) at chat., the site's own address and weather., so one passkey works at
-all of them; an answer from one is taken only at the address it was given at. The password and passkey checks, with
+all of them; an answer from one is taken only at the address it was given at. The profile (photo, name, handle, email) is the
+account's, one set of rules for every app (`functions/_profile.js`). The password and passkey checks, with
 their limits and the "new sign-in" email, are shared (`functions/_account.js`), so guessing a password counts the
 same whichever app it's tried in. A web app added to an iPhone's Home Screen keeps its own cookies, so there each app
 signs in on its own (a passkey makes that one tap). Tests stand in a site of their own (`ACCOUNT_SITE=gfg.test`,

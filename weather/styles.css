@@ -995,6 +995,20 @@ fieldset.opt label.at-row { width: 100%; }
 .acct-rows li + li { border-top: 0.5px solid rgba(255, 255, 255, 0.12); }
 .acct-rows li > span:last-child { color: var(--text-2); text-align: right; display: inline-flex; gap: 5px; align-items: center; min-width: 0; }
 .acct-ok { color: #7fe0a0 !important; }
+.acct-av { overflow: hidden; }
+.acct-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.acct-btn.small { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.acct-btn.quiet { background-color: transparent; color: var(--text-2); }
+.acct-mail { overflow-wrap: anywhere; }
+/* your profile, being changed: the photo and its buttons, then your name and handle */
+.acct-profile { padding: 14px 16px; border-radius: 20px; background-color: rgba(255, 255, 255, 0.06); gap: 12px; }
+.acct-photo-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.acct-photo-row .acct-av { width: 56px; height: 56px; font-size: 24px; }
+.acct-field { display: grid; gap: 5px; font-size: 13px; color: var(--text-2); }
+.acct-field input { color: var(--text); }
+.acct-at { display: flex; align-items: center; gap: 0; border-radius: 14px; background-color: rgba(0, 0, 0, 0.22); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.16); padding-left: 14px; color: var(--text-2); font-size: 16px; }
+.acct-at input { flex: 1; min-width: 0; background: none; box-shadow: none; padding-left: 2px; }
+.acct-form-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px; }
 .acct-said { margin: 0 4px; font-size: 13px; line-height: 1.4; color: var(--text-2); }
 .acct-said:empty { display: none; }
 .acct-said.bad { color: #ffb4a8; }
