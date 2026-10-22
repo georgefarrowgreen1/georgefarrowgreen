@@ -79,10 +79,16 @@ await A.p.screenshot({ path: `${out}/look-camera.png` });
 await A.p.click('.looksheet header [data-act=close]'); await A.p.waitForTimeout(700);
 ok(await A.p.evaluate(() => window.__cam.getTracks().every((t) => t.readyState === 'ended')), 'closed: the camera is off');
 
-// 4. back to its map; and a pigeon that has landed has no Look Up
-await openMap(A, m.id); await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud');
+// 4. back to its map (the camera off then too: Back takes the sheet away at once); a double tap opens one camera;
+// and a pigeon that has landed has no Look Up
+await openMap(A, m.id); await A.p.click('.mapcard .lookbtn'); await A.p.waitForSelector('.looksheet .lookhud'); await face(az); await A.p.waitForTimeout(400);
+await A.p.evaluate(() => { const real = navigator.mediaDevices.getUserMedia; window.__cams = []; navigator.mediaDevices.getUserMedia = async (c) => { await new Promise((r) => setTimeout(r, 300)); const s = await real(c); window.__cams.push(s); return s; }; });
+await A.p.click('.lookcam'); await A.p.click('.lookcam'); await A.p.click('.lookcam'); await A.p.waitForTimeout(1200);
+const taps = await A.p.evaluate(() => ({ live: window.__cams.filter((s) => s.getTracks().some((t) => t.readyState === 'live')).length, pressed: document.querySelector('.lookcam').getAttribute('aria-pressed') }));
+ok(taps.live === 1 && taps.pressed === 'true', 'three quick taps: on, off, on, and one camera running', JSON.stringify(taps));
 await A.p.click('.looksheet header [data-act=lookback]'); await A.p.waitForTimeout(900);
 ok(await A.p.locator('.mapcard').isVisible(), 'Back: its map again');
+ok(await A.p.evaluate(() => window.__cams.every((s) => s.getTracks().every((t) => t.readyState === 'ended'))), 'and the camera is off');
 one(`UPDATE pg_msgs SET deliver_at = ${now() - 60e3} WHERE id = '${m.id}'`);
 await A.p.reload(); await A.p.waitForSelector('.tabs'); await openChat(A, bs.me.id); await openMap(A, m.id);
 ok(!(await A.p.locator('.mapcard .lookbtn').isVisible()), 'landed: no Look Up');

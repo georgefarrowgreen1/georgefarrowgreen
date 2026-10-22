@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.6";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.2.7";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1776,7 +1776,7 @@ async function forget() {
     if (await idb.get("pinsup:" + S.me.id).catch(() => null)) { await idb.del("pins:" + S.me.id).catch(() => {}); await idb.del("pinsup:" + S.me.id).catch(() => {}); } }
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
-  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
+  Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, fp: "", sessN: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
     msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, pendingUnlock: null, drafts: new Map(), gevents: new Map(),
     avatars: new Map(), viewedOnce: new Set(), q: "", fq: "", news: null, newsAt: 0, replyTo: null, sched: null, via: null, pick: null, birdPick: null, player: null,
     syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0 });
@@ -2382,6 +2382,12 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.2.7", at: Date.UTC(2026, 9, 22), title: "Tidier", items: [
+    ["compass", "teal", "Look Up lets go", "The camera and Where I Am always go off when you leave Look Up, however you leave it, and when you switch away from the app."],
+    ["phone", "blue", "Sign out, sure?", "Signing out another phone asks first, and says which one and roughly where it is."],
+    ["clock", "green", "Times as you’d say them", "“2 hours ago”, not “2h 0m ago”, everywhere."],
+    ["bird", "indigo", "A quicker first open", "InFlight fetches all it needs at once when it opens after an update."],
+  ] },
   { v: "1.2.6", at: Date.UTC(2026, 9, 23), title: "Where you’re signed in", items: [
     ["phone", "green", "Signed-In Phones, clearer", "How many places your account is signed in, this phone with how and since when, and every other one with roughly where it is."],
     ["warn", "orange", "A new one stands out", "A phone that signed in today is marked New, so one that wasn’t you is easy to spot and sign out."],
@@ -5131,7 +5137,7 @@ function sheetHtml(title, body, { left, right = { label: "Done", act: "close" },
     <header><span class="l">${b(left, "l")}</span>${title ? `<h2 tabindex="-1">${esc(title)}</h2>` : `<h2 class="sr" tabindex="-1">${esc(name || "")}</h2>`}<span class="r">${b(right, "r")}</span></header>
     <div class="body${flush ? " flush" : ""}">${body}</div></div>`;
 }
-let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9, sheetLater = 0, sheetPath = [], sheetOnAt = -1e9;
+let sheetTimer = 0, sheetType = null, sheetUpAt = -1e9, sheetLater = 0, sheetPath = [], sheetOnAt = -1e9, sheetLaterFull = false;
 // A sheet is still coming up (sliding in, its rows growing) for this long after it opens; the slide itself is the
 // first SHEET_SLIDE_MS (styles.css: .sheet)
 const SHEET_IN_MS = 1100, SHEET_SLIDE_MS = 500, SHEET_ON_MS = 420;
@@ -5168,6 +5174,7 @@ function keepGlides(el, before) {
 let shownSheet = null;
 function renderSheet(refresh) {
   if (S.scan && S.sheet?.type !== "scan") stopScan();
+  if (S.sheet?.type !== "lookup" && (look.on || look.stream || look.camPending || look.watch != null)) lookStop();
   // a question sheet replaced by anything else (a link, the lock, Back): it's answered "no" once this settles
   if (shownSheet !== S.sheet) { const was = shownSheet; shownSheet = S.sheet; if (S.moonReplay && S.sheet?.id !== S.moonReplay.id) S.moonReplay = null; if (was?.resolve && !was.done) setTimeout(() => was.resolve(was.type === "reauth" ? false : null), 0); }
   const open = $(".sheet, .viewer", $layer), closing = !!open?.classList.contains("closing");
@@ -5180,11 +5187,13 @@ function renderSheet(refresh) {
     return;
   }
   clearTimeout(sheetTimer); clearTimeout(sheetLater);
+  // (a full redraw that was waiting isn't lost to a lighter one asked for after it: an avatar arriving, say)
+  if (sheetLaterFull) { refresh = undefined; sheetLaterFull = false; }
   // the same sheet redrawn while it slides up (its plan, its friends arriving): that waits until it's up, all in
   // one go. Redrawing is a long moment's work on a phone, and doing it mid-slide made the sheet judder.
   // (and the same for one just gone on to inside it: a friend's loft, say, arriving)
   const slid = performance.now() - sheetUpAt, on = performance.now() - sheetOnAt, wait = Math.max(SHEET_SLIDE_MS - slid, SHEET_ON_MS - on);
-  if (open && !closing && sheetType === S.sheet.type && wait > 0) { sheetLater = setTimeout(() => renderSheet(refresh), wait + 20); return; }
+  if (open && !closing && sheetType === S.sheet.type && wait > 0) { if (!refresh) sheetLaterFull = true; sheetLater = setTimeout(() => renderSheet(refresh), wait + 20); return; }
   const had = !!open && !closing, swapped = had && sheetType !== S.sheet.type;
   const before = had ? switchStates($layer) : null, ticked = had ? tickedKeys($layer) : null;
   const old = $(".sheet", $layer);
@@ -5321,7 +5330,9 @@ function drawSheet(refresh) {
     case "safety": {
       // Verify in person: who they are and where you stand at the top, then the two ways to check (scan each
       // other's code, or read out the digits), and a moment of celebration when they match
-      const f = personById(s.id), nm = esc(first(f?.name || "your friend")), st = safeState(f), won = s.won && performance.now() - s.won < 1600;
+      const f = personById(s.id);
+      if (!f) { S.sheet = null; return renderSheet(); }       // (they've gone: not a friend or in a group with you any more)
+      const nm = esc(first(f.name || "your friend")), st = safeState(f), won = s.won && performance.now() - s.won < 1600;
       const say = { ok: `<span class="verified">${I.check}Verified in person</span>`, warn: `<span class="safesay">${I.warn}Their key changed</span>`, none: `<span class="safesay">Not verified yet</span>` }[st];
       const digits = `<div class="group safedig"><div class="digits">${(s.digits || []).map((d) => `<span>${d}</span>`).join("")}</div>
         <button type="button" class="safecopy" data-act="safecopy">Copy</button></div>`;
@@ -5798,7 +5809,6 @@ function drawSheet(refresh) {
       const kind = (l) => /^(Mac|Windows|Linux|Chromebook)/.test(l) ? "laptop" : /^iPad/.test(l) ? "tablet" : "phone";
       const icon = (x, tile) => `<span class="tile ${tile}">${kind(x.label) === "laptop" ? I.laptop : I.phone}</span>`;
       const near = (x) => x.place ? ` · near ${esc(x.place)}` : "";
-      const ago = (at) => { const m = Math.round((now() - at) / MIN), h = Math.round(m / 60), d = Math.round(m / 1440); return m < 2 ? "just now" : m < 60 ? `${m} min ago` : h < 24 ? `${h} hour${h > 1 ? "s" : ""} ago` : `${d} day${d > 1 ? "s" : ""} ago`; };
       if (!list) { $layer.innerHTML = sheetHtml("Signed-In Phones", s.err ? loadFail(s.err, "sessionssheet") : `<p class="empty">Looking…</p>`, { left: { label: "Back", act: "securitysheet" } }); return; }
       const me = list.find((x) => x.current), others = list.filter((x) => !x.current), fresh = (x) => now() - x.createdAt < DAY;
       const n = list.length, newOnes = others.filter(fresh).length;
@@ -5811,7 +5821,7 @@ function drawSheet(refresh) {
           <span class="csub">Signed in ${esc(since(me.createdAt))}${near(me)}</span></span></div></div>` : ""}
         <div class="ghead">Other Phones${others.length ? ` <span class="gcount">${others.length}</span>` : ""}</div>
         <div class="group">${others.length ? others.map((x) => `<div class="cell has-icon sessrow${fresh(x) ? " fresh" : ""}">${icon(x, fresh(x) ? "orange" : "blue")}<span class="ctext"><span>${esc(x.label)}${fresh(x) ? ` <span class="newtag">New</span>` : ""}</span>
-            <span class="csub">Active ${ago(x.seenAt)}${near(x)}</span><span class="csub">Signed in ${esc(since(x.createdAt))}</span></span>
+            <span class="csub">Active ${esc(agoText(x.seenAt))}${near(x)}</span><span class="csub">Signed in ${esc(since(x.createdAt))}</span></span>
             <button class="link danger" data-act="sessend" data-id="${esc(x.id)}" aria-label="Sign out ${esc(x.label)}">Sign Out</button></div>`).join("")
           : `<div class="cell sessnone"><span class="ctext"><span>None</span><span class="csub">Sign in anywhere else and it shows up here.</span></span></div>`}</div>
         ${others.length > 1 ? `<div class="group mt">${cell({ act: "sessothers", label: "Sign Out All Other Phones", cls: "center destructive" })}</div>` : ""}
@@ -6761,7 +6771,8 @@ function lookAt(m, t = now()) {
 // would look from here (most of it under the horizon, past the curve of the Earth), the part flown solid
 function lookArc(m) {
   if (m.flock || moonOf(m) || !m.route) return null;
-  const me = lookFrom(), pts = routePts(m), step = Math.max(1, Math.floor(pts.length / 80));
+  const me = lookFrom(); if (!me) return null;
+  const pts = routePts(m), step = Math.max(1, Math.floor(pts.length / 80));
   const arc = pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map((p) => ({ ...lookTo(me.lat, me.lon, latOf(p.y), p.x, 0.12), t: p.t }));
   return { arc, from: m.fromPlace || "where it set off", to: m.toPlace || "where it lands" };
 }
@@ -6805,7 +6816,7 @@ function lookStart() {
 function lensFov(track) {
   const label = String(track?.label || "").toLowerCase(), st = track?.getSettings?.() || {};
   let fov = /ultra|0\.5/.test(label) ? 120 : /tele/.test(label) ? 30 : 75;
-  if (st.zoom > 1) fov = (2 * Math.atan(Math.tan((fov * Math.PI) / 360) / st.zoom) * 360) / Math.PI;
+  if (st.zoom > 1) fov = (2 * Math.atan(Math.tan((fov * Math.PI) / 360) / st.zoom) * 180) / Math.PI;
   return fov;
 }
 // (a phone with several back cameras may hand over a combined, ultra-wide or zoomed one: the plain main one, if there is
@@ -6821,14 +6832,26 @@ async function mainCamera(stream) {
 // Through the camera: the real sky ahead, with the pigeon drawn where it is. The picture stays on this phone (nothing
 // is kept or sent), and the camera goes off as soon as you leave.
 async function lookCamera(on) {
-  const v = $(".lookvid", $layer), b = $(".lookcam", $layer); if (!v || !b) return;
-  if (!on) { look.stream?.getTracks().forEach((x) => x.stop()); look.stream = null; v.srcObject = null; v.hidden = true; b.setAttribute("aria-pressed", "false"); return; }
-  try { look.stream = await mainCamera(await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false })); }
-  catch (_) { b.hidden = true; return toast("The camera isn’t available, so here’s the sky drawn instead."); }
-  look.fov = lensFov(look.stream.getVideoTracks()[0]);
-  if (S.sheet?.type !== "lookup") { look.stream.getTracks().forEach((x) => x.stop()); look.stream = null; return; }
-  v.srcObject = look.stream; v.hidden = false; v.play().catch(() => {}); b.setAttribute("aria-pressed", "true");
+  const v = $(".lookvid", $layer), b = $(".lookcam", $layer);
+  // off: the camera stops whatever else has gone (Back may already have taken the sheet away), and one still
+  // starting is told not to bother
+  if (!on) {
+    look.camReq = (look.camReq || 0) + 1; look.camPending = false;
+    look.stream?.getTracks().forEach((x) => x.stop()); look.stream = null;
+    if (v) { v.srcObject = null; v.hidden = true; } b?.setAttribute("aria-pressed", "false"); return;
+  }
+  if (!v || !b || look.camPending || look.stream) return;
+  const req = look.camReq = (look.camReq || 0) + 1; look.camPending = true; b.setAttribute("aria-pressed", "true");
+  let stream;
+  try { stream = await mainCamera(await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false })); }
+  catch (_) { if (req === look.camReq) { look.camPending = false; b.hidden = true; b.setAttribute("aria-pressed", "false"); toast("The camera isn’t available, so here’s the sky drawn instead."); } return; }
+  // (turned off, or Look Up left, while it was starting: it stops straight away)
+  if (req !== look.camReq || !look.on || S.sheet?.type !== "lookup" || !$(".lookvid", $layer)) { stream.getTracks().forEach((x) => x.stop()); return; }
+  look.camPending = false; look.stream = stream; look.fov = lensFov(stream.getVideoTracks()[0]);
+  const v2 = $(".lookvid", $layer); v2.srcObject = stream; v2.hidden = false; v2.play().catch(() => {});
 }
+// the camera and where you are go off when the app goes to the background (turned on again by a tap on return)
+document.addEventListener("visibilitychange", () => { if (document.hidden && (look.stream || look.camPending || look.watch != null)) { lookCamera(false); lookHere(false); } });
 function lookStop() {
   lookCamera(false); lookHere(false); look.way = null;
   look.on = false; cancelAnimationFrame(look.raf);
@@ -6859,7 +6882,7 @@ function lookLoop() {
     if (!look.way || t - look.wayAt > 5000 || look.wayFrom !== `${me.lat},${me.lon}`) { look.way = lookArc(m); look.wayAt = t; look.wayFrom = `${me.lat},${me.lon}`;
       cv.setAttribute("aria-label", `The sky ahead of you, with the pigeon where it is${look.way ? `, and its way from ${look.way.from} to ${look.way.to}` : ""}`); }
   }
-  if (!look.tg) { lookHud(m, null); return lookStop(); }       // landed while you looked
+  if (!look.tg) { lookHud(m, null); const bar = $(".lookbar", $layer); if (bar) bar.hidden = true; return lookStop(); }       // landed while you looked
   lookDraw(cv, m); lookHud(m, look.tg);
   look.raf = requestAnimationFrame(lookLoop);
 }
@@ -6870,7 +6893,8 @@ function lookDraw(cv, m) {
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const tg = look.tg, day = look.sun.el > -4, dusk = look.sun.el > -12 && !day, col = col0(kindOf(m));
-  const live = look.heading != null && !look.denied, v = $(".lookvid", $layer), cam = live && !!look.stream && v?.videoWidth > 0;
+  // (a camera the phone ended while the app was away isn't a view: back to the sky drawn)
+  const live = look.heading != null && !look.denied, v = $(".lookvid", $layer), cam = live && look.stream?.getVideoTracks()[0]?.readyState === "live" && v?.videoWidth > 0;
   $(".lookcam", $layer).hidden = !live || !navigator.mediaDevices?.getUserMedia;
   if (cam) g.clearRect(0, 0, W, H);
   else {
@@ -7163,8 +7187,8 @@ async function onClick1(e, t) {
       return;
     }
     case "lookup": return openLook(id);
-    case "lookcam": return lookCamera(!look.stream);
-    case "lookhere": return lookHere(look.watch == null);
+    case "lookcam": return look.on && lookCamera(!(look.stream || look.camPending));
+    case "lookhere": return look.on && lookHere(look.watch == null);
     case "lookback": S.sheet = { type: "map", id: S.sheet?.id }; return renderSheet();
     case "cheer": {
       const chat = S.chat, m = (S.msgs.get(chat) || []).find((x) => x.id === id); if (!m || !cheerable(m).can) return;
@@ -7273,7 +7297,7 @@ async function onClick1(e, t) {
         const row = S.sheet?.type === "security" && $('.sheet [data-act=sessionssheet]', $layer); if (!row) return;
         const v = $(".val", row) || row.insertBefore(Object.assign(document.createElement("span"), { className: "val" }), $(".chev", row));
         v.textContent = S.sessN;
-      }).catch(() => {});
+      }).catch(() => { S.sessN = null; const v = S.sheet?.type === "security" && $('.sheet [data-act=sessionssheet] .val', $layer); if (v) v.remove(); });
       return;
     }
     case "encryptionsheet": S.sheet = { type: "encryption" }; return renderSheet();
@@ -7456,7 +7480,11 @@ async function onClick1(e, t) {
     }
     case "blockedsheet": S.sheet = { type: "blocked" }; return renderSheet();
     case "sessionssheet": S.sheet = { type: "sessions" }; renderSheet(); return loadSessions();
-    case "sessend":
+    case "sessend": {
+      const x = S.sheet?.list?.find((y) => y.id === id);
+      return openActions({ message: `Sign out ${x ? x.label : "this phone"}${x?.place ? ` near ${x.place}` : ""}? It will need your password or a passkey to sign in again.`, actions: [{ label: "Sign Out", act: "sessendgo", id, destructive: true }] });
+    }
+    case "sessendgo":
       try { await api("sessions-end", { method: "POST", body: { id } }); haptic("success"); toast("Signed out."); } catch (err) { toast(esc(err.message)); }
       return loadSessions();
     case "sessothers": return openActions({ message: "Sign out of InFlight everywhere except this phone? They’ll need your password or a passkey to sign in again.", actions: [{ label: "Sign Out Other Phones", act: "sessothersgo", destructive: true }] });
@@ -7627,7 +7655,11 @@ async function onChange(e) {
     if (p && S.view === "locpick" && S.me?.place) setTimeout(() => { if (S.view === "locpick") onbNext(); }, 650);   // signing up: straight on
   }
 }
-const agoText = (at) => { const ms = now() - at; return ms < 2 * MIN ? "just now" : `${fmtDur(ms)} ago`; };
+// how long ago, as you'd say it: "just now", "12 min ago", "2 hours ago", "3 days ago"
+const agoText = (at) => {
+  const m = Math.round((now() - at) / MIN), h = Math.round(m / 60), d = Math.round(m / 1440);
+  return m < 2 ? "just now" : m < 60 ? `${m} min ago` : h < 24 ? `${h} hour${h > 1 ? "s" : ""} ago` : `${d} day${d > 1 ? "s" : ""} ago`;
+};
 // Opt-in: keep your location fresh while InFlight is open (a web page can't
 // look in the background), so pigeons on their way can follow you. It never
 // asks for permission by itself (only when you turn it on). It checks every
@@ -8518,7 +8550,8 @@ async function openFlightLog(at) {
   try {
     sh.data = await api("flight-log"); if (S.sheet !== sh) return;
     renderSheet();
-    if (at === "skins") setTimeout(() => $(".badges.skins", $layer)?.previousElementSibling?.scrollIntoView({ block: "start", behavior: "smooth" }), 350);     // straight to the looks
+    // straight to the looks, once they're drawn (that can wait until the sheet is up)
+    if (at === "skins") { const t0 = performance.now(), go = () => { const el = $(".badges.skins", $layer)?.previousElementSibling; if (el) return setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 150); if (performance.now() - t0 < 2000 && S.sheet) setTimeout(go, 100); }; go(); }
   }
   catch (err) { if (S.sheet === sh) { S.sheet = null; renderSheet(); } toast(esc(err.message)); }
 }

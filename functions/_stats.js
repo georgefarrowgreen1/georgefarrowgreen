@@ -48,10 +48,10 @@ export async function logFor(D, uid, t) {
   const u = { id: uid };
   // one row per pigeon you've sent: one to one, and each of your group pigeons
   const { results: sent } = await D.prepare(`
-    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon, NULL AS dodged, NULL AS shelter_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
+    SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, 0 AS grp, legs, wx_ms, moon IS NOT NULL AS lunar, moon, w_dodged AS dodged, w_shelter AS shelter_ms FROM pg_msgs WHERE sender = ?1 AND sent_at <= ?2
     UNION ALL
     -- (no place names for group pigeons: one could be someone who isn't your friend)
-    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon, NULL, NULL FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2
+    SELECT m.pigeon, d.km, m.sent_at, d.deliver_at, d.lost_at, d.recalled, d.wind, NULL, m.risky, m.from_lon, d.to_lon, 1, d.legs, d.wx_ms, d.moon IS NOT NULL, d.moon, d.w_dodged, d.w_shelter FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id WHERE m.sender = ?1 AND m.sent_at <= ?2
     UNION ALL
     -- (and those whose messages have gone, after a month: what they did, kept: functions/_retention.js)
     SELECT pigeon, km, sent_at, deliver_at, lost_at, recalled, wind, to_place, risky, from_lon, to_lon, grp, NULL, wx_ms, moon IS NOT NULL, moon, dodged, shelter_ms FROM pg_flights WHERE sender = ?1 AND sent_at <= ?2`).bind(u.id, t).all();

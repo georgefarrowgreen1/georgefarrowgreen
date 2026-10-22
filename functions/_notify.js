@@ -21,7 +21,7 @@ import { spaceMoments, legOf } from "../pigeon/space.js";
 import { MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sendEmail, emailReady, emailBody, sweepPhotos, chunks, serverSecret, appLink } from "./_pigeon.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
-import { housekeeping } from "./_retention.js";
+import { housekeeping, WAY_PARTS } from "./_retention.js";
 import { streakTick } from "./_streaks.js";
 
 const enc = new TextEncoder();
@@ -575,13 +575,15 @@ async function flyTick(env, D, t, since) {
 // 50 km, still right for the map, the miles and the badges) and the points
 // where it changed course (where someone moved to) are dropped. Once an hour.
 const BLUR_AFTER = 30 * DAY, half = (c) => `${c} = ROUND(${c} * 2) / 2`;
+const keptWay = (legs) => WAY_PARTS(legs).map((x, i) => `${["w_dodged", "w_shelter", "w_ship"][i]} = ${x}`).join(", ");
 async function blurOld(D, t) {
   const last = await D.prepare("SELECT v FROM pg_meta WHERE k = 'blur_at'").first();
   if (last && t - Number(last.v) < HOUR) return;
   await D.batch([
     D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('blur_at', ?)").bind(String(t)),
-    D.prepare(`UPDATE pg_msgs SET ${["from_lat", "from_lon", "to_lat", "to_lon"].map(half).join(", ")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
-    D.prepare(`UPDATE pg_gdeliv SET ${["to_lat", "to_lon"].map(half).join(", ")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
+    // (what its way said, round storms, sheltering, a ship, is kept first, for the flight log and its line later)
+    D.prepare(`UPDATE pg_msgs SET ${["from_lat", "from_lon", "to_lat", "to_lon"].map(half).join(", ")}, ${keptWay("legs")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
+    D.prepare(`UPDATE pg_gdeliv SET ${["to_lat", "to_lon"].map(half).join(", ")}, ${keptWay("legs")}, legs = NULL, coarse = 1 WHERE coarse IS NULL AND deliver_at < ?`).bind(t - BLUR_AFTER),
     D.prepare(`UPDATE pg_gmsgs SET ${["from_lat", "from_lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND sent_at < ?`).bind(t - BLUR_AFTER - 8 * DAY),
     D.prepare(`UPDATE pg_near SET ${["lat", "lon"].map(half).join(", ")}, coarse = 1 WHERE coarse IS NULL AND at < ?`).bind(t - BLUR_AFTER),
     // and none outlives either of its pigeons

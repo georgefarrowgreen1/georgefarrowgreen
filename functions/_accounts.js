@@ -2,6 +2,7 @@
 import { db, DAY } from "./_pigeon.js";
 import { removeFromGroups } from "./_groups.js";
 import { dropReacts } from "./_reacts.js";
+import { keepSentTo } from "./_retention.js";
 
 export const avatarKey = (id) => `pigeon-avatars/${id}`;
 
@@ -13,6 +14,7 @@ export async function removeAccount(env, id) {
   const { results } = await D.prepare("SELECT id FROM pg_msgs WHERE photo = 1 AND (sender = ?1 OR recipient = ?1)").bind(id).all();
   if (env.BIO_R2 && results.length) await env.BIO_R2.delete(results.map((r) => `pigeon/${r.id}`));
   await D.batch([
+    keepSentTo(D, id, Date.now()),
     D.prepare("DELETE FROM pg_msgs WHERE sender = ?1 OR recipient = ?1").bind(id),
     D.prepare("DELETE FROM pg_flyover WHERE sender = ?1 OR user_id = ?1").bind(id),
     D.prepare("DELETE FROM pg_birds WHERE owner = ?").bind(id),
@@ -32,6 +34,7 @@ export async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_links WHERE a = ?1 OR b = ?1").bind(id),
     D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_active WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_push WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
     // their handle is held for 30 days, for no one, so no one can pose as them to their friends
