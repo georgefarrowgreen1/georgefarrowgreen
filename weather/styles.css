@@ -1086,6 +1086,12 @@ fieldset.opt label.at-row { width: 100%; }
 .rl-words span:first-child { transform: none; left: 0; }
 .rl-words span:last-child { transform: translateX(-100%); left: 100%; }
 .rl-snow { flex: none; width: 64px; display: flex; flex-direction: column; gap: 4px; }
+/* the wind's: the wind or its gusts (radar.js gustSwitch), a small segmented choice beside its colours */
+.rl-switch { flex: none; display: inline-flex; margin-top: -4px; padding: 2px; border-radius: 999px; background-color: rgba(0, 0, 0, 0.2); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); }
+.rl-switch button { font: inherit; font-weight: 600; color: inherit; min-height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: none; cursor: pointer; transition: background-color 0.25s var(--glide), color 0.25s var(--glide); }
+.rl-switch button[aria-pressed="true"] { background-color: rgba(255, 255, 255, 0.22); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.rl-switch button:focus-visible { outline-offset: 1px; }
+.radar.light-map.radar-big .rl-switch button:focus-visible { outline-color: #1c1c1e; }
 
 /* full screen, as Apple's Weather map: the map to every edge, an × top left, its controls top right, the legend in a
    panel under the ×, and the dock in glass at the foot */
@@ -1114,6 +1120,11 @@ fieldset.opt label.at-row { width: 100%; }
 .radar.radar-big .rl-words span:last-child { transform: none; left: 0; top: 0; bottom: auto; }
 .radar.radar-big .rl-snow { flex-direction: row; align-items: center; gap: 10px; width: auto; }
 .radar.radar-big .rl-snow .rl-bar { width: 6px; height: 22px; background: linear-gradient(0deg, var(--stops)); }
+.radar.radar-big .rl-switch { margin: 0; align-self: stretch; }
+.radar.radar-big .rl-switch button { flex: 1; }
+.radar.radar-big .rl-switch button[aria-pressed="true"] { color: var(--ink); }
+.radar.light-map.radar-big .rl-switch { background-color: rgba(0, 0, 0, 0.07); }
+.radar.light-map.radar-big .rl-switch button[aria-pressed="true"] { background-color: #fff; }
 .radar.radar-big .radar-dock { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 12px); margin: 0 auto; max-width: 560px; padding: 14px 16px 8px; border-radius: 28px; }
 .radar.light-map.radar-big .radar-play, .radar.light-map.radar-big .radar-full { background-color: rgba(120, 120, 128, 0.16); color: #1c1c1e; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 .radar.light-map.radar-big .radar-full { background-color: rgba(255, 255, 255, 0.8); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px -6px rgba(0, 0, 0, 0.3); }
@@ -1187,6 +1198,39 @@ body.no-scroll { overflow: hidden; }
 .mp-name { position: absolute; left: 0; top: 8px; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 600;
   text-shadow: 0 0 2px rgba(8, 11, 17, 0.9), 0 0 6px rgba(8, 11, 17, 0.6); }
 .light-map .mp-name { color: #1c1c1e; text-shadow: 0 0 2px #fff, 0 0 6px rgba(255, 255, 255, 0.9); }
+/* the other saved places (radar.js drawOthers): smaller bubbles than the place's own, each with its name under it, a tap
+   going to it; on the wind's layer white, with which way it's from */
+.map-other { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; color: #fff; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+.mo-b { position: absolute; left: 0; bottom: 9px; transform: translateX(-50%); min-width: 36px; height: 36px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; border: 2px solid #fff;
+  background: var(--pin, #3f72c6); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); display: grid; justify-items: center; align-content: center; transition: transform 0.2s var(--spring); }
+.mo-b::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 4px solid transparent; border-top: 5px solid #fff; border-bottom: 0; }
+.mo-v { font-size: 13.5px; font-weight: 700; line-height: 1; letter-spacing: -0.01em; }
+.mo-d { display: none; font-size: 7.5px; font-weight: 750; line-height: 1; letter-spacing: 0.02em; }
+.mo-dot { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.mo-n { position: absolute; left: 0; top: 6px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; font-weight: 600; text-shadow: 0 0 2px rgba(8, 11, 17, 0.9), 0 0 6px rgba(8, 11, 17, 0.6); }
+.light-map .mo-n { color: #1c1c1e; text-shadow: 0 0 2px #fff, 0 0 6px rgba(255, 255, 255, 0.9); }
+.map-other[data-kind="wind"] .mo-b { background: #fff; color: #1c1c1e; }
+.map-other[data-kind="wind"] .mo-d { display: block; }
+.map-other[data-empty="1"] .mo-b { display: none; }
+.map-other:active .mo-b { transform: translateX(-50%) scale(0.92); }
+.map-other:focus-visible { outline: none; }
+.map-other:focus-visible .mo-b { outline: 2px solid #fff; outline-offset: 2px; }
+/* a reading where the map's tapped (radar.js readAt): the layer's say there, and any warning it's in, over a dot */
+.map-read { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+.mr-b { position: absolute; left: 0; bottom: 9px; transform: translateX(-50%); display: grid; gap: 2px; padding: 6px 11px 7px; border-radius: 12px; white-space: nowrap; text-align: center;
+  color: #fff; background-color: rgba(18, 24, 36, 0.86); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.18), 0 6px 18px -4px rgba(0, 0, 0, 0.45); animation: read-in 0.22s var(--glide); }
+.mr-v { font-size: 13.5px; font-weight: 650; line-height: 1.15; }
+.mr-w { font-size: 11px; font-weight: 650; line-height: 1.15; color: #ffd60a; }
+.mr-w:empty { display: none; }
+.map-read[data-warn="amber"] .mr-w, .map-read[data-warn="orange"] .mr-w { color: #ffb340; }
+.map-read[data-warn="red"] .mr-w { color: #ff6961; }
+.mr-dot { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; background: #fff; border: 2.5px solid rgba(18, 24, 36, 0.86); }
+.light-map .mr-b { color: #1c1c1e; background-color: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 6px 18px -4px rgba(0, 0, 0, 0.3); }
+.light-map .mr-w { color: #a07800; }
+.light-map .map-read[data-warn="amber"] .mr-w, .light-map .map-read[data-warn="orange"] .mr-w { color: #b85c00; }
+.light-map .map-read[data-warn="red"] .mr-w { color: #c4271d; }
+@keyframes read-in { from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.94); } }
+@media (prefers-reduced-motion: reduce) { .mr-b { animation: none; } .mo-b { transition: none; } }
 /* (before the page has its temperature: the dot alone) */
 .map-pin:not([data-on="1"]) .mp-bubble, .map-pin:not([data-on="1"]) .mp-name { display: none; }
 .map-pin-at { width: 0 !important; height: 0 !important; }

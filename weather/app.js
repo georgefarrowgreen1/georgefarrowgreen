@@ -488,9 +488,9 @@ function render() {
   const part = (fn, ...a) => { try { fn(...a); } catch (e) { console.error(e); } };
   const my = ++drawing, key = cell(wx.place.lat, wx.place.lon);
   // (the place drawn again with something new near the top (a warning come in, say) while the page is at the top: what's
-  // under it glides down to its new place rather than jumping there)
-  const glide = drawnFor === key && scrollY < 40 && !calm.matches, blocks = glide ? [...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden) : [];
-  const was = new Map(blocks.map((x) => [x, x.getBoundingClientRect().top]));
+  // under it glides down to its new place rather than jumping there; from where each was as last shown (tops, kept
+  // once it's been: not measured now, which would lay the page out before it's drawn)
+  const was = drawnFor === key && scrollY < 40 && !calm.matches ? tops : null;
   part(sky, wx, now);
   part(hero, wx, now);
   part(pinOnMap, wx, now);
@@ -509,15 +509,24 @@ function render() {
   };
   // a place's first drawing, on a phone: what's on the screen first, and the rest (all below it) a moment after, once
   // that's shown, rather than all at once before anything is; unless it's been drawn again meanwhile (all of it then)
-  if (drawnFor !== key && !twoCols.matches) { drawnFor = key; requestAnimationFrame(() => setTimeout(() => { if (my === drawing) rest(); }, 0)); return; }
+  if (drawnFor !== key && !twoCols.matches) { drawnFor = key; requestAnimationFrame(() => setTimeout(() => { if (my === drawing) { rest(); requestAnimationFrame(keepTops); } }, 0)); return; }
   drawnFor = key;
   rest();
-  for (const [x, t] of was) {
-    const r = x.getBoundingClientRect(), d = t - r.top;
-    if (Math.abs(d) > 2 && !x.hidden && r.top < innerHeight) x.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 480, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", composite: "add" });
-  }
+  // (where each is now, read as the page is about to be shown, when it's laid out anyway)
+  requestAnimationFrame(() => {
+    if (my !== drawing) return;
+    if (was) for (const [x, t] of was) {
+      if (x.hidden || !x.isConnected) continue;
+      const top = x.offsetTop, d = t - top;
+      if (Math.abs(d) > 2 && top - scrollY < innerHeight) x.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 480, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", composite: "add" });
+    }
+    keepTops();
+  });
 }
-let drawing = 0, drawnFor = "";
+let drawing = 0, drawnFor = "", tops = null;
+addEventListener("resize", () => { tops = null; });
+// (where the page's parts are laid out, as shown: once it's been laid out and shown; not as any glide has them meanwhile)
+const keepTops = () => setTimeout(() => { tops = new Map([...document.querySelectorAll("main > .col > *")].filter((x) => !x.hidden).map((x) => [x, x.offsetTop])); }, 0);
 // A wide screen's two columns kept about level: the radar (after the next 48 hours, or after Right now), the 15 days
 // (at the foot of either) and this time of year (under the 15 days, or after the best times) each on whichever side
 // does it. Worked out once a place's forecast is in (and again as its climate and its accuracy come), and as the
@@ -620,12 +629,32 @@ function hero(wx, now) {
 // the place on the radar's map as Apple's Weather map marks it: its temperature and sky in a bubble the colour of how
 // warm it is, its name under it
 const PIN_HUES = [[-10, [110, 90, 210]], [0, [60, 120, 220]], [10, [58, 112, 196]], [15, [40, 145, 160]], [20, [80, 160, 70]], [25, [222, 148, 40]], [30, [222, 88, 50]], [35, [196, 40, 50]]];
+const pinHue = (temp) => {
+  const at = PIN_HUES.findIndex(([t]) => t >= temp), k = Math.max(1, at < 0 ? PIN_HUES.length - 1 : at), [t0, a] = PIN_HUES[k - 1], [t1, b] = PIN_HUES[k];
+  const f = t1 > t0 ? Math.min(1, Math.max(0, (temp - t0) / (t1 - t0))) : 0;
+  return `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * f)).join(",")})`;
+};
+// a saved place at a glance (peek), kept a minute: its whole kept forecast is read to get it, not one to read every drawing
+const glances = new Map();
+const glance = (q) => {
+  const id = cell(q.lat, q.lon), had = glances.get(id);
+  if (had && Date.now() - had.at < 60e3) return had.k;
+  const k = peek(q);
+  glances.set(id, { at: Date.now(), k });
+  return k;
+};
 function pinOnMap(wx, now) {
   const c = wx.current || I.hourAt(wx, now), p = place();
   if (!S.radar || !c) return;
-  const at = PIN_HUES.findIndex(([t]) => t >= c.temp), k = Math.max(1, at < 0 ? PIN_HUES.length - 1 : at), [t0, a] = PIN_HUES[k - 1], [t1, b] = PIN_HUES[k];
-  const f = t1 > t0 ? Math.min(1, Math.max(0, (c.temp - t0) / (t1 - t0))) : 0, rgb = a.map((v, j) => Math.round(v + (b[j] - v) * f));
-  S.radar.mark({ temp: S.f.temp(c.temp), icon: weatherIcon(iconOf(c.code, c.isDay), 22), name: p?.gps ? "My Location" : p?.name || "", colour: `rgb(${rgb.join(",")})` });
+  S.radar.mark({ temp: S.f.temp(c.temp), icon: weatherIcon(iconOf(c.code, c.isDay), 22), name: p?.gps ? "My Location" : p?.name || "", colour: pinHue(c.temp) });
+  // the other saved places on the map too, their temperature now as the list of them has it, each a way to go to it;
+  // and the official warnings' areas, where their services draw them
+  const here = cell(wx.place.lat, wx.place.lon);
+  S.radar.others(S.places.map((q, i) => ({ q, i })).filter(({ q, i }) => i !== S.cur && cell(q.lat, q.lon) !== here).map(({ q, i }) => {
+    const k = glance(q);
+    return { name: q.gps ? "My Location" : q.name, lat: q.lat, lon: q.lon, temp: k ? S.f.temp(k.temp) : "", colour: k ? pinHue(k.temp) : null, go: () => { S.cur = i; savePlaces(); go(); } };
+  }));
+  S.radar.warnings(inForce(wx.official).filter((w) => w.areas?.length).map((w) => ({ id: w.id, title: w.event || titleOf(w), colour: colourOf(w), onset: w.onset, expires: w.expires, open: !!w.open, rings: w.areas })));
 }
 function nowcast(wx, now) {
   const f = S.f, nc = I.nowcast(wx, now, f), box = $("nowcast");

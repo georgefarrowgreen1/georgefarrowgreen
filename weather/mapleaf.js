@@ -26,6 +26,9 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
     setTimeout(() => { tile.src = `${tile.src}${tile.src.includes("?") ? "&" : "?"}again=1`; }, 1500);
   }).addTo(map);
   const dot = L.marker([lat, lon], { icon: L.divIcon({ className: "map-pin-at", html: pin || '<div class="map-pin"><span class="mp-dot"></span></div>', iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(map);
+  // (areas over the radar, under the markers: areas())
+  map.createPane("areas").style.zIndex = "450";
+  let areas = null;
   // a frame drawn tile by tile: each tile's pixels from its function, once it's in place (none where it's dry)
   const Drawn = L.GridLayer.extend({
     createTile(c, done) {
@@ -103,6 +106,16 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       box?.setStyle({ opacity });
     },
     dot(la, lo) { dot.setLatLng([la, lo]); },
+    marker(elm, la, lo) {
+      L.DomEvent.disableClickPropagation(elm);
+      const mk = L.marker([la, lo], { icon: L.divIcon({ className: "map-pin-at", html: elm, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(map);
+      return { at: (a, b) => mk.setLatLng([a, b]), room() {}, remove: () => mk.remove() };
+    },
+    areas(list) {
+      if (areas) map.removeLayer(areas);
+      areas = L.layerGroup(list.map((a) => L.polygon(a.rings.map((r) => { const ring = []; for (let i = 0; i + 1 < r.length; i += 2) ring.push([r[i], r[i + 1]]); return ring; }),
+        { pane: "areas", color: a.colour, weight: 1.6, opacity: 0.9, fillColor: a.colour, fillOpacity: 0.13, interactive: false }))).addTo(map);
+    },
     // (its names are in its pictures: nothing to keep clear)
     clear() {},
     view(la, lo, smooth = false) { map.setView([la, lo], zoom, { animate: smooth && !calm }); },
@@ -118,6 +131,6 @@ export async function leafMap(el, { lat, lon, zoom, min, max, touch, calm, pin =
       const z = map.getZoom(), c = map.getCenter();
       return { zoom: z, min, max, mpp: (40075016.686 * Math.cos((c.lat * Math.PI) / 180)) / (256 * 2 ** z) };
     },
-    on(type, fn) { map.on(type === "tap" ? "click" : type, () => fn()); },
+    on(type, fn) { map.on(type === "tap" ? "click" : type, (e) => fn(e?.latlng ? { lat: e.latlng.lat, lon: e.latlng.lng } : undefined)); },
   };
 }

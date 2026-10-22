@@ -67,6 +67,12 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
   const fade = calm ? 0 : 250, NONE = { type: "FeatureCollection", features: [] };
   map.addSource("box", { type: "geojson", data: NONE });
   map.addLayer({ id: "box", type: "line", source: "box", paint: { "line-color": boxColour(light), "line-width": 1, "line-dasharray": [4, 5], "line-opacity": 0, "line-opacity-transition": { duration: fade } } }, ABOVE_RAIN);
+  // areas drawn over it (official warnings: areas()), each in its colour, under the names and over the radar's and the
+  // models' pictures (put in under them: UNDER)
+  map.addSource("areas", { type: "geojson", data: NONE });
+  map.addLayer({ id: "areas-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": light ? 0.16 : 0.13 } }, ABOVE_RAIN);
+  map.addLayer({ id: "areas-line", type: "line", source: "areas", paint: { "line-color": ["get", "colour"], "line-width": 1.6, "line-opacity": 0.9 } }, ABOVE_RAIN);
+  const UNDER = "areas-fill";
   // the place: its bubble (radar.js; else a dot), with room kept round it that names step aside from: the bubble
   // above it and its name below
   const mark = pin || Object.assign(document.createElement("div"), { className: "map-pin" });
@@ -89,6 +95,13 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
     return { type: "Feature", properties: { room: r.id }, geometry: { type: "Point", coordinates: [at.lng, at.lat] } };
   }) });
   map.on("move", keep);
+  // and room kept the same way about the markers radar.js puts on it (the other saved places: marker()), each as big as
+  // it says, so the map's own names don't print over theirs
+  const marks = new Map();
+  let markN = 0;
+  map.addSource("marks", { type: "geojson", data: NONE });
+  map.addLayer({ id: "marks", type: "symbol", source: "marks", layout: { "icon-image": ["get", "room"], "icon-offset": ["get", "off"], "icon-allow-overlap": true, "icon-ignore-placement": false } });
+  const markRooms = () => map.getSource("marks").setData({ type: "FeatureCollection", features: [...marks.values()].filter((x) => x.room).map((x) => ({ type: "Feature", properties: { room: x.room, off: [0, x.dy] }, geometry: { type: "Point", coordinates: [x.lon, x.lat] } })) });
 
   // (the map's own canvas is the region a screen reader names, in place of its frame's)
   el.removeAttribute("role"); el.removeAttribute("aria-label");
@@ -122,7 +135,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
           drawers.set(n, f.draw);
           map.addSource(id, { type: "raster", tiles: [`rv://${n}/{z}/{x}/{y}`], tileSize: 256, maxzoom: max });
         } else map.addSource(id, { type: "canvas", canvas: f.canvas, coordinates: corners(f.bounds), animate: false });
-        map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": fade } }, ABOVE_RAIN);
+        map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": fade } }, UNDER);
         return id;
       });
     },
@@ -139,7 +152,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       wasCanvas.getContext("2d").drawImage(mixOf, 0, 0);
       if (!was) {
         map.addSource("was", { type: "canvas", canvas: wasCanvas, coordinates: mixCorners, animate: false });
-        map.addLayer({ id: "was", type: "raster", source: "was", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0 } }, ABOVE_RAIN);
+        map.addLayer({ id: "was", type: "raster", source: "was", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0 } }, UNDER);
         was = map.getSource("was");
       } else was.setCoordinates(mixCorners);
       was.play(); was.pause();
@@ -160,7 +173,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       if (!mix) {
         told.delete("mix");
         map.addSource("mix", { type: "canvas", canvas, coordinates: c, animate: false });
-        map.addLayer({ id: "mix", type: "raster", source: "mix", paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": 0 } }, ABOVE_RAIN);
+        map.addLayer({ id: "mix", type: "raster", source: "mix", paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 0, delay: 0 }, "raster-fade-duration": 0 } }, UNDER);
         mix = map.getSource("mix"); mixAt = key; mixOf = canvas;
       } else if (key !== mixAt) { mix.setCoordinates(c); mixAt = key; }
       // (its picture sent on to the screen: pausing it uploads it)
@@ -178,7 +191,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       if (!fld) {
         told.delete("field");
         map.addSource("field", { type: "canvas", canvas, coordinates: c, animate: false });
-        map.addLayer({ id: "field", type: "raster", source: "field", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0, "raster-resampling": "linear" } }, ABOVE_RAIN);
+        map.addLayer({ id: "field", type: "raster", source: "field", paint: { "raster-opacity": 0, "raster-opacity-transition": INSTANT, "raster-fade-duration": 0, "raster-resampling": "linear" } }, UNDER);
         fld = map.getSource("field"); fldAt = key; fldOf = canvas;
       } else if (key !== fldAt) { fld.setCoordinates(c); fldAt = key; }
       fld.play(); fld.pause(); map.triggerRepaint();
@@ -199,6 +212,26 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       map.setPaintProperty("box", "line-opacity", opacity);
     },
     dot(la, lo) { dot.setLngLat([lo, la]); map.getSource("here").setData(spot(la, lo)); },
+    // an element of radar.js's own at a place (another saved place, a reading): → { at(lat, lon), remove() }
+    // (room: the space it takes, w × h pixels, its middle dy below the place, kept clear of the map's own names)
+    marker(elm, la, lo) {
+      const mk = new m.Marker({ element: elm, anchor: "center" }).setLngLat([lo, la]).addTo(map), id = ++markN;
+      marks.set(id, { lat: la, lon: lo, room: null, dy: 0 });
+      return {
+        at: (a, b) => { mk.setLngLat([b, a]); Object.assign(marks.get(id) || {}, { lat: a, lon: b }); markRooms(); },
+        room: (w, h, dy = 0) => {
+          const W = Math.ceil(w / 8) * 8, H = Math.ceil(h / 8) * 8, room = `room-${W}x${H}`;
+          if (!map.hasImage(room)) map.addImage(room, { width: W, height: H, data: new Uint8Array(W * H * 4) });
+          Object.assign(marks.get(id) || {}, { room, dy }); markRooms();
+        },
+        remove: () => { mk.remove(); marks.delete(id); markRooms(); },
+      };
+    },
+    // areas: [{ rings: [[lat, lon, lat, lon, …], …], colour }]
+    areas(list) {
+      map.getSource("areas").setData({ type: "FeatureCollection", features: list.map((a) => ({ type: "Feature", properties: { colour: a.colour },
+        geometry: { type: "MultiPolygon", coordinates: a.rings.map((r) => { const ring = []; for (let i = 0; i + 1 < r.length; i += 2) ring.push([r[i + 1], r[i]]); return [ring]; }) } })) });
+    },
     // the names kept clear of these: [{ x, y, w, h }], pixels from the map's top left
     clear(rects) {
       rooms = rects.map(({ x, y, w, h }) => {
@@ -227,6 +260,7 @@ export async function glMap(el, { lat, lon, zoom, min, max, touch, calm, light =
       const z = map.getZoom() + 1, c = map.getCenter();
       return { zoom: z, min, max, mpp: (40075016.686 * Math.cos((c.lat * Math.PI) / 180)) / (256 * 2 ** z) };
     },
-    on(type, fn) { map.on(type === "tap" ? "click" : type, () => fn()); },
+    // (a tap says where: { lat, lon })
+    on(type, fn) { map.on(type === "tap" ? "click" : type, (e) => fn(e?.lngLat ? { lat: e.lngLat.lat, lon: e.lngLat.lng } : undefined)); },
   };
 }

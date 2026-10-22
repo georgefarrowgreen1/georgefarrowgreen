@@ -56,6 +56,7 @@ export function nwsAlerts(now = Date.now()) {
       onset: iso(now - H), effective: iso(now - H), ends: iso(now + 6 * H), expires: iso(now + 6 * H), areaDesc: 'New York (Manhattan)',
       parameters: { NWSheadline: ['WIND ADVISORY IN EFFECT UNTIL 6 PM EDT THIS EVENING'] }, ...o,
     },
+    geometry: { type: 'Polygon', coordinates: [[[-74.06, 40.68], [-73.93, 40.68], [-73.93, 40.88], [-74.06, 40.88], [-74.06, 40.68]]] },
   });
   return { type: 'FeatureCollection', features: [f('nws-1'), f('nws-over', { ends: iso(now - H), expires: iso(now - H) }), f('nws-cancel', { messageType: 'Cancel' }), f('nws-test', { status: 'Test' })] };
 }

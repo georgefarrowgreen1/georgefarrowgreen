@@ -80,6 +80,32 @@ export function polygon(s) {
   const lats = p.filter((_, i) => i % 2 === 0), lons = p.filter((_, i) => i % 2 === 1);
   return { b: [Math.min(...lats), Math.min(...lons), Math.max(...lats), Math.max(...lons)], p };
 }
+// An outline made light enough to send for the map: the points that hardly change its shape left out (within tol degrees
+// of the line between those kept either side; tol doubled until there are no more than max), each to 3 decimal places
+// (about 100 m). p: [lat, lon, lat, lon, …], as polygon() makes them
+export function simplify(p, tol = 0.004, max = 120) {
+  const n = p.length / 2, r3 = (v) => Math.round(v * 1000) / 1000;
+  if (n <= 4) return p.map(r3);
+  for (let t = tol; ; t *= 2) {
+    const keep = new Uint8Array(n), stack = [[0, n - 1]];
+    keep[0] = keep[n - 1] = 1;
+    while (stack.length) {
+      const [a, b] = stack.pop(), ay = p[2 * a], ax = p[2 * a + 1], dy = p[2 * b] - ay, dx = p[2 * b + 1] - ax, l = Math.hypot(dx, dy);
+      let far = -1, most = t;
+      for (let i = a + 1; i < b; i++) {
+        const e = l ? Math.abs(dy * (p[2 * i + 1] - ax) - dx * (p[2 * i] - ay)) / l : Math.hypot(p[2 * i] - ay, p[2 * i + 1] - ax);
+        if (e > most) { most = e; far = i; }
+      }
+      if (far >= 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) if (keep[i]) out.push(r3(p[2 * i]), r3(p[2 * i + 1]));
+    if (out.length / 2 <= max || t > 1) return out;
+  }
+}
+// a warning's areas for the map: its outlines (no more than 12), each made light
+const areasOf = (polys) => (Array.isArray(polys) ? polys : []).slice(0, 12).map((r) => simplify(r.p)).filter((r) => r.length >= 8);
+
 // whether a point is inside a polygon (crossing its edges, west to east)
 export function inside(lat, lon, { b, p }) {
   if (!inBox(lat, lon, b)) return false;
@@ -122,20 +148,21 @@ export function shapeMeteoalarm(j, now = Date.now()) {
   return out;
 }
 
-// The National Weather Service's alerts for a point → the same shape (without areas: it's already for the point).
+// The National Weather Service's alerts for a point → the same shape, with the area each is drawn for where it's drawn
+// (its geometry; one for a forecast zone has none: there, it's said for the point alone).
 // Its headline is in capitals, so the card says what's coming from its description's "* WHAT..." instead.
 const SEVERITY = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 2 };
 const whatOf = (d) => { const m = /\*\s*WHAT\.\.\.([\s\S]*?)(?:\n\s*\n|\n\s*\*|$)/.exec(String(d || "")); const t = m && m[1].replace(/\s+/g, " ").trim(); return t ? t[0].toUpperCase() + t.slice(1) : null; };
 export function shapeNws(j, lat, lon, now = Date.now()) {
-  return (Array.isArray(j?.features) ? j.features : []).map((x) => x?.properties).filter((p) => {
-    const end = iso(p?.ends) || iso(p?.expires);
+  return (Array.isArray(j?.features) ? j.features : []).filter((x) => {
+    const p = x?.properties, end = iso(p?.ends) || iso(p?.expires);
     return p && p.status === "Actual" && ["Alert", "Update"].includes(p.messageType) && end && Date.parse(end) > now;
-  }).map((p) => ({
+  }).map((x) => [x.properties, x.geometry ? outlineOf(x.geometry) : []]).map(([p, polys]) => ({
     id: String(p.id || "").slice(0, 200), issuer: "National Weather Service", via: null,
     event: clip(p.event, 120) || "Weather alert", level: SEVERITY[p.severity] || 2, type: null,
     headline: clip(whatOf(p.description), 400) || clip(p.headline, 400), text: clip(p.description, 4000), instruction: clip(p.instruction, 2000),
     impacts: [], onset: iso(p.onset) || iso(p.effective), expires: iso(p.ends) || iso(p.expires),
-    url: `https://forecast.weather.gov/MapClick.php?lat=${lat}&lon=${lon}`, area: clip(p.areaDesc, 200),
+    url: `https://forecast.weather.gov/MapClick.php?lat=${lat}&lon=${lon}`, area: clip(p.areaDesc, 200), polys,
   }));
 }
 
@@ -193,14 +220,14 @@ async function outlineAt(base, id) {
 async function floodsAt(env, lat, lon) {
   const base = env.EA_URL || "https://environment.data.gov.uk";
   const near = await shaped(`${base}/flood-monitoring/id/floods?lat=${lat.toFixed(2)}&long=${lon.toFixed(2)}&dist=15`, shapeEa);
-  const kept = await Promise.all(near.slice(0, 12).map((w) => outlineAt(base, w.floodArea).then((rings) => kmFrom(lat, lon, rings) <= EA_NEAR_KM, () => false)));
-  return near.slice(0, 12).filter((_, i) => kept[i]);
+  const kept = await Promise.all(near.slice(0, 12).map((w) => outlineAt(base, w.floodArea).then((rings) => (kmFrom(lat, lon, rings) <= EA_NEAR_KM ? rings : null), () => null)));
+  return near.slice(0, 12).map((w, i) => kept[i] && { ...w, polys: kept[i] }).filter(Boolean);
 }
 
 // a feed, shaped: from the cache, or asked for and kept for TTL (an answer that it's outside its map: none, kept too)
 async function shaped(url, shape, ttl = TTL) {
   const cache = ttl > 0 && typeof caches !== "undefined" && caches.default ? caches.default : null;
-  const key = new Request(`${url}${url.includes("?") ? "&" : "?"}shaped=2`);
+  const key = new Request(`${url}${url.includes("?") ? "&" : "?"}shaped=3`);
   if (cache) { const hit = await cache.match(key).catch(() => null); if (hit) return hit.json(); }
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
   if (!r.ok && r.status !== 400 && r.status !== 404) throw new Error(`${new URL(url).hostname} ${r.status}`);
@@ -209,7 +236,8 @@ async function shaped(url, shape, ttl = TTL) {
   return out;
 }
 
-// { warnings: [...] } for a place, worst first, then soonest (each without its areas). If every source it asked
+// { warnings: [...] } for a place, worst first, then soonest (each with its areas, made light, where it has them: for the
+// map). If every source it asked
 // failed, an error (502), so a phone keeps the warnings it had rather than being told there are none
 export async function warningsAt(env, lat, lon, now = Date.now()) {
   const ma = env.METEOALARM_URL || "https://feeds.meteoalarm.org", nws = env.NWS_URL || "https://api.weather.gov";
@@ -232,7 +260,8 @@ export async function warningsAt(env, lat, lon, now = Date.now()) {
     if (Date.parse(w.expires) <= now || seen.has(w.id) || seen.has(same)) continue;
     seen.add(w.id); seen.add(same);
     // (one without an end time is in force as of now: the phone lets it go if it's not heard of it again for long)
-    const { polys, floodArea, ...rest } = w;
+    const { polys, floodArea, ...rest } = w, areas = areasOf(polys);
+    if (areas.length) rest.areas = areas;
     warnings.push(rest.open ? { ...rest, checked: new Date(now).toISOString() } : rest);
   }
   warnings.sort((a, b) => b.level - a.level || Date.parse(a.onset || 0) - Date.parse(b.onset || 0));

@@ -3,7 +3,7 @@
 // end-to-end test uses too (mocks/wxwarnings.mjs).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { polygon, inside, shapeMeteoalarm, shapeNws, warningsAt } from "../../../functions/_wxwarn.js";
+import { polygon, inside, shapeMeteoalarm, shapeNws, warningsAt, simplify } from "../../../functions/_wxwarn.js";
 import { inForce, colourOf, titleOf, badgeOf, spanOf, glyphOf, covered } from "../../../weather/official.js";
 import { briefing } from "../../../weather/alerts.js";
 import { makeFormat } from "../../../weather/format.js";
@@ -59,7 +59,18 @@ test("the National Weather Service: in force, real and not cancelled; linked to 
   assert.equal(list[0].url, "https://forecast.weather.gov/MapClick.php?lat=40.71&lon=-74.01");
 });
 
-test("warnings for a place: from the feeds that cover it, worst first, without their areas", async () => {
+test("an outline made light for the map: its shape kept, its points fewer, to 3 places", () => {
+  // a circle of 400 points, a little rough
+  const p = [];
+  for (let k = 0; k <= 400; k++) { const a = (k / 400) * 2 * Math.PI, r = 0.5 + (k % 2 ? 0.0004 : 0); p.push(51.5 + r * Math.sin(a), -0.1 + r * 1.6 * Math.cos(a)); }
+  const s = simplify(p);
+  assert.ok(s.length / 2 <= 120 && s.length / 2 >= 20, `${s.length / 2} points`);
+  assert.ok(s.every((v) => Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-6), "to 3 decimal places");
+  assert.deepEqual(s.slice(0, 2), s.slice(-2), "still closed");
+  assert.ok(inside(51.5, -0.1, polygon(Array.from({ length: s.length / 2 }, (_, i) => `${s[2 * i]},${s[2 * i + 1]}`).join(" "))), "its middle still in it");
+  assert.deepEqual(simplify([1, 2, 3, 4, 5, 6, 1, 2]), [1, 2, 3, 4, 5, 6, 1, 2], "a few points: as they are");
+});
+test("warnings for a place: from the feeds that cover it, worst first, each with its areas made light", async () => {
   const asked = [], real = globalThis.fetch;
   globalThis.fetch = async (url) => {
     asked.push(String(url));
@@ -72,7 +83,9 @@ test("warnings for a place: from the feeds that cover it, worst first, without t
     const env = { METEOALARM_URL: "http://ma.test", NWS_URL: "http://nws.test" };
     const london = await warningsAt(env, 51.51, -0.13, NOW);
     assert.deepEqual(london.warnings.map((w) => w.id), ["ldn-storm", "ldn-rain"], "the amber one first");
-    assert.ok(london.warnings.every((w) => !("polys" in w)), "no areas sent to the phone");
+    assert.ok(london.warnings.every((w) => !("polys" in w) && w.areas?.length >= 1 && w.areas.every((r) => r.length >= 8 && r.length <= 240)), "its areas, made light, for the map (not as the feed had them)");
+    const ny = (await warningsAt(env, 40.71, -74.01, NOW)).warnings[0];
+    assert.ok(ny.areas?.length === 1 && ny.areas[0][0] === 40.68 && ny.areas[0][1] === -74.06, `the Weather Service's drawn area: ${JSON.stringify(ny.areas)}`);
     assert.deepEqual((await warningsAt(env, 51.45, -2.59, NOW)).warnings.map((w) => w.id), ["brs-wind"], "the one issued twice, once");
     assert.deepEqual((await warningsAt(env, 40.71, -74.01, NOW)).warnings.map((w) => w.id), ["nws-1"]);
     asked.length = 0;

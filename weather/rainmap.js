@@ -320,11 +320,14 @@ export function paint(buf, w, h, g, rates, snow = null) {
 
 // The timeline: the radar's frames (times in ms), then the forecast's that come after the latest of them,
 // up to `ahead` from now. → { frames: [{ kind: "radar" | "model", t, k (its index in its own list) }], now: the latest radar frame's place }
-export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3600e3) {
+export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3600e3, hourTimes = []) {
   const frames = radarTimes.map((t, k) => ({ kind: "radar", t, k }));
   const last = frames.length ? frames[frames.length - 1].t : now - 10 * 60e3;
   modelTimes.forEach((t, k) => { if (t > last + 60e3 && t <= now + ahead) frames.push({ kind: "model", t, k }); });
-  return { frames, now: Math.max(0, radarTimes.length - 1) };
+  // then the models' hours, on from the end of those (split), to twelve hours or so ahead
+  const split = frames.length ? frames[frames.length - 1].t : now;
+  hourTimes.forEach((t, k) => { if (t > split + 60e3) frames.push({ kind: "hour", t, k }); });
+  return { frames, now: Math.max(0, radarTimes.length - 1), split };
 }
 
 // What's on the map at a time t (ms) between the frames, to the minute (radar.js draws it): between two of the radar's,
@@ -334,11 +337,21 @@ export function timeline(radarTimes, modelTimes, now = Date.now(), ahead = 2 * 3
 // radar, faded into their first). src: { past: [{ time (s) }], drift: { vx, vy } (the latest's way, zoom-7 pixels a
 // minute, or null), driftOf(k): the rain's own way between frames k and k + 1 where it's known (else the latest's, or
 // none), models: [{ t, k }]
-// (the timeline's frames of the models', in order; none where the radar's carried on), model: { rain, snow } }.
+// (the timeline's frames of the models', in order; none where the radar's carried on), model: { rain, snow } }; and
+// after split (the end of those two hours), the models' hours (hourly: their frames; hours: { rain, snow }), blended
+// from what was on show at split into the first of them, then hour into hour.
 // → [{ k (a radar frame), dx, dy (zoom-7 pixels it's moved), alpha }] and [{ rates, snow, alpha }] of the models'
 export function partsAt(src, t) {
-  const { past = [], models = [], model } = src, last = past.length ? past[past.length - 1].time * 1000 : null;
+  const { past = [], models = [], model, hourly = [], hours, split } = src, last = past.length ? past[past.length - 1].time * 1000 : null;
   const still = { vx: 0, vy: 0 };
+  if (hourly.length && hours && split != null && t > split) {
+    const H = hourly[0];
+    if (t < H.t) {
+      const a = Math.min(1, (t - split) / (H.t - split)), before = partsAt({ ...src, hourly: [] }, split).map((x) => ({ ...x, alpha: x.alpha * (1 - a) }));
+      return [...before.filter((x) => x.alpha > 0), { rates: hours.rain[H.k], snow: hours.snow[H.k], alpha: a }];
+    }
+    return between(hourly, hours, t);
+  }
   if (last != null && t <= last) {
     let k = 0;
     while (k < past.length - 2 && past[k + 1].time * 1000 <= t) k++;
@@ -358,12 +371,16 @@ export function partsAt(src, t) {
     const a = last == null ? 1 : Math.max(0, Math.min(1, (t - last) / (models[0].t - last)));
     return [...(a < 1 ? [{ k: past.length - 1, dx: 0, dy: 0, alpha: 1 - a }] : []), ...(a > 0 ? [{ ...at(models[0]), alpha: a }] : [])];
   }
+  return between(models, model, t);
+}
+// (the models' frames either side of t, their rates blended, snow where the nearer has it; past the last, the last)
+function between(frames, series, t) {
   let j = 0;
-  while (j < models.length - 2 && models[j + 1].t <= t) j++;
-  const A = models[j], B = models[j + 1];
-  if (!B || t >= B.t) return [{ ...at(B || A), alpha: 1 }];
-  const a = (t - A.t) / (B.t - A.t), ra = model.rain[A.k], rb = model.rain[B.k];
-  return [{ rates: ra.map((r, p) => r + ((rb[p] ?? 0) - r) * a), snow: a < 0.5 ? model.snow[A.k] : model.snow[B.k], alpha: 1 }];
+  while (j < frames.length - 2 && frames[j + 1].t <= t) j++;
+  const A = frames[j], B = frames[j + 1];
+  if (!B || t >= B.t) return [{ rates: series.rain[(B || A).k], snow: series.snow[(B || A).k], alpha: 1 }];
+  const a = Math.max(0, (t - A.t) / (B.t - A.t)), ra = series.rain[A.k], rb = series.rain[B.k];
+  return [{ rates: ra.map((r, p) => r + ((rb[p] ?? 0) - r) * a), snow: a < 0.5 ? series.snow[A.k] : series.snow[B.k], alpha: 1 }];
 }
 // Web Mercator tiles: where a place is on zoom z's tiles (fractions of a tile, from the world's top left), and where a
 // tile's top left corner is ([lat, lon])
@@ -490,6 +507,16 @@ export function tint(v, stops) {
 }
 // a field's values at a time: each point's, between the hours either side (times: ms, one per hour; series: an array
 // of the points' values for each)
+// A value of the grid's (one a point, as the models give them) at a place: the four points about it blended; null outside
+// the grid, or where those points have none
+export function gridAt(g, vals, lat, lon) {
+  const n = g.n, fy = ((g.north - lat) / (g.north - g.south)) * (n - 1), fx = ((lon - g.west) / (g.east - g.west)) * (n - 1);
+  if (!vals || !(fx >= 0 && fy >= 0 && fx <= n - 1 && fy <= n - 1)) return null;
+  const r = Math.min(n - 2, Math.floor(fy)), c = Math.min(n - 2, Math.floor(fx)), ty = fy - r, tx = fx - c;
+  const a = vals[r * n + c], b = vals[r * n + c + 1], d = vals[(r + 1) * n + c], e = vals[(r + 1) * n + c + 1];
+  if (a == null || b == null || d == null || e == null) return null;
+  return (a * (1 - tx) + b * tx) * (1 - ty) + (d * (1 - tx) + e * tx) * ty;
+}
 export function fieldAt(times, series, t) {
   if (!times?.length) return null;
   if (t <= times[0]) return series[0];

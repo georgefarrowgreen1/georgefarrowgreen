@@ -50,10 +50,33 @@ export function timeChart(host, opts) {
   // (its width kept as it changes, rather than measured each time it's drawn: that would lay the page out again then and
   // there, each chart in turn, as the forecast's parts come in)
   if (!host._ro && typeof ResizeObserver !== "undefined") {
-    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; host._w = w; if (Math.abs(w - was) > 2) draw(host); });
+    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) draw(host); });
     host._ro.observe(host);
   }
   draw(host, fresh);
+}
+// A chart's width before it's been laid out: as it was last time at this window's width (kept), else a guess from the
+// window's; not measured then and there, which would lay the whole page out mid-way through drawing it, once for each
+// chart. Its ResizeObserver says the real width once the page is laid out (before it's shown), and if that's another,
+// it's drawn again to it
+const KEEP = "wx:chartw";
+let widths = {};
+try { widths = JSON.parse(localStorage.getItem(KEEP) || "{}") || {}; } catch (_) {}
+const whose = (host) => `${innerWidth}|${host.id || host.closest?.("[id]")?.id || ""}`;
+// (the guess: a card's inside on a phone, the window less 68; on a wide screen, two columns, 1.15 to 1 (styles.css))
+const guessW = (host) => {
+  if (widths[whose(host)]) return widths[whose(host)];
+  if (innerWidth < 980) return innerWidth - 68;
+  const both = Math.min(innerWidth, 1180) - 54;
+  return Math.round((both * (host.closest?.(".col-b") ? 1 : 1.15)) / 2.15) - 36;
+};
+function seen(host, w) {
+  const k = whose(host);
+  if (!w || widths[k] === w) return;
+  widths[k] = w;
+  const ks = Object.keys(widths);
+  for (const x of ks.slice(0, Math.max(0, ks.length - 30))) delete widths[x];
+  try { localStorage.setItem(KEEP, JSON.stringify(widths)); } catch (_) {}
 }
 
 // Drawing in: the line traced from the left, its range fading in behind, columns growing from the baseline
@@ -85,7 +108,7 @@ function carryOn(host, svg) {
 function draw(host, fresh = false) {
   const o = host._chart; if (!o) return;
   const pts = o.points.filter((p) => p.v != null);
-  const W = Math.max(260, (host._w ??= host.clientWidth) || 340), Hh = o.height || 170;
+  const W = Math.max(260, (host._w ??= guessW(host)) || 340), Hh = o.height || 170;
   host.replaceChildren();
   host.classList.add("chart");
   if (!pts.length) { host.textContent = "No data"; return; }
@@ -256,7 +279,13 @@ function draw(host, fresh = false) {
  */
 export function rangeChart(host, o) {
   host.replaceChildren();
-  const W = Math.max(260, host.clientWidth || 320), Hh = 74, L = 12, R = 12, iw = W - L - R, y0 = 30;
+  // (its width as timeChart's: kept, or guessed, and drawn again once it's known if that's another)
+  host._range = o;
+  if (!host._ro && typeof ResizeObserver !== "undefined") {
+    host._ro = new ResizeObserver(() => { const w = host.clientWidth, was = host._w ?? 0; if (!w) return; host._w = w; seen(host, w); if (Math.abs(w - was) > 2) rangeChart(host, host._range); });
+    host._ro.observe(host);
+  }
+  const W = Math.max(260, (host._w ??= guessW(host)) || 320), Hh = 74, L = 12, R = 12, iw = W - L - R, y0 = 30;
   const all = [o.p10, o.p90, o.value, o.record?.v, o.lowRecord?.v].filter((v) => v != null);
   const lo = Math.min(...all) - 1, hi = Math.max(...all) + 1, X = (v) => L + ((v - lo) / (hi - lo)) * iw;
   const svg = el("svg", { viewBox: `0 0 ${W} ${Hh}`, width: W, height: Hh, role: "img", "aria-label": o.summary || "" });
