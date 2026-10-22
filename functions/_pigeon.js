@@ -327,6 +327,9 @@ const MIGRATIONS = [
   // the session's token for the browser's cookie for the whole site (functions/_account.js): its own, so the cookie
   // isn't a key to InFlight's API
   "ALTER TABLE pg_sessions ADD COLUMN site_hash TEXT",
+  // a sign-in handed from InFlight to the account's page (functions/api/pigeon account-link, functions/api/account
+  // handoff): a code good once, for a minute
+  "CREATE TABLE IF NOT EXISTS pg_handoff (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, session TEXT NOT NULL, expires INTEGER NOT NULL)",
   "CREATE INDEX IF NOT EXISTS pg_sessions_site ON pg_sessions(site_hash)",
 ];
 // The schema's own fingerprint: when the database already has this one, a new

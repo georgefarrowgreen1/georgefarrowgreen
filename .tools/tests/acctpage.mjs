@@ -57,9 +57,10 @@ await L.p.waitForSelector('[data-act=pkadd]'); await L.p.click('[data-act=pkadd]
 // (InFlight's way here: Privacy & Security, Your Account)
 await L.p.click('[data-act=tab][data-id=account]'); await L.p.click('#screen > main.view [data-act=securitysheet]');
 await L.p.waitForSelector('.sheet #to-account', { timeout: 15000 }).catch(() => {});
-const fromFlight = await L.p.getAttribute('.sheet #to-account', 'href').catch(() => null);
-ok(fromFlight === `${ACCT}/` && !/Weather/.test(await text(L, '.sheet')), 'InFlight links here, without naming any other app', fromFlight);
-await L.p.click('.sheet #to-account'); await L.p.waitForURL(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(L);
+ok(!!(await L.p.$('.sheet #to-account')) && !/Weather/.test(await text(L, '.sheet')), 'InFlight leads here, without naming any other app');
+// (it opens the page in a window of its own, signed in by a code it hands over: acctlink.mjs. Here, the page itself in
+// this tab, where the browser's signed in already)
+await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(L);
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
 ok(/Your apps/i.test(home) && /InFlight/.test(home) && /Weather/.test(home), 'your apps: both of them', home);

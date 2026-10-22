@@ -428,6 +428,18 @@ async function pinsPut({ request, env }) {
   await (await db(env)).prepare("UPDATE pg_users SET pins = ? WHERE id = ?").bind(s, u.id).run();
   return json({ ok: true });
 }
+// Your profile (photo, name, handle) is the account's, edited on its own page (account.<site>): InFlight hands its
+// sign-in over with a code good once, for a minute, so the page opens signed in as you, in whatever browser it opens in
+// (a Home Screen app's links open in the browser, which has its own cookies). The code goes in the address's #, never
+// to a server, and the page swaps it straight away (functions/api/account handoff).
+async function accountLink({ request, env }) {
+  const u = await requireUser(request, env), D = await db(env), t = Date.now();
+  await limit(env, "handoff:" + u.id, 30, 15 * 60e3);
+  const code = randomToken(24);
+  await D.batch([D.prepare("DELETE FROM pg_handoff WHERE expires < ?").bind(t),
+    D.prepare("INSERT INTO pg_handoff (hash, user_id, session, expires) VALUES (?, ?, ?, ?)").bind(await hashOf(code), u.id, u.sessionHash, t + 60e3)]);
+  return json({ code });
+}
 async function sessionsEnd({ request, env }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env);
@@ -1505,7 +1517,7 @@ const ROUTES = {
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
-  "GET sessions": sessionsList, "POST sessions-end": sessionsEnd, "GET pins": pinsGet, "POST pins": pinsPut,
+  "GET sessions": sessionsList, "POST sessions-end": sessionsEnd, "POST account-link": accountLink, "GET pins": pinsGet, "POST pins": pinsPut,
   "GET sync": sync,
   "POST friends": addFriend, "GET friend-status": friendStatus, "POST friends-respond": respondFriend, "DELETE friends": removeFriend,
   "POST block": block, "DELETE block": unblock,
