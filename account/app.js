@@ -807,7 +807,11 @@ async function maybeNudge(m) {
 }
 function nudgeView() {
   const add = h("button.btn", { type: "button", onclick: async () => {
-    try { await freshly(() => busy(add, "Waiting for your device…", addPasskey)); closeSheet(); patch(); toast("Passkey added."); }
+    try {
+      const made = await freshly(() => busy(add, "Waiting for your device…", addPasskey)); patch();
+      if (made?.secret) openSheet(() => keyCopyView(made.id, made.secret, "Passkey added."));
+      else { closeSheet(); toast("Passkey added."); }
+    }
     catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
   } }, icon("face", 21, 1.9), "Add a passkey");
   return { title: "Add a passkey", quiet: true, right: h("button.x", { type: "button", "aria-label": "Not now", onclick: closeSheet }, icon("x", 17, 2.6)), body: [
@@ -1198,7 +1202,11 @@ function passkeysView() {
     list,
     can && h("button.btn", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
-      try { await freshly(() => busy(b, "Waiting for your device…", addPasskey)); redraw(); patch(); toast("Passkey added."); }
+      try {
+        const made = await freshly(() => busy(b, "Waiting for your device…", addPasskey)); redraw(); patch();
+        if (made?.secret) pushSheet(() => keyCopyView(made.id, made.secret, "Passkey added."));
+        else toast("Passkey added.");
+      }
       catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
     } }, icon("plus", 19, 2.4), "Add a passkey"),
     said] };
@@ -1217,7 +1225,14 @@ function passkeyView(id) {
   const info = (k, v) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: k })), h("span.val", { text: v }));
   return { title: p.label, right: save, body: [
     h("div.form", {}, field("Name", name)),
-    h("div.group", {}, info("Saved in", p.provider || "Not known"), info("Added", day(p.createdAt)), info("Last used", p.usedAt ? ago(p.usedAt) : "Not yet")),
+    h("div.group", {}, info("Saved in", p.provider || "Not known"), info("Added", day(p.createdAt)), info("Last used", p.usedAt ? ago(p.usedAt) : "Not yet"),
+      info("InFlight messages", p.messages ? "Opens them" : "Needs your password")),
+    !p.messages && passkeysWork() && h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
+      const b = e.currentTarget; say(said, "");
+      const secret = await busy(b, "Waiting for your passkey…", async () => prfByUse(p.id, (await post("signin/options")).rpId));
+      if (secret) pushSheet(() => keyCopyView(id, secret));
+      else say(said, "This passkey can’t open messages from here: it isn’t on this device, or its device doesn’t offer that yet.");
+    } }, "Use it for InFlight messages")),
     h("div.group", {}, twice("Remove passkey", "Remove it? Tap again", async (b) => {
       try { S.me = await freshly(() => busy(b, "Removing…", () => post("passkeys/remove", { id }))); patch(); popSheet(); toast("Passkey removed."); }
       catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
@@ -1233,7 +1248,8 @@ async function addPasskey() {
       user: { id: fromB64url(o.user.id), name: o.user.name, displayName: o.user.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
       authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
-      excludeCredentials: o.exclude.map((id) => ({ type: "public-key", id: fromB64url(id) })), attestation: "none", timeout: 120000 } });
+      excludeCredentials: o.exclude.map((id) => ({ type: "public-key", id: fromB64url(id) })), attestation: "none", timeout: 120000,
+      extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
   } catch (e) {
     throw new Error(e?.name === "InvalidStateError" ? "This device already has a passkey for your account." : e?.name === "NotAllowedError" ? "No passkey was saved." : "A passkey couldn’t be made here.");
   }
@@ -1242,6 +1258,44 @@ async function addPasskey() {
   // (the authenticator data says where it's saved: iCloud Keychain, Google Password Manager…)
   S.me = await post("passkeys", { challenge: o.challenge, id: cred.id, publicKey: b64url(spki), alg, clientDataJSON: b64url(r.clientDataJSON),
     authenticatorData: r.getAuthenticatorData ? b64url(r.getAuthenticatorData()) : undefined });
+  // (its PRF secret, for its own copy of the messages' key: given as it's made, or, by some devices, only once it's used)
+  const secret = prfOf(cred) || (cred.getClientExtensionResults?.().prf?.enabled ? await prfByUse(cred.id, o.rpId) : null);
+  return { id: cred.id, secret };
+}
+
+// ---- a passkey that opens InFlight's messages too: what only it can work out (its PRF secret, for the site's one salt)
+// locks its own copy of the key to them, made here from the password-locked one, as InFlight does with one added there.
+// So on a new phone, signing in with it opens the messages with no password. ----
+const prfOf = (cred) => { const r = cred?.getClientExtensionResults?.().prf; return r?.results?.first ? new Uint8Array(r.results.first) : null; };
+async function prfByUse(id, rpId) {
+  try {
+    const a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId, userVerification: "required", timeout: 120000,
+      allowCredentials: [{ type: "public-key", id: fromB64url(id) }], extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
+    return prfOf(a);
+  } catch (_) { return null; }
+}
+function keyCopyView(id, secret, added = "") {
+  const m = S.me, said = h("p.said", { role: "alert" });
+  const pw = h("input", { type: "password", autocomplete: "current-password", name: "password" });
+  const go = h("button.btn", { type: "submit" }, "Continue");
+  const form = h("form.form", { onsubmit: async (e) => {
+    e.preventDefault(); say(said, "");
+    if (!pw.value) return say(said, "Enter your password.", pw);
+    try {
+      await busy(go, "Locking a copy…", async () => {
+        const { lockKey, proof } = await E2E.fromPassword(pw.value, m.salt);
+        const { vault } = await post("password/vault", { proof });
+        const inner = await E2E.unlock(lockKey, vault);
+        S.me = await post("passkeys/vault", { id, vault: await E2E.lock(await E2E.fromSecret(secret), inner) });
+      });
+      patch(); popSheet(); toast("This passkey opens your InFlight messages too.");
+    } catch (err) { say(said, err.message, pw); }
+  } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }), field("Password", pw), go);
+  return { title: added ? "Passkey added" : "InFlight messages", body: [
+    h("p.hint", { text: "Your InFlight messages are locked with a key only your devices hold. Enter your password once and this passkey gets its own copy of it: on a new phone, signing in with the passkey opens your messages by itself." }),
+    form,
+    h("button.link", { type: "button", onclick: () => { popSheet(); if (added) toast(added); } }, "Not now"),
+    said] };
 }
 
 // ---- signed-in devices: each with where and when; those unused for 3 months marked, to sign out in one go ----

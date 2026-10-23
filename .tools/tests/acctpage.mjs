@@ -237,6 +237,8 @@ await L.p.click(rm);
 await L.p.waitForFunction(() => /No passkeys yet/.test(document.getElementById('sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${user('rowan_h').id}'`).length === 0, 'taken away (no asking again: it\'s been shown it\'s you), and back to the list');
 await L.p.click('#sheet .btn:has-text("Add a passkey")');
+// (then a word on InFlight's messages, which a passkey can open too: not now, here)
+await L.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await L.p.waitForFunction(() => document.querySelectorAll('#sheet .row').length === 1, null, { timeout: 20000 }).catch(() => {});
 const pks = rows(`SELECT label FROM pg_passkeys WHERE user_id = '${user('rowan_h').id}'`);
 ok(pks.length === 1 && /iPhone/.test(pks[0].label) && (await L.creds()).every((c) => c.rpId === 'gfg.test'), 'a new passkey: the site\'s, named for the device', JSON.stringify(pks));

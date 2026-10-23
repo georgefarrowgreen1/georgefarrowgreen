@@ -163,6 +163,8 @@ ok(/Sign in faster next time/.test(await sheetText(P)), 'after a password sign-i
 ok(Number(await P.p.evaluate(() => localStorage.getItem('acct:nudged'))) > t, 'noted, so it\'s not said again for a month');
 await shot(P, '05-nudge');
 await P.p.click('#sheet .btn:has-text("Add a passkey")'); await confirmIfAsked(P, PW);
+// (then a word on InFlight's messages, which a passkey can open too: not now, here)
+await P.p.click('#sheet .link:has-text("Not now")', { timeout: 20000 }).catch(() => {});
 await P.p.waitForSelector('#sheet', { state: 'hidden', timeout: 20000 }).catch(() => {}); await settle(P, 900);
 ok(rows(`SELECT id FROM pg_passkeys WHERE user_id = '${uid}'`).length === 1 && /Passkeys 1/.test(await text(P)), 'a passkey made from it', await text(P, '#toast'));
 // (a laptop that can't make one isn't asked)

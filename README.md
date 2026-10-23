@@ -1859,6 +1859,12 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   link goes only to a confirmed address. InFlight's old instant `DELETE /api/pigeon/me` is gone (410: the account's
   page, with its week's grace). A reset says it removes your passkeys. The account page has Sign out when opened from
   the home page. Weather's copy of the password code is checked against InFlight's (`unit/sitecopies.test.mjs`).
+- **Passkeys open InFlight's messages wherever they're added.** One added on the account's page asks the device for its
+  PRF secret (as InFlight does), then the password once, and locks the passkey's own copy of the key to the messages
+  with it (`POST /api/account/passkeys/vault`; the key is unlocked and locked again on the page, never sent as it is).
+  So signing in to InFlight on a new phone with it opens the messages with no password. Each passkey's page says
+  whether it does ("InFlight messages: Opens them"), and one that doesn't can be set up there
+  (`.tools/tests/acctpkmsg.mjs`).
 
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.
