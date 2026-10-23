@@ -90,6 +90,7 @@ const ICONS = {
   shield: '<path d="M12 3.2 19.5 6v5.6c0 4.7-3.2 7.9-7.5 9.2-4.3-1.3-7.5-4.5-7.5-9.2V6z"/><path d="m8.8 12 2.3 2.3 4.2-4.6"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   download: '<path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/>',
+  doc: '<path d="M7 3.5h7l4.5 4.5V20a.5.5 0 0 1-.5.5H7a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4.5M9.5 12.5h5M9.5 16h5"/>',
   contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
   ruler: '<path d="M3.5 15.5 15.5 3.5l5 5-12 12z"/><path d="m7.5 11.5 2 2m1-5 2 2m1-5 2 2"/>',
   trash: '<path d="M4.5 7h15M10 11v6m4-6v6M6.5 7l.9 11.3a2 2 0 0 0 2 1.7h5.2a2 2 0 0 0 2-1.7L17.5 7M9.5 7V4.5h5V7"/>',
@@ -1360,32 +1361,27 @@ function emailsView() {
 // ---- your data, as a file ----
 function exportView() {
   const said = h("p.said", { role: "alert" });
-  // (as a PDF to read and keep, written here from what the export gives: datapdf.js; or as it is, for another app)
-  const get = (kind) => async (e) => {
+  // (as a PDF to read and keep, written here from what the export gives: datapdf.js)
+  const get = async (e) => {
     const b = e.currentTarget; say(said, "");
     try {
-      const file = await freshly(() => busy(b, kind === "pdf" ? "Making your PDF…" : "Gathering it…", async () => {
+      const file = await freshly(() => busy(b, "Making your PDF…", async () => {
         const data = await post("export");
-        if (kind === "json") return new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
         const { dataPdf } = await import("./datapdf.js");
         return dataPdf(data, { did: (x) => (DID[x.kind] || (() => x.kind))(x), units: (u) => unitsSaid({ ...unitsHere(), ...u }) });
       }));
-      const a = h("a", { href: URL.createObjectURL(file), download: `georgefarrowgreen-account-${S.me.handle}.${kind}` });
+      const a = h("a", { href: URL.createObjectURL(file), download: `georgefarrowgreen-account-${S.me.handle}.pdf` });
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 30000);
       toast("Your data is downloading.");
     } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
   };
+  // (a list, as Settings has it: the download, then deleting the account apart, asked again in its own sheet)
   return { title: "Your data", body: [
-    h("p", { text: "A copy of everything kept with your account, in every app on the site." }),
-    h("button.btn", { type: "button", onclick: get("pdf") }, icon("download", 20, 2.2), "Download as PDF"),
-    h("button.btn.quiet", { type: "button", onclick: get("json") }, "Download as JSON"),
-    h("p.hint.center", { text: "InFlight letters aren’t included: only your phones can read them." }),
+    h("div.group", {}, h("button.row", { type: "button", onclick: get },
+      h("span.ic.blue", {}, icon("doc", 19)), h("span.tx", {}, h("b", { text: "Download as PDF" })), h("span.get", {}, icon("download", 20, 2.2)))),
     said,
-    // (deleting the account: at the foot, apart, and asked again in its own sheet)
-    h("h4.app-k.apart", { text: "Delete your account" }),
-    h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(deleteView) }, "Delete account…")),
-    h("p.hint", { text: "Deletes your account and everything kept with it, in every app on the site. You’ll have 7 days to change your mind." })] };
+    h("div.group.apart", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(deleteView) }, "Delete account…"))] };
 }
 
 // ---- deleting the account: in 7 days, unless you keep it ----

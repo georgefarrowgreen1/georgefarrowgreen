@@ -143,6 +143,8 @@ button.row:active, a.row:active { background-color: var(--press); }
 .row .tx small { font-size: 13.5px; color: var(--text-2); overflow-wrap: anywhere; }
 .row .val { flex: none; color: var(--text-2); font-size: 16px; font-variant-numeric: tabular-nums; }
 .row .chev { flex: none; color: var(--text-3); transition: transform 0.25s var(--ease); }
+.row .get { flex: none; display: grid; color: var(--tint-text); }
+.sheet-body .group.apart { margin-top: 22px; }
 button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .row.action { justify-content: center; min-height: 54px; color: var(--tint-text); font-weight: 500; }
 .row.danger { color: var(--danger); }

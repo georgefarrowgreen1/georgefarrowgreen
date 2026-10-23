@@ -333,8 +333,9 @@ Motion, solid with Reduce Transparency.
   tables, page numbers at the foot. It's written in the browser from what the export gives, with no library
   (`account/pdf.js` writes the file, `account/datapdf.js` sets it out): the text is Helvetica, which every PDF reader
   has, so nothing's embedded and it stays text you can select and search; anything Helvetica can't show (a Polish place
-  name, another alphabet, an emoji in a name) is drawn as a picture of itself by the page's canvas. **Or as JSON**, the
-  same data in a form other apps can read.
+  name, another alphabet, an emoji in a name) is drawn as a picture of itself by the page's canvas. The sheet is a list,
+  as Settings has it: **Download as PDF**, then **Delete account…** apart, below it (only the PDF: the export's JSON
+  stays the server's, `POST /api/account/export`, for the PDF to be written from).
 - **Deleting the account** (typed to confirm) signs it out everywhere and deletes it in 7 days, with an email to keep it.
   Until then no app will sign in to it (they say where to keep it); this page will, to show **Keep my account**; and the
   email's link keeps it too. A week on, the once-a-minute tick's housekeeping deletes it (`functions/_retention.js`
