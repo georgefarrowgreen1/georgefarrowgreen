@@ -66,6 +66,9 @@ const weather = async (x, q = 'lat=51.5072&lon=-0.1276&name=London') => { await 
 const settings = async (x) => { await x.p.click('#settings-btn'); await x.p.waitForSelector('#settings[open] #acct .acct-card'); await x.p.waitForTimeout(400); };
 const closeSheet = async (x) => { await x.p.keyboard.press('Escape'); await x.p.waitForTimeout(500); };
 const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.innerText.replace(/\s+/g, ' ').trim());
+// (signed out, Settings has a row for signing in, which opens a folder of its own: the passkey, email and password)
+const signInPage = async (x) => { await x.p.click('#acct-signin'); await x.p.waitForSelector('#acct-in .acct-form'); };
+const folder = async (x, f) => { await x.p.click(`[data-go="${f}"]`); await x.p.waitForTimeout(300); };
 const places = (x) => x.p.evaluate(() => JSON.parse(localStorage.getItem('wx:places') || '[]').map((p) => p.name));
 const kept = (handle) => { const r = rows(`SELECT a.data, a.ver FROM wx_accts a JOIN pg_users u ON u.id = a.user_id WHERE u.handle = '${handle}'`)[0]; return r ? { ver: r.ver, ...JSON.parse(r.data) } : null; };
 const waitFor = async (fn, ms = 10000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v || Date.now() - t0 > ms) return v; await new Promise((r) => setTimeout(r, 300)); } };
@@ -102,19 +105,21 @@ await closeSheet(L);
 const P = await browser('phone', { push: true });
 await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
 await settings(P);
-const signedOutSays = await acctSays(P);
-ok(/Your places on every device/.test(signedOutSays) && /Sign in with a passkey/.test(signedOutSays) && /or with your email/.test(signedOutSays) && /Forgot password\?/.test(signedOutSays) && /New here\? Create your account/.test(signedOutSays) && !/InFlight/i.test(signedOutSays),
+const signedOutRow = await acctSays(P);
+await signInPage(P);
+const signedOutSays = `${signedOutRow} ${await P.p.evaluate(() => document.getElementById('acct-in').innerText.replace(/\s+/g, ' ').trim())}`;
+ok(/^Sign in Your places on every device/.test(signedOutRow) && await P.p.textContent('#settings-title') === 'Sign in' && /Sign in with a passkey/.test(signedOutSays) && /or with your email/.test(signedOutSays) && /Forgot password\?/.test(signedOutSays) && /New here\? Create your account/.test(signedOutSays) && !/InFlight/i.test(signedOutSays),
   'signed out: what an account is for, a passkey first, then email and password (as on every page of the site)', signedOutSays);
-const ways = await P.p.$$eval('#acct a', (as) => as.map((a) => a.getAttribute('href')));
-ok(ways.join() === 'http://account.gfg.test:8788/#forgot,http://account.gfg.test:8788/#join' && !(await P.p.$('#acct input[name=name], #acct input[name=handle]')),
+const ways = await P.p.$$eval('#acct-in a', (as) => as.map((a) => a.getAttribute('href')));
+ok(ways.join() === 'http://account.gfg.test:8788/#forgot,http://account.gfg.test:8788/#join' && !(await P.p.$('#acct-in input[name=name], #acct-in input[name=handle]')),
   'a forgotten password, and a new account, on the account\'s page: none made here', ways.join());
-await P.p.fill('#acct input[name=password]', 'x'); await P.p.click('#acct .acct-form button[type=submit]');
+await P.p.fill('#acct-in input[name=password]', 'x'); await P.p.click('#acct-in .acct-form button[type=submit]');
 ok(await P.p.textContent('#acct-said') === 'Enter your email.', 'nothing typed in: the same words as every page of the site', await P.p.textContent('#acct-said'));
-await P.p.fill('#acct input[name=email]', 'sam@example.com'); await P.p.fill('#acct input[name=password]', 'not the password');
-await P.p.click('#acct .acct-form button[type=submit]');
+await P.p.fill('#acct-in input[name=email]', 'sam@example.com'); await P.p.fill('#acct-in input[name=password]', 'not the password');
+await P.p.click('#acct-in .acct-form button[type=submit]');
 await P.p.waitForFunction(() => /don’t match/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
 ok(/don’t match an account/.test(await P.p.textContent('#acct-said')), 'a wrong password: said, and still signed out', await P.p.textContent('#acct-said'));
-await P.p.fill('#acct input[name=password]', PW); await P.p.click('#acct .acct-form button[type=submit]');
+await P.p.fill('#acct-in input[name=password]', PW); await P.p.click('#acct-in .acct-form button[type=submit]');
 await P.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 30000 }).catch(() => {});
 const k2 = await waitFor(() => { const k = kept('sam'); return k?.places.length === 2 ? k : null; });
 ok(/Sam Taylor/.test(await acctSays(P)) && (await places(P)).join() === 'London,Edinburgh' && k2?.places.map((p) => p.name).join() === 'London,Edinburgh',
@@ -124,14 +129,14 @@ await P.p.click('#place-btn'); await P.p.waitForTimeout(500);
 ok(/In step with your account/.test(await P.p.textContent('#places .sheet-sub')), 'Places says they\'re in step', await P.p.textContent('#places .sheet-sub'));
 await closeSheet(P);
 // a setting changed on the phone reaches the laptop, and the laptop has Edinburgh when it next looks
-await settings(P); await P.p.click('input[name="temp"][value="f"]'); await closeSheet(P);
+await settings(P); await folder(P, 'units'); await P.p.click('input[name="temp"][value="f"]'); await closeSheet(P);
 await waitFor(() => kept('sam')?.settings?.temp === 'f');
 await L.p.reload(); await L.p.waitForSelector('.day-row');
 await waitFor(async () => (await places(L)).join() === 'London,Edinburgh');
 ok((await places(L)).join() === 'London,Edinburgh' && (await L.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')).temp)) === 'f', 'the laptop takes up the phone\'s Edinburgh, and °F', `${(await places(L)).join()} ${await L.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings')).temp)}`);
 
 // ---- 3. Notifications for each place: chosen on the phone, sent to every device of the account ----
-await settings(P);
+await settings(P); await folder(P, 'notify');
 const chip = (x, key, k) => x.p.click(`#notify-places .np-row[data-key="${key}"] .np-chip[data-k="${k}"]`);
 await chip(P, '55.95,-3.19', 'rain');
 await P.p.waitForFunction(() => /^On: rain alerts for Edinburgh\./.test(document.getElementById('notify-status').textContent), null, { timeout: 15000 }).catch(() => {});
@@ -146,7 +151,7 @@ ok(/Notifications go to this device\./.test(await whereTo(P)), 'and Notification
 await closeSheet(P);
 // the laptop: Edinburgh's rain on there too (the account's), and "here too" puts the laptop among the devices
 await L.p.reload(); await L.p.waitForSelector('.day-row'); await L.p.waitForTimeout(1500);
-await settings(L);
+await settings(L); await folder(L, 'notify');
 const lChip = await L.p.getAttribute('#notify-places .np-row[data-key="55.95,-3.19"] .np-chip[data-k="rain"]', 'aria-pressed');
 ok(lChip === 'true', 'the laptop shows Edinburgh\'s rain alerts on (the account\'s choice)', lChip);
 await L.p.click('#acct-here');
@@ -211,7 +216,7 @@ const kcdp = await K.ctx.newCDPSession(K.p); await kcdp.send('WebAuthn.enable');
 const { authenticatorId: kauth } = await kcdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
 await kcdp.send('WebAuthn.addCredential', { authenticatorId: kauth, credential: pk[0] });
 await weather(K);
-await settings(K);
+await settings(K); await signInPage(K);
 await K.p.click('#acct-passkey');
 await K.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 20000 }).catch(() => {});
 ok(/Sam Taylor/.test(await acctSays(K)) && (await places(K)).join() === 'London,Edinburgh', 'signed in with the passkey: the account\'s places', `${await acctSays(K)} | ${(await places(K)).join()}`);
@@ -235,9 +240,9 @@ ok(!!(await K.p.$('.welcome')) && !(await K.p.$('[data-act=resume]')), 'and InFl
 // ---- 6b. A device with the account's notifications, signed out on the account's page: Weather notices, and they
 // stay, as its own ----
 const T = await browser('tablet', { push: true });
-await weather(T); await settings(T);
-await T.p.fill('#acct input[name=email]', 'sam@example.com'); await T.p.fill('#acct input[name=password]', PW);
-await T.p.click('#acct .acct-form button[type=submit]');
+await weather(T); await settings(T); await signInPage(T);
+await T.p.fill('#acct-in input[name=email]', 'sam@example.com'); await T.p.fill('#acct-in input[name=password]', PW);
+await T.p.click('#acct-in .acct-form button[type=submit]');
 // (signed in where notifications are allowed already, it's one of the account's devices at once)
 await T.p.waitForFunction(() => { try { return !!localStorage.getItem('wx:acct') && !!JSON.parse(localStorage.getItem('wx:settings') || '{}').notify?.devId; } catch (_) { return false; } }, null, { timeout: 30000 }).catch(() => {});
 const tId = await T.p.evaluate(() => JSON.parse(localStorage.getItem('wx:settings') || '{}').notify?.devId || '');

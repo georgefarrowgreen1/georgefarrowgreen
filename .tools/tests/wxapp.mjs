@@ -893,15 +893,30 @@ for (const [sc, grid, what] of [[{ clearRadar: true }, false, 'dry all about: th
   ok(lm.on && lm.alphas.includes(0.5) && lm.layers === 0, 'and to the minute: the frames either side faded into each other over it (in place of the frames)', JSON.stringify(lm));
   await c3.close();
 }
-// your own activities
+// Settings: a short list of folders, each with what's in it said beside it
 await p.click('#settings-btn');
+{
+  const list = await p.evaluate(() => ({ rows: [...document.querySelectorAll('#settings .folder')].map((b) => `${b.querySelector('.f-k').textContent}: ${b.querySelector('.f-v').textContent}`),
+    hidden: [...document.querySelectorAll('#settings .set-page:not([data-page="root"])')].every((x) => x.hidden), back: document.getElementById('set-back').hidden, title: document.getElementById('settings-title').textContent }));
+  ok(list.title === 'Settings' && list.back && list.hidden && list.rows.join() === 'Notifications: Off,Commute: Off,Best times: Run, Walk, Ride,Units: °C, mph, mm,Appearance: Standard,Forecast: Tuned',
+    'Settings opens on its list of folders, each saying what\'s in it', JSON.stringify(list));
+}
+// your own activities
+await p.click('[data-go="acts"]');
+ok(await p.textContent('#settings-title') === 'Best times' && !(await p.isHidden('#set-back')) && await p.getAttribute('#set-back', 'aria-label') === 'Back to Settings', 'a folder opens over the list, with a way back');
 await p.selectOption('#act-add', 'golf');
 ok((await p.locator('#acts-list .act').count()) === 4, 'golf added to the list');
 await p.locator('#acts-list .act').first().locator('button').click();
+ok(await p.textContent('#settings-title') === 'Run' && await p.getAttribute('#set-back', 'aria-label') === 'Back to Best times', 'an activity has a page of its own, in Best times');
 await p.fill('.act-edit input[name="tmax"]', '20');
 await p.click('.act-edit .pill-btn');
-ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()), 'a run\'s limits changed', await p.locator('#acts-list .act-lim').first().textContent());
+ok(/^6°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()) && await p.textContent('#settings-title') === 'Best times', 'a run\'s limits changed, and back in Best times', await p.locator('#acts-list .act-lim').first().textContent());
+await p.locator('#acts-list .act').first().locator('button').click();
+await p.fill('.act-edit input[name="tmin"]', '5'); await p.click('#set-back');
+ok(/^5°–20°/.test(await p.locator('#acts-list .act-lim').first().textContent()), 'and changed by just going back, as iOS keeps them', await p.locator('#acts-list .act-lim').first().textContent());
 await p.screenshot({ path: `${out}/wx-settings.png` });
+await p.click('#set-back');
+ok(await p.textContent('#settings-title') === 'Settings' && await p.isHidden('#set-back') && await p.textContent('#fv-acts') === 'Run, Walk, Ride, Golf', 'and back to the list, which says the new one', await p.textContent('#fv-acts'));
 await p.keyboard.press('Escape');
 ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf') || /Golf/.test(await p.textContent('#win-poor').catch(() => '')), 'and golf has its best time');
 // none of them chosen: no Best times card at all, back as soon as one is
@@ -917,7 +932,7 @@ ok((await p.locator('#win-grid .win-name').allTextContents()).includes('Golf') |
 }
 // a choice of one: a lens glides to the chosen one (two choices, or four), and nothing on the page behind is blurred or
 // moving while the sheet's up (the sheet glides over a still page)
-await p.click('#settings-btn');
+await p.click('#settings-btn'); await p.click('[data-go="units"]');
 await p.click('input[name="wind"][value="kn"]'); await p.waitForTimeout(700);
 const lens = await p.evaluate(() => ['temp', 'wind'].map((k) => {
   const c = document.querySelector(`.choice:has(input[name="${k}"])`), chosen = c.querySelector('input:checked').closest('label');
@@ -934,12 +949,14 @@ await p.click('input[name="wind"][value="mph"]');
 // the times to choose, said as the clock's set: 07:00, or 7am (not the browser's own 12-hour box), the label on one line
 {
   const said = () => p.evaluate(() => ({ brief: document.querySelector('select[name="briefAt"]').selectedOptions[0]?.textContent, pm: document.querySelector('select[name="pm"]').selectedOptions[0]?.textContent,
-    line: Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height - document.querySelector('input[name="tune"]').closest('label').getBoundingClientRect().height), n: document.querySelector('select[name="briefAt"]').options.length }));
+    n: document.querySelector('select[name="briefAt"]').options.length }));
   const h24 = await said();
   await p.click('input[name="clock"][value="12"]'); await p.waitForTimeout(300);
   const h12 = await said();
   await p.click('input[name="clock"][value="24"]'); await p.waitForTimeout(300);
-  ok(h24.brief === '07:00' && h24.pm === '17:30' && h12.brief === '7am' && h12.pm === '5:30pm' && h24.n === 96 && h24.line === 0, 'the briefing\'s and the commute\'s times said as the clock is set, every quarter hour; "Morning briefing" on one line', JSON.stringify({ h24, h12 }));
+  await p.click('#set-back'); await p.click('[data-go="notify"]'); await p.waitForTimeout(500);
+  const line = await p.evaluate(() => Math.round(document.querySelector('input[name="brief"]').closest('label').getBoundingClientRect().height));
+  ok(h24.brief === '07:00' && h24.pm === '17:30' && h12.brief === '7am' && h12.pm === '5:30pm' && h24.n === 96 && line === 52, 'the briefing\'s and the commute\'s times said as the clock is set, every quarter hour; "Morning briefing" on one line', JSON.stringify({ h24, h12, line }));
 }
 await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('settings').open && !document.body.classList.contains('sheet-up'), null, { timeout: 3000 }).catch(() => {});
@@ -955,7 +972,7 @@ ok(/blur/.test(back), 'and its glass back once the sheet\'s gone', back);
   ok(deep.every((x) => x !== 'running') && (!top.length || top.some((x) => x === 'running')), 'scrolled on, the sky pauses (and moves again at the top)', `${deep.join(',')} / ${top.join(',')}`);
 }
 // units, kept
-await p.click('#settings-btn'); await p.click('input[name="temp"][value="f"]'); await p.keyboard.press('Escape');
+await p.click('#settings-btn'); await p.click('[data-go="units"]'); await p.click('input[name="temp"][value="f"]'); await p.keyboard.press('Escape');
 ok(/^\d+°$/.test(await p.textContent('#now-temp')) && Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'switches to °F');
 await p.reload(); await p.waitForSelector('.day-row');
 ok(Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'and remembers it');
@@ -963,11 +980,11 @@ ok(Number((await p.textContent('#now-temp')).slice(0, -1)) > 32, 'and remembers 
 {
   const tint = () => p.evaluate(() => ({ glass: document.body.dataset.glass, tint: getComputedStyle(document.querySelector('.card')).backgroundColor }));
   const was = await tint();
-  await p.click('#settings-btn'); await p.click('input[name="glass"][value="tinted"]'); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  await p.click('#settings-btn'); await p.click('[data-go="look"]'); await p.click('input[name="glass"][value="tinted"]'); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
   const now = await tint();
   const alpha = (c) => Number((/rgba\([^)]*,\s*([\d.]+)\)/.exec(c) || [])[1] ?? 1);
   ok(was.glass === 'standard' && now.glass === 'tinted' && alpha(now.tint) > alpha(was.tint) * 1.5, 'the glass tinted when asked: the cards darker behind their words', `${was.tint} → ${now.tint}`);
-  await p.click('#settings-btn'); await p.click('input[name="glass"][value="standard"]'); await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  await p.click('#settings-btn'); await p.click('[data-go="look"]'); await p.click('input[name="glass"][value="standard"]'); await p.keyboard.press('Escape'); await p.waitForTimeout(300);
 }
 // search and save a place (the sheet the same height with results as without: it doesn't jump as they come)
 await p.click('#place-btn'); await p.waitForTimeout(600);
@@ -1219,7 +1236,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
   const tick = () => new Promise((done, fail) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (c) => (t += c)); res.on('end', () => done({ status: res.statusCode, ...JSON.parse(t || '{}') })); }); r.on('error', fail); r.end(); });
   const { ctx, p } = await open({}, { push: { endpoint, p256dh: b64u(pub), auth: b64u(authK) } });
   await p.evaluate(() => navigator.serviceWorker.ready);
-  await p.click('#settings-btn');
+  await p.click('#settings-btn'); await p.click('[data-go="notify"]');
   // (the times to choose are a quarter of an hour apart: the one just gone)
   const at = new Date(Math.floor((Date.now() - 5 * 60e3) / 900e3) * 900e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
   await p.selectOption('select[name="briefAt"]', hhmm);
@@ -1251,7 +1268,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     const second = 'https://fcm.googleapis.com/fcm/send/weather-test-device-2';
     const { ctx: c2, p: p2 } = await open({}, { push: { endpoint: second, p256dh: b64u(pub), auth: b64u(authK) } });
     await p2.evaluate(() => navigator.serviceWorker.ready);
-    await p2.click('#settings-btn'); await p2.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="rain"]');
+    await p2.click('#settings-btn'); await p2.click('[data-go="notify"]'); await p2.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="rain"]');
     await p2.waitForFunction(() => /^On: rain alerts/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
     const t3 = await tick(), alert = (await mine(second)).find((n) => n.tag === 'rain');
     ok(t3.radar === 1 && t3.rain === 1 && alert && /^Rain in (about \d+ min|a few minutes)$/.test(alert.title) && /^London: Rain starting (in about \d+ min|any minute)/.test(alert.body),
@@ -1267,7 +1284,7 @@ ok(Number.isFinite(where.lat) && Number.isFinite(where.lon), 'roughly where you 
     const third = 'https://fcm.googleapis.com/fcm/send/weather-test-device-3';
     const { ctx: c3, p: p3 } = await open({}, { push: { endpoint: third, p256dh: b64u(pub), auth: b64u(authK) } });
     await p3.evaluate(() => navigator.serviceWorker.ready);
-    await p3.click('#settings-btn'); await p3.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="warn"]');
+    await p3.click('#settings-btn'); await p3.click('[data-go="notify"]'); await p3.click('#notify-places .np-row[data-key="51.51,-0.13"] .np-chip[data-k="warn"]');
     await p3.waitForFunction(() => /^On: official warnings for London\.$/.test(document.getElementById('notify-status').textContent), null, { timeout: 10000 });
     const hello = (await mine(third)).find((n) => n.tag === 'wx-on');
     const w1 = await tick(), w2 = await tick();

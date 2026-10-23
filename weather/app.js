@@ -1622,8 +1622,52 @@ function drawSettings() {
   fillTimes(form.am, S.settings.commute?.am || "08:00"); fillTimes(form.pm, S.settings.commute?.pm || "17:30");
   form.tune.checked = S.settings.tune !== false;
   for (const k of ["laundry", "stars", "sunset"]) form[`x_${k}`].checked = S.settings.extras?.[k] !== false;
-  drawNotify(); drawActs();
+  drawNotify(); drawActs(); drawFolders();
 }
+// Settings is a short list of folders (index.html), each with what's in it said beside it, opening over the list
+// with a way back (‹) where the sheet's title is; an activity's own page is a folder in Best times. setStack: the
+// folders open, in order, each with where it was opened from (focus goes back there) and how far the one under it
+// had scrolled.
+let setStack = [], actEdit = null;
+function drawFolders() {
+  const s = S.settings, form = $("settings-form"), said = (k) => form.querySelector(`input[name="${k}"]:checked`)?.closest("label").textContent.trim() || "";
+  const acts = s.activities.filter((a) => a.on !== false).map((a) => a.name);
+  $("fv-notify").textContent = notifying(s.notify) ? "On" : "Off";
+  $("fv-commute").textContent = s.commute?.on ? `${atText(s.commute.am)}, ${atText(s.commute.pm)}` : "Off";
+  $("fv-acts").textContent = acts.length ? acts.join(", ") : "Off";
+  $("fv-units").textContent = ["temp", "wind", "precip"].map(said).join(", ");
+  $("fv-look").textContent = said("glass");
+  $("fv-forecast").textContent = s.tune !== false ? "Tuned" : "Off";
+}
+function setShow(name, back, quiet = false) {
+  const top = setStack.at(-1), under = setStack.at(-2);
+  for (const pg of $("settings").querySelectorAll(".set-page")) {
+    const on = pg.dataset.page === name;
+    pg.hidden = !on; pg.classList.remove("in-next", "in-back");
+    if (on && !quiet && !calm.matches) pg.classList.add(back ? "in-back" : "in-next");
+  }
+  $("settings-title").textContent = name === "root" ? "Settings" : top?.title || "Settings";
+  $("set-back").hidden = name === "root";
+  $("set-back").setAttribute("aria-label", `Back to ${under?.title || "Settings"}`);
+}
+function setGo(name, title = $("settings").querySelector(`.set-page[data-page="${name}"]`)?.dataset.title) {
+  const body = $("settings").querySelector(".sheet-body");
+  setStack.push({ name, title, from: document.activeElement, scroll: body.scrollTop });
+  setShow(name, false);
+  body.scrollTop = 0;
+  $("settings-title").focus({ preventScroll: true });
+}
+function setBack() {
+  const top = setStack.pop(); if (!top) return;
+  const prev = setStack.at(-1);
+  setShow(prev?.name || "root", true);
+  $("settings").querySelector(".sheet-body").scrollTop = top.scroll;
+  if (!prev) drawFolders();
+  // (an activity's changes kept on the way back, as iOS keeps them; its row, drawn anew, has the focus)
+  if (top.name === "act" && actEdit) { const keep = actEdit; actEdit = null; keep(); }
+  else top.from?.focus?.({ preventScroll: true });
+}
+const setHome = () => { setStack = []; setShow("root", true, true); $("settings").querySelector(".sheet-body").scrollTop = 0; };
 function readSettings(e) {
   if (e?.target?.closest?.("#notify-set") || e?.target?.closest?.(".acts-list, .acts-add")) return;     // (their own handlers)
   const form = $("settings-form"), v = (k) => form.querySelector(`input[name="${k}"]:checked`)?.value;
@@ -1632,7 +1676,7 @@ function readSettings(e) {
   S.settings.commute = { on: form.commute.checked, am: form.am.value || "08:00", pm: form.pm.value || "17:30" };
   S.settings.tune = form.tune.checked;
   S.settings.extras = { laundry: form.x_laundry.checked, stars: form.x_stars.checked, sunset: form.x_sunset.checked };
-  saveSettings(); afterFrame(redraw);
+  saveSettings(); afterFrame(redraw); drawFolders();
   // (the times to choose from said the new way)
   if (S.f.units.clock !== units.split(",")[3]) for (const k of ["am", "pm", "briefAt"]) fillTimes(form[k], form[k].value);
   // notifications speak your units too
@@ -1662,15 +1706,12 @@ function nudge() {
   const why = notifyWhy(), done = () => { store.set("wx:nudge", Date.now()); box.hidden = true; };
   box.replaceChildren(h("span", { class: "ins-icon", svg: glyph("bell", 18) }), h("h2", { id: "nudge-title" }, "Get rain alerts"),
     h("p", {}, why || "A heads-up here before rain starts, official warnings as they're issued, and a morning briefing if you'd like one."),
-    h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify-set"); } }, "Turn on"),
+    h("div", { class: "nudge-btns" }, why ? null : h("button", { class: "pill-btn", type: "button", onclick: () => { done(); openSettingsAt("notify"); } }, "Turn on"),
       h("button", { class: "link", type: "button", onclick: done }, why ? "OK" : "Not now")));
   box.hidden = false;
 }
-// Settings, open at one of its parts
-function openSettingsAt(id) {
-  $("settings-btn").click();
-  setTimeout(() => { const el = $(id); el?.scrollIntoView({ block: "start", behavior: calm.matches ? "auto" : "smooth" }); el?.querySelector("button, input")?.focus({ preventScroll: true }); }, 450);
-}
+// Settings, open at one of its folders
+function openSettingsAt(page) { $("settings-btn").click(); setGo(page); }
 // why this phone can't have them, if it can't
 function notifyWhy() {
   if ("serviceWorker" in navigator && "PushManager" in window && "Notification" in window) return Notification.permission === "denied" ? "Notifications are blocked for this site (browser settings)." : null;
@@ -1754,6 +1795,9 @@ async function allowed() {
   return S.acct ? [true, `${said} Your other devices will still get them.`] : [false, said];
 }
 const and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+// What's on is shown by the switches and chips, so the line that says it is only heard (a screen reader's); shown when
+// there's more to it (saving, a note, why they can't be on)
+function notifySay(text, quiet = false) { const st = $("notify-status"); st.textContent = text; st.classList.toggle("sr-only", quiet); }
 function onText() {
   const n = S.settings.notify, rain = n.places.filter((p) => p.rain).map(nname), warn = n.places.filter((p) => p.warn).map(nname);
   const on = [rain.length ? `rain alerts for ${and(rain)}` : "", warn.length ? `official warnings for ${and(warn)}` : "", n.brief ? `a briefing at ${atText(n.briefAt)} for ${nname(n.brief)}` : ""].filter(Boolean);
@@ -1767,17 +1811,16 @@ async function notifySaved() {
 }
 async function notifyChanged(note = "") {
   saveSettings(); drawNotify(true);
-  const st = $("notify-status");
-  st.textContent = "Saving…";
-  try { await notifySaved(); st.textContent = `${onText()}${note ? ` ${note}` : ""}`; }
-  catch (err) { st.textContent = `Couldn't save that just now (${err.message}).`; }
+  notifySay("Saving…");
+  try { await notifySaved(); notifySay(`${onText()}${note ? ` ${note}` : ""}`, !note); }
+  catch (err) { notifySay(`Couldn't save that just now (${err.message}).`); }
   drawNotify(true); drawAccount();
 }
 // rain alerts or official warnings (k) for a place, on or off
 async function togglePlace(p, k) {
   const n = S.settings.notify, key = nkey(p), e = n.places.find((x) => nkey(x) === key), on = !e?.[k];
   let note = "";
-  if (on) { const [go, said] = await allowed(); if (!go) { $("notify-status").textContent = said; return; } note = said; }
+  if (on) { const [go, said] = await allowed(); if (!go) { notifySay(said); return; } note = said; }
   if (e) e[k] = on; else n.places.push({ ...spotOf(p), rain: k === "rain", warn: k === "warn" });
   n.places = n.places.filter((x) => x.rain || x.warn);
   await notifyChanged(note);
@@ -1786,7 +1829,7 @@ async function togglePlace(p, k) {
 async function onNotify() {
   const form = $("settings-form"), n = S.settings.notify;
   let note = "";
-  if (form.brief.checked && !n.brief) { const [go, said] = await allowed(); if (!go) { form.brief.checked = false; $("notify-status").textContent = said; return; } note = said; }
+  if (form.brief.checked && !n.brief) { const [go, said] = await allowed(); if (!go) { form.brief.checked = false; notifySay(said); return; } note = said; }
   const key = form.briefFor.value, p = S.places.find((x) => nkey(x) === key) || (n.brief && nkey(n.brief) === key ? n.brief : place());
   n.brief = form.brief.checked && p ? spotOf(p) : null;
   n.briefAt = form.briefAt.value || "07:00";
@@ -1807,8 +1850,8 @@ function drawNotify(keepStatus = false) {
   form.briefFor.replaceChildren(...opts);
   form.briefFor.value = n.brief ? nkey(n.brief) : place() ? nkey(place()) : "";
   fillTimes(form.briefAt, n.briefAt || "07:00");
-  if (!keepStatus) $("notify-status").textContent = notifying(n) ? onText() : S.acct ? "" : notifyWhy() || "";
-  drawNotifyAcct();
+  if (!keepStatus) notifySay(notifying(n) ? onText() : S.acct ? "" : notifyWhy() || "", notifying(n));
+  drawNotifyAcct(); drawFolders();
 }
 
 /* ---------- your account ---------- */
@@ -1926,7 +1969,7 @@ function signedOutElsewhere() {
   signedOut();
 }
 async function signIn(how, email, password) {
-  const said = $("acct-said"), btns = [...$("acct").querySelectorAll("button")];
+  const said = $("acct-said"), btns = [...$("acct-in").querySelectorAll("button")];
   // (as on every page of the site that signs in: the same words for what's missing)
   if (how !== "passkey" && (!email || !password)) { said.textContent = email ? "Enter your password." : "Enter your email."; said.classList.add("bad"); return; }
   said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
@@ -1937,8 +1980,8 @@ async function signIn(how, email, password) {
 // this device getting the account's notifications too
 async function sendHere() {
   const [go, said] = await allowed();
-  if (!go || !canShow()) { $("notify-status").textContent = said; return; }
-  try { await syncNotify(); await refreshDevices(); } catch (e) { $("notify-status").textContent = `Couldn't do that just now (${e.message}).`; }
+  if (!go || !canShow()) { notifySay(said); return; }
+  try { await syncNotify(); await refreshDevices(); } catch (e) { notifySay(`Couldn't do that just now (${e.message}).`); }
 }
 const STATES = { ok: "In step", saving: "Saving…", waiting: "Will go up when you're online", error: "Couldn't save just now" };
 function drawAccount() {
@@ -1955,6 +1998,7 @@ function drawAccount() {
   }
   const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
   $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
+  $("acct-in").replaceChildren();
   if (!a) {
     // (as on every page of the site that signs in: a passkey first, then your email and password; a forgotten password,
     // and a new account, on the account's own page)
@@ -1963,10 +2007,11 @@ function drawAccount() {
       h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", placeholder: "Email", "aria-label": "Email", autocapitalize: "off", spellcheck: "false" }),
       h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", onfocus: () => import("./argon2.js").catch(() => {}) }),
       h("button", { class: pk ? "acct-btn" : "acct-btn primary", type: "submit" }, "Sign in"));
-    box.replaceChildren(...[
-      h("div", { class: "acct-card" }, h("span", { class: "acct-ic", svg: PERSON }),
-        h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Your places on every device"),
-          h("span", {}, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."))),
+    // (in Settings, a row; signing in, a folder of its own)
+    box.replaceChildren(h("button", { class: "acct-card go", type: "button", id: "acct-signin", "data-go": "signin" }, h("span", { class: "acct-ic", svg: PERSON }),
+      h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Sign in"), h("span", {}, "Your places on every device")), h("span", { class: "acct-chev", svg: glyph("chevron", 16) })));
+    $("acct-in").replaceChildren(...[
+      h("p", { class: "acct-lead" }, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."),
       pk ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
       pk ? h("p", { class: "acct-or" }, "or with your email") : null,
       form,
@@ -1975,6 +2020,8 @@ function drawAccount() {
       page ? h("p", { class: "acct-new" }, "New here? ", h("a", { href: `${page}#join` }, "Create your account")) : null].filter(Boolean));
     return;
   }
+  // (signed in from its own folder: back to the list, the account's card at its top)
+  if (setStack.at(-1)?.name === "signin") setBack();
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
   // there), and how your places and settings are doing, said only when there's something to say
   const said2 = a.state !== "ok" && STATES[a.state];
@@ -2023,19 +2070,21 @@ function drawInStep() {
 
 /* ---------- your activities ---------- */
 // (focus: where the focus goes, the list drawn anew: [row, "on"] its switch, [row, "change"] its Change)
-function saveActs(focus) { saveSettings(); if (S.wx) windows(S.wx, nowWall(S.wx.place.offset)); drawActs(focus); }
+function saveActs(focus) { saveSettings(); if (S.wx) windows(S.wx, nowWall(S.wx.place.offset)); drawActs(focus); drawFolders(); }
 function drawActs(focus) {
   const f = S.f, acts = S.settings.activities, have = new Set(acts.map((a) => a.id));
   $("acts-list").replaceChildren(...acts.map((a, i) => h("li", { class: "act" },
-    h("label", { class: "switch" }, h("input", { type: "checkbox", checked: a.on !== false, onchange: (e) => { a.on = e.target.checked; saveActs([i, "on"]); } }), h("span", { class: "act-icon", svg: glyph(a.icon || "star", 16) }), a.name),
-    h("span", { class: "act-lim" }, I.limitsText(a, f)),
-    h("button", { class: "link", type: "button", "aria-label": `Change ${a.name}`, onclick: () => editAct(i) }, "Change"))));
+    h("button", { class: "act-open", type: "button", "aria-label": `${a.name}, ${I.limitsText(a, f)}: change`, onclick: () => editAct(i) },
+      h("span", { class: "act-icon", svg: glyph(a.icon || "star", 18) }),
+      h("span", { class: "act-txt" }, h("b", {}, a.name), h("span", { class: "act-lim" }, I.limitsText(a, f))),
+      h("span", { class: "act-chev", svg: glyph("chevron", 14) })),
+    h("label", { class: "switch act-on" }, h("input", { type: "checkbox", "aria-label": a.name, checked: a.on !== false, onchange: (e) => { a.on = e.target.checked; saveActs([i, "on"]); } })))));
   $("act-add").replaceChildren(h("option", { value: "" }, "Choose…"),
     ...Object.entries(I.ACTIVITIES).filter(([id]) => !have.has(id)).map(([id, a]) => h("option", { value: id }, a.name)), h("option", { value: "custom" }, "Something else…"));
   if (focus) { const li = $("acts-list").children[Math.min(focus[0], acts.length - 1)]; (li?.querySelector(focus[1] === "on" ? "input" : "button") || $("act-add")).focus(); }
 }
 function editAct(i) {
-  const a = S.settings.activities[i], f = S.f, li = $("acts-list").children[i];
+  const a = S.settings.activities[i], f = S.f;
   const tU = (c) => Math.round(f.units.temp === "f" ? c * 9 / 5 + 32 : c), tM = (v) => (f.units.temp === "f" ? (v - 32) * 5 / 9 : v);
   const wk = f.windNum(1000) / 1000, wU = (k) => Math.round(k * wk), wM = (v) => v / wk;
   const num = (name, text, v, unit) => h("label", { class: "fld" }, h("span", {}, text), h("span", { class: "fld-in" }, h("input", { type: "number", name, value: String(v), inputmode: "numeric", step: "1" }), unit ? h("small", {}, unit) : null));
@@ -2047,7 +2096,8 @@ function editAct(i) {
     num("gustMax", "Gusts at most", wU(a.gustMax), f.windUnit),
     h("label", { class: "fld" }, h("span", {}, "Rain"), h("select", { name: "rain" }, ...[["dry", "Must be dry"], ["light", "Light rain is fine"], ["any", "Any weather"]].map(([v, t]) => h("option", { value: v, selected: a.rain === v ? true : null }, t)))),
     num("hours", "For (hours)", a.hours), hour("from", "Between", a.from), hour("to", "and", a.to),
-    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: () => done() }, "Done"), h("button", { class: "link danger", type: "button", onclick: () => { S.settings.activities.splice(i, 1); saveActs([i, "change"]); } }, "Remove")));
+    h("div", { class: "act-btns" }, h("button", { class: "pill-btn", type: "button", onclick: setBack }, "Done"),
+      h("button", { class: "link danger", type: "button", onclick: () => { actEdit = null; S.settings.activities.splice(i, 1); setBack(); saveActs([i, "change"]); } }, "Remove")));
   const val = (k) => ed.querySelector(`[name="${k}"]`).value, n = (k, d) => { const v = parseFloat(val(k)); return Number.isFinite(v) ? v : d; };
   function done() {
     Object.assign(a, { name: val("name").trim().slice(0, 24) || a.name, tmin: tM(n("tmin", tU(a.tmin))), tmax: tM(n("tmax", tU(a.tmax))), windMin: Math.max(0, wM(n("windMin", 0))),
@@ -2056,8 +2106,9 @@ function editAct(i) {
     if (a.to <= a.from) a.to = Math.min(24, a.from + a.hours);
     saveActs([i, "change"]);
   }
-  li.replaceChildren(ed);
-  ed.querySelector("input").focus();
+  $("act-page").replaceChildren(ed);
+  actEdit = done;
+  setGo("act", a.name);
 }
 function addAct() {
   const id = $("act-add").value; if (!id) return;
@@ -2250,6 +2301,8 @@ function wire() {
   $("settings-btn").innerHTML = glyph("gear", 20);
   for (const b of document.querySelectorAll("[data-close]")) { b.innerHTML = glyph("close", 18); b.addEventListener("click", () => closeSheet(b.closest("dialog"))); }
   for (const s of document.querySelectorAll(".ct-icon[data-g]")) s.innerHTML = glyph(s.dataset.g, 15);
+  for (const s of document.querySelectorAll(".f-ic[data-g]")) s.innerHTML = glyph(s.dataset.g, 18);
+  $("set-back").innerHTML = glyph("chevron", 18);
   // each sheet: closing by Escape or a tap outside, and swiping down
   for (const d of document.querySelectorAll("dialog.sheet")) sheetGestures(d);
   // a swipe across a day to the next or the one before, and across a tile's sheet to the next tile or the one before
@@ -2273,7 +2326,11 @@ function wire() {
     list[Math.max(0, Math.min(list.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))].focus();
   });
   $("locate-btn").addEventListener("click", () => locate());
-  $("settings-btn").addEventListener("click", () => { drawSettings(); openSheet($("settings")); });
+  $("settings-btn").addEventListener("click", () => { drawSettings(); setHome(); openSheet($("settings")); });
+  $("settings").addEventListener("click", (e) => { const go = e.target.closest("[data-go]"); if (go) setGo(go.dataset.go); });
+  $("set-back").addEventListener("click", setBack);
+  // (closed while changing an activity: what's been changed kept)
+  $("settings").addEventListener("close", () => { if (actEdit) { const keep = actEdit; actEdit = null; keep(); } });
   $("settings-form").addEventListener("change", readSettings);
   for (const k of ["brief", "briefFor", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
   $("act-add").addEventListener("change", addAct);

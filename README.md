@@ -645,7 +645,7 @@ so there's nothing to set up beyond the address.
   moving east at about 30 km/h: it could be here in about 50 minutes", "Moderate
   rain here now", or "No rain within about 290 km" (only as far as the radar
   sees; nothing where it doesn't see the place) (`weather/rainmap.js` rainSaid).
-- **Your account** (top of Settings): signed in with your georgefarrowgreen.com
+- **Your account** (top of Settings; signed out, a row there opens the sign-in): signed in with your georgefarrowgreen.com
   account, your saved places, settings and notification choices are kept with
   it and are the same on every device you're signed in on; the app works just
   the same without. The sign-in is the site's own (below, *One account*):
@@ -765,9 +765,15 @@ everything else beside it, scrolling, as iOS 27's Weather does. On a wide
 screen, two columns kept about level: the radar, the 16 days and This time of
 year each go to whichever side does it, worked out as a place's forecast comes
 in and as the window's resized (never as the page is used, so nothing moves
-under a finger). Settings →
-Glass makes the glass Clear, Standard or Tinted (as iOS 27's slider does: a web
-page can't read the phone's own). Everything to tap is a finger's 44 points,
+under a finger). **Settings** is a short list, as the iPhone's own is: your
+account at the top (signed out, a row that opens the sign-in), then
+Notifications, Commute and Best times, then Units, Appearance and Forecast, each
+with what's in it said beside it ("On", "08:00, 17:30", "Run, Walk, Ride", "°C,
+mph, mm") and opening over the list, the sheet's title its name and a way back
+beside it; an activity's limits are a page of their own in Best times, kept as
+you go back. The sheet keeps one height on a phone, so it doesn't jump from one
+to another. Settings → Appearance makes the glass Clear, Standard or Tinted (as
+iOS 27's slider does: a web page can't read the phone's own). Everything to tap is a finger's 44 points,
 and no words are smaller than 11. Like an app, its words can't be selected,
 copied or dragged off, and a long press calls up no menu or preview; what you
 type into (search, settings) takes typing, copying and pasting as ever.

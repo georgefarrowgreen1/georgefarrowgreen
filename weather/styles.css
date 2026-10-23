@@ -109,7 +109,7 @@ a { color: inherit; }
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
 }
 /* glass on glass: things inside a panel */
-.win, .stat, .part, .hour.now, .act-edit, .choice, .acts-list:not(:empty), .credits, .detail-now, .way {
+.win, .stat, .part, .hour.now, .act-edit, .choice, .credits, .detail-now, .way {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), inset 0 -1px 0.5px rgba(255, 255, 255, 0.06), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 }
@@ -856,8 +856,10 @@ body.sheet-drag .page { transition: none; }
 /* (the radar full screen stays put under a sheet: a page that steps back would carry it with it) */
 body.sheet-up .page:has(.radar-big) { transform: none; }
 @media (min-width: 700px) { dialog.sheet { margin: auto; max-height: 84vh; } }
-/* places: always the same height on a phone, so it doesn't jump as results come and go */
-@media (max-width: 699px) { #places { height: 86vh; height: 86svh; } }
+/* places, and settings: always the same height on a phone, so neither jumps as results come and go, or from one of
+   Settings' folders to another */
+@media (max-width: 699px) { #places, #settings { height: 86vh; height: 86svh; } }
+@media (min-width: 700px) { #settings { height: min(720px, 84vh); } }
 @media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.closing, dialog.sheet[open]::backdrop, dialog.sheet.closing::backdrop { animation: none; } .page, body.sheet-up .page { transition: none; transform: none; } }
 /* the header stays put; what scrolls up under it fades away (the scroll edge) */
 .sheet-head { position: relative; z-index: 4; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 4px; }
@@ -952,18 +954,14 @@ label.switch { display: flex; width: 100%; justify-content: flex-start; gap: 12p
 .switch input[type="checkbox"]:active::before { width: 34px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 244, 250, 0.82)); }
 .switch input[type="checkbox"]:checked:active::before { transform: translateX(14px); }
 .switch input[type="checkbox"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.commute .times { display: flex; gap: 8px; flex-wrap: wrap; }
 /* a time to choose (app.js fillTimes: a quarter of an hour apart, said as the Clock setting says them), in a chip */
 select.at { -webkit-appearance: none; appearance: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 10px;
   padding: 5px 10px; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25); cursor: pointer; }
 select.at:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-fieldset.opt label.at-row { width: 100%; }
 .at-row select.at { margin-left: auto; }
 /* notifications for each saved place: rain alerts and official warnings, each a chip; and the briefing's place */
-.np { list-style: none; margin: 0 0 4px; padding: 0 4px; width: 100%; display: grid; }
-.np-row { display: flex; align-items: center; gap: 8px; min-height: 48px; }
-.np-row + .np-row { border-top: 0.5px solid rgba(255, 255, 255, 0.1); }
-.np-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-row { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 12px 0 16px; }
+.np-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-name small { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); }
 .np-chip { flex: none; font: inherit; font-size: 13px; font-weight: 600; min-height: 34px; padding: 0 13px; border-radius: 999px; border: 0; cursor: pointer; color: var(--text-2);
   background-color: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12); transition: background-color 0.2s, color 0.2s; }
@@ -1378,29 +1376,75 @@ body.no-scroll { overflow: hidden; }
 .tuned-note { color: #cfe7ff; margin: -4px 0 12px; }
 .models .tuned-row td { color: #cfe7ff; font-weight: 650; }
 
-/* ---------- settings: notifications, activities ---------- */
-fieldset.opt .note { width: 100%; margin: 2px 4px 0; font-size: 13px; color: var(--text-2); }
-fieldset.opt .note:empty { display: none; }
+/* ---------- settings: a short list of folders, each opening over it (app.js setGo) ---------- */
+#settings .sheet-head { justify-content: flex-start; gap: 10px; }
+#settings .sheet-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-back[hidden] { display: none; }
+.set-back svg { transform: rotate(90deg); }
+/* a folder slides in from the right, and the one under it back in from the left */
+.set-page.in-next { animation: set-next 0.42s var(--glide) both; }
+.set-page.in-back { animation: set-back 0.42s var(--glide) both; }
+@keyframes set-next { from { opacity: 0; transform: translateX(36%); } }
+@keyframes set-back { from { opacity: 0; transform: translateX(-22%); } }
+@media (prefers-reduced-motion: reduce) { .set-page.in-next, .set-page.in-back { animation: none; } }
+/* a group of rows, as iOS's Settings has them: one rounded pane, a hairline between rows (from where the words start) */
+.grp { list-style: none; margin: 0; padding: 0; border-radius: 22px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.25), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08); overflow: hidden; }
+.grp:empty { display: none; }
+.grp + .grp { margin-top: 18px; }
+.grp > li + li { background: linear-gradient(rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.11)) no-repeat 16px 0 / calc(100% - 16px) 0.5px; }
+.grp > li > label.switch, .grp > li > label.at-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; font-size: 16px; cursor: pointer; }
+.grp-head { margin: 24px 16px 7px; font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.grp-foot { margin: 7px 16px 0; font-size: 13px; line-height: 1.4; color: var(--text-3); }
+.grp-foot + .grp, .grp-foot + fieldset { margin-top: 22px; }
+.set-page .note { margin: 14px 16px 0; font-size: 13.5px; line-height: 1.4; color: var(--text-2); }
+.set-page .note:empty { display: none; }
+.set-page .notify-acct { margin: 10px 16px 0; }
+.set-page fieldset.opt { margin-bottom: 20px; }
+.set-page fieldset.opt legend { margin-bottom: 7px; padding: 0 16px; font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+/* the list: each folder a row, its own coloured icon, what's in it said beside it, and a chevron */
+.folders > li + li { background-position: 58px 0; background-size: calc(100% - 58px) 0.5px; }
+.folder { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 16px 0 14px; border: 0; background: none; color: inherit; font: inherit; font-size: 16px; text-align: left; cursor: pointer;
+  transition: background-color 0.2s; }
+.folder:active { background-color: rgba(255, 255, 255, 0.09); transition-duration: 0.05s; }
+.folder:focus-visible { outline: 2px solid #fff; outline-offset: -3px; border-radius: 16px; }
+.folder::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px 0 2px; border: solid var(--text-3); border-width: 2px 2px 0 0; transform: rotate(45deg); }
+.f-ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: #fff; background: linear-gradient(180deg, var(--c1), var(--c2));
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.35); }
+.f-ic[data-c="red"] { --c1: #ff6a5f; --c2: #e5352b; }
+.f-ic[data-c="orange"] { --c1: #ffb340; --c2: #f58a00; }
+.f-ic[data-c="green"] { --c1: #52d973; --c2: #25ad49; }
+.f-ic[data-c="grey"] { --c1: #a2abba; --c2: #6c7587; }
+.f-ic[data-c="blue"] { --c1: #5cb2ff; --c2: #1f72e6; }
+.f-ic[data-c="purple"] { --c1: #b590ff; --c2: #7a4fe0; }
+.f-k { flex: none; }
+.f-v { flex: 1; min-width: 0; text-align: right; color: var(--text-2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* signing in, a folder of its own */
+.acct-lead { margin: 0 4px 6px; font-size: 15px; line-height: 1.45; color: var(--text-2); }
 .pill-btn { border-radius: 999px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .pill-btn > * { position: relative; z-index: 3; }
-.acts-list { list-style: none; margin: 0 0 4px; padding: 0 16px; width: 100%; border-radius: 22px; }
-.act { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 12px; padding: 10px 0; }
-.act + .act { border-top: 0.5px solid var(--line); }
-.act label.switch { grid-column: 1 / -1; padding: 2px 0; min-height: 36px; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; font-weight: 600; gap: 10px; }
-.act-icon { display: inline-flex; color: var(--text-2); }
-.act-lim { font-size: 13px; color: var(--text-3); }
-.act-edit { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; width: 100%; padding: 12px; border-radius: var(--r-inner); margin: 4px 0; }
+/* an activity: its name and limits (a way to its own page), and its switch */
+.act { display: flex; align-items: center; }
+.act-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px 4px 8px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 16px; }
+.act-open:active { background-color: rgba(255, 255, 255, 0.08); }
+.act-open:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.act-icon { flex: none; display: inline-flex; color: var(--text-2); }
+.act-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.act-txt b { font-size: 16px; font-weight: 600; }
+.act-lim { font-size: 13px; line-height: 1.35; color: var(--text-3); }
+.act-chev { flex: none; display: inline-grid; color: var(--text-3); }
+.act-chev svg { transform: rotate(-90deg); }
+.grp > li > label.act-on { flex: none; width: auto; padding: 0 16px 0 6px; min-height: 60px; }
+.act-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; padding: 16px; border-radius: 22px; }
 .fld { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-3); background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 0 !important; min-height: 0 !important; border-radius: 0 !important; }
 fieldset.opt label.fld { align-items: stretch; }
 .fld.wide { grid-column: span 2; }
 .fld-in { display: flex; align-items: center; gap: 6px; }
-.fld input, .fld select, .acts-add select { background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 12px; padding: 9px 11px; color: #fff; font-size: 15px; width: 100%; min-width: 0; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22); }
-.fld input:focus, .fld select:focus, .acts-add select:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(159, 208, 255, 0.45); }
+.fld input, .fld select { background: rgba(118, 118, 128, 0.26); border: 0; border-radius: 12px; padding: 9px 11px; color: #fff; font-size: 15px; width: 100%; min-width: 0; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.22); }
+.fld input:focus, .fld select:focus { outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.3), 0 0 0 3px rgba(159, 208, 255, 0.45); }
 .fld small { color: var(--text-3); }
 .act-btns { grid-column: span 2; display: flex; gap: 16px; align-items: center; }
 .link.danger { color: #ffb3ad; }
-.acts-add { display: flex !important; align-items: center; gap: 10px; width: 100%; background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 4px 0 !important; color: var(--text-2); border-radius: 0 !important; }
-.acts-add select { width: auto; flex: 1; }
 select option { color: #fff; background: #1c2434; }
 
 /* ---------- when transparency is turned down, or contrast up ---------- */

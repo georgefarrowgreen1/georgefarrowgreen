@@ -188,59 +188,93 @@
     </div>
   </dialog>
 
+  <!-- Settings: a short list, each row a folder of its own that slides in over it (app.js setGo), with a way back -->
   <dialog class="sheet" id="settings" aria-labelledby="settings-title">
     <div class="sheet-head">
+      <button class="icon-btn small set-back" id="set-back" type="button" aria-label="Back to Settings" hidden></button>
       <h2 id="settings-title" tabindex="-1">Settings</h2>
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
     <div class="sheet-body">
-      <section class="acct" id="acct" aria-labelledby="acct-title"></section>
+      <div class="set-page" data-page="root">
+        <section class="acct" id="acct" aria-labelledby="acct-title"></section>
+        <ul class="grp folders">
+          <li><button class="folder" type="button" data-go="notify"><span class="f-ic" data-g="bell" data-c="red"></span><span class="f-k">Notifications</span><span class="f-v" id="fv-notify"></span></button></li>
+          <li><button class="folder" type="button" data-go="commute"><span class="f-ic" data-g="commute" data-c="orange"></span><span class="f-k">Commute</span><span class="f-v" id="fv-commute"></span></button></li>
+          <li><button class="folder" type="button" data-go="acts"><span class="f-ic" data-g="run" data-c="green"></span><span class="f-k">Best times</span><span class="f-v" id="fv-acts"></span></button></li>
+        </ul>
+        <ul class="grp folders">
+          <li><button class="folder" type="button" data-go="units"><span class="f-ic" data-g="gauge" data-c="grey"></span><span class="f-k">Units</span><span class="f-v" id="fv-units"></span></button></li>
+          <li><button class="folder" type="button" data-go="look"><span class="f-ic" data-g="drop" data-c="blue"></span><span class="f-k">Appearance</span><span class="f-v" id="fv-look"></span></button></li>
+          <li><button class="folder" type="button" data-go="forecast"><span class="f-ic" data-g="chart" data-c="purple"></span><span class="f-k">Forecast</span><span class="f-v" id="fv-forecast"></span></button></li>
+        </ul>
+        <p class="grp-foot" id="about-app">Settings and places stay on this device.</p>
+      </div>
+      <div class="set-page" data-page="signin" data-title="Sign in" hidden><div class="acct" id="acct-in"></div></div>
       <form id="settings-form">
-        <fieldset class="opt"><legend>Temperature</legend>
-          <div class="choice"><label><input type="radio" name="temp" value="c" /> °C</label><label><input type="radio" name="temp" value="f" /> °F</label></div>
-        </fieldset>
-        <fieldset class="opt"><legend>Wind</legend>
-          <div class="choice"><label><input type="radio" name="wind" value="mph" /> mph</label><label><input type="radio" name="wind" value="kmh" /> km/h</label><label><input type="radio" name="wind" value="ms" /> m/s</label><label><input type="radio" name="wind" value="kn" /> knots</label></div>
-        </fieldset>
-        <fieldset class="opt"><legend>Rain</legend>
-          <div class="choice"><label><input type="radio" name="precip" value="mm" /> mm</label><label><input type="radio" name="precip" value="in" /> inches</label></div>
-        </fieldset>
-        <fieldset class="opt"><legend>Pressure</legend>
-          <div class="choice"><label><input type="radio" name="pressure" value="hpa" /> hPa</label><label><input type="radio" name="pressure" value="inhg" /> inHg</label><label><input type="radio" name="pressure" value="mmhg" /> mmHg</label></div>
-        </fieldset>
-        <fieldset class="opt"><legend>Clock</legend>
-          <div class="choice"><label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label></div>
-        </fieldset>
-        <fieldset class="opt"><legend>Glass</legend>
-          <div class="choice"><label><input type="radio" name="glass" value="clear" /> Clear</label><label><input type="radio" name="glass" value="standard" /> Standard</label><label><input type="radio" name="glass" value="tinted" /> Tinted</label></div>
-        </fieldset>
-        <fieldset class="opt notify" id="notify-set"><legend>Notifications</legend>
-          <ul class="np" id="notify-places" aria-label="Rain alerts and official warnings for each place"></ul>
-          <label class="switch"><input type="checkbox" name="brief" /> Morning briefing</label>
-          <label class="at-row brief-for">Briefing for <select class="at" name="briefFor"></select></label>
-          <label class="at-row">Briefing time <select class="at" name="briefAt"><option value="07:00">07:00</option></select></label>
+        <div class="set-page" data-page="notify" data-title="Notifications" hidden><div id="notify-set">
+          <ul class="grp">
+            <li><label class="switch"><input type="checkbox" name="brief" /> Morning briefing</label></li>
+            <li class="brief-more"><label class="at-row brief-for">Place <select class="at" name="briefFor"></select></label></li>
+            <li class="brief-more"><label class="at-row">Time <select class="at" name="briefAt"><option value="07:00">07:00</option></select></label></li>
+          </ul>
+          <p class="grp-foot">The day ahead, first thing.</p>
+          <h3 class="grp-head">Rain alerts and warnings</h3>
+          <ul class="grp np" id="notify-places" aria-label="Rain alerts and official warnings for each place"></ul>
+          <p class="grp-foot">A heads-up before rain starts, and official warnings as they’re issued.</p>
           <p class="note" id="notify-status" role="status"></p>
           <div class="notify-acct" id="notify-acct"></div>
-        </fieldset>
-        <fieldset class="opt"><legend>Forecast</legend>
-          <label class="switch"><input type="checkbox" name="tune" /> Tune highs and lows for here</label>
-        </fieldset>
-        <fieldset class="opt acts" id="acts-set"><legend>Best times</legend>
-          <ul class="acts-list" id="acts-list"></ul>
-          <label class="acts-add">Add an activity <select id="act-add"><option value="">Choose…</option></select></label>
-          <label class="switch"><input type="checkbox" name="x_laundry" /> Drying washing outside</label>
-          <label class="switch"><input type="checkbox" name="x_stars" /> Stargazing</label>
-          <label class="switch"><input type="checkbox" name="x_sunset" /> Sunset and sunrise colour</label>
-        </fieldset>
-        <fieldset class="opt commute"><legend>Commute check</legend>
-          <label class="switch"><input type="checkbox" name="commute" /> Weekdays</label>
-          <div class="times">
-            <label>Leave <select class="at" name="am"><option value="08:00">08:00</option></select></label>
-            <label>Return <select class="at" name="pm"><option value="17:30">17:30</option></select></label>
-          </div>
-        </fieldset>
+        </div></div>
+        <div class="set-page" data-page="commute" data-title="Commute" hidden>
+          <ul class="grp">
+            <li><label class="switch"><input type="checkbox" name="commute" /> On weekdays</label></li>
+            <li><label class="at-row">Leave <select class="at" name="am"><option value="08:00">08:00</option></select></label></li>
+            <li><label class="at-row">Return <select class="at" name="pm"><option value="17:30">17:30</option></select></label></li>
+          </ul>
+          <p class="grp-foot">The weather for your journeys there and back, in Highlights.</p>
+        </div>
+        <div class="set-page" data-page="acts" data-title="Best times" hidden>
+          <ul class="grp acts-list" id="acts-list"></ul>
+          <ul class="grp"><li><label class="at-row acts-add">Add an activity <select class="at" id="act-add"><option value="">Choose…</option></select></label></li></ul>
+          <p class="grp-foot">The best hours for each, from the weather you like it in.</p>
+          <h3 class="grp-head">Also look out for</h3>
+          <ul class="grp">
+            <li><label class="switch"><input type="checkbox" name="x_laundry" /> Drying washing outside</label></li>
+            <li><label class="switch"><input type="checkbox" name="x_stars" /> Stargazing</label></li>
+            <li><label class="switch"><input type="checkbox" name="x_sunset" /> Sunset and sunrise colour</label></li>
+          </ul>
+        </div>
+        <div class="set-page" data-page="units" data-title="Units" hidden>
+          <fieldset class="opt"><legend>Temperature</legend>
+            <div class="choice"><label><input type="radio" name="temp" value="c" /> °C</label><label><input type="radio" name="temp" value="f" /> °F</label></div>
+          </fieldset>
+          <fieldset class="opt"><legend>Wind</legend>
+            <div class="choice"><label><input type="radio" name="wind" value="mph" /> mph</label><label><input type="radio" name="wind" value="kmh" /> km/h</label><label><input type="radio" name="wind" value="ms" /> m/s</label><label><input type="radio" name="wind" value="kn" /> knots</label></div>
+          </fieldset>
+          <fieldset class="opt"><legend>Rain</legend>
+            <div class="choice"><label><input type="radio" name="precip" value="mm" /> mm</label><label><input type="radio" name="precip" value="in" /> inches</label></div>
+          </fieldset>
+          <fieldset class="opt"><legend>Pressure</legend>
+            <div class="choice"><label><input type="radio" name="pressure" value="hpa" /> hPa</label><label><input type="radio" name="pressure" value="inhg" /> inHg</label><label><input type="radio" name="pressure" value="mmhg" /> mmHg</label></div>
+          </fieldset>
+          <fieldset class="opt"><legend>Clock</legend>
+            <div class="choice"><label><input type="radio" name="clock" value="24" /> 24-hour</label><label><input type="radio" name="clock" value="12" /> 12-hour</label></div>
+          </fieldset>
+        </div>
+        <div class="set-page" data-page="look" data-title="Appearance" hidden>
+          <fieldset class="opt"><legend>Glass</legend>
+            <div class="choice"><label><input type="radio" name="glass" value="clear" /> Clear</label><label><input type="radio" name="glass" value="standard" /> Standard</label><label><input type="radio" name="glass" value="tinted" /> Tinted</label></div>
+          </fieldset>
+          <p class="grp-foot">How much of the sky shows through the cards.</p>
+        </div>
+        <div class="set-page" data-page="forecast" data-title="Forecast" hidden>
+          <ul class="grp">
+            <li><label class="switch"><input type="checkbox" name="tune" /> Tune highs and lows for here</label></li>
+          </ul>
+          <p class="grp-foot">Highs, lows and wind put right by how far the forecast has been out here lately.</p>
+        </div>
       </form>
-      <p class="muted small" id="about-app">Settings and places stay on this device.</p>
+      <div class="set-page" data-page="act" hidden><div id="act-page"></div></div>
     </div>
   </dialog>
 

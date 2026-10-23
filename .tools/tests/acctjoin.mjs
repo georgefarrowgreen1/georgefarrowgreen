@@ -171,8 +171,9 @@ const X = await browser('weather');
 await X.ctx.route(/open-meteo\.com|bigdatacloud|rainviewer\.com|openstreetmap\.org|openfreemap\.org/, (r) => r.fulfill({ status: 503, body: '{}' }));
 await X.p.goto(`${WX}/`); await X.p.waitForSelector('#settings-btn', { timeout: 30000 });
 await X.p.click('#settings-btn'); await X.p.waitForSelector('#settings[open] #acct .acct-card', { timeout: 15000 });
-const wxWays = await X.p.$$eval('#acct a', (as) => as.map((a) => a.getAttribute('href')));
-ok(wxWays.join() === `${ACCT}/#forgot,${ACCT}/#join` && !(await X.p.$('#acct input[name=name]')) && !!(await X.p.$('#acct #acct-passkey')), 'Weather: a passkey, email and password; Forgot password? and Create your account on the account\'s page', wxWays.join());
+await X.p.click('#acct-signin'); await X.p.waitForSelector('#acct-in .acct-form');
+const wxWays = await X.p.$$eval('#acct-in a', (as) => as.map((a) => a.getAttribute('href')));
+ok(wxWays.join() === `${ACCT}/#forgot,${ACCT}/#join` && !(await X.p.$('#acct-in input[name=name]')) && !!(await X.p.$('#acct-in #acct-passkey')), 'Weather: a passkey, email and password; Forgot password? and Create your account on the account\'s page', wxWays.join());
 
 ok(errs.length === 0, 'no errors on any page', errs.slice(0, 4).join(' | '));
 await b.close();
