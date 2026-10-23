@@ -290,7 +290,7 @@ function signedIn(r) {
   const todo = checks(m).filter((x) => !x.ok).length;
   const account = r(section("Account", h("div.group.glass", {},
     row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(securityView) }),
-    row({ icon: "download", tint: "green", title: "Your data", sub: "A copy to keep, or delete your account", onclick: () => openSheet(exportView) }))));
+    row({ icon: "download", tint: "green", title: "Your data", onclick: () => openSheet(exportView) }))));
   const prefs = r(section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
