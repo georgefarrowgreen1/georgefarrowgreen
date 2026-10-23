@@ -1865,6 +1865,12 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   So signing in to InFlight on a new phone with it opens the messages with no password. Each passkey's page says
   whether it does ("InFlight messages: Opens them"), and one that doesn't can be set up there
   (`.tools/tests/acctpkmsg.mjs`).
+- **Shown it's you lately, for the owner's changes and people's details.** Changing the home page (its words, photos,
+  Undo) needs the owner to have shown it's them in the last 12 hours, as a phone left signed in, or a sign-in handed
+  over from an app, doesn't do (`requireOwner`); Edit, if it's been longer, goes by the account's page to ask
+  (`#confirm=edit`) and comes back editing, so nothing typed is lost. Admin's lists with people's details (accounts,
+  the site's messages, the log) need the same 12 hours, asked on the page as a change is; its figures (the summary,
+  Insights, Storage, invites) are as signed in. A change in Admin still needs the last 10 minutes.
 
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.

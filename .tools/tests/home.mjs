@@ -136,6 +136,22 @@ ok(r.status === 403, 'even the owner’s change is refused when another site sen
 r = await put(G, '/api/content', { name: 'From Elsewhere' }, null);
 ok(r.status === 403, 'or when it doesn’t say where it’s from', String(r.status));
 
+// ---- 3b. A change needs the owner to have shown it's them lately (a phone left signed in doesn't do): Edit goes by the
+// account's page for it, and comes back editing ----
+sql(`UPDATE pg_sessions SET auth_at = 0 WHERE user_id = '${gail}'`);
+r = await put(G, '/api/content', { name: 'Left Signed In' });
+ok(r.status === 403 && /Confirm it’s you/.test(r.json?.error || ''), 'signed in a while ago, the owner’s change is refused until they show it’s them', `${r.status} ${r.body}`);
+await home(G);
+await G.p.click('#edit');
+await G.p.waitForSelector('#sheet .confirm-card', { timeout: 20000 }).catch(() => {});
+ok(G.p.url().startsWith(ACCT) && await G.p.isVisible('#sheet .confirm-card'), 'Edit: on to the account’s page, to show it’s them', G.p.url());
+await shot(G, 'confirm-first');
+if (await G.p.isVisible('#sheet .confirm-card .btn:has-text("Use a passkey")')) await G.p.click('#sheet .confirm-card .btn:has-text("Use a passkey")');
+else { await G.p.fill('#sheet .confirm-card input[type=password]', PW); await G.p.click('#sheet .confirm-card .btn[type=submit]'); }
+await G.p.waitForFunction(() => document.body.classList.contains('edit'), null, { timeout: 20000 }).catch(() => {});
+ok(G.p.url().startsWith(SITE) && await G.p.evaluate(() => document.body.classList.contains('edit')), 'shown: back on the home page, editing', G.p.url());
+await G.p.keyboard.press('Escape'); await settle(G, 500);
+
 // ---- 4. Editing the words in place, and Undo ----
 await G.p.click('#edit'); await settle(G, 600);
 ok(await G.p.evaluate(() => document.body.classList.contains('edit') && [...document.querySelectorAll('[data-edit]')].every((e) => e.isContentEditable)), 'Edit: the three lines can be typed in');

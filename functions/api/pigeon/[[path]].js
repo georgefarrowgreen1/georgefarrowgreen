@@ -1138,8 +1138,8 @@ async function changePassword({ request, env, waitUntil }) {
    admin/…, the routes below). It's the account linked to it (pg_meta admin_user, linked once from the old dashboard,
    since gone), or, if that one's gone (or being deleted), the account with the site owner's email (PIGEON_ADMIN_EMAIL),
    once that's confirmed: the same as a password reset to that inbox would give, so it can't be lost for good. That
-   account only, with a passkey on it; looking is as signed in, a change needs it to have shown it's you (its passkey,
-   or its password) in the last 10 minutes, from the page itself (its Origin). Account details, never passwords, keys
+   account only, with a passkey on it; the figures are as signed in, people's details need it to have shown it's you in
+   the last 12 hours, and a change in the last 10 minutes (its passkey, or its password), from the page itself (its Origin). Account details, never passwords, keys
    or scrolls. */
 // the admin's account (and how many passkeys it has)
 export async function adminOf(env) {
@@ -1148,14 +1148,16 @@ export async function adminOf(env) {
   return (await D.prepare(q + "u.id = (SELECT v FROM pg_meta WHERE k = 'admin_user')").first())
     || D.prepare(q + "u.email_ok AND lower(u.email) = lower(?) ORDER BY u.created_at LIMIT 1").bind(ownerEmail(env)).first();
 }
-async function requireAdmin(request, env, write) {
+// (looking at people's details, their emails, the site's messages, the log, needs it shown it's you in the last 12 hours:
+// a sign-in handed over from an app, or a phone left signed in, doesn't do; a change, in the last 10 minutes. look: the
+// figures (counts only) and pictures (for an <img>, which can't be asked to confirm): as signed in)
+export const ADMIN_LOOK = 12 * 3600e3;
+async function requireAdmin(request, env, write, { look = false } = {}) {
   const [u, admin] = await Promise.all([cookieUser(request, env), adminOf(env)]);
   if (!u || !admin || u.id !== admin.id) throw new HttpError(403, "This account isn’t the site’s admin.");
   if (!admin.passkeys) throw new HttpError(403, "Add a passkey to your account to use Admin.", "passkey");
-  if (write) {
-    sameOrigin(request);
-    if (!(Date.now() - (u.authAt || 0) < FRESH)) throw new HttpError(403, "Confirm it’s you first.", "reauth");
-  }
+  if (write) sameOrigin(request);
+  if (!look && !(Date.now() - (u.authAt || 0) < (write ? FRESH : ADMIN_LOOK))) throw new HttpError(403, "Confirm it’s you first.", "reauth");
   return u;
 }
 // The figures for Admin, on the account page and at the top of its folder: accounts (and how many are new this week),
@@ -1166,7 +1168,7 @@ const FILES_STALE = 12 * HOUR;
 // (the home page's photos: functions/api/background.js keeps their list in KV)
 const homePhotos = async (env) => (env.BIO_KV ? JSON.parse((await env.BIO_KV.get("bg_list")) || "[]") : []);
 async function adminSummary({ request, env, waitUntil }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   const t = Date.now(), D = await db(env);
   const [main, people, late, meta] = await D.batch([
     D.prepare(`SELECT (SELECT COUNT(*) FROM pg_users) AS accounts, (SELECT COUNT(*) FROM pg_users WHERE created_at > ?1) AS newWeek,
@@ -1194,12 +1196,12 @@ async function adminSummary({ request, env, waitUntil }) {
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
 async function adminStorage({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   return json(await storageReport(env, await db(env), Date.now()));
 }
 // How InFlight is used, in totals (functions/_insights.js)
 async function adminInsights({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });     // (figures only: no one's details)
   return json(await insights(env, await db(env), Date.now()));
 }
 async function adminUsers({ request, env }) {
@@ -1248,7 +1250,7 @@ async function adminReset({ request, env }) {
 }
 // Someone's profile picture, for the admin's account list.
 async function adminAvatar({ request, env }, id) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });
   const obj = env.BIO_R2 && (await env.BIO_R2.get(avatarKey(String(id || ""))));
   if (!obj) throw new HttpError(404, "No picture.");
   return new Response(obj.body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
@@ -1311,7 +1313,7 @@ async function adminInvite({ request, env }) {
   return json({ url: `${accountPage(request, env)}/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
 }
 async function adminInvites({ request, env }) {
-  await requireAdmin(request, env, false);
+  await requireAdmin(request, env, false, { look: true });     // (notes and who used them: the folder's own count)
   const { results } = await (await db(env)).prepare(`SELECT i.id, i.note, i.created_at, i.used_at, i.revoked_at, u.handle, u.name FROM pg_invites i
     LEFT JOIN pg_users u ON u.id = i.used_by ORDER BY (i.used_at IS NULL AND i.revoked_at IS NULL) DESC, i.created_at DESC LIMIT 200`).all();
   return json({ invites: results.map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, usedAt: r.used_at, revokedAt: r.revoked_at, by: r.used_at ? { handle: r.handle || null, name: r.name || null } : null })) });
@@ -1331,7 +1333,7 @@ async function adminMessages({ request, env }) {
 }
 // (seen, once they're shown: no need to confirm it's you, as it changes nothing but what's new)
 async function adminMessagesRead({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, false, { look: true });
   sameOrigin(request);
   const ids = (await body(request)).ids;
   return json({ read: await markSiteRead(env, Array.isArray(ids) ? ids.map(Number) : []) });

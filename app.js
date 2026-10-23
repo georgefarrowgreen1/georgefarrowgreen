@@ -404,6 +404,8 @@ const editables = $$("[data-edit]");
 let before = null;
 function startEdit() {
   if (editing || !me?.owner) return;
+  // (a change needs it shown it's you lately: on the account's page first, which brings you back here, editing)
+  if (!me.fresh && me.account) { location.href = me.account + "/#confirm=edit"; return; }
   editing = true; before = { ...content };
   body.classList.add("edit");
   for (const el of editables) {

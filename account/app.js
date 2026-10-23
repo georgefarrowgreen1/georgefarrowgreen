@@ -47,6 +47,20 @@ if (/^#from=home$/.test(location.hash)) {
   history.replaceState(null, "", location.pathname + location.search);
   try { sessionStorage.setItem("acct-from", "home"); } catch (_) {}
 }
+// (from the home page, to show it's you before changing it: #confirm=edit; once that's done, back there, editing)
+if (/^#confirm=edit$/.test(location.hash)) {
+  history.replaceState(null, "", location.pathname + location.search);
+  try { sessionStorage.setItem("acct-from", "home"); sessionStorage.setItem("acct-confirm", "edit"); } catch (_) {}
+}
+function confirmForHome() {
+  let want = null; try { want = sessionStorage.getItem("acct-confirm"); sessionStorage.removeItem("acct-confirm"); } catch (_) {}
+  if (want !== "edit" || !S.me?.signedIn) return;
+  const edit = () => location.replace(siteUrl("") + "#edit");
+  if (S.me.fresh) return edit();
+  openSheet(() => ({ title: "Change the home page", body: [
+    h("p.hint", { text: "Show it’s you first, then you’re back on the home page to change it." }),
+    confirmCard(edit, () => { closeSheet(); backToApp(); })] }));
+}
 // a page the browser kept and brought back (back and forward): opened afresh instead, so it's never last version's
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 // (which app sent you here: InFlight's profile, or Weather's account card)
@@ -209,6 +223,7 @@ async function load() {
   if (S.me?.signedIn) S.gate = null;
   render();
   if (HANDOFF?.open === "profile" && S.me?.signedIn) openSheet(profileView);
+  confirmForHome();
 }
 // A way in from elsewhere: #join and #forgot (the apps link here for both), #invite= (an invite, kept for the visit) and
 // #reset= (a reset link from the email). Taken out of the address at once.
