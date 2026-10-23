@@ -330,12 +330,13 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   const link = /(\/api\/weather\/email-off\?u=[^&"]+&(?:amp;)?t=[A-Za-z0-9_-]+)/.exec(warn?.html || '')?.[1]?.replace(/&amp;/g, '&') || '';
   ok(link && warn.headers?.['List-Unsubscribe']?.includes(link) && warn.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'each with a link to turn them off, and the mail app\'s own Unsubscribe', link);
   // the link: GET shows a button and changes nothing; POST turns them off (as a mail app's one-click does)
-  const hit = (method) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: link, method, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
+  // (each on a connection of its own: one kept open since may have been closed by the server meanwhile)
+  const hit = (method, path = link) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path, method, agent: false, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
   const g = await hit('GET');
   ok(g.status === 200 && /Turn off Weather’s emails\?/.test(g.body) && /<form method="post"/.test(g.body) && kept('sam')?.notify.email?.warn === true, 'the link: a button first, nothing turned off yet', String(g.status));
   const pst = await hit('POST');
   ok(pst.status === 200 && /Emails turned off/.test(pst.body) && kept('sam')?.notify.email?.warn === false && !rows(`SELECT dev FROM wx_devs WHERE dev = '${mailDev}'`).length, 'pressed: turned off, kept so, and the email no longer sent to', JSON.stringify(kept('sam')?.notify.email));
-  ok(/Link expired/.test((await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: link.replace(/t=[^&]+$/, 't=wrong'), headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(t)); }); r.end(); }))), 'a wrong link turns nothing off');
+  ok(/Link expired/.test((await hit('POST', link.replace(/t=[^&]+$/, 't=wrong'))).body), 'a wrong link turns nothing off');
   await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh'); await settings(P); await folder(P, 'notify');
   await waitFor(async () => !(await P.p.isChecked('#settings-form input[name=mailWarn]')), 8000);
   ok(!(await P.p.isChecked('#settings-form input[name=mailWarn]')) && !(await P.p.isChecked('#settings-form input[name=mailBrief]')), 'and Weather shows them off', '');
