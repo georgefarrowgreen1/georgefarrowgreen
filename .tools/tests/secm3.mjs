@@ -31,10 +31,11 @@ const txt = async (s) => (await G.locator(s).first().innerText()).replace(/\s+/g
 // fresh straight after signing up
 let [st] = await api('vault'); ok(st === 200, 'just signed in: the locked key comes back', String(st));
 stale();
-for (const [path, method, body] of [['vault', 'GET'], ['passkey-options', 'POST', { mode: 'register' }], ['me', 'DELETE'], ['passkey', 'DELETE', { id: 'x' }], ['passkey-vault', 'POST', { id: 'x', vault: 'v'.repeat(30) }]]) {
+for (const [path, method, body] of [['vault', 'GET'], ['passkey-options', 'POST', { mode: 'register' }], ['passkey', 'DELETE', { id: 'x' }], ['passkey-vault', 'POST', { id: 'x', vault: 'v'.repeat(30) }]]) {
   const [s, j] = await api(path, method, body);
   ok(s === 403 && j.field === 'reauth', `10 minutes on, ${method} ${path} asks to confirm it's you`, `${s} ${j.field}`);
 }
+{ const [s, j] = await api('me', 'DELETE'); ok(s === 410 && j.field === 'moved', 'deleting the account is on the account’s page (a week’s grace), not here', `${s} ${j.field}`); }
 const [s2, j2] = await api('passkey-options', 'POST', { mode: 'login' }); ok(s2 === 200 && j2.challenge, 'signing in with a passkey still works without it');
 [st] = await api('reauth', 'POST', { proof: 'A'.repeat(43) }); ok(st === 401, 'a wrong password proof is refused', String(st));
 [st] = await api('vault', 'POST', { proof: 'A'.repeat(43) }); ok(st === 401, 'and can’t fetch the locked key either', String(st));
@@ -89,7 +90,7 @@ const r = await G.evaluate(async (token) => {
     return { reg: reg.status, flags, status: res.status };
   } catch (err) { return { err: String(err) }; }
 }, sess.token);
-ok(r.reg === 200 && r.status === 401 && (r.flags & 1) && !(r.flags & 4), 'a passkey that didn’t verify the person can’t sign in', JSON.stringify(r));
+ok(r.reg === 400 && r.status === 401 && (r.flags & 1) && !(r.flags & 4), 'a passkey that didn’t verify the person: not taken, and can’t sign in', JSON.stringify(r));
 await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: bare });
 
 // changing the password is on the account's page too (which locks the messages' key with the new one), not in InFlight
