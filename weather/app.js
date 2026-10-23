@@ -1983,6 +1983,14 @@ const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, em
 // this device among the account's that get its notifications
 const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
 function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
+// Signing out here (the foot of Settings): of the site's account in this browser; this device keeps its places and
+// settings, and its notifications go on as its own
+async function signOutHere() {
+  const b = $("sign-out"); b.disabled = true;
+  try { await A.signOut(S.settings.notify.endpoint || undefined); } catch (_) {}
+  finally { b.disabled = false; }
+  signedOut();
+}
 // Signed out somewhere else (the account's page, or another app on the site): this device's notifications stay, as its
 // own, as when it's signed out here
 function signedOutElsewhere() {
@@ -2022,6 +2030,7 @@ function drawAccount() {
   }
   const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
   $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
+  $("out-grp").hidden = !a;
   $("acct-in").replaceChildren();
   if (!a) {
     // (as on every page of the site that signs in: a passkey first, then your email and password; a forgotten password,
@@ -2357,6 +2366,7 @@ function wire() {
   $("settings-form").addEventListener("change", readSettings);
   for (const k of ["brief", "briefFor", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
   for (const k of ["mailWarn", "mailBrief"]) $("settings-form")[k].addEventListener("change", onMail);
+  $("sign-out").addEventListener("click", signOutHere);
   $("act-add").addEventListener("change", addAct);
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
   // (full screen, it closes with an ×, as Apple's Weather map does)

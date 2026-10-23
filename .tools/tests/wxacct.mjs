@@ -98,7 +98,8 @@ ok(/Sam Taylor/.test(lSays) && /@sam\b/.test(lSays) && !/georgefarrowgreen/.test
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
-ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email, rows or Sign out here)', lSays);
+ok(await L.p.$('button#acct-open') && !(await L.p.$('#acct-edit, #acct-manage, #acct-out, #acct .acct-rows')) && !/Email|Sign out/.test(lSays), 'just one card for the account (its page has the rest: no profile editor, email or rows here)', lSays);
+ok(await L.p.isVisible('#out-grp #sign-out') && (await L.p.textContent('#sign-out')) === 'Sign out', 'and Sign out at the foot of Settings, Weather\'s own');
 await closeSheet(L);
 
 // ---- 2. A phone with places of its own: signed in to Weather with email and password; the two lots put together ----
@@ -174,6 +175,7 @@ await closeSheet(L);
   await W.waitForSelector('main:not([aria-busy])', { timeout: 20000 }).catch(() => {});
   await W.waitForTimeout(1200);
   const page = await W.evaluate(() => ({ url: location.href, text: document.querySelector('main')?.innerText.replace(/\s+/g, ' ') || '' }));
+  ok(!(await W.$('main .row.action:text-is("Sign out")')) && !!(await W.$('main .row.action:text-is("Delete account")')), 'opened from Weather, the account\'s page leaves signing out to Weather');
   ok(/^http:\/\/account\.gfg\.test:8788\/$/.test(page.url) && /Sam Taylor/.test(page.text) && /Weather/.test(page.text.slice(0, 40)), 'the card opens the account\'s page, signed in (the code out of the address), with the way back to Weather', `${page.url} ${page.text.slice(0, 60)}`);
   const jpeg = Buffer.from((await W.evaluate(() => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#2a7'; x.fillRect(0, 0, 1000, 700); x.fillStyle = '#fff'; x.fillRect(450, 300, 100, 100); return c.toDataURL('image/jpeg', 0.9); })).split(',')[1], 'base64');
   await W.click('.hero .pill'); await W.waitForSelector('#sheet[open] .sheet-body'); await W.waitForTimeout(600);
@@ -256,7 +258,20 @@ await weather(T);
 await waitFor(() => tDev() && !tDev().user_id, 15000);
 const t2 = rows(`SELECT user_id, (SELECT COUNT(*) FROM wx_subs s WHERE s.dev = d.dev) AS n FROM wx_devs d WHERE dev = '${t1.dev}'`)[0];
 ok(t2 && !t2.user_id && t2.n === t1.n, 'signed out there: Weather notices, and the tablet\'s notifications stay, its own', JSON.stringify(t2));
-const tSubs = t2?.n || 0;
+let tSubs = t2?.n || 0;
+// signed in on the tablet again, and out from Weather's own Settings: signed out here, and its notifications its own
+await settings(T); await signInPage(T);
+await T.p.fill('#acct-in input[name=email]', 'sam@example.com'); await T.p.fill('#acct-in input[name=password]', PW);
+await T.p.click('#acct-in .acct-form button[type=submit]');
+await waitFor(() => tDev()?.user_id, 20000);
+const t3 = tDev();
+await T.p.waitForSelector('#out-grp:not([hidden]) #sign-out', { timeout: 15000 }).catch(() => {});
+await T.p.click('#sign-out');
+await waitFor(async () => !tDev()?.user_id && await T.p.isVisible('#acct-signin'), 15000);
+const t4 = tDev();
+ok(t3?.user_id && t4 && !t4.user_id && t4.n === t3.n && await T.p.isVisible('#acct-signin') && await T.p.isHidden('#out-grp'), 'signed out from Weather\'s Settings: signed out here, the tablet\'s notifications its own', JSON.stringify({ t3, t4 }));
+tSubs = t4?.n || 0;
+await closeSheet(T);
 
 // ---- 7. The account's own rules ----
 const call = (method, path, body, { origin = WX, cookie: c = '' } = {}) => new Promise((done, fail) => {

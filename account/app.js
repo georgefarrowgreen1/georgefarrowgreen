@@ -299,8 +299,9 @@ function signedIn(r) {
     "For every app on the site that has them."));
   const data = r(section("Your data", h("div.group.glass", {},
     row({ icon: "download", tint: "green", title: "Download your data", onclick: () => openSheet(exportView) }))));
+  // (opened from an app, in its own window: signing out is the app's to do, not this window's)
   const ending = [
-    r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")),
+    !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")),
       "Signs you out of every app on the site, in this browser.")),
     r(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => openSheet(deleteView) }, "Delete account")))),
     r(h("footer.foot", {}, h("div", { text: `Your account since ${new Date(m.since).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` }),

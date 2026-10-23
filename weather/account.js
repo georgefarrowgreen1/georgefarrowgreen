@@ -23,7 +23,8 @@ export const save = (base, data) => call("me", { method: "PUT", body: { base, da
 // ---- the account's own page, opened signed in as you: a code good once, for a minute (functions/_wxacct.js) ----
 export const accountLink = () => call("account-link", { method: "POST", body: {} });
 // signing out (everywhere on the site, in this browser): for an account that isn't yours, signed in elsewhere
-export const signOut = () => call("signout", { method: "POST", body: {} });
+// (endpoint: this device's push address, if it has notifications, so they stay on as its own)
+export const signOut = (endpoint) => call("signout", { method: "POST", body: endpoint ? { endpoint } : {} });
 export const photoUrl = (at) => `${API}/me/photo?v=${at}`;
 
 // ---- signing in ----

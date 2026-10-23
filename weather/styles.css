@@ -1398,6 +1398,9 @@ body.no-scroll { overflow: hidden; }
 .grp-head { margin: 24px 16px 7px; font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
 .grp-foot { margin: 7px 16px 0; font-size: 13px; line-height: 1.4; color: var(--text-3); }
 .grp-foot + .grp, .grp-foot + fieldset { margin-top: 22px; }
+/* (signing out: one row of its own, its words in red, in the middle) */
+.grp-out { display: block; width: 100%; min-height: 52px; padding: 0 16px; border: 0; background: none; font: inherit; font-size: 16px; color: #ff6961; text-align: center; cursor: pointer; }
+.grp-out:disabled { opacity: 0.55; cursor: default; }
 .set-page .note { margin: 14px 16px 0; font-size: 13.5px; line-height: 1.4; color: var(--text-2); }
 .set-page .note:empty { display: none; }
 .set-page .notify-acct { margin: 10px 16px 0; }

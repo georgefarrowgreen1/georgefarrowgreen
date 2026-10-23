@@ -262,7 +262,7 @@ Motion, solid with Reduce Transparency.
 - **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
   camera badge) to pick a new one straight away. **Your apps**
   (a card for each); **Sign-in and security** (starting with the **Security check-up**, below), **Preferences**, **Your data**, **Sign out** (of every app on the site, in
-  this browser) and **Delete account**. Each row says how things are, not what to do: the check-up "2 to do" and an
+  this browser; not when an app opened the page in its own window: signing out is the app's own) and **Delete account**. Each row says how things are, not what to do: the check-up "2 to do" and an
   unconfirmed email in amber, the password "Set today" or "Changed 3 Oct" (`pg_users.pw_at`, kept from now on, and for
   accounts from before as far back as recent activity goes), passkeys **Add one** where there are none, devices "This
   iPhone" where it's the only one, recent activity when the latest was. Once the profile's scrolled away, a bar of
@@ -726,6 +726,9 @@ so there's nothing to set up beyond the address.
   account's, the same in every app on the site: Weather shows your photo, name
   and @handle, and they're changed on the account's page (by the site's rules,
   `functions/_profile.js`); changed anywhere, Weather shows it when you're back.
+  **Sign out** is at the foot of Settings (the account's page, opened from here,
+  leaves it to Weather): this device keeps its places and settings, and its
+  notifications go on as its own.
 - **Context**: warmer or cooler than yesterday, a big change coming ("Turning
   colder from Friday"), the barometer rising or falling, the best and worst day of
   the week, the weekend, daylight gained or lost, and **what's changed since you
