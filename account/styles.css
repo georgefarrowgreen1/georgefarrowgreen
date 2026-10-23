@@ -396,6 +396,10 @@ dialog.sheet.dragging { animation: none; transition: none; }
 
 /* back to InFlight, when it sent you here to edit your profile */
 .backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; justify-self: start; align-self: flex-start; width: max-content; }
+/* (opened from an app: the way back, and the title smaller, in the middle of the same line) */
+.titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 40px; margin: 0 0 16px; }
+.titlebar .backapp { margin: 0; align-self: center; }
+.titlebar h1 { margin: 0; font: 600 17px/1.2 var(--font); letter-spacing: 0; }
 
 /* ---- your photo, tapped to change it (the camera badge says so) ---- */
 .avatar-btn { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; color: inherit; cursor: pointer; margin-bottom: 12px; transition: transform 0.3s var(--spring); }
