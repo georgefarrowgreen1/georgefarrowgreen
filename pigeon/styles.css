@@ -2118,24 +2118,6 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 
 /* ---------- Privacy & Security, Encryption, Safety Number, Passkeys ---------- */
 /* how protected you are, at a glance: a shield in a ring that fills as each thing is done */
-.secard{margin:4px 16px 0;padding:18px 18px 8px;border-radius:26px;background:var(--cell);--sec:var(--orange);--sec-t:var(--orange-t)}
-.secard.ok{--sec:var(--green);--sec-t:var(--green-t);background:linear-gradient(170deg,color-mix(in srgb,var(--green) 12%,var(--cell)),var(--cell) 70%)}
-.sectop{display:flex;align-items:center;gap:14px}
-.sectop .wnt b{font-size:19px;line-height:24px;font-weight:700;letter-spacing:-.3px}
-.secshield{position:relative;flex:none;width:58px;height:58px;display:grid;place-items:center;color:var(--sec-t)}
-.secshield > svg:first-child{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
-.secshield .trk{fill:none;stroke:color-mix(in srgb,var(--sec) 18%,transparent);stroke-width:5}
-.secshield .arc{fill:none;stroke:var(--sec);stroke-width:5;stroke-linecap:round;animation:secarc 1s cubic-bezier(.32,.72,0,1) .15s both}
-@keyframes secarc{from{stroke-dasharray:0 100}}
-.secshield .ico{font-size:28px;stroke-width:2}
-.seclist{display:flex;flex-direction:column;margin-top:12px}
-.secrow{display:flex;align-items:center;gap:12px;min-height:44px;padding:0;border:0;border-top:.5px solid var(--sep);background:none;color:var(--label);font-size:15px;text-align:left;width:100%}
-.secdot{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px dashed color-mix(in srgb,var(--orange) 70%,transparent);color:#fff;font-size:13px}
-.secdot .ico{stroke-width:3}
-.secrow.ok .secdot{border:0;background:var(--green)}
-.secrow.ok .sect{color:var(--label-2)}
-.sect{flex:1;min-width:0}
-.secgo{flex:none;padding:5px 12px;border-radius:999px;background:color-mix(in srgb,var(--tint) 13%,transparent);color:var(--tint-t);font-size:14px;font-weight:600}
 .keyart{display:block;flex:none}
 .keyart.tile{width:30px;height:30px;padding:0;background:none;box-shadow:none;border-radius:9px}
 .keyart.big{width:52px;height:52px}

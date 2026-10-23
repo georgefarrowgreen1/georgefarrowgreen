@@ -4688,19 +4688,6 @@ function vAuth() {
   }
   return "";
 }
-// Has this password turned up in a data breach? Asks Pwned Passwords, through InFlight's
-// server, with only the first 5 characters of its SHA-1, and checks the answers here:
-// neither ever sees the password (k-anonymity). Can't ask: carries on without the check.
-async function leakedCount(pw) {
-  try {
-    const h = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const r = await fetch(`/api/pigeon/pwned?p=${h.slice(0, 5)}`, { cache: "no-store" });
-    if (!r.ok) return 0;
-    for (const line of (await r.text()).split("\n")) { const [suf, n] = line.trim().split(":"); if (suf === h.slice(5)) return Number(n) || 0; }
-  } catch (_) { /* no answer: no check */ }
-  return 0;
-}
-const leakedSay = (n) => `This password has turned up in ${n === 1 ? "a data breach" : `${n.toLocaleString("en-GB")} data breaches`}, so it’s one of the first anyone would try. Choose another.`;
 /* ---------- composer and tab bar ---------- */
 const chatKm = (f) => (S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500);
 // A landing time chosen for this chat (one to one, not a /dumb pigeon), once it's still ahead
@@ -5263,31 +5250,16 @@ function drawSheet(refresh) {
       return;
     }
     case "security": {
-      // How protected you are at a glance, with each thing still to do a tap away; then the settings, grouped
-      const u = S.me, pk = passkeysSupported() || S.passkeys.length, lock = !!lockPrefs();
+      // The settings, grouped (a password and passkeys are the account's: Your Account opens its page)
+      const u = S.me, lock = !!lockPrefs();
       const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
       const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
       const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
-      const checks = [
-        { ok: true, label: "Messages end-to-end encrypted" },
-        { ok: u.emailOk !== false, label: u.emailOk === false ? "Confirm your email" : "Email confirmed", act: S.emailOn ? "confirmsend" : null, go: "Send Link" },
-        pk && { ok: S.passkeys.length > 0, label: S.passkeys.length ? `Passkey saved${S.passkeys.length > 1 ? ` (${S.passkeys.length})` : ""}` : "Add a passkey", act: "passkeys", go: "Add" },
-        passkeysSupported() && { ok: lock, label: lock ? "InFlight locks on this phone" : "Lock InFlight on this phone", act: "applock", go: "Turn On" },
-      ].filter(Boolean);
-      const todo = checks.filter((c) => !c.ok).length, frac = (checks.length - todo) / checks.length;
-      const row = (c) => `<${c.ok || !c.act ? "div" : `button type="button" data-act="${c.act}"`} class="secrow${c.ok ? " ok" : ""}"><span class="secdot" aria-hidden="true">${c.ok ? I.check : ""}</span><span class="sect">${c.label}</span>${!c.ok && c.act ? `<span class="secgo">${c.go}</span>` : ""}</${c.ok || !c.act ? "div" : "button"}>`;
-      const ring = `<svg viewBox="0 0 64 64" aria-hidden="true"><circle class="trk" cx="32" cy="32" r="28"/><circle class="arc" cx="32" cy="32" r="28" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/></svg>`;
       $layer.innerHTML = sheetHtml("Privacy & Security", `
-        <div class="secard ${todo ? "todo" : "ok"}">
-          <div class="sectop"><span class="secshield">${ring}${I.shield}</span><span class="wnt"><b>${todo ? `${todo} Thing${todo > 1 ? "s" : ""} to Do` : "Well Protected"}</b><small>${todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on."}</small></span></div>
-          <div class="seclist">${checks.map(row).join("")}</div>
-        </div>
         <div class="ghead">Account</div>
         <div class="group">
-          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed</span>' : "" })}
-          ${pk ? cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || "Off", chev: true }) : ""}
-          ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
-          ${accountPage() ? `<button type="button" class="cell has-icon" id="to-account" data-act="accountopen"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Profile, passkeys and devices, for every app on the site</span></span>${chevSm}</button>` : ""}
+          ${cell({ act: u.emailOk === false && S.emailOn ? "confirmsend" : null, icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? `<span class="warnc">Not confirmed${S.emailOn ? " · tap to send the link again" : ""}</span>` : "" })}
+          ${accountPage() ? `<button type="button" class="cell has-icon" id="to-account" data-act="accountopen"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Password, passkeys and devices, for every app on the site</span></span>${chevSm}</button>` : ""}
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">
@@ -5884,13 +5856,6 @@ function drawSheet(refresh) {
       });
       return;
     }
-    case "changepw":
-      if (!$("#f-current", $layer)) $layer.innerHTML = sheetHtml("Change Password", `<form id="pw-form" data-form="changepw" novalidate>
-        <div class="group mt-s">${field("current", "Current password", "password", "current-password")}</div>
-        <div class="group mt">${field("password", "New password", "password", "new-password")}</div>
-        <div class="gfoot">At least 10 characters. Other phones signed in to your account will be signed out.</div>${ferr}</form>`,
-        { left: { label: "Back", act: "securitysheet" }, right: { label: "Change", form: "pw-form" } });
-      return;
   }
 }
 // How It Flies off the Earth: the space pigeons for it (two lunar ones to the Moon, a laser one to Mars),
@@ -7502,7 +7467,6 @@ async function onClick1(e, t) {
       await pushDisable(true);
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
-    case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
   }
@@ -7694,25 +7658,6 @@ async function submitForm(e, form, kind) {
   } else if (kind === "unlock") {
     try { await busyBtn(btn, "Unlocking…", () => unlockWithPassword(v.password || "")); afterSignIn(); }
     catch (err) { showErr(err.message, err.field); }
-  } else if (kind === "changepw") {
-    if (!v.current) return showErr("Enter your current password.", "current");
-    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
-    { const n = await leakedCount(v.password); if (n) return showErr(leakedSay(n), "password"); }
-    try {
-      await busyBtn(btn, "Changing…", async () => {
-        let got;
-        try { got = await vaultWith(v.current); } catch (e) { throw e.status === 401 ? Object.assign(new Error("Your current password isn’t right."), { field: "current" }) : e; }
-        const { vault } = got, old = { lockKey: got.lockKey, proof: got.proof };
-        let ecdh;
-        try { ({ ecdh } = await E2E.unlock(old.lockKey, vault)); }
-        catch (_) { throw Object.assign(new Error("Your current password isn’t right."), { field: "current" }); }
-        const ns = E2E.newSalt(), nw = await E2E.fromPassword(v.password, ns);
-        await api("password", { method: "POST", body: { oldProof: old.proof, salt: ns, proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
-        S.secretJwk = ecdh;
-      });
-      S.sheet = null; renderSheet();
-      toast("Password changed. Any other phones were signed out.");
-    } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "reauth") {
     if (!v.password) return showErr("Enter your password.", "password");
     try {

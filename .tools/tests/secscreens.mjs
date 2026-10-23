@@ -51,12 +51,11 @@ const slow = (ms) => p.waitForTimeout(DEMO ? ms : Math.min(ms, 600));
 const scroll = async (y) => { await p.evaluate((y) => document.querySelector('.sheet .body')?.scrollBy({ top: y, behavior: 'smooth' }), y); await slow(1300); };
 const shot = (n) => p.screenshot({ path: `${out}/${n}.png` });
 
-// 1. Privacy & Security: the summary at the top, the things still to do, then the settings in groups
+// 1. Privacy & Security: the settings in groups (a password and passkeys are on the account's page)
 await p.click('[data-act=tab][data-id=account]'); await slow(900);
-await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await slow(1600);
-const card = await txt('.sheet .secard');
-ok(/3 Things to Do/.test(card) && /Messages end-to-end encrypted/.test(card) && /Confirm your email/.test(card) && /Add a passkey/.test(card) && /Lock InFlight on this phone/.test(card), 'Privacy & Security opens with how protected you are, and what’s left to do', card);
-ok(await p.locator('.sheet .secrow.ok').count() === 1 && await p.locator('.sheet button.secrow').count() === 3, 'one done (encryption), three a tap away');
+await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await slow(1600);
+ok(!(await p.$('.sheet .secard')) && !(await p.$('.sheet [data-act=passkeys]')) && !(await p.$('.sheet [data-act=changepw]')), 'Privacy & Security: no list of things to do, and no Passkeys or Change Password (the account’s page has them)');
+ok(/Not confirmed/.test(await txt('.sheet .group')), 'an email not confirmed yet says so', await txt('.sheet .group'));
 const heads = (await p.locator('.sheet .ghead').allInnerTexts()).join('|');
 ok(heads === 'Account|Encryption|This Phone|Who Sees What', 'then Account, Encryption, This Phone, Who Sees What', heads);
 ok(/1 key changed: check it/.test(await txt('.sheet [data-act=encryptionsheet]')), 'the Encryption row says a friend’s key changed');
@@ -97,14 +96,14 @@ ok(/Their key changed/.test(await txt('.sheet .safehero')) && await p.isVisible(
 await shot('safety-changed');
 // trusting it (they matched): no warning any more, and Privacy & Security says who to verify next
 await p.click('.sheet [data-act=trustsafe]'); await p.waitForFunction(() => !document.querySelector('.sheet'), null, { timeout: 10000 }); await slow(900);
-await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await slow(900);
+await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await slow(900);
 ok(/2 of 3 friends verified · Sam next/.test(await txt('.sheet [data-act=encryptionsheet]')) && await p.evaluate(() => { const b = document.querySelector('.sheet [data-act=encryptionsheet] .vbar'); return Math.abs(b.firstElementChild.offsetWidth / b.offsetWidth - 2 / 3) < 0.03; }), 'the Encryption row: 2 of 3 verified, with a bar two-thirds full, and who’s next', await txt('.sheet [data-act=encryptionsheet]'));
 
-// 4. Passkeys, explained when there are none
-await p.click('.sheet button.secrow[data-act=passkeys]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);
-ok(/No Password to Forget/.test(await txt('.sheet .pkhero')) && await p.isVisible('.sheet .wnfoot [data-act=pkadd]'), 'Passkeys: what they’re for, and one big Add button');
+// 4. Passkeys, explained when there are none (Lock InFlight needs one: turning it on opens them)
+await p.click('.sheet [data-act=applock]'); await p.waitForSelector('.sheet .pkhero'); await slow(1800);
+ok(/No Password to Forget/.test(await txt('.sheet .pkhero')) && await p.isVisible('.sheet .wnfoot [data-act=pkadd]'), 'Lock InFlight with no passkey: Passkeys, what they’re for, and one big Add button');
 await shot('passkeys');
-await p.click('.sheet header [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await slow(700);
+await p.click('.sheet header [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await slow(700);
 
 // 5. Signed-In Phones: only this one, then two more (one new today), and signing one out
 sql(`UPDATE pg_sessions SET place = 'London, United Kingdom' WHERE user_id = '${gs.me.id}'`);
@@ -114,7 +113,7 @@ ok(/Only This Phone/.test(one1) && /Active now/.test(one1) && /In the browser/.t
 await shot('sessions-one');
 const H = Date.now();
 sql(`INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place) VALUES ('${'a'.repeat(64)}', '${gs.me.id}', ${H - 864e5 * 9}, ${H - 3 * 3600e3}, ${H - 864e5 * 9}, 'Mac · Chrome', 'Manchester, United Kingdom'), ('${'b'.repeat(64)}', '${gs.me.id}', ${H - 2 * 3600e3}, ${H - 2 * 3600e3}, ${H - 2 * 3600e3}, 'Windows · Edge', 'Lagos, Nigeria')`);
-await p.click('.sheet header [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await p.waitForTimeout(1500);
+await p.click('.sheet header [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await p.waitForTimeout(1500);
 ok((await txt('.sheet [data-act=sessionssheet]')).includes('3'), 'Privacy & Security’s row says how many: 3', await txt('.sheet [data-act=sessionssheet]'));
 await p.evaluate(() => document.querySelector('.sheet [data-act=sessionssheet]').scrollIntoView({ block: 'center' })); await slow(600);
 await shot('security-phones');
@@ -129,7 +128,7 @@ ok(/2 Places Signed In/.test(await txt('.sheet .sesshero')) && !(await p.$('.she
 await p.click('.sheet header [data-act=securitysheet]'); await slow(700);
 await p.keyboard.press('Escape'); await slow(500);
 
-// 6. everything done: Well Protected
+// 6. everything done: the lock on
 sql(`UPDATE pg_users SET email_ok = 1 WHERE handle = 'geo'`);
 sql(`INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, created_at, used_at) VALUES ('pk-demo', '${gs.me.id}', 'x', -7, 'Pixel 8', ${Date.now() - 864e5 * 3}, ${Date.now() - 3600e3})`);
 await p.reload(); await p.waitForSelector('.tabs'); await p.waitForTimeout(800);
@@ -138,20 +137,17 @@ await p.evaluate((uid) => localStorage.setItem('inflight-lock', JSON.stringify({
 const ready = await p.evaluate(() => !!document.querySelector('[data-act=tab][data-id=account]'));
 if (ready) {
   await p.click('[data-act=tab][data-id=account]'); await slow(700);
-  await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await slow(1800);
-  ok(/Well Protected/.test(await txt('.sheet .secard')) && await p.isVisible('.sheet .secard.ok') && !(await p.$('.sheet button.secrow')), 'with all four done: Well Protected, nothing to do');
+  await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await slow(1800);
+  ok(await p.locator('.sheet [data-act=applock][aria-checked=true]').count() === 1 && !/Not confirmed/.test(await txt('.sheet .group')), 'with a passkey, a confirmed email and the lock on: Lock InFlight on, and nothing to confirm');
   await shot('security-done');
-  await p.click('.sheet [data-act=passkeys]'); await p.waitForSelector('.sheet [data-act=pkdel]'); await slow(1500);
-  ok(/Pixel 8/.test(await txt('.sheet .group')) && /used 1h ago|used 1 hour ago|used/.test(await txt('.sheet .group')), 'a saved passkey says when it was last used', await txt('.sheet .group'));
-  await shot('passkeys-saved');
 } else ok(false, 'the app opened after the lock was turned on');
 // dark (the app picks its theme as it opens; the lock off first, as a test phone can't unlock it)
 await p.evaluate(() => { localStorage.removeItem('inflight-lock'); localStorage.setItem('inflight-theme', 'dark'); });
 await fetch(K.BASE + '/api/pigeon/me', { method: 'PATCH', headers: { Authorization: 'Bearer ' + gs.token, 'Content-Type': 'application/json' }, body: JSON.stringify({ appearance: 'dark' }) });
 await p.reload(); await p.waitForSelector('.tabs'); await p.waitForTimeout(600);
-await p.click('[data-act=tab][data-id=account]'); await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await p.waitForTimeout(1200); await shot('security-dark');
+await p.click('[data-act=tab][data-id=account]'); await p.click('#screen > main.view [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await p.waitForTimeout(1200); await shot('security-dark');
 await p.click('.sheet [data-act=sessionssheet]'); await p.waitForSelector('.sheet .sessrow'); await p.waitForTimeout(1200); await shot('sessions-dark');
-await p.click('.sheet header [data-act=securitysheet]'); await p.waitForSelector('.sheet .secard'); await p.waitForTimeout(700);
+await p.click('.sheet header [data-act=securitysheet]'); await p.waitForSelector('.sheet [data-act=encryptionsheet]'); await p.waitForTimeout(700);
 await p.click('.sheet [data-act=encryptionsheet]'); await p.waitForSelector('.sheet .enchero'); await p.waitForTimeout(1200); await shot('encryption-dark');
 await p.evaluate(() => document.querySelector('.sheet .body')?.scrollBy({ top: 600 })); await p.waitForTimeout(500);
 await p.click('.sheet [data-act=safety] >> text=Mira'); await p.waitForSelector('.sheet .safehero'); await p.waitForTimeout(1200); await shot('safety-dark');
