@@ -262,11 +262,6 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sheet-body .group { background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
 .swap { animation: swap 0.42s var(--ease); }
 @keyframes swap { from { opacity: 0; transform: translateX(14px); } }
-.photo-row { display: grid; justify-items: center; gap: 14px; padding: 6px 0 2px; }
-.photo-row .avatar.small { width: 92px; height: 92px; font-size: 38px; }
-.photo-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
-.photo-row .pill { margin: 0; }
-.photo-row .pill.quiet { background: none; box-shadow: none; color: var(--danger); }
 .meter { height: 6px; border-radius: 3px; background: var(--field); overflow: hidden; margin: 0 4px; }
 .meter i { display: block; height: 100%; width: calc(var(--m, 0) * 100%); border-radius: inherit; background: var(--mc, var(--danger)); transition: width 0.45s var(--ease), background-color 0.3s; }
 .hint { margin: -4px 6px 0; font-size: 13px; color: var(--text-3); }
@@ -379,8 +374,6 @@ dialog.sheet.dragging { animation: none; transition: none; }
 @media (prefers-reduced-motion: reduce) { .seg .thumb, .ring .arc, .ck-row.ok .ck-dot { transition: none; animation: none; } }
 
 /* ---- a few more ---- */
-.avatar .on-photo { position: absolute; z-index: 1; width: 26px; height: 26px; color: #fff; border-width: 2.5px; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5)); }
-.avatar:has(.on-photo) img { filter: brightness(0.6); transition: filter 0.3s; }
 .toast { right: auto; bottom: auto; margin: 0; border: 0; color: var(--text); overflow: visible; }
 .toast.bad svg { color: var(--danger); }
 .welcome .new { margin: 6px 0 0; font-size: 14px; color: var(--text-3); }

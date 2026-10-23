@@ -244,7 +244,7 @@ Motion, solid with Reduce Transparency.
   server too, 409).
 - **Signed in:** your card: your photo as its poster (the part of it you chose in view), carried on, blurred, behind
   the buttons, with your name and handle on it in large type (your email's in Edit profile, and Sign-in and security);
-  **Edit profile** and **Your code** under it. Its camera opens **Your photo**: drag the photo (or use the arrow keys) to choose what shows, with the circle every
+  **Edit profile** (your name and handle) and **Your code** under it. Its camera opens **Your photo** (the one place to change it): drag the photo (or use the arrow keys) to choose what shows, with the circle every
   app shows beside it, then Save; or choose another, or remove it. With no photo, the card is in the site's colours with
   your initial, and **Add a photo** goes to the picker, then to Your photo. A photo is saved twice: the 512px circle every
   app shows (cut around the part you chose), and the card's poster, the whole photo at most 1600px across

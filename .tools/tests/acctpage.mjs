@@ -163,20 +163,23 @@ await L.p.click('.hero .pill'); await L.p.waitForSelector('#sheet[open] .sheet-b
 await L.p.fill('#sheet .at input', 'rowan');
 await L.p.click('#sheet .link.done'); await waitText(L, /once a day/, '#sheet', 10000);
 ok(/once a day/.test(await sheetText(L)), 'a handle changes once a day: said, in the sheet', (await sheetText(L)).slice(-90));
-// a photo: made square and small here, then the account's
+// a photo (from the card's camera, not Edit profile): saved as a circle for every app, 512 pixels square, and whole for
+// the card
+await L.p.click('#sheet .link:text-is("Cancel")'); await L.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(L, 300);
 const jpeg = await L.p.evaluate(async () => { const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const g = c.getContext('2d');
   const gr = g.createLinearGradient(0, 0, 1000, 700); gr.addColorStop(0, '#ffb36b'); gr.addColorStop(1, '#d9467a'); g.fillStyle = gr; g.fillRect(0, 0, 1000, 700);
   g.fillStyle = '#fff3'; g.beginPath(); g.arc(500, 300, 170, 0, 7); g.fill(); g.fillStyle = '#ffffffcc'; g.beginPath(); g.arc(500, 900, 330, 0, 7); g.fill();
   return [...new Uint8Array(await (await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9))).arrayBuffer())]; });
-await L.p.setInputFiles('#sheet input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(jpeg) });
+await L.p.setInputFiles('main .poster-card input[type=file]', { name: 'me.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(jpeg) });
+await L.p.waitForSelector('#sheet[open] .pv-frame img', { timeout: 15000 }); await settle(L, 500);
+await L.p.click('#sheet .link.done');
 await L.p.waitForSelector('main .pc-photo img', { timeout: 20000 }).catch(() => {});
 await settle(L, 700);
-const photo = await L.p.evaluate(async () => { const s = async (q) => { const i = document.querySelector(q); if (!i) return null; await i.decode().catch(() => {}); return [i.naturalWidth, i.naturalHeight]; };
-  return [await s('#sheet .photo-row .avatar img'), await s('main .pc-photo img')]; });
+const photo = await L.p.evaluate(async () => { const size = async (src) => { const b = await createImageBitmap(await (await fetch(src)).blob()); return [b.width, b.height]; };
+  return [await size('/api/account/me/photo'), await size(document.querySelector('main .pc-photo img').src)]; });
 ok(photo[0]?.[0] === 512 && photo[0]?.[1] === 512 && photo[1]?.[0] === 1000 && photo[1]?.[1] === 700 && user('rowan_h').avatar_at > 0 && user('rowan_h').poster_at > 0,
   'a photo: the middle square, 512 pixels, for every app, and the whole of it for your card, shown at once', JSON.stringify(photo));
 await shot(L, '04-photo');
-await L.p.click('#sheet .link:text-is("Cancel")'); await L.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(L, 300);
 
 // ---- 4. A new password: the key locked anew with it, here; InFlight opens with it on a new phone ----
 await openRow(L, 'Password');

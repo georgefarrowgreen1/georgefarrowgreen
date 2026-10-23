@@ -1055,9 +1055,7 @@ function profileView() {
   const m = S.me, said = h("p.said", { role: "alert" });
   const name = h("input", { type: "text", value: m.name, autocomplete: "name", maxlength: "50", enterkeyhint: "done" });
   const handle = h("input", { type: "text", value: m.handle, autocomplete: "off", autocapitalize: "none", spellcheck: "false", maxlength: "20", enterkeyhint: "done" });
-  const file = h("input.vh", { type: "file", accept: "image/*", tabindex: "-1", onchange: () => file.files[0] && changePhoto(file.files[0]) });
   const done = h("button.link.done", { type: "button", onclick: save }, "Done");
-  const pic = avatar(m, true);
   async function save() {
     const changes = {};
     if (name.value.trim() !== m.name) changes.name = name.value.trim();
@@ -1069,28 +1067,13 @@ function profileView() {
       if (justEditing()) setTimeout(backToApp, 1100);         // (back to InFlight, where it shows already)
     } catch (e) { say(said, e.message, e.field === "handle" ? handle : name); }
   }
-  async function changePhoto(f) {
-    pic.append(h("span.spin.on-photo"));
-    try {
-      const img = await readImage(f), [circle, poster] = await Promise.all([asAvatar(img, [50, 50]), asPoster(img)]);
-      S.me = await call("me/photo", { method: "PUT", body: circle, type: "image/jpeg" });
-      S.me = await call("me/poster?focus=50,50", { method: "PUT", body: poster, type: "image/jpeg" });
-      redraw(); render(); toast("Photo updated.");
-    } catch (e) { pic.querySelector(".spin")?.remove(); say(said, e.message); }
-  }
   for (const i of [name, handle]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
   return { title: "Edit profile",
     left: h("button.link", { type: "button", onclick: () => (justEditing() ? backToApp() : closeSheet()) }, "Cancel"), right: done,
     body: [
-      h("div.photo-row", {}, pic, h("div.photo-acts", {},
-        h("button.pill", { type: "button", onclick: () => file.click() }, icon("camera", 17), m.photoAt ? "Change photo" : "Add a photo"),
-        m.photoAt && h("button.pill.quiet", { type: "button", onclick: async (e) => {
-          try { S.me = await busy(e.currentTarget, "Removing…", () => call("me/photo", { method: "DELETE" })); redraw(); render(); toast("Photo removed."); }
-          catch (err) { say(said, err.message); }
-        } }, "Remove")), file),
       h("div.form", {}, field("Name", name), field("Handle", h("div.at", {}, "@", handle)),
         field("Email", h("input", { type: "email", value: m.email || "", readonly: true, tabindex: "-1" }))),
-      h("p.hint", { text: "Your photo, name and handle are the same in every app on the site. Your handle can change once a day." }),
+      h("p.hint", { text: "Your name and handle are the same in every app on the site, and so is your photo (the camera on your card). Your handle can change once a day." }),
       said] };
 }
 // A picture, read (a file, or the poster fetched again)
