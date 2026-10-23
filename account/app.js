@@ -349,7 +349,7 @@ function appView(id) {
       names.length > 0 && h("div.row.plain.places", {}, h("span.tx", {}, h("small", { text: names.join(" · ") + (w.places > names.length ? ` · and ${w.places - names.length} more` : "") }))),
       h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications" })), h("span.val", { text: notifySaid(w.notify) })),
       h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Units" })), h("span.val", { text: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }) }))),
-    h("p.hint", { text: "Kept with your account, so they’re the same on every device you use Weather on." }), open] };
+    open] };
 }
 
 // Your email isn't confirmed (or a new one's waiting to be): said up top, with what to do
