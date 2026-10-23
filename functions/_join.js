@@ -86,9 +86,9 @@ export async function makeAccount(env, request, b) {
   }
   // (new accounts start with names hidden on the lock screen: they can turn them on)
   try {
-    await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, notify_prefs)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, handle, name, email, pub, b.salt, await proofHash(env, b.proof), await lockVault(env, id, vault), SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
+    await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, pw_at, notify_prefs)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, handle, name, email, pub, b.salt, await proofHash(env, b.proof), await lockVault(env, id, vault), SWIFT_MAX, t, t, t, JSON.stringify({ names: false })).run();
   } catch (e) {
     if (claimed) await D.prepare("UPDATE pg_invites SET used_at = NULL, used_by = NULL WHERE hash = ? AND used_by = ?").bind(claimed, id).run();
     throw e;
@@ -136,7 +136,7 @@ export async function completeReset(env, request, b) {
   if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
   await D.batch([
     // (an email change still waiting is called off: it may have been asked for by whoever made the reset needed)
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ?, pw_leaked = 0, pw_checked_at = NULL, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), pub, u.id),
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = NULL, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), pub, t, u.id),
     // (a link that came by email shows the address is theirs too)
     ...(reset.created_by !== "admin-link" ? [D.prepare("UPDATE pg_users SET email_ok = COALESCE(email_ok, ?) WHERE id = ?").bind(t, u.id)] : []),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),

@@ -14,10 +14,13 @@
 // up with changes made elsewhere when you come back to it. Links in the account's emails open here (#confirm=, #email=,
 // #keep=).
 //
-// And: your photo changed by tapping it; your code (a QR code of the link that adds you in InFlight); what each app keeps
-// of yours, in its own sheet; the check-up kept in Sign-in and security, opened as a sheet; "Not you?" on a password sign-in
-// from somewhere else; a word about a passkey after signing in with a password; device and passkey rows that slide to
-// sign out or remove (on a touch screen); and two columns on a wide one.
+// And: your photo changed by tapping it; your code (a QR code of the link that adds you in InFlight); each app's card, a
+// way into it and what you have there (what it keeps of yours in its own sheet, behind ⓘ); the check-up kept in Sign-in
+// and security, opened as a sheet; rows that say how things are (and, where there's something to do, a button); your
+// name and photo kept at the top once the profile's scrolled away; what each app emails you; recent activity with a
+// filter, the app on each, the place said once a day; "Not you?" on a password sign-in from somewhere else; a word about
+// a passkey after signing in with a password; device and passkey rows that slide to sign out or remove (on a touch
+// screen); and two even columns on a wide one.
 
 import { E2E, b64url, fromB64url } from "./crypto.js";
 
@@ -94,6 +97,7 @@ const ICONS = {
   pencil: '<path d="M4.5 19.5 5.3 15.6 15.8 5.1a2 2 0 0 1 2.8 0l.3.3a2 2 0 0 1 0 2.8L8.4 18.7z"/>',
   undo: '<path d="M9 14 4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-3"/>',
   qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
+  info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
 };
 function icon(name, size = 20, width = 2) {
@@ -131,6 +135,14 @@ function ago(t) {
   return "on " + day(t);
 }
 const day = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+// (a day as briefly as it'll go, for a row's value: today, yesterday, 3 Oct, or Oct 2025)
+function when(t) {
+  const d = new Date(t), now = new Date();
+  if (d.toDateString() === now.toDateString()) return "today";
+  if (d.toDateString() === new Date(Date.now() - 86400e3).toDateString()) return "yesterday";
+  return d.toLocaleDateString("en-GB", d.getFullYear() === now.getFullYear() ? { day: "numeric", month: "short" } : { month: "short", year: "numeric" });
+}
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ---- appearance: the account's (Automatic, Light or Dark, as InFlight has it), remembered here for next time ----
 function theme(pref) {
@@ -212,6 +224,7 @@ function render() {
   if (rise) S.riseUntil = Date.now() + i * 70 + 950;
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
+  whoBar();
   scrolled();
   if (S.said) { const { text, bad } = S.said; S.said = null; toast(text, bad, 5000); }
 }
@@ -225,23 +238,36 @@ function avatar(m, small) {
 function section(title, group, foot) {
   return h("section.section", {}, title && h("h3", { text: title }), group, foot && h("p.foot", { text: foot }));
 }
-function row({ icon: ic, tint, title, sub, value, onclick, label, cls = "" }) {
+// (value: how things are, amber where it needs you (warn); or, where there's one thing to do, that (a node: a button's look))
+function row({ icon: ic, tint, title, sub, value, warn, onclick, label, cls = "" }) {
   return h("button.row" + cls, { type: "button", onclick, "aria-label": label },
     h(`span.ic.${tint}`, {}, icon(ic, 19)),
     h("span.tx", {}, h("b", { text: title }), sub && h("small", { text: sub })),
-    value != null && h("span.val", { text: String(value) }),
+    value != null && (value instanceof Node ? h("span.val", {}, value) : h("span.val" + (warn ? ".warn" : ""), { text: String(value) })),
     h("span.chev", {}, icon("chev", 16, 2.4)));
 }
 const unitsSaid = (u) => [u.temp === "f" ? "°F" : "°C", { mph: "mph", kmh: "km/h", ms: "m/s", kn: "knots" }[u.wind], u.precip].join(" · ");
 
+// (two even columns on a wide screen: who you are, your apps and your data on the left, the settings on the right)
+const wide = matchMedia("(min-width: 1000px)");
+wide.addEventListener("change", () => { if (S.me?.signedIn && !S.me.deleting && !S.reset) render(); });
+// (this device, as Signed-in devices names it, in a word: "This iPhone")
+const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; return /^(iPhone|iPad|Mac)$/.test(k) ? `This ${k}` : "This device"; };
 function signedIn(r) {
-  const m = S.me, n = m.apps?.weather?.places || 0;
-  // (each app's tile opens what it keeps of yours, and the way into it)
-  const app = (id, name, img, what) => h("button.app.glass", { type: "button", onclick: () => openSheet(() => appView(id)) },
-    h("img", { src: img, alt: "", width: 54, height: 54 }), h("b", { text: name }), h("span", { text: what }),
-    h("span.open", {}, "Details", icon("chev", 15, 2.4)));
-  // (two columns on a wide screen: who you are and how safe, beside everything else)
-  const a = [
+  const m = S.me, ap = m.apps || {}, pw = m.password || {}, here = m.devices.find((d) => d.current);
+  // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
+  const app = (id, name, img, use, sub) => h("div.app.glass", {},
+    h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
+      h("button.about", { type: "button", "aria-label": `About ${name}`, onclick: () => openSheet(() => appView(id)) }, icon("info", 17, 1.9))),
+    h("b", { text: name }), h("span.use", { text: use }), h("span.sub", { text: sub }),
+    h("a.open-app", { href: siteUrl(id === "inflight" ? "chat" : "weather"), "aria-label": `Open ${name}` }, "Open", icon("open", 15, 2.6)));
+  const f = ap.inflight || {}, w = ap.weather || {}, alerts = !!(w.notify?.places || w.notify?.brief), plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const apps = r(section("Your apps", h("div.apps", {},
+    app("inflight", "InFlight", "/apps/inflight.png", f.friends ? `${plural(f.friends, "friend", "friends")} · ${f.sent || 0} sent` : "No friends yet",
+      f.places ? `${plural(f.places, "place", "places")} in your passport` : "Letters carried by pigeon"),
+    app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
+      w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"))));
+  const top = [
     fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name)),
     r(h("h1.large", { text: "Account" })),
     r(h("section.hero.glass", { "aria-label": "Your profile" }, avatarButton(m),
@@ -252,32 +278,33 @@ function signedIn(r) {
         h("button.pill", { type: "button", onclick: () => openSheet(profileView) }, "Edit profile"),
         h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code")))),
     (!m.emailOk || m.emailNew) && r(banner(m)),
-    m.password?.leaked && r(leakBanner()),
+    pw.leaked && r(leakBanner()),
   ];
-  const b = [
-    r(section("Your apps", h("div.apps", {},
-      app("inflight", "InFlight", "/apps/inflight.png", "Letters carried by pigeon, end-to-end encrypted."),
-      app("weather", "Weather", "/apps/weather.png", n ? `${n} saved ${n === 1 ? "place" : "places"}, in step on every device.` : "Forecasts, radar and alerts, in step on every device.")))),
-    r(section("Sign-in and security", h("div.group.glass", {},
-      checkupRow(m),
-      row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", onclick: () => openSheet(emailView) }),
-      row({ icon: "key", tint: "blue", title: "Password", value: "Change", onclick: () => openSheet(passwordView) }),
-      row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || "None", onclick: () => openSheet(passkeysView) }),
-      row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length, onclick: () => openSheet(devicesView) }),
-      row({ icon: "clock", tint: "grey", title: "Recent activity", onclick: () => openSheet(activityView) })),
-      "Your email, password and passkeys sign you in to every app on the site.")),
-    r(section("Preferences", h("div.group.glass", {},
-      row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
-      row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) })),
-      "For every app on the site that has them.")),
-    r(section("Your data", h("div.group.glass", {},
-      row({ icon: "download", tint: "green", title: "Download your data", onclick: () => openSheet(exportView) })))),
+  // each row says how things are; where there's one thing to do, it says so
+  const security = r(section("Sign-in and security", h("div.group.glass", {},
+    checkupRow(m),
+    row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", warn: !m.emailOk, onclick: () => openSheet(emailView) }),
+    row({ icon: "key", tint: "blue", title: "Password",
+      value: pw.setAt ? `${Math.abs(pw.setAt - m.since) < 5 * 60e3 ? "Set" : "Changed"} ${when(pw.setAt)}` : null, onclick: () => openSheet(passwordView) }),
+    row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || h("span.mini.go", { text: "Add one" }), onclick: () => openSheet(passkeysView) }),
+    row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length === 1 && here ? thisOne(here) : m.devices.length, onclick: () => openSheet(devicesView) }),
+    row({ icon: "clock", tint: "grey", title: "Recent activity", value: m.lastActivity ? cap(when(m.lastActivity)) : null, onclick: () => openSheet(activityView) })),
+    "Your email, password and passkeys sign you in to every app on the site."));
+  const prefs = r(section("Preferences", h("div.group.glass", {},
+    row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
+    row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
+    row({ icon: "mail", tint: "red", title: "Emails", value: m.emails?.inflight ? "All on" : "Security only", onclick: () => openSheet(emailsView) })),
+    "For every app on the site that has them."));
+  const data = r(section("Your data", h("div.group.glass", {},
+    row({ icon: "download", tint: "green", title: "Download your data", onclick: () => openSheet(exportView) }))));
+  const ending = [
     r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")),
       "Signs you out of every app on the site, in this browser.")),
     r(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => openSheet(deleteView) }, "Delete account")))),
     r(h("footer.foot", {}, h("div", { text: `Your account since ${new Date(m.since).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` }),
       h("a", { href: siteUrl(""), text: "georgefarrowgreen.com" }))),
   ];
+  const [a, b] = wide.matches ? [[...top, apps, data], [security, prefs, ...ending]] : [top, [apps, security, prefs, data, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
 // Your photo, tapped: a new one, straight from the picker (the camera badge says so)
@@ -365,7 +392,7 @@ function checks(m) {
 }
 function checkupRow(m) {
   const todo = checks(m).filter((x) => !x.ok).length;
-  return row({ icon: "shield", tint: todo ? "amber" : "green", title: "Security check-up", value: todo ? `${todo} to do` : "All done", onclick: () => openSheet(checkupView) });
+  return row({ icon: "shield", tint: todo ? "amber" : "green", title: "Security check-up", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(checkupView) });
 }
 function checkupView() {
   const items = checks(S.me), todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
@@ -417,14 +444,17 @@ function signedOut(r) {
     r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : logo())),
     r(h("h1", { text: head[0] })),
     head[1] && r(h("p", { text: head[1] })),
+    mode === "signin" && r(h("p.lead", {}, "One sign-in for ", h("img", { src: "/apps/inflight.png", alt: "" }), h("b", { text: "InFlight" }),
+      " and ", h("img", { src: "/apps/weather.png", alt: "" }), h("b", { text: "Weather" }))),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : signinCard()),
-    mode === "signin" && r(h("div.works", {}, h("span", { text: "Works with" }), h("img", { src: "/apps/inflight.png", alt: "InFlight", title: "InFlight" }), h("img", { src: "/apps/weather.png", alt: "Weather", title: "Weather" }))),
     r(mode === "signin" ? joinLine() : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
   ];
 }
+// (how a new account's made: here, where anyone can, or with the invite this page was opened with; else by invitation,
+// said plainly rather than a link to a page that says so)
 function joinLine() {
   return S.join?.open || S.join?.ok ? h("p.foot.new", { id: "joinline" }, "New here? ", h("button.link", { type: "button", onclick: () => gate("join") }, "Create your account"))
-    : h("p.foot.new", { id: "joinline", text: S.join && !S.join.pending ? "New accounts are by invitation." : "" });
+    : h("p.foot.new.invite", { id: "joinline" }, ...(S.join && !S.join.pending ? [h("b", { text: "New here?" }), " Accounts are by invitation: open the link you were sent to make yours."] : []));
 }
 // Opened from an app, signed in there: carry on as that account here, said yes to
 function handoffPage(r) {
@@ -1091,24 +1121,33 @@ const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], pa
   "passkey-remove": ["passkey", "grey"], "signout-device": ["signout", "grey"], "signout-others": ["signout", "grey"], "signout-stale": ["signout", "grey"],
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
   "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"] };
+const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
+const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Account: "/icon.svg?v=2" };
 function activityView() {
+  let events = null, show = "all";
   const box = h("div.activity", { "aria-busy": "true" }, h("div.empty", {}, h("span.spin")));
-  call("activity").then(({ events }) => {
-    if (!box.isConnected) return;
-    box.removeAttribute("aria-busy");
-    if (!events.length) return box.replaceChildren(h("div.group", {}, h("div.empty", { text: "Nothing in the last 30 days." })));
+  const draw = () => {
+    const list = events.filter((e) => show === "all" || (show === "signins") === SIGNINS.has(e.kind));
+    if (!list.length) return box.replaceChildren(h("div.group", {}, h("div.empty", { text: show === "all" ? "Nothing in the last 30 days." : "None of these in the last 30 days." })));
     const byDay = new Map();
-    for (const e of events) { const k = dayWord(e.at); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); }
-    box.replaceChildren(...[...byDay].map(([k, list]) => h("div.day.swap", {},
-      h("h4", { text: k }),
-      h("div.group", {}, list.map((e) => { const [ic, tint] = KIND_LOOK[e.kind] || ["clock", "grey"];
-        return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 18)),
-          h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }),
-            h("small", { text: [new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }), e.app, e.device, e.place].filter(Boolean).join(" · ") })),
-          elsewhere(e) && h("button.mini", { type: "button", onclick: () => pushSheet(() => notMeView(e)) }, "Not you?")); })))));
-  }).catch((e) => { if (box.isConnected) box.replaceChildren(h("div.group", {}, h("div.empty", { text: e.message }))); });
+    for (const e of list) { const k = dayWord(e.at); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); }
+    box.replaceChildren(...[...byDay].map(([k, day]) => {
+      // (where most of the day's happened, said once by the day; a row's own place only where it's somewhere else)
+      const n = new Map(); for (const e of day) if (e.place) n.set(e.place, (n.get(e.place) || 0) + 1);
+      const place = [...n].sort((x, y) => y[1] - x[1])[0]?.[0] || null;
+      return h("div.day", {}, h("h4", {}, k, place && h("small", { text: ` · ${place}` })),
+        h("div.group", {}, day.map((e) => { const [ic, tint] = KIND_LOOK[e.kind] || ["clock", "grey"];
+          return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 18), e.app && APP_MARK[e.app] && h("img.app-mark", { src: APP_MARK[e.app], alt: e.app })),
+            h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }), h("small", { text: [e.device, e.place !== place && e.place].filter(Boolean).join(" · ") || e.app || "" })),
+            h("span.end", {}, h("span.t", { text: new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) }),
+              elsewhere(e) && h("button.mini", { type: "button", onclick: () => pushSheet(() => notMeView(e)) }, "Not you?"))); })));
+    }));
+  };
+  call("activity").then((r) => { if (!box.isConnected) return; events = r.events; box.removeAttribute("aria-busy"); draw(); })
+    .catch((e) => { if (box.isConnected) box.replaceChildren(h("div.group", {}, h("div.empty", { text: e.message }))); });
   return { title: "Recent activity", body: [
     h("p", { text: "What’s happened to your account in the last 30 days, in every app on the site. Something you don’t recognise? Change your password." }),
+    seg("Show", [["all", "All"], ["signins", "Sign-ins"], ["changes", "Changes"]], "all", (v) => { show = v; if (events) draw(); }),
     box] };
 }
 // (a sign-in with a password from a device or place other than this browser's: a passkey one needs your own device)
@@ -1240,6 +1279,29 @@ function unitsView() {
   ] };
 }
 
+// ---- emails: what each app sends you (each from its own address). The account's, about signing in and its security,
+// always; InFlight's, on or off here as in its own Notifications (which ones, those say); Weather's are on the phone ----
+function emailsView() {
+  const m = S.me, said = h("p.said", { role: "alert" });
+  const sw = h("input.switch", { type: "checkbox", role: "switch", checked: !!m.emails?.inflight, disabled: !m.emailOk, onchange: async () => {
+    sw.disabled = true; say(said, "");
+    try { S.me = await call("prefs", { method: "PUT", body: { emails: { inflight: sw.checked } } }); patch(); }
+    catch (e) { sw.checked = !sw.checked; say(said, e.message); }
+    finally { sw.disabled = !S.me.emailOk; }
+  } });
+  const head = (img, name) => h("h4.app-k", {}, h("img", { src: img, alt: "" }), name);
+  return { title: "Emails", body: [
+    h("p", { text: "What each app emails you, from its own address." }),
+    head("/icon.svg?v=2", "Account"),
+    h("div.group", {}, h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Sign-ins and security" }), h("small", { text: "So you’d know if it wasn’t you" })),
+      h("span.val", { text: "Always on" }))),
+    head("/apps/inflight.png", "InFlight"),
+    h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications by email" }),
+      h("small", { text: m.emailOk ? "Pigeons landing, friend requests and your week in flight, as its Notifications have them" : "Confirm your email first" })), sw)),
+    h("p.hint", { text: "Weather tells you on your phone instead: its alerts are in its own Settings." }),
+    said] };
+}
+
 // ---- your data, as a file ----
 function exportView() {
   const said = h("p.said", { role: "alert" });
@@ -1317,6 +1379,19 @@ async function refresh() {
 document.addEventListener("visibilitychange", refresh);
 addEventListener("focus", refresh);
 setInterval(refresh, 60000);
+
+// ---- whose account, kept in sight: once the profile's scrolled away, your photo and name in a bar of glass at the top
+// (a tap on it goes back to the top) ----
+const bar = h("div.whobar", { "aria-hidden": "true", onclick: () => scrollTo({ top: 0, behavior: still.matches ? "auto" : "smooth" }) });
+document.body.append(bar);
+const heroSeen = new IntersectionObserver(([e]) => bar.classList.toggle("on", !e.isIntersecting && e.boundingClientRect.top < 0), { rootMargin: "-64px 0px 0px 0px" });
+function whoBar() {
+  heroSeen.disconnect();
+  const m = S.me, hero = $("main .hero");
+  if (!m?.signedIn || !hero) { bar.classList.remove("on"); return; }
+  bar.replaceChildren(avatar(m, true), h("b", { text: m.name }));
+  heroSeen.observe(hero);
+}
 
 // ---- glass behind the status bar, once the page has scrolled under it ----
 let ticking = false;

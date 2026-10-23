@@ -227,9 +227,11 @@ Motion, solid with Reduce Transparency.
   is: a flat indigo sky (the page's own night sky, at dusk), a flat warm head where Weather has its sun, and frosted
   glass shoulders where Weather has its cloud, the head showing softly through them, with the same fine light rim and
   faint shadow. It's the mark at the top of the page where you sign in, join, or carry on from an app.
-- **Signed out:** under "Your account", sign in with a passkey (the site's: one made in any app works here) or your email and password
+- **Signed out:** under "Your account" (and "One sign-in for InFlight and Weather", with their icons), sign in with a
+  passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
-  them. Every app on the site signs in the same way, in the same order and words: a passkey first, then "or with your
+  them. Under that, how a new account's made: **Create your account** where one can be (with an invite, or on a test
+  server), else plainly "New here? Accounts are by invitation: open the link you were sent to make yours". Every app on the site signs in the same way, in the same order and words: a passkey first, then "or with your
   email", the form, **Forgot password?**, and **New here? Create your account**, both of which open this page.
 - **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
   No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
@@ -252,9 +254,13 @@ Motion, solid with Reduce Transparency.
   server too, 409).
 - **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
   camera badge) to pick a new one straight away. **Your apps**
-  (a tile for each); **Sign-in and security** (starting with the **Security check-up**, below), **Preferences**, **Your data**, **Sign out** (of every app on the site, in
-  this browser) and **Delete account**. On a wide screen (1000 pixels and up), two columns: the profile and check-up
-  stay in view on the left while the rest scrolls on the right.
+  (a card for each); **Sign-in and security** (starting with the **Security check-up**, below), **Preferences**, **Your data**, **Sign out** (of every app on the site, in
+  this browser) and **Delete account**. Each row says how things are, not what to do: the check-up "2 to do" and an
+  unconfirmed email in amber, the password "Set today" or "Changed 3 Oct" (`pg_users.pw_at`, kept from now on, and for
+  accounts from before as far back as recent activity goes), passkeys **Add one** where there are none, devices "This
+  iPhone" where it's the only one, recent activity when the latest was. Once the profile's scrolled away, a bar of
+  glass at the top keeps your photo and name in sight (a tap goes back up). On a wide screen (1000 pixels and up), two
+  even columns: your profile, your apps and your data on the left, sign-in and security and preferences on the right.
 - **Security check-up:** a row at the top of Sign-in and security that says how it stands ("All done", or "2 to do"
   with an amber icon), kept off the page itself. Tapped, a sheet: a ring for how far along, then four checks (email
   confirmed, a passkey saved, the password not in a known data breach, no devices left unused for 3 months), each one
@@ -262,7 +268,8 @@ Motion, solid with Reduce Transparency.
   check also said up top, in a banner with **Change**, as an unconfirmed email is.
 - **Your code:** a QR code of the link that adds you in InFlight (`#add=handle`, drawn by InFlight's own `pigeon/qr.js`,
   shared here as `/qr.js`), for a friend's camera, with **Share** (where the browser has a share sheet) and **Copy link**.
-- **Your apps:** each tile opens a sheet of what that app keeps of yours, and **Open** to go to it. InFlight: how many
+- **Your apps:** each card says what you have there ("4 friends · 9 sent", "6 places in your passport"; "4 places",
+  "Alerts on") with **Open** to go to it; its ⓘ opens a sheet of what that app keeps of yours. InFlight: how many
   friends, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have
   gone after a month), places in your passport and groups; counts only, as its letters are end-to-end encrypted.
   Weather: its saved places (the first few by name), its notifications (how many places, and the morning brief) and
@@ -288,12 +295,17 @@ Motion, solid with Reduce Transparency.
 - **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken
   away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each
   with the app it was in, the device and roughly where (`pg_events`, kept 30 days; noted from InFlight's own sign-in and
-  security too). A password sign-in from another device or place has **Not you?**: it signs every other device out,
-  then asks for a new password. Passkey sign-ins don't, as a passkey needs your own device.
+  security too), each on one line with its time on the right and the app it happened in on its icon, where most of a
+  day's happened said once by the day; **All**, **Sign-ins** or **Changes**. A password sign-in from another device or
+  place has **Not you?**: it signs every other device out, then asks for a new password. Passkey sign-ins don't, as a
+  passkey needs your own device.
 - **Preferences, for every app on the site that has them:** **Appearance** (Automatic, Light, Dark): this page and
   InFlight, which already kept it with the account (InFlight now keeps it only once it's been chosen, not its default).
-  **Units** (temperature, wind, rain, pressure, time): Weather's, kept in its record for the account so every device
-  it's signed in on takes them up, and its notifications say them at once.
+  **Units** (temperature, wind, rain, pressure, time; °C, mph, mm, hPa and 24-hour until chosen): Weather's, kept in
+  its record for the account so every device it's signed in on takes them up, and its notifications say them at once.
+  **Emails**: what each app emails you, each from its own address: the account's, about sign-ins and security, always;
+  InFlight's notifications by email, on or off here as in its own Notifications (`pg_users.notify_email`, through
+  `PUT /api/account/prefs`); Weather's are on the phone. The row says "All on" or "Security only".
 - **Your data:** everything kept with the account that can be read: the profile and photo, sign-in and recent
   activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
   them); Weather's places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted,

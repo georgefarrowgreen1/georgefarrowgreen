@@ -74,14 +74,17 @@ await L.p.goto(`${ACCT}/`); await L.p.waitForSelector('main:not([aria-busy])', {
 const home = await text(L);
 ok(/Rowan Hale/.test(home) && /@rowan/.test(home) && /rowan@example\.com/.test(home), 'signed in already: the profile, from the site\'s sign-in', home.slice(0, 120));
 ok(/Your apps/i.test(home) && /InFlight/.test(home) && /Weather/.test(home), 'your apps: both of them', home);
-// (each app's tile opens what it keeps of yours, and the way into it: acctmore.mjs)
+// (each app's card: Open, the app on this site; and ⓘ, what it keeps of yours, and the way into it: acctmore.mjs)
+const opens = await L.p.$$eval('main .app a.open-app', (as) => as.map((a) => a.getAttribute('href')));
+ok(opens.join() === `${CHAT}/,${WX}/`, 'each app\'s card opens the app, on this site', opens.join());
 const links = [];
 for (const name of ['InFlight', 'Weather']) {
-  await L.p.click(`main button.app:has(b:text-is("${name}"))`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);
+  await L.p.click(`main .app:has(b:text-is("${name}")) .about`); await L.p.waitForSelector('#sheet[open] .app-head'); await settle(L, 500);
   links.push(await L.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))); await closeSheet(L);
 }
-ok(links.join() === `${CHAT}/,${WX}/`, 'each app\'s tile opens its sheet, and that the app, on this site', links.join());
-ok(/Passkeys 1/.test(home) && /Signed-in devices 1/.test(home), 'sign-in and security: the passkey made in InFlight, and this device', home.match(/Passkeys \S+|Signed-in devices \S+/g)?.join(' | '));
+ok(links.join() === `${CHAT}/,${WX}/`, 'and its ⓘ, what it keeps of yours, with the way in too', links.join());
+ok(/Passkeys 1/.test(home) && /Signed-in devices (1|This \w+)/.test(home), 'sign-in and security: the passkey made in InFlight, and this device', home.match(/Passkeys \S+|Signed-in devices (This )?\S+/g)?.join(' | '));
+ok(/Password Set today/.test(home) && /Recent activity Today/.test(home), 'each row says how things are: the password set today, the latest activity today', home.match(/Password \S+ \S+|Recent activity \S+/g)?.join(' | '));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
 // (the check-up: kept in Sign-in and security, a row saying how it stands, opened as a sheet)
 const ckRow = await L.p.locator('main .row:has(b:text-is("Security check-up"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
@@ -297,6 +300,19 @@ await shot(L, '14-units');
 const wxs = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').settings || {};
 ok(wxs.temp === 'f' && wxs.wind === 'kmh', 'units: kept in Weather\'s record for the account, for every device it\'s on', JSON.stringify(wxs));
 await closeSheet(L);
+// ---- emails: what each app sends you; InFlight's turned on here ----
+const emRow = () => L.p.locator('main .row:has(b:text-is("Emails"))').innerText().then((t) => t.replace(/\s+/g, ' ').trim());
+ok(/Emails Security only/.test(await emRow()), 'emails: the account\'s, about signing in, always; InFlight\'s off to start with', await emRow());
+await openRow(L, 'Emails');
+const em = await sheetText(L);
+ok(/Sign-ins and security/.test(em) && /Always on/.test(em) && /Notifications by email/.test(em) && /Weather tells you on your phone/.test(em) && !(await L.p.$eval('#sheet input.switch', (e) => e.disabled)),
+  'its page: the account\'s always on, InFlight\'s a switch, Weather\'s on the phone', em);
+await L.p.click('#sheet input.switch'); await settle(L, 1000);
+await shot(L, '14b-emails');
+const ne = rows("SELECT notify_email FROM pg_users WHERE handle = 'rowan_h'")[0]?.notify_email;
+ok(ne === 1, 'InFlight\'s emails turned on from here', String(ne));
+await closeSheet(L);
+ok(/Emails All on/.test(await emRow()), 'and its row says so', await emRow());
 ok(/°F · km\/h/.test(await text(L)), 'and said on the page', (await text(L)).match(/Units [^A-Z]*/)?.[0]);
 await openRow(L, 'Download your data');
 await shot(L, '15-data');

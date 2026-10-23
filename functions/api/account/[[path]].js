@@ -11,7 +11,7 @@
 //   GET  /api/account/activity        what's happened to the account in the last 30 days (functions/_activity.js)
 //   POST /api/account/email/confirm-send, email/confirm      confirming the email (a link to it)
 //   POST /api/account/email/change, email/change-confirm, email/cancel   a new email (a link to it, a word to the old)
-//   PUT  /api/account/prefs           appearance and units, for every app on the site that has them
+//   PUT  /api/account/prefs           appearance and units, for every app on the site that has them; and InFlight's emails
 //   POST /api/account/export          everything kept with the account that can be read, as a file
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
@@ -66,22 +66,27 @@ async function inflightOf(D, id) {
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx, inflight] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight, last] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare("SELECT hash, label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all(),
     weatherOf(env, u.id),
     inflightOf(D, u.id),
+    D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
     signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, since: u.created_at,
     emailNew: u.email_new && t - (u.email_new_at || 0) < CHANGE_TTL ? u.email_new : null,
     fresh: t - (u.authAt || 0) < FRESH, salt: u.salt,
-    password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null },
+    // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
+    password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
     passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null })),
     devices: ss.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, since: x.created_at, seenAt: x.seen_at,
       current: x.hash === u.sessionHash, stale: x.hash !== u.sessionHash && t - x.seen_at > STALE })),
     prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
+    // (the emails each app sends: the account's, about signing in and its security, always; InFlight's, as it has them)
+    emails: { inflight: !!u.notify_email },
+    lastActivity: last?.at || null,
     // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; InFlight's counts)
     apps: {
       weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
@@ -212,7 +217,7 @@ const ROUTES = {
     if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32 || vault.length < 20 || vault.length > 4000) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
     const D = await db(env), t = Date.now();
     await D.batch([
-      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, u.id),
+      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
       D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
@@ -393,6 +398,12 @@ const ROUTES = {
       if (!["auto", "light", "dark"].includes(b.appearance)) throw new HttpError(400, "Choose Automatic, Light or Dark.");
       await (await db(env)).prepare("UPDATE pg_users SET appearance = ? WHERE id = ?").bind(b.appearance, u.id).run();
       now.appearance = b.appearance;
+    }
+    // InFlight's emails, on or off (as its own Notifications have them: which ones, it says)
+    if (b.emails?.inflight !== undefined) {
+      if (typeof b.emails.inflight !== "boolean") throw new HttpError(400, "Choose on or off.");
+      await (await db(env)).prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.emails.inflight ? 1 : 0, Date.now(), u.id).run();
+      now.notify_email = b.emails.inflight ? 1 : 0;
     }
     if (b.units !== undefined) {
       const U = b.units && typeof b.units === "object" ? b.units : {}, set = {};

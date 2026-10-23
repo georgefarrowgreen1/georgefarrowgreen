@@ -342,6 +342,7 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN email_new TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_code TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN pw_leaked INTEGER", "ALTER TABLE pg_users ADD COLUMN pw_checked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",
+  "ALTER TABLE pg_users ADD COLUMN pw_at INTEGER",          // when the password was last set (made, changed or reset)
   "CREATE INDEX IF NOT EXISTS pg_users_delete ON pg_users(delete_at) WHERE delete_at IS NOT NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
@@ -391,6 +392,13 @@ async function setUp(env) {
       await env.DB.batch([
         env.DB.prepare("UPDATE pg_users SET email_ok = created_at WHERE email_ok IS NULL"),
         env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('emailok_v1', '1')"),
+      ]);
+    }
+    // when each password was last set, for accounts from before that was kept: as far as recent activity goes back
+    if (!(await env.DB.prepare("SELECT 1 FROM pg_meta WHERE k = 'pwat_v1'").first())) {
+      await env.DB.batch([
+        env.DB.prepare("UPDATE pg_users SET pw_at = (SELECT MAX(at) FROM pg_events e WHERE e.user_id = pg_users.id AND e.kind IN ('signup', 'password', 'reset')) WHERE pw_at IS NULL"),
+        env.DB.prepare("INSERT OR IGNORE INTO pg_meta (k, v) VALUES ('pwat_v1', '1')"),
       ]);
     }
     await env.DB.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('schema_fp', ?)").bind(SCHEMA_FP).run();

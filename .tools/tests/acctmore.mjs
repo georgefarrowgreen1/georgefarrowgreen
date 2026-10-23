@@ -125,14 +125,16 @@ await shot(P, '02-code');
 await closeSheet(P);
 
 // ---- 4. Each app's sheet: what it keeps of yours, and the way into it ----
-await P.p.click('main button.app:has(b:text-is("InFlight"))'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
+const cards = await P.p.$$eval('main .app', (as) => as.map((a) => a.innerText.replace(/\s+/g, ' ').trim()));
+ok(/^InFlight 4 friends · 9 sent 6 places in your passport Open$/.test(cards[0]) && /^Weather 4 places Alerts on Open$/.test(cards[1]), 'each app\'s card: what you have there, and Open', JSON.stringify(cards));
+await P.p.click('main .app:has(b:text-is("InFlight")) .about'); await P.p.waitForSelector('#sheet .stats'); await settle(P, 600);
 const inf = await sheetText(P);
 ok(/4 friends/.test(inf) && /9 pigeons sent/.test(inf) && /6 places in your passport/.test(inf) && /2 groups/.test(inf), 'InFlight: friends, pigeons sent (now, in groups, and gone after a month), passport, groups', inf);
 ok(/end-to-end encrypted/.test(inf) && (await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${CHAT}/`, 'the letters not counted (they can\'t be read here), and the way in', inf);
 ok((await P.p.$eval('#sheet', (d) => document.getElementById(d.getAttribute('aria-labelledby'))?.textContent)) === 'InFlight', 'the sheet named, for a screen reader');
 await shot(P, '03-app-inflight');
 await closeSheet(P);
-await P.p.click('main button.app:has(b:text-is("Weather"))'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
+await P.p.click('main .app:has(b:text-is("Weather")) .about'); await P.p.waitForSelector('#sheet .app-head'); await settle(P, 600);
 const wxs = await sheetText(P);
 ok(/Saved places 4/.test(wxs) && /London · Edinburgh · St Ives · Łódź/.test(wxs) && /Notifications 1 place · morning brief/.test(wxs) && /Units °C · km\/h/.test(wxs), 'Weather: its places by name, notifications, units', wxs);
 ok((await P.p.$eval('#sheet a.btn', (a) => a.getAttribute('href'))) === `${WX}/`, 'and the way in');
@@ -193,6 +195,15 @@ sql(`INSERT INTO pg_events (user_id, at, kind, app, device, place, detail) VALUE
 await openRow(P, 'Recent activity'); await P.p.waitForSelector('#sheet .day', { timeout: 10000 }).catch(() => {}); await settle(P, 500);
 const flagged = await P.p.$$eval('#sheet .activity .row', (rs) => rs.filter((r) => r.querySelector('.mini')).map((r) => r.querySelector('small').textContent));
 ok(flagged.length === 1 && /Windows · Chrome/.test(flagged[0]), 'only the laptop\'s password sign-in asks "Not you?"', JSON.stringify(flagged));
+const act = await P.p.evaluate(() => ({ marks: [...document.querySelectorAll('#sheet .activity .row .app-mark')].map((i) => i.alt), times: document.querySelectorAll('#sheet .activity .row .t').length,
+  rows: document.querySelectorAll('#sheet .activity .row').length, day: document.querySelector('#sheet .day h4')?.textContent }));
+ok(act.marks.includes('Weather') && act.marks.includes('Account') && act.times === act.rows && /^Today · \S/.test(act.day), 'each its time, and the app it happened in; the place said once by the day', JSON.stringify(act));
+await P.p.click('#sheet .seg button:text-is("Sign-ins")'); await settle(P, 300);
+const ins = await P.p.$$eval('#sheet .activity .row b', (bs) => bs.map((b) => b.textContent));
+await P.p.click('#sheet .seg button:text-is("Changes")'); await settle(P, 300);
+const chg = await P.p.$$eval('#sheet .activity .row b', (bs) => bs.map((b) => b.textContent));
+ok(ins.length > 0 && ins.every((t) => /^(Signed|Account made)/.test(t)) && chg.length > 0 && chg.every((t) => !/^Signed in/.test(t)), 'a filter: the sign-ins, and the changes', JSON.stringify({ ins, chg }));
+await P.p.click('#sheet .seg button:text-is("All")'); await settle(P, 300);
 await shot(P, '07-activity');
 await P.p.click('#sheet .mini:text-is("Not you?")'); await P.p.waitForSelector('#sheet .steps'); await settle(P, 600);
 ok(/Signed in with your password/.test(await sheetText(P)) && /Windows · Chrome/.test(await sheetText(P)) && /Sign out everywhere else/.test(await sheetText(P)) && /Choose a new password/.test(await sheetText(P)), 'what happened, and the two steps', await sheetText(P));
@@ -234,11 +245,17 @@ await closeSheet(P);
 await account(L); await signIn(L); await settle(L, 900);
 const cols = await L.p.evaluate(() => { const a = document.querySelector('.col-a').getBoundingClientRect(), b = document.querySelector('.col-b').getBoundingClientRect(); return { a: [a.left, a.right, a.top], b: [b.left, b.top] }; });
 ok(cols.a[1] < cols.b[0] && Math.abs(cols.a[2] - cols.b[1]) < 40, 'wide: two columns, side by side', JSON.stringify(cols));
+const halves = await L.p.evaluate(() => ['.col-a', '.col-b'].map((c) => [...document.querySelectorAll(`${c} section.section > h3`)].map((h) => h.textContent)));
+ok(halves[0].join() === 'Your apps,Your data' && halves[1].join() === 'Sign-in and security,Preferences', 'two even columns: who you are, your apps and your data; and the settings', JSON.stringify(halves));
 await shot(L, '10-wide');
-await L.p.evaluate(() => scrollTo(0, 700)); await settle(L, 400);
-ok((await L.p.evaluate(() => document.querySelector('.hero').getBoundingClientRect().top)) > 0, 'scrolled: the profile stays in view');
+await L.p.evaluate(() => scrollTo(0, 900)); await settle(L, 500);
+ok(await L.p.evaluate(() => document.querySelector('.whobar').classList.contains('on') && /Rowan/.test(document.querySelector('.whobar').textContent)), 'scrolled on: whose account, in a bar at the top');
 const one = await P.p.evaluate(() => document.querySelector('.col-b').getBoundingClientRect().top - document.querySelector('.col-a').getBoundingClientRect().bottom);
 ok(one >= 0, 'a phone: one column', String(one));
+const bar = async () => P.p.evaluate(() => document.querySelector('.whobar').classList.contains('on'));
+const top = await bar(); await P.p.evaluate(() => scrollTo(0, 900)); await settle(P, 500); const down = await bar();
+await P.p.evaluate(() => scrollTo(0, 0)); await settle(P, 500);
+ok(!top && down && !(await bar()), 'a phone: the bar comes once the profile\'s scrolled away, and goes at the top', JSON.stringify({ top, down }));
 
 // ---- 10. Your data: as a PDF to read and keep, and as JSON ----
 await account(P);

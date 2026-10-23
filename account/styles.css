@@ -90,7 +90,7 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 
 /* ---- glass: the hero, the groups, the sheet ---- */
 .glass { position: relative; background: var(--sheen), var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); }
-@media (prefers-reduced-transparency: reduce) { .glass, .status, dialog.sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-strong); } }
+@media (prefers-reduced-transparency: reduce) { .glass, .status, .whobar, dialog.sheet { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--glass-strong); } }
 
 /* ---- settling in: each part of the page rising into place, one after another ---- */
 .rise { opacity: 0; transform: translateY(18px) scale(0.985); animation: rise 0.8s var(--glide) forwards; animation-delay: calc(var(--i, 0) * 70ms + 40ms); }
@@ -149,14 +149,22 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 /* ---- your apps: a tile each ---- */
 .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 360px) { .apps { grid-template-columns: 1fr; } }
-.app { display: grid; gap: 10px; align-content: start; padding: 16px; border-radius: var(--r-group); text-decoration: none; color: var(--text); min-width: 0;
-  transition: transform 0.35s var(--spring); }
-.app:active { transform: scale(0.97); }
-@media (hover: hover) { .app:hover { transform: translateY(-2px); } }
+/* each app: its icon (and ⓘ, for what it keeps of yours), what you have there, and Open */
+.app { display: grid; align-content: start; padding: 16px 16px 14px; border-radius: var(--r-group); color: var(--text); min-width: 0; }
+.app-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .app img { width: 54px; height: 54px; border-radius: 13px; box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
-.app b { font-size: 17px; font-weight: 600; }
-.app span { font-size: 13.5px; line-height: 1.35; color: var(--text-2); }
-.app .open { display: inline-flex; align-items: center; gap: 4px; color: var(--tint-text); font-size: 14px; font-weight: 600; margin-top: 2px; }
+.app .about { position: relative; flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.18); cursor: pointer; transition: transform 0.25s var(--spring); }
+.app .about::after { content: ""; position: absolute; inset: -6px; }
+.app .about:active { transform: scale(0.9); }
+.app .about:focus-visible, .app .open-app:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+.app b { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.app .use { font-size: 14.5px; line-height: 1.35; font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.app .sub { font-size: 13px; line-height: 1.35; color: var(--text-3); margin-top: 2px; overflow-wrap: anywhere; }
+.app .open-app { margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: 999px; font-size: 15px; font-weight: 600;
+  color: var(--tint-text); background: color-mix(in srgb, var(--tint) 16%, transparent); text-decoration: none; transition: transform 0.25s var(--spring), background-color 0.2s; }
+.app .open-app:active { transform: scale(0.96); background: color-mix(in srgb, var(--tint) 24%, transparent); }
+@media (hover: hover) { .app .open-app:hover { background: color-mix(in srgb, var(--tint) 22%, transparent); } }
 
 /* ---- buttons ---- */
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; font-size: 17px; font-weight: 600;
@@ -198,8 +206,12 @@ button.row:active .chev, a.row:active .chev { transform: translateX(2px); }
 .said.bad { color: var(--danger); }
 .or { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 13px; }
 .or::before, .or::after { content: ""; flex: 1; height: 0.5px; background: var(--line); }
-.works { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 22px; color: var(--text-3); font-size: 13px; }
-.works img { width: 26px; height: 26px; border-radius: 7px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+/* signed out: what the account's for (under the title), and how a new one's made (by invitation) */
+.welcome p.lead { margin: -2px 0 14px; max-width: none; }
+.lead img { width: 20px; height: 20px; border-radius: 6px; vertical-align: -4px; margin: 0 4px 0 2px; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.15); }
+.lead b { color: var(--text); font-weight: 600; }
+.welcome .new.invite { max-width: 32ch; line-height: 1.5; margin-top: 14px; }
+.welcome .new.invite b { color: var(--text-2); font-weight: 600; }
 
 /* ---- the sheet ---- */
 dialog.sheet { position: fixed; padding: 0; border: 0; color: var(--text); width: calc(100% - 16px); max-width: 560px; max-height: calc(100vh - var(--top) - 24px); max-height: calc(100svh - var(--top) - 24px);
@@ -443,13 +455,49 @@ a.btn { text-decoration: none; }
 .swipe.leaving { animation: leave 0.4s var(--glide) forwards; }
 @media (prefers-reduced-motion: reduce) { .swipe > .row, .swipe-act { transition: none; } .swipe.leaving { animation: none; } }
 
-/* ---- two columns on a wide screen: who you are and how safe, beside everything else ---- */
+/* ---- two even columns on a wide screen: who you are, your apps and your data; and the settings (app.js signedIn) ---- */
 @media (min-width: 1000px) {
   main:has(.cols) { max-width: 1060px; }
   .cols { display: grid; grid-template-columns: 380px 1fr; gap: 28px; align-items: start; }
-  .col-a { position: sticky; top: calc(var(--top) + 24px); }
   .col-a .large { margin-bottom: 18px; }
+  .col-b > .section:first-child { margin-top: 0; }
 }
+
+/* ---- rows that say how things are: amber where it needs you; a button's look where there's one thing to do ---- */
+.row .val.warn { color: var(--warn); }
+.row .val .mini { display: inline-flex; align-items: center; min-height: 30px; margin: 0; }
+
+/* ---- whose account, kept in sight at the top once the profile's scrolled away (app.js whoBar) ---- */
+.whobar { position: fixed; z-index: 21; top: 0; left: 0; right: 0; height: calc(var(--top) + 52px); padding-top: var(--top); display: flex; align-items: center; justify-content: center; gap: 9px;
+  background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: 0 0.5px 0 var(--line);
+  opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 0.25s var(--ease), transform 0.35s var(--ease); cursor: pointer; }
+.whobar.on { opacity: 1; transform: none; pointer-events: auto; }
+.whobar .avatar.small { width: 28px; height: 28px; font-size: 13px; margin: 0; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text) 18%, transparent); }
+.whobar b { font: 600 16px/1 var(--font-d); letter-spacing: 0.1px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.sheet-up .whobar { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .whobar { transition: none; transform: none; } }
+
+/* ---- emails: each app's, headed by its icon; a switch where there's a choice ---- */
+.app-k { display: flex; align-items: center; gap: 8px; margin: 18px 6px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
+.app-k img { width: 18px; height: 18px; border-radius: 5px; }
+.switch { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 51px; height: 31px; margin: 0; border-radius: 999px; cursor: pointer;
+  background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px var(--line); transition: background-color 0.3s; }
+.switch::before { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28), 0 1px 1px rgba(0, 0, 0, 0.12); transition: transform 0.4s var(--spring); }
+.switch:checked { background: var(--good); }
+.switch:checked::before { transform: translateX(20px); }
+.switch:disabled { opacity: 0.45; cursor: default; }
+.switch:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+label.row { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .switch, .switch::before { transition: none; } }
+
+/* ---- recent activity: a filter; each row its time on the right, and the app it happened in on its icon ---- */
+.sheet-body .seg + .activity { margin-top: 14px; }
+.day h4 small { font-weight: 500; letter-spacing: 0; text-transform: none; }
+.activity .row .ic { position: relative; }
+.app-mark { position: absolute; right: -5px; bottom: -5px; width: 16px; height: 16px; border-radius: 5px; box-shadow: 0 0 0 2px var(--glass-strong); }
+.activity .row .end { flex: none; display: grid; justify-items: end; gap: 6px; }
+.activity .row .t { font-size: 14px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
 /* ---- signed out: the way between signing in, making an account and a forgotten password ---- */
 .welcome .new .link { padding: 4px 2px; font-size: 14px; }
