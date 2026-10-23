@@ -1015,7 +1015,6 @@ a.acct-btn { text-decoration: none; }
 .acct-said:empty { display: none; }
 .acct-said.bad { color: #ffb4a8; }
 /* the places in step with the account, said beside "Saved" */
-.sync-line { margin-left: 8px; font-size: 12px; font-weight: 600; color: #7fe0a0; display: inline-flex; gap: 4px; align-items: center; text-transform: none; letter-spacing: 0; }
 
 /* the day */
 /* the days along the top of a day's sheet, as Weather has them: the day, and its date in a circle when it's the one shown */

@@ -126,7 +126,7 @@ ok(/Sam Taylor/.test(await acctSays(P)) && (await places(P)).join() === 'London,
   'signed in on the phone: the account\'s London and the phone\'s Edinburgh, on both', `${(await places(P)).join()} | ${k2?.places.map((p) => p.name).join()}`);
 await closeSheet(P);
 await P.p.click('#place-btn'); await P.p.waitForTimeout(500);
-ok(/In step with your account/.test(await P.p.textContent('#places .sheet-sub')), 'Places says they\'re in step', await P.p.textContent('#places .sheet-sub'));
+ok((await P.p.textContent('#places .sheet-sub')) === 'Saved' && await P.p.$eval('#sync-note', (n) => n.hidden), 'Places: just the saved places, in step (a note only when they\'re not)', await P.p.textContent('#places .sheet-sub'));
 await closeSheet(P);
 // a setting changed on the phone reaches the laptop, and the laptop has Edinburgh when it next looks
 await settings(P); await folder(P, 'units'); await P.p.click('input[name="temp"][value="f"]'); await closeSheet(P);
@@ -327,7 +327,7 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   if (at.getUTCDate() === new Date().getUTCDate()) ok(brief && brief.to === 'sam@example.com' && /mail\/wx-[a-z-]+\.png/.test(brief.html) && /Morning:/.test(brief.text), 'the tick: the briefing by email, from Weather, with the day in three', `${JSON.stringify(tick)} ${mails.map((m) => m.subject)}`);
   else console.log('(just after midnight: the briefing waits for its day)');
   ok(warn && /mail\/weather-warn-amber\.png/.test(warn.html) && /Thunderstorms could bring flooding/.test(warn.text), 'and London\'s warning, in its own colour', mails.map((m) => m.subject).join(' | '));
-  const link = /(\/api\/weather\/email-off\?u=[^&"]+&t=[A-Za-z0-9_-]+)/.exec(warn?.html || '')?.[1]?.replace(/&amp;/g, '&');
+  const link = /(\/api\/weather\/email-off\?u=[^&"]+&(?:amp;)?t=[A-Za-z0-9_-]+)/.exec(warn?.html || '')?.[1]?.replace(/&amp;/g, '&') || '';
   ok(link && warn.headers?.['List-Unsubscribe']?.includes(link) && warn.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'each with a link to turn them off, and the mail app\'s own Unsubscribe', link);
   // the link: GET shows a button and changes nothing; POST turns them off (as a mail app's one-click does)
   const hit = (method) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: link, method, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });

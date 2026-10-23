@@ -1879,7 +1879,6 @@ function drawMail() {
 const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities"];
 const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
 const PASSKEY = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"/><path d="M2.5 20c.8-3 2.9-4.6 5.5-4.6 1.1 0 2.1.3 3 .8M16.5 8.5a2.5 2.5 0 1 1 0 5v5l1.5-1.5 1.5 1.5v-3.2"/></svg>';
-const TICK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.2 4.2L19 7"/></svg>';
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 // what's here, as it's kept with the account (My Location is each device's own)
@@ -2000,7 +1999,9 @@ async function sendHere() {
   if (!go || !canShow()) { notifySay(said); return; }
   try { await syncNotify(); await refreshDevices(); } catch (e) { notifySay(`Couldn't do that just now (${e.message}).`); }
 }
-const STATES = { ok: "In step", saving: "Saving…", waiting: "Will go up when you're online", error: "Couldn't save just now" };
+// (said only when there's something to say: in step, nothing; as a note under the saved places, and short on the account's card)
+const STATES = { saving: ["Syncing…", "Syncing…"], waiting: ["Offline. Your places will sync when you’re back online.", "Offline, will sync later"],
+  error: ["Couldn’t sync just now. It’ll try again.", "Couldn’t sync"] };
 function drawAccount() {
   const box = $("acct"); if (!box) return;
   box.hidden = !!S.noAcct;
@@ -2041,7 +2042,7 @@ function drawAccount() {
   if (setStack.at(-1)?.name === "signin") setBack();
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are
   // there), and how your places and settings are doing, said only when there's something to say
-  const said2 = a.state !== "ok" && STATES[a.state];
+  const said2 = STATES[a.state]?.[1];
   const who = [avatarOf(a), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, a.name),
     h("span", { id: "acct-state", class: a.state === "error" ? "acct-bad" : "" }, `@${a.handle} · ${said2 || "georgefarrowgreen.com"}`))];
   box.replaceChildren(...[
@@ -2079,10 +2080,9 @@ const avatarOf = (a, url = a.photoAt ? A.photoUrl(a.photoAt) : null) => h("span"
   url ? h("img", { src: url, alt: "", width: "48", height: "48", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase());
 // beside "Saved" in Places: that they're in step with the account
 function drawInStep() {
-  const sub = document.querySelector("#places .sheet-sub");
-  if (!sub) return;
-  const a = S.acct;
-  sub.replaceChildren("Saved", ...(a ? [h("span", { class: "sync-line" }, a.state === "ok" ? [h("span", { svg: TICK }), "In step with your account"] : STATES[a.state])] : []));
+  const note = $("sync-note"), said = S.acct && STATES[S.acct.state]?.[0];
+  if (!note) return;
+  note.hidden = !said; note.textContent = said || "";
 }
 
 /* ---------- your activities ---------- */

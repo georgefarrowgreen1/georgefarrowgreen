@@ -707,7 +707,9 @@ so there's nothing to set up beyond the address.
   them here too" where this one isn't among them). Signed out there (or
   anywhere on the site), Weather notices the next time it asks, and this
   device's notifications stay, as its own (`POST /api/weather/leave`, by its
-  push address). Places says "In step with your account". What's kept is one record with a version
+  push address). Places says nothing of it while all's in step; a quiet note under the saved places says when it's
+  syncing, offline ("Your places will sync when you're back online") or couldn't sync, and the account's card says so
+  briefly. What's kept is one record with a version
   (`functions/_wxacct.js`, wx_accts: the places, the settings, the notification
   choices; at most 50 places and 48 KB); a change goes up a moment after it's
   made, from the version it was made from, and if another device got there first
