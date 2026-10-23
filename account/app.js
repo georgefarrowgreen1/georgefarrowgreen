@@ -1283,8 +1283,7 @@ function appearanceView() {
     setPrefs({ appearance: k });
   } }, h(`span.shot.${k}`, { "aria-hidden": "true" }, h("i"), h("i"), h("i")), h("span", { text: label }), h("span.tick", { "aria-hidden": "true" }, icon("check", 13, 3))));
   return { title: "Appearance", body: [
-    h("div.appears", {}, opts),
-    h("p.hint", { text: "Here and in InFlight, on every device you’re signed in on. Automatic follows your device’s light or dark setting. (Weather’s look follows the sky.)" })] };
+    h("div.appears", {}, opts)] };
 }
 // the units where the account has none chosen yet, whatever the device's language (as Weather starts with them)
 const unitsHere = () => ({ temp: "c", wind: "mph", precip: "mm", pressure: "hpa", clock: "24" });
