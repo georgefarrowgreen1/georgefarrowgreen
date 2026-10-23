@@ -714,7 +714,8 @@ so there's nothing to set up beyond the address.
   and map data", as the Weather app has it) or from the map's ©.
 
 Places (search, or Use My Location) and settings (°C/°F, mph/km/h/m/s/knots,
-mm/in, hPa/inHg/mmHg, 12/24-hour) stay on the device. A first visit opens on
+mm/in, hPa/inHg/mmHg, 12/24-hour; to start with °C, mph, mm, hPa and 24-hour,
+whatever the phone's language) stay on the device. A first visit opens on
 roughly where you are, from your connection (`GET /api/weather/where`,
 Cloudflare's city-level guess; nothing kept), or on your location if you've
 already allowed it. It opens at once, on a poor signal or none, from its own
