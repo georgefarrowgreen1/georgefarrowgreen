@@ -62,7 +62,10 @@ function backToApp() {
   try { window.close(); } catch (_) {}
   setTimeout(() => { location.href = siteUrl(app.sub); }, 250);
 }
-const backButton = (r) => fromApp() && r(h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name));
+const backPill = () => h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name);
+const backButton = (r) => fromApp() && r(backPill());
+// the page's title: large, opened by itself; from an app, smaller, in the middle of a bar with the way back
+const titled = (r, text) => (fromApp() ? r(h("div.titlebar", {}, backPill(), h("h1", { text }))) : r(h("h1.large", { text })));
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
@@ -292,8 +295,7 @@ function signedIn(r) {
     app("weather", "Weather", "/apps/weather.png", w.places ? plural(w.places, "place", "places") : "No places yet",
       w.places ? (alerts ? "Alerts on" : "Alerts off") : "Forecasts, radar and alerts"))));
   const top = [
-    backButton(r),
-    r(h("h1.large", { text: "Account" })),
+    titled(r, "Account"),
     r(posterCard(m)),
     (!m.emailOk || m.emailNew) && r(banner(m)),
     pw.leaked && r(leakBanner()),
