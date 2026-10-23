@@ -340,7 +340,7 @@ function appView(id) {
     return { title: "InFlight", quiet: true, body: [head,
       h("div.stats", {}, stat(f.friends || 0, f.friends === 1 ? "friend" : "friends"), stat(f.sent || 0, f.sent === 1 ? "pigeon sent" : "pigeons sent"),
         stat(f.places || 0, f.places === 1 ? "place in your passport" : "places in your passport"), stat(f.groups || 0, f.groups === 1 ? "group" : "groups")),
-      h("p.hint", { text: "Your letters are end-to-end encrypted: only your phones can read them, so they’re not counted here." }), open] };
+      open] };
   }
   const w = ap.weather || {}, names = w.placeNames || [];
   return { title: "Weather", quiet: true, body: [head,
