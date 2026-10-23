@@ -1626,18 +1626,27 @@ html.night .nav-ghost .night{background:none}
 .loftkit i{font-style:normal;font-size:18px;line-height:1}
 .loftkit .pg{font-size:14px}
 /* Account: today's pigeons, as four small tiles */
-.lgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 16px}
-.ltile{display:flex;flex-direction:column;gap:1px;padding:14px 16px 13px;border-radius:24px;background:var(--cell);min-width:0}
-.ltile .ltop{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.ltile .ltop .pg{font-size:22px}
-.ltile .ltop b{font-size:28px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}
-.ltile.none .ltop b{color:var(--label-3)}
-.ltile .lname{font-size:17px;font-weight:600}
-.ltile small{font-size:13px;line-height:17px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ltile .lnext{color:var(--tint)}
-.ltile.none .lnext{color:var(--label-2)}
-.ltile .lnext.full{color:var(--label-2)}
-.lgrid>.ltile:last-child:nth-child(odd){grid-column:1/-1}   /* (one on its own takes the whole row) */
+/* Account: today's pigeons, a column each, in one card (the space ones on a row of their own) */
+.loft{padding:4px 6px}
+.loft .lrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:10px 0 11px}
+.loft .lrow.five{grid-template-columns:repeat(5,minmax(0,1fr))}   /* (Orbital alongside, when it's the only space one) */
+.loft .lrow.space{position:relative;padding-top:8px}
+.loft .lrow.space::before{content:"";position:absolute;top:0;left:12px;right:12px;height:.5px;background:var(--sep)}
+.loft .lcap{grid-column:1/-1;margin:0 0 6px 12px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--label-2)}
+.lcol{display:flex;flex-direction:column;align-items:center;min-width:0;padding:0 4px;text-align:center}
+.lcol .pg{font-size:19px;margin-bottom:5px}
+.lcol b{font-size:22px;line-height:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.lcol.none b{color:var(--label-3)}
+.lcol .lname{max-width:100%;font-size:13px;line-height:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lcol .lname i{font-style:normal;font-weight:500;color:var(--label-2)}
+.lcol .lnext{max-width:100%;font-size:12px;line-height:16px;color:var(--tint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.lcol .lnext.full{color:var(--label-2)}
+/* Account: your flying so far, under your card (opens the Flight Log) */
+.mestats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;padding:12px 10px 13px;min-height:0}
+.mestats>span{display:flex;flex-direction:column;align-items:center;min-width:0}
+.mestats>span+span{border-left:.5px solid var(--sep)}
+.mestats b{font-size:19px;line-height:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.mestats small{font-size:12px;line-height:16px;color:var(--label-2)}
 .aver{margin:22px 0 0;text-align:center;font-size:13px;color:var(--label-2)}
 /* small fixes from the UI audit */
 .compose .kind{max-width:44%}
@@ -2030,7 +2039,6 @@ a.cell .tile .gifico{font-size:9px;font-weight:800;color:#fff;letter-spacing:.2p
 .pg.lunar{--pg:var(--p-lunar);background:linear-gradient(160deg,#e3e8f3,var(--p-lunar) 55%,#56607a)}
 .pg.lunarx{--pg:var(--p-lunarx);background:linear-gradient(160deg,#b9b8ff,var(--p-lunarx) 55%,#3532a8)}
 .k-lunar{--k:var(--p-lunar)}.k-lunarx{--k:var(--p-lunarx)}
-.lgrid.two{margin-top:10px}
 .mpwrap{position:relative;margin:4px 16px 0;border-radius:22px;overflow:hidden;background:#03050c}
 .moonpick{display:block;width:100%;aspect-ratio:1;max-height:56vh;cursor:crosshair;touch-action:manipulation}
 .mpside{position:absolute;left:0;right:0;bottom:10px;justify-content:center;margin:0}
