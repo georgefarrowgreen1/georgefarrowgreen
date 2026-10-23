@@ -117,6 +117,7 @@ const ICONS = {
   qr: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M13.5 13.5h3v3h-3zM17.5 17.5h3v3h-3zM13.5 20.5v-1M20.5 13.5v1"/>',
   info: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.7v.1" stroke-width="2.8"/>',
   share: '<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M6.5 11H5.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 5.5 20.5h13a1.5 1.5 0 0 0 1.5-1.5v-6.5a1.5 1.5 0 0 0-1.5-1.5h-1"/>',
+  sliders: '<path d="M4 7.5h9M18.5 7.5H20M4 16.5h1.5M11 16.5h9"/><circle cx="15.8" cy="7.5" r="2.4"/><circle cx="8.2" cy="16.5" r="2.4"/>',
   bubble: '<path d="M5.5 4.5h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4.5 3.5V16.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/>',
 };
 function icon(name, size = 20, width = 2) {
@@ -316,11 +317,11 @@ function signedIn(r) {
   const ending = [
     !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
   ];
-  // (the site's admin, for the linked account only; #admin, from the old dashboard or its email, brings it into view)
+  // (the site's admin, for the linked account only; #admin, from the old dashboard or its email, opens it)
   const admin = m.admin ? r(adminSection(m)) : null;
   if (admin && location.hash === "#admin") {
     history.replaceState(null, "", location.pathname + location.search);
-    setTimeout(() => admin.scrollIntoView({ behavior: still.matches ? "auto" : "smooth", block: "center" }), 450);
+    setTimeout(() => openSheet(m.admin.ready ? adminView : passkeysView), 450);
   }
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, admin, ...ending]] : [top, [apps, account, prefs, admin, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
@@ -1183,7 +1184,7 @@ const admAsk = (key, again) => {
 function admSum() {
   if (AD.asked) return;
   AD.asked = true;
-  call("admin/summary").then((x) => { AD.sum = x; patch(); }, () => {});
+  call("admin/summary").then((x) => { AD.sum = x; patch(); redraw(); }, () => {});
 }
 // (after a change: the figures and the log asked again)
 function admChanged() { AD.asked = false; AD.data.log = null; AD.err.log = null; patch(); }
@@ -1214,19 +1215,33 @@ const admCopy = (url, note) => [h("div.group", {}, h("div.row.plain", {}, h("cod
   h("button.row.action", { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(url); toast("Copied."); } catch (_) { toast("Couldn’t copy it: select it instead.", true); } } }, "Copy link")),
   h("p.hint", { text: note })];
 
+// Admin, a row of its own that opens into its folder: the people (accounts, invites, messages) and the site (its
+// use, its storage, its email, the log), each a step further in
 function adminSection(m) {
-  if (!m.admin.ready) return section("Admin", h("div.group.glass", {},
-    row({ icon: "passkey", tint: "indigo", title: "Admin", value: h("span.mini.go", { text: "Add a passkey" }), onclick: () => openSheet(passkeysView) })));
+  if (!m.admin.ready) return section(null, h("div.group.glass", {},
+    row({ icon: "sliders", tint: "indigo", title: "Admin", value: h("span.mini.go", { text: "Add a passkey" }), onclick: () => openSheet(passkeysView) })));
+  admSum();
+  const s = AD.sum || {};
+  return section(null, h("div.group.glass", {},
+    row({ icon: "sliders", tint: "indigo", title: "Admin", value: s.email === false ? "Email off" : s.accounts == null ? null : `${num(s.accounts)} account${s.accounts === 1 ? "" : "s"}`,
+      warn: s.email === false, onclick: () => openSheet(adminView) })));
+}
+function adminView() {
   admSum();
   const s = AD.sum || {}, st = AD.data.storage;
-  return section("Admin", h("div.group.glass", {},
-    row({ icon: "people", tint: "blue", title: "Accounts", value: s.accounts, onclick: () => openSheet(admAccountsView) }),
-    row({ icon: "link", tint: "indigo", title: "Invites", value: s.invites == null ? null : `${s.invites} unused`, onclick: () => { AD.invite = null; openSheet(admInvitesView); } }),
-    row({ icon: "bubble", tint: "teal", title: "Messages", value: s.messages == null ? null : num(s.messages), onclick: () => openSheet(admMessagesView) }),
-    row({ icon: "chart", tint: "green", title: "Insights", value: s.online == null ? null : `${s.online} online`, onclick: () => openSheet(admInsightsView) }),
-    row({ icon: "db", tint: "grey", title: "Storage", value: st ? bytes(st.dbBytes + st.files.reduce((a, f) => a + f.bytes, 0)) : null, onclick: () => openSheet(admStorageView) }),
-    row({ icon: "mail", tint: "red", title: "Email", value: s.email == null ? null : s.email ? "Working" : "Off", warn: s.email === false, onclick: () => openSheet(admEmailView) }),
-    row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => openSheet(admLogView) })));
+  return { title: "Admin", body: [
+    h("h4.app-k", { text: "People" }),
+    h("div.group", {},
+      row({ icon: "people", tint: "blue", title: "Accounts", value: s.accounts, onclick: () => pushSheet(admAccountsView) }),
+      row({ icon: "link", tint: "indigo", title: "Invites", value: s.invites == null ? null : `${s.invites} unused`, onclick: () => { AD.invite = null; pushSheet(admInvitesView); } }),
+      row({ icon: "bubble", tint: "teal", title: "Messages", value: s.messages == null ? null : num(s.messages), onclick: () => pushSheet(admMessagesView) })),
+    h("h4.app-k", { text: "The site" }),
+    h("div.group", {},
+      row({ icon: "chart", tint: "green", title: "Insights", value: s.online == null ? null : `${s.online} online`, onclick: () => pushSheet(admInsightsView) }),
+      row({ icon: "db", tint: "grey", title: "Storage", value: st ? bytes(st.dbBytes + st.files.reduce((a, f) => a + f.bytes, 0)) : null, onclick: () => pushSheet(admStorageView) }),
+      row({ icon: "mail", tint: "red", title: "Email", value: s.email == null ? null : s.email ? "Working" : "Off", warn: s.email === false, onclick: () => pushSheet(admEmailView) }),
+      row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => pushSheet(admLogView) })),
+  ] };
 }
 
 // Messages: what's been sent through the home page's Get in touch (it comes by email too), newest first, each to reply
@@ -1306,7 +1321,7 @@ function admDeleteView(u) {
       try {
         const r = await admPost(go, "Deleting…", "delete", { id: u.id, confirm: sure.value });
         AD.data.users.users = AD.data.users.users.filter((x) => x.id !== u.id); admChanged();
-        Sheet.stack.length = 1; draw(true); toast(r.message);
+        Sheet.stack.length = Math.max(1, Sheet.stack.indexOf(admAccountsView) + 1); draw(true); toast(r.message);
       } catch (err) { if (!err.quiet) say(said, err.message); }
     } }, field(`Type ${u.handle} to confirm`, h("div.at", {}, "@", sure)), go),
     said] };

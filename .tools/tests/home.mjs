@@ -221,9 +221,12 @@ ok(await D.p.evaluate(() => document.documentElement.scrollHeight <= innerHeight
 
 // ---- 7. Messages: in Admin on the owner's account page ----
 await G.p.goto(`${ACCT}/`); await G.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(G, 1500);
-const adminText = () => G.p.evaluate(() => [...document.querySelectorAll('section.section')].find((s) => s.querySelector('h3')?.textContent === 'Admin')?.innerText.replace(/\s+/g, ' ').trim() || '');
-ok(/Messages 1/.test(await adminText()), 'Admin: Messages, and how many', await adminText());
-await G.p.click('section.section:has(h3:text-is("Admin")) .row:has(b:text-is("Messages"))');
+await shot(G, 'account-admin', true);
+await G.p.click('main .row:has(b:text-is("Admin"))');
+await G.p.waitForFunction(() => /Messages\s+1/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+ok(/Messages 1/.test(await text(G, '#sheet')), 'Admin, a folder: Messages in it, and how many', await text(G, '#sheet'));
+await settle(G, 600); await shot(G, 'admin-folder');
+await G.p.click('#sheet .row:has(b:text-is("Messages"))');
 await G.p.waitForFunction(() => /Sam Okoro/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const sheet = await text(G, '#sheet');
 ok(/Sam Okoro/.test(sheet) && /sam@example\.com/.test(sheet) && /Are you riding the sportive in May\?/.test(sheet), 'the message: who, their email and what they wrote', sheet.slice(0, 160));

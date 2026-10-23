@@ -1780,8 +1780,10 @@ through Get in touch, newest first: who, their email, what they wrote, Reply and
 Delete); and has Insights, Storage, Email (with a test) and a log of every action. Admins never see passwords, keys or scrolls; the server
 doesn't have them.
 
-It's on an account: Admin is a section of the admin's own account page
-(account.<site>), only for it. The admin is the account linked to it (`pg_meta`
+It's on an account: Admin is a row of the admin's own account page
+(account.<site>), only for it, that opens into its own folder: People (Accounts,
+Invites, Messages) and The site (Insights, Storage, Email, the Admin log), each a
+step further in, with Back. The admin is the account linked to it (`pg_meta`
 `admin_user`: linked once from InFlight's old dashboard, since removed), or, with
 none (or that one gone, or being deleted), the account with the site owner's
 email (`PIGEON_ADMIN_EMAIL`, else `CONTACT_TO`) once that email's confirmed: the
@@ -1792,7 +1794,7 @@ account only, with a passkey on it; looking needs you to have shown it's you
 (the page asks, as for anything else), from the page itself; each change is in
 your Recent activity too, and you can't delete your own account from Admin. The
 old dashboard's addresses (`/pigeon/admin/` on the site, `/admin` on InFlight's)
-lead there. The same account is the home page's owner, with its Edit (above).
+lead there (`#admin`, which opens the folder). The same account is the home page's owner, with its Edit (above).
 `.tools/tests/adminlink.mjs` tests all of it (Messages: `.tools/tests/home.mjs`).
 
 **Profiles.** In Account → My Profile, people can change their name any time,

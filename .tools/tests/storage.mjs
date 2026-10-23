@@ -124,8 +124,8 @@ const actx = await K.b.newContext({ viewport: { width: 430, height: 932 }, devic
 await actx.addCookies([AD.cookie]);
 const ad = await actx.newPage();
 ad.on('pageerror', (e) => K.errs.push(`admin: ${e.message}`));
-await ad.goto(AD.page + '/'); await ad.waitForSelector('section.section:has(h3:text-is("Admin")) .row', { timeout: 20000 }); await ad.waitForTimeout(900);
-await ad.click('section.section:has(h3:text-is("Admin")) .row:has(b:text-is("Storage"))');
+await ad.goto(AD.page + '/'); await ad.waitForSelector('main .row:has(b:text-is("Admin"))', { timeout: 20000 }); await ad.waitForTimeout(900);
+await ad.click('main .row:has(b:text-is("Admin"))'); await ad.click('#sheet .row:has(b:text-is("Storage"))');
 await ad.waitForFunction(() => /Database/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 30000 }).catch(() => {});
 const panel = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
 ok(/Database \d/.test(panel) && /pg_flights 4/.test(panel) && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage: the database’s size, rows per table, what’s waiting to go', panel.slice(0, 240));
