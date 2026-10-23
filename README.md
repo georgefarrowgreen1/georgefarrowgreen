@@ -9,7 +9,7 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
 ## The home page
 
 - **The slideshow:** the photos for this screen (each tagged Both, Phone or Computer), one at a time, crossfading every 7
-  seconds with a slow zoom; thin segments under the buttons fill as each plays. The first is asked for before the page
+  seconds with a slow drift; thin segments under the buttons fill as each plays. The first is asked for before the page
   draws (`<link rel=preload>`), the rest as each is about to show; a photo never changes under its address, so browsers
   keep it for good (`/api/background`). With Reduce Motion on, the first photo stays, still.
 - **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
@@ -22,6 +22,24 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   tick and a thank-you. See **Contact form** below.
 - **Search and link previews:** the words are in the page as it's sent (`functions/_home.js` writes them in, and the
   description and preview tags), with a `Person` JSON-LD block; the preview image is the first computer photo.
+- **Smooth:** everything that moves is a fade or a move the phone's graphics do on their own, and nothing makes the
+  glass redraw for no reason.
+  - Each photo is fetched and decoded before it fades in, the next one readied behind it. Its slow drift (a Web
+    Animation) runs only while the top of the page is in view: scrolled, with a sheet up or out of sight, the photo
+    and the slideshow hold still, so the glass over them isn't redrawn every frame.
+  - The scroll effects (the name into the bar, the bar's band, the photo softening, the hero's lines fading) are
+    scroll-linked CSS animations (`animation-timeline: scroll()`), which move with the scroll itself; the script only
+    measures, once, where each line fades. Without them, a frame sets the opacity of a few things from those
+    measurements, never measuring as it scrolls.
+  - The softened photo is a copy of the one showing, drawn 48 px wide and smoothed once, stretched over the screen and
+    faded in: not a full-screen blur redrawn each frame.
+  - Sheets spring up (a `linear()` spring); the page steps back by moving only (the sheet's backdrop dims it). Dragged
+    by its top a sheet follows the finger, the page coming forward with it; let go, it springs back, or carries on at
+    the speed it was thrown.
+  - New photos are kept up to 2600 px (a phone's screen at 3×, a computer's at 2×), as WebP where the browser can make
+    it. The name's typeface (Space Grotesk) is served from the site, at `/fonts/`, and asked for first.
+  - On a slowed phone-sized browser, scrolling went from about 40 dropped frames in 130 to none or one, and opening a
+    sheet from about 17 to one to three.
 
 ## Editing
 

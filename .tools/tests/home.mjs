@@ -193,8 +193,15 @@ await shot(V, 'visitor');
 ok(await V.p.evaluate(() => document.querySelectorAll('#bg .slide').length === 2 && document.querySelectorAll('#bg .slide.on').length === 1 && document.querySelectorAll('#segs i').length === 2),
   'the slideshow: one photo at a time, a segment for each');
 await V.p.evaluate(() => scrollTo(0, document.body.scrollHeight)); await settle(V, 800);
-ok(await V.p.evaluate(() => Number(getComputedStyle(document.documentElement).getPropertyValue('--k')) > 0.5 && Number(getComputedStyle(document.querySelector('.hero h1')).opacity) < 0.2),
-  'scrolled: the name comes into the bar, and the hero fades under it');
+ok(await V.p.evaluate(() => Number(getComputedStyle(document.querySelector('.bar .mid')).opacity) > 0.5 && Number(getComputedStyle(document.querySelector('.hero h1')).opacity) < 0.2
+  && getComputedStyle(document.querySelector('#soft')).visibility === 'visible' && /url\("data:image\/png/.test(document.querySelector('#soft').style.backgroundImage)),
+  'scrolled: the name comes into the bar, the hero fades under it, the photo softens (a softened copy of it)');
+ok(await V.p.evaluate(() => document.body.classList.contains('paused') && document.querySelector('#bg .slide.on').getAnimations().every((a) => a.playState === 'paused')),
+  'and the photo holds still while it’s scrolled');
+await V.p.evaluate(() => scrollTo(0, 0)); await settle(V, 500);
+ok(await V.p.evaluate(() => !document.body.classList.contains('paused') && document.querySelector('#bg .slide.on').getAnimations().some((a) => a.playState === 'running')
+  && Number(getComputedStyle(document.querySelector('.hero h1')).opacity) > 0.95), 'back at the top it drifts again, the name back');
+await V.p.evaluate(() => scrollTo(0, document.body.scrollHeight)); await settle(V, 600);
 await shot(V, 'visitor-scrolled');
 await home(G); await shot(G, 'owner');
 const D = await browser('desktop', true);
