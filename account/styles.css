@@ -95,7 +95,7 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 @media (min-width: 760px) { main { padding-top: calc(var(--top) + 72px); } }
 
 /* ---- the large title, going with the page as it scrolls ---- */
-.large { margin: 0 4px 18px; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; }
+.large { margin: 0 4px 18px; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; text-align: center; }
 .lede { margin: -10px 4px 22px; color: var(--text-2); font-size: 15px; line-height: 1.4; max-width: 46ch; }
 
 /* ---- glass: the hero, the groups, the sheet ---- */
@@ -131,7 +131,7 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 
 /* ---- a section: its heading, then a group of rows ---- */
 .section { margin: 0 0 26px; }
-.section > h3 { margin: 0 20px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
+.section > h3 { margin: 0 20px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); text-align: center; }
 .section > .foot { margin: 8px 20px 0; font-size: 13px; line-height: 1.4; color: var(--text-3); }
 .group { border-radius: var(--r-group); overflow: hidden; }
 .row { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 58px; padding: 10px 18px; border: 0; background: none; text-align: left;
