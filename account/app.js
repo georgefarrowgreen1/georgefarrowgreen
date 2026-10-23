@@ -1055,7 +1055,6 @@ function passkeysView() {
       })))
     : h("div.group", {}, h("div.empty", { text: "No passkeys yet." }));
   return { title: "Passkeys", body: [
-    h("p", { text: "A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site. Nothing to remember, and nothing for anyone to steal." }),
     list,
     can && h("button.btn", { type: "button", onclick: async (e) => {
       const b = e.currentTarget; say(said, "");
