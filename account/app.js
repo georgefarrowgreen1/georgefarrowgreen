@@ -1346,15 +1346,10 @@ function exportView() {
     } catch (err) { if (!err.quiet) say(sheetEl.querySelector(".said"), err.message); }
   };
   return { title: "Your data", body: [
-    h("p", { text: "Everything kept with your account that can be read, as a PDF to read and keep:" }),
-    h("ul.gone", {},
-      h("li", { text: "Your profile and photo, sign-in (passkeys, devices) and recent activity" }),
-      h("li", { text: "InFlight: friends, groups, passport, birds, settings, and how many pigeons you’ve sent and had" }),
-      h("li", { text: "Weather: your saved places, settings and notifications" })),
-    h("p.hint", { text: "Your InFlight letters aren’t included: they’re end-to-end encrypted, with keys only your phones have. The server can’t read them." }),
+    h("p", { text: "A copy of everything kept with your account, in every app on the site." }),
     h("button.btn", { type: "button", onclick: get("pdf") }, icon("download", 20, 2.2), "Download as PDF"),
     h("button.btn.quiet", { type: "button", onclick: get("json") }, "Download as JSON"),
-    h("p.hint.center", { text: "JSON is the same data, in a form other apps can read." }),
+    h("p.hint.center", { text: "InFlight letters aren’t included: only your phones can read them." }),
     said] };
 }
 
