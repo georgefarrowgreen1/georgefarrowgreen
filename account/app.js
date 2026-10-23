@@ -256,7 +256,7 @@ wide.addEventListener("change", () => { if (S.me?.signedIn && !S.me.deleting && 
 // (this device, as Signed-in devices names it, in a word: "This iPhone")
 const thisOne = (d) => { const k = String(d.label || "").split(" · ")[0]; return /^(iPhone|iPad|Mac)$/.test(k) ? `This ${k}` : "This device"; };
 function signedIn(r) {
-  const m = S.me, ap = m.apps || {}, pw = m.password || {}, here = m.devices.find((d) => d.current);
+  const m = S.me, ap = m.apps || {}, pw = m.password || {};
   // each app: a way into it, and what you have there (what it keeps of yours, behind ⓘ)
   const app = (id, name, img, use, sub) => h("div.app.glass", {},
     h("div.app-top", {}, h("img", { src: img, alt: "", width: 54, height: 54 }),
@@ -282,32 +282,25 @@ function signedIn(r) {
     (!m.emailOk || m.emailNew) && r(banner(m)),
     pw.leaked && r(leakBanner()),
   ];
-  // each row says how things are; where there's one thing to do, it says so
-  const security = r(section("Sign-in and security", h("div.group.glass", {},
-    checkupRow(m),
-    row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", warn: !m.emailOk, onclick: () => openSheet(emailView) }),
-    row({ icon: "key", tint: "blue", title: "Password",
-      value: pw.setAt ? `${Math.abs(pw.setAt - m.since) < 5 * 60e3 ? "Set" : "Changed"} ${when(pw.setAt)}` : null, onclick: () => openSheet(passwordView) }),
-    row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || h("span.mini.go", { text: "Add one" }), onclick: () => openSheet(passkeysView) }),
-    row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length === 1 && here ? thisOne(here) : m.devices.length, onclick: () => openSheet(devicesView) }),
-    row({ icon: "clock", tint: "grey", title: "Recent activity", value: m.lastActivity ? cap(when(m.lastActivity)) : null, onclick: () => openSheet(activityView) })),
-    "Your email, password and passkeys sign you in to every app on the site."));
+  // the account: sign-in and security (how it stands, by the check-up), and your data (deleting the account at its
+  // foot), a row each; the rest in their sheets
+  const todo = checks(m).filter((x) => !x.ok).length;
+  const account = r(section("Account", h("div.group.glass", {},
+    row({ icon: "shield", tint: todo ? "amber" : "green", title: "Sign-in and security", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(securityView) }),
+    row({ icon: "download", tint: "green", title: "Your data", sub: "A copy to keep, or delete your account", onclick: () => openSheet(exportView) }))));
   const prefs = r(section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
     row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })),
     "For every app on the site that has them."));
-  const data = r(section("Your data", h("div.group.glass", {},
-    row({ icon: "download", tint: "green", title: "Download your data", onclick: () => openSheet(exportView) }))));
   // (opened from an app, in its own window: signing out is the app's to do, not this window's)
   const ending = [
     !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")),
       "Signs you out of every app on the site, in this browser.")),
-    r(section(null, h("div.group.glass", {}, h("button.row.action.danger", { type: "button", onclick: () => openSheet(deleteView) }, "Delete account")))),
     r(h("footer.foot", {}, h("div", { text: `Your account since ${new Date(m.since).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` }),
       h("a", { href: siteUrl(""), text: "georgefarrowgreen.com" }))),
   ];
-  const [a, b] = wide.matches ? [[...top, apps, data], [security, prefs, ...ending]] : [top, [apps, security, prefs, data, ...ending]];
+  const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
 // Your photo, tapped: a new one, straight from the picker (the camera badge says so)
@@ -393,11 +386,27 @@ function checks(m) {
     { ok: !stale, label: stale ? `${stale} device${stale > 1 ? "s" : ""} unused for 3 months` : "No devices left unused", go: "Review", act: () => pushSheet(devicesView) },
   ];
 }
-function checkupRow(m) {
-  const todo = checks(m).filter((x) => !x.ok).length;
-  return row({ icon: "shield", tint: todo ? "amber" : "green", title: "Security check-up", value: todo ? `${todo} to do` : "All done", warn: !!todo, onclick: () => openSheet(checkupView) });
+// Sign-in and security: the check-up at its head (what's left to do, each a tap; all done, just that), then how you
+// sign in, and where and when; each row says how things are, and opens its own sheet
+function securityView() {
+  const m = S.me, pw = m.password || {}, here = m.devices.find((d) => d.current);
+  return { title: "Sign-in and security", body: [
+    ...checkupView(true).body,
+    h("h4.app-k", { text: "Signing in" }),
+    h("div.group", {},
+      row({ icon: "mail", tint: "blue", title: "Email", value: m.emailOk ? "Confirmed" : "Not confirmed", warn: !m.emailOk, onclick: () => pushSheet(emailView) }),
+      row({ icon: "key", tint: "blue", title: "Password",
+        value: pw.setAt ? `${Math.abs(pw.setAt - m.since) < 5 * 60e3 ? "Set" : "Changed"} ${when(pw.setAt)}` : null, onclick: () => pushSheet(passwordView) }),
+      row({ icon: "passkey", tint: "indigo", title: "Passkeys", value: m.passkeys.length || h("span.mini.go", { text: "Add one" }), onclick: () => pushSheet(passkeysView) })),
+    h("p.hint", { text: "Your email, password and passkeys sign you in to every app on the site." }),
+    h("h4.app-k", { text: "Where and when" }),
+    h("div.group", {},
+      row({ icon: "devices", tint: "green", title: "Signed-in devices", value: m.devices.length === 1 && here ? thisOne(here) : m.devices.length, onclick: () => pushSheet(devicesView) }),
+      row({ icon: "clock", tint: "grey", title: "Recent activity", value: m.lastActivity ? cap(when(m.lastActivity)) : null, onclick: () => pushSheet(activityView) })),
+  ] };
 }
-function checkupView() {
+// (brief: all done, just that it is, not the list)
+function checkupView(brief = false) {
   const items = checks(S.me), todo = items.filter((x) => !x.ok).length, frac = (items.length - todo) / items.length;
   const ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   ring.setAttribute("viewBox", "0 0 64 64"); ring.setAttribute("aria-hidden", "true"); ring.classList.add("ring");
@@ -406,7 +415,7 @@ function checkupView() {
     h("div.ck-top", {}, h("span.ck-ring", {}, ring, icon("shield", 24, 1.9)),
       h("span.tx", {}, h("b", { text: todo ? `${todo} thing${todo > 1 ? "s" : ""} to do` : "Well protected" }),
         h("small", { text: todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on." }))),
-    h("div.group.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
+    !(brief && !todo) && h("div.group.ck-list", {}, items.map((x) => h("div.ck-row" + (x.ok ? ".ok" : ""), {},
       h("span.ck-dot", { "aria-hidden": "true" }, x.ok && icon("check", 13, 3)), h("span.ck-t", { text: x.label }),
       !x.ok && h("button.mini.go", { type: "button", onclick: (e) => x.act(e.currentTarget) }, x.go)))))] };
 }
@@ -1350,7 +1359,11 @@ function exportView() {
     h("button.btn", { type: "button", onclick: get("pdf") }, icon("download", 20, 2.2), "Download as PDF"),
     h("button.btn.quiet", { type: "button", onclick: get("json") }, "Download as JSON"),
     h("p.hint.center", { text: "InFlight letters aren’t included: only your phones can read them." }),
-    said] };
+    said,
+    // (deleting the account: at the foot, apart, and asked again in its own sheet)
+    h("h4.app-k.apart", { text: "Delete your account" }),
+    h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(deleteView) }, "Delete account…")),
+    h("p.hint", { text: "Deletes your account and everything kept with it, in every app on the site. You’ll have 7 days to change your mind." })] };
 }
 
 // ---- deleting the account: in 7 days, unless you keep it ----

@@ -241,7 +241,8 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sheet-head .link { font-size: 17px; }
 .sheet-head .link.done { font-weight: 600; }
 .x { width: 34px; height: 34px; border-radius: 50%; border: 0; display: grid; place-items: center; color: var(--text-2); background: var(--glass-ctl); }
-.sheet-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px calc(22px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 16px; align-content: start; }
+.sheet-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px 16px calc(22px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 16px; align-content: start;
+  grid-auto-rows: max-content; }   /* (a group as tall as its rows, however long the sheet: not squashed to fit) */
 .sheet-body > p { margin: 0 6px; color: var(--text-2); font-size: 15px; line-height: 1.45; }
 .sheet-body .group { background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
 .swap { animation: swap 0.42s var(--ease); }
@@ -480,6 +481,7 @@ body.sheet-up .whobar { opacity: 0; }
 /* ---- emails: each app's, headed by its icon; a switch where there's a choice ---- */
 .app-k { display: flex; align-items: center; gap: 8px; margin: 18px 6px 8px; font: 600 13px/1.2 var(--font); letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-3); }
 .app-k img { width: 18px; height: 18px; border-radius: 5px; }
+.app-k.apart { margin-top: 40px; }
 .switch { -webkit-appearance: none; appearance: none; flex: none; position: relative; width: 51px; height: 31px; margin: 0; border-radius: 999px; cursor: pointer;
   background: rgba(120, 120, 128, 0.36); box-shadow: inset 0 0 0 0.5px var(--line); transition: background-color 0.3s; }
 .switch::before { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;

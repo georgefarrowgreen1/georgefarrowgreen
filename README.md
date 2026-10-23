@@ -261,8 +261,11 @@ Motion, solid with Reduce Transparency.
   server too, 409).
 - **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
   camera badge) to pick a new one straight away. **Your apps**
-  (a card for each); **Sign-in and security** (starting with the **Security check-up**, below), **Preferences**, **Your data**, **Sign out** (of every app on the site, in
-  this browser; not when an app opened the page in its own window: signing out is the app's own) and **Delete account**. Each row says how things are, not what to do: the check-up "2 to do" and an
+  (a card for each); **Account**, two rows: **Sign-in and security** (saying how it stands by the **Security check-up**,
+  below: "All done", or "2 to do" in amber), whose sheet has the check-up at its head, then Email, Password and Passkeys,
+  then Signed-in devices and Recent activity, each opening its own; and **Your data**, whose sheet has the downloads, and
+  **Delete account…** at its foot, apart, asked again in its own sheet; **Preferences**; **Sign out** (of every app on
+  the site, in this browser; not when an app opened the page in its own window: signing out is the app's own). Each row says how things are, not what to do: the check-up "2 to do" and an
   unconfirmed email in amber, the password "Set today" or "Changed 3 Oct" (`pg_users.pw_at`, kept from now on, and for
   accounts from before as far back as recent activity goes), passkeys **Add one** where there are none, devices "This
   iPhone" where it's the only one, recent activity when the latest was. Once the profile's scrolled away, a bar of
