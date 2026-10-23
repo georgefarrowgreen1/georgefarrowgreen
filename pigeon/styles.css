@@ -1636,6 +1636,8 @@ html.night .nav-ghost .night{background:none}
 .ltile small{font-size:13px;line-height:17px;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ltile .lnext{color:var(--tint)}
 .ltile.none .lnext{color:var(--label-2)}
+.ltile .lnext.full{color:var(--label-2)}
+.lgrid>.ltile:last-child:nth-child(odd){grid-column:1/-1}   /* (one on its own takes the whole row) */
 .aver{margin:22px 0 0;text-align:center;font-size:13px;color:var(--label-2)}
 /* small fixes from the UI audit */
 .compose .kind{max-width:44%}

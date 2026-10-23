@@ -3437,7 +3437,7 @@ function vAccount() {
   const tile = (kind, name, what) => {
     const n = u[kind] || 0, full = n >= KIND[kind].max, next = full ? (kind === "mystery" ? "Ready" : "Full") : n ? `Next in <span data-eta="${u[kind + "NextAt"]}"></span>` : `In <span data-eta="${u[kind + "NextAt"]}"></span>`;
     return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" || SPACE_KINDS.includes(kind) ? null : u.skin)}<b>${n}</b></span>
-      <span class="lname">${name}</span><small>${what}</small><small class="lnext">${next}</small></div>`;
+      <span class="lname">${name}</span><small>${what}</small><small class="lnext${full ? " full" : ""}">${next}</small></div>`;
   };
   // (the Moon's and Mars's pigeons, once you or a friend are there)
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
@@ -3457,7 +3457,7 @@ function vAccount() {
       ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles, passport, badges and looks", chev: true })}
       ${cell({ act: "feathers", icon: I.coin, tile: "yellow", label: "Coots", sub: "Your Coots Coins, for the shop", val: `<span class="fbal">${(S.feathers || 0).toLocaleString("en-GB")}</span>`, chev: true })}</div>
     <div class="ghead">Flying</div>
-    <div class="group">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", sub: "1.25× faster, but 1 in 100 is lost", on: u.risky })}</div>
+    <div class="group">${toggleCell({ act: "risky", icon: I.skull, tile: "red", label: "Pigeon Death", on: u.risky })}</div>
     <div class="gfoot">Every pigeon you send flies 1.25× faster, but 1 in 100 never arrives. You won’t know until it happens, and then it’s your turn again.</div>
     <div class="ghead">Settings</div>
     <div class="group">
