@@ -601,9 +601,10 @@ export async function tick(env, origin) {
   await sweepPhotos(env).catch(() => {});     // photos go 24 h after landing, even if no one opens the app
   await lockOldSecrets(D, env).catch((e) => console.error("at rest", e.message));
   await vanishSweep(env).catch((e) => console.error("vanish", e.message));          // disappearing messages that are due (functions/_vanish.js)   // (functions/_atrest.js: once PIGEON_PEPPER is set)
-  // old rate-limit windows and ended sessions
+  // old rate-limit windows and ended sessions (an account page opened from an app ends with the app's sign-in)
   await D.batch([D.prepare("DELETE FROM pg_limits WHERE reset_at < ?").bind(t - DAY),
     D.prepare("DELETE FROM pg_sessions WHERE seen_at < ?").bind(t - 181 * DAY),
+    D.prepare("DELETE FROM pg_sessions WHERE parent IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = pg_sessions.parent)"),
     D.prepare("DELETE FROM pg_links WHERE status IN ('pending', 'declined') AND created_at < ?").bind(t - 30 * DAY),
     D.prepare("DELETE FROM pg_wxcache WHERE at < ?").bind(t - HOUR),
     D.prepare("DELETE FROM pg_handles_held WHERE until < ?").bind(t)]).catch(() => {});

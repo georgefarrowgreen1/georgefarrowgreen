@@ -129,11 +129,12 @@ function siteUrl(sub) {
 }
 
 // ---- words for times ----
-const rtf = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" });
-function ago(t) {
+const rtf = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto" }), rtfShort = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto", style: "short" });
+// (short: "24 min ago", for a row with a button beside it)
+function ago(t, short = false) {
   const s = (Date.now() - t) / 1000;
   if (s < 90) return "just now";
-  for (const [n, unit] of [[3600, "minute"], [86400, "hour"], [86400 * 7, "day"]]) if (s < n) return rtf.format(-Math.round(s / { minute: 60, hour: 3600, day: 86400 }[unit]), unit);
+  for (const [n, unit] of [[3600, "minute"], [86400, "hour"], [86400 * 7, "day"]]) if (s < n) return (short ? rtfShort : rtf).format(-Math.round(s / { minute: 60, hour: 3600, day: 86400 }[unit]), unit);
   return "on " + day(t);
 }
 const day = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
@@ -1098,17 +1099,24 @@ function devicesView() {
       toast(body.id ? "Signed out." : body.stale ? `${stale.length} unused device${stale.length > 1 ? "s were" : " was"} signed out.` : "Your other devices were signed out.");
     } catch (e) { if (!e.quiet) say(sheetEl.querySelector(".said"), e.message); }
   };
+  // (each by its app, where it's used in just one, with its icon, or else its browser; what it is and the country left
+  // out where they're this one's: "Safari", "Norwich")
+  const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
+  const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
+    const name = d.app ? APPS[d.app].name : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
-      h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
-      h("span.tx", {}, h("b", {}, d.label, d.current && h("span.tag", { text: "This browser" })),
-        h(d.stale ? "small.warn" : "small", { text: [d.place, d.current ? "Active now" : d.stale ? `Not used for ${monthsSince(d.seenAt)}` : `Active ${ago(d.seenAt)}`].filter(Boolean).join(" · ") })),
+      d.app ? h("span.ic.app-ic", {}, h("img", { src: APP_MARK[name], alt: "", width: 32, height: 32 }))
+        : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),
+      h("span.tx", {}, h("b", {}, name, d.current && h("span.tag", { text: thisOne(d) })),
+        h(d.stale ? "small.warn" : "small", { text: [d.kind !== me?.kind && d.kind !== name && d.kind, where(d.place),
+          d.current ? "Active now" : d.stale ? `Not used for ${monthsSince(d.seenAt)}` : ago(d.seenAt, true)].filter(Boolean).join(" · ") })),
       !d.current && twice("Sign out", "Sign out?", (b) => end(b, { id: d.id }, [el])));
     el.dataset.stale = d.stale ? "1" : "";
     return d.current ? el : swipeable(el, "Sign out", (b) => end(b, { id: d.id }, [b.parentNode]));
   });
   return { title: "Signed-in devices", body: [
-    h("p", { text: "Everywhere your account’s signed in. Signing a device out signs it out of every app on the site." }),
+    h("p", { text: "Where your account’s signed in. On iPhone, each Home Screen app signs in on its own." }),
     h("div.group", {}, rows),
     (stale.length > 0 || others.length > 1) && h("div.group", {},
       stale.length > 0 && h("button.row.action", { type: "button", onclick: (e) => end(e.currentTarget, { stale: true }, rows.filter((r) => r.dataset.stale)) },

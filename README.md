@@ -300,7 +300,13 @@ Motion, solid with Reduce Transparency.
   on a device that can make one (Face ID, Touch ID, Windows Hello: it asks the browser), a sheet offers one, at most
   once a month on that device.
 - **Signed-in devices:** each with where and when; those unused for 3 months are marked, with **Sign out N unused
-  devices**, as well as one at a time or all the others. On a touch screen a device's row slides left to show
+  devices**, as well as one at a time or all the others. On an iPhone each Home Screen app keeps cookies of its own (apart
+  from Safari's and each other's), so each is a sign-in of its own: a sign-in's named by the app it's used in (Weather,
+  InFlight, with its icon) where that's just one, and otherwise by its browser (Safari), what apps it's been used in
+  noted as it's used (`pg_sessions.apps`). The account's page opened from an app (its hand-off) isn't a device of its
+  own: it's part of that app's sign-in (`pg_sessions.parent`), listed as it (**This iPhone**), replaced each time it's
+  opened and ending with it (one used by an app as well is the browser's own sign-in from then on). The country's left
+  out where it's this device's, and the device where it's the same kind. On a touch screen a device's row slides left to show
   **Sign out**, and a passkey's to show **Remove**, as lists do on a phone (the buttons stay, for a keyboard).
 - **Recent activity:** the last 30 days, by day: sign-ins (and how), a new password or reset, passkeys added and taken
   away, devices signed out, the email confirmed or changed, the data downloaded, a deletion asked for or called off; each

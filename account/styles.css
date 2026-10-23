@@ -138,6 +138,8 @@ button.row:active, a.row:active { background-color: var(--press); }
 .ic.indigo { background: linear-gradient(160deg, #8a86ff, #5a4fe0); }
 .ic.green { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
 .ic.grey { background: linear-gradient(160deg, #9aa3b8, #6b7389); }
+.ic.app-ic { background: none; overflow: hidden; }
+.ic.app-ic img { display: block; width: 100%; height: 100%; }
 .ic.red { background: linear-gradient(160deg, #ff7b70, #e5372c); }
 .row .tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .row .tx b { font-weight: 500; font-size: 17px; overflow-wrap: anywhere; }

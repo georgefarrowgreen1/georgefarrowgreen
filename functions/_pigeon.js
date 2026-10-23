@@ -344,6 +344,13 @@ const MIGRATIONS = [
   "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",
   "ALTER TABLE pg_users ADD COLUMN pw_at INTEGER",          // when the password was last set (made, changed or reset)
   "CREATE INDEX IF NOT EXISTS pg_users_delete ON pg_users(delete_at) WHERE delete_at IS NOT NULL",
+  // which apps each sign-in's been used in ("weather,account"), so Signed-in devices can name it by its app (a Home
+  // Screen app on an iPhone has cookies of its own, so it's a sign-in of its own); and, for the account's page opened
+  // from an app (functions/api/account handoff), the app's sign-in it came from: listed as part of that one, and
+  // ending with it
+  "ALTER TABLE pg_sessions ADD COLUMN apps TEXT",
+  "ALTER TABLE pg_sessions ADD COLUMN parent TEXT",
+  "CREATE INDEX IF NOT EXISTS pg_sessions_parent ON pg_sessions(parent) WHERE parent IS NOT NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
@@ -470,11 +477,20 @@ export function placeOf(request) {
   const cf = request?.cf || {}, country = regionOf(cf.country), city = String(cf.city || "").slice(0, 60);
   return [city, country].filter(Boolean).join(", ") || null;
 }
+// Which app a request's for, by its API: "inflight", "weather" or "account" (the account's own page)
+export function appKey(request) {
+  const p = request ? new URL(request.url).pathname : "";
+  return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/account/") ? "account" : null;
+}
+// The sign-ins other than this one's own, in SQL (with othersOf's four): not itself, nor the app's sign-in it was
+// handed from (the account's page opened from an app), nor the account pages handed from it
+export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";
+export const othersOf = (u) => { const a = u.sessionHash, b = u.parent || u.sessionHash; return [a, b, a, b]; };
 export async function issueSession(env, userId, request) {
   const token = randomToken(32), t = Date.now();
   const D = await db(env);
-  await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request)),
+  await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request), appKey(request)),
     D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), userId)]);
   return token;
 }
@@ -496,25 +512,33 @@ export const londonDay = (t) => Math.floor((t + londonOffset(t)) / DAY);
 export async function requireUser(request, env) {
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(request.headers.get("Authorization") || "");
   if (!m) throw new HttpError(401, "Please sign in.", "session");
-  const u = await sessionUser(env, m[1]);
+  const u = await sessionUser(env, m[1], true, false, request);
   // (an account being deleted is signed in only on its own page, to keep it: functions/api/account)
   if (u.delete_at) throw new HttpError(401, "This account is being deleted. To keep it, sign in at account.georgefarrowgreen.com.", "session");
   return u;
 }
 // The account a session's token is for (and that it's still going): its bearer token, or (site) the token of the
 // browser's cookie for the site (functions/_account.js), which is a different one. (inflight: InFlight itself is being
-// used, a day of it noted for its Insights)
-export async function sessionUser(env, token, inflight = true, site = false) {
+// used, a day of it noted for its Insights; request: the app it's used in noted, as it's first used there)
+export async function sessionUser(env, token, inflight = true, site = false, request = null) {
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
-  // the session and its account in one look (every request starts here)
-  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.auth_at AS s_auth FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
-  if (!u || t - u.s_seen > SESSION_TTL) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
+  // the session and its account in one look (every request starts here); an account page opened from an app lasts as
+  // long as the app's sign-in it came from
+  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent,
+      (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
+    FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
+  if (u && !u.s_held) await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.s_hash).run();
+  if (!u || t - u.s_seen > SESSION_TTL || !u.s_held) throw new HttpError(401, "Your session ended. Please sign in again.", "session");
+  // (an app's first use of it noted: one that's an account page opened from an app, used by an app too, is the
+  // browser's own sign-in now, listed by itself)
+  const app = appKey(request), apps = String(u.s_apps || "").split(",").filter(Boolean), learn = app && !apps.includes(app);
+  const parent = learn && app !== "account" ? null : u.s_parent || null;
   // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
-  if (t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
-    D.prepare("UPDATE pg_sessions SET seen_at = ? WHERE hash = ?").bind(t, u.s_hash),
+  if (learn || t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
+    D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
-  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0;
-  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth;
+  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent;
+  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_held;
   return u;
 }
 

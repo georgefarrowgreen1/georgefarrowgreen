@@ -25,7 +25,7 @@
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
-import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession } from "../../_pigeon.js";
+import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -77,7 +77,8 @@ async function view(env, u) {
   const D = await db(env), t = Date.now();
   const [{ results: pks }, { results: ss }, wx, inflight, last] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
-    D.prepare("SELECT hash, label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all(),
+    D.prepare(`SELECT hash, label, place, apps, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
+      FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
     weatherOf(env, u.id),
     inflightOf(D, u.id),
     D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
@@ -90,8 +91,14 @@ async function view(env, u) {
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
     passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null })),
-    devices: ss.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, since: x.created_at, seenAt: x.seen_at,
-      current: x.hash === u.sessionHash, stale: x.hash !== u.sessionHash && t - x.seen_at > STALE })),
+    // (each named by the one app it's used in, where that's so: a Home Screen app on an iPhone is a sign-in of its own;
+    // otherwise by its browser; this one being the app's sign-in an account page opened from an app came from)
+    devices: ss.map((x) => {
+      const here = x.hash === (u.parent || u.sessionHash), [kind, browser] = String(x.label || "").split(" · ");
+      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && ["weather", "inflight"].includes(apps[0]) ? apps[0] : null;
+      return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
+        since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
+    }),
     prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
     // (the emails each app sends: the account's, about signing in and its security, always; InFlight's, as it has them;
     // Weather's warnings and briefing, each on or off, and for which places and when, as its Notifications have them)
@@ -151,10 +158,12 @@ const ROUTES = {
     const from = row && row.expires >= t && await D.prepare("SELECT 1 FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, row.user_id).first();
     if (!from) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
     if (now?.id === row.user_id) return withCookie(json(await view(env, now)), request, env, now.token);
+    // (part of the app's sign-in it came from: listed with it and ending with it, and the last one it opened replaced)
     const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
-    await D.prepare("UPDATE pg_sessions SET auth_at = 0 WHERE hash = ?").bind(hash).run();          // (never counts as showing it's you)
+    await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ? WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
+      D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, hash)]);
     const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
-    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: 0 })), request, env, hash);
+    return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0 })), request, env, hash);
   },
   // ---- joining: a new account, made here (by invite: functions/_join.js) and signed in at once ----
   // (the invite in the body, never the address: an address ends up in logs)
@@ -228,7 +237,7 @@ const ROUTES = {
     const D = await db(env), t = Date.now();
     await D.batch([
       D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
-      D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+      D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "password", request));
@@ -306,17 +315,19 @@ const ROUTES = {
     requireFresh(u);
     if (b.others) {
       // (and an email change still waiting called off: if a device here wasn't yours, nor might that be)
-      await D.batch([D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+      await D.batch([D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
         D.prepare("UPDATE pg_users SET email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(u.id)]);
       waitUntil(logEvent(env, u.id, "signout-others", request));
     } else if (b.stale) {
-      const r = await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ? AND seen_at < ?").bind(u.id, u.sessionHash, Date.now() - STALE).run();
+      // (unused as the list has it: the account page opened from an app counts as the app's)
+      const r = await D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND parent IS NULL
+        AND MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = pg_sessions.hash), 0)) < ?`).bind(u.id, ...othersOf(u), Date.now() - STALE).run();
       waitUntil(logEvent(env, u.id, "signout-stale", request, String(r.meta?.changes || 0)));
     } else {
       const id = String(b.id || "");
       if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(400, "That sign-in wasn’t found.");
-      const s = await D.prepare("SELECT label FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).first();
-      await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).run();
+      const s = await D.prepare(`SELECT label FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND substr(hash, 1, 16) = ?`).bind(u.id, ...othersOf(u), id).first();
+      await D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND substr(hash, 1, 16) = ?`).bind(u.id, ...othersOf(u), id).run();
       if (s) waitUntil(logEvent(env, u.id, "signout-device", request, s.label || "A phone or browser"));
     }
     return json(await view(env, u));

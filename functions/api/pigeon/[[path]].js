@@ -2,7 +2,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
-  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle } from "../../_pigeon.js";
+  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -354,7 +354,9 @@ async function passkeyRegister({ request, env, waitUntil }) {
 // Where you're signed in, and signing the others out.
 async function sessionsList({ request, env }) {
   const u = await requireUser(request, env);
-  const { results } = await (await db(env)).prepare("SELECT hash, label, place, created_at, seen_at FROM pg_sessions WHERE user_id = ? ORDER BY hash = ? DESC, seen_at DESC").bind(u.id, u.sessionHash).all();
+  // (the account's page opened from an app is part of that app's sign-in, not a phone of its own)
+  const { results } = await (await db(env)).prepare(`SELECT hash, label, place, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
+    FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.sessionHash).all();
   return json({ sessions: results.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, createdAt: x.created_at, seenAt: x.seen_at, current: x.hash === u.sessionHash })) });
 }
 // The keys you've trusted, sealed on your phone to your own key (the server can't
@@ -389,15 +391,15 @@ async function sessionsEnd({ request, env, waitUntil }) {
   requireFresh(u);                 // a stolen sign-in mustn't be able to throw the real one out
   if (b.others) {
     // (and an email change still waiting called off: if a phone here wasn't yours, nor might that be)
-    await D.batch([D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+    await D.batch([D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
       D.prepare("UPDATE pg_users SET email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(u.id)]);
     waitUntil(logEvent(env, u.id, "signout-others", request));
   }
   else {
     const id = String(b.id || "");
     if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(400, "That sign-in wasn’t found.");
-    const s = await D.prepare("SELECT label FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).first();
-    await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ? AND substr(hash, 1, 16) = ?").bind(u.id, u.sessionHash, id).run();
+    const s = await D.prepare(`SELECT label FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND substr(hash, 1, 16) = ?`).bind(u.id, ...othersOf(u), id).first();
+    await D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS} AND substr(hash, 1, 16) = ?`).bind(u.id, ...othersOf(u), id).run();
     if (s) waitUntil(logEvent(env, u.id, "signout-device", request, s.label || "A phone or browser"));
   }
   return json({ ok: true });
@@ -1127,7 +1129,7 @@ async function changePassword({ request, env, waitUntil }) {
   await D.batch([
     // (checked against data breaches on the phone first, so none it's found in: the account's page counts it checked)
     D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, t, u.id),
-    D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+    D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${OTHERS}`).bind(u.id, ...othersOf(u)),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
   waitUntil(logEvent(env, u.id, "password", request));

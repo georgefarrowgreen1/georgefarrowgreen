@@ -69,7 +69,7 @@ export function withoutSession(res, request, env) {
 export async function cookieUser(request, env, inflight = false, { deleting = false } = {}) {
   const token = cookieToken(request, env);
   if (!token) return null;
-  try { const u = await sessionUser(env, token, inflight, true); u.token = token; return u.delete_at && !deleting ? null : u; }
+  try { const u = await sessionUser(env, token, inflight, true, request); u.token = token; return u.delete_at && !deleting ? null : u; }
   catch (e) { if (e instanceof HttpError && e.status === 401) return null; throw e; }
 }
 // (said only to someone who's shown it's their account)

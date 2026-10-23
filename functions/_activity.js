@@ -6,14 +6,11 @@
 // And where a passkey's saved (iCloud Keychain, Google Password Manager…), from the authenticator's AAGUID in the
 // authenticator data a new passkey comes with.
 
-import { db, deviceOf, placeOf, DAY, fromB64url } from "./_pigeon.js";
+import { db, deviceOf, placeOf, appKey, DAY, fromB64url } from "./_pigeon.js";
 
 export const KEEP_DAYS = 30;
 // which app a request came from, by its API, as a word for the list
-function appOf(request) {
-  const p = new URL(request.url).pathname;
-  return p.startsWith("/api/pigeon/") ? "InFlight" : p.startsWith("/api/weather/") ? "Weather" : p.startsWith("/api/account/") ? "Account" : null;
-}
+const appOf = (request) => ({ inflight: "InFlight", weather: "Weather", account: "Account" })[appKey(request)] || null;
 export async function logEvent(env, userId, kind, request, detail = null) {
   try {
     const D = await db(env), t = Date.now();
