@@ -3431,27 +3431,41 @@ function vFriends() {
 }
 
 /* ---------- Account ---------- */
+// Account's line of figures (miles, pigeons sent, countries): the Flight Log's, fetched when Account shows
+// and it's over 10 minutes old; Account redraws when it comes
+function logSummary() {
+  const L = S.logSum;
+  if (!S.logSumBusy && (!L || now() - L.at > 10 * 60e3)) {
+    S.logSumBusy = true;
+    api("flight-log").then((d) => { S.logSum = { at: now(), mi: d.km * 0.621371, sent: d.sent, countries: d.passport?.countries || 0 }; if (S.view === "account") render(); })
+      .catch(() => {}).finally(() => { S.logSumBusy = false; });
+  }
+  return L;
+}
 function vAccount() {
   const u = S.me;
-  // today's pigeons: how many of each are in your loft, and when the next hatches
-  const tile = (kind, name, what) => {
-    const n = u[kind] || 0, full = n >= KIND[kind].max, next = full ? (kind === "mystery" ? "Ready" : "Full") : n ? `Next in <span data-eta="${u[kind + "NextAt"]}"></span>` : `In <span data-eta="${u[kind + "NextAt"]}"></span>`;
-    return `<div class="ltile${n ? "" : " none"}" role="group" aria-label="${name}: ${n} in your loft"><span class="ltop">${pg(kind, kind === "mystery" || SPACE_KINDS.includes(kind) ? null : u.skin)}<span class="lname">${name}</span><b>${n}</b></span>
-      <small>${what}</small><small class="lnext${full ? " full" : ""}">${next}</small></div>`;
+  // today's pigeons, one column each: how many are in your loft, and when the next hatches
+  const col = (kind, name, short, x = "") => {
+    const n = u[kind] || 0, full = n >= KIND[kind].max, at = u[kind + "NextAt"];
+    return `<div class="lcol${n ? "" : " none"}" role="group" aria-label="${name}${x ? `, ${x} faster` : ""}: ${n} in your loft, ${full ? (kind === "mystery" ? "ready" : "full") : "next hatches soon"}">${pg(kind, kind === "mystery" || SPACE_KINDS.includes(kind) ? null : u.skin)}<b>${n}</b>
+      <span class="lname">${short}${x ? ` <i>${x}</i>` : ""}</span><small class="lnext${full ? " full" : ""}">${full ? (kind === "mystery" ? "Ready" : "Full") : `<span data-eta="${at}"></span>`}</small></div>`;
   };
   // (the Moon's and Mars's pigeons, once you or a friend are there)
   const on = (b) => worldOf(u) === b || S.friends.some((f) => worldOf(f) === b) || S.groups.some((g) => g.members.some((p) => worldOf(p) === b));
+  // your flying so far, from the Flight Log (fetched now and then, and shown once it's here)
+  const L = logSummary(), num = (x) => L ? Math.round(x).toLocaleString("en-GB") : "–";
+  const earth = col("rocket", "Rocket", "Rocket", "9×") + col("turbo", "Turbo", "Turbo", "3×") + col("swift", "Swift", "Swift", "2×") + col("mystery", "Mystery", "Mystery");
   return `${navbar("Account", { root: true })}
     <h1 class="large">Account</h1>
     <div class="group">${((who) => accountPage() ? `<button type="button" class="cell me-cell" data-act="accountopen" aria-label="Your account: ${esc(u.name)}, @${esc(u.handle)}">${who}${chevSm}</button>` : `<div class="cell me-cell">${who}</div>`)(
-      `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)}</span></span>`)}</div>
+      `${avatar(u, "l")}<span class="ctext"><span class="name one">${esc(u.name)}</span><span class="csub one">@${esc(u.handle)}</span></span>`)}
+      <button type="button" class="cell mestats" data-act="flightlog" aria-label="Your Flight Log${L ? `: ${num(L.mi)} miles flown, ${num(L.sent)} pigeons sent, ${num(L.countries)} countries` : ""}">
+        <span><b>${num(L?.mi)}</b><small>miles flown</small></span><span><b>${num(L?.sent)}</b><small>pigeons sent</small></span><span><b>${num(L?.countries)}</b><small>${L?.countries === 1 ? "country" : "countries"}</small></span></button></div>
     ${NEW_HOME ? `<div class="group">${cell({ act: "moved", icon: I.globe, tile: "blue", label: "InFlight Has Moved", sub: esc(NEW_HOME.replace(/^https?:\/\//, "")), chev: true })}</div>` : ""}
     <div class="ghead">Today’s Pigeons</div>
-    <div class="lgrid">${tile("rocket", "Rocket", "9× faster")}${tile("turbo", "Turbo", "3× faster")}${tile("swift", "Swift", "2× faster")}${tile("mystery", "Mystery", "Any pigeon")}</div>
-    <div class="gfoot">Every day: 1 rocket, 3 turbo, 9 swift and a mystery pigeon. They fly any time. Standard pigeons are free and fly on your turn.</div>
-    <div class="ghead">Space Pigeons</div>
-    <div class="lgrid">${tile("orbital", "Orbital", "Round the Earth")}${on("moon") ? tile("lunar", "Lunar", "To the Moon, ~3 days") + tile("lunarx", "Lunar Express", "To the Moon, ~1 day") : ""}${on("mars") ? tile("laser", "Laser", "To Mars, light speed") : ""}</div>
-    <div class="gfoot">Orbital pigeons go up into orbit and come down near your friend: 2 a day.${on("moon") ? " Only lunar pigeons reach the Moon." : ""}${on("mars") ? " Only laser pigeons reach Mars." : ""}</div>
+    ${((space) => `<div class="group loft">${space.length > 1 ? `<div class="lrow">${earth}</div><div class="lrow space"><span class="lcap">Space</span>${space.join("")}</div>` : `<div class="lrow five">${earth}${space[0]}</div>`}</div>`)(
+      [col("orbital", "Orbital", "Orbital"), ...(on("moon") ? [col("lunar", "Lunar", "Lunar"), col("lunarx", "Lunar Express", "Express")] : []), ...(on("mars") ? [col("laser", "Laser", "Laser")] : [])])}
+    <div class="gfoot">New ones hatch through the day: 1 rocket, 3 turbo, 9 swift, a mystery and 2 orbital, which go round the Earth.${on("moon") ? " Only lunar pigeons reach the Moon." : ""}${on("mars") ? " Only laser pigeons reach Mars." : ""} Standard pigeons are free and fly on your turn.</div>
     <div class="ghead">Your Loft</div>
     <div class="group">${cell({ act: "birds", icon: I.bird, tile: "orange", label: "Your Pigeons", sub: S.birds.length ? esc(S.birds.map((b) => b.name).join(", ")) : "Name them, and they build careers", chev: true })}
       ${cell({ act: "flightlog", icon: I.dist, tile: "teal", label: "Flight Log", sub: "Miles, passport, badges and looks", chev: true })}
