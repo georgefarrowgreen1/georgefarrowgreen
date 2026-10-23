@@ -107,7 +107,7 @@ await L.p.evaluate(() => scrollTo(0, 0)); await settle(L, 300);
 // ---- 2. How the page is served: only at its own address; the API too, and only from its own pages ----
 const r1 = await req(L, `${ACCT}/`);
 const csp = r1.headers()['content-security-policy'] || '';
-ok(r1.status() === 200 && /default-src 'self'/.test(csp) && !/unsafe-inline/.test(csp) && r1.headers()['x-frame-options'] === 'DENY' && /no-cache/.test(r1.headers()['cache-control'] || ''),
+ok(r1.status() === 200 && /default-src 'self'/.test(csp) && !/unsafe-inline/.test(csp) && r1.headers()['x-frame-options'] === 'DENY' && /no-store/.test(r1.headers()['cache-control'] || ''),
   'the page: strict rules (no inline anything, no framing), never kept stale', `${r1.status()} ${csp.slice(0, 60)}`);
 const [rc, rw] = await Promise.all([req(L, `${CHAT}/api/account/me`), req(L, `${WX}/api/account/me`)]);
 ok(rc.status() === 404 && rw.status() === 404, 'the account\'s API answers only at the account\'s address', `${rc.status()} ${rw.status()}`);

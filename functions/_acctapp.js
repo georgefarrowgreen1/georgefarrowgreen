@@ -24,6 +24,18 @@ export const ACCT_SECURITY = {
 // what it shares with the rest of the site: its address here → where it's kept
 const SHARED = { "/crypto.js": "/pigeon/crypto.js", "/argon2.js": "/pigeon/argon2.js", "/qr.js": "/pigeon/qr.js", "/apps/inflight.png": "/pigeon/icon-180.png", "/apps/weather.png": "/weather/icon-180.png" };
 const PAGE = /^\/account\/(index\.html)?$/;
+// The page's own script and styles, stamped with what's in them (?v=), so the page always runs the files it was made
+// with: the page itself never kept (and opened afresh if the browser brings back one it kept: account/app.js), the
+// stamped files kept for good. (What the script brings in itself is checked each time, as before.)
+const STAMPED = ["app.js", "styles.css"], FOREVER = "public, max-age=31536000, immutable";
+const stampOf = async (body) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", body))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+async function stamped(ctx, url, html) {
+  for (const f of STAMPED) {
+    const r = await ctx.env.ASSETS.fetch(new Request(new URL(`/account/${f}`, url)));
+    if (r.ok) html = html.replace(`"${f}"`, `"${f}?v=${await stampOf(await r.arrayBuffer())}"`);
+  }
+  return html;
+}
 
 export async function accountHost(ctx, url) {
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") ? ctx.next() : notFound();
@@ -34,8 +46,13 @@ export async function accountHost(ctx, url) {
   const type = res.headers.get("content-type") || "";
   // (anything else that comes back as a page is the site's home page, served as a fallback)
   if (res.status === 200 && type.includes("text/html") && !PAGE.test(path)) return notFound();
-  const out = new Response(res.body, res);
+  const page = res.status === 200 && PAGE.test(path), stamp = res.status === 200 && STAMPED.includes(path.slice(9)) && url.searchParams.get("v");
+  const body = page && ctx.request.method === "GET" ? await stamped(ctx, url, await res.text()) : stamp ? await res.arrayBuffer() : res.body;
+  const out = new Response(ctx.request.method === "HEAD" ? null : body, res);
   for (const [k, v] of Object.entries(ACCT_SECURITY)) out.headers.set(k, v);
-  if (res.status === 200) out.headers.set("Cache-Control", /\.(png|svg)$/.test(path) ? "public, max-age=86400" : "private, no-cache");
+  if (page || stamp) { out.headers.delete("content-length"); out.headers.delete("etag"); }
+  // (a stamped file kept only when it's what was asked for: just after a deploy the old one can come under the new stamp)
+  if (res.status === 200) out.headers.set("Cache-Control", page ? "no-store" : stamp ? (await stampOf(body)) === stamp ? FOREVER : "no-store"
+    : /\.(png|svg)$/.test(path) ? "public, max-age=86400" : "private, no-cache");
   return out;
 }

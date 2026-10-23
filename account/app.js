@@ -41,6 +41,8 @@ const HANDOFF = (() => {
   if (APPS[p.get("from")]) try { sessionStorage.setItem("acct-from", p.get("from")); } catch (_) {}
   return { code, open: p.get("open") };
 })();
+// a page the browser kept and brought back (back and forward): opened afresh instead, so it's never last version's
+addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 // (which app sent you here: InFlight's profile, or Weather's account card)
 function fromApp() { try { const f = sessionStorage.getItem("acct-from"); return APPS[f] ? f : null; } catch (_) { return null; } }
 // (sent here only to edit your profile: Done and Cancel go straight back)
