@@ -9,6 +9,8 @@ import { avatarKey, posterKey } from "./_profile.js";
 export { avatarKey };
 
 export async function removeAccount(env, id) {
+  // (what the site's other apps kept with the account first: should that fail, the account's still here to try again)
+  await dropAccount(env, id);
   await dropReacts(env, { user: id });
   await removeFromGroups(env, id);
   const D = await db(env);
@@ -40,11 +42,12 @@ export async function removeAccount(env, id) {
     D.prepare("DELETE FROM pg_push WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_events WHERE user_id = ?").bind(id),
-    // their handle is held for 30 days, for no one, so no one can pose as them to their friends
+    D.prepare("DELETE FROM pg_handoff WHERE user_id = ?").bind(id),
+    D.prepare("DELETE FROM pg_vanish WHERE a = ?1 OR b = ?1").bind(id),
+    // their handle is held for 30 days, for no one, so no one can pose as them to their friends (and the ones they had
+    // lately stay held as long as they were going to be, for no one too)
     D.prepare("INSERT OR REPLACE INTO pg_handles_held (handle, user_id, until) SELECT handle, NULL, ? FROM pg_users WHERE id = ?").bind(Date.now() + 30 * DAY, id),
-    D.prepare("DELETE FROM pg_handles_held WHERE user_id = ?").bind(id),
+    D.prepare("UPDATE pg_handles_held SET user_id = NULL WHERE user_id = ?").bind(id),
     D.prepare("DELETE FROM pg_users WHERE id = ?").bind(id),
   ]);
-  // (and what the site's other apps kept with the account, now no session can add to it: functions/_account.js)
-  await dropAccount(env, id);
 }

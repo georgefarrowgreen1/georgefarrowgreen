@@ -273,6 +273,19 @@ await waitFor(async () => !tDev()?.user_id && await T.p.isVisible('#acct-signin'
 const t4 = tDev();
 ok(t3?.user_id && t4 && !t4.user_id && t4.n === t3.n && await T.p.isVisible('#acct-signin') && await T.p.isHidden('#out-grp'), 'signed out from Weather\'s Settings: signed out here, the tablet\'s notifications its own', JSON.stringify({ t3, t4 }));
 tSubs = t4?.n || 0;
+// signed in again, then signed out from somewhere else (Signed-in devices, a new password): the tablet, which does
+// nothing itself, is no longer the account's by the next tick, and keeps what it had as its own
+await settings(T); await signInPage(T);
+await T.p.fill('#acct-in input[name=email]', 'sam@example.com'); await T.p.fill('#acct-in input[name=password]', PW);
+await T.p.click('#acct-in .acct-form button[type=submit]');
+await waitFor(() => tDev()?.user_id, 20000);
+const sess = rows(`SELECT sess FROM wx_devs WHERE dev = '${tId}'`)[0]?.sess;
+ok(!!sess && rows(`SELECT 1 FROM pg_sessions WHERE hash = '${sess}'`).length === 1, 'linked again, with the sign-in that linked it', String(sess));
+sql(`DELETE FROM pg_sessions WHERE hash = '${sess}'`);
+await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { res.resume(); res.on('end', done); }); r.end(); });
+const t5 = tDev();
+ok(t5 && !t5.user_id && t5.n > 0 && !rows(`SELECT sess FROM wx_devs WHERE dev = '${tId}'`)[0]?.sess, 'signed out from elsewhere: by the next tick the tablet is no longer the account’s, and keeps its places as its own', JSON.stringify(t5));
+tSubs = t5?.n || 0;
 await closeSheet(T);
 
 // ---- 7. The account's own rules ----

@@ -217,7 +217,7 @@ const ROUTES = {
     const { u, kept } = await completeReset(env, request, await body(request));
     waitUntil(logEvent(env, u.id, "reset", request));
     waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
-      rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"]] }, linkOrigin(request)));
+      rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"], ["Passkeys", "Removed: add one again in Sign-in and security"]] }, linkOrigin(request)));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
     return withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash);
   },
@@ -541,7 +541,8 @@ const ROUTES = {
       D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "delete-asked", request));
-    waitUntil(tell(env, { ...u, email_ok: 1 }, { icon: "trash", title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
+    // (only to an address that's been shown to be theirs: its Keep button stops the deletion. Unconfirmed, signing in keeps it)
+    waitUntil(tell(env, u, { icon: "trash", title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
       line: `your account and everything kept with it, in every app on the site, will be deleted on ${onDay(at)}.`,
       after: "Changed your mind? Keep it with the button, or sign in at account.georgefarrowgreen.com before then.",
       pill: ["clock", `On ${onDay(at)}`], when: false, button: { label: "Keep my account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));

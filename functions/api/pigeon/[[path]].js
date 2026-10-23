@@ -315,12 +315,6 @@ async function getAvatar({ request, env }, id) {
   return res;
 }
 
-async function deleteMe({ request, env }) {
-  const u = await requireUser(request, env);
-  requireFresh(u);
-  await removeAccount(env, u.id);
-  return withoutSession(json({ ok: true }), request, env);
-}
 
 /* ---------------- passkeys ---------------- */
 async function passkeyOptions({ request, env }) {
@@ -1440,7 +1434,7 @@ async function unsubscribePost({ request, env }) {
 
 const ROUTES = {
   "POST signup": elsewhere("New accounts are made"), "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
-  "PATCH me": updateMe, "DELETE me": deleteMe,
+  "PATCH me": updateMe, "DELETE me": elsewhere("Delete your account"),   // (on the account's page: a week's grace, and an email to keep it)
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
   "GET sessions": sessionsList, "POST sessions-end": sessionsEnd, "POST account-link": accountLink, "GET pins": pinsGet, "POST pins": pinsPut,

@@ -83,6 +83,9 @@ export async function wxdb(env) {
     ]);
     // (net: a hash of the network a device not signed in was turned on from, so one network can only turn on so many)
     await env.DB.prepare("ALTER TABLE wx_devs ADD COLUMN net TEXT").run().catch(() => {});
+    // (sess: the sign-in a signed-in device was made one of the account's with; once that's ended, from anywhere, the
+    // device is no longer the account's: unlinkEnded)
+    await env.DB.prepare("ALTER TABLE wx_devs ADD COLUMN sess TEXT").run().catch(() => {});
     if (!(await env.DB.prepare("SELECT 1 FROM wx_meta WHERE k = 'devs_v1'").first())) await env.DB.batch([
       env.DB.prepare("UPDATE wx_subs SET dev = id WHERE dev IS NULL"),
       env.DB.prepare(`INSERT OR IGNORE INTO wx_devs (dev, endpoint, p256dh, auth, units, brief_at, created, updated)
@@ -196,6 +199,7 @@ async function moveDev(D, from, s, to, t) {
 // Weather settings, for the units its emails are in)
 export async function applyAccount(env, userId, notify, settings = null) {
   const D = await wxdb(env), w = wantOf(notify), t = Date.now();
+  await unlinkEnded(D);
   const { results: devs } = await D.prepare(`SELECT * FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%'`).bind(userId).all();
   for (const dv of devs) await setRows(D, { ...dv }, w, t);
   await setMailDev(D, userId, w, unitsOf(settings), t);
@@ -223,7 +227,8 @@ export async function unitsForAccount(env, userId, U) {
     D.prepare("UPDATE wx_devs SET units = ?2 WHERE user_id = ?1").bind(userId, units)]);
 }
 export async function devicesOf(env, userId) {
-  const { results } = await (await wxdb(env)).prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId).all();
+  const D = await wxdb(env); await unlinkEnded(D);
+  const { results } = await D.prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId).all();
   return results.map((d) => ({ id: d.dev, label: d.label || "A device" }));
 }
 
@@ -253,13 +258,13 @@ export async function subscribe(env, b, user = null, account = null, label = "",
     // a new device: a first notification, to say they're on; it's only kept if that arrives
     const r = await pushToSub(env, s, { title: "Notifications on", body: onText(w, units), tag: "wx-on", ttl: 600, url: w.places[0] ? linkTo(w.places[0].lat, w.places[0].lon, w.places[0].name) : "./" });
     if (r !== "sent") throw new HttpError(400, "This device's notifications couldn't be reached. Try again in a moment.");
-    const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated, net)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?11 WHERE (SELECT COUNT(*) FROM wx_devs) < ?10 ON CONFLICT(dev) DO NOTHING`)
-      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t, MAX_ALL, user ? null : net).run();
+    const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated, net, sess)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?11, ?12 WHERE (SELECT COUNT(*) FROM wx_devs) < ?10 ON CONFLICT(dev) DO NOTHING`)
+      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t, MAX_ALL, user ? null : net, user?.sessionHash || null).run();
     if (!ins.meta?.changes && !(await D.prepare("SELECT 1 FROM wx_devs WHERE dev = ?").bind(dev).first())) throw new HttpError(429, "Notifications are full right now.");
   } else {
-    await D.prepare("UPDATE wx_devs SET endpoint = ?2, p256dh = ?3, auth = ?4, user_id = ?5, label = COALESCE(?6, label), units = ?7, brief_at = ?8, updated = ?9 WHERE dev = ?1")
-      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t).run();
+    await D.prepare("UPDATE wx_devs SET endpoint = ?2, p256dh = ?3, auth = ?4, user_id = ?5, label = COALESCE(?6, label), units = ?7, brief_at = ?8, updated = ?9, sess = ?10 WHERE dev = ?1")
+      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t, user?.sessionHash || null).run();
   }
   dv = { dev, endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, units };
   await setRows(D, dv, w, t);
@@ -274,12 +279,12 @@ export async function unsubscribe(env, endpoint) {
 // signed out of the account on a device: it keeps what it has, as its own (user: the account it was signed in to)
 export async function leaveAccount(env, endpoint, userId) {
   if (typeof endpoint !== "string" || endpoint.length > 1000) return;
-  await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL WHERE dev = ? AND user_id = ?").bind(await idOf(endpoint), userId).run();
+  await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE dev = ? AND user_id = ?").bind(await idOf(endpoint), userId).run();
 }
 // A device signed out of its account somewhere else (its push address shows it's this device): its notifications its own
 export async function leaveAny(env, endpoint) {
   if (typeof endpoint !== "string" || !endpoint || endpoint.length > 1000) throw new HttpError(400, "Bad request.");
-  await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL WHERE dev = ?").bind(await idOf(endpoint)).run();
+  await (await wxdb(env)).prepare("UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE dev = ?").bind(await idOf(endpoint)).run();
   return { ok: true };
 }
 // the browser replaced a device's subscription by itself (sw.js, pushsubscriptionchange): its places move to the new one
@@ -299,6 +304,15 @@ export async function dropAccount(env, userId) {
   ]);
 }
 
+// Devices whose sign-in has ended (signed out, here or from elsewhere; a password changed; ended in Signed-in devices):
+// no longer the account's, as if signed out on the device itself. They keep the places they had as their own, but hear
+// nothing more of the account (its changes, its places to come), so a phone someone else had signed in is cut off.
+// (Signed in again on the phone, the app makes it one of the account's again.) Each tick, and before the account's
+// choices go out or its devices are listed.
+export async function unlinkEnded(D) {
+  await D.prepare("UPDATE wx_devs SET user_id = NULL, sess = NULL WHERE sess IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = wx_devs.sess)").run();
+}
+
 // The tick: one at a time (a lease, given back at the end; it lapses by itself if a tick dies part way)
 // (origin: where links in its emails go, this site or a test server: functions/_email.js linkOrigin)
 export async function wxTick(env, t = Date.now(), origin = SITE) {
@@ -310,6 +324,7 @@ export async function wxTick(env, t = Date.now(), origin = SITE) {
   finally { await D.prepare("UPDATE wx_meta SET v = '0' WHERE k = 'tick'").run().catch(() => {}); }
 }
 async function tick(env, D, t, origin) {
+  await unlinkEnded(D);
   // once a day, at the first tick after 03:00 UTC: airport reports older than six weeks, phones gone quiet for months
   // (an account's email isn't a phone: it's there while the account wants it), and the count of emails from days gone
   const at = new Date(t);

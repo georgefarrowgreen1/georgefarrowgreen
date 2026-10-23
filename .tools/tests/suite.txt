@@ -39,3 +39,4 @@ acctpage
 acctlink
 acctmore
 acctjoin
+sitepaths

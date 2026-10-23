@@ -14,6 +14,14 @@ export async function onRequest(ctx) {
   // They aren't part of the site. The asset server decodes and tidies a path before it looks, so this
   // checks the same path it will look for (/%62lokk/, //blokk/ and /%2Etools/ all mean the real thing).
   if (PRIVATE.test(plainPath(url.pathname))) return notFound();
+  // An address written oddly (/%77eather/, //account/, a backslash) is sent to its plain self, so it's routed as that: the
+  // per-app routes go by the address as written, and the asset server by its plain form, so /%77eather/ would otherwise be
+  // Weather's page here, on the home page's origin, under its rules. (One that can't be read as an address isn't one.)
+  if (!url.pathname.startsWith("/api/")) {
+    const plain = plainPath(url.pathname);
+    if (/%[^0-9a-f]|%[0-9a-f](?![0-9a-f])/i.test(url.pathname)) return notFound();
+    if (plain !== url.pathname) return Response.redirect(new URL(plain + url.search, url).href, 301);
+  }
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isAccount(url, ctx.env)) return accountHost(ctx, url);
   if (!isChat(url, ctx.env)) {

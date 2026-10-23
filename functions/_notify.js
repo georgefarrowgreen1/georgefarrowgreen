@@ -164,8 +164,9 @@ export async function unsubToken(env, userId) {
 }
 async function notifyEmail(env, origin, u, subject, mail) {
   if (!emailReady(env)) return false;
-  // only to an address its owner has confirmed (anyone can type anyone's at sign-up)
-  if (!(await (await db(env)).prepare("SELECT email_ok FROM pg_users WHERE id = ?").bind(u.id).first())?.email_ok) return false;
+  // only to an address its owner has confirmed (anyone can type anyone's at sign-up), and not to an account being deleted
+  const st = await (await db(env)).prepare("SELECT email_ok, delete_at FROM pg_users WHERE id = ?").bind(u.id).first();
+  if (!st?.email_ok || st.delete_at) return false;
   const unsub = `${origin}/api/pigeon/unsubscribe?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
   const { text, html } = emailBody({ ...mail, brand: "inflight", origin, footer: "You get these because you turned on email notifications in InFlight.", unsub });
   await sendEmail(env, { brand: "inflight", to: u.email, subject, text, html,
