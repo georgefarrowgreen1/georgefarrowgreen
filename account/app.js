@@ -322,8 +322,8 @@ function signedIn(r) {
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
-// Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind what's under it,
-// your name and handle on it; no photo, your colours and initial, and Add a photo. The camera opens Your photo.
+// Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind the buttons under
+// it, your name and handle on it (your email's in Edit profile, and Sign-in and security); no photo, your colours and initial, and Add a photo. The camera opens Your photo.
 const posterSrc = (m) => (m.poster?.at ? `${API}/me/poster?v=${m.poster.at}` : `${API}/me/photo?v=${m.photoAt}`);
 const focusOf = (m) => (m.poster?.focus || "50 50").split(" ").map(Number);
 const placed = (img, f) => { img.style.objectPosition = `${f[0]}% ${f[1]}%`; return img; };
@@ -339,7 +339,6 @@ function posterCard(m) {
         : h("button.pc-add", { type: "button", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
       h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }), h("div.who", { text: `@${m.handle}` }))),
     h("div.pc-body", {},
-      m.email && h("div.mail", {}, m.emailOk ? h("span.ok", { "aria-label": "Confirmed" }, icon("check", 14, 3)) : icon("mail", 15), h("span", { text: m.email })),
       h("div.hero-acts", {},
         h("button.pill.primary", { type: "button", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
         h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code"))),

@@ -22,7 +22,7 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-d: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   /* your card's poster (and the light page's, below) */
-  --pc-base: #121633; --pc-blur: blur(42px) saturate(1.6) brightness(0.5); --pc-under: rgba(255, 255, 255, 0.64);
+  --pc-base: #121633; --pc-blur: blur(42px) saturate(1.6) brightness(0.5);
   --pc-pill: rgba(255, 255, 255, 0.14); --pc-pill-text: #fff; --pc-go: rgba(255, 255, 255, 0.93); --pc-go-text: #10183a;
   --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.45) 62%, rgba(8, 10, 30, 0)); --pc-shade-below: 90px;
   --top: env(safe-area-inset-top, 0px);
@@ -41,13 +41,13 @@
     --lift: 0 0 0 0.5px rgba(20, 30, 60, 0.08), 0 22px 44px -20px rgba(40, 50, 100, 0.28), 0 2px 6px rgba(40, 50, 100, 0.06);
     --sheen: radial-gradient(140% 90% at 12% -20%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 46%);
     --dim: rgba(10, 14, 30, 0.26);
-    --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55); --pc-under: rgba(20, 24, 44, 0.62);
+    --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55);
     --pc-pill: rgba(255, 255, 255, 0.74); --pc-pill-text: #10183a; --pc-go: linear-gradient(180deg, #4b95ff, #2a6ae6); --pc-go-text: #fff;
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
   }
 }
 :root[data-theme="light"] {
-    --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55); --pc-under: rgba(20, 24, 44, 0.62);
+    --pc-base: #f3f1ef; --pc-blur: blur(42px) saturate(1.4) brightness(1.25) opacity(0.55);
     --pc-pill: rgba(255, 255, 255, 0.74); --pc-pill-text: #10183a; --pc-go: linear-gradient(180deg, #4b95ff, #2a6ae6); --pc-go-text: #fff;
     --pc-shade: linear-gradient(180deg, rgba(8, 10, 30, 0), rgba(8, 10, 30, 0.42) 70%, rgba(8, 10, 30, 0)); --pc-shade-below: 14px;
     color-scheme: light;
@@ -631,9 +631,7 @@ button.adm-alert:active { transform: scale(0.98); }
 .pc-id h2 { margin: 0; font: 800 40px/1.04 var(--font-d); letter-spacing: -0.5px; color: #fff; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); overflow-wrap: anywhere; }
 .pc-id h2.long { font-size: 32px; }
 .pc-id .who { margin-top: 4px; color: rgba(255, 255, 255, 0.86); font-size: 16px; font-weight: 500; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.3); }
-.pc-body { position: relative; display: grid; gap: 14px; padding: 6px 20px 20px; }
-.poster-card .mail { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--pc-under); font-size: 14px; }
-.poster-card .mail .ok { display: grid; color: var(--good); }
+.pc-body { position: relative; display: grid; gap: 14px; padding: 14px 20px 20px; }
 .poster-card .hero-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
 .poster-card .hero-acts .pill { width: 100%; margin: 0; color: var(--pc-pill-text); background: var(--pc-pill); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
   box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.1); }
