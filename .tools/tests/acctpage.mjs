@@ -305,14 +305,21 @@ const emRow = () => L.p.locator('main .row:has(b:text-is("Emails"))').innerText(
 ok(/Emails Security only/.test(await emRow()), 'emails: the account\'s, about signing in, always; InFlight\'s off to start with', await emRow());
 await openRow(L, 'Emails');
 const em = await sheetText(L);
-ok(/Sign-ins and security/.test(em) && /Always on/.test(em) && /Notifications by email/.test(em) && /Weather tells you on your phone/.test(em) && !(await L.p.$eval('#sheet input.switch', (e) => e.disabled)),
-  'its page: the account\'s always on, InFlight\'s a switch, Weather\'s on the phone', em);
+ok(/Sign-ins and security/.test(em) && /Always on/.test(em) && /Notifications by email/.test(em) && /Warnings Official warnings, for the places you choose in Weather/.test(em)
+  && /Morning briefing For the place you choose in Weather/.test(em) && /Rain alerts stay on your phone/.test(em) && !(await L.p.$eval('#sheet input.switch', (e) => e.disabled)),
+  'its page: the account\'s always on, InFlight\'s a switch, Weather\'s warnings and briefing a switch each', em);
 await L.p.click('#sheet input.switch'); await settle(L, 1000);
-await shot(L, '14b-emails');
 const ne = rows("SELECT notify_email FROM pg_users WHERE handle = 'rowan_h'")[0]?.notify_email;
 ok(ne === 1, 'InFlight\'s emails turned on from here', String(ne));
 await closeSheet(L);
-ok(/Emails All on/.test(await emRow()), 'and its row says so', await emRow());
+ok(/Emails InFlight/.test(await emRow()), 'and its row says which app emails', await emRow());
+await openRow(L, 'Emails');
+for (const k of ['Warnings', 'Morning briefing']) { await L.p.click(`#sheet label.row:has(b:text-is("${k}")) input.switch`); await settle(L, 1000); }
+await shot(L, '14b-emails');
+const wxm = JSON.parse(rows(`SELECT data FROM wx_accts WHERE user_id = '${user('rowan_h').id}'`)[0]?.data || '{}').notify?.email;
+ok(wxm?.warn === true && wxm?.brief === true, 'Weather\'s warnings and briefing by email: kept with Weather\'s own choices', JSON.stringify(wxm));
+await closeSheet(L);
+ok(/Emails All on/.test(await emRow()), 'and with all of them on, its row says so', await emRow());
 ok(/°F · km\/h/.test(await text(L)), 'and said on the page', (await text(L)).match(/Units [^A-Z]*/)?.[0]);
 await openRow(L, 'Download your data');
 await shot(L, '15-data');

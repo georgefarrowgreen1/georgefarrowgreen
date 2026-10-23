@@ -172,3 +172,41 @@ test("warning notifications: new or raised, once each, yellow not overnight", as
   const old = { gone: [3, "wind", NOW - H] };
   assert.equal(warningAlert([], old, day, day, f, 0, "").told.gone, undefined);
 });
+
+// Weather's emails (functions/_wxpush.js sends them): the briefing with the day's parts, its figures and the warning in
+// force as a notice; a warning in its issuer's words, raised from which colour, and how many more; both in the site's
+// email (functions/_email.js), its notice and strip in the words of the plain-text copy too
+test("the briefing and a warning as emails", async () => {
+  const { briefMail, warningMail, warningAlert } = await import("../../../weather/alerts.js");
+  const { emailBody } = await import("../../../functions/_email.js");
+  const D = 864e5, DAY0 = Date.UTC(2026, 9, 19), iso = (t) => new Date(t).toISOString();
+  const hourly = [], daily = [];
+  // a dry morning, rain in the afternoon (3 mm), dry again by evening
+  for (let i = 0; i < 72; i++) { const h = i % 24, wet = i >= 24 + 13 && i < 24 + 16;
+    hourly.push({ t: DAY0 - D + i * H, temp: 8 + Math.min(h, 14) / 2, feels: 8, precip: wet ? 1 : 0, pop: wet ? 80 : 5, code: wet ? 63 : 2, gust: 30, wind: 15, dir: 240, cloud: 50, isDay: h >= 7 && h < 18, uv: 1, vis: 20000, rh: 70, dew: 6, pressure: 1012 }); }
+  for (let k = 0; k < 3; k++) daily.push({ key: new Date(DAY0 + (k - 1) * D).toISOString().slice(0, 10), date: DAY0 + (k - 1) * D, tmax: 15, tmin: 7, code: 63, precip: 3, popMax: 80, windMax: 18, gustMax: 32, dir: 240, sunrise: DAY0 + (k - 1) * D + 7 * H + 31 * 60e3, sunset: DAY0 + (k - 1) * D + 17 * H + 49 * 60e3 });
+  const wx = { place: { name: "Bristol", offset: 0 }, current: hourly[31], minutely: [], hourly, daily, models: null };
+  const now = DAY0 + 7 * H;
+  wx.official = shapeMeteoalarm(ukFeed(now), now).filter((w) => w.id === "brs-wind");
+  const m = briefMail(wx, now, f);
+  assert.equal(m.pill[1], "Bristol · Monday 19 October");
+  assert.match(m.subject, /^Bristol: .+, 15°$/);
+  assert.deepEqual(m.notice, { tone: "yellow", lead: "Yellow wind warning", text: "until 15:00 · Met Office" });
+  assert.deepEqual(m.strip.map(([part, , , rain]) => `${part} ${rain}`), ["Morning 5% rain", "Afternoon 80% rain", "Evening 5% rain"]);
+  assert.equal(m.strip[1][1], "rain", "the afternoon's picture: rain");
+  assert.deepEqual(m.rows.map(([k, v]) => `${k}: ${v}`), ["High, low: 15° · 7°", "Rain: 3 mm, mostly afternoon", "Wind: WSW 11, gusts 20 mph", "Sun: Up 07:31 · down 17:49"]);
+  const { html, text } = emailBody({ brand: "weather", ...m, strip: m.strip.map(([p, i, t, r]) => [p, `wx-${i}`, t, r]) });
+  assert.match(html, /mail\/g-warn-yellow\.png/); assert.match(html, /mail\/wx-rain\.png/); assert.match(html, /<b>Yellow wind warning<\/b> until 15:00 · Met Office/);
+  assert.match(text, /Yellow wind warning until 15:00 · Met Office/); assert.match(text, /Afternoon: \d+°, 80% rain/);
+  // a warning: raised from yellow, two more besides
+  const w = (id, level, event, more = {}) => ({ id, level, event, via: "MeteoAlarm", issuer: "Met Office", type: 1, onset: iso(now - H), expires: iso(now + 12 * H), headline: "Gusts of 50 to 60 mph.", text: "Very strong winds. Some roads and bridges may close.", area: "South West England", ...more });
+  const told = warningAlert([w("a", 2, "Yellow wind warning")], null, now, now, f, 0, "Bristol").told;
+  const r = warningAlert([w("b", 3, "Amber wind warning"), w("c", 2, "Yellow rain warning", { type: 10 }), w("d", 2, "Yellow fog warning", { type: 4 })], told, now, now, f, 0, "Bristol");
+  const wm = warningMail(r.fresh, now, f, 0, "Bristol");
+  assert.equal(wm.title, "Amber wind warning"); assert.equal(wm.icon, "warn-amber");
+  assert.equal(wm.subject, "Amber wind warning: Bristol (and 2 more)");
+  assert.deepEqual(wm.lines, ["Gusts of 50 to 60 mph.", "Raised from yellow by the Met Office.", "And 2 more warnings here: see them in Weather."]);
+  assert.equal(wm.quote, "Very strong winds. Some roads and bridges may close.");
+  assert.deepEqual(wm.rows.map(([k, v]) => `${k}: ${v}`), ["When: Until 19:00", "Where: South West England", "Issued by: Met Office"]);
+  assert.match(emailBody({ brand: "weather", ...wm }).html, /mail\/weather-warn-amber\.png/);
+});

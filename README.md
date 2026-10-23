@@ -119,7 +119,7 @@ its name, its colours, its pictures and what's said at the foot of its emails.
 |---|---|---|---|
 | `account` | **Account** `<account@…>` | indigo; a red tile for deleting | sign-ins in any app, the password, passkeys, the email address, reset links, keeping or deleting the account (`functions/_account.js` `accountMail`) |
 | `inflight` | **InFlight** `<inflight@…>` | blue; an orange tile for a pigeon landed | a pigeon landed, a friend request, the week in flight (`functions/_notify.js`), the admin page's test |
-| `weather` | **Weather** `<weather@…>` | Weather's sky blue | none yet: ready for any |
+| `weather` | **Weather** `<weather@…>` | Weather's sky blue; a warning's tile in its colour (yellow, amber, red) | official warnings and the morning briefing, for those signed in who turn them on (`functions/_wxpush.js`, worded by `weather/alerts.js` briefMail and warningMail) |
 | `website` | **Website** `<website@…>` | the home page's periwinkle to violet | the contact form's messages, to the site's owner (`functions/api/contact.js`) |
 
 To send one:
@@ -138,7 +138,10 @@ orange pigeon, …; else the app's usual one) with the app's icon as a badge on 
 corner. Then the title; a pill (`pill: [symbol, words]`) with the one thing to see
 at a glance (the device and place of a sign-in, the address, the day it'll be
 deleted); what happened, then, quieter, what to do (`lines`); someone's own words
-as they wrote them (`quote`); the details as a list, a symbol on each row (`rows:
+as they wrote them (`quote`); a notice in its own colour (`notice: { tone, lead,
+text }`, yellow, amber or red: a warning in force); a strip of a few columns on the
+app's own colour (`strip: [[what, picture, big, small], …]`: the morning,
+afternoon and evening); the details as a list, a symbol on each row (`rows:
 [what, value, symbol?]`, the symbol found from what it is when not given); one
 button, with its address under it for a web link; and at the foot the app's own
 words (the account's: "About your georgefarrowgreen.com account" and a link to
@@ -149,8 +152,10 @@ gradients aren't drawn. Every email has a plain-text version too.
 **The pictures** are PNGs in `mail/`, served from the site's own address so they
 show in any app's email: `<brand>-<tile>.png`, the tile and the badge drawn as one
 with a ring cut out round the badge (so mail apps that can't place one thing on
-another still show it whole, light or dark), and `g-<brand>-<symbol>.png`, the
-symbols in the app's colour. `node .tools/tests/mailicons.mjs` draws them all from
+another still show it whole, light or dark), `g-<brand>-<symbol>.png`, the
+symbols in the app's colour (and any of its own, `art.syms`), `g-warn-<tone>.png`
+for a notice, and `wx-<icon>.png`, the weather as Weather draws it
+(`weather/icons.js`), for a strip. `node .tools/tests/mailicons.mjs` draws them all from
 the brands (the tiles' gradients, the badge, the symbols' colour are each brand's
 `art`). The first emails' pictures stay in `pigeon/mail/`, and the old address of
 these, `pigeon/mail/v2/`, sends to `mail/`, so emails already sent keep theirs.
@@ -305,7 +310,9 @@ Motion, solid with Reduce Transparency.
   its record for the account so every device it's signed in on takes them up, and its notifications say them at once.
   **Emails**: what each app emails you, each from its own address: the account's, about sign-ins and security, always;
   InFlight's notifications by email, on or off here as in its own Notifications (`pg_users.notify_email`, through
-  `PUT /api/account/prefs`); Weather's are on the phone. The row says "All on" or "Security only".
+  `PUT /api/account/prefs`); Weather's warnings and morning briefing by email, a switch each, kept with Weather's own
+  choices (`functions/_wxacct.js` setMail), for the places and time chosen in its Notifications (said under each). The
+  row says "All on", "Security only", or which apps email.
 - **Your data:** everything kept with the account that can be read: the profile and photo, sign-in and recent
   activity; InFlight's friends, groups, passport, birds, settings, and how many pigeons sent and had (as its log counts
   them); Weather's places, settings and notifications. InFlight's letters aren't in it: they're end-to-end encrypted,
@@ -643,7 +650,29 @@ so there's nothing to set up beyond the address.
   claimed before it's sent, so a slow or doubled tick can't send it twice; a
   phone is forgotten when its push service says it's gone, after five failures
   in a row, or after four months unheard of (the app tells the server again now
-  and then, and when the browser changes its subscription). Rain checks ask
+  and then, and when the browser changes its subscription). **By email too**
+  (signed in: an Email group there, two switches, warnings and the briefing, for
+  the places and time above; `notify.email`, the account's choice, so on every
+  device and on the account's own page): from Weather's own address, to the
+  account's email once it's confirmed, so they reach a phone that can't show
+  notifications (an iPhone with Weather not on its Home Screen). Not rain alerts:
+  an hour's notice by email comes too late. The account's email is one more of its
+  devices to the server (wx_devs `mail:` and the account, its places the ones with
+  warnings on, never rain), sent the same warnings and briefings as a phone, with
+  the same claim first, but as an email (`functions/_email.js`): the briefing with
+  the day's look, the headline, any official warning in force as a notice in its
+  colour, the morning, afternoon and evening on Weather's blue, and the high and
+  low, rain, wind and sun; a warning with its tile in its colour, the issuer's
+  words, when and where, raised from which colour, and how many more
+  (`weather/alerts.js` briefMail, warningMail). Each has a link to turn them off
+  (GET shows a button, POST turns them off: `/api/weather/email-off`, with the
+  account's own token, as InFlight's emails have) and the mail app's own
+  Unsubscribe (RFC 8058). The site's sending plan is shared by every app's email
+  (Resend's free plan: 100 a day, 3,000 a month), so Weather sends at most
+  **`WX_MAIL_DAY`** a day (60 unless set; raise it on a paid plan), a briefing
+  only within four-fifths of them so warnings still go; one not sent waits for the
+  next tick. An address not confirmed yet, or an account being deleted, gets
+  nothing (and nothing's held for it). Rain checks ask
   Open-Meteo only for the next four hours' rain; the whole forecast only where
   a briefing is due; and each tick asks no more than Open-Meteo's free
   allowance spread over a day (briefings first; places left over wait ten
@@ -826,7 +855,9 @@ own file. It's the only place, with InFlight, that may ask for your location.
 the place (to two decimal places, about a kilometre) and its name, which
 notifications, the briefing's time and your units, and when it last sent
 each; all of it deleted when they're turned off, or when the push service says
-the phone has gone. Subscribing is only from the app's own pages, the push
+the phone has gone. By email, the same for the account's email (its address is
+the account's, looked up when one's sent), kept while they're on, and a count of
+the day's emails. Subscribing is only from the app's own pages, the push
 service must be a real one (Apple, Google, Mozilla, Microsoft), and there's a
 cap of 300. For accuracy: airports' daily highs and lows, nothing about you.
 For official warnings: the feeds themselves, for 5 minutes (flood areas'

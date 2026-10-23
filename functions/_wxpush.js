@@ -22,16 +22,24 @@
 //
 // Turning them on sends a first notification ("Notifications on"), and the device
 // is only kept if that arrives: so only a real phone or computer can take one of the places.
+//
+// Signed in, the warnings and the briefing can come by email too (the account's choice, notify.email): the account's
+// email is then one more of its devices (dev "mail:" and the account), sent to by email rather than push, from Weather's
+// own address (functions/_email.js), and only to an email the account has confirmed. Not rain alerts: an hour's notice
+// comes too late by email. The site's sending plan is shared by every app's email, so Weather sends at most WX_MAIL_DAY
+// a day (60 unless set), warnings before briefings, and the rest wait.
 // Each notification is claimed before it's sent (so a tick that runs over, or
 // two at once, can't send it twice) and given back if it doesn't go.
 //
 // WXAPP_URL: tests only (a stand-in for Open-Meteo).
 
-import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
+import { pushEndpointOk, pushToSub, vapid, unsubToken } from "./_notify.js";
 import { HttpError, fromB64url } from "./_pigeon.js";
+import { emailBody, emailReady, sendEmail, SITE } from "./_email.js";
+import { WEATHER_HOST } from "./_wxapp.js";
 import { shapeForecast, forecastQuery, rainQuery } from "../weather/data.js";
 import { makeFormat, nowWall, keyOf } from "../weather/format.js";
-import { rainAlert, briefDue, briefing, warningAlert, isQuiet, RAIN_GAP } from "../weather/alerts.js";
+import { rainAlert, briefDue, briefing, warningAlert, isQuiet, RAIN_GAP, briefMail, warningMail } from "../weather/alerts.js";
 import { blend } from "../weather/rainmap.js";
 import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
@@ -46,6 +54,8 @@ export const MAX_PLACES = 12;
 const BUDGET = 55, COST_FULL = 7;
 // the places the radar's read for in a tick (each costs a few tiles, shared with any place near it)
 const RADAR_PLACES = 40;
+// Weather's emails a day, at most (WX_MAIL_DAY sets another), a briefing only within four-fifths of them
+const MAIL_DAY = 60, MAIL = "mail:";
 let ready = null;
 export async function wxdb(env) {
   if (!env.DB) throw new HttpError(503, "Not set up.");
@@ -90,6 +100,8 @@ const idOf = async (endpoint) => hex(await crypto.subtle.digest("SHA-256", new T
 const r2 = (v) => Math.round(v * 100) / 100;
 const B64U = /^[A-Za-z0-9_-]+={0,2}$/;
 const linkTo = (lat, lon, name) => `./?lat=${lat}&lon=${lon}&name=${encodeURIComponent(name || "")}`;
+// "07:00" as the units say a time ("7am")
+const atOf = (f, at) => { const [hh, mm] = String(at || "07:00").split(":").map(Number); return f.time(Date.UTC(2000, 0, 1, hh || 0, mm || 0)); };
 
 export const publicKey = async (env) => (await vapid(env)).pub;
 
@@ -120,10 +132,12 @@ const spotOf = (p) => (p && typeof p === "object" && typeof p.lat === "number" &
 export function wantOf(b) {
   if (!b || typeof b !== "object") b = {};
   const briefAt = /^([01]\d|2[0-3]):[0-5]\d$/.test(b.briefAt || "") ? b.briefAt : "07:00";
+  // (by email too: the warnings, the briefing; signed in only, as the account's)
+  const email = { warn: !!b.email?.warn, brief: !!b.email?.brief };
   if (!Array.isArray(b.places) && b.place) {        // (the app from before)
     const p = spotOf(b.place);
     if (!p) throw new HttpError(400, "Bad place.");
-    return { places: b.rain || b.warn ? [{ ...p, rain: !!b.rain, warn: !!b.warn }] : [], brief: b.brief ? p : null, briefAt };
+    return { places: b.rain || b.warn ? [{ ...p, rain: !!b.rain, warn: !!b.warn }] : [], brief: b.brief ? p : null, briefAt, email };
   }
   const seen = new Set(), places = [];
   for (const x of Array.isArray(b.places) ? b.places : []) {
@@ -134,7 +148,7 @@ export function wantOf(b) {
   if (places.length > MAX_PLACES) throw new HttpError(400, `Notifications can be on for ${MAX_PLACES} places at most.`);
   const brief = b.brief && typeof b.brief === "object" ? spotOf(b.brief) : null;
   if (b.brief && typeof b.brief === "object" && !brief) throw new HttpError(400, "Bad place.");
-  return { places, brief, briefAt };
+  return { places, brief, briefAt, email };
 }
 const wanted = (w) => w.places.length > 0 || !!w.brief;
 function unitsOf(U) {
@@ -178,11 +192,27 @@ async function moveDev(D, from, s, to, t) {
   await D.prepare("UPDATE wx_subs SET dev = ?1, id = ?1 || ':' || lat || ',' || lon, endpoint = ?2, p256dh = ?3, auth = ?4, fails = 0 WHERE dev = ?5").bind(to, s.endpoint, s.p256dh, s.auth, from).run();
   return true;
 }
-// The account's choices (functions/_wxacct.js), for each of its devices
-export async function applyAccount(env, userId, notify) {
+// The account's choices (functions/_wxacct.js), for each of its devices, its email among them (settings: the account's
+// Weather settings, for the units its emails are in)
+export async function applyAccount(env, userId, notify, settings = null) {
   const D = await wxdb(env), w = wantOf(notify), t = Date.now();
-  const { results: devs } = await D.prepare("SELECT * FROM wx_devs WHERE user_id = ?").bind(userId).all();
+  const { results: devs } = await D.prepare(`SELECT * FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%'`).bind(userId).all();
   for (const dv of devs) await setRows(D, { ...dv }, w, t);
+  await setMailDev(D, userId, w, unitsOf(settings), t);
+}
+// The account's email, as a device: its places with warnings on (if they're to be emailed) and the briefing (if that is),
+// never rain alerts; there while either is on
+const isMail = (s) => String(s.dev || "").startsWith(MAIL);
+export function mailWant(w) {
+  const e = w.email || {};
+  return { places: e.warn ? w.places.filter((p) => p.warn).map((p) => ({ ...p, rain: false })) : [], brief: e.brief ? w.brief : null, briefAt: w.briefAt };
+}
+async function setMailDev(D, userId, w, units, t) {
+  const dev = MAIL + userId, mw = mailWant(w);
+  if (!wanted(mw)) return D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?").bind(dev), D.prepare("DELETE FROM wx_devs WHERE dev = ?").bind(dev)]);
+  await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated) VALUES (?1, ?1, '', '', ?2, 'Email', ?3, ?4, ?5, ?5)
+    ON CONFLICT(dev) DO UPDATE SET user_id = ?2, units = ?3, brief_at = ?4, updated = ?5`).bind(dev, userId, units, mw.briefAt, t).run();
+  await setRows(D, { dev, endpoint: dev, p256dh: "", auth: "", units }, mw, t);
 }
 // The devices signed in to an account that get its notifications: [{ id, label }]
 // New units for an account (set on its own page): its devices' notifications say them from now on
@@ -193,7 +223,7 @@ export async function unitsForAccount(env, userId, U) {
     D.prepare("UPDATE wx_devs SET units = ?2 WHERE user_id = ?1").bind(userId, units)]);
 }
 export async function devicesOf(env, userId) {
-  const { results } = await (await wxdb(env)).prepare("SELECT dev, label FROM wx_devs WHERE user_id = ? ORDER BY created").bind(userId).all();
+  const { results } = await (await wxdb(env)).prepare(`SELECT dev, label FROM wx_devs WHERE user_id = ? AND dev NOT LIKE '${MAIL}%' ORDER BY created`).bind(userId).all();
   return results.map((d) => ({ id: d.dev, label: d.label || "A device" }));
 }
 
@@ -270,20 +300,23 @@ export async function dropAccount(env, userId) {
 }
 
 // The tick: one at a time (a lease, given back at the end; it lapses by itself if a tick dies part way)
-export async function wxTick(env, t = Date.now()) {
+// (origin: where links in its emails go, this site or a test server: functions/_email.js linkOrigin)
+export async function wxTick(env, t = Date.now(), origin = SITE) {
   const D = await wxdb(env);
   await D.prepare("INSERT OR IGNORE INTO wx_meta (k, v) VALUES ('tick', '0')").run();
   const lease = await D.prepare("UPDATE wx_meta SET v = ?1 WHERE k = 'tick' AND CAST(v AS INTEGER) < ?2").bind(String(t + LEASE), t).run();
   if (!lease.meta?.changes) return { busy: true };
-  try { return await tick(env, D, t); }
+  try { return await tick(env, D, t, origin); }
   finally { await D.prepare("UPDATE wx_meta SET v = '0' WHERE k = 'tick'").run().catch(() => {}); }
 }
-async function tick(env, D, t) {
-  // once a day, at the first tick after 03:00 UTC: airport reports older than six weeks, and phones gone quiet for months
+async function tick(env, D, t, origin) {
+  // once a day, at the first tick after 03:00 UTC: airport reports older than six weeks, phones gone quiet for months
+  // (an account's email isn't a phone: it's there while the account wants it), and the count of emails from days gone
   const at = new Date(t);
   if (at.getUTCHours() === 3 && at.getUTCMinutes() < 10) await D.batch([
     D.prepare("DELETE FROM wx_obs WHERE day < ?").bind(new Date(t - OBS_DAYS * 864e5).toISOString().slice(0, 10)),
-    D.prepare("DELETE FROM wx_subs WHERE max(coalesce(updated, 0), coalesce(last_ok, 0)) < ?").bind(t - KEEP_IDLE),
+    D.prepare(`DELETE FROM wx_subs WHERE max(coalesce(updated, 0), coalesce(last_ok, 0)) < ? AND dev NOT LIKE '${MAIL}%'`).bind(t - KEEP_IDLE),
+    D.prepare("DELETE FROM wx_meta WHERE k LIKE 'mails:%' AND k < ?").bind(dayCount(t - 2 * 864e5)),
     // (and devices with nothing left: not signed in, or not heard from in months)
     D.prepare("DELETE FROM wx_devs WHERE (user_id IS NULL OR coalesce(updated, 0) < ?) AND NOT EXISTS (SELECT 1 FROM wx_subs s WHERE s.dev = wx_devs.dev)").bind(t - KEEP_IDLE),
   ]);
@@ -320,20 +353,20 @@ async function tick(env, D, t) {
   const out = { subs: subs.length, looked: need.length, places: cells.size, asked: asked.length, radar: rains.size, rain: 0, brief: 0, warn: 0, gone: 0 };
   for (const s of need) {
     // (one phone's trouble doesn't stop the others')
-    try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s))); } catch (e) { console.error("weather tick:", e && e.message); }
+    try { await notify(env, D, s, forecasts.get(cellOf(s)), t, out, await rains.get(spot(s)), origin); } catch (e) { console.error("weather tick:", e && e.message); }
   }
   // official warnings, every tick, for each place that wants them (once its clock's known, for saying when): each
   // place's asked for once a tick, however many phones are there
   const warned = new Map();
   for (const s of subs) {
     if (!s.warn || s.tz_off == null) continue;
-    try { await warnNotify(env, D, s, t, out, warned); } catch (e) { console.error("weather tick: warnings", e && e.message); }
+    try { await warnNotify(env, D, s, t, out, warned, origin); } catch (e) { console.error("weather tick: warnings", e && e.message); }
   }
   return out;
 }
 // A warning new, or raised, since the last told (alerts.js warningAlert), sent; the record of what's been told kept
 // either way (and claimed before it's sent, as the others are, so it can't go twice)
-async function warnNotify(env, D, s, t, out, cache) {
+async function warnNotify(env, D, s, t, out, cache, origin) {
   const k = `${s.lat},${s.lon}`;
   if (!cache.has(k)) cache.set(k, warningsAt(env, s.lat, s.lon, t).then((r) => r.warnings).catch(() => null));
   const list = await cache.get(k);
@@ -341,14 +374,47 @@ async function warnNotify(env, D, s, t, out, cache) {
   let told = null, units = {};
   try { told = s.told ? JSON.parse(s.told) : null; } catch (_) {}
   try { units = JSON.parse(s.units || "{}"); } catch (_) {}
-  const off = s.tz_off || 0, { alert, told: next } = warningAlert(list, told, t + off * 1000, t, makeFormat(units), off, s.name);
+  const off = s.tz_off || 0, f = makeFormat(units), now = t + off * 1000, { alert, told: next, fresh } = warningAlert(list, told, now, t, f, off, s.name);
   const json = JSON.stringify(next);
   if (!alert) { if (json !== s.told) await D.prepare("UPDATE wx_subs SET told = ?2 WHERE id = ?1").bind(s.id, json).run(); return; }
   if (!(await claim(D, s, "told", json))) return;
-  const r = await pushToSub(env, s, { ...alert, url: linkTo(s.lat, s.lon, s.name), ttl: 6 * 3600, urgency: "high" });
+  const r = isMail(s) ? await mailOut(env, D, s, t, origin, { kind: "warn", ...warningMail(fresh, now, f, off, s.name) })
+    : await pushToSub(env, s, { ...alert, url: linkTo(s.lat, s.lon, s.name), ttl: 6 * 3600, urgency: "high" });
   if (r === "sent") { out.warn++; await D.prepare("UPDATE wx_subs SET fails = 0, last_ok = ?2 WHERE id = ?1").bind(s.id, t).run(); return; }
+  if (r === "skip") return;
   await giveBack(D, s, "told", json);
   if (r === "gone") { await forget(D, s); out.gone++; }
+}
+// The account's email (s: a row of its email's): sent only to an address the account's confirmed (one not yet, or an
+// account being deleted: "skip", as if sent), within the day's emails (none left: "held", to be tried again); links in
+// it to Weather (as the place), and to turning them off (one tap, or the mail app's own Unsubscribe: RFC 8058).
+// m: briefMail's or warningMail's, and its kind. → "sent", "skip", "held", "gone" (no such account) or "error"
+async function mailOut(env, D, s, t, origin, m) {
+  if (!emailReady(env)) return "held";
+  const u = await D.prepare("SELECT id, email, email_ok, delete_at FROM pg_users WHERE id = ?").bind(s.dev.slice(MAIL.length)).first();
+  if (!u) return "gone";
+  if (!u.email || !u.email_ok || u.delete_at) return "skip";
+  if (!(await spend(env, D, t, m.kind))) return "held";
+  const app = origin === SITE ? `https://${WEATHER_HOST}` : `${origin}/weather`, api = origin === SITE ? `https://${WEATHER_HOST}/api/weather` : `${origin}/api/weather`;
+  const unsub = `${api}/email-off?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}`;
+  const url = `${app}/?lat=${s.lat}&lon=${s.lon}&name=${encodeURIComponent(s.name || "")}`;
+  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, button: { label: m.kind === "warn" ? "See it in Weather" : "Open Weather", url } });
+  try {
+    await sendEmail(env, { brand: "weather", to: u.email, subject: m.subject, text, html, headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });
+    return "sent";
+  } catch (e) {
+    console.error("weather tick: email", e && e.message);
+    await D.prepare("UPDATE wx_meta SET v = CAST(MAX(0, CAST(v AS INTEGER) - 1) AS TEXT) WHERE k = ?").bind(dayCount(t)).run();
+    return "error";
+  }
+}
+// One of the day's emails (UTC), if there's one left: a briefing only within four-fifths of them, so warnings still go
+const dayCount = (t) => `mails:${new Date(t).toISOString().slice(0, 10)}`;
+async function spend(env, D, t, kind) {
+  const most = Number(env.WX_MAIL_DAY) || MAIL_DAY, k = dayCount(t);
+  await D.prepare("INSERT OR IGNORE INTO wx_meta (k, v) VALUES (?, '0')").bind(k).run();
+  return !!(await D.prepare("UPDATE wx_meta SET v = CAST(CAST(v AS INTEGER) + 1 AS TEXT) WHERE k = ? AND CAST(v AS INTEGER) < ?")
+    .bind(k, kind === "brief" ? Math.floor(most * 0.8) : most).run()).meta?.changes;
 }
 // The places asked about in a tick ([key, { full }] each), within the budget: whole forecasts first, then rain (in a
 // shuffled order, so the places left for the next tick aren't always the same ones)
@@ -362,7 +428,7 @@ const forget = (D, s) => D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?")
 const claim = async (D, s, col, v) => !!(await D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(v, s.id, s[col] ?? null).run()).meta?.changes;
 const giveBack = (D, s, col, v) => D.prepare(`UPDATE wx_subs SET ${col} = ?1 WHERE id = ?2 AND ${col} IS ?3`).bind(s[col] ?? null, s.id, v).run();
 // (rain: the radar's say on the next couple of hours here, if it was read: rainmap.js radarAt)
-async function notify(env, D, s, j, t, out, rain = null) {
+async function notify(env, D, s, j, t, out, rain = null, origin = SITE) {
   if (!j) return;
   const wx = shapeForecast(j, { name: s.name, lat: s.lat, lon: s.lon }), now = nowWall(wx.place.offset, t);
   if (rain) wx.minutely = blend(wx.minutely, rain.steps, rain.at, wx.place.offset);
@@ -381,14 +447,19 @@ async function notify(env, D, s, j, t, out, rain = null) {
     if (await claim(D, s, "last_brief", key)) {
       // (with the official warnings for the place, from its weather service, where there are any)
       wx.official = (await warningsAt(env, s.lat, s.lon, t).catch(() => null))?.warnings || null;
-      const r = await pushToSub(env, s, { ...briefing(wx, now, f), url, ttl: 3 * 3600 });
-      got.push(r); if (r === "sent") out.brief++; else await giveBack(D, s, "last_brief", key);
+      // (an email's: the morning, afternoon and evening drawn with Weather's own pictures, mail/wx-*.png)
+      const m = isMail(s) && briefMail(wx, now, f);
+      if (m) m.strip = m.strip.map(([part, icon, temp, chance]) => [part, `wx-${icon}`, temp, chance]);
+      const r = !isMail(s) ? await pushToSub(env, s, { ...briefing(wx, now, f), url, ttl: 3 * 3600 })
+        : m ? await mailOut(env, D, s, t, origin, { kind: "brief", ...m, footer: `Your morning briefing for ${s.name || "your place"}, at ${atOf(f, s.brief_at)}.` }) : "held";
+      got.push(r); if (r === "sent") out.brief++; else if (r !== "skip") await giveBack(D, s, "last_brief", key);
     }
   }
-  // gone: forgotten; arrived: all's well; failed: one more strike (five in a row, and it's forgotten)
+  // gone: forgotten; arrived: all's well; failed: one more strike (five in a row, and it's forgotten; not an email's,
+  // which is the account's while it wants it)
   if (got.includes("gone")) { await forget(D, s); out.gone++; }
   else if (got.includes("sent")) await D.prepare("UPDATE wx_subs SET fails = 0, last_ok = ?2 WHERE id = ?1").bind(s.id, t).run();
-  else if (got.includes("error")) {
+  else if (got.includes("error") && !isMail(s)) {
     const r = await D.prepare("DELETE FROM wx_subs WHERE id = ?1 AND fails + 1 >= ?2").bind(s.id, MAX_FAILS).run();
     if (r.meta?.changes) out.gone++; else await D.prepare("UPDATE wx_subs SET fails = fails + 1 WHERE id = ?").bind(s.id).run();
   }

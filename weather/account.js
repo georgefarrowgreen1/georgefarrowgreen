@@ -71,21 +71,25 @@ export function mergePlaces(theirs, mine, base) {
 }
 // A place as notifications know it: My Location is "gps", wherever it is on whichever device last moved it
 export const nkeyOf = (p) => (p.gps ? "gps" : keyOf(p));
-// What's changed between two lots of notification choices: the places (by nkeyOf) whose choice differs, and "brief"
+// What's changed between two lots of notification choices: the places (by nkeyOf) whose choice differs, "brief", and
+// "email" (the warnings and the briefing by email too)
 export function notifyChanges(now, was) {
   const of = (n) => new Map((n?.places || []).map((p) => [nkeyOf(p), `${!!p.rain}${!!p.warn}`])), a = of(now), b = of(was), out = [];
   for (const k of new Set([...a.keys(), ...b.keys()])) if (a.get(k) !== b.get(k)) out.push(k);
   const brief = (n) => JSON.stringify([n?.brief ? nkeyOf(n.brief) : null, n?.briefAt || "07:00"]);
   if (brief(now) !== brief(was)) out.push("brief");
+  const email = (n) => `${!!n?.email?.warn}${!!n?.email?.brief}`;
+  if (email(now) !== email(was)) out.push("email");
   return out;
 }
 // Which notifications for which places, the same way: the account's choice for a place, unless this device changed it
-// since (changed: the places it changed, and "brief"), and this device's for the places it chose since
+// since (changed: the places it changed, "brief" and "email"), and this device's for the places it chose since
 export function mergeNotify(theirs, mine, changed) {
   const ch = new Set(changed), here = new Map((mine?.places || []).map((p) => [nkeyOf(p), p])), out = new Map();
   // (in the account's order, then any new here)
   for (const p of theirs?.places || []) { const k = nkeyOf(p); if (!ch.has(k)) out.set(k, p); else if (here.has(k)) out.set(k, here.get(k)); }
   for (const [k, p] of here) if (ch.has(k) && !out.has(k)) out.set(k, p);
   const brief = ch.has("brief") ? mine?.brief ?? null : theirs?.brief ?? null, briefAt = ch.has("brief") ? mine?.briefAt : theirs?.briefAt || mine?.briefAt;
-  return { places: [...out.values()].filter((p) => p.rain || p.warn), brief, briefAt: briefAt || "07:00" };
+  const email = ch.has("email") ? mine?.email : theirs?.email;
+  return { places: [...out.values()].filter((p) => p.rain || p.warn), brief, briefAt: briefAt || "07:00", email: { warn: !!email?.warn, brief: !!email?.brief } };
 }

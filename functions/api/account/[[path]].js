@@ -11,7 +11,8 @@
 //   GET  /api/account/activity        what's happened to the account in the last 30 days (functions/_activity.js)
 //   POST /api/account/email/confirm-send, email/confirm      confirming the email (a link to it)
 //   POST /api/account/email/change, email/change-confirm, email/cancel   a new email (a link to it, a word to the old)
-//   PUT  /api/account/prefs           appearance and units, for every app on the site that has them; and InFlight's emails
+//   PUT  /api/account/prefs           appearance and units, for every app on the site that has them; and InFlight's and
+//                                     Weather's emails
 //   POST /api/account/export          everything kept with the account that can be read, as a file
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
@@ -31,6 +32,7 @@ import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount } from "../../_acctapp.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
+import { setMail } from "../../_wxacct.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset } from "../../_join.js";
@@ -44,6 +46,13 @@ async function weatherOf(env, userId) {
   const r = await (await wxdb(env)).prepare("SELECT data, ver FROM wx_accts WHERE user_id = ?").bind(userId).first().catch(() => null);
   let data = null; try { data = r ? JSON.parse(r.data) : null; } catch (_) {}
   return { ver: r?.ver || 0, data };
+}
+// Weather's emails: { warn, brief (each on or off), warnFor (the places with warnings on), briefFor (the briefing's place),
+// briefAt }
+function weatherMail(n) {
+  const e = n?.email || {};
+  return { warn: !!e.warn, brief: !!e.brief, warnFor: (n?.places || []).filter((p) => p.warn).map((p) => String(p.name || "")).slice(0, 12),
+    briefFor: n?.brief ? String(n.brief.name || "") : null, briefAt: n?.briefAt || "07:00" };
 }
 // What InFlight keeps of yours, as how many (its letters can't be read here, nor anywhere but your own phones): friends,
 // groups, pigeons sent (as its log counts them: one to one, each of a group pigeon's, and those whose messages have gone
@@ -84,8 +93,9 @@ async function view(env, u) {
     devices: ss.map((x) => ({ id: x.hash.slice(0, 16), label: x.label || "A phone or browser", place: x.place || null, since: x.created_at, seenAt: x.seen_at,
       current: x.hash === u.sessionHash, stale: x.hash !== u.sessionHash && t - x.seen_at > STALE })),
     prefs: { appearance: ["light", "dark"].includes(u.appearance) ? u.appearance : "auto", units: Object.keys(units).length ? units : null },
-    // (the emails each app sends: the account's, about signing in and its security, always; InFlight's, as it has them)
-    emails: { inflight: !!u.notify_email },
+    // (the emails each app sends: the account's, about signing in and its security, always; InFlight's, as it has them;
+    // Weather's warnings and briefing, each on or off, and for which places and when, as its Notifications have them)
+    emails: { inflight: !!u.notify_email, weather: weatherMail(wx.data?.notify) },
     lastActivity: last?.at || null,
     // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; InFlight's counts)
     apps: {
@@ -404,6 +414,12 @@ const ROUTES = {
       if (typeof b.emails.inflight !== "boolean") throw new HttpError(400, "Choose on or off.");
       await (await db(env)).prepare("UPDATE pg_users SET notify_email = ?, email_at = COALESCE(email_at, ?) WHERE id = ?").bind(b.emails.inflight ? 1 : 0, Date.now(), u.id).run();
       now.notify_email = b.emails.inflight ? 1 : 0;
+    }
+    // Weather's: its warnings, its briefing, each on or off (kept with Weather's own choices: functions/_wxacct.js)
+    if (b.emails?.weather !== undefined) {
+      const W = b.emails.weather && typeof b.emails.weather === "object" ? b.emails.weather : {}, change = {};
+      for (const k of ["warn", "brief"]) if (W[k] !== undefined) { if (typeof W[k] !== "boolean") throw new HttpError(400, "Choose on or off."); change[k] = W[k]; }
+      if (Object.keys(change).length) await setMail(env, u.id, change);
     }
     if (b.units !== undefined) {
       const U = b.units && typeof b.units === "object" ? b.units : {}, set = {};

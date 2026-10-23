@@ -28,7 +28,8 @@ export function linkOrigin(request) {
 export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
 
 // Each app that sends email. tile: its usual picture. art (for mailicons.mjs): its icon, the badge on each tile's
-// corner; its symbols' colour; and its tiles, each a symbol on a gradient (top, foot), by what an email's about.
+// corner; its symbols' colour (and any symbols of its own, syms); and its tiles, each a symbol on a gradient (top,
+// foot), by what an email's about (a tile "warn-amber" is the symbol "warn").
 // foot: what's said under each of its emails, and a link (the rest of a foot is the email's own: why it came, a
 // way to turn them off). The colours: ink (links, the pill's words; inkDark at night), the button's gradient and
 // its glow, the pill, the sky behind (sky by day, night in dark mode), and the card, the details' box and their
@@ -53,7 +54,9 @@ export const BRANDS = {
     name: "Weather", tile: "sky",
     ink: "#1f63d6", inkDark: "#8cbcff", btn: ["#5aa0fa", "#2b69de"], glow: "rgba(43,105,222,.7)", pill: "#e6f0ff", pillDark: "#1b2d52",
     sky: ["#e0ecfd", "#edf3fc", "#f7f9fc"], night: ["#14295a", "#09142c", "#05070f"], card: "#141b2d", box: "#1e2639", sep: "#2b3552",
-    art: { badge: "weather/icon-512.png", ink: "#2b6fe0", tiles: { sky: ["#5fa4fb", "#2b69de"] } },
+    // (its warnings' tiles in the warning's own colour; and symbols of its own for a briefing's details)
+    art: { badge: "weather/icon-512.png", ink: "#2b6fe0", syms: ["warn", "wind", "temp", "rain", "sunrise"],
+      tiles: { sky: ["#5fa4fb", "#2b69de"], "warn-yellow": ["#ffd84d", "#f5b400"], "warn-amber": ["#ffb547", "#ff8a00"], "warn-red": ["#ff7a6e", "#e5302a"] } },
   },
   // the site's own page (its contact form, to its owner)
   website: {
@@ -90,6 +93,8 @@ export async function sendEmail(env, { brand, to, subject, text, html, headers, 
 }
 
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// a notice's colours, by its tone (a warning's): its box, its words, and the same at night
+export const NOTICE = { yellow: ["#fff5c7", "#6b5000", "#3b3110", "#ffe08a"], amber: ["#ffe9d1", "#7a3b00", "#3d2610", "#ffc58f"], red: ["#ffe1de", "#8a1c14", "#3f1715", "#ffaca4"] };
 // a detail's symbol, by what it is (or a row's own third item)
 const SYMBOL = { Account: "person", Handle: "at", From: "person", When: "clock", Sent: "clock", "Deleted on": "clock", Where: "pin", On: "phone",
   How: "key", "Signed in to": "grid", "Changed in": "grid", "Added in": "grid", "Link works": "link", Passkey: "passkey", "New email": "mail", Email: "mail",
@@ -99,16 +104,20 @@ const together = (s) => String(s).replace(/ (\S+)$/, " $1");
 // The look of every email on the site, each app in its own colours: its sky behind; a card with the email's own tile
 // and the app's icon as a badge on it (one picture); the title; a pill for the one thing to see at a glance (where a
 // sign-in was, the address to confirm, the day); what happened, then (quieter) what to do; someone's own words, as
-// they wrote them (quote); the details as a list, a symbol each (rows: [what, value, symbol?]); the button (a web
-// link has its address under it, for when it won't work); the foot. Tables and inline styles, so it holds up in
-// Gmail and Outlook (gradients and glows there are flat colours), with a dark version, in the app's night sky.
-export function emailBody({ brand, title, lines = [], quote, button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader }) {
+// they wrote them (quote); a notice in its own colour (notice: { tone, lead, text }: a warning in force); a strip of a
+// few columns on the app's own colour (strip: [what, picture, big, small] each: a day's morning, afternoon and evening);
+// the details as a list, a symbol each (rows: [what, value, symbol?]); the button (a web link has its address under
+// it, for when it won't work); the foot. Tables and inline styles, so it holds up in Gmail and Outlook (gradients and
+// glows there are flat colours), with a dark version, in the app's night sky.
+export function emailBody({ brand, title, lines = [], quote, notice, strip = [], button, icon, rows = [], pill, footer, unsub, origin = SITE, preheader }) {
   const B = brandOf(brand), foot = B.foot?.(origin), e = escHtml;
   const font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
   const pic = (f) => e(`${origin}/mail/${f}.png`), tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
   const sym = (name, size, style) => `<img src="${pic(`g-${brand}-${name}`)}" width="${size}" height="${size}" alt="" style="border:0;${style}">`;
   const web = button && /^https?:/i.test(button.url);
-  const text = [title, pill ? pill[1] : "", ...lines, quote || "", ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
+  const N = notice && (NOTICE[notice.tone] || NOTICE.yellow);
+  const text = [title, pill ? pill[1] : "", ...lines, quote || "", notice ? `${notice.lead} ${notice.text}` : "", strip.map(([k, , big, small]) => `${k}: ${big}${small ? `, ${small}` : ""}`).join("\n"),
+    ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
     footer || "", foot ? [foot.line, foot.url ? `${foot.label}: ${foot.url}` : ""].filter(Boolean).join("\n") : "",
     unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
   const sky = (c) => `radial-gradient(120% 70% at 50% -10%,${c[0]},${c[1]} 52%,${c[2]})`;
@@ -126,7 +135,8 @@ export function emailBody({ brand, title, lines = [], quote, button, icon, rows 
     .ml-card{background:${B.card}!important;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08),0 18px 50px -24px rgba(0,0,0,.8)!important}
     .ml-box{background:${B.box}!important}.ml-sep{border-color:${B.sep}!important}
     .ml-t,.ml-v{color:#f5f5f7!important}.ml-p1{color:#d1d1d6!important}.ml-p2,.ml-k,.ml-f{color:#8e8e9a!important}
-    .ml-pill{background:${B.pillDark}!important;color:${B.inkDark}!important}.ml-a{color:${B.inkDark}!important}
+    .ml-pill{background:${B.pillDark}!important;color:${B.inkDark}!important}.ml-a{color:${B.inkDark}!important}${N ? `
+    .ml-n{background:${N[2]}!important}.ml-n-t{color:${N[3]}!important}` : ""}
   }
   @media (max-width:480px){.ml-card{padding:22px 18px 22px!important}}
 </style></head>
@@ -142,6 +152,15 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
     ${lines.map((l, i) => i ? `<p class="ml-p2" style="margin:0 0 6px;font-size:14.5px;line-height:21px;color:#8e8e93">${e(together(l))}</p>`
       : `<p class="ml-p1" style="margin:0 0 8px;font-size:16px;line-height:23px;color:#3a3a3c">${e(together(l))}</p>`).join("")}
     ${quote ? `<div class="ml-box ml-v" style="margin:16px 0 0;padding:14px 16px;background:#f5f5fa;border-radius:16px;text-align:left;font-size:15px;line-height:22px;color:#1c1c1e;white-space:pre-wrap;word-break:break-word">${e(quote)}</div>` : ""}
+    ${N ? `<table role="presentation" class="ml-n" width="100%" cellpadding="0" cellspacing="0" bgcolor="${N[0]}" style="margin:18px 0 0;background:${N[0]};border-radius:16px;border-collapse:separate"><tr>
+      <td width="32" style="width:18px;padding:12px 0 12px 14px;vertical-align:middle"><img src="${pic(`g-warn-${notice.tone in NOTICE ? notice.tone : "yellow"}`)}" width="18" height="18" alt="" style="display:block;border:0"></td>
+      <td class="ml-n-t" style="padding:12px 14px 12px 10px;font-size:14.5px;line-height:20px;color:${N[1]};text-align:left"><b>${e(notice.lead)}</b> ${e(notice.text)}</td></tr></table>` : ""}
+    ${strip.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${B.btn[1]}" style="margin:18px 0 0;background-color:${B.btn[1]};background-image:linear-gradient(180deg,${B.btn[0]},${B.btn[1]});border-radius:18px;border-collapse:separate"><tr>${strip.map(([k, p, big, small], i) =>
+      `<td align="center" width="${Math.floor(100 / strip.length)}%" style="padding:14px 4px 13px;${i ? "border-left:1px solid rgba(255,255,255,.18);" : ""}">
+        <div style="font-size:12px;line-height:15px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#dbe9ff">${e(k)}</div>
+        <img src="${pic(p)}" width="44" height="44" alt="" style="display:block;margin:5px auto 3px;border:0">
+        <div style="font-size:22px;line-height:26px;font-weight:700;color:#ffffff">${e(big)}</div>
+        ${small ? `<div style="font-size:13px;line-height:17px;font-weight:600;color:#d6e6ff">${e(small)}</div>` : ""}</td>`).join("")}</tr></table>` : ""}
     ${rows.length ? `<table role="presentation" class="ml-box" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 0;background:#f5f5fa;border-radius:16px;border-collapse:separate">${rows.map(row).join("")}</table>` : ""}
     ${button ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 0"><tr><td align="center" bgcolor="${B.btn[1]}" style="background-color:${B.btn[1]};background-image:linear-gradient(180deg,${B.btn[0]},${B.btn[1]});border-radius:999px;box-shadow:0 10px 22px -10px ${B.glow},inset 0 1px 0 rgba(255,255,255,.25)">
       <a href="${e(button.url)}" style="display:block;padding:15px 20px;font-size:17px;line-height:22px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:999px">${e(button.label)}</a></td></tr></table>` : ""}

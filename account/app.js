@@ -293,7 +293,7 @@ function signedIn(r) {
   const prefs = r(section("Preferences", h("div.group.glass", {},
     row({ icon: "contrast", tint: "indigo", title: "Appearance", value: { auto: "Automatic", light: "Light", dark: "Dark" }[m.prefs.appearance], onclick: () => openSheet(appearanceView) }),
     row({ icon: "ruler", tint: "blue", title: "Units", value: unitsSaid({ ...unitsHere(), ...(m.prefs.units || {}) }), onclick: () => openSheet(unitsView) }),
-    row({ icon: "mail", tint: "red", title: "Emails", value: m.emails?.inflight ? "All on" : "Security only", onclick: () => openSheet(emailsView) })),
+    row({ icon: "mail", tint: "red", title: "Emails", value: emailsSaid(m.emails), onclick: () => openSheet(emailsView) })),
     "For every app on the site that has them."));
   const data = r(section("Your data", h("div.group.glass", {},
     row({ icon: "download", tint: "green", title: "Download your data", onclick: () => openSheet(exportView) }))));
@@ -1280,15 +1280,32 @@ function unitsView() {
 }
 
 // ---- emails: what each app sends you (each from its own address). The account's, about signing in and its security,
-// always; InFlight's, on or off here as in its own Notifications (which ones, those say); Weather's are on the phone ----
+// always; InFlight's, on or off here as in its own Notifications (which ones, those say); Weather's warnings and
+// briefing, a switch each (for which places and when, its Notifications say) ----
+// What the apps email besides the account's own: all of it, none, or which apps
+function emailsSaid(e = {}) {
+  const on = [e.inflight, e.weather?.warn, e.weather?.brief];
+  if (on.every(Boolean)) return "All on";
+  const apps = [e.inflight && "InFlight", (e.weather?.warn || e.weather?.brief) && "Weather"].filter(Boolean);
+  return apps.length ? apps.join(", ") : "Security only";
+}
 function emailsView() {
   const m = S.me, said = h("p.said", { role: "alert" });
-  const sw = h("input.switch", { type: "checkbox", role: "switch", checked: !!m.emails?.inflight, disabled: !m.emailOk, onchange: async () => {
-    sw.disabled = true; say(said, "");
-    try { S.me = await call("prefs", { method: "PUT", body: { emails: { inflight: sw.checked } } }); patch(); }
-    catch (e) { sw.checked = !sw.checked; say(said, e.message); }
-    finally { sw.disabled = !S.me.emailOk; }
-  } });
+  // a switch for one of the apps' emails (emails: what's sent to prefs, from on or off)
+  const toggle = (on, emails) => {
+    const sw = h("input.switch", { type: "checkbox", role: "switch", checked: on, disabled: !m.emailOk, onchange: async () => {
+      sw.disabled = true; say(said, "");
+      try { S.me = await call("prefs", { method: "PUT", body: { emails: emails(sw.checked) } }); patch(); }
+      catch (e) { sw.checked = !sw.checked; say(said, e.message); }
+      finally { sw.disabled = !S.me.emailOk; }
+    } });
+    return sw;
+  };
+  const sw = toggle(!!m.emails?.inflight, (on) => ({ inflight: on }));
+  // Weather's: its warnings and its briefing, for the places and time chosen in its Notifications
+  const W = m.emails?.weather || {}, and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} and ${a.at(-1)}` : a[0]);
+  const wxRow = (k, title, sub) => h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: title }), h("small", { text: m.emailOk ? sub : "Confirm your email first" })),
+    toggle(!!W[k], (on) => ({ weather: { [k]: on } })));
   const head = (img, name) => h("h4.app-k", {}, h("img", { src: img, alt: "" }), name);
   return { title: "Emails", body: [
     h("p", { text: "What each app emails you, from its own address." }),
@@ -1298,7 +1315,11 @@ function emailsView() {
     head("/apps/inflight.png", "InFlight"),
     h("div.group", {}, h("label.row.plain.info", {}, h("span.tx", {}, h("b", { text: "Notifications by email" }),
       h("small", { text: m.emailOk ? "Pigeons landing, friend requests and your week in flight, as its Notifications have them" : "Confirm your email first" })), sw)),
-    h("p.hint", { text: "Weather tells you on your phone instead: its alerts are in its own Settings." }),
+    head("/apps/weather.png", "Weather"),
+    h("div.group", {},
+      wxRow("warn", "Warnings", W.warnFor?.length ? `Official warnings as they’re issued, for ${and(W.warnFor)}` : "Official warnings, for the places you choose in Weather"),
+      wxRow("brief", "Morning briefing", W.briefFor ? `${W.briefFor}, at ${W.briefAt}` : "For the place you choose in Weather")),
+    h("p.hint", { text: "Which places, and when, are in Weather’s Notifications. Rain alerts stay on your phone." }),
     said] };
 }
 

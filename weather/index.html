@@ -15,7 +15,7 @@
   <meta property="og:description" content="A forecast that explains itself." />
   <meta property="og:type" content="website" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-70" />
+  <meta name="app-version" content="wx-71" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -222,6 +222,14 @@
           <h3 class="grp-head">Rain alerts and warnings</h3>
           <ul class="grp np" id="notify-places" aria-label="Rain alerts and official warnings for each place"></ul>
           <p class="grp-foot">A heads-up before rain starts, and official warnings as they’re issued.</p>
+          <div id="notify-mail" hidden>
+            <h3 class="grp-head">Email</h3>
+            <ul class="grp">
+              <li><label class="switch"><input type="checkbox" name="mailWarn" /> Warnings</label></li>
+              <li><label class="switch"><input type="checkbox" name="mailBrief" /> Morning briefing</label></li>
+            </ul>
+            <p class="grp-foot" id="notify-mail-foot"></p>
+          </div>
           <p class="note" id="notify-status" role="status"></p>
           <div class="notify-acct" id="notify-acct"></div>
         </div></div>

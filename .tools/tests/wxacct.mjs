@@ -299,6 +299,49 @@ ok(old.status === 200 && cam.length === 1 && cam[0].rain === 1 && cam[0].brief =
   else console.log('(quiet hours in Edinburgh: the rain alert waits)', JSON.stringify(tick));
 }
 
+// ---- 8b. By email too: the warnings and the briefing, to the account's email once it's confirmed; off by the email's link ----
+{
+  const sam = rows("SELECT id FROM pg_users WHERE email = 'sam@example.com'")[0].id, mailDev = `mail:${sam}`;
+  sql(`UPDATE pg_users SET email_ok = 1 WHERE id = '${sam}'`);
+  await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh'); await settings(P); await folder(P, 'notify');
+  const foot = await P.p.textContent('#notify-mail-foot');
+  ok(await P.p.isVisible('#notify-mail') && /^To sam@example\.com, for the places and time above\. Rain alerts aren’t emailed/.test(foot), 'signed in: an Email group, to the account\'s email', foot);
+  await P.p.check('#settings-form input[name=brief]'); await P.p.waitForTimeout(800);
+  await P.p.check('#settings-form input[name=mailWarn]'); await P.p.waitForTimeout(800);
+  await P.p.check('#settings-form input[name=mailBrief]');
+  await waitFor(() => rows(`SELECT COUNT(*) AS n FROM wx_subs WHERE dev = '${mailDev}'`)[0]?.n === 2);
+  const mailSubs = rows(`SELECT name, rain, warn, brief FROM wx_subs WHERE dev = '${mailDev}' ORDER BY name`);
+  ok(JSON.stringify(mailSubs) === JSON.stringify([{ name: 'Edinburgh', rain: 0, warn: 0, brief: 1 }, { name: 'London', rain: 0, warn: 1, brief: 0 }]) && kept('sam')?.notify.email?.warn === true,
+    'the account\'s email: London\'s warnings and the briefing (Edinburgh), kept with the account; never rain alerts', JSON.stringify(mailSubs));
+  ok(/by email too\./.test(await P.p.textContent('#notify-status')), 'and the line that says what\'s on says so', await P.p.textContent('#notify-status'));
+  ok(/Notifications go to/.test(await whereTo(P)) && !/Email/.test(await whereTo(P)), 'the email isn\'t among the devices notifications go to', await whereTo(P));
+  await closeSheet(P);
+  // the briefing due now; London's warnings all new (as if none had been told of)
+  const at = new Date(Date.now() - 10 * 60e3), hhmm = `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')}`;
+  sql(`UPDATE wx_subs SET brief_at = '${hhmm}', last_brief = NULL WHERE dev = '${mailDev}' AND brief = 1`);
+  sql(`UPDATE wx_subs SET tz_off = 0, told = '{}' WHERE dev = '${mailDev}' AND warn = 1`);
+  const before = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).length;
+  const tick = await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: '/api/weather/tick', method: 'POST', headers: { Host: 'localhost', Authorization: 'Bearer tick-test-secret' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(JSON.parse(t || '{}'))); }); r.end(); });
+  const mails = readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).slice(before).map((l) => JSON.parse(l).body).filter((m) => /^Weather </.test(m.from));
+  const brief = mails.find((m) => /^Edinburgh: .+, \d+°$/.test(m.subject)), warn = mails.find((m) => /^Amber thunderstorm warning: London/.test(m.subject));
+  if (at.getUTCDate() === new Date().getUTCDate()) ok(brief && brief.to === 'sam@example.com' && /mail\/wx-[a-z-]+\.png/.test(brief.html) && /Morning:/.test(brief.text), 'the tick: the briefing by email, from Weather, with the day in three', `${JSON.stringify(tick)} ${mails.map((m) => m.subject)}`);
+  else console.log('(just after midnight: the briefing waits for its day)');
+  ok(warn && /mail\/weather-warn-amber\.png/.test(warn.html) && /Thunderstorms could bring flooding/.test(warn.text), 'and London\'s warning, in its own colour', mails.map((m) => m.subject).join(' | '));
+  const link = /(\/api\/weather\/email-off\?u=[^&"]+&t=[A-Za-z0-9_-]+)/.exec(warn?.html || '')?.[1]?.replace(/&amp;/g, '&');
+  ok(link && warn.headers?.['List-Unsubscribe']?.includes(link) && warn.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'each with a link to turn them off, and the mail app\'s own Unsubscribe', link);
+  // the link: GET shows a button and changes nothing; POST turns them off (as a mail app's one-click does)
+  const hit = (method) => new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: link, method, headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done({ status: res.statusCode, body: t })); }); r.end(); });
+  const g = await hit('GET');
+  ok(g.status === 200 && /Turn off Weather’s emails\?/.test(g.body) && /<form method="post"/.test(g.body) && kept('sam')?.notify.email?.warn === true, 'the link: a button first, nothing turned off yet', String(g.status));
+  const pst = await hit('POST');
+  ok(pst.status === 200 && /Emails turned off/.test(pst.body) && kept('sam')?.notify.email?.warn === false && !rows(`SELECT dev FROM wx_devs WHERE dev = '${mailDev}'`).length, 'pressed: turned off, kept so, and the email no longer sent to', JSON.stringify(kept('sam')?.notify.email));
+  ok(/Link expired/.test((await new Promise((done) => { const r = http.request({ host: '127.0.0.1', port: 8788, path: link.replace(/t=[^&]+$/, 't=wrong'), headers: { Host: 'weather.gfg.test:8788' } }, (res) => { let t = ''; res.on('data', (x) => t += x); res.on('end', () => done(t)); }); r.end(); }))), 'a wrong link turns nothing off');
+  await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh'); await settings(P); await folder(P, 'notify');
+  await waitFor(async () => !(await P.p.isChecked('#settings-form input[name=mailWarn]')), 8000);
+  ok(!(await P.p.isChecked('#settings-form input[name=mailWarn]')) && !(await P.p.isChecked('#settings-form input[name=mailBrief]')), 'and Weather shows them off', '');
+  await closeSheet(P);
+}
+
 // ---- 9. The account deleted (in InFlight): what Weather kept goes with it ----
 {
   await L.p.goto(`${CHAT}/`); await L.p.waitForSelector('.tabs', { timeout: 20000 }).catch(() => {});

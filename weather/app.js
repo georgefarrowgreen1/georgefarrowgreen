@@ -62,9 +62,11 @@ function notifyOf(n) {
   n = n && typeof n === "object" && !Array.isArray(n) ? n : {};
   const spot = (p) => (p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? { lat: p.lat, lon: p.lon, name: String(p.name || ""), ...(p.gps ? { gps: true } : {}) } : null);
   const at = /^\d\d:\d\d$/.test(n.briefAt || "") ? n.briefAt : "07:00", keep = { endpoint: n.endpoint || null, devId: n.devId || null, syncedAt: n.syncedAt || 0 };
-  if (!Array.isArray(n.places)) { const p = spot(n.place); return { places: p && (n.rain || n.warn) ? [{ ...p, rain: !!n.rain, warn: !!n.warn }] : [], brief: p && n.brief ? p : null, briefAt: at, ...keep }; }
+  // (signed in: the warnings and the briefing by email too)
+  const email = { warn: !!n.email?.warn, brief: !!n.email?.brief };
+  if (!Array.isArray(n.places)) { const p = spot(n.place); return { places: p && (n.rain || n.warn) ? [{ ...p, rain: !!n.rain, warn: !!n.warn }] : [], brief: p && n.brief ? p : null, briefAt: at, email, ...keep }; }
   const places = n.places.map((x) => { const p = spot(x); return p && (x.rain || x.warn) ? { ...p, rain: !!x.rain, warn: !!x.warn } : null; }).filter(Boolean);
-  return { places, brief: n.brief && typeof n.brief === "object" ? spot(n.brief) : null, briefAt: at, ...keep };
+  return { places, brief: n.brief && typeof n.brief === "object" ? spot(n.brief) : null, briefAt: at, email, ...keep };
 }
 // (kept, and signed in, sent to the account soon after: inStepSoon)
 const saveSettings = () => { store.set("wx:settings", S.settings); S.f = makeFormat(S.settings); document.body.dataset.glass = S.settings.glass; inStepSoon(); };
@@ -1797,7 +1799,8 @@ function notifySay(text, quiet = false) { const st = $("notify-status"); st.text
 function onText() {
   const n = S.settings.notify, rain = n.places.filter((p) => p.rain).map(nname), warn = n.places.filter((p) => p.warn).map(nname);
   const on = [rain.length ? `rain alerts for ${and(rain)}` : "", warn.length ? `official warnings for ${and(warn)}` : "", n.brief ? `a briefing at ${atText(n.briefAt)} for ${nname(n.brief)}` : ""].filter(Boolean);
-  return on.length ? `On: ${and(on)}.` : "Off.";
+  const mail = S.acct && [n.email?.warn && warn.length ? "the warnings" : "", n.email?.brief && n.brief ? "the briefing" : ""].filter(Boolean);
+  return on.length ? `On: ${and(on)}.${mail?.length ? ` ${and(mail).replace(/^t/, "T")} by email too.` : ""}` : "Off.";
 }
 // a choice made: kept, and (signed in) the account's first, then this device told
 async function notifySaved() {
@@ -1820,6 +1823,13 @@ async function togglePlace(p, k) {
   if (e) e[k] = on; else n.places.push({ ...spotOf(p), rain: k === "rain", warn: k === "warn" });
   n.places = n.places.filter((x) => x.rain || x.warn);
   await notifyChanged(note);
+}
+// the warnings and the briefing by email too (signed in: the account's choice, kept with it; the server sends them to its
+// email, once that's confirmed)
+async function onMail() {
+  const form = $("settings-form");
+  S.settings.notify.email = { warn: form.mailWarn.checked, brief: form.mailBrief.checked };
+  await notifyChanged();
 }
 // the briefing: on or off, for which place, at what time
 async function onNotify() {
@@ -1847,7 +1857,18 @@ function drawNotify(keepStatus = false) {
   form.briefFor.value = n.brief ? nkey(n.brief) : place() ? nkey(place()) : "";
   fillTimes(form.briefAt, n.briefAt || "07:00");
   if (!keepStatus) notifySay(notifying(n) ? onText() : S.acct ? "" : notifyWhy() || "", notifying(n));
-  drawNotifyAcct(); drawFolders();
+  drawMail(); drawNotifyAcct(); drawFolders();
+}
+// By email: signed in only, to the account's email once it's confirmed (the rain alerts not: an hour's notice by email
+// comes too late)
+function drawMail() {
+  const a = S.acct, form = $("settings-form"), n = S.settings.notify;
+  $("notify-mail").hidden = !a;
+  if (!a) return;
+  form.mailWarn.checked = !!n.email?.warn; form.mailBrief.checked = !!n.email?.brief;
+  form.mailWarn.disabled = form.mailBrief.disabled = !a.emailOk;
+  $("notify-mail-foot").replaceChildren(...(a.emailOk ? [`To ${a.email}, for the places and time above. Rain alerts aren’t emailed: they’d come too late.`]
+    : ["Confirm your email first, on ", h("button", { class: "link", type: "button", onclick: openAccount }, "your account page"), "."]));
 }
 
 /* ---------- your account ---------- */
@@ -1865,7 +1886,7 @@ const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && 
 const mine = () => ({
   places: S.places.filter((p) => !p.gps).map((p) => ({ name: p.name, region: p.region || "", lat: p.lat, lon: p.lon })),
   settings: Object.fromEntries(SYNCED.map((k) => [k, S.settings[k]])),
-  notify: { places: S.settings.notify.places, brief: S.settings.notify.brief, briefAt: S.settings.notify.briefAt },
+  notify: { places: S.settings.notify.places, brief: S.settings.notify.brief, briefAt: S.settings.notify.briefAt, email: S.settings.notify.email },
 });
 const snapOf = (d) => ({ places: (d.places || []).map(A.keyOf), settings: canon(d.settings || null), notify: d.notify || null });
 const sameAs = (now, snap) => canon(now.places.map(A.keyOf)) === canon(snap.places) && canon(now.settings) === snap.settings && !A.notifyChanges(now.notify, snap.notify).length;
@@ -1944,7 +1965,7 @@ async function adopt(r, here = false) {
   if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
   else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
   store.set("wx:acct", { ...profileOf(r), devices: S.acct.devices, ver: r.ver, snap: snapOf(r.data) });
-  drawAccount(); drawInStep();
+  drawAccount(); drawInStep(); drawMail();
   try { await keepInStep(); } catch (_) {}
   // (this device, if it shows notifications, one of the account's)
   if (fresh && canShow() && (notifying(S.settings.notify) || S.settings.notify.endpoint)) { await syncNotify().catch(() => {}); refreshDevices(); }
@@ -1953,7 +1974,7 @@ async function refreshDevices() {
   try { const r = await A.me(); if (r.signedIn && S.acct) { S.acct.devices = r.devices || []; const k = store.get("wx:acct"); if (k) store.set("wx:acct", { ...k, devices: S.acct.devices }); drawAccount(); } } catch (_) {}
 }
 // who, as the account has them: name, handle, email, the photo's time (and the account's own id, to know it again)
-const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, email: r.email || "", photoAt: r.photoAt || null });
+const profileOf = (r) => ({ id: r.id || null, name: r.name, handle: r.handle, email: r.email || "", emailOk: !!r.emailOk, photoAt: r.photoAt || null });
 // this device among the account's that get its notifications
 const hereToo = () => !!(S.acct && S.settings.notify.devId && S.acct.devices.some((d) => d.id === S.settings.notify.devId));
 function signedOut() { store.del("wx:acct"); S.acct = null; drawAccount(); drawInStep(); if ($("settings").open) drawNotify(); }
@@ -2329,6 +2350,7 @@ function wire() {
   $("settings").addEventListener("close", () => { if (actEdit) { const keep = actEdit; actEdit = null; keep(); } });
   $("settings-form").addEventListener("change", readSettings);
   for (const k of ["brief", "briefFor", "briefAt"]) $("settings-form")[k].addEventListener("change", onNotify);
+  for (const k of ["mailWarn", "mailBrief"]) $("settings-form")[k].addEventListener("change", onMail);
   $("act-add").addEventListener("change", addAct);
   for (const b of document.querySelectorAll(".radar-play")) b.innerHTML = `<span class="ic g-off">${glyph("play", 16)}</span><span class="ic g-on">${glyph("pause", 16)}</span>`;
   // (full screen, it closes with an ×, as Apple's Weather map does)

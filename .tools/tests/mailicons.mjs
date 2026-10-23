@@ -4,10 +4,13 @@
 //                      with the app's icon as a badge on its corner, cut out round it, all one picture, as mail apps
 //                      that can't place one thing over another (Gmail, Outlook) still show it whole, light or dark
 //   g-<app>-<sym>.png  the small symbols beside an email's details, and in its pill, in the app's own colour
+//   g-warn-<tone>.png  the symbol on a notice (a weather warning in force: _email.js NOTICE), in the notice's colour
+//   wx-<icon>.png      the weather, as Weather draws it (weather/icons.js), for a strip of the day's parts
 // Run from the repository: node .tools/tests/mailicons.mjs (needs this folder's Playwright and its Chromium)
 import { chromium } from 'playwright';
 import { readFileSync, mkdirSync, existsSync } from 'fs';
 import { BRANDS } from '../../functions/_email.js';
+import { weatherIcon } from '../../weather/icons.js';
 const ROOT = new URL('../../', import.meta.url).pathname, OUT = `${ROOT}mail`;
 mkdirSync(OUT, { recursive: true });
 const pic = (f) => `data:image/${f.endsWith('.svg') ? 'svg+xml' : 'png'};base64,` + readFileSync(`${ROOT}${f}`).toString('base64');
@@ -33,8 +36,17 @@ const SYM = {
   star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
   sky: '<path d="M8.4 11.9A3.4 3.4 0 1 1 12.4 8.9M9 2.1v1.1M4.3 3.8l.8.8M2.6 8.5h1.1M13.7 3.8l-.8.8"/><path d="M8.6 20.5h9.2a3.7 3.7 0 0 0 .5-7.4 5 5 0 0 0-9.6 1.2 3.1 3.1 0 0 0-.1 6.2z"/>',
   dot: '<circle cx="12" cy="12" r="3.2"/>',
+  warn: '<path d="M10.3 4.3a2 2 0 0 1 3.4 0l7.6 13.2a2 2 0 0 1-1.7 3H4.4a2 2 0 0 1-1.7-3z"/><path d="M12 9.6v4.2M12 17.1v.1"/>',
+  wind: '<path d="M3 8.5h10.5a3 3 0 1 0-3-3"/><path d="M3 12.5h15a3 3 0 1 1-3 3"/><path d="M3 16.5h6.5"/>',
+  temp: '<path d="M14 14.6V5a2 2 0 0 0-4 0v9.6a4 4 0 1 0 4 0z"/><path d="M12 9.5v6.8"/>',
+  rain: '<path d="M3 12.2a9 9 0 0 1 18 0z"/><path d="M12 12.2v6.3a2 2 0 0 1-4 0"/>',
+  sunrise: '<path d="M3 19.5h18"/><path d="M6.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M12 3v6.2M9.4 5.6 12 3l2.6 2.6"/><path d="m4.6 12.8 1.5 1M19.4 12.8l-1.5 1"/>',
 };
-const symOf = (icon) => (icon === 'landed' ? 'bird' : icon);
+// (a warning's tiles, one for each colour: its symbol)
+const symOf = (icon) => (icon === 'landed' ? 'bird' : icon.replace(/-(yellow|amber|red)$/, ''));
+// the notice's symbol in each tone's colour; and every weather icon
+const TONES = { yellow: '#b88a00', amber: '#d06a00', red: '#d8322a' };
+const WEATHER = ['sun', 'moon', 'mostly-sun', 'mostly-moon', 'partly-sun', 'partly-moon', 'cloud', 'fog', 'drizzle', 'rain', 'heavy-rain', 'showers-sun', 'showers-moon', 'sleet', 'snow', 'storm'];
 // the tile and its badge, on a 112-unit canvas (the tile 80 across, centred; the badge 30, ringed by a 3-unit gap)
 function tileSvg(app, icon, [top, bot]) {
   const glow = bot;
@@ -67,7 +79,9 @@ const shoot = async (svg, w, file) => {
 let n = 0;
 for (const [app, { art }] of Object.entries(BRANDS)) {
   for (const [icon, colours] of Object.entries(art.tiles)) { await shoot(tileSvg(app, icon, colours), 336, `${OUT}/${app}-${icon}.png`); n++; }
-  for (const sym of ['person', 'at', 'clock', 'pin', 'phone', 'key', 'grid', 'link', 'passkey', 'mail', 'lock', 'bird', 'route', 'star', 'dot']) { await shoot(symSvg(sym, art.ink), 51, `${OUT}/g-${app}-${sym}.png`); n++; }
+  for (const sym of ['person', 'at', 'clock', 'pin', 'phone', 'key', 'grid', 'link', 'passkey', 'mail', 'lock', 'bird', 'route', 'star', 'dot', ...(art.syms || [])]) { await shoot(symSvg(sym, art.ink), 51, `${OUT}/g-${app}-${sym}.png`); n++; }
 }
+for (const [tone, ink] of Object.entries(TONES)) { await shoot(symSvg('warn', ink), 54, `${OUT}/g-warn-${tone}.png`); n++; }
+for (const name of WEATHER) { await shoot(weatherIcon(name, 132).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '), 132, `${OUT}/wx-${name}.png`); n++; }
 await b.close();
 console.log(`${n} pictures in mail/`);

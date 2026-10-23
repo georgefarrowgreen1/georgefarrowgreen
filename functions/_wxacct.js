@@ -7,7 +7,8 @@
 // any app on the site, by the same rules; your email (your sign-in) shown as it is.
 //
 // What it keeps with the account: your saved places, your settings, and which notifications you want for which places
-// (wx_accts: functions/_wxpush.js), so they're the same on every phone and computer you're signed in on. One record with
+// (and whether the warnings and the briefing come by email too: notify.email) (wx_accts: functions/_wxpush.js), so
+// they're the same on every phone and computer you're signed in on. One record with
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
@@ -35,15 +36,15 @@ export function cleanData(d) {
   }
   if (places.length > MAX_SAVED) throw new HttpError(400, `You can keep ${MAX_SAVED} places at most.`);
   const settings = d.settings && typeof d.settings === "object" && !Array.isArray(d.settings) ? d.settings : {};
-  const n = d.notify ? wantOf(d.notify) : { places: [], brief: null, briefAt: "07:00" };
+  const n = wantOf(d.notify);
   // (where each notification's place is My Location on the device that chose it)
   n.places = n.places.slice(0, MAX_PLACES);
   const out = { places, settings, notify: n };
   if (JSON.stringify(out).length > MAX_DATA) throw new HttpError(413, "That's more than can be kept.");
   return out;
 }
-const EMPTY = { places: [], settings: null, notify: { places: [], brief: null, briefAt: "07:00" } };
-async function kept(env, userId) {
+const EMPTY = { places: [], settings: null, notify: { places: [], brief: null, briefAt: "07:00", email: { warn: false, brief: false } } };
+export async function kept(env, userId) {
   const r = await (await wxdb(env)).prepare("SELECT data, ver FROM wx_accts WHERE user_id = ?").bind(userId).first();
   if (!r) return { ver: 0, data: EMPTY };
   try { return { ver: r.ver, data: JSON.parse(r.data) }; } catch (_) { return { ver: r.ver, data: EMPTY }; }
@@ -52,7 +53,7 @@ async function kept(env, userId) {
 // what's kept, and which devices get its notifications
 async function view(env, u) {
   const k = await kept(env, u.id);
-  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
+  return { signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, ver: k.ver, data: k.data, devices: await devicesOf(env, u.id) };
 }
 export const ACCOUNT_ROUTES = {
   // who's signed in (and what's kept), or { signedIn: false }; the cookie's life renewed while it's used
@@ -73,8 +74,8 @@ export const ACCOUNT_ROUTES = {
       ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(u.id, JSON.stringify(data), t).run()
       : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(u.id, JSON.stringify(data), t, base).run();
     if (!r.meta?.changes) { const now = await kept(env, u.id); return json({ conflict: true, ver: now.ver, data: now.data }, 409); }
-    // (the notifications, for each of the account's devices, if they've changed)
-    if (JSON.stringify(data.notify) !== JSON.stringify(was.data.notify)) await applyAccount(env, u.id, data.notify);
+    // (the notifications, for each of the account's devices and its email, if they've changed, or the units its emails are in)
+    if (JSON.stringify(data.notify) !== JSON.stringify(was.data.notify) || unitsChanged(data.settings, was.data.settings)) await applyAccount(env, u.id, data.notify, data.settings);
     return json({ ver: base + 1, data });
   },
   // The account's own page, opened signed in as you (from the account's card): a code good once, for a minute, for this
@@ -92,6 +93,22 @@ export const ACCOUNT_ROUTES = {
   // here, this device's notifications stay, as its own
   ...accountRoutes(view, { onSignOut: (env, u, b) => (b.endpoint ? leaveAccount(env, b.endpoint, u.id) : null) }),
 };
+const unitsChanged = (a, b) => ["temp", "wind", "precip", "clock"].some((k) => (a || {})[k] !== (b || {})[k]);
+// Weather's emails turned on or off from outside the app (the account's page; an email's own link, all off): change is
+// { warn, brief } (either), kept as Weather's own choices are, a new version (so Weather's pages take it up), and sent
+// on to its email. → the account's notifications now
+export async function setMail(env, userId, change) {
+  const D = await wxdb(env);
+  for (let i = 0; i < 3; i++) {
+    const was = await kept(env, userId), t = Date.now();
+    const data = cleanData({ ...was.data, notify: { ...was.data.notify, email: { ...was.data.notify?.email, ...change } } });
+    const r = was.ver === 0
+      ? await D.prepare("INSERT INTO wx_accts (user_id, data, ver, updated) VALUES (?1, ?2, 1, ?3) ON CONFLICT(user_id) DO NOTHING").bind(userId, JSON.stringify(data), t).run()
+      : await D.prepare("UPDATE wx_accts SET data = ?2, ver = ver + 1, updated = ?3 WHERE user_id = ?1 AND ver = ?4").bind(userId, JSON.stringify(data), t, was.ver).run();
+    if (r.meta?.changes) { await applyAccount(env, userId, data.notify, data.settings); return data.notify; }
+  }
+  throw new HttpError(409, "That didn’t save. Try again.");
+}
 // Turning notifications on (or changing them) on a device: signed in, as the account's choices, and the device one of
 // the account's; signed out, as its own
 export async function subscribeHere(request, env, b) {
