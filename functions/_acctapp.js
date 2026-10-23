@@ -17,7 +17,7 @@ export const ACCT_SECURITY = {
   "Referrer-Policy": "same-origin",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
-  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Resource-Policy": "same-origin",
 };

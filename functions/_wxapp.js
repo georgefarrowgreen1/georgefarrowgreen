@@ -27,7 +27,7 @@ export const WX_SECURITY = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
-  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
   // its own window, and its files for its own pages only
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Resource-Policy": "same-origin",

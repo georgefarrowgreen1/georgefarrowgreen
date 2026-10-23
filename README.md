@@ -1876,6 +1876,14 @@ whose email is `PIGEON_ADMIN_EMAIL` (confirmed), as the tests do (`.tools/tests/
   clear what that browser kept there: the sign-in, the key, trusted keys and settings, as that address is the home
   page's too. Once per browser, for one that moved before as well (`inflight-oldcleared`); an old tab still open there
   lets go of its copy when asked (`.tools/tests/movein.mjs`). Home Screen apps keep their own storage, untouched.
+- **Passkeys checked as they're made, sign-ins that end, HTTPS everywhere.** A passkey being added (on the account's
+  page or in InFlight) is taken only if what the authenticator itself says of it matches: made for this site, a person
+  there and verified, and the same id and public key as the page sends (`checkRegistration`, reading its
+  authenticator data and COSE key; `unit/passkeyreg.test.mjs`). One that counts its uses must count up each time
+  (`pg_passkeys.sign_count`): one that's fallen behind is a copy, and isn't taken. A sign-in lasts while it's used, up
+  to a year from when it was made (`SESSION_MAX`), then it's asked for again. Every app sends HSTS for two years with
+  `includeSubDomains; preload`, and every address redirects plain http to https; to have browsers know it before a
+  first visit, submit georgefarrowgreen.com at hstspreload.org (once listed, every subdomain must keep HTTPS for good).
 
 - The home page's words and photos are public; only the site's admin account, signed in on the site, can change them,
   and only from the site's own pages (the browser says where a request is from). There's no password of the page's own.

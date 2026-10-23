@@ -1,7 +1,7 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
   HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -338,10 +338,11 @@ async function passkeyRegister({ request, env, waitUntil }) {
   await checkClientData(env, request, b, "webauthn.create", "register", u.id);
   if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type InFlight doesn’t support.");
   if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
+  const count = await checkRegistration(request, env, b);
   const D = await db(env), provider = providerOf(b.authenticatorData);
   if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now()).run();
+  await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now(), count).run();
   waitUntil(logEvent(env, u.id, "passkey-add", request, provider || String(b.label || "Passkey").slice(0, 40)));
   waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), request).catch(() => {}));
   return json({ ok: true });

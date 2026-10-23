@@ -25,7 +25,7 @@
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
-import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
+import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf } from "../../_pigeon.js";
 import { linkOrigin, emailReady, SITE, ACCOUNT_APP } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
@@ -309,9 +309,10 @@ const ROUTES = {
     await checkClientData(env, request, b, "webauthn.create", "register", u.id);
     if (b.alg !== -7 && b.alg !== -257) throw new HttpError(400, "This passkey uses a key type that isn’t supported.");
     if (!/^[A-Za-z0-9_-]{16,1400}$/.test(String(b.id || "")) || !/^[A-Za-z0-9_-]{60,1200}$/.test(String(b.publicKey || ""))) throw new HttpError(400, "The passkey response was incomplete.");
+    const count = await checkRegistration(request, env, b);
     const D = await db(env), label = cleanLabel(b.label) || deviceOf(request) || "Passkey", provider = providerOf(b.authenticatorData);
     if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
-    await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now()).run();
+    await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at, sign_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now(), count).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
     waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
     return json(await view(env, u));
