@@ -64,8 +64,8 @@ const actx = await K.b.newContext({ viewport: { width: 430, height: 932 }, devic
 await actx.addCookies([AD.cookie]);
 const ad = await actx.newPage();
 ad.on('pageerror', (e) => K.errs.push(`admin: ${e.message}`));
-await ad.goto(AD.page + '/'); await ad.waitForSelector('section.section:has(h3:text-is("Admin")) .row', { timeout: 20000 }); await ad.waitForTimeout(900);
-await ad.click('section.section:has(h3:text-is("Admin")) .row:has(b:text-is("Insights"))');
+await ad.goto(AD.page + '/'); await ad.waitForSelector('main .row:has(b:text-is("Admin"))', { timeout: 20000 }); await ad.waitForTimeout(900);
+await ad.click('main .row:has(b:text-is("Admin"))'); await ad.click('#sheet .row:has(b:text-is("Insights"))');
 await ad.waitForSelector('#sheet .adm-chart', { timeout: 15000 }); await ad.waitForTimeout(900);
 const txt = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
 ok(/today/.test(txt) && /50%/.test(txt) && /Pigeons sent 5 in 30 days/.test(txt) && /Joined 1–2 weeks ago 0 of 1/.test(txt) && /Joined 2–3 weeks ago 1 of 1/.test(txt) && /Landings not told yet 1/.test(txt),

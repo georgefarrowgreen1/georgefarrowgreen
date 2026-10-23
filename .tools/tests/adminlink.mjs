@@ -41,9 +41,15 @@ async function req(x, url, { method = 'GET', headers = {}, data } = {}) {
 const settle = (x, ms = 900) => x.p.waitForTimeout(ms);
 const text = (x, sel = 'main') => x.p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
 const sheetText = (x) => text(x, '#sheet');
-const adminRow = (x, title) => x.p.click(`section.section:has(h3:text-is("Admin")) .row:has(b:text-is("${title}"))`);
+// (Admin: a row on the page that opens its folder; its rows inside)
+const ADMIN = 'main .row:has(b:text-is("Admin"))';
+const adminOpen = async (x) => {
+  if (await x.p.$('#sheet[open] #sheet-title:text-is("Admin")')) return;
+  await x.p.click(ADMIN); await x.p.waitForSelector('#sheet[open] #sheet-title:text-is("Admin")'); await settle(x, 400);
+};
+const adminRow = async (x, title) => { await adminOpen(x); await x.p.click(`#sheet .row:has(b:text-is("${title}"))`); };
 const account = async (x) => { await x.p.goto(`${ACCT}/`); await x.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await settle(x); };
-const adminText = (x) => x.p.evaluate(() => [...document.querySelectorAll('section.section')].find((s) => s.querySelector('h3')?.textContent === 'Admin')?.innerText.replace(/\s+/g, ' ').trim() || '');
+const adminText = async (x) => { if (!(await x.p.$(ADMIN))) return ''; await adminOpen(x); return sheetText(x); };
 const waitSheet = (x, re, ms = 15000) => x.p.waitForFunction((r) => new RegExp(r).test(document.querySelector('#sheet')?.innerText || ''), re.source, { timeout: ms }).then(() => true, () => false);
 
 // ---- 1. The owner's email (PIGEON_ADMIN_EMAIL, here owner@example.com) on an account with a passkey; another account ----
@@ -75,6 +81,7 @@ sql(`UPDATE pg_users SET delete_at = NULL WHERE id = '${pat}'`); sql("DELETE FRO
 // ---- 3. The old dashboard's addresses come here; its API is gone ----
 await G.p.goto(`${SITE}/pigeon/admin/`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
 ok(G.p.url().startsWith(`${ACCT}/#admin`) || G.p.url().startsWith(ACCT), 'the old dashboard’s address: on to Admin on the account’s page', G.p.url());
+ok(await G.p.waitForSelector('#sheet[open] #sheet-title:text-is("Admin")', { timeout: 15000 }).then(() => true, () => false), 'with its folder open');
 await G.p.goto(`${CHAT}/admin`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
 ok(G.p.url().startsWith(ACCT), 'and InFlight’s /admin', G.p.url());
 r = await req(G, `${CHAT}/api/pigeon/admin-users`);
@@ -147,7 +154,7 @@ ok(/Gave pigeons/.test(ev) && /Deleted an account/.test(ev) && /Signed an accoun
 const O = await browser('other');
 await joinInFlight(O.p, `${CHAT}/`, { name: 'Olly Other', handle: 'olly', email: 'olly@example.com', password: PW, city: 'York', passkey: true });
 await account(O);
-ok(!(await O.p.$('section.section:has(h3:text-is("Admin"))')), 'another account: no Admin');
+ok(!(await O.p.$(ADMIN)), 'another account: no Admin');
 r = await req(O, `${ACCT}/api/account/admin/users`);
 ok(r.status === 403, 'nor its API', String(r.status));
 r = await req(G, `${ACCT}/api/account/admin/invite`, { method: 'POST', headers: { Origin: 'http://evil.example', 'Content-Type': 'application/json' }, data: '{}' });
