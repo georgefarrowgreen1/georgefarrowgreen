@@ -14,14 +14,26 @@ test('one address, each app under its own name', () => {
   assert.equal(emailFrom({}, 'Account'), 'Account <onboarding@resend.dev>', 'Resend\'s test sender until a domain\'s set up');
 });
 
-test('the header: the app\'s icon only', () => {
-  const acct = emailBody({ title: 'A new sign-in', brand: 'account' }).html, ifl = emailBody({ title: 'A pigeon landed' }).html;
-  const head = (h) => h.slice(h.indexOf('<!-- whose it is'), h.indexOf('<tr><td class="ml-card"'));
-  assert.match(head(acct), /account\.georgefarrowgreen\.com\/icon-180\.png\?v=2" width="52" height="52" alt="Account"/);
-  assert.match(head(ifl), /\/pigeon\/icon-192\.png" width="52" height="52" alt="InFlight"/);
-  for (const h of [head(acct), head(ifl)]) assert.doesNotMatch(h.replace(/<[^>]+>/g, ''), /\S/, 'no words in it');
-  assert.match(acct, /About your georgefarrowgreen\.com account\. <a href="https:\/\/account\.georgefarrowgreen\.com\/"[^>]*>Manage your account<\/a>/, 'the account, at the foot');
+test('the look: the email\'s tile with its app\'s icon as a badge, a pill, the details with a symbol each, each app in its colours', () => {
+  const acct = emailBody({ title: 'A new sign-in', brand: 'account', icon: 'shield', pill: ['phone', 'iPhone · Safari'], lines: ['Someone just signed in to your account.', 'If it wasn’t you, change it.'],
+    rows: [['Account', '@geo'], ['How', 'Password'], ['Something new', 'x']], button: { label: 'Review your account', url: 'https://account.georgefarrowgreen.com/' } }).html;
+  const ifl = emailBody({ title: 'A pigeon landed', icon: 'landed', unsub: 'https://georgefarrowgreen.com/u' }).html;
+  // (nothing above the card: the tile and badge are one picture, in the app's own set)
+  assert.match(acct, /<td class="ml-card"[^>]*>\s*<!--[^>]*-->\s*<img src="https:\/\/georgefarrowgreen\.com\/pigeon\/mail\/v2\/account-shield\.png" width="112" height="112" alt="Account"/);
+  assert.match(ifl, /pigeon\/mail\/v2\/inflight-landed\.png" width="112" height="112" alt="InFlight"/);
+  assert.match(emailBody({ title: 'x', brand: 'account', icon: 'landed' }).html, /v2\/account-shield\.png/, 'a tile the app hasn\'t: its own');
+  assert.equal(acct.indexOf('<td class="ml-card"') < acct.indexOf('pigeon/mail/v2/'), true);
+  assert.doesNotMatch(acct.slice(0, acct.indexOf('<td class="ml-card"')).replace(/<style>[\s\S]*<\/style>|<title>[^<]*<\/title>|<[^>]+>/g, ''), /\S/, 'no words above the card');
+  assert.match(acct, /class="ml-pill"[^>]*>.*g-account-phone\.png.*iPhone · Safari<\/span>/);
+  for (const [k, sym] of [['Account', 'person'], ['How', 'key'], ['Something new', 'dot']]) assert.match(acct, new RegExp(`g-account-${sym}\\.png[\\s\\S]{0,400}>${k}</td>`), k);
+  assert.match(acct, /class="ml-p1"[^>]*>Someone just signed in to your\u00a0account\.<\/p>/, 'what happened, its last two words together');
+  assert.match(acct, /class="ml-p2"[^>]*>If it wasn’t you, change\u00a0it\.<\/p>/, 'then, quieter, what to do');
+  assert.match(acct, /bgcolor="#4a45dc" style="background-color:#4a45dc;background-image:linear-gradient\(180deg,#7d8aff,#4a45dc\)/, 'the account\'s indigo (flat where gradients aren\'t shown)');
+  assert.match(ifl, /a\{color:#0a6ef0\}/, 'InFlight\'s blue');
+  assert.match(acct, /About your georgefarrowgreen\.com account<br><a class="ml-a" href="https:\/\/account\.georgefarrowgreen\.com\/"[^>]*>Manage your account<\/a>/, 'the account, at the foot');
+  assert.match(ifl, /<a class="ml-a" href="https:\/\/georgefarrowgreen\.com\/u"[^>]*>Turn these emails off<\/a>/);
   assert.doesNotMatch(ifl, /Manage your account/);
+  assert.match(acct, /@media \(prefers-color-scheme:dark\)\{[\s\S]*\.ml-card\{background:#16182b!important/, 'a dark version, in the app\'s night sky');
 });
 
 test('the account\'s emails are sent from "Account"; InFlight\'s from "InFlight"', async () => {

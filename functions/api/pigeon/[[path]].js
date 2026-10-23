@@ -69,7 +69,7 @@ async function sendConfirm(env, u, request) {
   if (!emailReady(env)) return false;
   const token = randomToken(32);
   await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
-  return accountMail(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", to: u.email,
+  return accountMail(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false,
     line: "tap the button to confirm this is your email address for your account.",
     after: "It’s where password resets, security notes and any notifications you turn on go. If you didn’t ask for this, ignore it: nothing more will be sent.",
     button: { label: "Confirm email", url: `${accountPage(request, env)}/#confirm=${token}` } }, linkOrigin(request));
@@ -1077,7 +1077,7 @@ async function notifyPasskeyAdded(env, u, label, request) {
   await accountMail(env, u, { icon: "passkey", title: "A passkey was added", subject: "A passkey was added to your account",
     line: `a new passkey (“${label}”) can now sign in to your account.`,
     after: "If this wasn’t you, remove it in Passkeys and change your password straight away.",
-    rows: [["Passkey", label], ["Added in", "InFlight"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
+    pill: ["passkey", label], rows: [["Added in", "InFlight"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
 }
 async function notifyPasswordChanged(env, u, request) {
   await accountMail(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed",
@@ -1197,7 +1197,7 @@ async function adminReset({ request, env }) {
     const token = await createReset(env, u.id, "admin-email", RESET_TTL_EMAIL);
     await accountMail(env, u, { icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
       line: "here’s a link to choose a new password for your account.", after: "If you didn’t ask for this, ignore this email: your password won’t change.",
-      rows: [["Link works", "Once, for 1 hour"]], button: { label: "Choose a new password", url: resetUrl(request, env, token) } }, linkOrigin(request), { explain: true });
+      pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: resetUrl(request, env, token) } }, linkOrigin(request), { explain: true });
     await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
     return json({ message: `Reset link emailed to ${u.email}. It works for one hour.` });
   }
@@ -1253,8 +1253,8 @@ async function adminTestEmail({ request, env }) {
     origin: linkOrigin(request), icon: "bird", title: "Email is working",
     preheader: "InFlight can send password resets and notifications.",
     lines: ["This is a test from the InFlight admin page. Password resets and notifications will arrive just like this."],
-    rows: [["From", emailFrom(env).replace(/^.*<|>$/g, "")], ["Sent", ukTime(Date.now())]],
-    button: { label: "Back to Admin", url: `${linkOrigin(request)}/pigeon/admin/` },
+    pill: ["mail", emailFrom(env).replace(/^.*<|>$/g, "")], rows: [["Sent", ukTime(Date.now())]],
+    button: { label: "Back to admin", url: `${linkOrigin(request)}/pigeon/admin/` },
   });
   await sendEmail(env, { to, subject: "InFlight email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);

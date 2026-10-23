@@ -135,12 +135,13 @@ export async function passkeyUser(env, request, b, { deleting = false } = {}) {
 
 // An email about the account (its sign-ins, password, passkeys, email, keeping it): from "Account", in the account's
 // look, whichever app it happened in. To the account's email once it's confirmed, or to another address (to). A send
-// that fails is said (as to an admin, explain), so callers that don't mind catch it.
-export async function accountMail(env, u, { icon = "shield", title, line, after, subject, rows = [], to, button }, origin, opts) {
+// that fails is said (as to an admin, explain), so callers that don't mind catch it. (when: false, for a link, which
+// needs no time it happened: confirming, a reset, keeping it)
+export async function accountMail(env, u, { icon = "shield", title, line, after, subject, rows = [], to, button, pill, when = true }, origin, opts) {
   if (!emailReady(env) || (!to && !u.email_ok)) return false;
-  const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button,
+  const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button, pill,
     lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.georgefarrowgreen.com."],
-    rows: [["Account", `@${u.handle}`], ...rows, ["When", ukTime(Date.now())]] });
+    rows: [["Account", `@${u.handle}`], ...rows, ...(when ? [["When", ukTime(Date.now())]] : [])] });
   await sendEmail(env, { to: to || u.email, subject, text, html, app: "Account" }, opts);
   return true;
 }
@@ -155,9 +156,10 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true) 
   const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your InFlight account" : "Your account";
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
   const app = inflight ? "InFlight" : new URL(request.url).hostname.startsWith("weather.") ? "Weather" : "Account page";
-  await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account",
-    line: `your account was just signed in on ${on}.`,
-    after: "If this was you, there’s nothing to do. If not, sign out the devices you don’t know in Signed-in devices and change your password.",
-    rows: [["Signed in to", app], ["On", device], ...(where ? [["Where", where.replace(/^the /, "")]] : []), ["How", how]],
+  // (where it was, once, in the pill: the words and the details don't say it again)
+  await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account", pill: ["phone", [device, where.replace(/^the /, "")].filter(Boolean).join(" · ")],
+    line: "someone just signed in to your account. If it was you, there’s nothing to do.",
+    after: "If it wasn’t, sign out the devices you don’t know in Signed-in devices and change your password.",
+    rows: [["Signed in to", app], ["How", how]],
     button: { label: "Review your account", url: `${accountPage(request, env)}/` } }, origin || linkOrigin(request)).catch(() => {});
 }

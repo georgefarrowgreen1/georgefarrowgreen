@@ -146,7 +146,7 @@ export async function idleAccounts(env, D, t, origin) {
         preheader: `It hasn’t been used for almost a year, so it will be deleted on ${when}.`,
         lines: [`Hi ${String(u.name || "").split(/\s+/)[0] || "there"}, nobody has signed in to your account for almost a year, so it will be deleted on ${when}, with everything kept with it in every app on the site.`,
           "To keep it, just sign in before then, to your account or to any app on the site."],
-        rows: [["Account", `@${u.handle}`], ["Deleted on", when]],
+        pill: ["clock", `On ${when}`], rows: [["Account", `@${u.handle}`]],
         button: { label: "Keep my account", url: `${accountLink(origin)}/` }, footer: "If you’d like it deleted, you don’t need to do anything." });
       try { await sendEmail(env, { to: u.email, subject: "Your account will be deleted soon", text, html, app: "Account" }); }
       catch (_) { continue; }                                     // (not warned, so not deleted: tried again next time)

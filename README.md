@@ -1656,8 +1656,20 @@ Every app's email comes from that one address under its own app's name:
 **InFlight** for InFlight's own (a pigeon landed, the admin page's test), and
 **Account** for the account's (sign-ins in any app, the password, passkeys, the
 email address, a reset link, keeping or deleting it), whichever app it happened
-in. Each email has the app's icon at the top (no name: the sender says it), and
-the account's end with a way to it. Without a key
+in. Every email has one look, in its app's colours (the account's indigo,
+InFlight's blue): a white card on the account page's sky (a night sky in dark
+mode); at its top one picture, the email's own tile (a shield, a key, a red bin
+for a deletion, an orange pigeon for one landed) with the app's icon as a badge
+on its corner; the title, then a pill with the one thing to see at a glance (the
+device and place of a sign-in, the address, the day it'll be deleted); what
+happened, then, quieter, what to do; the details as a list, a symbol on each
+row; one button; and at the foot, for the account's, "About your
+georgefarrowgreen.com account" and a link to it (InFlight's: turn these emails
+off). The pictures are PNGs in `pigeon/mail/v2/`, the tile and badge drawn as
+one with a ring cut out round the badge, so mail apps that can't place one thing
+on another (Gmail, Outlook) still show it whole, light or dark; Gmail and
+Outlook show flat colours where gradients aren't drawn. To redraw them:
+`node .tools/tests/mailicons.mjs`. Without a key
 the app says reset emails aren't on yet, and the admin page can still make
 links for you to send by hand.
 

@@ -106,7 +106,7 @@ async function sendConfirm(env, u, request) {
   await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
   await tell(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
     after: "It’s where password resets and security notes go. If you didn’t ask for this, ignore it: nothing more will be sent.",
-    to: u.email, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request));
+    to: u.email, pill: ["mail", u.email], rows: [["Link works", "For 7 days"]], when: false, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request));
 }
 
 const ROUTES = {
@@ -159,7 +159,7 @@ const ROUTES = {
     return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
       icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
       line: "someone asked to reset the password for your georgefarrowgreen.com account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
-      rows: [["Link works", "Once, for 1 hour"]], button: { label: "Choose a new password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
+      pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
   },
   "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
   "POST reset/complete": async ({ request, env, waitUntil }) => {
@@ -262,7 +262,7 @@ const ROUTES = {
     if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
     await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now()).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
-    waitUntil(tell(env, u, { icon: "passkey", title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
+    waitUntil(tell(env, u, { icon: "passkey", pill: ["passkey", provider || label], title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
     return json(await view(env, u));
   },
   "POST passkeys/remove": async ({ request, env, waitUntil }) => {
@@ -349,10 +349,10 @@ const ROUTES = {
     const token = randomToken(32), t = Date.now();
     await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, hex(await sha256(token)), t, u.id).run();
     const origin = linkOrigin(request);
-    await tell(env, u, { icon: "mail", title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
+    await tell(env, u, { icon: "mail", pill: ["mail", email], when: false, title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
       after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm new email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
     waitUntil(tell(env, u, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
-      rows: [["New email", hide(email)]] }, origin));
+      pill: ["mail", hide(email)] }, origin));
     waitUntil(logEvent(env, u.id, "email-change-asked", request, hide(email)));
     return json(await view(env, { ...u, email_new: email, email_new_at: t }));
   },
@@ -373,7 +373,7 @@ const ROUTES = {
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-changed", request, hide(u.email_new)));
     waitUntil(tell(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
-      to: u.email, rows: [["New email", hide(u.email_new)]] }, linkOrigin(request)));
+      to: u.email, pill: ["mail", hide(u.email_new)] }, linkOrigin(request)));
     return json({ ok: true, email: u.email_new });
   },
   "POST email/cancel": async ({ request, env }) => {
@@ -480,7 +480,7 @@ const ROUTES = {
     waitUntil(tell(env, { ...u, email_ok: 1 }, { icon: "trash", title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
       line: `your account and everything kept with it, in every app on the site, will be deleted on ${onDay(at)}.`,
       after: "Changed your mind? Keep it with the button, or sign in at account.georgefarrowgreen.com before then.",
-      rows: [["Deleted on", onDay(at)]], button: { label: "Keep my account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));
+      pill: ["clock", `On ${onDay(at)}`], when: false, button: { label: "Keep my account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));
     return withoutSession(json({ ok: true, deleteAt: at }), request, env);
   },
   "POST delete/cancel": async ({ request, env, waitUntil }) => {
