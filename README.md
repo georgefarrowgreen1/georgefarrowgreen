@@ -303,7 +303,8 @@ Motion, solid with Reduce Transparency.
   devices**, as well as one at a time or all the others. On an iPhone each Home Screen app keeps cookies of its own (apart
   from Safari's and each other's), so each is a sign-in of its own: a sign-in's named by the app it's used in (Weather,
   InFlight, with its icon) where that's just one, and otherwise by its browser (Safari), what apps it's been used in
-  noted as it's used (`pg_sessions.apps`). The account's page opened from an app (its hand-off) isn't a device of its
+  noted as it's used (`pg_sessions.apps`). The account's page is named **Account** only when it's on the Home Screen
+  (it says so with each ask, `X-Home-Screen`, noted as `pg_sessions.home`); in Safari it's Safari. The account's page opened from an app (its hand-off) isn't a device of its
   own: it's part of that app's sign-in (`pg_sessions.parent`), listed as it (**This iPhone**), replaced each time it's
   opened and ending with it (one used by an app as well is the browser's own sign-in from then on; one from before, only
   ever used on the account's page, is taken in when the app opens it again). The country's left

@@ -350,6 +350,9 @@ const MIGRATIONS = [
   // ending with it
   "ALTER TABLE pg_sessions ADD COLUMN apps TEXT",
   "ALTER TABLE pg_sessions ADD COLUMN parent TEXT",
+  // (and the app it's a Home Screen app of, as that app says: the account's page on the Home Screen is "Account", the
+  // same page in Safari is Safari)
+  "ALTER TABLE pg_sessions ADD COLUMN home TEXT",
   "CREATE INDEX IF NOT EXISTS pg_sessions_parent ON pg_sessions(parent) WHERE parent IS NOT NULL",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
@@ -482,6 +485,8 @@ export function appKey(request) {
   const p = request ? new URL(request.url).pathname : "";
   return p.startsWith("/api/pigeon/") ? "inflight" : p.startsWith("/api/weather/") ? "weather" : p.startsWith("/api/account/") ? "account" : null;
 }
+// The app a request's from when it's open as a Home Screen app (it says so: X-Home-Screen), or null
+const homeOf = (request) => (request?.headers.get("X-Home-Screen") === "1" ? appKey(request) : null);
 // The sign-ins other than this one's own, in SQL (with othersOf's four): not itself, nor the app's sign-in it was
 // handed from (the account's page opened from an app), nor the account pages handed from it
 export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";
@@ -489,8 +494,8 @@ export const othersOf = (u) => { const a = u.sessionHash, b = u.parent || u.sess
 export async function issueSession(env, userId, request) {
   const token = randomToken(32), t = Date.now();
   const D = await db(env);
-  await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request), appKey(request)),
+  await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps, home) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(hex(await sha256(token)), userId, t, t, t, deviceOf(request), placeOf(request), appKey(request), homeOf(request)),
     D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), userId)]);
   return token;
 }
@@ -524,7 +529,7 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   const D = await db(env), h = hex(await sha256(token)), t = Date.now();
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
-  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent,
+  const u = await D.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home,
       (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
     FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
   if (u && !u.s_held) await D.prepare("DELETE FROM pg_sessions WHERE hash = ?").bind(u.s_hash).run();
@@ -532,13 +537,13 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   // (an app's first use of it noted: one that's an account page opened from an app, used by an app too, is the
   // browser's own sign-in now, listed by itself)
   const app = appKey(request), apps = String(u.s_apps || "").split(",").filter(Boolean), learn = app && !apps.includes(app);
-  const parent = learn && app !== "account" ? null : u.s_parent || null;
+  const parent = learn && app !== "account" ? null : u.s_parent || null, home = homeOf(request) || u.s_home || null;
   // (and the London day noted as one they used it on, for the admin's Insights: functions/_insights.js)
-  if (learn || t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
-    D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, u.s_hash),
+  if (learn || home !== (u.s_home || null) || t - u.s_seen > HOUR || londonDay(t) !== londonDay(u.s_seen)) await D.batch([
+    D.prepare("UPDATE pg_sessions SET seen_at = ?, apps = ?, parent = ?, home = ? WHERE hash = ?").bind(t, learn ? [...apps, app].join(",") : u.s_apps || null, parent, home, u.s_hash),
     ...(inflight ? [D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), u.id)] : [])]);
-  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps;
-  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_held;
+  u.sessionHash = u.s_hash; u.siteHash = u.s_site || null; u.authAt = u.s_auth || 0; u.parent = parent; u.sessionApps = learn ? [...apps, app] : apps; u.sessionHome = home;
+  delete u.s_hash; delete u.s_site; delete u.s_seen; delete u.s_auth; delete u.s_apps; delete u.s_parent; delete u.s_home; delete u.s_held;
   return u;
 }
 

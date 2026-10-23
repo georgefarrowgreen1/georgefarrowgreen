@@ -109,9 +109,11 @@ function icon(name, size = 20, width = 2) {
 }
 
 // ---- asking the account ----
+// (on the Home Screen, not in the browser: said with each ask, so Signed-in devices calls this sign-in "Account")
+const homeScreen = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 async function call(path, { method = "GET", body, type } = {}) {
   let r;
-  const headers = type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {};
+  const headers = { ...(type ? { "Content-Type": type } : body !== undefined ? { "Content-Type": "application/json" } : {}), ...(homeScreen ? { "X-Home-Screen": "1" } : {}) };
   try { r = await fetch(`${API}/${path}`, { method, headers, body: type ? body : body !== undefined ? JSON.stringify(body) : undefined, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30000) }); }
   catch (_) { throw Object.assign(new Error("You’re offline. Try again when you’re back online."), { offline: true }); }
   const j = await r.json().catch(() => ({}));
@@ -1124,7 +1126,7 @@ function devicesView() {
   const me = m.devices.find((d) => d.current), home = (me?.place || "").split(", ").pop();
   const where = (p) => (p && home && p.endsWith(`, ${home}`) ? p.slice(0, -home.length - 2) : p);
   const rows = m.devices.map((d) => {
-    const name = d.app ? APPS[d.app].name : d.browser || d.label;
+    const name = d.app ? { inflight: "InFlight", weather: "Weather", account: "Account" }[d.app] : d.browser || d.label;
     const el = h(d.current ? "div.row.current" : "div.row", {},
       d.app ? h("span.ic.app-ic", {}, h("img", { src: APP_MARK[name], alt: "", width: 32, height: 32 }))
         : h("span.ic.grey", {}, icon(/iphone|android|phone|ipad|mobile/i.test(d.label) ? "phone" : "computer", 19)),

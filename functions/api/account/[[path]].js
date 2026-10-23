@@ -77,7 +77,7 @@ async function view(env, u) {
   const D = await db(env), t = Date.now();
   const [{ results: pks }, { results: ss }, wx, inflight, last] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
-    D.prepare(`SELECT hash, label, place, apps, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
+    D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
     weatherOf(env, u.id),
     inflightOf(D, u.id),
@@ -92,10 +92,11 @@ async function view(env, u) {
     password: { checkedAt: u.pw_checked_at || null, leaked: u.pw_checked_at ? !!u.pw_leaked : null, setAt: u.pw_at || null },
     passkeys: pks.map((p) => ({ id: p.id, label: p.label || "Passkey", provider: p.provider || null, createdAt: p.created_at, usedAt: p.used_at || null })),
     // (each named by the one app it's used in, where that's so: a Home Screen app on an iPhone is a sign-in of its own;
-    // otherwise by its browser; this one being the app's sign-in an account page opened from an app came from)
+    // otherwise by its browser (the account's page too, unless it's on the Home Screen); this one being the app's
+    // sign-in an account page opened from an app came from)
     devices: ss.map((x) => {
       const here = x.hash === (u.parent || u.sessionHash), [kind, browser] = String(x.label || "").split(" · ");
-      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && ["weather", "inflight"].includes(apps[0]) ? apps[0] : null;
+      const apps = String(x.apps || "").split(",").filter(Boolean), app = apps.length === 1 && (["weather", "inflight"].includes(apps[0]) || x.home === apps[0]) ? apps[0] : null;
       return { id: x.hash.slice(0, 16), label: x.label || "A phone or browser", kind: kind || null, browser: browser || null, app, place: x.place || null,
         since: x.created_at, seenAt: x.seen_at, current: here, stale: !here && t - x.seen_at > STALE };
     }),
@@ -160,7 +161,7 @@ const ROUTES = {
     if (now?.id === row.user_id) {
       // (a sign-in here only ever used on this page, as an app's account page from before this was kept is: part of that
       // app's from now on, the last one it opened replaced)
-      if (!now.parent && now.sessionHash !== row.session && now.sessionApps.join() === "account") {
+      if (!now.parent && now.sessionHash !== row.session && now.sessionApps.join() === "account" && !now.sessionHome) {
         await D.batch([D.prepare("UPDATE pg_sessions SET parent = ? WHERE hash = ?").bind(row.session, now.sessionHash),
           D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, now.sessionHash)]);
         now.parent = row.session;
