@@ -36,7 +36,9 @@ import { blend } from "../weather/rainmap.js";
 import { warningsAt } from "./_wxwarn.js";
 import { radarForTick } from "./_wxradar.js";
 
-const MAX_SUBS = 300, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
+// (MAX_SUBS: devices not signed in, at most, and NET_DAY of them a day from one network; MAX_ALL: every device, the
+// account's included: accounts are by invite, so theirs aren't held back by anyone else's)
+const MAX_SUBS = 300, NET_DAY = 3, MAX_ALL = 2000, PER_TICK = 200, MAX_FAILS = 5, KEEP_IDLE = 120 * 864e5, OBS_DAYS = 46, LEASE = 8 * 60e3;
 // (a device's places with notifications: as many as a list of saved places is likely to want)
 export const MAX_PLACES = 12;
 // what Open-Meteo is asked each tick, in its own measure: a place's rain is one call, its whole forecast about seven
@@ -69,6 +71,8 @@ export async function wxdb(env) {
       env.DB.prepare("CREATE INDEX IF NOT EXISTS wx_subs_dev ON wx_subs (dev)"),
       env.DB.prepare("CREATE TABLE IF NOT EXISTS wx_accts (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, ver INTEGER NOT NULL, updated INTEGER)"),
     ]);
+    // (net: a hash of the network a device not signed in was turned on from, so one network can only turn on so many)
+    await env.DB.prepare("ALTER TABLE wx_devs ADD COLUMN net TEXT").run().catch(() => {});
     if (!(await env.DB.prepare("SELECT 1 FROM wx_meta WHERE k = 'devs_v1'").first())) await env.DB.batch([
       env.DB.prepare("UPDATE wx_subs SET dev = id WHERE dev IS NULL"),
       env.DB.prepare(`INSERT OR IGNORE INTO wx_devs (dev, endpoint, p256dh, auth, units, brief_at, created, updated)
@@ -197,8 +201,8 @@ export async function devicesOf(env, userId) {
 // brief: { lat, lon, name } | null, briefAt: "07:00", units: {...}, was?: the endpoint before } (or, from an app from
 // before, one place: { place, rain, warn, brief }). user: the account the browser's signed in to on the site, if it
 // is (functions/_account.js): then it's the account's choices this device gets (account: its notify), and this device is
-// one of the account's; label: what to call it ("iPhone · Safari")
-export async function subscribe(env, b, user = null, account = null, label = "") {
+// one of the account's; label: what to call it ("iPhone · Safari"); net: a hash of the network it's asked from
+export async function subscribe(env, b, user = null, account = null, label = "", net = null) {
   const s = await checkSub(b.sub), w = wantOf(user ? account || {} : b), units = unitsOf(b.units);
   const D = await wxdb(env), dev = await idOf(s.endpoint), t = Date.now();
   // the browser gave this device a new push address: its places move over from the old one (no need to say hello again)
@@ -208,13 +212,20 @@ export async function subscribe(env, b, user = null, account = null, label = "")
   if (!user && !wanted(w)) { await D.batch([D.prepare("DELETE FROM wx_subs WHERE dev = ?").bind(dev), D.prepare("DELETE FROM wx_devs WHERE dev = ?").bind(dev)]); return { ok: true, on: false }; }
   let dv = await D.prepare("SELECT * FROM wx_devs WHERE dev = ?").bind(dev).first();
   if (!dv) {
-    if ((await D.prepare("SELECT COUNT(*) AS n FROM wx_devs").first()).n >= MAX_SUBS) throw new HttpError(429, "Notifications are full right now.");
+    // (anyone can turn them on, signed in or not: so a device that isn't is held to what one network turns on in a day,
+    // and to a share of the whole; a signed-in one only to the whole)
+    const full = user ? (await D.prepare("SELECT COUNT(*) AS n FROM wx_devs").first()).n >= MAX_ALL
+      : (await D.prepare("SELECT COUNT(*) AS n FROM wx_devs WHERE user_id IS NULL").first()).n >= MAX_SUBS;
+    if (full) throw new HttpError(429, "Notifications are full right now.");
+    // (WX_NET_DAY: a test server's own number, as its devices all come from one address)
+    if (!user && net && (await D.prepare("SELECT COUNT(*) AS n FROM wx_devs WHERE net = ? AND created > ?").bind(net, t - 864e5).first()).n >= (Number(env.WX_NET_DAY) || NET_DAY))
+      throw new HttpError(429, "Notifications were turned on for enough devices here today. Try again tomorrow.");
     // a new device: a first notification, to say they're on; it's only kept if that arrives
     const r = await pushToSub(env, s, { title: "Notifications on", body: onText(w, units), tag: "wx-on", ttl: 600, url: w.places[0] ? linkTo(w.places[0].lat, w.places[0].lon, w.places[0].name) : "./" });
     if (r !== "sent") throw new HttpError(400, "This device's notifications couldn't be reached. Try again in a moment.");
-    const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated)
-      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9 WHERE (SELECT COUNT(*) FROM wx_devs) < ?10 ON CONFLICT(dev) DO NOTHING`)
-      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t, MAX_SUBS).run();
+    const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated, net)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?11 WHERE (SELECT COUNT(*) FROM wx_devs) < ?10 ON CONFLICT(dev) DO NOTHING`)
+      .bind(dev, s.endpoint, s.p256dh, s.auth, user?.id || null, label || null, units, w.briefAt, t, MAX_ALL, user ? null : net).run();
     if (!ins.meta?.changes && !(await D.prepare("SELECT 1 FROM wx_devs WHERE dev = ?").bind(dev).first())) throw new HttpError(429, "Notifications are full right now.");
   } else {
     await D.prepare("UPDATE wx_devs SET endpoint = ?2, p256dh = ?3, auth = ?4, user_id = ?5, label = COALESCE(?6, label), units = ?7, brief_at = ?8, updated = ?9 WHERE dev = ?1")

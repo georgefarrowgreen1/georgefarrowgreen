@@ -1,4 +1,5 @@
 // Checks for the security and privacy fixes, straight against the API.
+import http from 'http';
 const BASE = 'http://localhost:8788/api/pigeon/';
 let fails = 0; const ok = (c, l, x = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${x !== '' ? ' — ' + x : ''}`); if (!c) fails++; };
 const b64u = (u) => Buffer.from(u).toString('base64url');
@@ -12,12 +13,23 @@ async function call(tok, path, opt = {}) {
   const txt = await r.text(); let j = {}; try { j = JSON.parse(txt); } catch (_) {}
   return { s: r.status, j, h: r.headers };
 }
+// An account, made where accounts are made (the account's page: account.localhost beside InFlight run locally, its API
+// answering only there and only from its own page), then signed in to InFlight's API with the same password proof
+const acctPost = (path, data, ipAddr) => new Promise((done, no) => {
+  const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/' + path, method: 'POST',
+    headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json', 'CF-Connecting-IP': ipAddr } }, (res) => {
+    const parts = []; res.on('data', (c) => parts.push(c));
+    res.on('end', () => { let j = {}; try { j = JSON.parse(Buffer.concat(parts).toString()); } catch (_) {} done({ s: res.statusCode, j }); });
+  });
+  q.on('error', no); q.end(JSON.stringify(data));
+});
 async function signup(name, handle) {
   ip++;
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-  const pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
-  const r = await call(null, 'signup', { body: { name, handle, email: handle + '@example.com', salt: b64u(rnd(16)), proof: b64u(rnd(32)), vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } } });
-  return r;
+  const pub = await crypto.subtle.exportKey('jwk', kp.publicKey), proof = b64u(rnd(32)), email = handle + '@example.com';
+  const made = await acctPost('signup', { name, handle, email, salt: b64u(rnd(16)), proof, vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, '10.0.0.' + ip);
+  if (made.s !== 201) return made;
+  return call(null, 'login', { body: { email, proof } });
 }
 const A = await signup('Alice Smith', 'alice'), B = await signup('Bob Jones', 'bob'), C = await signup('Carol Stranger', 'carol');
 ok(A.s === 200 && B.s === 200 && C.s === 200, 'three accounts');

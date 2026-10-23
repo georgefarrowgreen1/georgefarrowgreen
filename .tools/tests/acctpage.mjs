@@ -11,6 +11,7 @@ import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import http from 'http';
+import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -52,21 +53,17 @@ const account = async (x) => { await x.p.goto(`${ACCT}/`); await x.p.waitForSele
 const waitText = (x, re, sel = 'main', ms = 30000) => x.p.waitForFunction(([r, s]) => new RegExp(r).test(document.querySelector(s)?.innerText || ''), [re.source, sel], { timeout: ms }).catch(() => {});
 const user = (h) => rows(`SELECT id, name, handle, email, email_ok, salt, avatar_at, appearance, delete_at FROM pg_users WHERE handle = '${h}'`)[0];
 const mails = () => { try { return readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => m.body || m); } catch (_) { return []; } };
-const mailTo = (to, re) => mails().filter((m) => [].concat(m.to).includes(to) && re.test(m.subject || '')).at(-1);
+const mailTo = (to, re, since = 0) => mails().slice(since).filter((m) => [].concat(m.to).includes(to) && re.test(m.subject || '')).at(-1);
 const tokenIn = (m, kind) => (new RegExp(`#${kind}=([A-Za-z0-9_-]{40,50})`).exec(m?.text || '') || [])[1];
-const waitMail = async (to, re, ms = 15000) => { const t0 = Date.now(); for (;;) { const m = mailTo(to, re); if (m || Date.now() - t0 > ms) return m; await new Promise((r) => setTimeout(r, 300)); } };
+const waitMail = async (to, re, ms = 15000, since = 0) => { const t0 = Date.now(); for (;;) { const m = mailTo(to, re, since); if (m || Date.now() - t0 > ms) return m; await new Promise((r) => setTimeout(r, 300)); } };
 // (shown it's you, if it asks)
 const confirmIfAsked = async (x, pw) => { if (await x.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 2500 }).catch(() => null)) { await x.p.fill('#sheet input[type=password]', pw); await x.p.click('#sheet form .btn'); } };
 // the once-a-minute tick (its housekeeping, now, whenever it last ran)
 const tick = async (x) => { sql("UPDATE pg_meta SET v = '0' WHERE k = 'keep_at'"); return req(x, `${CHAT}/api/pigeon/notify-tick`, { method: 'POST', headers: { Authorization: 'Bearer tick-test-secret' } }); };
 
-// ---- 1. Signed up in InFlight (with a passkey): the account's page in the same browser is signed in already ----
+// ---- 1. An account made here, then InFlight (with a passkey): the account's page in the same browser is signed in ----
 const L = await browser('laptop');
-await L.p.goto(`${CHAT}/`); await L.p.waitForSelector('.welcome', { timeout: 20000 }); await L.p.click('[data-act=to][data-id=signup]');
-await L.p.fill('#f-name', 'Rowan Hale'); await L.p.fill('#f-handle', 'rowan'); await L.p.fill('#f-email', 'rowan@example.com'); await L.p.fill('#f-password', PW);
-await L.p.click('[data-form=signup] .btn'); await L.p.waitForSelector('#city', { state: 'attached', timeout: 30000 });
-await L.p.selectOption('#city', 'London'); await L.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
-await L.p.waitForSelector('[data-act=pkadd]'); await L.p.click('[data-act=pkadd]'); await L.p.waitForSelector('.tabs', { timeout: 20000 });
+await joinInFlight(L.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London', passkey: true });
 // (InFlight's way here: Privacy & Security, Your Account)
 await L.p.click('[data-act=tab][data-id=account]'); await L.p.click('#screen > main.view [data-act=securitysheet]');
 await L.p.waitForSelector('.sheet #to-account', { timeout: 15000 }).catch(() => {});
@@ -87,8 +84,8 @@ ok(links.join() === `${CHAT}/,${WX}/`, 'each app\'s tile opens its sheet, and th
 ok(/Passkeys 1/.test(home) && /Signed-in devices 1/.test(home), 'sign-in and security: the passkey made in InFlight, and this device', home.match(/Passkeys \S+|Signed-in devices \S+/g)?.join(' | '));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
 const ck = await text(L, '.checkup');
-ok(/2 things to do/.test(ck) && /Confirm your email/.test(ck) && /Passkey saved/.test(ck) && /Check your password/.test(ck) && /No devices left unused/.test(ck),
-  'the check-up: two things to do (the email, the password\'s check), two done', ck);
+ok(/1 thing to do/.test(ck) && /Confirm your email/.test(ck) && /Passkey saved/.test(ck) && /Password not in a known data breach/.test(ck) && /No devices left unused/.test(ck),
+  'the check-up: one thing to do (the email), three done (the password checked as the account was made)', ck);
 ok(/Confirm your email/.test(await text(L, '.banner')), 'and the email not yet confirmed, said up top', await text(L, '.banner'));
 await shot(L, '01-signed-in');
 // the large title giving way to the bar
@@ -116,13 +113,15 @@ ok(xo.status() === 403 && xp.status() === 403 && user('rowan').name === 'Rowan H
 // ---- 2b. Confirming the email: a link, sent from the banner; opened, it's confirmed ----
 const n0 = mails().length;
 await L.p.click('.banner .mini');
-const cm = await waitMail('rowan@example.com', /Confirm your email for your account/);
+const cm = await waitMail('rowan@example.com', /Confirm your email for your account/, 15000, n0);   // (the one just sent: it replaces the one sent when the account was made)
 ok(cm && tokenIn(cm, 'confirm') && /georgefarrowgreen\.com/.test(cm.html) && !/>InFlight</.test(cm.html), 'a confirm link, as the account\'s (no app named)', cm?.subject);
 await L.p.goto('about:blank'); await L.p.goto(`${ACCT}/#confirm=${tokenIn(cm, 'confirm')}`); await L.p.waitForSelector('main:not([aria-busy])'); await settle(L);
 ok(user('rowan').email_ok > 0 && /Your email is confirmed/.test(await text(L, '#toast')) && !(await L.p.$('.banner')) && (await L.p.url()) === `${ACCT}/`,
   'opened: confirmed, said, the banner gone, the link out of the address bar', await text(L, '#toast'));
 
 // ---- 2c. The password checked against data breaches, from the check-up ----
+// (as for an account from before, whose password was never checked: a new one's is, as it's made)
+sql("UPDATE pg_users SET pw_checked_at = NULL WHERE handle = 'rowan'");
 await account(L);
 await L.p.click('.ck-row:has-text("Check your password") .mini'); await L.p.waitForSelector('#sheet[open] .sheet-body'); await settle(L, 500);
 await L.p.fill('#sheet input[type=password]', PW); await L.p.click('#sheet form .btn');

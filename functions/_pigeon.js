@@ -416,13 +416,17 @@ export const clientIp = (request) => {
 };
 
 // Fixed-window counter in D1 (strongly consistent, unlike KV).
-export async function limit(env, key, max, windowMs) {
+// A network, as one asker: the address, or for IPv6 its whole /48 (as a provider hands them out). For limits where many
+// addresses from one place mustn't count as many askers.
+export const clientNet = (request) => { const ip = clientIp(request); return ip.endsWith("::/64") ? ip.split(":").slice(0, 3).join(":") + "::/48" : ip; };
+// (n: how much this one uses up, where asks differ in cost)
+export async function limit(env, key, max, windowMs, n = 1) {
   const D = await db(env), t = Date.now();
   // one statement, so parallel requests can't all slip under the limit
-  const row = await D.prepare(`INSERT INTO pg_limits (key, count, reset_at) VALUES (?1, 1, ?2)
-    ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ?3 THEN 1 ELSE count + 1 END,
+  const row = await D.prepare(`INSERT INTO pg_limits (key, count, reset_at) VALUES (?1, ?4, ?2)
+    ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at < ?3 THEN ?4 ELSE count + ?4 END,
       reset_at = CASE WHEN reset_at < ?3 THEN ?2 ELSE reset_at END
-    RETURNING count, reset_at`).bind(key, t + windowMs, t).first();
+    RETURNING count, reset_at`).bind(key, t + windowMs, t, n).first();
   if (row.count > max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((row.reset_at - t) / MIN)} minutes and try again.`);
 }
 
@@ -897,7 +901,15 @@ export async function keyProofOk(reset, pubJson, proof) {
     return await crypto.subtle.verify("HMAC", k, fromB64url(proof), new TextEncoder().encode("inflight/key-proof/v1|reset|" + reset.hash));
   } catch (_) { return false; }
 }
-export const resetUrl = (request, token) => appLink(linkOrigin(request), `#reset=${token}`);
+// Links to the account's own page (accounts are made, and passwords reset, only there: functions/_join.js): its address,
+// or under a test server, the account's address there (account.<the stood-in site>, or account.localhost)
+export function accountPage(request, env) {
+  const u = new URL(typeof request === "string" ? request : request.url), port = u.port ? ":" + u.port : "", site = env?.ACCOUNT_SITE;
+  if (site && (u.hostname === site || u.hostname.endsWith("." + site))) return `${u.protocol}//account.${site}${port}`;
+  if (u.hostname === "localhost" || u.hostname.endsWith(".localhost")) return `${u.protocol}//account.localhost${port}`;
+  return ACCOUNT_APP;
+}
+export const resetUrl = (request, env, token) => `${accountPage(request, env)}/#reset=${token}`;
 export function maskEmail(e) {
   const [a, b] = String(e).split("@");
   return `${a.slice(0, 2)}${"•".repeat(Math.max(1, Math.min(6, a.length - 2)))}@${b}`;

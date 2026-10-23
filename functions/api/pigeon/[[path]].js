@@ -1,9 +1,9 @@
 import { isOnce, serveOnce, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, SWIFT_MAX, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, PHOTO_TTL, DEFAULT_KM, HttpError, json, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
-  HANDLE_RE, EMAIL_RE, UUID_RE, cleanPub, cleanPlace, snapApprox, deviceOf, regionOf,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, findReset, resetUrl, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, resetKx, keyProofOk, handleTaken, holdHandle,
+  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -26,7 +26,7 @@ import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
 import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn } from "../../_account.js";
-import { cleanName, waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
+import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
 import { storageReport } from "../../_retention.js";
@@ -36,6 +36,7 @@ import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
 import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
+import { checkNewSecret, handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
 import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, tick, maybeTick, tickAuthOk, friendRequested, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, cleanPrefs } from "../../_notify.js";
@@ -53,68 +54,11 @@ function meView(u, t) {
     handleNextAt: u.handle_at && t - u.handle_at < HANDLE_EVERY ? u.handle_at + HANDLE_EVERY : null, emailOk: !!u.email_ok };
 }
 
-/* ---------------- accounts ---------------- */
-// Invite only: an account needs a one-time invite link from the site owner (a
-// server with PIGEON_OPEN_SIGNUP=1, for testing, lets anyone in).
-const INVITE_RE = /^[A-Za-z0-9_-]{40,50}$/;
-const inviteOpen = (env) => env.PIGEON_OPEN_SIGNUP === "1";
-async function inviteRow(D, token) {
-  if (!INVITE_RE.test(String(token || ""))) return null;
-  return D.prepare("SELECT * FROM pg_invites WHERE hash = ?").bind(hex(await sha256(String(token)))).first();
-}
-const inviteWhy = (r) => (!r ? "That invite link isn’t right. Check you have the whole link." : r.revoked_at ? "That invite has been cancelled." : r.used_at ? "That invite has already been used." : null);
-// Before showing the sign-up form: is this invite good? (and does this server need one at all)
-async function inviteCheck({ request, env }) {
-  await limit(env, "invitecheck:" + clientIp(request), 30, 15 * 60e3);
-  const t = new URL(request.url).searchParams.get("t");
-  if (inviteOpen(env)) return json({ open: true, ok: true });
-  if (!t) return json({ open: false, ok: false });
-  const why = inviteWhy(await inviteRow(await db(env), t));
-  return json({ open: false, ok: !why, ...(why ? { error: why } : {}) });
-}
-async function signup({ request, env, waitUntil }) {
-  await limit(env, "signup:" + clientIp(request), 10, 60 * 60e3);
-  const b = await body(request);
-  if (!inviteOpen(env)) { const why = inviteWhy(await inviteRow(await db(env), b.invite)); if (why) throw new HttpError(403, why, "invite"); }
-  const name = cleanName(b.name, "Tell us your name.");
-  const handle = String(b.handle || "").trim().replace(/^@/, "").toLowerCase();
-  const email = String(b.email || "").trim().toLowerCase();
-  if (!HANDLE_RE.test(handle)) throw new HttpError(400, "Use 3 to 20 letters, numbers or underscores.", "handle");
-  if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
-  if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
-  const vault = String(b.vault || "");
-  if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete sign-up. Reload and try again.");
-  const pub = await cleanPub(b.pub);
-  const D = await db(env);
-  if (await handleTaken(D, handle)) throw new HttpError(409, `@${handle} is taken.`, "handle");
-  // (said only to someone with a working invite, and at most a few times an hour: it can't be used to look emails up)
-  if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) {
-    if (!inviteOpen(env)) await limit(env, "signup-email:" + hex(await sha256(String(b.invite))), 3, 3600e3);
-    throw new HttpError(409, "There’s already an account with that email. Sign in instead.", "email");
-  }
-  const id = crypto.randomUUID(), t = Date.now();
-  // the invite is used up first (so one link can't make two accounts at once), and handed back if the account can't be made
-  let claimed = null;
-  if (!inviteOpen(env)) {
-    claimed = hex(await sha256(String(b.invite)));
-    const c = await D.prepare("UPDATE pg_invites SET used_at = ?, used_by = ? WHERE hash = ? AND used_at IS NULL AND revoked_at IS NULL").bind(t, id, claimed).run();
-    if (!c.meta.changes) throw new HttpError(403, "That invite has already been used.", "invite");
-  }
-  // new accounts start with names hidden on the lock screen (they can turn them on)
-  try {
-    await D.prepare(`INSERT INTO pg_users (id, handle, name, email, pub, salt, proof_hash, vault, swift, swift_at, created_at, notify_prefs)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, handle, name, email, pub, b.salt, await proofHash(env, b.proof), await lockVault(env, id, vault), SWIFT_MAX, t, t, JSON.stringify({ names: false })).run();
-  } catch (e) {
-    if (claimed) await D.prepare("UPDATE pg_invites SET used_at = NULL, used_by = NULL WHERE hash = ? AND used_by = ?").bind(claimed, id).run();
-    throw e;
-  }
-  const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(id).first();
-  waitUntil(sendConfirm(env, u, linkOrigin(request)).catch((e) => console.error("confirm mail", e.message)));
-  waitUntil(logEvent(env, id, "signup", request));
-  const token = await issueSession(env, id, request);
-  return withSession(json({ token, me: meView(u, t) }), request, env, await hashOf(token));
-}
+/* ---------------- accounts ----------------
+   New accounts are made on the account's own page (account.georgefarrowgreen.com: functions/_join.js), with an
+   invite; forgotten passwords are reset there too. InFlight signs in to them. (A copy of the app from before that
+   still asks here is told where to go.) */
+const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.georgefarrowgreen.com.`, "moved"); };
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
 // nothing but this (and password resets, which prove the same thing).
@@ -448,7 +392,12 @@ async function sessionsEnd({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   const b = await body(request), D = await db(env);
   requireFresh(u);                 // a stolen sign-in mustn't be able to throw the real one out
-  if (b.others) { await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash).run(); waitUntil(logEvent(env, u.id, "signout-others", request)); }
+  if (b.others) {
+    // (and an email change still waiting called off: if a phone here wasn't yours, nor might that be)
+    await D.batch([D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+      D.prepare("UPDATE pg_users SET email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(u.id)]);
+    waitUntil(logEvent(env, u.id, "signout-others", request));
+  }
   else {
     const id = String(b.id || "");
     if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(400, "That sign-in wasn’t found.");
@@ -646,18 +595,7 @@ async function unblock({ request, env }) {
 }
 // Signing up: is this handle free? If not, a few close ones that are.
 // (Handles are how friends find each other, so they're not secret.)
-async function handleFree({ request, env }) {
-  await limit(env, "hfree:" + clientIp(request), 150, 15 * 60e3);
-  const h = String(new URL(request.url).searchParams.get("h") || "").trim().replace(/^@/, "").toLowerCase();
-  if (!HANDLE_RE.test(h)) return json({ free: false, reason: "Handles use 3 to 20 letters, numbers or underscores." });
-  const D = await db(env);
-  if (!(await handleTaken(D, h))) return json({ free: true });
-  const base = h.slice(0, 17), cands = [2, 3, 4, 5, 7, 8, 9, 11, 22, 99].map((n) => base + n).concat(["_", "_x", "_hq"].map((x) => (base + x).slice(0, 20)));
-  const { results } = await D.prepare(`SELECT handle FROM pg_users WHERE handle IN (${cands.map(() => "?").join(",")})`).bind(...cands).all();
-  const { results: held } = await D.prepare(`SELECT handle FROM pg_handles_held WHERE until > ? AND handle IN (${cands.map(() => "?").join(",")})`).bind(Date.now(), ...cands).all();
-  const taken = new Set([...results, ...held].map((r) => r.handle));
-  return json({ free: false, reason: `@${h} is taken.`, try: cands.filter((c) => HANDLE_RE.test(c) && !taken.has(c)).slice(0, 3) });
-}
+async function handleFree({ request, env }) { return json(await handleFreeOf(env, request, new URL(request.url).searchParams.get("h"))); }
 // Friends you share with someone: where a pigeon to them could stop over.
 async function mutuals({ request, env }) {
   const u = await requireUser(request, env), D = await db(env), other = new URL(request.url).searchParams.get("with") || "";
@@ -789,7 +727,7 @@ async function sendMessage({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
   let meta, photo = null;
-  if (Number(request.headers.get("Content-Length")) > MAX_PHOTO + MAX_CT + 4096) throw new HttpError(413, "That photo is too large. Try a smaller one.");
+  if (!(Number(request.headers.get("Content-Length")) <= MAX_PHOTO + MAX_CT + 4096)) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
     const f = await request.formData();
     try { meta = JSON.parse(f.get("meta")); } catch (_) { throw new HttpError(400, "That scroll was malformed."); }
@@ -1138,18 +1076,6 @@ async function getPhoto({ request, env }, id) {
    The password locks the private key, so a reset can only keep someone's
    scrolls if their phone unlocks the key another way (a passkey with PRF).
    Otherwise the phone makes a new key pair and old scrolls stay sealed. */
-// A password's salt as the phone sends it: "a2:" and 16 bytes for Argon2id (every
-// new one), or a bare 16 bytes for PBKDF2 (accounts from before, until they move on).
-function saltOk(s) {
-  const m = /^(a2:)?([A-Za-z0-9_-]{22})$/.exec(String(s || ""));
-  return !!m && fromB64url(m[2]).length === 16;
-}
-function checkNewSecret(b) {
-  if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
-  const vault = String(b.vault || "");
-  if (vault.length < 20 || vault.length > 4000) throw new HttpError(400, "Your app sent an incomplete request. Reload and try again.");
-  return vault;
-}
 async function notifyPasskeyAdded(env, u, label, origin) {
   if (!emailReady(env) || !u.email_ok) return;
   const { text, html } = emailBody({
@@ -1216,7 +1142,7 @@ async function changePassword({ request, env, waitUntil }) {
   const D = await db(env);
   await D.batch([
     // (checked against data breaches on the phone first, so none it's found in: the account's page counts it checked)
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_leaked = 0, pw_checked_at = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), Date.now(), u.id),
+    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), Date.now(), u.id),
     D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
@@ -1226,74 +1152,6 @@ async function changePassword({ request, env, waitUntil }) {
 }
 
 // Always answers the same way, so it can't be used to find out who has an account.
-async function resetRequest({ request, env, waitUntil }) {
-  await limit(env, "resetreq:" + clientIp(request), 5, 60 * 60e3);
-  const email = String((await body(request)).email || "").trim().toLowerCase();
-  if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
-  if (!emailReady(env)) throw new HttpError(503, "Reset emails aren’t switched on yet. Ask the person who runs InFlight for a reset link.");
-  const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
-  // limit by email, existing or not, so the timing is the same either way
-  const eh = hex(await sha256(email)).slice(0, 24);
-  const allowed = await limit(env, "resetmail:" + eh + ":" + clientIp(request), 3, 60 * 60e3)
-    .then(() => limit(env, "resetmail:" + eh, 8, 60 * 60e3)).then(() => !!u, () => false);
-  if (allowed) {
-    const token = await createReset(env, u.id, "user", RESET_TTL_EMAIL);
-    const { text, html } = emailBody({
-      origin: linkOrigin(request), icon: "key", title: "Reset your password",
-      preheader: "A link to choose a new password. It works once, for the next hour.",
-      lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, someone asked to reset the password for your InFlight account.`,
-        "If it wasn’t you, ignore this email. Your password won’t change."],
-      rows: [["Account", `@${u.handle}`], ["Link works", "Once, for 1 hour"]],
-      button: { label: "Choose a New Password", url: resetUrl(request, token) },
-    });
-    waitUntil(sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }).catch((e) => console.error("reset mail", e.message)));
-  }
-  return json({ message: "If there’s an account for that email, a reset link is on its way. It works for one hour." });
-}
-
-async function resetCheck({ request, env }) {
-  await limit(env, "resetcheck:" + clientIp(request), 30, 15 * 60e3);
-  const { reset, user: u } = await findReset(env, (await body(request)).token);
-  // Passkey copies of the key are sealed with each passkey's own secret, so they're safe to give the link holder.
-  const { results } = await (await db(env)).prepare("SELECT id, vault FROM pg_passkeys WHERE user_id = ? AND vault IS NOT NULL").bind(u.id).all();
-  for (const r of results) r.vault = await openVault(env, u.id, r.vault);
-  return json({ name: u.name, handle: u.handle, email: maskEmail(u.email), passkeys: results, kx: results.length ? await resetKx(env, reset.hash) : null });
-}
-
-async function resetComplete({ request, env, waitUntil }) {
-  await limit(env, "resetdo:" + clientIp(request), 10, 15 * 60e3);
-  const b = await body(request);
-  const { reset, user: u } = await findReset(env, b.token);
-  const vault = checkNewSecret(b);
-  const D = await db(env), t = Date.now();
-  const fresh = b.pub !== undefined;
-  const pub = fresh ? await cleanPub(b.pub) : u.pub;
-  // keeping the key: only a phone that has it (unlocked with a passkey) can
-  if (!fresh && !(await keyProofOk(reset, u.pub, b.keyProof))) throw new HttpError(400, "That passkey couldn’t unlock your key. You can start fresh instead.");
-  // claim the link first, so two tabs can't both use it
-  const used = await D.prepare("UPDATE pg_resets SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, reset.hash).run();
-  if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
-  const steps = [
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), pub, u.id),
-    // a link that came by email shows the address is theirs too
-    ...(reset.created_by !== "admin-link" ? [D.prepare("UPDATE pg_users SET email_ok = COALESCE(email_ok, ?) WHERE id = ?").bind(t, u.id)] : []),
-    D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
-    D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(u.id),
-  ];
-  // Passkeys go too: one added by someone who had the old password would otherwise
-  // still sign in. (Add yours again afterwards; a new key pair would make their
-  // copies of the old key useless anyway.)
-  steps.push(D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(u.id));
-  if (fresh) steps.push(D.prepare("UPDATE pg_users SET pins = NULL WHERE id = ?").bind(u.id));     // sealed to the old key: no use now
-  await D.batch(steps);
-  await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
-  waitUntil(logEvent(env, u.id, "reset", request));
-  waitUntil(notifyPasswordChanged(env, { ...u, email_ok: u.email_ok || (reset.created_by !== "admin-link" ? t : null) }, "With a reset link", linkOrigin(request)));
-  const updated = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first();
-  const token = await issueSession(env, u.id, request);
-  return withSession(json({ token, me: meView(updated, t) }), request, env, await hashOf(token));
-}
-
 /* ---------------- admin ----------------
    Uses the site owner's existing sign-in (the key icon on the home page:
    password or passkey, an HttpOnly SameSite=Strict cookie). Changes also need
@@ -1358,7 +1216,7 @@ async function adminReset({ request, env }) {
       lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, here’s a link to choose a new password for your InFlight account.`,
         "If you didn’t ask for this, you can ignore it. Your password won’t change."],
       rows: [["Account", `@${u.handle}`], ["Link works", "Once, for 1 hour"]],
-      button: { label: "Choose a New Password", url: resetUrl(request, token) },
+      button: { label: "Choose a New Password", url: resetUrl(request, env, token) },
     });
     await sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }, { explain: true });
     await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
@@ -1366,7 +1224,7 @@ async function adminReset({ request, env }) {
   }
   const token = await createReset(env, u.id, "admin-link", RESET_TTL_ADMIN);
   await adminLog(env, "reset-link", u.id, `@${u.handle}`);
-  return json({ url: resetUrl(request, token), message: `One-time link for @${u.handle}. It works for 24 hours. Send it to them privately.` });
+  return json({ url: resetUrl(request, env, token), message: `One-time link for @${u.handle}. It works for 24 hours. Send it to them privately.` });
 }
 // Someone's profile picture, for the admin's account list.
 async function adminAvatar({ request, env }, id) {
@@ -1429,7 +1287,7 @@ async function adminInvite({ request, env }) {
   const token = randomToken(32), D = await db(env), t = Date.now(), hash = hex(await sha256(token));
   await D.prepare("INSERT INTO pg_invites (hash, id, note, created_at) VALUES (?, ?, ?, ?)").bind(hash, hash.slice(0, 16), note, t).run();
   await adminLog(env, "invite-made", null, note || "");
-  return json({ url: appLink(linkOrigin(request), `#invite=${token}`), message: "Invite link made. Copy it now: it isn’t shown again." });
+  return json({ url: `${accountPage(request, env)}/#invite=${token}`, message: "Invite link made. Copy it now: it isn’t shown again." });
 }
 async function adminInvites({ request, env }) {
   await requireAdmin(request, env, false);
@@ -1464,7 +1322,10 @@ async function pushSubscribe({ request, env }) {
   if (fromB64url(p256dh).length !== 65 || fromB64url(auth).length !== 16) throw new HttpError(400, "That push subscription was malformed.");
   const D = await db(env);
   await D.prepare("DELETE FROM pg_push WHERE user_id = ? AND session = ? AND endpoint != ?").bind(u.id, u.sessionHash, endpoint).run();
-  await D.prepare("INSERT OR REPLACE INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+  // (a push address another account here is still signed in with stays theirs: one that's somehow learnt can't be taken over)
+  await D.prepare(`INSERT INTO pg_push (endpoint, user_id, session, p256dh, auth, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+    ON CONFLICT(endpoint) DO UPDATE SET user_id = ?2, session = ?3, p256dh = ?4, auth = ?5, created_at = ?6
+    WHERE pg_push.user_id = ?2 OR NOT EXISTS (SELECT 1 FROM pg_sessions WHERE hash = pg_push.session)`)
     .bind(endpoint, u.id, u.sessionHash, p256dh, auth, Date.now()).run();
   await D.prepare("DELETE FROM pg_push WHERE user_id = ?1 AND endpoint NOT IN (SELECT endpoint FROM pg_push WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 10)").bind(u.id).run();
   return json({ ok: true });
@@ -1524,7 +1385,7 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": signup, "GET invite-check": inviteCheck, "POST admin-invite": adminInvite, "GET admin-invites": adminInvites, "POST admin-invite-revoke": adminInviteRevoke, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": elsewhere("New accounts are made"), "POST admin-invite": adminInvite, "GET admin-invites": adminInvites, "POST admin-invite-revoke": adminInviteRevoke, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
@@ -1535,7 +1396,7 @@ const ROUTES = {
   "GET messages": listMessages, "POST messages": sendMessage, "POST read": markRead, "POST recall": recallMessage, "POST stopover-note": stopoverNote, "GET mutuals": mutuals, "GET wx-plan": wxPlan, "GET route-plan": routePlan,
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
-  "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": resetRequest, "POST reset-check": resetCheck, "POST reset-complete": resetComplete,
+  "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
   "GET admin-status": adminStatus, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
   "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
   "POST admin-test-email": adminTestEmail, "GET admin-storage": adminStorage, "GET admin-insights": adminInsights,

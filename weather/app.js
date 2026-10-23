@@ -89,8 +89,12 @@ async function start() {
   const q = new URLSearchParams(location.search), lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
     const name = (q.get("name") || "").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, 60);
-    addPlace({ name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon });
     history.replaceState(null, "", location.pathname);
+    const p = { name: name || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, region: "", lat, lon }, have = S.places.findIndex((x) => !x.gps && Math.abs(x.lat - lat) < 0.02 && Math.abs(x.lon - lon) < 0.02);
+    // (a first visit takes it as its place; a list of your own is added to only if you say so, so a link can't slip a
+    // place into it, and on to every device your account's on)
+    if (have >= 0) S.cur = have;
+    else if (!S.places.length || confirm(`Add “${p.name}” to your places?`)) addPlace(p);
   }
   let located = false;
   if (!S.places.length) {
@@ -1889,11 +1893,14 @@ async function pull() {
     if (e.status === 404) { S.noAcct = true; signedOut(); return; }
     if (S.acct && S.acct.state === "ok") inStep("waiting"); return;
   }
-  if (!r.signedIn) { if (S.acct || store.get("wx:acct")) signedOutElsewhere(); return; }
+  if (!r.signedIn) { S.ask = null; if (S.acct || store.get("wx:acct")) signedOutElsewhere(); return; }
   await adopt(r);
 }
-async function adopt(r) {
+// here: signed in on this page just now (so this device's places are meant for the account)
+async function adopt(r, here = false) {
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle);
+  if (fresh && !here && mine().places.length) { S.ask = r; drawAccount(); return; }
+  S.ask = null;
   S.acct = { ...profileOf(r), devices: r.devices || [], state: S.acct?.state || "ok" };
   if (fresh) takeUp(combine(r.data, mine(), snapOf({}), true));
   else if (r.ver !== k.ver) takeUp(combine(r.data, mine(), k.snap));
@@ -1920,8 +1927,10 @@ function signedOutElsewhere() {
 }
 async function signIn(how, email, password) {
   const said = $("acct-said"), btns = [...$("acct").querySelectorAll("button")];
+  // (as on every page of the site that signs in: the same words for what's missing)
+  if (how !== "passkey" && (!email || !password)) { said.textContent = email ? "Enter your password." : "Enter your email."; said.classList.add("bad"); return; }
   said.classList.remove("bad"); said.textContent = "Signing in…"; btns.forEach((b) => (b.disabled = true));
-  try { await adopt(how === "passkey" ? await A.withPasskey() : await A.withPassword(email, password)); }
+  try { await adopt(how === "passkey" ? await A.withPasskey() : await A.withPassword(email, password), true); }
   catch (e) { const s2 = $("acct-said"); if (s2) { s2.textContent = e.message; s2.classList.add("bad"); } }
   finally { btns.forEach((b) => (b.disabled = false)); }
 }
@@ -1935,20 +1944,35 @@ const STATES = { ok: "In step", saving: "Saving…", waiting: "Will go up when y
 function drawAccount() {
   const box = $("acct"); if (!box) return;
   box.hidden = !!S.noAcct;
+  // (signed in elsewhere on the site to an account this device hasn't been in step with: asked before its places go to it)
+  if (S.ask && !S.acct) {
+    const r = S.ask;
+    return box.replaceChildren(
+      h("div", { class: "acct-card" }, avatarOf(r), h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, r.name), h("span", {}, `@${r.handle} · signed in on this browser`))),
+      h("p", { class: "acct-new" }, "Keep this device’s places and settings with this account, the same on every device it’s signed in on?"),
+      h("button", { class: "acct-btn primary", type: "button", id: "acct-keep", onclick: () => adopt(r, true) }, `Keep them with @${r.handle}`),
+      h("button", { class: "acct-btn", type: "button", id: "acct-notme", onclick: async () => { try { await A.signOut(); } catch (_) {} S.ask = null; signedOut(); } }, "Not you? Sign out"));
+  }
   const a = S.acct, said = h("p", { class: "acct-said", id: "acct-said", role: "status" });
   $("about-app").textContent = a ? "Your places, settings and notifications are kept with your account." : "Settings and places stay on this device.";
   if (!a) {
-    const form = h("form", { class: "acct-form", hidden: true, onsubmit: (e) => { e.preventDefault(); signIn("password", form.email.value.trim(), form.password.value); } },
-      h("input", { type: "email", name: "email", autocomplete: "username", placeholder: "Email", "aria-label": "Email", required: true, autocapitalize: "off", spellcheck: "false" }),
-      h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", required: true }),
-      h("button", { class: "acct-btn primary", type: "submit" }, "Sign in"));
+    // (as on every page of the site that signs in: a passkey first, then your email and password; a forgotten password,
+    // and a new account, on the account's own page)
+    const pk = A.passkeysWork(), page = accountPage();
+    const form = h("form", { class: "acct-form", novalidate: true, onsubmit: (e) => { e.preventDefault(); signIn("password", form.email.value.trim(), form.password.value); } },
+      h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", placeholder: "Email", "aria-label": "Email", autocapitalize: "off", spellcheck: "false" }),
+      h("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", onfocus: () => import("./argon2.js").catch(() => {}) }),
+      h("button", { class: pk ? "acct-btn" : "acct-btn primary", type: "submit" }, "Sign in"));
     box.replaceChildren(...[
       h("div", { class: "acct-card" }, h("span", { class: "acct-ic", svg: PERSON }),
         h("span", { class: "acct-txt" }, h("b", { id: "acct-title" }, "Your places on every device"),
           h("span", {}, "Sign in with your georgefarrowgreen.com account to keep your places, settings and notifications the same on all your devices."))),
-      A.passkeysWork() ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
-      h("button", { class: "acct-btn", type: "button", id: "acct-password", "aria-expanded": "false", onclick: (e) => { form.hidden = !form.hidden; e.currentTarget.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) form.email.focus(); } }, "Sign in with email and password"),
-      form, said].filter(Boolean));
+      pk ? h("button", { class: "acct-btn primary", type: "button", id: "acct-passkey", onclick: () => signIn("passkey") }, h("span", { svg: PASSKEY }), "Sign in with a passkey") : null,
+      pk ? h("p", { class: "acct-or" }, "or with your email") : null,
+      form,
+      page ? h("a", { class: "acct-link", href: `${page}#forgot` }, "Forgot password?") : null,
+      said,
+      page ? h("p", { class: "acct-new" }, "New here? ", h("a", { href: `${page}#join` }, "Create your account")) : null].filter(Boolean));
     return;
   }
   // Just who, as a way to the account's own page (the profile, email, password, passkeys, devices and signing out are

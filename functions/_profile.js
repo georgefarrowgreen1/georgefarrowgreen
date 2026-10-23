@@ -41,7 +41,7 @@ export async function setHandle(env, u, v) {
 export async function putPhoto(env, u, request) {
   if (!env.BIO_R2) throw new HttpError(503, "Photos aren’t set up on this server yet.");
   await limit(env, "avatar:" + u.id, 20, DAY);
-  if (Number(request.headers.get("Content-Length")) > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
+  if (!(Number(request.headers.get("Content-Length")) <= MAX_AVATAR)) throw new HttpError(413, "That picture is too large. Try another one.");
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (bytes.length > MAX_AVATAR) throw new HttpError(413, "That picture is too large. Try another one.");
   if (bytes.length < 100 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) throw new HttpError(400, "Profile pictures must be JPEG images.");

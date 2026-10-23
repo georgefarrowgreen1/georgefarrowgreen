@@ -16,7 +16,7 @@
 //
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
-import { HttpError, db, sha256, hex, b64url, clientIp, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, randomToken,
+import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, randomToken,
   deviceOf, regionOf, emailReady, emailBody, sendEmail, ukTime, appLink } from "./_pigeon.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
@@ -33,13 +33,14 @@ function cookieOf(request, env) {
   const secure = u.protocol === "https:" || (whole && !env?.ACCOUNT_SITE);
   return { name: secure ? "__Secure-account" : "account", attrs: `Path=/${whole ? `; Domain=${site}` : ""}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` };
 }
+// (two of them, one set by a page elsewhere on the site for a narrower path to fix a sign-in on you: neither's used)
 export function cookieToken(request, env) {
-  const { name } = cookieOf(request, env);
+  const { name } = cookieOf(request, env), found = [];
   for (const part of (request.headers.get("Cookie") || "").split(";")) {
     const i = part.indexOf("="); if (i < 0) continue;
-    if (part.slice(0, i).trim() === name) { const v = part.slice(i + 1).trim(); return /^[A-Za-z0-9_-]{20,100}$/.test(v) ? v : null; }
+    if (part.slice(0, i).trim() === name) found.push(part.slice(i + 1).trim());
   }
-  return null;
+  return found.length === 1 && /^[A-Za-z0-9_-]{20,100}$/.test(found[0]) ? found[0] : null;
 }
 // A response that signs the browser in to the site: the session (sessionHash) given a cookie token of its own, but only
 // in answer to the app's own pages (the browser says where a request's from; sure: known otherwise, as by a bearer token
@@ -89,19 +90,22 @@ export async function saltFor(env, request, email) {
   email = String(email || "").trim().toLowerCase();
   const u = await (await db(env)).prepare("SELECT salt FROM pg_users WHERE email = ?").bind(email).first();
   const fake = await sha256(`${await serverSecret(env)}|salt|${email}`);       // (worked out either way, so the time taken says nothing)
-  return u ? u.salt : "a2:" + b64url(fake.slice(0, 16));
+  // (one in eight in the older form, as an account from before Argon2id still has: so that form says nothing either)
+  return u ? u.salt : (fake[16] < 32 ? "" : "a2:") + b64url(fake.slice(0, 16));
 }
 // The account an email and its password's proof are for, or a 401 (with the same limits wherever it's tried). One being
 // deleted only where it can be kept (deleting).
 export async function passwordUser(env, request, b, { deleting = false } = {}) {
   const email = String(b.email || "").trim().toLowerCase();
+  // (an account's wrong passwords are counted by network, so addresses from one network can't lock its password sign-in)
+  const net = clientNet(request);
   await limit(env, "login:" + clientIp(request), 10, 15 * 60e3);
   if (!EMAIL_RE.test(email)) throw new HttpError(401, "That email or password isn’t right.");
   // Only wrong passwords count against an account, and only from where they were tried: 30 an hour
   // from one address holds that address back, and only a spread-out guessing (300 an hour, from
   // many addresses at once) holds back the account itself. So guessing elsewhere can't lock you out.
   const em = hex(await sha256(email)).slice(0, 32), D = await db(env), now0 = Date.now();
-  const here = "loginacct:" + em + ":" + hex(await sha256(clientIp(request))).slice(0, 16), acct = "loginacct:" + em;
+  const here = "loginacct:" + em + ":" + hex(await sha256(net)).slice(0, 16), acct = "loginacct:" + em;
   for (const [key, max] of [[here, 30], [acct, 300]]) {
     const held = await D.prepare("SELECT count, reset_at FROM pg_limits WHERE key = ?").bind(key).first();
     if (held && held.reset_at > now0 && held.count >= max) throw new HttpError(429, `Too many tries. Wait ${Math.ceil((held.reset_at - now0) / 60e3)} minutes and try again.`);

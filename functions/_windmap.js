@@ -14,6 +14,8 @@ const STEPS = [0.25, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 24, 30, 36, 45];
 // small (blended smoothly on the phone) and kept for three hours.
 const MAX = 13;                                   // points along each side, at most
 const KEEP = 3 * HOUR;
+// (its share of Open-Meteo's 10,000 calls a day, the rest kept for Weather's alerts and briefings: functions/_wxpush.js)
+const DAY_POINTS = 2000;
 const r = Math.PI / 180;
 
 async function windGrid({ request, env }) {
@@ -34,7 +36,7 @@ async function windGrid({ request, env }) {
   const hit = cache && await cache.match(key).catch(() => null);
   if (hit) return new Response(hit.body, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
   // a square of sky not asked for this hour: Open-Meteo is asked, within a share for each person and for everyone
-  try { await limit(env, "windmiss:" + u.id, 60, 60 * 60e3); await limit(env, "windmiss:all", 600, 60 * 60e3); }
+  try { await limit(env, "windmiss:" + u.id, 20, 60 * 60e3); await limit(env, "windmiss:all", 120, 60 * 60e3); await limit(env, "windpoints:day", DAY_POINTS, 24 * HOUR, rows * cols); }
   catch (_) { throw new HttpError(503, "The wind map isn’t available right now."); }
   const lats = [], lons = [];
   for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) { lats.push(+(s0 + i * step).toFixed(2)); lons.push(+((((w0 + j * step) + 540) % 360) - 180).toFixed(2)); }

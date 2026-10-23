@@ -2,6 +2,7 @@
 # The local site for the end-to-end tests: `wrangler pages dev` on :8788 (run.sh calls this).
 #   server.sh fresh    a new, empty database          server.sh keep    the same database, restarted
 #   server.sh stop
+# (OPEN_SIGNUP=0 in the environment: new accounts by invite only, as on the real site)
 # Needs S (the state folder) and APP_ROOT (the repository) in the environment.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -15,6 +16,6 @@ nohup "$HERE/node_modules/.bin/wrangler" pages dev . --port 8788 --persist-to "$
   --binding EDIT_PASSWORD=owner-test-pass RESEND_API_KEY=test-key RESEND_API_URL=http://127.0.0.1:8799/emails PIGEON_PUSH_URL=http://127.0.0.1:8798/push \
     PIGEON_TICK_SECRET=tick-test-secret GIPHY_API_KEY=giphy-test-key GIPHY_API_URL=http://127.0.0.1:8797 GIPHY_MEDIA_URL=http://127.0.0.1:8797 \
     WEATHER_URL=http://127.0.0.1:8796 MET_URL=http://127.0.0.1:8796 SWPC_URL=http://127.0.0.1:8796 EONET_URL=http://127.0.0.1:8796 ENSEMBLE_URL=http://127.0.0.1:8796 \
-    PIGEON_OPEN_SIGNUP=1 CHAT_HOST=chat.localhost,chat.gfg.test WEATHER_HOST=weather.localhost,weather.gfg.test ACCOUNT_HOST=account.localhost,account.gfg.test ACCOUNT_SITE=gfg.test WXAPP_URL=http://127.0.0.1:8794 RAINVIEWER_URL=http://127.0.0.1:8794 AWC_URL=http://127.0.0.1:8794 METEOALARM_URL=http://127.0.0.1:8794 WARN_TTL=0 NWS_URL=http://127.0.0.1:8794 EA_URL=http://127.0.0.1:8794 PWNED_URL=http://127.0.0.1:8795 PIGEON_PEPPER=test-pepper-for-local-tests-only PIGEON_COUNT_DB=1 >> "$S/wrangler.log" 2>&1 &
+    PIGEON_OPEN_SIGNUP=${OPEN_SIGNUP:-1} CHAT_HOST=chat.localhost,chat.gfg.test WEATHER_HOST=weather.localhost,weather.gfg.test ACCOUNT_HOST=account.localhost,account.gfg.test ACCOUNT_SITE=gfg.test WXAPP_URL=http://127.0.0.1:8794 RAINVIEWER_URL=http://127.0.0.1:8794 AWC_URL=http://127.0.0.1:8794 METEOALARM_URL=http://127.0.0.1:8794 WARN_TTL=0 NWS_URL=http://127.0.0.1:8794 EA_URL=http://127.0.0.1:8794 PWNED_URL=http://127.0.0.1:8795 PIGEON_PEPPER=test-pepper-for-local-tests-only PIGEON_COUNT_DB=1 WX_NET_DAY=1000 >> "$S/wrangler.log" 2>&1 &
 for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8788/pigeon/ && break; sleep 1; done
 curl -s -o /dev/null -X POST http://127.0.0.1:8796/mode -d '{"speed":0,"down":false,"pattern":"","kp":2,"eonet":[]}'   # calm weather unless a test sets its own

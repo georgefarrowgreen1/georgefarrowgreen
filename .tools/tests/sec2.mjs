@@ -1,5 +1,6 @@
 // Security batch: leaked passwords refused, new sign-in alerts, approximate location.
 import { kit } from './lib.mjs';
+import { accountUrl, signInInFlight } from './join.mjs';
 import { readFileSync, existsSync } from 'fs';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
@@ -7,21 +8,24 @@ const { ok, sql, one, api, sess } = K;
 const plog = () => existsSync(`${S}/pwnedlog.jsonl`) ? readFileSync(`${S}/pwnedlog.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 const mails = () => readFileSync(`${S}/mailbox.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => m.body || m);
 
-// ---- 2. a leaked password is refused at sign-up ----
+// ---- 2. a leaked password is refused when an account's made (on the account's own page) ----
 const gKeys = await K.makeKeys();
 const G = await K.phone('george', gKeys);
-await G.p.waitForSelector('.welcome'); await G.p.click('[data-act=to][data-id=signup]');
-await G.p.fill('#f-name', 'George Farrow-Green'); await G.p.fill('#f-handle', 'geo'); await G.p.fill('#f-email', 'george@example.com'); await G.p.fill('#f-password', 'password1234');
+await G.p.goto(`${accountUrl(K.URL)}#join`); await G.p.waitForSelector('main input[name=name]', { timeout: 20000 });
+await G.p.fill('main input[name=name]', 'George Farrow-Green'); await G.p.fill('main input[name=handle]', 'geo'); await G.p.fill('main input[name=email]', 'george@example.com'); await G.p.fill('main input[name=password]', 'password1234');
+await G.p.waitForTimeout(1200);           // (what it says as it's typed, asked and answered, before what's sent)
 const before = plog().length;
-await G.p.click('[data-form=signup] .btn');
-const err = await G.p.waitForSelector('.ferr:not([hidden])', { timeout: 15000 }).then(() => G.p.locator('.ferr').innerText(), () => '');
+await G.p.click('main .signin form .btn');
+const err = await G.p.waitForSelector('main .said.bad', { timeout: 15000 }).then((e) => e.innerText(), () => '');
 ok(/123,456 data breaches/.test(err) && !one("SELECT COUNT(*) AS n FROM pg_users")[0].n, 'a leaked password is refused before any account is made', err);
 await G.p.screenshot({ path: `${out}/leaked.png` });
 const asked = plog().slice(before);
 ok(asked.length >= 1 && asked.every((x) => /^\/range\/[0-9A-F]{5}$/.test(x.url) && x.pad === 'true'), 'Pwned Passwords is asked only the first 5 characters of a hash, padded', JSON.stringify(asked));
+ok((await fetch(K.BASE + '/api/pigeon/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status === 410, 'InFlight’s own sign-up is gone: accounts are made on the account’s page');
 ok((await fetch(K.BASE + '/api/pigeon/pwned?p=ABCDEF')).status === 400 && (await fetch(K.BASE + '/api/pigeon/pwned?p=abc')).status === 400, 'the server takes nothing longer than 5 characters');
 // a fine password goes through (the kit's)
-await G.p.fill('#f-password', 'a long test password'); await G.p.click('[data-form=signup] .btn'); await G.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
+await G.p.fill('main input[name=password]', 'a long test password'); await G.p.click('main .signin form .btn'); await G.p.waitForSelector('main .hero', { timeout: 40000 });
+await signInInFlight(G.p, K.URL, { email: 'george@example.com' }); await G.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await G.p.selectOption('#city', 'Norwich'); await G.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 }); await G.p.waitForSelector('[data-act=pkadd]'); await G.p.click('[data-act=onbdone]'); await G.p.waitForSelector('.tabs');
 ok(true, 'a password that isn’t leaked signs up');
 const gs = await sess(G);

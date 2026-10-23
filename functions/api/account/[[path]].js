@@ -16,6 +16,11 @@
 //   POST /api/account/delete          the account deleted, everywhere, in 7 days unless it's kept
 //   POST /api/account/delete/cancel, delete/keep              keeping it (signed in here, or the email's link)
 //   POST /api/account/handoff         signed in by a code from InFlight (good once, for a minute): to edit your profile
+//   POST /api/account/join            can an account be made (with this invite, or by anyone on a test server)
+//   GET  /api/account/handle?h=       is a handle free (and what's near it that is)
+//   POST /api/account/signup          a new account: its key pair made, and locked with the password, in the browser
+//   POST /api/account/reset/request, reset/check, reset/complete   a forgotten password (a link to the email)
+// Accounts are made, and forgotten passwords reset, here and only here (functions/_join.js): no app does either itself.
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
@@ -28,6 +33,7 @@ import { isAccount } from "../../_acctapp.js";
 import { wxdb, devicesOf, unitsForAccount } from "../../_wxpush.js";
 import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf } from "../../_notify.js";
+import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset } from "../../_join.js";
 import { avatarKey } from "../../_profile.js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
@@ -113,20 +119,63 @@ const ROUTES = {
   // a sign-in handed over from InFlight: the code used up (good once, for a minute, and only while the sign-in it came from
   // lasts), and this browser signed in as that account, as a sign-in of its own (seen in Signed-in devices). It doesn't
   // count as showing it's you: what needs that asks here, as ever. (Already signed in as the same account: just that.)
+  // (a code a page elsewhere sent this browser here with can't sign it in unasked: who it's for is shown first, and it's
+  // used only once that's said yes to; nor does it ever take the place of a different account's sign-in here)
+  "POST handoff/who": async ({ request, env }) => {
+    sameOrigin(request);
+    await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
+    const D = await db(env), code = String((await body(request)).code || "");
+    const h = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? hex(await sha256(code)) : "";
+    const row = h && await D.prepare("SELECT user_id, expires FROM pg_handoff WHERE hash = ?").bind(h).first();
+    const u = row && row.expires >= Date.now() && await D.prepare("SELECT id, name, handle FROM pg_users WHERE id = ?").bind(row.user_id).first();
+    if (!u) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
+    return json({ id: u.id, name: u.name, handle: u.handle });
+  },
   "POST handoff": async ({ request, env }) => {
     sameOrigin(request);
     await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
     const D = await db(env), t = Date.now(), code = String((await body(request)).code || "");
     const h = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? hex(await sha256(code)) : "";
+    const now = await cookieUser(request, env), peek = h && await D.prepare("SELECT user_id FROM pg_handoff WHERE hash = ?").bind(h).first();
+    if (now && peek && now.id !== peek.user_id) throw new HttpError(409, `You’re signed in here as @${now.handle}. Sign out first to use another account.`, "handoff");
     const row = h && await D.prepare("DELETE FROM pg_handoff WHERE hash = ? RETURNING user_id, session, expires").bind(h).first();
     const from = row && row.expires >= t && await D.prepare("SELECT 1 FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, row.user_id).first();
     if (!from) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
-    const now = await cookieUser(request, env);
     if (now?.id === row.user_id) return withCookie(json(await view(env, now)), request, env, now.token);
     const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
     await D.prepare("UPDATE pg_sessions SET auth_at = 0 WHERE hash = ?").bind(hash).run();          // (never counts as showing it's you)
     const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
     return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: 0 })), request, env, hash);
+  },
+  // ---- joining: a new account, made here (by invite: functions/_join.js) and signed in at once ----
+  // (the invite in the body, never the address: an address ends up in logs)
+  "POST join": async ({ request, env }) => { sameOrigin(request); return json(await inviteState(env, request, (await body(request, 4096)).invite)); },
+  "GET handle": async ({ request, env }) => json(await handleFree(env, request, new URL(request.url).searchParams.get("h"))),
+  "POST signup": async ({ request, env, waitUntil }) => {
+    sameOrigin(request);
+    const u = await makeAccount(env, request, await body(request));
+    if (emailReady(env)) waitUntil(sendConfirm(env, u, request).catch((e) => console.error("confirm mail", e.message)));
+    waitUntil(logEvent(env, u.id, "signup", request));
+    const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
+    return withSession(json(await view(env, { ...u, sessionHash: hash, authAt: Date.now() }), 201), request, env, hash);
+  },
+  // ---- a forgotten password: a link to the email (good once, for an hour), then a new one, signed in with it ----
+  "POST reset/request": async ({ request, env, waitUntil }) => {
+    sameOrigin(request);
+    return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
+      title: "Reset your password", subject: "Reset your password", to: u.email,
+      line: "someone asked to reset the password for your georgefarrowgreen.com account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
+      rows: [["Link works", "Once, for 1 hour"]], button: { label: "Choose a New Password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
+  },
+  "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
+  "POST reset/complete": async ({ request, env, waitUntil }) => {
+    sameOrigin(request);
+    const { u, kept } = await completeReset(env, request, await body(request));
+    waitUntil(logEvent(env, u.id, "reset", request));
+    waitUntil(tell(env, u, { title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
+      rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"]] }, linkOrigin(request)));
+    const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
+    return withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash);
   },
   "GET me": async ({ request, env }) => {
     const u = await cookieUser(request, env, false, { deleting: true });
@@ -169,7 +218,7 @@ const ROUTES = {
     if (!saltOk(b.salt) || fromB64url(b.proof).length !== 32 || vault.length < 20 || vault.length > 4000) throw new HttpError(400, "This page sent an incomplete request. Reload and try again.");
     const D = await db(env), t = Date.now();
     await D.batch([
-      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_leaked = 0, pw_checked_at = ? WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, u.id),
+      D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pw_leaked = 0, pw_checked_at = ?, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), t, u.id),
       D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
@@ -247,7 +296,9 @@ const ROUTES = {
     const u = await signedIn(request, env), b = await body(request), D = await db(env);
     requireFresh(u);
     if (b.others) {
-      await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash).run();
+      // (and an email change still waiting called off: if a device here wasn't yours, nor might that be)
+      await D.batch([D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ?").bind(u.id, u.sessionHash),
+        D.prepare("UPDATE pg_users SET email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(u.id)]);
       waitUntil(logEvent(env, u.id, "signout-others", request));
     } else if (b.stale) {
       const r = await D.prepare("DELETE FROM pg_sessions WHERE user_id = ? AND hash != ? AND seen_at < ?").bind(u.id, u.sessionHash, Date.now() - STALE).run();
@@ -298,9 +349,9 @@ const ROUTES = {
     if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
     if (email === u.email) throw new HttpError(400, "That’s your email already.", "email");
     if (!emailReady(env)) throw new HttpError(503, "Email isn’t switched on yet.");
+    await limit(env, "emailchange:" + u.id, 5, DAY);
     const D = await db(env);
     if (await D.prepare("SELECT 1 FROM pg_users WHERE email = ?").bind(email).first()) throw new HttpError(409, "That email is already used by another account.", "email");
-    await limit(env, "emailchange:" + u.id, 5, DAY);
     const token = randomToken(32), t = Date.now();
     await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, hex(await sha256(token)), t, u.id).run();
     const origin = linkOrigin(request);

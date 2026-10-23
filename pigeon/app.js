@@ -12,7 +12,7 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "1.2.9";            // shown in Account (and What's New, once, after an update)
+const APP_VERSION = "1.3.0";            // shown in Account (and What's New, once, after an update)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -67,9 +67,9 @@ const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
 const dumbText = () => DUMB.test($ta.value) ? $ta.value.replace(DUMB, "") : null;
 const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift ? "swift" : "standard");
 const POLL_MS = 15000;
-const AUTH_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "locpick", "pkoffer", "forgot", "reset"]);
+const AUTH_VIEWS = new Set(["welcome", "signin", "unlock", "locpick", "pkoffer"]);
 // before you're in: all under the welcome's night sky, which carries on from one to the next
-const NIGHT_VIEWS = new Set(["welcome", "signup", "making", "signin", "unlock", "forgot", "reset"]);
+const NIGHT_VIEWS = new Set(["welcome", "signin", "unlock"]);
 
 /* ---------------- state ---------------- */
 const S = {
@@ -77,9 +77,9 @@ const S = {
   friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [], skew: 0,
   view: "loading", chat: null, sheet: null, flash: "", err: "",
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(),
-  pairs: new Map(), pins: {}, attach: null, busy: false, stick: true, making: 0,
+  pairs: new Map(), pins: {}, attach: null, busy: false, stick: true,
   chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingUnlock: null, pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), nav: null,
-  resetToken: null, resetInfo: null, avatars: new Map(), q: "", fq: "", addMsg: null,
+  avatars: new Map(), q: "", fq: "", addMsg: null,
   reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
 };
@@ -1783,27 +1783,11 @@ async function forget() {
   clearAttach();
   await idb.del("session");
 }
-/* ---------- invites: InFlight is invite only ----------
-   An account needs a one-time link from the site owner (…/pigeon/#invite=…).
-   It's kept for this visit only, checked before the form shows, and used up
-   by the account it makes. */
-function setInvite(t) {
-  S.invite = t || null; S.inviteState = null; S.inviteChecking = null;
-  try { if (t) sessionStorage.setItem("inflight-invite", t); else sessionStorage.removeItem("inflight-invite"); } catch (_) {}
-}
-async function checkInvite() {
-  const t = S.invite || null;
-  if (S.inviteState || S.inviteChecking === (t || "-")) return;
-  S.inviteChecking = t || "-";
-  let st;
-  try { st = await api("invite-check" + (t ? "?t=" + encodeURIComponent(t) : "")); }
-  catch (_) { st = { ok: !!t, open: false }; }          // can't tell: let the server decide at sign-up
-  if (S.inviteChecking === (t || "-")) S.inviteChecking = null;
-  if ((S.invite || null) !== t) return;                 // the invite changed while this was asked: it's being checked anew
-  S.inviteState = st;
-  const box = $(".welcome .wcta", $view);
-  if (box) box.outerHTML = inviteHtml(); else if (S.view === "welcome" || S.view === "signin") render();
-}
+/* ---------- the way in: signing in to the georgefarrowgreen.com account ----------
+   Accounts are made, and forgotten passwords reset, on the account's own page (account.georgefarrowgreen.com), not
+   here: an invite or a reset link that comes here is passed on to it. */
+const toAccount = (hash = "") => (accountPage() || "https://account.georgefarrowgreen.com/") + hash;
+const newHere = () => `<p class="wnew">New here? <a href="${esc(toAccount("#join"))}">Create your account</a></p>`;
 // the sky: one canvas behind the screen, under every screen before you're in
 const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(document.createElement("canvas"), { className: "nightsky", ariaHidden: "true" })), $(".nightsky", root()));
 // Signed in to the account elsewhere on the site, in this browser (functions/_account.js): who, to carry on as once the
@@ -1811,14 +1795,11 @@ const skyCanvas = () => $(".nightsky", root()) || (root().prepend(Object.assign(
 async function resumeCheck() {
   try { const r = await api("resume", { method: "POST", body: {} }); if (r.signedIn && !S.me) { S.resumable = r; if (S.view === "welcome") render(); } } catch (_) {}
 }
-function inviteHtml() {
-  const st = S.inviteState, enter = (label) => `<button class="btn wide wglow" data-act="to" data-id="signup">${label}</button>`;
-  const signin = `<button class="wquiet" data-act="to" data-id="signin">Sign in</button>`;
+// (signed in to the account elsewhere on the site, in this browser: carrying on as them, once the password's given)
+function welcomeCta() {
   const r = S.resumable;
-  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.name)} (@${esc(r.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="resume">Continue as ${esc(first(r.name))}</button>${signin}</div></div>`;
-  if (!st) { checkInvite(); return `<div class="wcta"><div class="stack">${signin}</div></div>`; }
-  if (st.open || st.ok) return `<div class="wcta">${S.invite && !st.open ? `<p class="invited">You’ve been invited.</p>` : ""}<div class="stack">${enter(S.invite && !st.open ? "Enter" : "Begin")}${signin}</div></div>`;
-  return `<div class="wcta"><p class="invonly">${S.invite ? esc(st.error || "That invite doesn’t work.") : "By invitation only."}</p><div class="stack">${signin}</div></div>`;
+  if (r) return `<div class="wcta"><p class="invited">Signed in as ${esc(r.name)} (@${esc(r.handle)})</p><div class="stack"><button class="btn wide wglow" data-act="resume">Continue as ${esc(first(r.name))}</button><button class="wquiet" data-act="to" data-id="signin">Use another account</button></div></div>`;
+  return `<div class="wcta"><div class="stack"><button class="btn wide wglow" data-act="to" data-id="signin">Sign in</button></div>${newHere()}</div>`;
 }
 
 /* ---------- the welcome sky ----------
@@ -1898,19 +1879,6 @@ function nightSky(cv) {
     if (!still) skyLoop = requestAnimationFrame(frame);
   };
   skyLoop = requestAnimationFrame(frame);
-}
-async function createAccount(v) {
-  const { privJwk, pub } = await (onb.id || E2E.newIdentity());
-  S.making = 1; if (S.view === "making") render();
-  const ready = onb.pw?.pw === v.password ? onb.pw : null, salt = ready ? ready.salt : E2E.newSalt();
-  const { lockKey, proof } = await (ready ? ready.p : E2E.fromPassword(v.password, salt));
-  const vault = await E2E.lock(lockKey, { ecdh: privJwk });
-  S.making = 2; if (S.view === "making") render();
-  const r = await api("signup", { method: "POST", body: { name: v.name, handle: v.handle, email: v.email, salt, proof, vault, pub, invite: S.invite || undefined } });
-  setInvite(null);
-  S.making = 3; if (S.view === "making") render();
-  await useKeys(r.token, r.me, privJwk);
-  onb.id = onb.pw = null; onb.handleTouched = false;
 }
 async function signInPassword(email, password) {
   const { salt } = await api("salt", { method: "POST", body: { email } });
@@ -2392,6 +2360,10 @@ async function openNote(id, from, to, ct) {
 /* ---------- What's New ----------
    Every release, newest first: tap the version at the foot of Account. */
 const RELEASES = [
+  { v: "1.3.0", at: Date.UTC(2026, 9, 23), title: "One way in", items: [
+    ["lock", "blue", "Sign in, the same everywhere", "Signing in looks and works the same in every app on georgefarrowgreen.com: a passkey first, or your email and password."],
+    ["person", "green", "New accounts on your account’s page", "Accounts are made at account.georgefarrowgreen.com, where a forgotten password is reset too. Invite links still work: they open it."],
+  ] },
   { v: "1.2.9", at: Date.UTC(2026, 9, 23), title: "Your account, at the top", items: [
     ["person", "blue", "The same card as Weather", "Account opens with your photo, name and handle, as Weather’s Settings do. Tap it for your account’s page, already signed in."],
     ["pin", "teal", "Location has its own row", "Where you are is under Settings now, and Sign Out is at the foot of Account."],
@@ -3161,7 +3133,6 @@ function fitTa() {
 function renderOffline() { const o = $(".offline"); if (o) o.hidden = !S.offline; }
 
 function go(view, chat) {
-  if (view === "reset" && S.view !== "reset") { S.view = view; return loadReset(); }
   const same = view === S.view && chat === S.chat, kind = !same && $view ? navKind(S.view, view) : null;
   if (!same && $view) S.nav = S.navQuiet ? null : kind;
   S.noRise = S.navQuiet; S.navQuiet = false;
@@ -3261,7 +3232,7 @@ function render() {
     if (document.documentElement.classList.contains("night") !== night) { document.documentElement.classList.toggle("night", night); applyTheme(); }
     if (night) nightSky(skyCanvas());
     const box = S.view === "welcome" && !S.nav && $(".welcome .wcta", $view);
-    if (box) { box.outerHTML = inviteHtml(); return; }   // already up: just the words change
+    if (box) { box.outerHTML = welcomeCta(); return; }   // already up: just the words change
     $view.innerHTML = vAuth(); $compose.hidden = true; $tabbar.hidden = true; renderSheet(); animateNav();
     if (S.view === "welcome") S.welcomed = true;
     return;
@@ -3305,7 +3276,6 @@ const navbar = (title, { left = "", right = "", solid = false, root = false, tit
 // The app's own name where Messages' title would be: its icon and InFlight
 const brandMark = () => `<span class="brand"><span class="bicon" aria-hidden="true">${I.bird}</span><span class="bword">InFlight</span></span>`;
 const nbtn = (act, icon, label, extra = "") => `<button class="nbtn" data-act="${act}" aria-label="${esc(label)}" ${extra}>${icon}</button>`;
-const hexOf = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 const backBtn = (act, id, label = "") => `<button class="nbtn back" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ""} aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ""}</button>`;
 const cell = ({ act, id, icon, tile, label, sub, val, chev, cls = "", tag }) => {
   const t = tag || (act ? "button" : "div");
@@ -3318,7 +3288,8 @@ const chevSm = I.chev.replace('class="ico"', 'class="ico chev"');
 // The account's own page (account.<site>, beside chat.<site>), where your password, passkeys and devices are for every
 // app on the site; none where InFlight's served at an address of another kind
 const accountPage = () => location.hostname.startsWith("chat.") ? `${location.origin.replace("//chat.", "//account.")}/`
-  : location.hostname === "georgefarrowgreen.com" ? "https://account.georgefarrowgreen.com/" : null;
+  : location.hostname === "georgefarrowgreen.com" ? "https://account.georgefarrowgreen.com/"
+  : /(^|\.)localhost$/.test(location.hostname) ? `${location.protocol}//account.localhost${location.port ? ":" + location.port : ""}/` : null;
 const pg = (kind, skin) => kind === "mystery" ? `<span class="pg mystery" aria-hidden="true">?</span>` : `<span class="pg ${kind}${skin && SKINS[skin] ? " sk-" + skin : ""}" aria-hidden="true">${I.bird}</span>`;     // a pigeon in its colour (and its look, if rare)
 const pgm = (m) => pg(kindOf(m), m?.skin);
 
@@ -4647,8 +4618,8 @@ function field(name, placeholder, type, ac, prefix) {
   return `<label class="fcell">${prefix ? `<span class="pre">${prefix}</span>` : ""}<input id="f-${name}" name="${name}" type="${type}" placeholder="${esc(placeholder)}" autocomplete="${ac}" aria-label="${esc(placeholder)}"${type === "email" || name === "handle" ? ' autocapitalize="off" spellcheck="false"' : ""}${name === "handle" ? ' maxlength="20"' : ""}>${type === "password" ? `<button type="button" class="peek" data-act="peek" aria-label="Show password">${I.eye}</button>` : ""}</label>`;
 }
 const ferr = `<p class="gfoot bad ferr" role="alert" hidden></p>`;
-// Sign-up's three steps: account, location, passkey (the last only where passkeys work)
-const stepDots = (n) => { const of = passkeysSupported() ? 3 : 2; return `<p class="stepn" role="img" aria-label="Step ${n} of ${of}">${Array.from({ length: of }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</p>`; };
+// a link out to the account's page (a forgotten password), as a row
+const linkCell = (href, label) => `<a class="cell action" href="${esc(href)}"><span class="ctext"><span>${label}</span></span></a>`;
 function vAuth() {
   const back = (to) => navbar("", { left: backBtn("to", to) });
   switch (S.view) {
@@ -4657,92 +4628,44 @@ function vAuth() {
         <div class="wtop">
           <h1 class="wlogo" aria-label="InFlight"><span class="wring" aria-hidden="true"></span><span class="appicon" aria-hidden="true">${I.bird}</span></h1>
         </div>
-        ${inviteHtml()}</div>`;
-    case "signup": return `<div class="auth night">${back("welcome")}
-        ${stepDots(1)}
-        <h1 class="large">Create Account</h1>
-        <form data-form="signup" novalidate>
-          <div class="group">${field("name", "Name", "text", "name")}${field("handle", "handle", "text", "username", "@")}</div>
-          <div class="gfoot hstat" aria-live="polite">Friends see your name and find you by your handle.</div>
-          <div class="group mt">${field("email", "Email", "email", "email")}${field("password", "Password", "password", "new-password")}</div>
-          <div class="gfoot pwstat" aria-live="polite">At least 10 characters. It also locks your encryption key.</div>
-          ${ferr}
-          <div class="pad"><button class="btn wide">Create Account</button></div>
-        </form></div>`;
-    case "making": {
-      const step = (n, label) => `<li class="${S.making >= n ? "is-ok" : S.making === n - 1 ? "is-now" : ""}">${S.making >= n ? I.ok : S.making === n - 1 ? `<span class="spin"></span>` : I.dot}<span>${label}</span></li>`;
-      return `<div class="auth night"><div class="hero"><div class="appicon">${I.bird}</div><h1>Setting Up Your Account</h1><p>Your key is made and locked on this phone.</p></div>
-        <ul class="steps">${step(1, "Making your key pair")}${step(2, "Locking it with your password")}${step(3, "Creating your account")}</ul></div>`;
-    }
+        ${welcomeCta()}</div>`;
+    // (as on every page of the site that signs in: a passkey first, then your email and password)
     case "signin": return `<div class="auth night">${back("welcome")}
-        <h1 class="large">Sign In</h1>
+        <h1 class="large">Sign in</h1>
+        <p class="sub">With your georgefarrowgreen.com account.</p>
+        ${passkeysSupported() ? `<div class="stack mt-s"><button type="button" class="btn wide" data-act="pkget">${I.face}Sign in with a passkey</button></div><p class="orline">or with your email</p>` : ""}
         <form data-form="signin" novalidate>
           <div class="group">${field("email", "Email", "email", "username webauthn")}${field("password", "Password", "password", "current-password")}</div>
           ${ferr}
-          <div class="pad"><button class="btn wide">Sign In</button></div>
+          <div class="pad"><button class="btn wide${passkeysSupported() ? " plain" : ""}">Sign in</button></div>
         </form>
-        <div class="group">${passkeysSupported() ? cell({ act: "pkget", icon: I.key, tile: "indigo", label: "Sign In with a Passkey", cls: "action" }) : ""}${cell({ act: "to", id: "forgot", label: "Forgot Password?", cls: "action" })}</div>
-        ${S.inviteState?.open || S.inviteState?.ok ? `<div class="stack"><button class="btn wide plain" data-act="to" data-id="signup">Create Account</button></div>` : ""}
+        <div class="group">${linkCell(toAccount("#forgot"), "Forgot password?")}</div>
+        ${newHere()}
       </div>`;
     case "unlock": return `<div class="auth night">${navbar("", { left: backBtn("cancelunlock") })}
-        <h1 class="large">Unlock Messages</h1>
+        <h1 class="large">Unlock messages</h1>
         <p class="sub">${S.pendingUnlock?.resumed ? "You’re already signed in to your georgefarrowgreen.com account here." : "Your passkey signed you in."} Enter your password once so this phone can unlock your encryption key.</p>
         <form data-form="unlock" novalidate>
           <div class="group mt-s">${field("password", "Password", "password", "current-password")}</div>${ferr}
           <div class="pad"><button class="btn wide">Unlock</button></div>
         </form>
-        <div class="group">${cell({ act: "to", id: "forgot", label: "Forgot Password?", cls: "action" })}</div></div>`;
-    case "forgot": return `<div class="auth night">${back("signin")}
-        <h1 class="large">Reset Password</h1>
-        <p class="sub">We’ll email you a link to choose a new password. It works once, for one hour.</p>
-        <form data-form="forgot" novalidate>
-          <div class="group mt-s">${field("email", "Email", "email", "email")}</div>${ferr}
-          <div class="gfoot">With a passkey, a reset keeps your messages. Without one, you start with a new key and older messages can’t be opened.</div>
-          <div class="pad"><button class="btn wide">Email Reset Link</button></div>
-        </form></div>`;
-    case "reset": return vReset();
+        <div class="group">${linkCell(toAccount("#forgot"), "Forgot password?")}</div></div>`;
     case "locpick": return `<div class="auth">${navbar("")}
-        ${stepDots(2)}
-        <h1 class="large">Where Are You?</h1>
+        <h1 class="large">Where are you?</h1>
         <p class="sub">Pigeons fly from here, so it sets how long your messages take. It’s rounded to about a mile, and only your friends see it.</p>
         ${S.me?.place ? `<div class="group mt">${cell({ icon: I.check, tile: "green", label: esc(S.me.place), sub: "Your location" })}</div>` : ""}
-        <div class="stack locfirst"><button class="btn wide" data-act="locate">${I.loc}${S.me?.place ? "Use My Location Again" : "Use My Location"}</button></div>
+        <div class="stack locfirst"><button class="btn wide" data-act="locate">${I.loc}${S.me?.place ? "Use my location again" : "Use my location"}</button></div>
         <div class="group">
-          <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a City Instead</span></span>${chevSm}
+          <label class="cell has-icon"><span class="tile gray">${I.map}</span><span class="ctext"><span>Choose a city instead</span></span>${chevSm}
             <select class="overlay" data-act="city" id="city" aria-label="Choose a city">${cityOptions()}</select></label>
-          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep It Up to Date", sub: "While InFlight is open, so pigeons find you", on: S.onbAuto !== false })}
+          ${toggleCell({ act: "onbauto", icon: I.loc, tile: "green", label: "Keep it up to date", sub: "While InFlight is open, so pigeons find you", on: S.onbAuto !== false })}
         </div>${ferr}
         ${S.me?.place ? `<div class="stack"><button class="btn wide plain" data-act="locdone">Continue</button></div>` : ""}</div>`;
-    case "pkoffer": return `<div class="auth">${stepDots(3)}<div class="hero tall"><span class="big-ico">${I.face}</span>
-        <h1>Sign In with Face ID</h1><p>Save a passkey to sign in with Face ID or your fingerprint. On most newer phones it can also unlock your messages if you forget your password.</p></div>${ferr}
-        <div class="stack"><button class="btn wide" data-act="pkadd" data-next="done">Save a Passkey</button><button class="btn wide plain" data-act="onbdone">Not Now</button></div></div>`;
+    case "pkoffer": return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.face}</span>
+        <h1>Sign in faster next time</h1><p>A passkey signs you in with Face ID, Touch ID or your device’s passcode, in every app on the site. On most newer phones it can also unlock your messages if you forget your password.</p></div>${ferr}
+        <div class="stack"><button class="btn wide" data-act="pkadd" data-next="done">Add a passkey</button><button class="btn wide plain" data-act="onbdone">Not now</button></div></div>`;
   }
   return "";
-}
-function vReset() {
-  const info = S.resetInfo, from = S.resetFrom?.me;
-  if (!info) return `<div class="loading">Checking your reset link…</div>`;
-  if (info.error) return `<div class="auth"><div class="hero tall"><span class="big-ico">${I.warn}</span><h1>This Link Won’t Work</h1><p>${esc(info.error)}</p></div>
-      <div class="stack">${from ? `<button class="btn wide" data-act="resetcancel">Back to InFlight</button>` : `<button class="btn wide" data-act="to" data-id="forgot">Get a New Link</button><button class="btn wide plain" data-act="to" data-id="welcome">Back</button>`}</div></div>`;
-  const canKeep = info.passkeys.length && passkeysSupported();
-  const other = from && from.handle !== info.handle;
-  return `<div class="auth">${navbar("", from ? { left: nbtn("resetcancel", I.x, "Cancel and stay signed in") } : {})}
-      <h1 class="large">New Password</h1>
-      <p class="sub">For ${esc(first(info.name))} (@${esc(info.handle)}, ${esc(info.email)}).</p>
-      ${from ? `<div class="warn sheetwarn"><span>${other ? `You’re signed in here as @${esc(from.handle)}. This link is for a different account: only carry on if it’s yours. Setting its password signs @${esc(from.handle)} out of this phone.`
-        : "Setting a new password signs you out of your other phones."}</span></div>` : ""}
-      <form data-form="reset" novalidate>
-        <div class="group mt-s">${field("password", "New password", "password", "new-password")}</div>${ferr}
-        <div class="gfoot">${canKeep ? "Use your passkey to keep all your messages readable. Starting fresh" : "Without a passkey, this"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed.</div>
-        <div class="stack">${canKeep ? `<button type="button" class="btn wide" data-act="resetkeep">${I.key}Keep Messages with Passkey</button><button type="button" class="btn wide plain" data-act="resetfresh">Start Fresh Instead</button>`
-          : `<button type="button" class="btn wide" data-act="resetfresh">Set New Password</button>`}${from ? `<button type="button" class="btn wide plain" data-act="resetcancel">Cancel</button>` : ""}</div>
-      </form></div>`;
-}
-async function loadReset() {
-  S.resetInfo = null; render();
-  try { S.resetInfo = await api("reset-check", { method: "POST", body: { token: S.resetToken } }); }
-  catch (e) { S.resetInfo = { error: e.message }; }
-  if (S.view === "reset") render();
 }
 // Has this password turned up in a data breach? Asks Pwned Passwords, through InFlight's
 // server, with only the first 5 characters of its SHA-1, and checks the answers here:
@@ -4757,44 +4680,6 @@ async function leakedCount(pw) {
   return 0;
 }
 const leakedSay = (n) => `This password has turned up in ${n === 1 ? "a data breach" : `${n.toLocaleString("en-GB")} data breaches`}, so it’s one of the first anyone would try. Choose another.`;
-async function resetWith(mode, btn) {
-  const pw = $("#f-password")?.value || "";
-  if (pw.length < 10) return showErr("Use at least 10 characters.", "password");
-  { const n = await leakedCount(pw); if (n) return showErr(leakedSay(n), "password"); }
-  await busyBtn(btn, mode === "keep" ? "Waiting for your passkey…" : "Making your new key…", async () => {
-    let ecdh, pub;
-    if (mode === "keep") {
-      const a = await navigator.credentials.get({ publicKey: {
-        challenge: rand(32), rpId: RP_ID, userVerification: "required", timeout: 120000,
-        allowCredentials: S.resetInfo.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })),
-        extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } });
-      const secret = a && prfResult(a), pk = a && S.resetInfo.passkeys.find((p) => p.id === a.id);
-      if (!secret || !pk) throw new Error("That passkey couldn’t unlock your key on this phone. You can start fresh instead.");
-      try { ({ ecdh } = await E2E.unlock(await E2E.fromSecret(secret), pk.vault)); }
-      catch (_) { throw new Error("That passkey couldn’t unlock your key. You can start fresh instead."); }
-    } else {
-      ({ privJwk: ecdh, pub } = await E2E.newIdentity());
-    }
-    const salt = E2E.newSalt();
-    const { lockKey, proof } = await E2E.fromPassword(pw, salt);
-    const vault = await E2E.lock(lockKey, { ecdh });
-    const keyProof = pub ? undefined : await E2E.keyProof(await E2E.importPriv(ecdh), S.resetInfo.kx, "reset|" + hexOf(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(S.resetToken))));
-    const r = await api("reset-complete", { method: "POST", body: { token: S.resetToken, salt, proof, vault, ...(pub ? { pub } : { keyProof }) } });
-    S.resetToken = null; S.resetInfo = null;
-    const from = S.resetFrom; S.resetFrom = null;
-    if (from) {
-      // the sign-in that was here: ended (the reset already ended it if it's the same account)
-      if (from.me.id !== r.me.id) {
-        await fetch("/api/pigeon/logout", { method: "POST", headers: { Authorization: "Bearer " + from.token } }).catch(() => {});
-        await idb.del("cache:" + from.me.id).catch(() => {}); await idb.del("outbox:" + from.me.id).catch(() => {});
-      }
-    }
-    await useKeys(r.token, r.me, ecdh);
-  });
-  await afterSignIn();
-  toast(mode === "keep" ? "Password changed. Your messages are safe." : "Password changed. You’re starting fresh with a new key.");
-}
-
 /* ---------- composer and tab bar ---------- */
 const chatKm = (f) => (S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500);
 // A landing time chosen for this chat (one to one, not a /dumb pigeon), once it's still ahead
@@ -5056,37 +4941,6 @@ async function searchMessages(q) {
     : `<p class="snone">No messages on this phone match “${esc(q.trim())}”.</p>`;
 }
 let gifTimer = 0;
-/* ---------- sign-up, made quick ----------
-   While you type: your handle is suggested from your name and checked as you
-   go; the password shows how many more characters it needs; and the slow
-   parts (making your key pair, stretching your password) start in the
-   background, so Create Account is nearly instant. */
-const onb = { handleTouched: false, timer: 0, pwTimer: 0, id: null, pw: null };
-const handleFrom = (name) => { const p = String(name).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/\s+/).filter(Boolean); return (p.length > 1 ? p[0] + "_" + p[p.length - 1][0] : p[0] || "").replace(/[^a-z0-9_]/g, "").slice(0, 20); };
-function onbPrepare() { if (!onb.id) onb.id = E2E.newIdentity().then((x) => (onb.idDone = x)); }
-async function onbCheckHandle() {
-  const i = $("#f-handle"), st = $(".hstat"); if (!i || !st) return;
-  const h = i.value.trim().replace(/^@/, "").toLowerCase();
-  if (h.length < 3) { st.className = "gfoot hstat"; st.textContent = "Friends see your name and find you by your handle."; return; }
-  try {
-    const r = await api("handle-free?h=" + encodeURIComponent(h));
-    if (($("#f-handle")?.value || "").trim().replace(/^@/, "").toLowerCase() !== h) return;     // they've typed on
-    if (r.free) { st.className = "gfoot hstat ok"; st.innerHTML = `${I.ok}@${esc(h)} is yours.`; }
-    else { st.className = "gfoot hstat bad"; st.innerHTML = `${esc(r.reason)}${r.try?.length ? ` Try ${r.try.map((t) => `<button type="button" class="linkbtn" data-act="usehandle" data-id="${esc(t)}">@${esc(t)}</button>`).join(" or ")}.` : ""}`; }
-  } catch (_) { /* checked again when you create the account */ }
-}
-function onbInput(e) {
-  const id = e.target.id; onbPrepare();
-  if (id === "f-name" && !onb.handleTouched) { const h = $("#f-handle"); if (h) { h.value = handleFrom(e.target.value); clearTimeout(onb.timer); onb.timer = setTimeout(onbCheckHandle, 350); } }
-  if (id === "f-handle") { onb.handleTouched = true; clearTimeout(onb.timer); onb.timer = setTimeout(onbCheckHandle, 350); }
-  if (id === "f-password") {
-    const pw = e.target.value, n = 10 - pw.length, st = $(".pwstat");
-    if (st) { st.className = `gfoot pwstat${n <= 0 ? " ok" : ""}`; st.innerHTML = n > 0 ? (pw ? `${n} more character${n === 1 ? "" : "s"}.` : "At least 10 characters. It also locks your encryption key.") : `${I.ok}Good. It also locks your encryption key.`; }
-    // stretch the password in the background once it's long enough and you pause
-    clearTimeout(onb.pwTimer);
-    if (n <= 0) onb.pwTimer = setTimeout(() => { const salt = E2E.newSalt(); onb.pw = { pw, salt, p: E2E.fromPassword(pw, salt) }; }, 450);
-  }
-}
 /* ---------- Add Friend: look them up as you type ---------- */
 const myLink = () => `${NEW_HOME ? NEW_HOME + "/" : location.origin + "/pigeon/"}#add=${S.me.handle}`;
 let addTimer = 0;
@@ -5145,7 +4999,6 @@ async function addGo(h, btn) {
 }
 function onInput(e) {
   if (e.target.id === "add-h") { const m = $(".add-msg", $layer); if (m) m.classList.remove("bad"); return addLookup(); }
-  if (S.view === "signup" && e.target.closest?.("[data-form=signup]")) return onbInput(e);
   if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); return; }
   if (e.target.id === "msearch") { S.q = e.target.value; filterLists(); }
   if (e.target.id === "fsearch") { S.fq = e.target.value; filterLists(); }
@@ -7529,7 +7382,6 @@ async function onClick1(e, t) {
     case "onbauto": S.onbAuto = S.onbAuto === false; return render();
     case "locdone": return onbNext();
     case "onbdone": return finishOnboarding();
-    case "usehandle": { const i = $("#f-handle"); if (i) { i.value = id; onb.handleTouched = true; onbCheckHandle(); } return; }
     case "pkadd":
       try {
         const unlocks = await busyBtn(t, "Waiting for your passkey…", () => withFresh(addPasskey));
@@ -7637,11 +7489,6 @@ async function onClick1(e, t) {
     case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
-    case "resetcancel": S.resetToken = null; S.resetInfo = null; S.resetFrom = null; return location.reload();
-    case "resetkeep": case "resetfresh":
-      try { await resetWith(t.dataset.act === "resetkeep" ? "keep" : "fresh", t); }
-      catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
-      return;
   }
 }
 const passkeyError = (err) => err.name === "InvalidStateError" ? "This phone already has a passkey for your account." : err.name === "SecurityError" ? "Passkeys only work on georgefarrowgreen.com." : err.message || "The passkey didn’t work. Try again.";
@@ -7823,46 +7670,14 @@ async function submitForm(e, form, kind) {
     return addGo(h, btn);
   }
   const v = Object.fromEntries(new FormData(form));
-  if (kind === "signup") {
-    v.handle = String(v.handle || "").trim().replace(/^@/, "").toLowerCase();
-    v.email = String(v.email || "").trim();
-    if (!String(v.name || "").trim()) return showErr("Enter your name.", "name");
-    if (!/^[a-z0-9_]{3,20}$/.test(v.handle)) return showErr("Handles use 3 to 20 letters, numbers or underscores.", "handle");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.email)) return showErr("That doesn’t look like an email address.", "email");
-    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your password.", "password");
-    { const n = await leakedCount(v.password); if (n) return showErr(leakedSay(n), "password"); }
-    const keep = { ...v };
-    S.making = 0;
-    const fe = $(".ferr"); if (fe) { fe.hidden = true; fe.textContent = ""; }                  // the last attempt's error goes
-    const slow = setTimeout(() => go("making"), 250);              // only if it takes a moment (it usually doesn't: it began while you typed)
-    btn?.setAttribute("disabled", ""); if (btn) btn.textContent = "Creating…";
-    try { await createAccount(keep); clearTimeout(slow); S.onbAuto = true; go("locpick"); }
-    catch (err) {
-      clearTimeout(slow); go("signup");
-      for (const k of ["name", "handle", "email", "password"]) { const i = $(`#f-${k}`); if (i) i.value = keep[k] || ""; }
-      const b2 = $("[data-form=signup] .btn"); if (b2) { b2.disabled = false; b2.textContent = "Create Account"; }
-      onb.handleTouched = true;
-      if (err.field === "invite") { S.inviteState = { ok: false, open: false, error: err.message }; go("welcome"); return toast(esc(err.message)); }
-      showErr(err.message, err.field);
-    }
-  } else if (kind === "signin") {
-    if (!v.email || !v.password) return showErr("Enter your email and password.");
-    try { await busyBtn(btn, "Signing In…", () => signInPassword(String(v.email).trim(), v.password)); afterSignIn(); }
+  if (kind === "signin") {
+    if (!String(v.email || "").trim()) return showErr("Enter your email.", "email");
+    if (!v.password) return showErr("Enter your password.", "password");
+    try { await busyBtn(btn, "Signing in…", () => signInPassword(String(v.email).trim(), v.password)); afterSignIn(); }
     catch (err) { showErr(err.message); }
   } else if (kind === "unlock") {
     try { await busyBtn(btn, "Unlocking…", () => unlockWithPassword(v.password || "")); afterSignIn(); }
     catch (err) { showErr(err.message, err.field); }
-  } else if (kind === "forgot") {
-    const email = String(v.email || "").trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return showErr("That doesn’t look like an email address.", "email");
-    try {
-      const r = await busyBtn(btn, "Sending…", () => api("reset-request", { method: "POST", body: { email } }));
-      form.innerHTML = `<div class="group mt-s">${cell({ icon: I.check, tile: "green", label: "Check your email", sub: esc(r.message) })}</div>`;
-    } catch (err) { showErr(err.message, err.field); }
-  } else if (kind === "reset") {
-    const keep = $("[data-act=resetkeep]");
-    try { await resetWith(keep ? "keep" : "fresh", keep || $("[data-act=resetfresh]")); }
-    catch (err) { if (err.name !== "NotAllowedError" && err.name !== "AbortError") showErr(err.message, err.field); }
   } else if (kind === "changepw") {
     if (!v.current) return showErr("Enter your current password.", "current");
     if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
@@ -8608,21 +8423,13 @@ async function start() {
   // a confirm-your-email link: works signed in or not, on any phone
   const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
   if (cf) { history.replaceState(null, "", location.pathname); confirmEmail(cf[1]); }
-  // an invite: kept for this visit (a reload keeps it too), out of the address bar
-  const iv = /#invite=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
-  if (iv) { setInvite(iv[1]); history.replaceState(null, "", location.pathname); }
-  else { try { S.invite = sessionStorage.getItem("inflight-invite") || null; } catch (_) {} }
-  // a reset link: take the token out of the address bar straight away
-  const rs = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
-  if (rs) { S.resetToken = rs[1]; history.replaceState(null, "", location.pathname); }
+  // an invite, or a reset link (from before they were the account's page's): passed on to it
+  const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+  if (away) return location.replace(toAccount(`#${away[1]}=${away[2]}`));
   if (!window.crypto?.subtle || !window.indexedDB) { S.view = "welcome"; render(); return toast("This browser can’t run InFlight’s encryption. Try Safari or Chrome."); }
   await moveIn();
   const saved = await idb.get("session");
-  if (S.resetToken) {
-    // whoever is signed in here stays signed in until a new password is actually set
-    S.resetFrom = saved?.token ? saved : null;
-    go("reset");
-  } else if (saved?.token && saved.priv) {
+  if (saved?.token && saved.priv) {
     S.token = saved.token; S.me = saved.me; S.priv = saved.priv;
     S.myPub = saved.pub || saved.me.pub;          // sessions saved before this kept the key as it was at sign-in
     if (!saved.pub) idb.set("session", { ...saved, pub: S.myPub });
@@ -8653,19 +8460,17 @@ async function start() {
     } catch (e) { console.error("start", e); }
     }
   } else { go("welcome"); movedNote(); resumeCheck(); }
-  // a reset or add-a-friend link opened while InFlight is already open in this tab
+  // an add-a-friend link opened while InFlight is already open in this tab (an invite or a reset link: passed on)
   window.addEventListener("hashchange", async () => {
     if (openLink(location.hash)) return;
-    const iv = /#invite=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
-    if (iv) { history.replaceState(null, "", location.pathname); setInvite(iv[1]); if (!S.me) { if (S.view === "welcome") render(); else go("welcome"); } else toast("You already have an account, so this invite stays unused."); return; }
+    const away = /#(invite|reset)=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
+    if (away) { history.replaceState(null, "", location.pathname); return location.assign(toAccount(`#${away[1]}=${away[2]}`)); }
     const cf = /#verify=([A-Za-z0-9_-]{40,50})/.exec(location.hash);
     if (cf) { history.replaceState(null, "", location.pathname); return confirmEmail(cf[1]); }
-    const r = /#reset=([A-Za-z0-9_-]{40,50})/.exec(location.hash), a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
-    if (!r && !a) return;
-    if (r && S.token) return location.reload();     // starts over on the reset screen, still signed in underneath
+    const a = /#add=([A-Za-z0-9_]{3,20})/.exec(location.hash);
+    if (!a) return;
     history.replaceState(null, "", location.pathname);
-    if (r) { S.resetToken = r[1]; S.view = "loading"; go("reset"); }
-    else { S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); } }
+    S.pendingAdd = a[1].toLowerCase(); if (S.me) { go("friends"); S.sheet = { type: "addfriend" }; renderSheet(); }
   });
   setInterval(() => { if (!AUTH_VIEWS.has(S.view) && $view) live(); flightCheck(); }, 1000);
   // every 15 s while open; after failures, less often (up to every 2 minutes) until one works

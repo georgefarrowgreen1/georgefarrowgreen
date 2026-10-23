@@ -26,6 +26,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const main = $("#main"), sheetEl = $("#sheet"), toastEl = $("#toast");
 const still = matchMedia("(prefers-reduced-motion: reduce)"), dark = matchMedia("(prefers-color-scheme: dark)");
 const S = { me: null, settled: false, pulled: 0 };
+try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (InFlight's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
 // and the way back. (Kept for the visit, so a reload still knows the way back.)
@@ -145,10 +146,17 @@ try { const t = localStorage.getItem("acct:appearance"); if (t === "light" || t 
 
 // ---- the page ----
 async function load() {
+  fromGate();
   await fromLink();
+  // (a sign-in handed over by an app: who it's for asked first, and only taken once that's said yes to, as a page
+  // elsewhere could send this browser here with a code of its own; never over a different account's sign-in here)
   if (HANDOFF) {
-    try { S.me = await post("handoff", { code: HANDOFF.code }); }
-    catch (e) { setTimeout(() => toast(e.message, true), 400); }
+    try {
+      const now = await call("me"), who = await post("handoff/who", { code: HANDOFF.code });
+      if (now.signedIn && now.id === who.id) S.me = await post("handoff", { code: HANDOFF.code });
+      else if (now.signedIn) { S.me = now; S.said = { text: `You’re signed in here as @${now.handle}. Sign out first to use @${who.handle} here.`, bad: true }; }
+      else S.handoff = who;
+    } catch (e) { setTimeout(() => toast(e.message, true), 400); }
   }
   try { if (!S.me?.signedIn) S.me = await call("me"); S.pulled = Date.now(); }
   catch (e) {
@@ -158,8 +166,22 @@ async function load() {
       h("button.pill", { type: "button", onclick: () => location.reload() }, "Try again")));
   }
   if (S.me.prefs) theme(S.me.prefs.appearance);
+  // (an invite, or a link to make an account, opened signed in: said, as making another means signing out first)
+  if (S.me?.signedIn && S.gate === "join") S.said = { text: `You’re signed in as @${S.me.handle}. To make another account, sign out first.` };
+  if (S.me?.signedIn) S.gate = null;
   render();
   if (HANDOFF?.open === "profile" && S.me?.signedIn) openSheet(profileView);
+}
+// A way in from elsewhere: #join and #forgot (the apps link here for both), #invite= (an invite, kept for the visit) and
+// #reset= (a reset link from the email). Taken out of the address at once.
+function fromGate() {
+  const m = /^#(join|forgot|signin)$|^#(invite|reset)=([A-Za-z0-9_-]{40,50})$/.exec(location.hash);
+  if (!m) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  if (m[1]) S.gate = m[1];
+  else if (m[2] === "invite") { S.invite = m[3]; S.join = null; S.gate = "join"; try { sessionStorage.setItem("acct:invite", m[3]); } catch (_) {} }
+  else { S.reset = { token: m[3] }; resetCheck(); }
+  return true;
 }
 // A link from one of the account's emails: confirming the email, a new email, or keeping the account. The link's own
 // token is what counts, so it works signed in or not, in whichever browser the email opens it in.
@@ -175,6 +197,7 @@ async function fromLink() {
 }
 // (and one opened in a tab where the page is already open)
 addEventListener("hashchange", async () => {
+  if (fromGate()) { if (sheetEl.open) closeSheet(); S.settled = false; return render(); }
   if (!/^#(confirm|email|keep)=/.test(location.hash)) return;
   await fromLink();
   try { S.me = await call("me"); S.pulled = Date.now(); } catch (_) {}
@@ -186,7 +209,7 @@ function render() {
   const rise = !S.settled; S.settled = true;
   let i = 0;
   const r = (el) => { if (rise) { el.classList.add("rise"); el.style.setProperty("--i", i++); } return el; };
-  main.replaceChildren(...(S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)).filter(Boolean));
+  main.replaceChildren(...(S.reset ? resetPage(r) : S.me?.deleting ? deleting(r) : S.me?.signedIn ? signedIn(r) : signedOut(r)).filter(Boolean));
   if (rise) S.riseUntil = Date.now() + i * 70 + 950;
   main.removeAttribute("aria-busy");
   document.title = S.me?.signedIn ? `${S.me.name} · Account` : "Account · georgefarrowgreen.com";
@@ -365,10 +388,61 @@ function deleting(r) {
   ];
 }
 
+// ---- signed out: signing in; or making an account (by invite: accounts are made here, and only here); or a forgotten
+// password (a link to the email), and a new one from its link (resetPage). Which: S.gate, "signin", "join" or "forgot"
+// (#join, #forgot and #invite= open the last two, as the apps link here) ----
+const HANDLE_OK = /^[a-z0-9_]{3,20}$/, EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+// the way between them: the form below changed in place, the rest of the page staying put
+function gate(to) { S.gate = to; S.settled = true; render(); $("main .signin input")?.focus(); }
 function signedOut(r) {
+  if (S.handoff) return handoffPage(r);
+  const mode = S.gate || "signin";
+  if (!S.join) joinState();
+  const head = { signin: ["Your account", "One sign-in for every app on georgefarrowgreen.com. Your profile, password, passkeys and devices, in one place."],
+    join: ["Create your account", "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
+    forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
+  const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
+  return [h("div.welcome", {},
+    // (the mark floats; it rises in inside something else, as one animation can't do both)
+    r(h("div", {}, h("div.mark", {}, icon(mode === "forgot" ? "key" : "person", 48, 1.7)))),
+    r(h("h1", { text: head[0] })),
+    r(h("p", { text: head[1] })),
+    r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : signinCard()),
+    mode === "signin" && r(h("div.works", {}, h("span", { text: "Works with" }), h("img", { src: "/apps/inflight.png", alt: "InFlight", title: "InFlight" }), h("img", { src: "/apps/weather.png", alt: "Weather", title: "Weather" }))),
+    r(mode === "signin" ? joinLine() : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
+  ];
+}
+function joinLine() {
+  return S.join?.open || S.join?.ok ? h("p.foot.new", { id: "joinline" }, "New here? ", h("button.link", { type: "button", onclick: () => gate("join") }, "Create your account"))
+    : h("p.foot.new", { id: "joinline", text: S.join && !S.join.pending ? "New accounts are by invitation." : "" });
+}
+// Opened from an app, signed in there: carry on as that account here, said yes to
+function handoffPage(r) {
+  const w = S.handoff, said = h("p.said", { role: "alert" }), app = APPS[fromApp()]?.name;
+  const go = h("button.btn", { type: "button", onclick: async () => {
+    try {
+      const m = await busy(go, "Signing in…", () => post("handoff", { code: HANDOFF.code }));
+      S.handoff = null; welcome(m);
+      if (HANDOFF.open === "profile") openSheet(profileView);
+    } catch (err) { S.handoff = null; S.settled = false; render(); toast(err.message, true, 4000); }
+  } }, `Continue as ${String(w.name).trim().split(/\s+/)[0]}`);
+  return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark", {}, icon("person", 48, 1.7)))),
+    r(h("h1", { text: w.name })),
+    r(h("p", { text: `@${w.handle}${app ? `, from ${app}` : ""}. Carry on as this account in this browser?` })),
+    r(h("div.signin.glass", {}, go, h("button.link.forgot", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in"), said)))];
+}
+// (can an account be made: by anyone, on a test server; else with the invite this page was opened with)
+async function joinState() {
+  S.join = { pending: true };
+  try { S.join = await post("join", { invite: S.invite || undefined }); } catch (_) { S.join = { open: false, ok: !!S.invite }; }
+  if (S.me?.signedIn || S.reset) return;
+  if (S.gate === "join") { S.settled = true; render(); } else $("#joinline")?.replaceWith(joinLine());
+}
+function signinCard() {
   const said = h("p.said", { role: "alert" });
   const email = h("input", { type: "email", name: "email", autocomplete: "username webauthn", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
-  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true });
+  const pw = h("input", { type: "password", name: "password", autocomplete: "current-password", required: true, onfocus: warmUp });
   const go = h("button.btn" + (passkeysWork() ? ".quiet" : ""), { type: "submit" }, "Sign in");
   const form = h("form.form", { onsubmit: async (e) => {
     e.preventDefault(); say(said, "");
@@ -390,14 +464,154 @@ function signedOut(r) {
     try { welcome(await busy(b, "Waiting for your passkey…", signInWithPasskey)); }
     catch (err) { say(said, err.message); }
   } }, icon("face", 21, 1.9), "Sign in with a passkey");
+  return h("div.signin.glass", {}, pk, pk && h("div.or", { text: "or with your email" }), form,
+    h("button.link.forgot", { type: "button", onclick: () => gate("forgot") }, "Forgot password?"), said);
+}
+// (the password's stretching needs its WebAssembly: fetched as soon as a password field's used, not when it's sent)
+function warmUp() { import("./argon2.js").catch(() => {}); }
+
+// A new account: name, handle (suggested from the name, and checked as it's typed), email and password. The slow parts
+// (the key pair, the password's stretching) start while it's typed, so creating it is quick; the key's made, and locked
+// with the password, here: the server only ever has it locked.
+const handleFrom = (name) => { const p = String(name).normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/\s+/).filter(Boolean); return (p.length > 1 ? p[0] + "_" + p[p.length - 1][0] : p[0] || "").replace(/[^a-z0-9_]/g, "").slice(0, 20); };
+function joinCard() {
+  const said = h("p.said", { role: "alert" });
+  if (S.join?.pending) return h("div.signin.glass", {}, h("div.empty", {}, h("span.spin")));
+  if (!(S.join?.open || S.join?.ok)) return h("div.signin.glass", {}, h("p.hint.center", { text: S.invite ? S.join?.error || "That invite doesn’t work." : "New accounts are by invitation. If someone sent you an invite link, open it to start." }));
+  const prep = {};
+  const ready = () => { prep.keys ||= E2E.newIdentity(); };
+  const name = h("input", { type: "text", name: "name", autocomplete: "name", maxlength: "50", required: true });
+  const handle = h("input", { type: "text", name: "handle", autocomplete: "off", autocapitalize: "none", spellcheck: "false", maxlength: "20", required: true });
+  const email = h("input", { type: "email", name: "email", autocomplete: "username", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
+  const pw = h("input", { type: "password", name: "password", autocomplete: "new-password", required: true, onfocus: warmUp });
+  const hstat = h("p.hint", { "aria-live": "polite", text: "Friends see your name, and find you by your handle." }), { meter, hint } = rated(pw);
+  const go = h("button.btn", { type: "submit" }, "Create account");
+  let touched = false, hT = 0, pT = 0;
+  const handleNow = () => handle.value.trim().replace(/^@/, "").toLowerCase();
+  const check = async () => {
+    const v = handleNow();
+    if (v.length < 3) { hstat.className = "hint"; hstat.textContent = "Friends see your name, and find you by your handle."; return; }
+    try {
+      const r = await call(`handle?h=${encodeURIComponent(v)}`);
+      if (handleNow() !== v) return;
+      hstat.className = "hint " + (r.free ? "ok" : "bad");
+      hstat.replaceChildren(r.free ? `@${v} is yours.` : r.reason, ...(r.try?.length ? [" Try ", ...r.try.flatMap((t, i) => [i ? " or " : "",
+        h("button.link", { type: "button", onclick: () => { handle.value = t; touched = true; check(); } }, `@${t}`)]), "."] : []));
+    } catch (_) { /* checked again when it's made */ }
+  };
+  name.addEventListener("input", () => { ready(); if (!touched) { handle.value = handleFrom(name.value); clearTimeout(hT); hT = setTimeout(check, 350); } });
+  handle.addEventListener("input", () => { ready(); touched = true; clearTimeout(hT); hT = setTimeout(check, 350); });
+  pw.addEventListener("input", () => {
+    ready(); clearTimeout(pT);
+    if (pw.value.length >= 10) { const v = pw.value; pT = setTimeout(() => { const salt = E2E.newSalt(); prep.pw = { pw: v, salt, p: E2E.fromPassword(v, salt) }; prep.pw.p.catch(() => {}); }, 700); }
+  });
+  const form = h("form.form", { onsubmit: async (e) => {
+    e.preventDefault(); say(said, "");
+    const v = { name: name.value.trim(), handle: handleNow(), email: email.value.trim(), password: pw.value };
+    if (!v.name) return say(said, "Enter your name.", name);
+    if (!HANDLE_OK.test(v.handle)) return say(said, "Handles use 3 to 20 letters, numbers or underscores.", handle);
+    if (!EMAIL_OK.test(v.email)) return say(said, "That doesn’t look like an email address.", email);
+    if (v.password.length < 10) return say(said, "Use at least 10 characters for your password.", pw);
+    try {
+      let proof;
+      const m = await busy(go, "Creating your account…", async () => {
+        const n = await leakedCount(v.password);
+        if (n) throw Object.assign(new Error(leakedSay(n)), { field: "password" });
+        ready();
+        const { privJwk, pub } = await prep.keys;
+        const done = prep.pw?.pw === v.password ? prep.pw : null, salt = done ? done.salt : E2E.newSalt();
+        const k = await (done ? done.p : E2E.fromPassword(v.password, salt));
+        proof = k.proof;
+        return post("signup", { name: v.name, handle: v.handle, email: v.email, salt, proof, vault: await E2E.lock(k.lockKey, { ecdh: privJwk }), pub, invite: S.invite || undefined });
+      });
+      S.invite = null; S.gate = null; try { sessionStorage.removeItem("acct:invite"); } catch (_) {}
+      welcome(m, `Welcome, ${String(m.name).trim().split(/\s+/)[0]}. Your account is ready.`);
+      checkQuietly(v.password, proof); maybeNudge(m);
+    } catch (err) {
+      if (err.field === "invite") { S.join = { open: false, ok: false, error: err.message }; S.settled = true; return render(); }
+      say(said, err.message, { name, handle, email, password: pw }[err.field] || null);
+    }
+  } }, field("Name", name), field("Handle", h("div.at", {}, "@", handle)), hstat, field("Email", email), field("Password", pw), meter, hint, go);
+  return h("div.signin.glass", {}, S.invite && !S.join.open && h("p.invited", { text: "You’ve been invited." }), form,
+    h("p.hint.center", { text: "Your password also locks your InFlight encryption key, here on this device: the key is never sent anywhere unlocked." }), said);
+}
+// A forgotten password: a link to the email (said the same whether there's an account for it or not)
+function forgotCard() {
+  const said = h("p.said", { role: "alert" });
+  const email = h("input", { type: "email", name: "email", autocomplete: "username", inputmode: "email", autocapitalize: "none", spellcheck: "false", required: true });
+  const go = h("button.btn", { type: "submit" }, "Email me a link");
+  const box = h("div.signin.glass", {}, h("form.form", { onsubmit: async (e) => {
+    e.preventDefault(); say(said, "");
+    if (!EMAIL_OK.test(email.value.trim())) return say(said, "Enter the email your account uses.", email);
+    try {
+      const r = await busy(go, "Sending…", () => post("reset/request", { email: email.value.trim() }));
+      box.replaceChildren(h("div.sent", {}, icon("mail", 28, 1.8), h("p", { text: r.message })));
+    } catch (err) { say(said, err.message, email); }
+  } }, field("Email", email), go),
+  h("p.hint.center", { text: "With a passkey, a reset keeps your InFlight messages. Without one, you start with a new key, and older messages can’t be opened." }), said);
+  return box;
+}
+// A reset link's own page: who it's for, and a new password. With a passkey that holds a copy of the key (one made in
+// InFlight, where it can), the key's kept: unlocked with it here, and locked anew with the new password. Otherwise a
+// new key pair, and older messages stay sealed.
+async function resetCheck() {
+  try { S.reset.info = await post("reset/check", { token: S.reset.token }); } catch (e) { S.reset.error = e.message; }
+  S.settled = false; render();
+}
+function resetPage(r) {
+  const R = S.reset, info = R.info;
+  if (!info && !R.error) return [h("div.welcome", {}, r(h("div.empty", {}, h("span.spin"))))];
+  if (R.error) return [h("div.welcome", {},
+    r(h("div", {}, h("div.mark.red", {}, icon("key", 44, 1.8)))), r(h("h1", { text: "This link won’t work" })), r(h("p", { text: R.error })),
+    r(h("div.signin.glass", {}, h("button.btn", { type: "button", onclick: () => { S.reset = null; gate("forgot"); } }, "Get a new link"),
+      h("button.btn.quiet", { type: "button", onclick: () => { S.reset = null; gate("signin"); } }, "Sign in"))))];
+  const said = h("p.said", { role: "alert" });
+  const pw = h("input", { type: "password", name: "password", autocomplete: "new-password", required: true, onfocus: warmUp }), { meter, hint } = rated(pw);
+  const canKeep = info.passkeys.length > 0 && passkeysWork(), other = S.me?.signedIn && S.me.handle !== info.handle;
+  const act = (mode) => async (e) => {
+    const b = e.currentTarget; say(said, "");
+    if (pw.value.length < 10) return say(said, "Use at least 10 characters.", pw);
+    try {
+      let proof;
+      const m = await busy(b, mode === "keep" ? "Waiting for your passkey…" : "Making your new key…", async () => {
+        const n = await leakedCount(pw.value);
+        if (n) throw new Error(leakedSay(n));
+        let ecdh, pub;
+        if (mode === "keep") {
+          let a;
+          try { a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: info.rpId, userVerification: "required", timeout: 120000,
+            allowCredentials: info.passkeys.map((p) => ({ type: "public-key", id: fromB64url(p.id) })), extensions: { prf: { eval: { first: await E2E.prfSalt() } } } } }); }
+          catch (_) { throw new Error("No passkey was used. You can start fresh instead."); }
+          const res = a?.getClientExtensionResults?.().prf?.results?.first, pk = a && info.passkeys.find((p) => p.id === a.id);
+          if (!res || !pk) throw new Error("That passkey couldn’t unlock your key here. You can start fresh instead.");
+          try { ({ ecdh } = await E2E.unlock(await E2E.fromSecret(new Uint8Array(res)), pk.vault)); }
+          catch (_) { throw new Error("That passkey couldn’t unlock your key. You can start fresh instead."); }
+        } else ({ privJwk: ecdh, pub } = await E2E.newIdentity());
+        const salt = E2E.newSalt(), k = await E2E.fromPassword(pw.value, salt);
+        proof = k.proof;
+        const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(R.token)))].map((x) => x.toString(16).padStart(2, "0")).join("");
+        const keyProof = pub ? undefined : await E2E.keyProof(await E2E.importPriv(ecdh), info.kx, "reset|" + hash);
+        return post("reset/complete", { token: R.token, salt, proof, vault: await E2E.lock(k.lockKey, { ecdh }), ...(pub ? { pub } : { keyProof }) });
+      });
+      S.reset = null; S.gate = null;
+      welcome(m, m.kept ? "Password changed. Your messages are safe." : "Password changed. You’re starting fresh with a new key.");
+      checkQuietly(pw.value, proof);
+    } catch (err) { say(said, err.message, pw); }
+  };
   return [h("div.welcome", {},
-    // (the mark floats; it rises in inside something else, as one animation can't do both)
-    r(h("div", {}, h("div.mark", {}, icon("person", 48, 1.7)))),
-    r(h("h1", { text: "Your account" })),
-    r(h("p", { text: "One sign-in for every app on georgefarrowgreen.com. Your profile, password, passkeys and devices, in one place." })),
-    r(h("div.signin.glass", {}, pk, pk && h("div.or", { text: "or with your email" }), form, said)),
-    r(h("div.works", {}, h("span", { text: "Works with" }), h("img", { src: "/apps/inflight.png", alt: "InFlight", title: "InFlight" }), h("img", { src: "/apps/weather.png", alt: "Weather", title: "Weather" }))),
-    r(h("p.foot.new", {}, "New here? Make your account in ", h("a", { href: siteUrl("chat"), text: "InFlight" }), "."))),
+    r(h("div", {}, h("div.mark", {}, icon("key", 48, 1.7)))),
+    r(h("h1", { text: "Choose a new password" })),
+    r(h("p", { text: `For ${info.name} (@${info.handle}, ${info.email}).` })),
+    r(h("div.signin.glass", {},
+      other && h("p.hint.bad", { text: `You’re signed in here as @${S.me.handle}. This link is for a different account: only carry on if it’s yours.` }),
+      h("form.form", { onsubmit: (e) => { e.preventDefault(); e.currentTarget.parentNode.querySelector(".btn")?.click(); } },
+        h("input.vh", { type: "email", autocomplete: "username", value: info.email, tabindex: "-1", "aria-hidden": "true", readonly: true }),
+        field("New password", pw), meter, hint),
+      h("p.hint", { text: `${canKeep ? "Use your passkey to keep your InFlight messages readable. Starting fresh" : "This"} makes a new key: your friends stay, but older messages can’t be opened, and friends see that your key changed. Every device is signed out.` }),
+      canKeep && h("button.btn", { type: "button", onclick: act("keep") }, icon("passkey", 20, 2), "Keep messages with passkey"),
+      h("button.btn" + (canKeep ? ".quiet" : ""), { type: "button", onclick: act("fresh") }, canKeep ? "Start fresh instead" : "Set new password"),
+      S.me?.signedIn && h("button.link", { type: "button", onclick: () => { S.reset = null; S.settled = false; render(); } }, "Cancel"),
+      said))),
   ];
 }
 async function signInWithPasskey() {
@@ -409,11 +623,11 @@ async function signInWithPasskey() {
   return post("signin/passkey", { challenge: o.challenge, id: a.id, clientDataJSON: b64url(a.response.clientDataJSON),
     authenticatorData: b64url(a.response.authenticatorData), signature: b64url(a.response.signature) });
 }
-function welcome(m) {
+function welcome(m, word) {
   S.me = m; S.settled = false; S.pulled = Date.now();
   if (m.prefs) theme(m.prefs.appearance);
   render(); scrollTo(0, 0);
-  toast(`Welcome back, ${String(m.name).trim().split(/\s+/)[0]}.`);
+  toast(word || `Welcome back, ${String(m.name).trim().split(/\s+/)[0]}.`, false, word ? 4000 : 2800);
 }
 // Signed in with a password, no passkey yet, on a device that can make one (Face ID, Touch ID, Windows Hello…): a word
 // about one, once a month at most
@@ -704,12 +918,10 @@ function strength(pw) {
   const kinds = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(pw)).length;
   return Math.min(4, 1 + (pw.length >= 14) + (pw.length >= 18) + (kinds >= 3));
 }
-function passwordView() {
-  const m = S.me, said = h("p.said", { role: "alert" });
-  const pw = (ac) => h("input", { type: "password", autocomplete: ac });
-  const cur = pw("current-password"), nw = pw("new-password"), again = pw("new-password");
+// A new password, as it's typed: how strong, and whether it's turned up in a data breach (asked a moment after typing
+// stops). { meter, hint } go under its field.
+function rated(nw) {
   const bar = h("i"), meter = h("div.meter", { "aria-hidden": "true" }, bar), hint = h("p.hint", { "aria-live": "polite" });
-  const go = h("button.btn", { type: "submit" }, "Change password");
   let leakT = 0, leaked = 0;
   const rate = () => {
     const s = strength(nw.value), v = nw.value;
@@ -723,6 +935,15 @@ function passwordView() {
     if (nw.value.length >= 10) { const v = nw.value; leakT = setTimeout(async () => { const n = await leakedCount(v); if (nw.value === v) { leaked = n; rate(); } }, 450); }
   });
   rate();
+  return { meter, hint };
+}
+// (then: what to open once it's changed, as "Not you?" goes on to the passkeys)
+function passwordView({ then } = {}) {
+  const m = S.me, said = h("p.said", { role: "alert" });
+  const pw = (ac) => h("input", { type: "password", autocomplete: ac });
+  const cur = pw("current-password"), nw = pw("new-password"), again = pw("new-password");
+  const { meter, hint } = rated(nw);
+  const go = h("button.btn", { type: "submit" }, "Change password");
   return { title: "Change password", body: [
     h("p", { text: "Your password signs you in to every app on the site. Changing it signs you out on your other devices." }),
     h("form.form", { onsubmit: async (e) => {
@@ -744,6 +965,7 @@ function passwordView() {
           return post("password", { oldProof: old.proof, salt, proof: next.proof, vault: await E2E.lock(next.lockKey, inner) });
         });
         closeSheet(); render(); toast("Password changed. Your other devices were signed out.");
+        if (then) setTimeout(() => openSheet(then), 500);
       } catch (err) { say(said, err.message, err.field === "current" ? cur : nw); }
     } }, h("input.vh", { type: "email", autocomplete: "username", value: m.email || "", tabindex: "-1", "aria-hidden": "true", readonly: true }),
       field("Current password", cur), field("New password", nw), meter, hint, field("New password again", again), go),
@@ -890,7 +1112,7 @@ function notMeView(e) {
   const go = h("button.btn.danger", { type: "button", onclick: async () => {
     try {
       S.me = await freshly(() => busy(go, "Signing out…", () => post("devices/end", { others: true })));
-      patch(); toast("Every other device was signed out."); pushSheet(passwordView);
+      patch(); toast("Every other device was signed out."); pushSheet(() => passwordView({ then: passkeysView }));
     } catch (err) { if (!err.quiet) say(said, err.message); }
   } }, "Secure my account");
   const step = (n, t, sub) => h("li", {}, h("span.n", { text: String(n) }), h("span.tx", {}, h("b", { text: t }), h("small", { text: sub })));
@@ -898,10 +1120,11 @@ function notMeView(e) {
     h("div.group", {}, h("div.row.plain", {}, h("span.ic.amber", {}, icon("signin", 18)),
       h("span.tx", {}, h("b", { text: (DID[e.kind] || (() => e.kind))(e) }),
         h("small", { text: [`${dayWord(e.at)}, ${new Date(e.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`, e.app, e.device, e.place].filter(Boolean).join(" · ") })))),
-    h("p", { text: "If this wasn’t you, someone may know your password. Two steps put it right:" }),
+    h("p", { text: "If this wasn’t you, someone may know your password. Three steps put it right:" }),
     h("ol.steps", {},
       step(1, "Sign out everywhere else", "Every device but this one, in every app on the site."),
-      step(2, "Choose a new password", "So whoever it was can’t sign back in.")),
+      step(2, "Choose a new password", "So whoever it was can’t sign back in."),
+      step(3, "Look over your passkeys", "Remove any you don’t know: one someone else added would still sign in.")),
     go, said] };
 }
 const dayWord = (t) => {

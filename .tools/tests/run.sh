@@ -1,7 +1,7 @@
 #!/bin/bash
 # InFlight's end-to-end tests, each against a fresh local copy of the site: `wrangler pages dev`
 # on :8788 with an empty database, and stand-ins for Web Push, email, GIPHY, the weather and
-# Have I Been Pwned (mocks/). Every test signs people up in real browsers and drives the app.
+# Have I Been Pwned (mocks/). Every test makes accounts in real browsers and drives the apps.
 #
 #   cd .tools/tests && npm ci          (once; Chromium: `npx playwright install chromium`, or set CHROMIUM)
 #   ./run.sh                           every test in suite.txt

@@ -11,7 +11,7 @@
 // a version: a change is sent with the version it was made from, so two devices changing it at once can't lose either's
 // (the second is told the first's, merges its own into it and sends again: weather/account.js).
 
-import { HttpError, limit, deviceOf, db, randomToken, hex, sha256 } from "./_pigeon.js";
+import { HttpError, limit, deviceOf, db, randomToken, hex, sha256, clientNet } from "./_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, cookieToken } from "./_account.js";
 import { accountRoutes, json, body, signedIn } from "./_accountapi.js";
 import { wxdb, wantOf, applyAccount, devicesOf, subscribe, leaveAccount, MAX_PLACES } from "./_wxpush.js";
@@ -96,5 +96,5 @@ export const ACCOUNT_ROUTES = {
 // the account's; signed out, as its own
 export async function subscribeHere(request, env, b) {
   const u = cookieToken(request, env) && isWeather(new URL(request.url), env) ? await cookieUser(request, env) : null;
-  return subscribe(env, b, u, u ? (await kept(env, u.id)).data.notify : null, u ? deviceOf(request) : "");
+  return subscribe(env, b, u, u ? (await kept(env, u.id)).data.notify : null, u ? deviceOf(request) : "", hex(await sha256("wxnet|" + clientNet(request))).slice(0, 24));
 }

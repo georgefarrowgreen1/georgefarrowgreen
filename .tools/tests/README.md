@@ -10,7 +10,8 @@ every file parses.
 **End-to-end tests** (everything else here): real browsers (Playwright) drive the app against a
 fresh local copy of the site for each test (`wrangler pages dev` on :8788, an empty database),
 with stand-ins for Web Push, email, GIPHY, the weather and Have I Been Pwned (`mocks/`). People
-sign up, add friends, send pigeons, and the tests check what lands, what's drawn and what's pushed.
+make accounts (on the account's page, as everyone does now: `join.mjs`), add friends, send pigeons,
+and the tests check what lands, what's drawn and what's pushed.
 
     cd .tools/tests && npm ci
     npx playwright install chromium          # or point CHROMIUM at a Chromium you have
@@ -30,5 +31,9 @@ stand-in on :8794 for Open-Meteo and the Aviation Weather Center as the server a
 reports). It turns notifications on with a push subscription whose keys it holds, runs the tick, and decrypts what
 arrives in the push stand-in's box. The app's reasoning has unit tests of its own (`unit/wxinsights.test.mjs`,
 `unit/wxnext.test.mjs`).
+
+`acctjoin.mjs` runs the site as the real one is, new accounts by invite only (`OPEN_SIGNUP=0` to `server.sh`; every
+other test has open sign-up), for joining with an invite, a forgotten password and its reset link, and each app's
+sign-in.
 
 This folder is part of the repository but not the site: `/.tools/*` is turned away in `_redirects`.

@@ -1,5 +1,6 @@
 // Argon2id: new accounts use it; an account from before (PBKDF2) moves on at its next password sign-in.
 import { kit } from './lib.mjs';
+import http from 'http';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
 const { ok, one, api } = K;
@@ -8,10 +9,14 @@ const PW = 'an older test password';
 // ---- an account as made before: PBKDF2, a bare salt ----
 const id = await E2E.newIdentity(), salt = crypto.getRandomValues(new Uint8Array(16));
 const old = await E2E.fromPassword(PW, salt);
-const r = await fetch(K.BASE + '/api/pigeon/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Olive Old', handle: 'olive', email: 'olive@example.com', salt: b64url(salt), proof: old.proof, vault: await E2E.lock(old.lockKey, { ecdh: id.privJwk }), pub: id.pub }) });
-ok(r.status === 200, 'an account from before (PBKDF2) still signs up the old way', String(r.status));
-const tok = (await r.json()).token;
-await fetch(K.BASE + '/api/pigeon/me', { method: 'PATCH', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ lat: 52.63, lon: 1.29, place: 'Norwich' }) });
+// (made where accounts are made: the account's page, account.localhost beside InFlight run locally; its API answers only there)
+const acctPost = (path, data) => new Promise((done, no) => {
+  const q = http.request({ host: '127.0.0.1', port: 8788, path, method: 'POST', headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', () => done({ status: res.statusCode })); });
+  q.on('error', no); q.end(data);
+});
+const r = await acctPost('/api/account/signup', JSON.stringify({ name: 'Olive Old', handle: 'olive', email: 'olive@example.com', salt: b64url(salt), proof: old.proof, vault: await E2E.lock(old.lockKey, { ecdh: id.privJwk }), pub: id.pub }));
+ok(r.status === 201, 'an account from before (PBKDF2): made as it was (on the account\'s page now)', String(r.status));
+K.sql("UPDATE pg_users SET lat = 52.63, lon = 1.29, place = 'Norwich' WHERE handle = 'olive'");
 const before = one("SELECT salt, proof_hash FROM pg_users WHERE handle = 'olive'")[0];
 ok(!before.salt.startsWith('a2:'), 'stored with a bare salt');
 // ---- it signs in on a phone ----
@@ -37,7 +42,11 @@ const N = await K.phone('nell'); await K.signup(N, 'Nell New', 'nell', 'nell@exa
 ok(one("SELECT salt FROM pg_users WHERE handle = 'nell'")[0].salt.startsWith('a2:'), 'a new account uses Argon2id');
 // ---- someone with no account gets an Argon2id salt too (it says nothing about who has one) ----
 const fake = await fetch(K.BASE + '/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'nobody@example.com' }) }).then((x) => x.json());
-ok(fake.salt.startsWith('a2:'), 'an unknown email gets an Argon2id salt, like any new account');
+const fake2 = await fetch(K.BASE + '/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'nobody@example.com' }) }).then((x) => x.json());
+// (most in Argon2id's form, as most accounts are; some in the older one, as an account from before still has)
+const fakes = await Promise.all(Array.from({ length: 24 }, (_, i) => fetch(K.BASE + '/api/pigeon/salt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: `nobody${i}@example.com` }) }).then((x) => x.json()).then((x) => x.salt)));
+ok(/^(a2:)?[A-Za-z0-9_-]{22}$/.test(fake.salt) && fake2.salt === fake.salt && fakes.filter((x) => x.startsWith('a2:')).length >= 12,
+  'an unknown email gets a salt of a real one\'s form, the same each time (it says nothing about who has one)', `${fake.salt.slice(0, 4)} ${fakes.filter((x) => x.startsWith('a2:')).length}/24`);
 // ---- the upgrade can't be used to set a weaker or someone else's password ----
 const os = await K.sess(O2);
 const [st] = await api(os.token, 'password-upgrade', { oldProof: 'x'.repeat(43), salt: E2E.newSalt(), proof: 'y'.repeat(43), vault: 'z'.repeat(40) });

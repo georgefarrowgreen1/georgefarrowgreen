@@ -73,6 +73,8 @@ async function groupCheer({ request, env, waitUntil }) {
   const m = await D.prepare("SELECT m.* FROM pg_gmsgs m JOIN pg_group_members gm ON gm.group_id = m.group_id AND gm.user_id = ? WHERE m.id = ?").bind(u.id, id).first();
   if (!m) throw new HttpError(404, "That pigeon wasn’t found.");
   const mine = m.sender === u.id;
+  // (not one from someone who's blocked you, or you them, even in a group you're both still in: they'd be told)
+  if (!mine && await D.prepare("SELECT 1 FROM pg_links WHERE status = 'blocked' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, m.sender).first()) throw new HttpError(404, "That pigeon wasn’t found.");
   // the sender: every one still flying; anyone else: the one to them
   const { results } = await D.prepare(`SELECT * FROM pg_gdeliv WHERE msg_id = ?1 ${mine ? "" : "AND user_id = ?2"}`).bind(...(mine ? [id] : [id, u.id])).all();
   const friends = new Set((await D.prepare("SELECT CASE WHEN a = ?1 THEN b ELSE a END AS id FROM pg_links WHERE status = 'ok' AND (a = ?1 OR b = ?1)").bind(m.sender).all()).results.map((r) => r.id));

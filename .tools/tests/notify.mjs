@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
+import { joinInFlight, accountUrl } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788', URL = BASE + '/pigeon/';
 const AUDIT = new Function('return (' + readFileSync(`${S}/wr/audit.mjs`, 'utf8').match(/const AUDIT = (\(\) => \{[\s\S]*?\n\});/)[1] + ')')();
@@ -65,13 +66,8 @@ async function phone(name, keys) {
   return { p, ctx, name };
 }
 const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace(/\s+/g, ' ');
-async function signup(ph, name, handle, email, city) {
-  await ph.p.waitForSelector('.welcome'); await ph.p.click('[data-act=to][data-id=signup]');
-  await ph.p.fill('#f-name', name); await ph.p.fill('#f-handle', handle); await ph.p.fill('#f-email', email); await ph.p.fill('#f-password', 'a long test password');
-  await ph.p.click('[data-form=signup] .btn'); await ph.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
-  await ph.p.selectOption('#city', city); await ph.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
-  await ph.p.waitForSelector('[data-act=pkadd]'); await ph.p.click('[data-act=onbdone]'); await ph.p.waitForSelector('.tabs');
-}
+// (made on the account's own page, then InFlight signed in to: join.mjs)
+const signup = (ph, name, handle, email, city) => joinInFlight(ph.p, URL, { name, handle, email, city });
 // (retry once: the local server can drop an idle keep-alive connection while sql() runs)
 const tick = async (secret = 'tick-test-secret') => { const go = () => fetch(BASE + '/api/pigeon/notify-tick', { method: 'POST', headers: { Authorization: 'Bearer ' + secret } });
   let r; try { r = await go(); } catch (_) { r = await go(); } return { status: r.status, ...(await r.json()) }; };
@@ -203,13 +199,16 @@ sql("UPDATE pg_users SET email_at = (strftime('%s','now') * 1000) - 3600000 WHER
 sql("UPDATE pg_meta SET v = CAST((strftime('%s','now') * 1000) - 7200000 AS TEXT) WHERE k = 'notify_since'");   // as if notifications went live 2 hours ago
 await tick(); await new Promise((s) => setTimeout(s, 300));
 ok(!mails().slice(m0).some((x) => x.to === 'mira@example.com' && /landed/.test(x.subject)), 'no notification email to an address that isn’t confirmed');
+// (sent by the account's page, where the account was made: its link opens that page)
 const cmail = mails().find((x) => x.to === 'mira@example.com' && /Confirm your email/.test(x.subject));
-ok(cmail && /#verify=/.test(cmail.text) && !/Lovely/.test(cmail.text), 'signing up sent her a confirm link');
-await M.p.goto(BASE + '/pigeon/' + /#verify=[A-Za-z0-9_-]+/.exec(cmail.text)[0]); await M.p.waitForSelector('.tabs', { timeout: 15000 });
-await M.p.waitForFunction(() => /Email confirmed/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
-ok(/Email confirmed for @mira/.test(await M.p.locator('.toast').innerText().catch(() => '')), 'tapping it confirms her address');
-const [cst] = await fetch(BASE + '/api/pigeon/confirm-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: /#verify=([A-Za-z0-9_-]+)/.exec(cmail.text)[1] }) }).then((x) => [x.status]);
+const ACCT = accountUrl(URL), ctoken = (/#confirm=([A-Za-z0-9_-]{40,50})/.exec(cmail?.text || '') || [])[1];
+ok(!!ctoken && cmail.text.includes(`${ACCT}#confirm=`) && !/Lovely/.test(cmail.text), 'making her account sent her a confirm link', cmail?.subject);
+await M.p.goto(`${ACCT}#confirm=${ctoken}`); await M.p.waitForSelector('main:not([aria-busy])', { timeout: 15000 });
+await M.p.waitForFunction(() => /Your email is confirmed/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+ok(/Your email is confirmed/.test(await M.p.locator('#toast').innerText().catch(() => '')) && sql("SELECT COUNT(*) AS n FROM pg_users WHERE handle = 'mira' AND email_ok > 0").includes('"n": 1'), 'tapping it confirms her address');
+const cst = await M.p.evaluate(async (t) => (await fetch('/api/account/email/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) })).status, ctoken);
 ok(cst === 400, 'and the link works once', String(cst));
+await M.p.goto(URL); await M.p.waitForSelector('.tabs', { timeout: 15000 });
 r = await tick(); await new Promise((s) => setTimeout(s, 300));
 const em = mails().slice(m0).at(-1);
 // (the minute-by-minute background tick may send it rather than this one: count what arrived)

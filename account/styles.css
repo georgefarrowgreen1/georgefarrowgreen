@@ -460,3 +460,13 @@ a.btn { text-decoration: none; }
   .col-a { position: sticky; top: calc(var(--top) + 24px); }
   .col-a .large { margin-bottom: 18px; }
 }
+
+/* ---- signed out: the way between signing in, making an account and a forgotten password ---- */
+.welcome .new .link { padding: 4px 2px; font-size: 14px; }
+.signin .link.forgot { justify-self: center; font-size: 15px; padding: 6px 10px; }
+.signin .invited { margin: 0; justify-self: center; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--tint-text); background: color-mix(in srgb, var(--tint) 14%, transparent); }
+.signin .hint.center { margin: 0 4px; }
+.signin .sent { display: grid; justify-items: center; gap: 10px; padding: 10px 6px; text-align: center; color: var(--good); }
+.signin .sent p { margin: 0; color: var(--text); font-size: 16px; line-height: 1.45; }
+.signin .hint .link { padding: 0 2px; font-size: inherit; }
+.signin .empty { display: grid; place-items: center; }

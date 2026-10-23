@@ -3,6 +3,8 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
+import { joinInFlight } from './join.mjs';
+import http from 'http';
 const [,, S, out, only] = process.argv;
 const BASE = 'http://localhost:8788';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -18,11 +20,7 @@ async function phone(name, handle, city, pk) {
   p.on('pageerror', (e) => errs.push(`${name}: ${e}`)); p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|Content Security/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
   if (pk) { const cdp = await ctx.newCDPSession(p); await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } }); }
-  await p.goto(BASE + '/pigeon/'); await p.click('[data-act=to][data-id=signup]');
-  await p.fill('#f-name', name); await p.fill('#f-handle', handle); await p.fill('#f-email', handle + '@example.com'); await p.fill('#f-password', 'a long test password');
-  await p.click('[data-form=signup] .btn'); await p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
-  await p.selectOption('#city', city); await p.waitForSelector('[data-act=pkadd]', { timeout: 20000 });
-  await p.click(pk ? '[data-act=pkadd]' : '[data-act=onbdone]'); await p.waitForSelector('.tabs', { timeout: 20000 });
+  await joinInFlight(p, BASE + '/pigeon/', { name, handle, email: handle + '@example.com', city, passkey: !!pk });
   return p;
 }
 const sess = (p) => p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }));
@@ -30,7 +28,16 @@ const api = (t, path, body, method) => fetch(BASE + '/api/pigeon/' + path, { met
 const rnd = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 // (a real key: the app seals to it, so a made-up point won't do)
 const realPub = async () => { const k = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']); const j = await crypto.subtle.exportKey('jwk', k.publicKey); return { kty: j.kty, crv: j.crv, x: j.x, y: j.y }; };
-const apiUser = async (h, name) => (await api(null, 'signup', { name, handle: h, email: h + '@example.com', salt: rnd().slice(0, 22), proof: rnd(), vault: 'v'.repeat(40), pub: await realPub() }))[1];
+// (made where accounts are made, the account's page: account.localhost beside InFlight run locally; then signed in to
+// InFlight with the same password proof)
+const acctPost = (path, data) => new Promise((done, no) => {
+  const q = http.request({ host: '127.0.0.1', port: 8788, path: '/api/account/' + path, method: 'POST', headers: { Host: 'account.localhost:8788', Origin: 'http://account.localhost:8788', 'Content-Type': 'application/json' } },
+    (res) => { res.resume(); res.on('end', () => done(res.statusCode)); });
+  q.on('error', no); q.end(JSON.stringify(data));
+});
+const apiUser = async (h, name) => { const proof = rnd(), email = h + '@example.com';
+  await acctPost('signup', { name, handle: h, email, salt: rnd().slice(0, 22), proof, vault: 'v'.repeat(40), pub: await realPub() });
+  return (await api(null, 'login', { email, proof }))[1]; };
 const act = (p, a, id) => p.evaluate(([a, id]) => { const x = document.createElement('button'); x.hidden = true; x.dataset.act = a; if (id) x.dataset.id = id; document.querySelector('#screen').append(x); x.click(); x.remove(); }, [a, id]);
 const openChat = async (p, id) => { await p.evaluate((id) => { location.hash = '#open=' + id; }, id); await p.waitForSelector('#msg', { timeout: 10000 }); await p.waitForTimeout(500); };
 const send = async (p, text, kind) => { if (kind) await p.click(`.pick [data-act=pigeon][data-id=${kind}]`).catch(() => {}); await p.fill('#msg', text); const t0 = Date.now(); await p.waitForSelector('.compose .send:enabled', { timeout: 30000 }).catch(() => console.log('DIAG send still disabled', text)); if (Date.now() - t0 > 300) console.log('DIAG waited', Date.now() - t0, 'ms to send', text); await p.click('.send'); await p.waitForTimeout(1500); };
@@ -176,8 +183,6 @@ const W = await (await b.newContext({ viewport: { width: 390, height: 844 }, dev
 size = '390'; theme = 'light';
 await W.goto(BASE + '/pigeon/'); await W.waitForSelector('.welcome'); await W.waitForTimeout(3500); await snap(W, 'welcome');
 await W.click('[data-act=to][data-id=signin]'); await snap(W, 'signin');
-await W.click('[data-act=to][data-id=forgot]').catch(() => {}); await snap(W, 'forgot');
-await W.goto(BASE + '/pigeon/'); await W.waitForTimeout(3500); await W.click('[data-act=to][data-id=signup]'); await snap(W, 'signup');
 await W.setViewportSize({ width: 320, height: 568 }); size = '320';
 await W.goto(BASE + '/pigeon/'); await W.waitForTimeout(3500); await snap(W, 'welcome'); await W.click('[data-act=to][data-id=signin]'); await snap(W, 'signin');
 writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 1));

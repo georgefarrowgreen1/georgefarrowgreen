@@ -14,7 +14,12 @@ export async function onRequest(ctx) {
   if (PRIVATE.test(plainPath(url.pathname))) return notFound();
   if (isWeather(url, ctx.env)) return weatherHost(ctx, url);
   if (isAccount(url, ctx.env)) return accountHost(ctx, url);
-  if (!isChat(url, ctx.env)) return ctx.next();
+  if (!isChat(url, ctx.env)) {
+    const res = await ctx.next();
+    // (the site's own API answers: never taken for anything but what they say they are)
+    if (!url.pathname.startsWith("/api/") || res.headers.get("X-Content-Type-Options")) return res;
+    const r = new Response(res.body, res); r.headers.set("X-Content-Type-Options", "nosniff"); return r;
+  }
   // here, only InFlight's own API: the site's (its owner's sign-in, its content) stays on georgefarrowgreen.com
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/pigeon/") ? ctx.next() : notFound();
   // InFlight's admin signs in as the site's owner, so it lives on the site's own address

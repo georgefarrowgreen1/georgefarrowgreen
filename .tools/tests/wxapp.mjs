@@ -156,6 +156,7 @@ async function open(sc = {}, { locale = 'en-GB', url = `${HOST}/?lat=51.5072&lon
     if (noGL) { const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/.test(t) ? null : get.call(this, t, ...a); }; }
   }, !!sc.noGL);
   const p = await ctx.newPage();
+  p.on('dialog', (d) => d.accept());   // (a shared link to a place not in your list: added, as if said yes)
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await p.route(/open-meteo\.com|bigdatacloud/, (r) => {

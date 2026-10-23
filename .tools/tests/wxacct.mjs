@@ -10,6 +10,7 @@ import { readFileSync } from 'fs';
 import http from 'http';
 import * as F from './mocks/wxappdata.mjs';
 import * as OW from './mocks/wxwarnings.mjs';
+import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -31,7 +32,7 @@ http.createServer((req, res) => {
 }).listen(8794, '127.0.0.1');
 
 const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined,
-  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX}`] });
+  args: ['--host-resolver-rules=MAP *.gfg.test 127.0.0.1, MAP gfg.test 127.0.0.1', `--unsafely-treat-insecure-origin-as-secure=${CHAT},${WX},${CHAT.replace('//chat.', '//account.')}`] });
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 // a browser: its own cookies and storage (a phone, a laptop); push stood in for with an endpoint of its own
 async function browser(name, { push = false } = {}) {
@@ -56,6 +57,7 @@ async function browser(name, { push = false } = {}) {
   });
   await ctx.route(/rainviewer\.com|openstreetmap\.org|openfreemap\.org/, (r) => r.fulfill({ status: 503, body: '' }));
   const p = await ctx.newPage();
+  p.on('dialog', (d) => d.accept());   // (a shared link to a place not in your list: added, as if said yes)
   p.on('pageerror', (e) => errs.push(`${name}: ${e.message}`));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|status of 40[13]|status of 503|Cross-Origin-Opener-Policy header has been ignored/.test(m.text())) errs.push(`${name}: ${m.text()}`); });
   return { ctx, p, name };
@@ -67,30 +69,29 @@ const acctSays = (x) => x.p.evaluate(() => document.getElementById('acct')?.inne
 const places = (x) => x.p.evaluate(() => JSON.parse(localStorage.getItem('wx:places') || '[]').map((p) => p.name));
 const kept = (handle) => { const r = rows(`SELECT a.data, a.ver FROM wx_accts a JOIN pg_users u ON u.id = a.user_id WHERE u.handle = '${handle}'`)[0]; return r ? { ver: r.ver, ...JSON.parse(r.data) } : null; };
 const waitFor = async (fn, ms = 10000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v || Date.now() - t0 > ms) return v; await new Promise((r) => setTimeout(r, 300)); } };
-// InFlight's sign-up (as lib.mjs's), at its own address
-async function inflightSignup(x, name, handle, email) {
-  await x.p.goto(`${CHAT}/`); await x.p.waitForSelector('.welcome', { timeout: 20000 }); await x.p.click('[data-act=to][data-id=signup]');
-  await x.p.fill('#f-name', name); await x.p.fill('#f-handle', handle); await x.p.fill('#f-email', email); await x.p.fill('#f-password', PW);
-  await x.p.click('[data-form=signup] .btn'); await x.p.waitForSelector('#city', { state: 'attached', timeout: 30000 });
-  await x.p.selectOption('#city', 'London'); await x.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
-}
 
 // ---- 1. Signed up to InFlight on a laptop: Weather in the same browser is signed in too, and its places go up ----
 const L = await browser('laptop', { push: true });
 const lcdp = await L.ctx.newCDPSession(L.p); await lcdp.send('WebAuthn.enable');
 const { authenticatorId: lauth } = await lcdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } });
-await inflightSignup(L, 'Sam Taylor', 'sam', 'sam@example.com');
-// (and a passkey, as InFlight offers: it belongs to the site, so Weather can use it)
-await L.p.waitForSelector('[data-act=pkadd]'); await L.p.click('[data-act=pkadd]'); await L.p.waitForSelector('.tabs', { timeout: 20000 });
+// (the account made on the account's page, then InFlight, and a passkey as InFlight offers: it belongs to the site, so
+// Weather can use it)
+await joinInFlight(L.p, `${CHAT}/`, { name: 'Sam Taylor', handle: 'sam', email: 'sam@example.com', password: PW, city: 'London', passkey: true });
 const cookie = (await L.ctx.cookies(CHAT)).find((c) => c.name === 'account');
 ok(cookie && cookie.httpOnly && cookie.domain === '.gfg.test' && cookie.sameSite === 'Lax', 'signing up gives the browser the site\'s sign-in: for every address on the site, out of any page\'s reach', JSON.stringify(cookie && { d: cookie.domain, h: cookie.httpOnly, s: cookie.sameSite }));
 const pk = (await lcdp.send('WebAuthn.getCredentials', { authenticatorId: lauth })).credentials;
 ok(pk.length === 1 && pk[0].rpId === 'gfg.test', 'the passkey belongs to the site, not one address', JSON.stringify(pk.map((c) => c.rpId)));
 await weather(L);
 await settings(L);
-await L.p.waitForFunction(() => /Sam Taylor/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
+// (this device's own place first: asked before it goes to an account signed in elsewhere on the site)
+await L.p.waitForSelector('#acct-keep', { timeout: 15000 }).catch(() => {});
+const asks = await acctSays(L);
+ok(/Sam Taylor/.test(asks) && /@sam · signed in on this browser/.test(asks) && /Keep them with @sam/.test(asks) && /Not you\? Sign out/.test(asks) && !kept('sam'),
+  'Weather in the same browser: signed in as the account, and asks before this device\'s places go to it', asks);
+await L.p.click('#acct-keep');
+await L.p.waitForFunction(() => /@sam · georgefarrowgreen\.com/.test(document.getElementById('acct')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
 const lSays = await acctSays(L);
-ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com/.test(lSays) && !/InFlight/i.test(lSays), 'Weather in the same browser: already signed in, as the account (no other app named)', lSays);
+ok(/Sam Taylor/.test(lSays) && /@sam · georgefarrowgreen\.com/.test(lSays) && !/InFlight/i.test(lSays), 'kept with it: the account\'s card (no other app named)', lSays);
 const k1 = await waitFor(() => kept('sam'));
 ok(k1?.ver === 1 && k1.places.map((p) => p.name).join() === 'London' && k1.settings?.temp === 'c', 'what Weather has here goes up to the account: London, and the settings', JSON.stringify(k1 && { ver: k1.ver, places: k1.places.map((p) => p.name) }));
 ok(!(await L.p.evaluate(() => document.cookie.includes('account'))), 'the page itself can\'t read the sign-in');
@@ -102,8 +103,14 @@ const P = await browser('phone', { push: true });
 await weather(P, 'lat=55.9533&lon=-3.1883&name=Edinburgh');
 await settings(P);
 const signedOutSays = await acctSays(P);
-ok(/Your places on every device/.test(signedOutSays) && /Sign in with a passkey/.test(signedOutSays) && /Sign in with email and password/.test(signedOutSays) && !/InFlight/i.test(signedOutSays), 'signed out: what an account is for, and the two ways in', signedOutSays);
-await P.p.click('#acct-password'); await P.p.fill('#acct input[name=email]', 'sam@example.com'); await P.p.fill('#acct input[name=password]', 'not the password');
+ok(/Your places on every device/.test(signedOutSays) && /Sign in with a passkey/.test(signedOutSays) && /or with your email/.test(signedOutSays) && /Forgot password\?/.test(signedOutSays) && /New here\? Create your account/.test(signedOutSays) && !/InFlight/i.test(signedOutSays),
+  'signed out: what an account is for, a passkey first, then email and password (as on every page of the site)', signedOutSays);
+const ways = await P.p.$$eval('#acct a', (as) => as.map((a) => a.getAttribute('href')));
+ok(ways.join() === 'http://account.gfg.test:8788/#forgot,http://account.gfg.test:8788/#join' && !(await P.p.$('#acct input[name=name], #acct input[name=handle]')),
+  'a forgotten password, and a new account, on the account\'s page: none made here', ways.join());
+await P.p.fill('#acct input[name=password]', 'x'); await P.p.click('#acct .acct-form button[type=submit]');
+ok(await P.p.textContent('#acct-said') === 'Enter your email.', 'nothing typed in: the same words as every page of the site', await P.p.textContent('#acct-said'));
+await P.p.fill('#acct input[name=email]', 'sam@example.com'); await P.p.fill('#acct input[name=password]', 'not the password');
 await P.p.click('#acct .acct-form button[type=submit]');
 await P.p.waitForFunction(() => /don’t match/.test(document.getElementById('acct-said')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
 ok(/don’t match an account/.test(await P.p.textContent('#acct-said')), 'a wrong password: said, and still signed out', await P.p.textContent('#acct-said'));
@@ -229,7 +236,7 @@ ok(!!(await K.p.$('.welcome')) && !(await K.p.$('[data-act=resume]')), 'and InFl
 // stay, as its own ----
 const T = await browser('tablet', { push: true });
 await weather(T); await settings(T);
-await T.p.click('#acct-password'); await T.p.fill('#acct input[name=email]', 'sam@example.com'); await T.p.fill('#acct input[name=password]', PW);
+await T.p.fill('#acct input[name=email]', 'sam@example.com'); await T.p.fill('#acct input[name=password]', PW);
 await T.p.click('#acct .acct-form button[type=submit]');
 // (signed in where notifications are allowed already, it's one of the account's devices at once)
 await T.p.waitForFunction(() => { try { return !!localStorage.getItem('wx:acct') && !!JSON.parse(localStorage.getItem('wx:settings') || '{}').notify?.devId; } catch (_) { return false; } }, null, { timeout: 30000 }).catch(() => {});

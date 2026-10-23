@@ -847,9 +847,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .mapcard .over .ico{font-size:13px}
 .mapcard .lands{text-align:center;font-size:13px;font-weight:500;color:var(--label-2);font-variant-numeric:tabular-nums;margin-top:2px}
 /* sign-up: step dots, live checks, the first screen */
-.stepn{display:flex;gap:6px;justify-content:center;margin:2px 0 6px}
-.stepn i{width:22px;height:4px;border-radius:2px;background:var(--fill);transition:background .3s}
-.stepn i.on{background:var(--tint)}
 .gfoot.ok{color:var(--green-t)}
 .gfoot.ok .ico,.gfoot.bad .ico{vertical-align:-2px;margin-right:4px}
 .linkbtn{border:0;background:none;padding:0;font:inherit;color:var(--tint);font-weight:600;text-decoration:underline;text-underline-offset:2px}
@@ -861,7 +858,6 @@ button.cell:active,label.cell:active,.mrow:active,.menu-pop .mi:active{transitio
 .firstrun p{margin:0;color:var(--label-2);font-size:15px;line-height:1.4;max-width:300px}
 .firstrun .stack{width:100%;max-width:320px;margin-top:10px}
 .firstrun .me{font-size:13px;margin-top:6px}
-.auth > .stepn:first-child{margin-top:22px}
 /* Add Friend: the live result, and your code */
 .addres:empty{display:none}
 .addres .group{margin-top:10px}
@@ -1557,9 +1553,6 @@ svg.fillico{fill:currentColor;stroke:none}
 @keyframes ofadeout{from{opacity:1}to{opacity:0}}
 /* invite only */
 .welcome .invited{display:flex;align-items:center;justify-content:center;gap:8px;margin:22px 0 12px;color:var(--tint);font-weight:600;font-size:15px}
-.welcome .invonly{display:flex;flex-direction:column;gap:4px;margin:26px 0 16px;text-align:center}
-.welcome .invonly b{font-size:17px}
-.welcome .invonly span{color:var(--label-2);font-size:15px;line-height:20px;text-wrap:balance}
 /* the welcome: night, a pigeon crossing, very few words */
 html.night,html.night body{background:#03050c}
 html.night #screen{isolation:isolate;background:radial-gradient(120% 70% at 50% 0%,#0d1636 0%,#060a1a 55%,#03050c 100%)}
@@ -1578,7 +1571,6 @@ html.night .nightsky{display:block}
 .welcome .wcta{width:100%;display:flex;flex-direction:column;align-items:center;opacity:0;animation:wfade 1.4s ease 2.6s forwards}
 .welcome .wcta .stack{margin-top:0;width:100%;max-width:420px;align-items:center}
 .welcome .invited{margin:0 0 18px;font-size:16px;font-weight:500;letter-spacing:.03em;color:#cfe0ff;text-shadow:0 0 18px rgba(120,170,255,.6)}
-.welcome .invonly{margin:0 0 14px;font-size:14px;letter-spacing:.24em;text-transform:uppercase;color:rgba(214,224,255,.55)}
 .welcome .wglow{position:relative;background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);box-shadow:0 0 24px rgba(110,160,255,.35),inset 0 0 18px rgba(130,170,255,.18);
   backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);letter-spacing:.12em;font-weight:500;animation:wpulse 3.2s ease-in-out infinite}
 @keyframes wpulse{50%{box-shadow:0 0 38px rgba(110,160,255,.6),inset 0 0 22px rgba(130,170,255,.28)}}
@@ -1612,7 +1604,7 @@ html.night .nightsky{display:block}
 .auth.night .btn:not(.plain){background:linear-gradient(rgba(120,160,255,.16),rgba(120,160,255,.16)),rgba(6,10,26,.86);color:#fff;border:1px solid rgba(160,190,255,.45);letter-spacing:.08em;font-weight:500;
   box-shadow:0 0 24px rgba(110,160,255,.3),inset 0 0 18px rgba(130,170,255,.16);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .auth.night .btn.plain{color:var(--label-2);letter-spacing:.06em}
-.auth.night .stepn i{background:rgba(160,190,255,.22)}.auth.night .stepn i.on{background:#cfe0ff;box-shadow:0 0 8px rgba(150,190,255,.8)}
+
 .auth.night .hero .appicon{box-shadow:0 0 0 1px rgba(255,255,255,.14) inset,0 0 40px rgba(70,140,255,.45)}
 html.night .view.nav-push,html.night .view.nav-pop{background:transparent;animation:ndawn .7s cubic-bezier(.2,.7,.2,1)}
 @keyframes ndawn{from{opacity:0;transform:translateY(12px);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
@@ -2173,7 +2165,7 @@ details.learn p{margin:6px 0 0}
 .safecard{margin:18px 16px 0;padding:18px;border-radius:26px;background:var(--cell);display:flex;flex-direction:column;align-items:center;gap:14px}
 .safestep{display:flex;align-items:flex-start;gap:12px;align-self:stretch}
 .safestep.out{margin:24px 34px 10px 20px}
-.stepn{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint-t);font-size:14px;font-weight:700}
+.stepn{flex:none;width:26px;height:26px;margin:2px 0 6px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint-t);font-size:14px;font-weight:700}
 .safecard .safeqr{padding:0}
 .safecard .qrbox{width:176px;height:176px;padding:8px;border-radius:18px;background:#fff;box-shadow:0 0 0 1px var(--sep)}
 .safecard .qrbox svg{display:block;width:100%;height:100%}
@@ -2210,3 +2202,11 @@ details.learn p{margin:6px 0 0}
 .me-cell .name{font-size:17px;line-height:22px;font-weight:650}
 .me-cell .csub{font-size:14px}
 .locsheet{height:6px}
+
+/* the way in: "New here?" to the account's own page, and "or with your email" between a passkey and the form */
+.wnew{margin:18px 20px 0;text-align:center;font-size:15px;color:var(--label-2)}
+.wnew a{color:var(--tint);text-decoration:none;font-weight:600}
+.welcome .wnew{margin-top:10px;color:rgba(214,224,255,.7)}
+.auth.night .wnew a,.welcome .wnew a{color:#cfe0ff}
+.orline{display:flex;align-items:center;gap:12px;margin:16px 20px 2px;color:var(--label-2);font-size:14px}
+.orline::before,.orline::after{content:"";flex:1;height:.5px;background:var(--sep)}

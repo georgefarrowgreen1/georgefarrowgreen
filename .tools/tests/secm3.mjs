@@ -3,6 +3,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { makeAccount, signInInFlight, accountUrl } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -16,9 +17,9 @@ const G = await ctx.newPage();
 G.on('pageerror', (e) => errs.push(`${e}`)); G.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
 const cdp = await ctx.newCDPSession(G); await cdp.send('WebAuthn.enable');
 const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } });
-await G.goto(BASE + '/pigeon/'); await G.click('[data-act=to][data-id=signup]');
-await G.fill('#f-name', 'George Farrow-Green'); await G.fill('#f-handle', 'george'); await G.fill('#f-email', 'george@example.com'); await G.fill('#f-password', 'a long test password');
-await G.click('[data-form=signup] .btn'); await G.waitForSelector('#city', { state: 'attached', timeout: 20000 });
+// (the account made on the account's own page, then InFlight signed in to: join.mjs)
+await makeAccount(G, accountUrl(BASE + '/pigeon/'), { name: 'George Farrow-Green', handle: 'george', email: 'george@example.com' });
+await signInInFlight(G, BASE + '/pigeon/', { email: 'george@example.com' }); await G.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await G.selectOption('#city', 'London'); await G.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
 await G.click('[data-act=onbdone]'); await G.waitForSelector('.tabs');
 const sess = await G.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }));

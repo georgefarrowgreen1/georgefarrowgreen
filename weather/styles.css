@@ -1425,3 +1425,11 @@ select option { color: #fff; background: #1c2434; }
   dialog.sheet, .c-tip { --tint: rgba(10, 14, 24, 0.85); }
   .card::before, .ins::before, .tile::before, .icon-btn::before, .place::before { background: rgba(255, 255, 255, 0.6); }
 }
+
+/* signing in, as on every page of the site: "or with your email" between a passkey and the form; a forgotten password and
+   a new account on the account's own page */
+.acct-or { display: flex; align-items: center; gap: 12px; margin: 2px 0; color: var(--text-2, rgba(255, 255, 255, 0.7)); font-size: 13px; }
+.acct-or::before, .acct-or::after { content: ""; flex: 1; height: 0.5px; background: rgba(255, 255, 255, 0.2); }
+.acct-link { justify-self: center; padding: 6px 10px; color: #9cc6ff; font-size: 15px; font-weight: 500; text-decoration: none; }
+.acct-new { margin: 0; text-align: center; font-size: 14px; color: var(--text-2, rgba(255, 255, 255, 0.7)); }
+.acct-new a { color: #9cc6ff; font-weight: 600; text-decoration: none; }

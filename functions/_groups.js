@@ -212,7 +212,7 @@ export function groupsFrom(res, u, t) {
       if (blocked.has(p.user_id)) return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: null, pub: JSON.parse(p.pub), friend: false, addedBy: p.added_by, km: null };
       return { id: p.user_id, handle: p.handle, name: p.name, avatarAt: p.avatar_at || null, pub: JSON.parse(p.pub), friend, addedBy: p.added_by,
         onMoon: !!p.moon, offEarth: p.moon ? (/"b":"mars"/.test(p.moon) ? "mars" : "moon") : null,    // off the Earth, and on what (where on it, only to friends)
-        ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, moon: p.moon ? JSON.parse(p.moon) : null, locAt: p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
+        ...(friend ? { lat: p.lat, lon: p.lon, place: p.place, moon: p.moon ? JSON.parse(p.moon) : null, locAt: u.hide_online || p.hide_online ? null : p.loc_at || null, seenAt: u.hide_online || p.hide_online ? null : p.seen_at || null }
           : { km: u.lat != null && p.lat != null ? Math.max(50, Math.round(haversineKm(coarse(u.lat), coarse(u.lon), coarse(p.lat), coarse(p.lon)) / 50) * 50) : null }) };   // rough distance, no spot
     });
     const last = lastOf.get(g.id), tr = turnOf.get(g.id);
@@ -370,7 +370,7 @@ async function listMessages({ request, env }) {
 async function send({ request, env, waitUntil }) {
   const u = await requireUser(request, env);
   await limit(env, "send:" + u.id, 120, 60 * 60e3);
-  if (Number(request.headers.get("Content-Length")) > MAX_PHOTO + MAX_BODY * 2 + GROUP_MAX * 4096) throw new HttpError(413, "That photo is too large. Try a smaller one.");
+  if (!(Number(request.headers.get("Content-Length")) <= MAX_PHOTO + MAX_BODY * 2 + GROUP_MAX * 4096)) throw new HttpError(413, "That photo is too large. Try a smaller one.");
   let meta, photo = null;
   if ((request.headers.get("Content-Type") || "").startsWith("multipart/form-data")) {
     const f = await request.formData();

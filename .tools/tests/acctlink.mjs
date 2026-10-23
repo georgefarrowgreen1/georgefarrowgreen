@@ -4,6 +4,7 @@
 // late, or anywhere but the account's page. The site's addresses are stood in for by gfg.test, as in acctpage.mjs.
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
+import { joinInFlight, makeAccount } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -24,12 +25,10 @@ async function browser(name, scheme = 'dark') {
 const shot = (p, n) => p.screenshot({ path: `${out}/${n}.png` });
 const text = (p, sel = 'main') => p.evaluate((s) => document.querySelector(s)?.innerText.replace(/\s+/g, ' ').trim() || '', sel);
 
-// ---- InFlight, signed up (a Home Screen app has its own cookies: the browser it opens links in knows nothing of it) ----
+// ---- InFlight, signed in to a new account (a Home Screen app has its own cookies: the browser it opens links in knows
+// nothing of it) ----
 const A = await browser('app');
-await A.p.goto(`${CHAT}/`); await A.p.waitForSelector('.welcome', { timeout: 20000 }); await A.p.click('[data-act=to][data-id=signup]');
-await A.p.fill('#f-name', 'Rowan Hale'); await A.p.fill('#f-handle', 'rowan'); await A.p.fill('#f-email', 'rowan@example.com'); await A.p.fill('#f-password', PW);
-await A.p.click('[data-form=signup] .btn'); await A.p.waitForSelector('#city', { state: 'attached', timeout: 30000 });
-await A.p.selectOption('#city', 'London'); await A.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 }); await A.p.click('[data-act=onbdone]'); await A.p.waitForSelector('.tabs');
+await joinInFlight(A.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const token = (await A.p.evaluate(() => new Promise((res) => { const r = indexedDB.open('inflight'); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onsuccess = () => res(g.result); }; }))).token;
 
 // ---- 1. Account: a card as Weather's (photo, name, "@handle · georgefarrowgreen.com"); Location, Sign Out and Delete
@@ -50,6 +49,12 @@ await A.ctx.clearCookies();
 const [pop] = await Promise.all([A.ctx.waitForEvent('page'), A.p.click('#screen > main.view .me-cell')]);
 await pop.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await pop.waitForTimeout(900);
 ok(pop.url() === `${ACCT}/`, 'the account\'s page, the code already gone from the address', pop.url());
+// (who it's for, said yes to first: a page elsewhere could send a browser here with a code for an account of its own)
+const confirmSays = await text(pop);
+ok(/Rowan Hale/.test(confirmSays) && /@rowan, from InFlight\. Carry on as this account in this browser\?/.test(confirmSays) && /Continue as Rowan/.test(confirmSays) && /Not you\? Sign in/.test(confirmSays)
+  && rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n === 1, 'first, who it\'s for: Continue as Rowan, or Not you', confirmSays);
+await shot(pop, '02a-continue-as');
+await pop.click('main .signin .btn'); await pop.waitForSelector('main .hero', { timeout: 20000 }); await pop.waitForTimeout(900);
 ok(/Rowan Hale/.test(await text(pop)) && !!(await pop.$('.backapp')), 'signed in as you, with the way back to InFlight');
 const dev = rows(`SELECT COUNT(*) AS n FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE u.handle = 'rowan'`)[0].n;
 ok(dev === 2, 'a sign-in of its own (seen in Signed-in devices)', String(dev));
@@ -71,8 +76,11 @@ await shot(A.p, '03-back');
 // (a code from InFlight's own API, as the app asks for one)
 const c1 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
 ok(/^[A-Za-z0-9_-]{20,}$/.test(c1 || ''), 'InFlight asks for a code', String(c1).slice(0, 6) + '…');
-const F1 = await browser('fresh'); await F1.p.goto(`${ACCT}/#handoff=${c1}&open=profile&from=inflight`); await F1.p.waitForSelector('#sheet[open]', { timeout: 20000 }).catch(() => {});
-ok(/Edit profile/.test(await text(F1.p, '#sheet')), 'a fresh browser: signed in by it');
+const F1 = await browser('fresh'); await F1.p.goto(`${ACCT}/#handoff=${c1}&open=profile&from=inflight`);
+await F1.p.waitForSelector('main .signin .btn', { timeout: 20000 });
+ok(rows(`SELECT COUNT(*) AS n FROM pg_handoff`)[0].n === 1, 'looked at, the code is still there: nothing\'s signed in until it\'s said yes to');
+await F1.p.click('main .signin .btn'); await F1.p.waitForSelector('#sheet[open]', { timeout: 20000 }).catch(() => {});
+ok(/Edit profile/.test(await text(F1.p, '#sheet')), 'a fresh browser: signed in by it, once said yes to');
 const F2 = await browser('fresh2'); await F2.p.goto(`${ACCT}/#handoff=${c1}&open=profile&from=inflight`); await F2.p.waitForSelector('main:not([aria-busy])', { timeout: 20000 }); await F2.p.waitForTimeout(900);
 ok(/Sign in/.test(await text(F2.p)) && /run out/.test(await text(F2.p, '#toast')), 'the same code again: refused, and the page asks you to sign in', await text(F2.p, '#toast'));
 const c2 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
@@ -82,6 +90,14 @@ ok(/Sign in/.test(await text(F2.p)), 'a code over a minute old: refused');
 const c3 = await A.p.evaluate(async (t) => (await (await fetch('/api/pigeon/account-link', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })).json()).code, token);
 const other = await A.p.evaluate(async (c) => { const r = await fetch('/api/account/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c }) }); return r.status; }, c3);
 ok(other === 404, 'only the account\'s page takes one (not InFlight\'s address, say)', String(other));
+// a browser signed in to another account: not swapped for this one (asked, or sent straight to the server)
+const M = await browser('mira');
+await makeAccount(M.p, `${ACCT}/`, { name: 'Mira Okafor', handle: 'mira', email: 'mira@example.com', password: PW });
+await M.p.goto('about:blank'); await M.p.goto(`${ACCT}/#handoff=${c3}`); await M.p.waitForSelector('main .hero', { timeout: 20000 }); await M.p.waitForTimeout(700);
+const mSays = await text(M.p, '.hero'), mToast = await text(M.p, '#toast');
+ok(/Mira Okafor/.test(mSays) && /signed in here as @mira\. Sign out first to use @rowan here/.test(mToast), 'opened where another account\'s signed in: still that one, and said why', `${mSays.slice(0, 40)} | ${mToast}`);
+const swap = await M.p.evaluate(async (c) => { const r = await fetch('/api/account/handoff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c }) }); return [r.status, (await (await fetch('/api/account/me')).json()).handle]; }, c3);
+ok(swap[0] === 409 && swap[1] === 'mira', 'and the server won\'t swap it either', swap.join());
 const noAuth = await A.p.evaluate(async () => (await fetch('/api/pigeon/account-link', { method: 'POST' })).status);
 ok(noAuth === 401, 'and only a signed-in InFlight can ask for one', String(noAuth));
 

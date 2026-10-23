@@ -1,6 +1,7 @@
 // InFlight end-to-end checks against the local stack (wrangler pages dev on 8788).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
+import { makeAccount, signInInFlight, accountUrl } from './join.mjs';
 const [,, S] = process.argv;
 const URL = process.env.APPURL || 'http://localhost:8788/pigeon/';
 const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
@@ -26,29 +27,32 @@ const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace
 const ferr = (ph) => ph.p.waitForSelector('.ferr:not([hidden])', { timeout: 20000 }).then(() => txt(ph, '.ferr:not([hidden])'));
 const tab = (ph, id) => ph.p.click(`[data-act=tab][data-id=${id}]`);
 
-// ---- George: sign up, real location, passkey ----
+// ---- George: an account (made on the account's page), signed in to InFlight: real location, passkey ----
 const A = await phone('george', 390, 844, { latitude: 51.5072, longitude: -0.1276 });
 await A.p.waitForSelector('.welcome');
-await A.p.click('[data-act=to][data-id=signup]');
-await A.p.fill('#f-name', 'George Farrow-Green'); await A.p.fill('#f-handle', 'george'); await A.p.fill('#f-email', 'george@example.com'); await A.p.fill('#f-password', 'feathers and ink 42');
-await A.p.click('[data-form=signup] .btn');
+ok(!(await A.p.$('[data-id=signup], [data-form=signup]')) && /Create your account/.test(await A.p.innerText('.welcome')), 'InFlight makes no accounts itself: new ones are made on the account’s page');
+await makeAccount(A.p, accountUrl(URL), { name: 'George Farrow-Green', handle: 'george', email: 'george@example.com', password: 'feathers and ink 42' });
+await signInInFlight(A.p, URL, { email: 'george@example.com', password: 'feathers and ink 42' });
 await A.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await A.p.click('[data-act=locate]');
 ok(await A.p.waitForFunction(() => /London/.test(document.querySelector('.auth')?.innerText || ''), null, { timeout: 10000 }).then(() => true, () => false), 'phone location resolves to London');
 await A.p.waitForSelector('[data-act=pkadd]', { timeout: 10000 });   // (on to the passkey by itself)
 await A.p.click('[data-act=pkadd]'); await A.p.waitForSelector('.tabs', { timeout: 20000 });
-ok(true, 'George signs up and saves a passkey');
+ok(true, 'George signs in to his new account and saves a passkey');
 
-// ---- Mira: validation, then a city ----
+// ---- Mira: the account's page checks what's typed (a short password, a taken handle), then InFlight and a city ----
 const B = await phone('mira', 375, 667);
-await B.p.waitForSelector('.welcome'); await B.p.click('[data-act=to][data-id=signup]');
-await B.p.fill('#f-name', 'Mira Okafor'); await B.p.fill('#f-handle', 'george'); await B.p.fill('#f-email', 'mira@example.com'); await B.p.fill('#f-password', 'shortpw');
-await B.p.click('[data-form=signup] .btn');
-ok(/10/.test(await ferr(B)), 'short password refused', await txt(B, '.ferr'));
-await B.p.fill('#f-password', 'new york pigeons 7'); await B.p.click('[data-form=signup] .btn');
-await B.p.waitForFunction(() => /taken/i.test(document.querySelector('.ferr:not([hidden])')?.textContent || ''), null, { timeout: 20000 });
-ok(true, 'taken handle refused', await txt(B, '.ferr'));
-await B.p.fill('#f-handle', 'mira'); await B.p.click('[data-form=signup] .btn');
+const ACCT = accountUrl(URL), aerr = async () => (await B.p.waitForSelector('main .said.bad', { timeout: 20000 }).then((e) => e.innerText(), () => ''));
+await B.p.goto(`${ACCT}#join`); await B.p.waitForSelector('main input[name=name]', { timeout: 20000 });
+await B.p.fill('main input[name=name]', 'Mira Okafor'); await B.p.fill('main input[name=handle]', 'george'); await B.p.fill('main input[name=email]', 'mira@example.com'); await B.p.fill('main input[name=password]', 'shortpw');
+await B.p.click('main .signin form .btn');
+ok(/10/.test(await aerr()), 'short password refused', await B.p.innerText('main .said'));
+await B.p.fill('main input[name=password]', 'new york pigeons 7'); await B.p.click('main .signin form .btn');
+await B.p.waitForFunction(() => /taken/i.test(document.querySelector('main .said')?.textContent || ''), null, { timeout: 20000 });
+ok(true, 'taken handle refused', await B.p.innerText('main .said'));
+await B.p.fill('main input[name=handle]', 'mira'); await B.p.click('main .signin form .btn');
+await B.p.waitForSelector('main .hero', { timeout: 40000 });
+await signInInFlight(B.p, URL, { email: 'mira@example.com', password: 'new york pigeons 7' });
 await B.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
 await B.p.selectOption('#city', 'New York'); await B.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
 await B.p.waitForTimeout(400); if (await B.p.$('[data-act=pkadd]')) await B.p.click('[data-act=onbdone]');

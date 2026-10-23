@@ -10,6 +10,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { writeFileSync, readFileSync } from 'fs';
+import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.gfg.test:8788', WX = 'http://weather.gfg.test:8788', ACCT = 'http://account.gfg.test:8788', PW = 'a long test password';
 const sql0 = (q) => { writeFileSync(`${S}/acctmore.sql`, q); return execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --file ${S}/acctmore.sql --json`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString(); };
@@ -61,12 +62,9 @@ async function drag(x, sel, dx, dy = 0) {
   await settle(x, 700);
 }
 
-// ---- 1. Signed up in InFlight, without a passkey; what it's done there and in Weather, as if over months ----
+// ---- 1. A new account, in InFlight without a passkey; what it's done there and in Weather, as if over months ----
 const P = await browser('phone');
-await P.p.goto(`${CHAT}/`); await P.p.waitForSelector('.welcome', { timeout: 20000 }); await P.p.click('[data-act=to][data-id=signup]');
-await P.p.fill('#f-name', 'Rowan Hale'); await P.p.fill('#f-handle', 'rowan'); await P.p.fill('#f-email', 'rowan@example.com'); await P.p.fill('#f-password', PW);
-await P.p.click('[data-form=signup] .btn'); await P.p.waitForSelector('#city', { state: 'attached', timeout: 30000 });
-await P.p.selectOption('#city', 'London'); await P.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 }); await P.p.click('[data-act=onbdone]'); await P.p.waitForSelector('.tabs', { timeout: 20000 });
+await joinInFlight(P.p, `${CHAT}/`, { name: 'Rowan Hale', handle: 'rowan', email: 'rowan@example.com', password: PW, city: 'London' });
 const uid = rows("SELECT id FROM pg_users WHERE handle = 'rowan'")[0].id, t = Date.now(), DAY = 86400e3;
 // 4 friends (and one asked, not yet a friend), 2 groups; 3 pigeons now, a group pigeon to 2 people, and 4 whose messages
 // went after a month (9 sent, as its log counts them; and 1 had); 6 places stamped; 4 of Weather's places (one Helvetica

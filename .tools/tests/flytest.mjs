@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
+import { joinInFlight } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788', URL = BASE + '/pigeon/';
 const AUDIT = new Function('return (' + readFileSync(`${S}/wr/audit.mjs`, 'utf8').match(/const AUDIT = (\(\) => \{[\s\S]*?\n\});/)[1] + ')')();
@@ -65,13 +66,8 @@ async function phone(name, keys) {
   return { p, ctx, name };
 }
 const txt = async (ph, s) => (await ph.p.locator(s).first().innerText()).replace(/\s+/g, ' ');
-async function signup(ph, name, handle, email, city) {
-  await ph.p.waitForSelector('.welcome'); await ph.p.click('[data-act=to][data-id=signup]');
-  await ph.p.fill('#f-name', name); await ph.p.fill('#f-handle', handle); await ph.p.fill('#f-email', email); await ph.p.fill('#f-password', 'a long test password');
-  await ph.p.click('[data-form=signup] .btn'); await ph.p.waitForSelector('#city', { state: 'attached', timeout: 20000 });
-  await ph.p.selectOption('#city', city); await ph.p.waitForSelector('[data-act=onbdone]', { timeout: 20000 });
-  await ph.p.waitForSelector('[data-act=pkadd]'); await ph.p.click('[data-act=onbdone]'); await ph.p.waitForSelector('.tabs');
-}
+// (made on the account's own page, then InFlight signed in to: join.mjs)
+const signup = (ph, name, handle, email, city) => joinInFlight(ph.p, URL, { name, handle, email, city });
 // (retry once: the local server can drop an idle keep-alive connection while sql() runs)
 const tick = async (secret = 'tick-test-secret') => { const go = () => fetch(BASE + '/api/pigeon/notify-tick', { method: 'POST', headers: { Authorization: 'Bearer ' + secret } });
   let r; try { r = await go(); } catch (_) { r = await go(); } return { status: r.status, ...(await r.json()) }; };

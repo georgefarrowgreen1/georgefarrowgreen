@@ -157,8 +157,28 @@ lists as Settings has them; a large title that scrolls with the page (glass behi
 Motion, solid with Reduce Transparency.
 
 - **Signed out:** sign in with a passkey (the site's: one made in any app works here) or your email and password
-  (stretched on the device as everywhere on the site; the password never leaves it). New accounts are made in
-  InFlight.
+  (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
+  them. Every app on the site signs in the same way, in the same order and words: a passkey first, then "or with your
+  email", the form, **Forgot password?**, and **New here? Create your account**, both of which open this page.
+- **Accounts are made here, and only here** (`#join`; `functions/_join.js` makeAccount, `POST /api/account/signup`).
+  No app makes one: InFlight's old sign-up answers 410, and its invite links (`#invite=`) are passed on to this page.
+  Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
+  in a data breach, said as it's typed). The slow parts start while it's typed: the InFlight key pair is made here and
+  locked with the password before it's sent, so the server only ever has it locked. By invite, as before: a one-time
+  link from the site's owner (InFlight's admin page makes them, now pointing here), carried in the address's `#` and
+  sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
+  and the confirm email sent; InFlight then opens with **Continue as**, and only needs the password to unlock the key.
+- **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
+  there's an account or not; at most 3 an hour and 10 a day to an address, wherever they're asked from). The link
+  (`#reset=`, InFlight's older ones passed on here) says who it's for (the email half hidden) and asks for a new
+  password. With a passkey that holds a copy of the InFlight key (one made in InFlight, which can), **Keep messages
+  with passkey** unlocks the key here and locks it anew; otherwise, or by choice, **Start fresh**: a new key, friends
+  kept, older messages sealed. Either way every sign-in and passkey ends, a pending email change is called off, and
+  this browser's signed in.
+- **Opened from an app** (a code handed over, as below): who it's for is said first (**Continue as Rowan**, or **Not
+  you? Sign in**) and nothing's signed in until that's said yes to, so a page elsewhere can't send the browser here to
+  sign it in to an account of its own. Where another account's signed in already, it stays (said, and refused by the
+  server too, 409).
 - **Signed in:** your profile (photo, name, handle, email) with **Edit profile** and **Your code**; tap the photo (its
   camera badge) to pick a new one straight away. A **security check-up** (a ring and four rows: email confirmed, a
   passkey saved, the password not in a known data breach, no devices left unused for 3 months, each with a one-tap fix),
@@ -223,7 +243,8 @@ Motion, solid with Reduce Transparency.
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
   nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
   `argon2.js`) and the apps' icons.
-- Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over), with the way back to the app.
+- Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over, and said
+  yes to), with the way back to the app.
 - Tests: `.tools/tests/acctpage.mjs` (67 checks: signed in from InFlight, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
@@ -232,7 +253,12 @@ Motion, solid with Reduce Transparency.
   `.tools/tests/acctmore.mjs` (61 checks: the photo from its badge, your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up folded and opened, "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
-  back by poppler and pypdf, and as JSON), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
+  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (accounts by invite only: none without one,
+  InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
+  sign-in in the same order and words, a new account and a forgotten password only here; a reset link by email,
+  passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
+  refused), `.tools/tests/acctlink.mjs` (the hand-off code: said yes to first, once, for a minute, only here, and never
+  over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
   wrapping, every object where the cross-reference table says) and `unit/activity.test.mjs` (passkey providers).
 
 **Set up (once):** in Cloudflare Pages → the project → Custom domains, add `account.georgefarrowgreen.com`. Nothing
@@ -757,9 +783,11 @@ tuned forecast, activities, notifications sent by the tick and decrypted, the
 address's limits and accessibility, against stand-ins for every outside
 service, with made-up forecasts for the time it runs).
 
-## InFlight (chat.georgefarrowgreen.com) — 1.2.9
+## InFlight (chat.georgefarrowgreen.com) — 1.3.0
 
 **Tests** live in `.tools/tests/` (not part of the site): unit tests run on every push (`.github/workflows/tests.yml`), and the end-to-end suite runs locally with `./run.sh`. See `.tools/tests/README.md`.
+
+**1.3.0** (one way in): InFlight only signs in. New accounts are made on the account's page (account.georgefarrowgreen.com, above), and a forgotten password is reset there too; `POST /api/pigeon/signup` and the reset routes answer 410, and invite and reset links to InFlight's address (`#invite=`, `#reset=`) are passed on to it. The welcome screen has **Sign in** (or **Continue as …** where the browser's signed in on the site) and "New here? Create your account"; Sign in, as on every page of the site, offers a passkey first, then "or with your email", the form, **Forgot password?** and the same link. Someone new to InFlight signs in, picks their place, and is offered a passkey, as before. The admin page's invite links open the account's page.
 
 **1.2.9** (the account's card, as Weather's): Account opens with the same card as Weather's Settings (your photo, your name, "@handle · georgefarrowgreen.com" and a chevron), and it opens your account's page, signed in, as Weather's does. Where you are is its own row (Settings → Location, the sheet that was My Profile); Sign Out and Delete Account are at the foot of Account.
 
@@ -1601,7 +1629,7 @@ can carry the old key across a reset.
 
 **Passwords and resets.** People can change their password in Account → My
 Profile → Privacy & Security, or tap
-"Forgot your password?" to get a one-hour, single-use reset link by email. The
+"Forgot password?" (which opens the account's page) to get a one-hour, single-use reset link by email. The
 password locks the encryption key, so a reset keeps someone's scrolls only if
 they unlock their key with a passkey; otherwise the phone makes a new key,
 older scrolls stay sealed and friends see a key-change warning. Every change

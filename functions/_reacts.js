@@ -28,6 +28,8 @@ async function target(D, u, msgId, group) {
   if (m.sender !== u.id) {
     const d = await D.prepare("SELECT * FROM pg_gdeliv WHERE msg_id = ? AND user_id = ?").bind(msgId, u.id).first();
     if (!d || t < d.deliver_at || lostBy(d, t)) throw new HttpError(409, "You can react once it has landed.");
+    // (not to someone who's blocked you, or you them, even in a group you're both still in)
+    if (await D.prepare("SELECT 1 FROM pg_links WHERE status = 'blocked' AND ((a = ?1 AND b = ?2) OR (a = ?2 AND b = ?1))").bind(u.id, m.sender).first()) throw new HttpError(403, "You can’t react to this.");
   }
   return { other: m.sender === u.id ? null : m.sender, msg: m, group: m.group_id };
 }

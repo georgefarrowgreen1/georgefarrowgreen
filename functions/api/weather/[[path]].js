@@ -35,10 +35,11 @@ function where(request) {
   const region = [cf.city ? cf.region : null, cf.country].filter(Boolean).join(", ");
   return json({ name, region, lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100, tz: cf.timezone || null });
 }
-// a page of this site asking (another site can't sign phones up)
+// a page of this site asking (another site can't sign phones up); and where the browser carries the site's sign-in, it
+// must say where it's from (as every browser does for these)
 function sameOrigin(request) {
   const o = request.headers.get("Origin");
-  if (o && o !== new URL(request.url).origin) throw new HttpError(403, "Not allowed.");
+  if ((o && o !== new URL(request.url).origin) || (!o && /(^|;\s*)(__Secure-)?account=/.test(request.headers.get("Cookie") || ""))) throw new HttpError(403, "Not allowed.");
 }
 // a small JSON object, or nothing
 async function body(request) {
