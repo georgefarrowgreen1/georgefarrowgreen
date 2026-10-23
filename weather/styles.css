@@ -1401,6 +1401,8 @@ body.no-scroll { overflow: hidden; }
 .set-page .note { margin: 14px 16px 0; font-size: 13.5px; line-height: 1.4; color: var(--text-2); }
 .set-page .note:empty { display: none; }
 .set-page .notify-acct { margin: 10px 16px 0; }
+/* (its note a footnote like the rest: in line with them, not indented twice) */
+.set-page .notify-acct .note { margin: 0; font-size: 13px; color: var(--text-3); }
 .set-page fieldset.opt { margin-bottom: 20px; }
 .set-page fieldset.opt legend { margin-bottom: 7px; padding: 0 16px; font-size: 13px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
 /* the list: each folder a row, its own coloured icon, what's in it said beside it, and a chevron */
