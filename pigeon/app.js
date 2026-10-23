@@ -3347,9 +3347,10 @@ const streakBadge = (f) => { const s = streakOf(f); return s ? `<span class="str
 function seasonCard() {
   const s = seasonNow(); if (!s || !S.me) return "";
   try { if (localStorage.getItem("inflight-season") === s.key) return ""; } catch (_) { return ""; }
+  // one slim row: what it is, until when, Try It (the looks, with how to keep it), and an × to put it away
   return `<div class="seasoncard" role="note"><span class="semoji" aria-hidden="true">${s.emoji}</span><span class="stext"><b>${esc(s.words)} pigeons are here</b>
-    <span>Give yours the ${esc(s.look)} look until ${esc(fmtDate(s.to - 1))}. Send 10 pigeons by then and it’s yours to keep.</span>
-    <span class="sbtns"><button type="button" class="btn small" data-act="seasontry">Try It</button><button type="button" class="btn small plain" data-act="seasonhide">Not Now</button></span></span></div>`;
+    <span>The ${esc(s.look)} look, until ${esc(fmtDate(s.to - 1).replace(/ \d{4}$/, ""))}</span></span>
+    <button type="button" class="btn small" data-act="seasontry">Try It</button><button type="button" class="sx" data-act="seasonhide" aria-label="Not now">${I.x}</button></div>`;
 }
 
 /* ---------- Messages ---------- */
@@ -3413,16 +3414,23 @@ function newsHtml() {
 }
 
 /* ---------- Friends ---------- */
+// Under a friend's name: "06:20 in Tokyo · 5,842 mi" (the time only where it isn't yours; it keeps time)
+function friendWhere(f) {
+  const place = esc((f.place || "").replace(/, (the Moon|Mars)$/, "")), far = milesAway(f);
+  let at = "";
+  if (!f.moon && f.tz && f.tz !== MY_TZ) try { at = `<span data-clock="${esc(f.tz)}">${esc(clockIn(now(), f.tz))}</span>${place ? " in " : " there"}`; } catch (_) {}
+  return [at + place, far].filter(Boolean).join(" · ") || `@${esc(f.handle)}`;
+}
 function vFriends() {
   if (S.me) loadNews();
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
   const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
-      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}${milesAway(f) ? ` · ${milesAway(f)}` : ""}</span></span>${chevSm}</button>`).join("");
+      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">${friendWhere(f)}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
-    ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? `${inc} waiting for you` : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
+    ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? esc(S.incoming[0].name) + (inc === 2 ? ` and ${esc(S.incoming[1].name)}` : inc > 2 ? ` and ${inc - 1} others` : " wants to be friends") : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
     ${newsHtml()}
     ${fr.length ? `<div class="ghead">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-list="f">${rows}</div>
       <div class="gfoot">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
@@ -6394,7 +6402,7 @@ function airFill(el, r) {
   // yours: when it lands (and where, in a group); theirs: sealed till then
   // (out in space: where it is instead, "142,000 mi from Earth", "over France · lap 3")
   el._space = r.moon || null; el.classList.toggle("space", !!r.moon);
-  sub.innerHTML = r.moon ? `${r.out ? "" : I.lock}${esc(spaceSub(r.moon, +el.dataset.from, +el.dataset.at))}` : wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atShort(r.deliverAt))}`;
+  sub.innerHTML = r.moon ? `${r.out ? "" : I.lock}${esc(spaceSub(r.moon, +el.dataset.from, +el.dataset.at))}` : wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atTime(r.deliverAt))}`;
   return el;
 }
 // One card per chat: a group's pigeons, coming and going, share one card.
@@ -6545,7 +6553,7 @@ function airTick() {
   const next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
   airEl.classList.toggle("has", cards.length > 0);
   $(".airn", airEl).textContent = n ? ` · ${n}` : "";
-  $(".airnext", airEl).textContent = next ? `Next lands in ${airTime(next - t)}` : cards.length ? "Landed" : "";
+  $(".airnext", airEl).textContent = next ? (cards.length > 1 ? `Next lands in ${airTime(next - t)}` : "") : cards.length ? "Landed" : "";
 }
 
 // The Skies: every pigeon in the air to or from you, from every chat.
