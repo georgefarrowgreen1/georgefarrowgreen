@@ -245,19 +245,19 @@ Motion, solid with Reduce Transparency.
   `argon2.js`) and the apps' icons.
 - Weather's account card and InFlight's Edit Profile and Your Account open it, signed in (a code handed over, and said
   yes to), with the way back to the app.
-- Tests: `.tools/tests/acctpage.mjs` (67 checks: signed in from InFlight, the check-up, the email confirmed and changed
+- Tests: `.tools/tests/acctpage.mjs` (69 checks: an account made here, then signed in to InFlight, the check-up, the email confirmed and changed
   by its links, the password checked, the profile and photo, a new password that InFlight then opens with on a new
   phone, passkeys renamed, added after showing it's you and taken away, a device unused for months signed out and the
   other page noticing, recent activity, appearance and units, the data file, signing in both ways, light mode and a wide
   screen, deleting in 7 days and keeping it both ways, then gone; the API only here and only from here),
-  `.tools/tests/acctmore.mjs` (61 checks: the photo from its badge, your code and its link, each app's sheet and its
+  `.tools/tests/acctmore.mjs` (62 checks: the photo from its badge, your code and its link, each app's sheet and its
   counts, the passkey offer only where one can be made, the check-up folded and opened, "Not you?" only on another
   device's password sign-in, rows slid to sign out and remove, two columns on a wide screen; your data as a PDF, read
-  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (accounts by invite only: none without one,
+  back by poppler and pypdf, and as JSON), `.tools/tests/acctjoin.mjs` (30 checks: accounts by invite only: none without one,
   InFlight's invite link passed on, the account made, the invite used up and refused again; InFlight's and Weather's
   sign-in in the same order and words, a new account and a forgotten password only here; a reset link by email,
   passed on from InFlight's older address, keeping the key with a passkey, then starting fresh, the old password
-  refused), `.tools/tests/acctlink.mjs` (the hand-off code: said yes to first, once, for a minute, only here, and never
+  refused), `.tools/tests/acctlink.mjs` (23 checks: the hand-off code: said yes to first, once, for a minute, only here, and never
   over another account's sign-in), `unit/pdf.test.mjs` (the PDF writer: Windows Latin 1, Helvetica's widths,
   wrapping, every object where the cross-reference table says) and `unit/activity.test.mjs` (passkey providers).
 

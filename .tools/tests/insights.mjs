@@ -22,9 +22,12 @@ const msg = (id, from, to, sent, land, more = {}) => {
 };
 msg('m1', as.me.id, bs.me.id, now - 12 * DAY, now - 12 * DAY + 3600e3, { pigeon: 'swift' });
 msg('m2', as.me.id, bs.me.id, now - 5 * DAY, now - 5 * DAY + 3600e3, { pigeon: 'standard', read_at: now - 5 * DAY + 7200e3 });
-msg('m3', as.me.id, bs.me.id, now - 3 * 3600e3, now - 20 * 60e3, { pigeon: 'standard', notified_at: null });
-msg('m4', bs.me.id, as.me.id, now - 3600e3, now + 5 * 3600e3, { pigeon: 'standard', notified_at: null });
-one(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, pigeon, sent_at) VALUES ('g1', '${g.group.id}', '${as.me.id}', 'x', 'x', 'standard', ${now - 2 * 3600e3})`);
+// (today's sent no earlier than London's midnight, so they're today's whatever the hour the test runs at)
+const lp = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' }).formatToParts(now).map((x) => [x.type, Number(x.value)]));
+const midnight = now - ((lp.hour * 60 + lp.minute) * 60 + lp.second) * 1000 - (now % 1000), todayAt = (ago, k) => Math.max(midnight + k * 60e3, now - ago);
+msg('m3', as.me.id, bs.me.id, todayAt(3 * 3600e3, 1), now - 20 * 60e3, { pigeon: 'standard', notified_at: null });
+msg('m4', bs.me.id, as.me.id, todayAt(3600e3, 3), now + 5 * 3600e3, { pigeon: 'standard', notified_at: null });
+one(`INSERT INTO pg_gmsgs (id, group_id, sender, body, sender_key, pigeon, sent_at) VALUES ('g1', '${g.group.id}', '${as.me.id}', 'x', 'x', 'standard', ${todayAt(2 * 3600e3, 2)})`);
 for (const u of [bs.me.id, cs.me.id]) one(`INSERT INTO pg_gdeliv (msg_id, user_id, wrap, km, deliver_at, notified_at) VALUES ('g1', '${u}', 'x', 400, ${now - 30 * 60e3}, ${now - 29 * 60e3})`);
 // accounts of different ages: Ben joined 16 days ago, used it in his second week, and is here today; Cal joined
 // 12 days ago and left that day (the London days each used it, as the app notes them)
