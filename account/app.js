@@ -294,13 +294,7 @@ function signedIn(r) {
   const top = [
     backButton(r),
     r(h("h1.large", { text: "Account" })),
-    r(h("section.hero.glass", { "aria-label": "Your profile" }, avatarButton(m),
-      h("h2", { text: m.name }),
-      h("div.who", { text: `@${m.handle}` }),
-      m.email && h("div.mail", {}, icon("mail", 15), h("span", { text: m.email })),
-      h("div.hero-acts", {},
-        h("button.pill", { type: "button", onclick: () => openSheet(profileView) }, "Edit profile"),
-        h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code")))),
+    r(posterCard(m)),
     (!m.emailOk || m.emailNew) && r(banner(m)),
     pw.leaked && r(leakBanner()),
     // (the site's admin, for the linked account only, under your card; #admin, from the old dashboard or its email,
@@ -329,17 +323,108 @@ function signedIn(r) {
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
-// Your photo, tapped: a new one, straight from the picker (the camera badge says so)
-function avatarButton(m) {
-  const file = h("input.vh", { type: "file", accept: "image/*", tabindex: "-1", "aria-hidden": "true", onchange: () => file.files[0] && heroPhoto(file.files[0], btn) });
-  const btn = h("button.avatar-btn", { type: "button", "aria-label": m.photoAt ? "Change your photo" : "Add a photo", onclick: () => file.click() },
-    avatar(m), h("span.cam", { "aria-hidden": "true" }, icon("camera", 15, 2.2)));
-  return [btn, file];
+// Your card: your photo as its poster (the point of it you chose in view), carried on, blurred, behind the buttons under
+// it, your name and handle on it (your email's in Edit profile, and Sign-in and security); no photo, your colours and initial, and Add a photo. The camera opens Your photo.
+const posterSrc = (m) => (m.poster?.at ? `${API}/me/poster?v=${m.poster.at}` : `${API}/me/photo?v=${m.photoAt}`);
+const focusOf = (m) => (m.poster?.focus || "50 50").split(" ").map(Number);
+const placed = (img, f) => { img.style.objectPosition = `${f[0]}% ${f[1]}%`; return img; };
+function posterCard(m) {
+  const photo = !!m.photoAt, file = photoInput();
+  return h("section.hero.poster-card.glass" + (photo ? "" : ".none"), { "aria-label": "Your profile" },
+    h("div.pc-blur", { "aria-hidden": "true" }, photo && h("img", { src: `${API}/me/photo?v=${m.photoAt}`, alt: "", decoding: "async" })),
+    h("div.pc-top", {},
+      h("div.pc-photo", { "aria-hidden": "true" }, photo ? placed(h("img", { src: posterSrc(m), alt: "", decoding: "async" }), focusOf(m))
+        : h("span.pc-initial", { text: [...String(m.name || m.handle || "?").trim()][0]?.toUpperCase() || "?" })),
+      h("div.pc-shade", { "aria-hidden": "true" }),
+      photo ? h("button.pc-cam", { type: "button", "aria-label": "Your photo", onclick: () => { forgetPhoto(); openSheet(photoView); } }, icon("camera", 19, 2))
+        : h("button.pc-add", { type: "button", onclick: () => file.click() }, icon("camera", 17, 2.2), "Add a photo"),
+      h("div.pc-id", {}, h("h2" + ([...m.name].length > 14 ? ".long" : ""), { text: m.name }), h("div.who", { text: `@${m.handle}` }))),
+    h("div.pc-body", {},
+      h("div.hero-acts", {},
+        h("button.pill.primary", { type: "button", onclick: () => openSheet(profileView) }, icon("pencil", 17, 2.2), "Edit profile"),
+        h("button.pill", { type: "button", onclick: () => openSheet(codeView) }, icon("qr", 17, 2), "Your code"))),
+    file);
 }
-async function heroPhoto(f, btn) {
-  btn.querySelector(".avatar")?.append(h("span.spin.on-photo"));
-  try { const jpeg = await asPhoto(f); S.me = await call("me/photo", { method: "PUT", body: jpeg, type: "image/jpeg" }); render(); toast("Photo updated."); }
-  catch (e) { btn.querySelector(".spin")?.remove(); toast(e.message, true); }
+// (a photo picked: into Your photo, to choose what shows before it's saved)
+function photoInput() {
+  const file = h("input.vh", { type: "file", accept: "image/*", tabindex: "-1", "aria-hidden": "true", onchange: () => {
+    const f = file.files[0]; file.value = "";
+    if (!f) return;
+    if (PV.url) URL.revokeObjectURL(PV.url);
+    Object.assign(PV, { file: f, url: URL.createObjectURL(f), focus: [50, 50] });
+    if (sheetEl.open && Sheet.stack.at(-1) === photoView) redraw(); else openSheet(photoView);
+  } });
+  return file;
+}
+
+// Your photo: what shows of it, chosen by dragging it (the card's poster, and the circle every app shows), another one,
+// or none. A new one is saved twice: the circle, 512 pixels square, and the poster, at most 1600 across.
+const PV = { file: null, url: null, focus: [50, 50], shown: null };
+function photoView() {
+  const m = S.me, fresh = !!PV.url, src = fresh ? PV.url : posterSrc(m), said = h("p.said", { role: "alert" }), file = photoInput();
+  if (!fresh && PV.shown !== m.photoAt) { PV.focus = focusOf(m); PV.shown = m.photoAt; }
+  const big = h("img", { src, alt: "", draggable: "false" }), small = h("img", { src, alt: "" });
+  const place = () => { placed(big, PV.focus); placed(small, PV.focus); };
+  place();
+  const frame = h("div.pv-frame", { tabindex: "0", role: "group", "aria-label": "Your photo: drag it, or use the arrow keys, to choose what shows" },
+    big, h("span.pv-tip", { "aria-hidden": "true" }, "Drag to choose what shows"));
+  dragFocus(frame, big, place);
+  const save = h("button.link.done", { type: "button", onclick: () => savePhoto(save, said) }, "Save");
+  return { title: "Your photo",
+    left: h("button.link", { type: "button", onclick: () => { forgetPhoto(); closeSheet(); } }, "Cancel"), right: save,
+    body: [frame,
+      h("div.pv-also", {}, h("span.pv-circle", { "aria-hidden": "true" }, small),
+        h("p", { text: "Your card shows the photo across; every app shows the circle." })),
+      h("div.group", {},
+        h("button.row.action", { type: "button", onclick: () => file.click() }, fresh || m.photoAt ? "Choose another photo" : "Choose a photo"),
+        !fresh && m.photoAt && h("button.row.action.danger", { type: "button", onclick: async (e) => {
+          try { S.me = await busy(e.currentTarget, "Removing…", () => call("me/photo", { method: "DELETE" })); forgetPhoto(); closeSheet(); render(); toast("Photo removed."); }
+          catch (err) { say(said, err.message); }
+        } }, "Remove photo")),
+      file, said] };
+}
+function forgetPhoto() { if (PV.url) URL.revokeObjectURL(PV.url); Object.assign(PV, { file: null, url: null, shown: null }); }
+// dragging the photo moves what shows (as the image moves under a finger); the arrow keys, a little at a time
+function dragFocus(frame, img, moved) {
+  let at = null;
+  const clamp = (v) => Math.round(Math.min(100, Math.max(0, v)) * 10) / 10;
+  frame.addEventListener("pointerdown", (e) => {
+    const r = frame.getBoundingClientRect(), w = img.naturalWidth, ht = img.naturalHeight;
+    if (!w || !ht) return;
+    const s = Math.max(r.width / w, r.height / ht);
+    at = { x: e.clientX, y: e.clientY, f: [...PV.focus], ox: w * s - r.width, oy: ht * s - r.height };
+    frame.setPointerCapture(e.pointerId); frame.classList.add("dragging");
+  });
+  frame.addEventListener("pointermove", (e) => {
+    if (!at) return;
+    PV.focus = [at.ox > 1 ? clamp(at.f[0] - ((e.clientX - at.x) / at.ox) * 100) : at.f[0], at.oy > 1 ? clamp(at.f[1] - ((e.clientY - at.y) / at.oy) * 100) : at.f[1]];
+    moved();
+  });
+  const up = () => { at = null; frame.classList.remove("dragging"); };
+  frame.addEventListener("pointerup", up); frame.addEventListener("pointercancel", up);
+  frame.addEventListener("keydown", (e) => {
+    const d = { ArrowLeft: [-3, 0], ArrowRight: [3, 0], ArrowUp: [0, -3], ArrowDown: [0, 3] }[e.key];
+    if (!d) return;
+    e.preventDefault(); PV.focus = [clamp(PV.focus[0] + d[0]), clamp(PV.focus[1] + d[1])]; moved();
+  });
+}
+async function savePhoto(btn, said) {
+  const m = S.me, f = PV.focus;
+  say(said, "");
+  try {
+    await busy(btn, "Saving…", async () => {
+      // a new photo, or the poster cut again so the circle follows what shows; with only the small one (sent before
+      // posters were), just the point that shows
+      const source = PV.file || (m.poster?.at ? await fetch(posterSrc(m), { credentials: "same-origin" }).then((r) => (r.ok ? r.blob() : null)) : null);
+      if (!source) { S.me = await call("me/poster", { method: "PATCH", body: { focus: { x: f[0], y: f[1] } } }); return; }
+      const img = await readImage(source);
+      const [circle, poster] = await Promise.all([asAvatar(img, f), asPoster(img)]);
+      S.me = await call("me/photo", { method: "PUT", body: circle, type: "image/jpeg" });
+      S.me = await call(`me/poster?focus=${f[0]},${f[1]}`, { method: "PUT", body: poster, type: "image/jpeg" });
+    });
+    const was = !!PV.file;
+    forgetPhoto(); closeSheet(); render(); toast(was ? "Photo updated." : "Saved.");
+  } catch (e) { say(said, e.message); }
 }
 // Your code: a QR code of the link that adds you in InFlight, to show a friend (or share the link itself)
 function codeView() {
@@ -971,9 +1056,7 @@ function profileView() {
   const m = S.me, said = h("p.said", { role: "alert" });
   const name = h("input", { type: "text", value: m.name, autocomplete: "name", maxlength: "50", enterkeyhint: "done" });
   const handle = h("input", { type: "text", value: m.handle, autocomplete: "off", autocapitalize: "none", spellcheck: "false", maxlength: "20", enterkeyhint: "done" });
-  const file = h("input.vh", { type: "file", accept: "image/*", tabindex: "-1", onchange: () => file.files[0] && changePhoto(file.files[0]) });
   const done = h("button.link.done", { type: "button", onclick: save }, "Done");
-  const pic = avatar(m, true);
   async function save() {
     const changes = {};
     if (name.value.trim() !== m.name) changes.name = name.value.trim();
@@ -985,46 +1068,45 @@ function profileView() {
       if (justEditing()) setTimeout(backToApp, 1100);         // (back to InFlight, where it shows already)
     } catch (e) { say(said, e.message, e.field === "handle" ? handle : name); }
   }
-  async function changePhoto(f) {
-    pic.append(h("span.spin.on-photo"));
-    try {
-      const jpeg = await asPhoto(f);
-      S.me = await call("me/photo", { method: "PUT", body: jpeg, type: "image/jpeg" });
-      redraw(); render(); toast("Photo updated.");
-    } catch (e) { pic.querySelector(".spin")?.remove(); say(said, e.message); }
-  }
   for (const i of [name, handle]) i.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); save(); } });
   return { title: "Edit profile",
     left: h("button.link", { type: "button", onclick: () => (justEditing() ? backToApp() : closeSheet()) }, "Cancel"), right: done,
     body: [
-      h("div.photo-row", {}, pic, h("div.photo-acts", {},
-        h("button.pill", { type: "button", onclick: () => file.click() }, icon("camera", 17), m.photoAt ? "Change photo" : "Add a photo"),
-        m.photoAt && h("button.pill.quiet", { type: "button", onclick: async (e) => {
-          try { S.me = await busy(e.currentTarget, "Removing…", () => call("me/photo", { method: "DELETE" })); redraw(); render(); toast("Photo removed."); }
-          catch (err) { say(said, err.message); }
-        } }, "Remove")), file),
       h("div.form", {}, field("Name", name), field("Handle", h("div.at", {}, "@", handle)),
         field("Email", h("input", { type: "email", value: m.email || "", readonly: true, tabindex: "-1" }))),
-      h("p.hint", { text: "Your photo, name and handle are the same in every app on the site. Your handle can change once a day." }),
       said] };
 }
-// A picture as a profile photo: the middle square of it, at most 512 pixels across, as a JPEG (which leaves out anything
-// else in the file, such as where it was taken)
-async function asPhoto(file) {
-  let img;
-  try { img = await createImageBitmap(file); }
+// A picture, read (a file, or the poster fetched again)
+async function readImage(file) {
+  try { return await createImageBitmap(file); }
   catch (_) {
     const url = URL.createObjectURL(file);
-    try { img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; }); }
+    try { return await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; }); }
     catch (_) { throw new Error("That picture couldn’t be read. Try another one."); }
     finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
   }
+}
+// as a JPEG (which leaves out anything else in the file, such as where it was taken)
+async function jpeg(c, q) {
+  const b = await new Promise((ok) => c.toBlob(ok, "image/jpeg", q));
+  if (!b) throw new Error("That picture couldn’t be read. Try another one.");
+  return b;
+}
+// the profile photo: the square of it around the point that shows (f, in percent, as the poster places it), at most
+// 512 pixels across
+async function asAvatar(img, f) {
   const w = img.width, ht = img.height, side = Math.min(w, ht), size = Math.min(512, side), c = document.createElement("canvas");
   c.width = c.height = size;
-  c.getContext("2d").drawImage(img, (w - side) / 2, (ht - side) / 2, side, side, 0, 0, size, size);
-  const jpg = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.85));
-  if (!jpg) throw new Error("That picture couldn’t be read. Try another one.");
-  return jpg;
+  c.getContext("2d").drawImage(img, ((w - side) * f[0]) / 100, ((ht - side) * f[1]) / 100, side, side, 0, 0, size, size);
+  return jpeg(c, 0.85);
+}
+// the card's poster: the whole picture, at most 1600 pixels on its longer side (and under 2 MB)
+async function asPoster(img) {
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  const b = await jpeg(c, 0.84);
+  return b.size < 1.9e6 ? b : jpeg(c, 0.7);
 }
 
 // ---- your password ----
@@ -1845,6 +1927,13 @@ function scrolled() {
     ticking = false;
     const t = Math.min(1, Math.max(0, scrollY / 24));
     document.documentElement.style.setProperty("--bar", t.toFixed(3));
+    // (your card's photo: a little slower than the page as it scrolls away, and stretched as it's pulled down at the
+    // top; held still for Reduce Motion)
+    const pc = $("main .poster-card");
+    if (pc && !still.matches) {
+      pc.style.setProperty("--drift", Math.min(36, Math.max(0, scrollY) * 0.22).toFixed(1));
+      pc.style.setProperty("--pull", (1 + Math.max(0, -scrollY) / 280).toFixed(3));
+    }
   });
 }
 addEventListener("scroll", scrolled, { passive: true });

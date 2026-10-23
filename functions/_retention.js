@@ -108,6 +108,7 @@ const OWNERS = [
   ["pigeon/", (D, ids) => D.prepare(`SELECT id FROM pg_msgs WHERE photo = 1 AND id IN (${ids.map(() => "?").join(",")})`).bind(...ids)],
   ["pigeon-g/", (D, ids) => D.prepare(`SELECT id FROM pg_gmsgs WHERE photo = 1 AND id IN (${ids.map(() => "?").join(",")})`).bind(...ids)],
   ["pigeon-avatars/", (D, ids) => D.prepare(`SELECT id FROM pg_users WHERE avatar_at IS NOT NULL AND id IN (${ids.map(() => "?").join(",")})`).bind(...ids)],
+  ["pigeon-posters/", (D, ids) => D.prepare(`SELECT id FROM pg_users WHERE poster_at IS NOT NULL AND id IN (${ids.map(() => "?").join(",")})`).bind(...ids)],
 ];
 export async function sweepFiles(env, D, t, page = 500) {
   if (!env.BIO_R2) return 0;

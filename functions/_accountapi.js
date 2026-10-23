@@ -7,7 +7,7 @@
 import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, limit, clientIp, hex, sha256 } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";
-import { setName, setHandle, putPhoto, dropPhoto, photoOf } from "./_profile.js";
+import { setName, setHandle, putPhoto, dropPhoto, photoOf, putPoster, setFocus, posterKey, cleanFocus } from "./_profile.js";
 
 // (answers about the account: never kept by anything in between, and for this page's own address alone)
 export const json = (o, status = 200) => { const r = pjson(o, status); r.headers.set("Cross-Origin-Resource-Policy", "same-origin"); return r; };
@@ -67,13 +67,29 @@ export function accountRoutes(view, { onSignOut = null, deleting = false } = {})
     "PUT me/photo": async ({ request, env }) => {
       sameOrigin(request);
       const u = await signedIn(request, env), t = await putPhoto(env, u, request);
-      return json(await view(env, { ...u, avatar_at: t }));
+      return json(await view(env, { ...u, avatar_at: t, poster_at: null, poster_focus: null }));
+    },
+    // (the poster: the same photo larger, for the account's page, and the point of it that stays in view)
+    "GET me/poster": async ({ request, env }) => {
+      const u = await signedIn(request, env), res = await photoOf(env, u.id, { "Cross-Origin-Resource-Policy": "same-origin" }, posterKey);
+      return res || json({ error: "No photo." }, 404);
+    },
+    "PUT me/poster": async ({ request, env }) => {
+      sameOrigin(request);
+      const u = await signedIn(request, env), focus = new URL(request.url).searchParams.get("focus");
+      const t = await putPoster(env, u, request, focus);
+      return json(await view(env, { ...u, poster_at: t, poster_focus: cleanFocus(focus) }));
+    },
+    "PATCH me/poster": async ({ request, env }) => {
+      sameOrigin(request);
+      const u = await signedIn(request, env), f = await setFocus(env, u, (await body(request, 1024)).focus);
+      return json(await view(env, { ...u, poster_focus: f }));
     },
     "DELETE me/photo": async ({ request, env }) => {
       sameOrigin(request);
       const u = await signedIn(request, env);
       await dropPhoto(env, u);
-      return json(await view(env, { ...u, avatar_at: null }));
+      return json(await view(env, { ...u, avatar_at: null, poster_at: null, poster_focus: null }));
     },
     "PATCH me/profile": async ({ request, env }) => {
       sameOrigin(request);

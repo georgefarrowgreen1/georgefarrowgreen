@@ -98,6 +98,8 @@ async function view(env, u) {
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
     signedIn: true, id: u.id, name: u.name, handle: u.handle, email: u.email, emailOk: !!u.email_ok, photoAt: u.avatar_at || null, since: u.created_at,
+    // (the card's poster: its own larger copy, if one's been sent, and the point of it that stays in view)
+    poster: u.avatar_at ? { at: u.poster_at || null, focus: u.poster_focus || "50 50" } : null,
     emailNew: u.email_new && t - (u.email_new_at || 0) < CHANGE_TTL ? u.email_new : null,
     fresh: t - (u.authAt || 0) < FRESH, salt: u.salt,
     // (setAt: when it was last made, changed or reset; null for one set before that was kept, and not since)

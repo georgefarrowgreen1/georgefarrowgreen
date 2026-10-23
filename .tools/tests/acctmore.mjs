@@ -91,21 +91,34 @@ INSERT INTO wx_accts (user_id, data, ver, updated) VALUES ('${uid}', '${JSON.str
 await account(P);
 ok(/Rowan Hale/.test(await text(P)), 'the account page, signed in from InFlight');
 
-// ---- 2. Your photo: tapped, and a new one straight from the picker ----
-ok(await P.p.$('main .hero button.avatar-btn .cam') && /Add a photo/.test(await P.p.$eval('main .avatar-btn', (e) => e.getAttribute('aria-label'))), 'the photo: a button, with a camera badge');
+// ---- 2. Your photo: none yet (your colours and initial, and Add a photo); one picked, what shows of it chosen, saved ----
+ok(await P.p.$('main .poster-card.none .pc-initial') && await P.p.$('main .poster-card .pc-add'), 'no photo yet: the card in your colours, your initial, and Add a photo');
 const jpeg = Buffer.from((await P.p.evaluate(() => {
   const c = document.createElement('canvas'); c.width = c.height = 300; const g = c.getContext('2d');
   g.fillStyle = '#d9637a'; g.fillRect(0, 0, 300, 300); g.fillStyle = '#ffe2a8'; g.beginPath(); g.arc(150, 170, 60, 0, 7); g.fill();
   return c.toDataURL('image/jpeg', 0.9);
 })).split(',')[1], 'base64');
-const [chooser] = await Promise.all([P.p.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), P.p.click('main .avatar-btn')]);
-ok(!!chooser, 'tapping it opens the picker, with no sheet in the way', String(await P.p.$('#sheet[open]')));
+const [chooser] = await Promise.all([P.p.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), P.p.click('main .pc-add')]);
+ok(!!chooser, 'Add a photo opens the picker');
 if (chooser) await chooser.setFiles({ name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
-await P.p.waitForSelector('main .hero .avatar img', { timeout: 15000 }).catch(() => {});
-ok(!!(await P.p.$('main .hero .avatar img')) && !!rows(`SELECT avatar_at FROM pg_users WHERE id = '${uid}'`)[0].avatar_at && /Photo updated/.test(await text(P, '#toast')),
-  'the new photo, saved and shown', await text(P, '#toast'));
-ok(/Change your photo/.test(await P.p.$eval('main .avatar-btn', (e) => e.getAttribute('aria-label'))), 'and the button now says it changes it');
+await P.p.waitForFunction(() => document.querySelector('#sheet[open] .pv-frame img')?.naturalWidth > 0, null, { timeout: 15000 }).catch(() => {});
+ok(await text(P, '#sheet h2') === 'Your photo' && !rows(`SELECT avatar_at FROM pg_users WHERE id = '${uid}'`)[0].avatar_at, 'then Your photo, to choose what shows: nothing saved yet');
+const fb = await P.p.locator('#sheet .pv-frame').boundingBox();
+await P.p.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2); await P.p.mouse.down();
+await P.p.mouse.move(fb.x + fb.width / 2, fb.y + fb.height / 2 + 40, { steps: 6 }); await P.p.mouse.up();
+const pos = await P.p.$eval('#sheet .pv-frame img', (i) => i.style.objectPosition);
+ok(/^50% ([0-9.]+)%$/.test(pos) && Number(pos.split(' ')[1].replace('%', '')) < 50, 'dragged down: more of the top shows', pos);
+await shot(P, '01-photo-choose');
+await P.p.click('#sheet .link.done');
+await P.p.waitForFunction(() => /Photo updated/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+const saved = rows(`SELECT avatar_at, poster_at, poster_focus FROM pg_users WHERE id = '${uid}'`)[0];
+ok(saved.avatar_at && saved.poster_at && saved.poster_focus === `50 ${pos.split(' ')[1].replace('%', '')}`, 'saved: the circle, the poster, and what shows of it', JSON.stringify(saved));
+await P.p.waitForSelector('main .poster-card:not(.none) .pc-photo img', { timeout: 15000 }).catch(() => {});
+ok(await P.p.$eval('main .pc-photo img', (i) => i.style.objectPosition).catch(() => '') === pos && await P.p.$('main .pc-cam'), 'the card: your photo, as you placed it, and a camera for it', pos);
 await shot(P, '01-photo');
+await P.p.click('main .pc-cam'); await P.p.waitForSelector('#sheet[open] .pv-frame');
+ok(/Choose another photo/.test(await text(P, '#sheet')) && /Remove photo/.test(await text(P, '#sheet')), 'the camera: Your photo again, to move it, change it or remove it');
+await P.p.click('#sheet .link:text-is("Cancel")'); await P.p.waitForSelector('#sheet', { state: 'hidden' }); await settle(P, 300);
 
 // ---- 3. Your code: the link that adds you in InFlight, as a QR code, and copied ----
 await P.p.click('main .hero .pill:has-text("Your code")'); await P.p.waitForSelector('#sheet .qr svg', { timeout: 10000 }).catch(() => {}); await settle(P, 600);

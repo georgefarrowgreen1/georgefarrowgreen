@@ -58,6 +58,7 @@ export function drawMystery() {
 export const DEFAULT_KM = 500;           // if the recipient hasn't set a roost
 export const HANDLE_EVERY = DAY;         // handles can change once a day
 export const MAX_AVATAR = 400 * 1024;    // the phone sends a 512px JPEG, well under this
+export const MAX_POSTER = 2 * 1024 * 1024;   // the poster: the same photo at most 1600px on its longer side
 export const SESSION_TTL = 180 * DAY;
 
 const enc = new TextEncoder();
@@ -355,6 +356,9 @@ const MIGRATIONS = [
   "CREATE INDEX IF NOT EXISTS pg_sessions_parent ON pg_sessions(parent) WHERE parent IS NOT NULL",
   // the home page's own owner sign-ins, from when it had a password of its own (it's the admin account's now: functions/_auth.js)
   "DROP TABLE IF EXISTS pg_owner_sessions",
+  // the profile card's poster: a larger copy of your photo (functions/_profile.js putPoster), and the point of it that
+  // stays in view ("x y", in percent)
+  "ALTER TABLE pg_users ADD COLUMN poster_at INTEGER", "ALTER TABLE pg_users ADD COLUMN poster_focus TEXT",
 ];
 // The schema's own fingerprint: when the database already has this one, a new
 // copy of the server starts without re-running ~150 statements (any change to
