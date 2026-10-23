@@ -718,7 +718,8 @@ so there's nothing to set up beyond the address.
   the two are put together (the account's places, less those taken away here
   since, plus those added here; settings changed here win; notifications place
   by place) and sent again (`weather/account.js`). Signing in on a device with
-  places of its own keeps them all. My Location is each device's own. Signing
+  places of its own keeps them all. My Location is each device's own (in Places it's
+  on its own at the top, the Saved header over the places kept only once there are some). Signing
   out keeps everything on the device, and its notifications go on as its own.
   The page never holds the sign-in (the browser does, out of its reach), and the
   account's API answers only Weather's own pages. **Your profile** is the

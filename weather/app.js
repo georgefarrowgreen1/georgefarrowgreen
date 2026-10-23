@@ -1542,10 +1542,13 @@ async function locate(quiet = false) {
 // temperature and the day's high and low; swiped left, a Delete behind it (or, with a mouse, a bin on it)
 // what the page says of a place now, in peek()'s (data.js) form
 const onPage = (wx) => { const now = nowWall(wx.place.offset), c = wx.current || I.hourAt(wx, now), d = I.dayOf(wx, now); return c && { temp: c.temp, code: c.code, isDay: c.isDay, offset: wx.place.offset, hi: d?.tmax ?? null, lo: d?.tmin ?? null }; };
+// My Location on its own at the top (it's this device's, not one kept), then the places saved, under their header only
+// when there are some
 function drawSaved() {
   drawInStep();
-  const f = S.f, box = $("saved"), had = document.activeElement?.closest?.("#saved .pc-li"), at = had ? [...box.children].indexOf(had) : -1;
-  box.replaceChildren(...S.places.map((p, i) => {
+  const f = S.f, all = () => [...$("here").children, ...$("saved").children];
+  const had = document.activeElement?.closest?.("#places .pc-li"), at = had ? all().indexOf(had) : -1;
+  const items = S.places.map((p, i) => {
     // (the place on show as the page has it, its sky and its high and low the same as there; the rest as last kept)
     const k = i === S.cur && S.wx && cell(S.wx.place.lat, S.wx.place.lon) === cell(p.lat, p.lon) ? onPage(S.wx) : glance(p), sky = k ? skyOf(k.code, k.isDay) : "cloudy-day";
     const card = h("button", { class: "place-card", type: "button", "data-sky": sky, "aria-current": i === S.cur ? "true" : "false",
@@ -1565,9 +1568,12 @@ function drawSaved() {
       h("button", { class: "pc-bin", type: "button", "aria-label": `Remove ${p.name}`, svg: glyph("trash", 16), onclick: remove })] : null);
     if (S.places.length > 1) swipeOpen(li, card);
     return li;
-  }));
+  });
+  $("here").replaceChildren(...items.filter((_, i) => S.places[i].gps));
+  $("saved").replaceChildren(...items.filter((_, i) => !S.places[i].gps));
+  $("saved-head").hidden = !S.places.some((p) => !p.gps);
   // (what had the focus keeps it, drawn anew: the same place, or the next along if it's the one that's gone)
-  if (at >= 0) box.children[Math.min(at, box.children.length - 1)]?.querySelector(".place-card")?.focus();
+  if (at >= 0) { const left = all(); left[Math.min(at, left.length - 1)]?.querySelector(".place-card")?.focus(); }
 }
 // a card swiped left narrows, following the finger, for the Delete beside it (let go past half way, it stays open);
 // back, or a tap, closes it again
