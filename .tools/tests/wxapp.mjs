@@ -965,11 +965,13 @@ ok(/blur/.test(back), 'and its glass back once the sheet\'s gone', back);
 // scrolled on past the top, the sky behind the cards holds still too (and moves again back at the top)
 {
   const skyRunning = () => p.evaluate(() => document.getAnimations().filter((a) => a.effect?.target?.closest?.('.sky') && a instanceof CSSAnimation).map((a) => a.playState));
+  // (as it was at the top before: at dusk, dawn or under a clear sky its clouds are still anyway)
+  const before = await skyRunning();
   await p.evaluate(() => scrollTo(0, 1800)); await p.waitForTimeout(400);
   const deep = await skyRunning();
   await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(400);
   const top = await skyRunning();
-  ok(deep.every((x) => x !== 'running') && (!top.length || top.some((x) => x === 'running')), 'scrolled on, the sky pauses (and moves again at the top)', `${deep.join(',')} / ${top.join(',')}`);
+  ok(deep.every((x) => x !== 'running') && top.join() === before.join(), 'scrolled on, the sky pauses (and moves again at the top)', `${before.join(',')} / ${deep.join(',')} / ${top.join(',')}`);
 }
 // units, kept
 await p.click('#settings-btn'); await p.click('[data-go="units"]'); await p.click('input[name="temp"][value="f"]'); await p.keyboard.press('Escape');
