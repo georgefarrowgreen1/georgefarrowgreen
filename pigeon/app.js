@@ -3347,9 +3347,10 @@ const streakBadge = (f) => { const s = streakOf(f); return s ? `<span class="str
 function seasonCard() {
   const s = seasonNow(); if (!s || !S.me) return "";
   try { if (localStorage.getItem("inflight-season") === s.key) return ""; } catch (_) { return ""; }
+  // one slim row: what it is, until when, Try It (the looks, with how to keep it), and an × to put it away
   return `<div class="seasoncard" role="note"><span class="semoji" aria-hidden="true">${s.emoji}</span><span class="stext"><b>${esc(s.words)} pigeons are here</b>
-    <span>Give yours the ${esc(s.look)} look until ${esc(fmtDate(s.to - 1))}. Send 10 pigeons by then and it’s yours to keep.</span>
-    <span class="sbtns"><button type="button" class="btn small" data-act="seasontry">Try It</button><button type="button" class="btn small plain" data-act="seasonhide">Not Now</button></span></span></div>`;
+    <span>The ${esc(s.look)} look, until ${esc(fmtDate(s.to - 1).replace(/ \d{4}$/, ""))}</span></span>
+    <button type="button" class="btn small" data-act="seasontry">Try It</button><button type="button" class="sx" data-act="seasonhide" aria-label="Not now">${I.x}</button></div>`;
 }
 
 /* ---------- Messages ---------- */
@@ -3413,16 +3414,23 @@ function newsHtml() {
 }
 
 /* ---------- Friends ---------- */
+// Under a friend's name: "06:20 in Tokyo · 5,842 mi" (the time only where it isn't yours; it keeps time)
+function friendWhere(f) {
+  const place = esc((f.place || "").replace(/, (the Moon|Mars)$/, "")), far = milesAway(f);
+  let at = "";
+  if (!f.moon && f.tz && f.tz !== MY_TZ) try { at = `<span data-clock="${esc(f.tz)}">${esc(clockIn(now(), f.tz))}</span>${place ? " in " : " there"}`; } catch (_) {}
+  return [at + place, far].filter(Boolean).join(" · ") || `@${esc(f.handle)}`;
+}
 function vFriends() {
   if (S.me) loadNews();
   const fr = [...S.friends].sort((a, b) => a.name.localeCompare(b.name));
   const inc = S.incoming.length, out = S.outgoing.length;
   const rows = fr.map((f) => `<button class="cell" data-act="open" data-id="${esc(f.id)}" data-find="${esc((f.name + " " + f.handle).toLowerCase())}">${avatar(f, "s", true)}
-      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">@${esc(f.handle)}${f.place ? ` · ${esc(f.place)}` : ""}${milesAway(f) ? ` · ${milesAway(f)}` : ""}</span></span>${chevSm}</button>`).join("");
+      <span class="ctext"><span class="one">${esc(first(f.name))}</span><span class="csub one">${friendWhere(f)}</span></span>${chevSm}</button>`).join("");
   return `${navbar("Friends", { root: true, right: nbtn("share", I.share, "Share your handle") + nbtn("addfriend", I.addp, "Add a friend") })}
     <h1 class="large">Friends</h1>
     ${fr.length ? `<label class="search">${I.search}<input type="search" id="fsearch" placeholder="Search" value="${esc(S.fq)}" autocomplete="off" aria-label="Search friends"></label>` : ""}
-    ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? `${inc} waiting for you` : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
+    ${inc || out ? `<div class="group">${cell({ act: "requests", icon: I.addp, tile: "red", label: "Friend Requests", sub: inc ? esc(S.incoming[0].name) + (inc === 2 ? ` and ${esc(S.incoming[1].name)}` : inc > 2 ? ` and ${inc - 1} others` : " wants to be friends") : `${out} sent, waiting for a reply`, val: inc ? `<span class="badge-n">${inc}</span>` : "", chev: true })}</div>` : ""}
     ${newsHtml()}
     ${fr.length ? `<div class="ghead">${fr.length} friend${fr.length === 1 ? "" : "s"}</div><div class="group" data-list="f">${rows}</div>
       <div class="gfoot">Your handle is <b>@${esc(S.me.handle)}</b>. Share it so friends can add you.</div>`
@@ -4680,19 +4688,6 @@ function vAuth() {
   }
   return "";
 }
-// Has this password turned up in a data breach? Asks Pwned Passwords, through InFlight's
-// server, with only the first 5 characters of its SHA-1, and checks the answers here:
-// neither ever sees the password (k-anonymity). Can't ask: carries on without the check.
-async function leakedCount(pw) {
-  try {
-    const h = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const r = await fetch(`/api/pigeon/pwned?p=${h.slice(0, 5)}`, { cache: "no-store" });
-    if (!r.ok) return 0;
-    for (const line of (await r.text()).split("\n")) { const [suf, n] = line.trim().split(":"); if (suf === h.slice(5)) return Number(n) || 0; }
-  } catch (_) { /* no answer: no check */ }
-  return 0;
-}
-const leakedSay = (n) => `This password has turned up in ${n === 1 ? "a data breach" : `${n.toLocaleString("en-GB")} data breaches`}, so it’s one of the first anyone would try. Choose another.`;
 /* ---------- composer and tab bar ---------- */
 const chatKm = (f) => (S.me.lat != null && f.lat != null ? haversineKm(S.me.lat, S.me.lon, f.lat, f.lon) : 500);
 // A landing time chosen for this chat (one to one, not a /dumb pigeon), once it's still ahead
@@ -5255,31 +5250,16 @@ function drawSheet(refresh) {
       return;
     }
     case "security": {
-      // How protected you are at a glance, with each thing still to do a tap away; then the settings, grouped
-      const u = S.me, pk = passkeysSupported() || S.passkeys.length, lock = !!lockPrefs();
+      // The settings, grouped (a password and passkeys are the account's: Your Account opens its page)
+      const u = S.me, lock = !!lockPrefs();
       const ver = S.friends.filter(isVerified).length, changed = S.friends.filter((f) => f.keyChanged).length;
       const nextUp = S.friends.filter((f) => !f.keyChanged && !isVerified(f)).sort((a, b) => (b.last?.sentAt || 0) - (a.last?.sentAt || 0))[0];     // (the friend you wrote to most lately)
       const unlockBy = isIOS() ? "Face ID or Touch ID" : /Android/.test(navigator.userAgent) ? "your fingerprint or face" : "your passkey";
-      const checks = [
-        { ok: true, label: "Messages end-to-end encrypted" },
-        { ok: u.emailOk !== false, label: u.emailOk === false ? "Confirm your email" : "Email confirmed", act: S.emailOn ? "confirmsend" : null, go: "Send Link" },
-        pk && { ok: S.passkeys.length > 0, label: S.passkeys.length ? `Passkey saved${S.passkeys.length > 1 ? ` (${S.passkeys.length})` : ""}` : "Add a passkey", act: "passkeys", go: "Add" },
-        passkeysSupported() && { ok: lock, label: lock ? "InFlight locks on this phone" : "Lock InFlight on this phone", act: "applock", go: "Turn On" },
-      ].filter(Boolean);
-      const todo = checks.filter((c) => !c.ok).length, frac = (checks.length - todo) / checks.length;
-      const row = (c) => `<${c.ok || !c.act ? "div" : `button type="button" data-act="${c.act}"`} class="secrow${c.ok ? " ok" : ""}"><span class="secdot" aria-hidden="true">${c.ok ? I.check : ""}</span><span class="sect">${c.label}</span>${!c.ok && c.act ? `<span class="secgo">${c.go}</span>` : ""}</${c.ok || !c.act ? "div" : "button"}>`;
-      const ring = `<svg viewBox="0 0 64 64" aria-hidden="true"><circle class="trk" cx="32" cy="32" r="28"/><circle class="arc" cx="32" cy="32" r="28" pathLength="100" stroke-dasharray="${(frac * 100).toFixed(1)} 100"/></svg>`;
       $layer.innerHTML = sheetHtml("Privacy & Security", `
-        <div class="secard ${todo ? "todo" : "ok"}">
-          <div class="sectop"><span class="secshield">${ring}${I.shield}</span><span class="wnt"><b>${todo ? `${todo} Thing${todo > 1 ? "s" : ""} to Do` : "Well Protected"}</b><small>${todo ? "A minute each, and your account is safer." : "Everything that keeps your account safe is on."}</small></span></div>
-          <div class="seclist">${checks.map(row).join("")}</div>
-        </div>
         <div class="ghead">Account</div>
         <div class="group">
-          ${cell({ icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? '<span class="warnc">Not confirmed</span>' : "" })}
-          ${pk ? cell({ act: "passkeys", icon: I.key, tile: "indigo", label: "Passkeys", val: S.passkeys.length || "Off", chev: true }) : ""}
-          ${cell({ act: "changepw", icon: I.lock, tile: "gray", label: "Change Password", chev: true })}
-          ${accountPage() ? `<button type="button" class="cell has-icon" id="to-account" data-act="accountopen"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Profile, passkeys and devices, for every app on the site</span></span>${chevSm}</button>` : ""}
+          ${cell({ act: u.emailOk === false && S.emailOn ? "confirmsend" : null, icon: I.mail, tile: "blue", label: "Email", val: esc(u.email), sub: u.emailOk === false ? `<span class="warnc">Not confirmed${S.emailOn ? " · tap to send the link again" : ""}</span>` : "" })}
+          ${accountPage() ? `<button type="button" class="cell has-icon" id="to-account" data-act="accountopen"><span class="tile indigo">${I.person}</span><span class="ctext"><span>Your Account</span><span class="csub">Password, passkeys and devices, for every app on the site</span></span>${chevSm}</button>` : ""}
         </div>
         <div class="ghead">Encryption</div>
         <div class="group">
@@ -5876,13 +5856,6 @@ function drawSheet(refresh) {
       });
       return;
     }
-    case "changepw":
-      if (!$("#f-current", $layer)) $layer.innerHTML = sheetHtml("Change Password", `<form id="pw-form" data-form="changepw" novalidate>
-        <div class="group mt-s">${field("current", "Current password", "password", "current-password")}</div>
-        <div class="group mt">${field("password", "New password", "password", "new-password")}</div>
-        <div class="gfoot">At least 10 characters. Other phones signed in to your account will be signed out.</div>${ferr}</form>`,
-        { left: { label: "Back", act: "securitysheet" }, right: { label: "Change", form: "pw-form" } });
-      return;
   }
 }
 // How It Flies off the Earth: the space pigeons for it (two lunar ones to the Moon, a laser one to Mars),
@@ -6394,7 +6367,7 @@ function airFill(el, r) {
   // yours: when it lands (and where, in a group); theirs: sealed till then
   // (out in space: where it is instead, "142,000 mi from Earth", "over France · lap 3")
   el._space = r.moon || null; el.classList.toggle("space", !!r.moon);
-  sub.innerHTML = r.moon ? `${r.out ? "" : I.lock}${esc(spaceSub(r.moon, +el.dataset.from, +el.dataset.at))}` : wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atShort(r.deliverAt))}`;
+  sub.innerHTML = r.moon ? `${r.out ? "" : I.lock}${esc(spaceSub(r.moon, +el.dataset.from, +el.dataset.at))}` : wx ? esc(wx) : `${r.out ? "" : I.lock}lands ${esc(atTime(r.deliverAt))}`;
   return el;
 }
 // One card per chat: a group's pigeons, coming and going, share one card.
@@ -6545,7 +6518,7 @@ function airTick() {
   const next = flying.map((c) => +c.dataset.at).filter((x) => x > t).sort((a, b) => a - b)[0];
   airEl.classList.toggle("has", cards.length > 0);
   $(".airn", airEl).textContent = n ? ` · ${n}` : "";
-  $(".airnext", airEl).textContent = next ? `Next lands in ${airTime(next - t)}` : cards.length ? "Landed" : "";
+  $(".airnext", airEl).textContent = next ? (cards.length > 1 ? `Next lands in ${airTime(next - t)}` : "") : cards.length ? "Landed" : "";
 }
 
 // The Skies: every pigeon in the air to or from you, from every chat.
@@ -7494,7 +7467,6 @@ async function onClick1(e, t) {
       await pushDisable(true);
       api("logout", { method: "POST" }).catch(() => {});
       await forget(); return go("welcome");
-    case "changepw": S.sheet = { type: "changepw" }; return renderSheet();
     case "profile": S.sheet = { type: "profile" }; return renderSheet();
     case "accountedit": case "accountopen": return openAccount(t.dataset.act === "accountedit" ? "profile" : null);
   }
@@ -7686,25 +7658,6 @@ async function submitForm(e, form, kind) {
   } else if (kind === "unlock") {
     try { await busyBtn(btn, "Unlocking…", () => unlockWithPassword(v.password || "")); afterSignIn(); }
     catch (err) { showErr(err.message, err.field); }
-  } else if (kind === "changepw") {
-    if (!v.current) return showErr("Enter your current password.", "current");
-    if (String(v.password || "").length < 10) return showErr("Use at least 10 characters for your new password.", "password");
-    { const n = await leakedCount(v.password); if (n) return showErr(leakedSay(n), "password"); }
-    try {
-      await busyBtn(btn, "Changing…", async () => {
-        let got;
-        try { got = await vaultWith(v.current); } catch (e) { throw e.status === 401 ? Object.assign(new Error("Your current password isn’t right."), { field: "current" }) : e; }
-        const { vault } = got, old = { lockKey: got.lockKey, proof: got.proof };
-        let ecdh;
-        try { ({ ecdh } = await E2E.unlock(old.lockKey, vault)); }
-        catch (_) { throw Object.assign(new Error("Your current password isn’t right."), { field: "current" }); }
-        const ns = E2E.newSalt(), nw = await E2E.fromPassword(v.password, ns);
-        await api("password", { method: "POST", body: { oldProof: old.proof, salt: ns, proof: nw.proof, vault: await E2E.lock(nw.lockKey, { ecdh }) } });
-        S.secretJwk = ecdh;
-      });
-      S.sheet = null; renderSheet();
-      toast("Password changed. Any other phones were signed out.");
-    } catch (err) { showErr(err.message, err.field); }
   } else if (kind === "reauth") {
     if (!v.password) return showErr("Enter your password.", "password");
     try {

@@ -146,7 +146,6 @@ const screens = [
   ['passkeys', async () => { await act(G, 'passkeys'); await G.waitForSelector('.sheet'); }],
   ['encryption', async () => { await act(G, 'encryptionsheet'); await G.waitForSelector('.sheet'); }],
   ['safetylist', async () => { await act(G, 'safetylist'); await G.waitForSelector('.sheet'); }],
-  ['changepw', async () => { await act(G, 'changepw'); await G.waitForSelector('.sheet'); }],
   ['blocked', async () => { await act(G, 'blockedsheet'); await G.waitForSelector('.sheet [data-act=unblock]'); }],
   ['sessions', async () => { await act(G, 'sessionssheet'); await G.waitForSelector('.sheet .cell'); await G.waitForTimeout(600); }],
   ['flightlog', async () => { await act(G, 'tab', 'account'); await act(G, 'flightlog'); await G.waitForSelector('.sheet'); await G.waitForTimeout(800); }],
