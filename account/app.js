@@ -1228,7 +1228,6 @@ function emailView() {
         try { await busy(e.currentTarget, "", () => post("email/confirm-send")); toast(`A link is on its way to ${m.email}.`); } catch (err) { say(said, err.message); }
       } }, "Send link")));
   return { title: "Email", body: [
-    h("p", { text: "Your email signs you in, and gets password resets and security notes, for every app on the site." }),
     status,
     !m.emailOk && h("p.hint", { text: "Not confirmed yet: open the link we send to it." }),
     m.emailNew && h("div.pending.glass", {}, h("span.ic.blue", {}, icon("mail", 18)),
