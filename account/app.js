@@ -393,20 +393,22 @@ function deleting(r) {
 // (#join, #forgot and #invite= open the last two, as the apps link here) ----
 const HANDLE_OK = /^[a-z0-9_]{3,20}$/, EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 // the way between them: the form below changed in place, the rest of the page staying put
+// the account's own icon (icon.svg: a warm head, frosted glass shoulders, as Weather's sun and cloud)
+const logo = () => h("div.mark.logo", {}, h("img", { src: "/icon.svg?v=2", alt: "", width: 92, height: 92 }));
 function gate(to) { S.gate = to; S.settled = true; render(); $("main .signin input")?.focus(); }
 function signedOut(r) {
   if (S.handoff) return handoffPage(r);
   const mode = S.gate || "signin";
   if (!S.join) joinState();
-  const head = { signin: ["Your account", "One sign-in for every app on georgefarrowgreen.com. Your profile, password, passkeys and devices, in one place."],
+  const head = { signin: ["Your account"],
     join: ["Create your account", "One account for every app on georgefarrowgreen.com, made here and used everywhere."],
     forgot: ["Forgot your password?", "We’ll email you a link to choose a new one. It works once, for an hour."] }[mode];
   const sw = (lead, label, to) => h("p.foot.new", {}, lead, h("button.link", { type: "button", onclick: () => gate(to) }, label));
   return [h("div.welcome", {},
     // (the mark floats; it rises in inside something else, as one animation can't do both)
-    r(h("div", {}, h("div.mark", {}, icon(mode === "forgot" ? "key" : "person", 48, 1.7)))),
+    r(h("div", {}, mode === "forgot" ? h("div.mark", {}, icon("key", 48, 1.7)) : logo())),
     r(h("h1", { text: head[0] })),
-    r(h("p", { text: head[1] })),
+    head[1] && r(h("p", { text: head[1] })),
     r(mode === "join" ? joinCard() : mode === "forgot" ? forgotCard() : signinCard()),
     mode === "signin" && r(h("div.works", {}, h("span", { text: "Works with" }), h("img", { src: "/apps/inflight.png", alt: "InFlight", title: "InFlight" }), h("img", { src: "/apps/weather.png", alt: "Weather", title: "Weather" }))),
     r(mode === "signin" ? joinLine() : sw(mode === "join" ? "Already have an account? " : "Remembered it? ", "Sign in", "signin"))),
@@ -427,7 +429,7 @@ function handoffPage(r) {
     } catch (err) { S.handoff = null; S.settled = false; render(); toast(err.message, true, 4000); }
   } }, `Continue as ${String(w.name).trim().split(/\s+/)[0]}`);
   return [h("div.welcome", {},
-    r(h("div", {}, h("div.mark", {}, icon("person", 48, 1.7)))),
+    r(h("div", {}, logo())),
     r(h("h1", { text: w.name })),
     r(h("p", { text: `@${w.handle}${app ? `, from ${app}` : ""}. Carry on as this account in this browser?` })),
     r(h("div.signin.glass", {}, go, h("button.link.forgot", { type: "button", onclick: () => { S.handoff = null; gate("signin"); } }, "Not you? Sign in"), said)))];

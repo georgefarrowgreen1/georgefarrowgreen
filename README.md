@@ -156,7 +156,11 @@ lists as Settings has them; a large title that scrolls with the page (glass behi
 (swipe one down by its top, or Esc) while the page steps back; and everything rising into place. Still with Reduce
 Motion, solid with Reduce Transparency.
 
-- **Signed out:** sign in with a passkey (the site's: one made in any app works here) or your email and password
+- **Its icon** (`account/icon.svg`, with PNGs at 180, 192 and 512 and a maskable one for Android) is made as Weather's
+  is: a flat indigo sky (the page's own night sky, at dusk), a flat warm head where Weather has its sun, and frosted
+  glass shoulders where Weather has its cloud, the head showing softly through them, with the same fine light rim and
+  faint shadow. It's the mark at the top of the page where you sign in, join, or carry on from an app.
+- **Signed out:** under "Your account", sign in with a passkey (the site's: one made in any app works here) or your email and password
   (stretched on the device as everywhere on the site; the password never leaves it), with **Forgot password?** under
   them. Every app on the site signs in the same way, in the same order and words: a passkey first, then "or with your
   email", the form, **Forgot password?**, and **New here? Create your account**, both of which open this page.
