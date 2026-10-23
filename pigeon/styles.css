@@ -146,9 +146,10 @@ html[data-device="computer"] .notavail{display:flex;min-height:100%;align-items:
 .nbtn:disabled{opacity:.4}
 .nbtn:active{transform:scale(.94)}
 .large{margin:0 20px 10px;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.37px;display:flex;align-items:center;gap:10px;min-width:0}
-/* On a tab's top screen the large title sits on the same line as the round
-   buttons, both centred on it: the bar is 56px and the title line 41px. */
-.navbar.root + .large{margin-top:-48.5px;margin-right:20px;font-size:min(34px,9.4vw)}
+/* On a tab's top screen the title sits on the same line as the round buttons,
+   both centred on it: the bar is 56px and the title line 41px. It's the size
+   the account's page has for its own title (17px), not a large one. */
+.navbar.root + .large{margin-top:-48.5px;margin-right:20px;font-size:17px;font-weight:600;letter-spacing:0}
 .navbar.root.b1 + .large{margin-right:72px}
 .navbar.root.b2 + .large{margin-right:112px}
 
@@ -1383,7 +1384,7 @@ svg.fillico{fill:currentColor;stroke:none}
   background:linear-gradient(160deg,#5fb0ff,#0a5fe0);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 8px -2px rgba(10,95,224,.45)}
 .brand .bicon svg{width:.68em;height:.68em;transform:translate(-.01em,.03em)}
 .brand .bword{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.2px}
-.large.brandh .brand{gap:10px}
+.large.brandh .brand{gap:7px}
 .nb-title .brand{gap:7px;justify-content:center;font-size:17px}
 
 /* the passport: a stamp for each place, in postal ink, perforated, each a little askew */

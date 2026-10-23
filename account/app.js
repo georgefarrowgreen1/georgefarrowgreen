@@ -78,8 +78,8 @@ function backToApp() {
 }
 const backPill = () => h("button.pill.quiet.backapp", { type: "button", onclick: backToApp }, icon("back", 17, 2.4), APPS[fromApp()].name);
 const backButton = (r) => fromApp() && r(backPill());
-// the page's title: large, opened by itself; from an app, smaller, in the middle of a bar with the way back
-const titled = (r, text) => (fromApp() ? r(h("div.titlebar", {}, backPill(), h("h1", { text }))) : r(h("h1.large", { text })));
+// the page's title, in the middle of a bar at its top, with the way back to the app it was opened from (if it was)
+const titled = (r, text) => r(h("div.titlebar", {}, fromApp() ? backPill() : h("span"), h("h1", { text })));
 
 // ---- building the page ----
 // h("button.row.action", { type: "button", onclick }, ...children): an element, its classes, attributes and children
