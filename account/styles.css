@@ -95,7 +95,7 @@ main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16
 @media (min-width: 760px) { main { padding-top: calc(var(--top) + 72px); } }
 
 /* ---- the large title, going with the page as it scrolls ---- */
-.large { margin: 0 4px 18px; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; text-align: center; }
+.large { margin: 0 4px 18px; font: 700 34px/1.08 var(--font-d); letter-spacing: 0.4px; }
 .lede { margin: -10px 4px 22px; color: var(--text-2); font-size: 15px; line-height: 1.4; max-width: 46ch; }
 
 /* ---- glass: the hero, the groups, the sheet ---- */
@@ -396,7 +396,7 @@ dialog.sheet.dragging { animation: none; transition: none; }
 
 /* back to InFlight, when it sent you here to edit your profile */
 .backapp { margin: 0 0 6px; min-height: 36px; padding: 0 14px 0 10px; gap: 4px; justify-self: start; align-self: flex-start; width: max-content; }
-/* (opened from an app: the way back, and the title smaller, in the middle of the same line) */
+/* (the title in the middle of a bar; opened from an app, the way back on the same line) */
 .titlebar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; min-height: 40px; margin: 0 0 16px; }
 .titlebar .backapp { margin: 0; align-self: center; }
 .titlebar h1 { margin: 0; font: 600 17px/1.2 var(--font); letter-spacing: 0; }
