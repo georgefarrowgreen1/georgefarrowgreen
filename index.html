@@ -41,7 +41,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=37" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="bg" id="bg" aria-hidden="true"></div>
@@ -122,7 +122,7 @@
   </div>
 
   <dialog class="sheet" id="contact-sheet" aria-labelledby="contact-h">
-    <div class="sheet-in">
+    <div class="sheet-in" tabindex="-1">
       <div class="grab" aria-hidden="true"></div>
       <form id="contact-form" novalidate>
         <header class="sheet-head">
@@ -157,7 +157,7 @@
   </dialog>
 
   <dialog class="sheet" id="photos-sheet" aria-labelledby="photos-h">
-    <div class="sheet-in">
+    <div class="sheet-in" tabindex="-1">
       <div class="grab" aria-hidden="true"></div>
       <header class="sheet-head">
         <h3 id="photos-h">Background photos</h3>
@@ -173,6 +173,6 @@
 
   <div class="toast glass" id="toast" role="status" aria-live="polite" hidden><span id="toast-text"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
 
-  <script src="app.js?v=37"></script>
+  <script src="app.js"></script>
 </body>
 </html>
