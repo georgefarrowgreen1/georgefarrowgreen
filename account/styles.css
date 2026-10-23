@@ -287,8 +287,6 @@ dialog.sheet.dragging { animation: none; transition: none; }
 .sk-group { height: 180px; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -50% 0; } }
 
-footer.foot { text-align: center; margin: 30px 0 0; color: var(--text-3); font-size: 13px; line-height: 1.6; }
-footer.foot a { color: var(--text-2); text-decoration: none; }
 
 
 /* ---- round two: the check-up, a banner, email, activity, passkey details, preferences ---- */

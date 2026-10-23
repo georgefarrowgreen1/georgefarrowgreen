@@ -298,10 +298,7 @@ function signedIn(r) {
     "For every app on the site that has them."));
   // (opened from an app, in its own window: signing out is the app's to do, not this window's)
   const ending = [
-    !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")),
-      "Signs you out of every app on the site, in this browser.")),
-    r(h("footer.foot", {}, h("div", { text: `Your account since ${new Date(m.since).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}` }),
-      h("a", { href: siteUrl(""), text: "georgefarrowgreen.com" }))),
+    !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
   ];
   const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
