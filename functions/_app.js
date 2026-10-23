@@ -105,7 +105,7 @@ export async function serveApp(ctx, res, path, chat) {
 }
 
 // the pages InFlight has (under /pigeon/, as stored)
-const APP_PAGES = /^\/pigeon\/(index(\.html)?|tracker(\.html)?|handover(\.html)?|admin\/(index(\.html)?)?)?$/;
+const APP_PAGES = /^\/pigeon\/(index(\.html)?|tracker(\.html)?|handover(\.html)?)?$/;
 export const notFound = () => withSecurity(new Response("Not found.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } }));
 
 export function withSecurity(res) {

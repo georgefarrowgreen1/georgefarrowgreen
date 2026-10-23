@@ -37,7 +37,7 @@ import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset } from "../../_join.js";
 import { avatarKey } from "../../_profile.js";
-import { ADMIN_ROUTES } from "../pigeon/[[path]].js";
+import { ADMIN_ROUTES, adminOf } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
 const UNITS = { temp: ["c", "f"], wind: ["mph", "kmh", "ms", "kn"], precip: ["mm", "in"], pressure: ["hpa", "inhg", "mmhg"], clock: ["12", "24"] };
@@ -83,7 +83,7 @@ async function view(env, u) {
     weatherOf(env, u.id),
     inflightOf(D, u.id),
     D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
-    D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first().catch(() => null),
+    adminOf(env).catch(() => null),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -108,7 +108,7 @@ async function view(env, u) {
     emails: { inflight: !!u.notify_email, weather: weatherMail(wx.data?.notify) },
     lastActivity: last?.at || null,
     // (the site's admin, on this page: only the linked account, and only with a passkey on it: functions/api/pigeon)
-    admin: admin?.v === u.id ? { ready: pks.length > 0 } : null,
+    admin: admin?.id === u.id ? { ready: pks.length > 0 } : null,
     // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; InFlight's counts)
     apps: {
       weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),

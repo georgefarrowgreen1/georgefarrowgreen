@@ -4,7 +4,6 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
-import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor, windsAlong, forecastFor, ensembleFor, spreadOf } from "../../_weather.js";
@@ -1139,60 +1138,28 @@ async function changePassword({ request, env, waitUntil }) {
 
 // Always answers the same way, so it can't be used to find out who has an account.
 /* ---------------- admin ----------------
-   The site's admin is an account, linked once (pg_meta admin_user) from the old dashboard, signed in there as the
-   site's owner and as the account in the same browser; from then on Admin is on that account's own page
-   (account.<site>, functions/api/account admin/*, the routes below), and the owner's sign-in no longer opens it.
-   There, it's that account only, with a passkey on it; looking needs it to have shown it's you (password or
-   passkey) in the last 12 hours, a change in the last 10 minutes, from the page itself (its Origin).
-   Until one's linked (or if the linked account's gone, or being deleted): the site owner's sign-in, as before (the
-   key icon on the home page: password or passkey, an HttpOnly SameSite=Strict cookie), changes needing a custom
-   header a form on another site can't send. Either way: account details, never passwords, keys or scrolls. */
+   The site's admin is an account: Admin is a section of its own page (account.<site>; functions/api/account
+   admin/…, the routes below). It's the account linked to it (pg_meta admin_user, linked once from the old dashboard,
+   since gone), or, if that one's gone (or being deleted), the account with the site owner's email (PIGEON_ADMIN_EMAIL),
+   once that's confirmed: the same as a password reset to that inbox would give, so it can't be lost for good. That
+   account only, with a passkey on it; looking needs it to have shown it's you (password or passkey) in the last 12
+   hours, a change in the last 10 minutes, from the page itself (its Origin). Account details, never passwords, keys
+   or scrolls. */
 const ADMIN_LOOK = 12 * HOUR;
-const onAccountPage = (request) => new URL(request.url).pathname.startsWith("/api/account/");
-// the linked account (and how many passkeys it has), if there is one and it's still there
-async function adminAccount(env) {
-  return (await db(env)).prepare(`SELECT u.id, u.name, u.handle, u.email, (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys
-    FROM pg_meta m JOIN pg_users u ON u.id = m.v WHERE m.k = 'admin_user' AND u.delete_at IS NULL`).first();
+// the admin's account (and how many passkeys it has)
+export async function adminOf(env) {
+  const D = await db(env), q = `SELECT u.id, u.name, u.handle, u.email, (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys
+    FROM pg_users u WHERE u.delete_at IS NULL AND `;
+  return (await D.prepare(q + "u.id = (SELECT v FROM pg_meta WHERE k = 'admin_user')").first())
+    || D.prepare(q + "u.email_ok AND lower(u.email) = lower(?) ORDER BY u.created_at LIMIT 1").bind(ownerEmail(env)).first();
 }
 async function requireAdmin(request, env, write) {
-  const linked = await adminAccount(env);
-  if (onAccountPage(request)) {
-    const u = await cookieUser(request, env);
-    if (!u || !linked || u.id !== linked.id) throw new HttpError(403, "This account isn’t the site’s admin.");
-    if (!linked.passkeys) throw new HttpError(403, "Add a passkey to your account to use Admin.", "passkey");
-    if (write) sameOrigin(request);
-    if (!(Date.now() - (u.authAt || 0) < (write ? FRESH : ADMIN_LOOK))) throw new HttpError(403, "Confirm it’s you first.", "reauth");
-    return u;
-  }
-  if (linked) throw new HttpError(410, "Admin is on your account’s page now.", "moved");
-  if (!(await isAuthed(request, env))) throw new HttpError(401, "Sign in as the site owner first.");
-  if (write && request.headers.get("X-InFlight-Admin") !== "1") throw new HttpError(403, "Admin changes must come from the admin page.");
-}
-async function adminStatus({ request, env }) {
-  const authed = await isAuthed(request, env), linked = await adminAccount(env);
-  // (linked: it's moved, and where to; not yet: who's signed in to their account in this browser, to link)
-  if (linked) return json({ authed, configured: !!env.EDIT_PASSWORD, moved: `${accountPage(request, env)}/#admin` });
-  const c = authed ? await cookieUser(request, env) : null;
-  const can = c && await (await db(env)).prepare("SELECT COUNT(*) AS n FROM pg_passkeys WHERE user_id = ?").bind(c.id).first();
-  return json({ authed, configured: !!env.EDIT_PASSWORD, email: authed ? emailReady(env) : undefined,
-    from: authed ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : undefined, testTo: authed ? ownerEmail(env) : undefined,
-    account: c ? { name: c.name, handle: c.handle, passkeys: can?.n || 0, page: accountPage(request, env) } : authed ? { page: accountPage(request, env) } : undefined });
-}
-// Linking: the account signed in in this browser becomes the site's admin (signed in here as the owner, too), and
-// Admin moves to its page. It needs a passkey on it first. The account's told, by email.
-async function adminLink({ request, env, waitUntil }) {
-  await requireAdmin(request, env, true);
-  const u = await cookieUser(request, env);
-  if (!u) throw new HttpError(400, "Sign in to your account in this browser first.");
-  const D = await db(env), pk = await D.prepare("SELECT COUNT(*) AS n FROM pg_passkeys WHERE user_id = ?").bind(u.id).first();
-  if (!pk?.n) throw new HttpError(400, `Add a passkey to @${u.handle} first, on your account’s page.`);
-  await D.prepare("INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('admin_user', ?)").bind(u.id).run();
-  await adminLog(env, "linked", u.id, `@${u.handle}`);
-  waitUntil(accountMail(env, u, { icon: "shield", title: "Admin is on your account now", subject: "Admin is linked to your account",
-    line: "the site’s admin is linked to your account: it’s on your account’s page now, and the owner’s sign-in no longer opens it.",
-    after: "If this wasn’t you, change your password and sign out your other devices.", button: { label: "Open Admin", url: `${accountPage(request, env)}/#admin` } },
-    linkOrigin(request)).catch((e) => console.error("admin link mail", e.message)));
-  return json({ moved: `${accountPage(request, env)}/#admin`, message: `Admin is linked to @${u.handle}.` });
+  const [u, admin] = await Promise.all([cookieUser(request, env), adminOf(env)]);
+  if (!u || !admin || u.id !== admin.id) throw new HttpError(403, "This account isn’t the site’s admin.");
+  if (!admin.passkeys) throw new HttpError(403, "Add a passkey to your account to use Admin.", "passkey");
+  if (write) sameOrigin(request);
+  if (!(Date.now() - (u.authAt || 0) < (write ? FRESH : ADMIN_LOOK))) throw new HttpError(403, "Confirm it’s you first.", "reauth");
+  return u;
 }
 // The figures beside each row of the account page's Admin section
 async function adminSummary({ request, env }) {
@@ -1308,7 +1275,7 @@ async function adminTestEmail({ request, env }) {
     preheader: "InFlight can send password resets and notifications.",
     lines: ["This is a test from the site’s admin. Password resets and notifications will arrive just like this."],
     pill: ["mail", emailFrom(env, "inflight").replace(/^.*<|>$/g, "")], rows: [["Sent", ukTime(Date.now())]],
-    button: { label: "Back to admin", url: onAccountPage(request) ? `${accountPage(request, env)}/#admin` : `${linkOrigin(request)}/pigeon/admin/` },
+    button: { label: "Back to admin", url: `${accountPage(request, env)}/#admin` },
   });
   await sendEmail(env, { brand: "inflight", to, subject: "InFlight email is working", text, html }, { explain: true });
   await adminLog(env, "test-email", null, to);
@@ -1342,7 +1309,7 @@ async function adminLogList({ request, env }) {
   return json({ log: results });
 }
 
-// The same, on the linked account's own page (functions/api/account: admin/…)
+// on the admin's own page (functions/api/account: admin/…)
 export const ADMIN_ROUTES = {
   "GET admin/summary": adminSummary, "GET admin/users": adminUsers, "GET admin/avatar": (ctx) => adminAvatar(ctx, new URL(ctx.request.url).searchParams.get("id")),
   "GET admin/invites": adminInvites, "GET admin/insights": adminInsights, "GET admin/storage": adminStorage, "GET admin/log": adminLogList,
@@ -1426,7 +1393,7 @@ async function unsubscribePost({ request, env }) {
 }
 
 const ROUTES = {
-  "POST signup": elsewhere("New accounts are made"), "POST admin-invite": adminInvite, "GET admin-invites": adminInvites, "POST admin-invite-revoke": adminInviteRevoke, "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
+  "POST signup": elsewhere("New accounts are made"), "POST confirm-email": confirmEmail, "POST confirm-resend": confirmResend, "GET handle-free": handleFree, "POST salt": salt, "POST login": login, "POST logout": logout, "POST resume": resume, "GET vault": vault, "POST vault": vaultByProof,
   "PATCH me": updateMe, "DELETE me": deleteMe,
   "POST passkey-options": passkeyOptions, "POST passkey-register": passkeyRegister, "POST passkey-vault": passkeyVault,
   "POST passkey-login": passkeyLogin, "DELETE passkey": passkeyDelete, "POST reauth": reauth,
@@ -1438,9 +1405,6 @@ const ROUTES = {
   "GET photo": getPhoto,
   "POST avatar": putAvatar, "DELETE avatar": deleteAvatar, "GET avatar": getAvatar,
   "POST password": changePassword, "POST password-upgrade": passwordUpgrade, "GET pwned": pwned, "POST reset-request": elsewhere("Reset your password"), "POST reset-check": elsewhere("Reset your password"), "POST reset-complete": elsewhere("Reset your password"),
-  "GET admin-status": adminStatus, "POST admin-link": adminLink, "GET admin-users": adminUsers, "POST admin-reset": adminReset,
-  "POST admin-signout": adminSignOut, "POST admin-pigeons": adminPigeons, "GET admin-avatar": adminAvatar, "POST admin-delete": adminDelete, "GET admin-log": adminLogList,
-  "POST admin-test-email": adminTestEmail, "GET admin-storage": adminStorage, "GET admin-insights": adminInsights,
   "GET push-key": pushKey, "POST push-sub": pushSubscribe, "DELETE push-sub": pushUnsubscribe, "POST push-test": pushTest,
   "POST notify-tick": notifyTick, "GET unsubscribe": unsubscribeGet, "POST unsubscribe": unsubscribePost,
   ...GROUP_ROUTES, ...GIF_ROUTES, ...REACT_ROUTES, ...STATS_ROUTES, ...SKIES_ROUTES, ...TRACKER_ROUTES, ...VANISH_ROUTES, ...WINDMAP_ROUTES, ...CHEER_ROUTES, ...FLY_ROUTES, ...BIRD_ROUTES, ...PASSPORT_ROUTES, ...FEATHER_ROUTES, ...NEWS_ROUTES, ...LOFT_ROUTES,
@@ -1448,8 +1412,7 @@ const ROUTES = {
 
 const HOSTS = /^(?:(?:www\.|chat\.)?georgefarrowgreen\.com|(?:chat\.)?localhost|127\.0\.0\.1)$/;
 // (and the tests' own addresses for the app: CHAT_HOST, functions/_app.js)
-// (and the tests' stand-in for the site's own address, where its admin's old dashboard is, as georgefarrowgreen.com is)
-const hostOk = (h, env) => HOSTS.test(h) || String(env.CHAT_HOST || "").split(",").includes(h) || (!!env.ACCOUNT_SITE && h === env.ACCOUNT_SITE);
+const hostOk = (h, env) => HOSTS.test(h) || String(env.CHAT_HOST || "").split(",").includes(h);
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
   const parts = url.pathname.replace(/^\/api\/pigeon\/?/, "").split("/");

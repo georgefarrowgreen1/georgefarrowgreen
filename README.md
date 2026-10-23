@@ -118,7 +118,7 @@ its name, its colours, its pictures and what's said at the foot of its emails.
 | Brand | From | Colours | Its emails |
 |---|---|---|---|
 | `account` | **Account** `<account@…>` | indigo; a red tile for deleting | sign-ins in any app, the password, passkeys, the email address, reset links, keeping or deleting the account (`functions/_account.js` `accountMail`) |
-| `inflight` | **InFlight** `<inflight@…>` | blue; an orange tile for a pigeon landed | a pigeon landed, a friend request, the week in flight (`functions/_notify.js`), the admin page's test |
+| `inflight` | **InFlight** `<inflight@…>` | blue; an orange tile for a pigeon landed | a pigeon landed, a friend request, the week in flight (`functions/_notify.js`), Admin's test |
 | `weather` | **Weather** `<weather@…>` | Weather's sky blue; a warning's tile in its colour (yellow, amber, red) | official warnings and the morning briefing, for those signed in who turn them on (`functions/_wxpush.js`, worded by `weather/alerts.js` briefMail and warningMail) |
 | `website` | **Website** `<website@…>` | the home page's periwinkle to violet | the contact form's messages, to the site's owner (`functions/api/contact.js`) |
 
@@ -245,7 +245,7 @@ Motion, solid with Reduce Transparency.
   Name, handle (suggested from the name, and checked as it's typed), email and password (its strength, and whether it's
   in a data breach, said as it's typed). The slow parts start while it's typed: the InFlight key pair is made here and
   locked with the password before it's sent, so the server only ever has it locked. By invite, as before: a one-time
-  link from the site's owner (InFlight's admin page makes them, now pointing here), carried in the address's `#` and
+  link from the site's admin (Admin → Invites makes them), carried in the address's `#` and
   sent in the body, never the URL; without one, the page says accounts are by invitation. Made, it's signed in at once
   and the confirm email sent; InFlight then opens with **Continue as**, and only needs the password to unlock the key.
 - **Forgot password** (`#forgot`): a one-hour, one-time link by email (the same answer, in the same time, whether
@@ -940,7 +940,7 @@ service, with made-up forecasts for the time it runs).
 
 **1.2.7** (tidier, after a review of 1.2.2–1.2.6): Look Up's camera and location watch stop whenever the sheet stops being Look Up (Back, X, another sheet, even after the pigeon has landed) and when the app goes to the background; a second tap while the camera starts cancels it rather than opening another; the lens angle when zoomed is right (it was doubled); no location no longer stops the drawing. A way blurred a month on keeps what it said (`w_dodged`, `w_shelter`, `w_ship` on `pg_msgs` / `pg_gdeliv`), so a pigeon tidied away after its blur keeps its storms, shelter and ship in the flight log; the clean-up claims its turn in one step (no warning email twice); a warning never names a day gone by; an account's deletion keeps the landed pigeons its friends sent it as unnamed lines; a full sheet redraw waiting for the slide isn't lost to a lighter one; a safety number for someone no longer found closes; signing out one phone asks first. Times read "2 hours ago" everywhere. `placegrid.js` is fetched with the rest at start (about 0.2 s sooner on a slow line). Insights: days used are noted (`pg_active`, a row per account per London day, 60 kept), so People active counts opening the app and Coming Back shows who used it in their second week; days follow the clocks changing; photos, losses (not recalls) and pigeons in the air counted right; Count Again keeps your place.
 
-**Admin → Insights** (`functions/_insights.js`, `GET /api/pigeon/admin-insights`): totals only, never who sent what to whom, a word, a place or a route. People here today, this week and this month (their app checked in), and how many came back a week after joining (of accounts over 8 days old, and by the week they joined); the last 30 London days as columns of pigeons sent, people active (sent or opened one) and new accounts, with a tooltip per day and a table for screen readers; the kinds of pigeon and the features used (groups, photos, mystery, scheduled, stopovers, cheers, route styles, space, disappearing, Pigeon Death, recalls) as shares of the pigeons sent; what share of accounts have a friend, a group, notifications, a confirmed email, a passkey, named pigeons; and whether landings are told on time (any landed 15 minutes ago with no notice is flagged). Bars are sized from script, as the page's Content-Security-Policy allows no inline styles (`.tools/tests/insights.mjs`). The same fix sizes Privacy & Security's verified-friends bar, which 1.2.6 drew full.
+**Admin → Insights** (`functions/_insights.js`, `GET /api/account/admin/insights`): totals only, never who sent what to whom, a word, a place or a route. People here today, this week and this month (their app checked in), and how many came back a week after joining (of accounts over 8 days old, and by the week they joined); the last 30 London days as columns of pigeons sent, people active (sent or opened one) and new accounts, with a tooltip per day and a table for screen readers; the kinds of pigeon and the features used (groups, photos, mystery, scheduled, stopovers, cheers, route styles, space, disappearing, Pigeon Death, recalls) as shares of the pigeons sent; what share of accounts have a friend, a group, notifications, a confirmed email, a passkey, named pigeons; and whether landings are told on time (any landed 15 minutes ago with no notice is flagged). Bars are sized from script, as the page's Content-Security-Policy allows no inline styles (`.tools/tests/insights.mjs`). The same fix sizes Privacy & Security's verified-friends bar, which 1.2.6 drew full.
 
 **1.2.6** (where you're signed in): Signed-In Phones says how many places the account is signed in ("Only This Phone"), shows this phone as active now, Home Screen app or browser, and since when, and lists the others with when each was last active, a New mark on any from the last day, and Sign Out; Sign Out of This Phone is at the bottom. Each sign-in keeps roughly where it was made (`pg_sessions.place`: the city and country Cloudflare puts its address in, never closer), gone when it's signed out. Privacy & Security counts the places signed in, shows the friends verified as a bar with who's next, and has shorter lines.
 
@@ -1037,8 +1037,7 @@ or reset link included) on a phone; the app itself never starts, so nothing is
 signed in, synced or stored. `pigeon/theme.js` decides before anything is
 drawn: an iPhone, iPad or Android device counts, and so does a "Mac" with a
 touchscreen, which is how an iPad's Safari introduces itself (it can't be told
-apart on the server, so this is decided on the device). The owner's admin page
-(/pigeon/admin) still opens on a computer.
+apart on the server, so this is decided on the device).
 
 | Part | Where |
 | --- | --- |
@@ -1781,12 +1780,12 @@ older scrolls stay sealed and friends see a key-change warning. Every change
 signs out the account's other phones and emails a "your password was changed"
 notice.
 
-InFlight's emails (a pigeon landed, a friend request, the week in flight, the
-admin page's test) and the account's (sign-ins, the password, passkeys, the email
+InFlight's emails (a pigeon landed, a friend request, the week in flight, Admin's
+test) and the account's (sign-ins, the password, passkeys, the email
 address, reset links, keeping or deleting it) go through the site's email, below
-under **Email**. Press **Send a test email** on the admin page to check it's set
-up. Without a key the app says reset emails aren't on yet, and the admin page can
-still make links for you to send by hand.
+under **Email**. Press **Send a test email** in Admin → Email to check it's set
+up. Without a key the app says reset emails aren't on yet, and Admin can still
+make reset links for you to send by hand.
 
 **Admin.** It lists every account (name, handle, email, last active, passkeys,
 friends, scrolls sent), gives pigeons, can email a reset link, make a 24-hour
@@ -1795,22 +1794,19 @@ makes and cancels invites; and has Insights, Storage, Email (with a test) and a
 log of every action. Admins never see passwords, keys or scrolls; the server
 doesn't have them.
 
-It's on an account: the site's admin is linked, once, to your own account, and
-from then on Admin is a section of that account's page (account.<site>), only
-for it. To link: sign in to your account (it needs a passkey) and, in the same
-browser, open the old dashboard, `/pigeon/admin/`, with the site owner sign-in
-(the key icon's password or passkey), and press **Link Admin to @you**
-(`POST /api/pigeon/admin-link`, which keeps the account's id as `pg_meta`
-`admin_user`, logs it and emails the account). The old dashboard then sends you
-to your account's page, and its API answers the owner's sign-in with 410: the
-owner sign-in is only the website's Edit now. On the account's page it's
-`/api/account/admin/*` (the same handlers, `functions/api/pigeon`
-`ADMIN_ROUTES`): your account only, with a passkey on it; looking needs you to
-have shown it's you (password or passkey) in the last 12 hours, a change in the
-last 10 minutes (the page asks, as for anything else), from the page itself;
-each change is in your Recent activity too, and you can't delete your own
-account from Admin. If the linked account's ever gone (or being deleted), the
-old dashboard and the owner's sign-in work again, so it can't lock you out.
+It's on an account: Admin is a section of the admin's own account page
+(account.<site>), only for it. The admin is the account linked to it (`pg_meta`
+`admin_user`: linked once from InFlight's old dashboard, since removed), or, with
+none (or that one gone, or being deleted), the account with the site owner's
+email (`PIGEON_ADMIN_EMAIL`, else `CONTACT_TO`) once that email's confirmed: the
+same as a reset link to that inbox would give, so it can't be lost for good.
+Its API is `/api/account/admin/*` (`functions/api/pigeon` `ADMIN_ROUTES`): that
+account only, with a passkey on it; looking needs you to have shown it's you
+(password or passkey) in the last 12 hours, a change in the last 10 minutes
+(the page asks, as for anything else), from the page itself; each change is in
+your Recent activity too, and you can't delete your own account from Admin. The
+old dashboard's addresses (`/pigeon/admin/` on the site, `/admin` on InFlight's)
+lead there; the site owner's sign-in is only the website's Edit now.
 `.tools/tests/adminlink.mjs` tests all of it.
 
 **Profiles.** In Account → My Profile, people can change their name any time,

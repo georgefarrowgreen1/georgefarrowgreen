@@ -2,6 +2,8 @@
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { createHash, randomBytes } from 'crypto';
+import http from 'http';
 import { joinInFlight } from './join.mjs';
 export async function kit(S, out, BASE = 'http://localhost:8788') {
 const URL = process.env.APPURL || BASE + '/pigeon/';
@@ -74,6 +76,22 @@ const sess = (ph) => ph.p.evaluate(() => new Promise((res) => { const r = indexe
 const fetchRetry = async (...a) => { for (let i = 0; ; i++) { try { return await fetch(...a); } catch (e) { if (i > 3) throw e; await new Promise((r) => setTimeout(r, 300)); } } };
 const api = (tk, path, body) => fetchRetry(BASE + '/api/pigeon/' + path, { method: body ? 'POST' : 'GET', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).then(async (r) => [r.status, await r.json().catch(() => ({}))]);
 const one = (q) => { const o = sql(q); const m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
+// The site's admin, on its account's page (functions/api/pigeon admin): this account made it (as linking it once did),
+// with a passkey on it and a sign-in just shown, for the account's address; ask(path) asks Admin's API as that would
+async function admin(userId) {
+  const hx = (x) => createHash('sha256').update(x).digest('hex'), t = Date.now(), site = randomBytes(32).toString('base64url');
+  one(`INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, site_hash) VALUES ('${hx(randomBytes(32).toString('base64url'))}', '${userId}', ${t}, ${t}, ${t}, '${hx(site)}')`);
+  one(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('admin_user', '${userId}')`);
+  one(`INSERT OR IGNORE INTO pg_passkeys (id, user_id, public_key, alg, created_at) VALUES ('admin-test-key', '${userId}', 'x', -7, ${t})`);
+  const ask = (path) => new Promise((ok, no) => {
+    const r = http.request({ host: '127.0.0.1', port: 8788, path: `/api/account/admin/${path}`, agent: false, headers: { Host: 'account.localhost:8788', Cookie: `account=${site}` } }, (res) => {
+      const parts = []; res.on('data', (c) => parts.push(c));
+      res.on('end', () => { let json = null; try { json = JSON.parse(Buffer.concat(parts).toString()); } catch (_) {} ok({ status: res.statusCode, json }); });
+    });
+    r.on('error', no); r.end();
+  });
+  return { ask, page: 'http://account.localhost:8788', cookie: { name: 'account', value: site, domain: 'account.localhost', path: '/' } };
+}
 const openChat = async (ph, id) => {
   for (let k = 0; k < 4; k++) {
     await ph.p.evaluate((id) => { history.replaceState(null, '', location.pathname); location.hash = '#open=' + id; }, id);
@@ -114,5 +132,5 @@ const pick = async (ph, kind) => {
 const say = async (ph, kind, text) => { await pick(ph, kind); await ph.p.fill('#msg', text); await ph.p.click('.send'); await ph.p.waitForTimeout(1500); };
 // every push to one phone since a moment, opened
 const allPushes = async (keys, name, since = 0) => Promise.all(pushes().filter((x) => x.at > since && (x.headers['x-endpoint'] || '').includes(`/${name}-device`)).map(async (x) => ({ at: x.at, ...(await decrypt(keys, x.body).catch(() => ({}))) })));
-return { b, errs, ok, sql, one, pushes, allPushes, makeKeys, decrypt, phone, signup, tick, lastPush, sess, api, openChat, pick, say, send, pushOn, txt, fails: () => fails, URL, BASE };
+return { b, errs, ok, sql, one, admin, pushes, allPushes, makeKeys, decrypt, phone, signup, tick, lastPush, sess, api, openChat, pick, say, send, pushOn, txt, fails: () => fails, URL, BASE };
 }

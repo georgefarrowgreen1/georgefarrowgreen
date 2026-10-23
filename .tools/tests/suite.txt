@@ -13,7 +13,6 @@ vanish
 verify
 trackertest
 whatsnew
-admincheck
 adminlink
 argontest
 sec2

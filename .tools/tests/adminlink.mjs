@@ -1,9 +1,9 @@
-// The site's admin moved to an account: linked once from the old dashboard (signed in there as the site's owner, and to
-// the account, which has a passkey, in the same browser); from then on Admin is on that account's own page, and the old
-// dashboard sends you there, its API no longer opening for the owner's sign-in. On the account's page: the figures,
+// The site's admin is an account: Admin is a section of its own page (the old InFlight dashboard, and the owner's
+// sign-in for it, are gone: their addresses come here). It's the account linked to it (pg_meta admin_user), or, with
+// none (or that one gone), the account with the site owner's email once that's confirmed. On its page: the figures,
 // Accounts (one account: pigeons given, a reset link, signing out, deleting), Invites, Insights, Storage, Email and the
 // admin log; looking needs a sign-in shown in the last 12 hours, a change one in the last 10 minutes; each change in the
-// account's Recent activity; another account gets none of it. (The account's addresses stood in for by gfg.test.)
+// account's Recent activity; another account gets none of it. (The site's addresses stood in for by gfg.test.)
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
 import http from 'http';
@@ -46,37 +46,40 @@ const account = async (x) => { await x.p.goto(`${ACCT}/`); await x.p.waitForSele
 const adminText = (x) => x.p.evaluate(() => [...document.querySelectorAll('section.section')].find((s) => s.querySelector('h3')?.textContent === 'Admin')?.innerText.replace(/\s+/g, ' ').trim() || '');
 const waitSheet = (x, re, ms = 15000) => x.p.waitForFunction((r) => new RegExp(r).test(document.querySelector('#sheet')?.innerText || ''), re.source, { timeout: ms }).then(() => true, () => false);
 
-// ---- 1. Two accounts; the one to be the admin with a passkey (made in InFlight) ----
+// ---- 1. The owner's email (PIGEON_ADMIN_EMAIL, here owner@example.com) on an account with a passkey; another account ----
 const G = await browser('admin'), P = await browser('pat');
-await joinInFlight(G.p, `${CHAT}/`, { name: 'Gail Admin', handle: 'gail', email: 'gail@example.com', password: PW, city: 'London', passkey: true });
+await joinInFlight(G.p, `${CHAT}/`, { name: 'Gail Admin', handle: 'gail', email: 'owner@example.com', password: PW, city: 'London', passkey: true });
 await joinInFlight(P.p, `${CHAT}/`, { name: 'Pat Reed', handle: 'pat', email: 'pat@example.com', password: PW, city: 'Leeds' });
+const idOf = (h) => sql(`SELECT id FROM pg_users WHERE handle = '${h}'`).match(/"id": "([^"]+)"/)[1];
+const gail = idOf('gail'), pat = idOf('pat');
 await account(G);
-ok(!(await G.p.$('section.section:has(h3:text-is("Admin"))')), 'before linking: no Admin on the account’s page');
+ok(!(await adminText(G)), 'the owner’s email not confirmed yet: no Admin');
 let r = await req(G, `${ACCT}/api/account/admin/users`);
 ok(r.status === 403, 'nor its API', String(r.status));
 
-// ---- 2. The old dashboard: the owner signs in; it offers to link the account signed in in this browser ----
-await G.p.goto(`${SITE}/pigeon/admin/`);
-await G.p.waitForSelector('#f-pw', { timeout: 15000 }); await G.p.fill('#f-pw', 'owner-test-pass'); await G.p.press('#f-pw', 'Enter');
-await G.p.waitForSelector('[data-a=linkacct]', { timeout: 15000 }).catch(() => {});
-ok(/Link Admin to @gail/.test(await text(G, '#adm')), 'the old dashboard offers to link @gail', (await text(G, '#adm')).slice(0, 160));
-await G.p.click('[data-a=linkacct]');
-await G.p.waitForURL(/account\.gfg\.test:8788\/?/, { timeout: 15000 }).catch(() => {});
-await G.p.waitForSelector('section.section:has(h3:text-is("Admin"))', { timeout: 20000 }).catch(() => {});
-ok(G.p.url().startsWith(ACCT) && !!(await G.p.$('section.section:has(h3:text-is("Admin"))')), 'linking: on to the account’s page, with Admin on it', G.p.url());
+// ---- 2. Confirmed: Admin, on its page; a link to another account goes first; gone, back to the owner's email ----
+sql(`UPDATE pg_users SET email_ok = ${Date.now()} WHERE id = '${gail}'`);
+await account(G);
 for (let i = 0; i < 20 && !/Accounts 2/.test(await adminText(G)); i++) await settle(G, 500);
 const sec = await adminText(G);
-ok(/Accounts 2/.test(sec) && /Invites 0 unused/.test(sec) && /Email Working/.test(sec), 'its figures: 2 accounts, no invites, email working', sec);
-ok(sql("SELECT action FROM pg_admin_log WHERE action = 'linked'").includes('linked'), 'and the link is in the admin log');
+ok(/Accounts 2/.test(sec) && /Invites 0 unused/.test(sec) && /Email Working/.test(sec), 'confirmed: Admin, with its figures (2 accounts, no invites, email working)', sec);
+sql(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('admin_user', '${pat}')`);
+r = await req(G, `${ACCT}/api/account/admin/users`);
+const rp = await req(P, `${ACCT}/api/account/admin/users`);
+ok(r.status === 403 && rp.status === 403 && rp.json?.field === 'passkey', 'linked to @pat instead: @gail’s Admin goes, and @pat’s needs a passkey first', `${r.status} ${rp.status} ${JSON.stringify(rp.json)}`);
+sql(`UPDATE pg_users SET delete_at = ${Date.now() + 7 * 864e5} WHERE id = '${pat}'`);
+r = await req(G, `${ACCT}/api/account/admin/users`);
+ok(r.status === 200, 'the linked account being deleted: back to the owner’s email', String(r.status));
+sql(`UPDATE pg_users SET delete_at = NULL WHERE id = '${pat}'`); sql("DELETE FROM pg_meta WHERE k = 'admin_user'");
 
-// ---- 3. The old dashboard now sends you there, and its API is shut to the owner's sign-in ----
-await G.p.goto(`${SITE}/pigeon/admin/`);
-await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
-ok(G.p.url().startsWith(ACCT), 'the old dashboard: straight on to the account’s page', G.p.url());
-r = await req(G, `${SITE}/api/pigeon/admin-users`);
-ok(r.status === 410, 'its API: closed to the owner’s sign-in', String(r.status));
-r = await req(G, `${SITE}/api/pigeon/admin-link`, { method: 'POST', headers: { 'X-InFlight-Admin': '1', 'Content-Type': 'application/json' }, data: '{}' });
-ok(r.status === 410, 'and it can’t be linked again from there', String(r.status));
+// ---- 3. The old dashboard's addresses come here; its API is gone ----
+await G.p.goto(`${SITE}/pigeon/admin/`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
+ok(G.p.url().startsWith(`${ACCT}/#admin`) || G.p.url().startsWith(ACCT), 'the old dashboard’s address: on to Admin on the account’s page', G.p.url());
+await G.p.goto(`${CHAT}/admin`); await G.p.waitForURL(/account\.gfg\.test/, { timeout: 15000 }).catch(() => {});
+ok(G.p.url().startsWith(ACCT), 'and InFlight’s /admin', G.p.url());
+r = await req(G, `${CHAT}/api/pigeon/admin-users`);
+const r2 = await req(G, `${CHAT}/api/pigeon/admin-status`);
+ok(r.status === 404 && r2.status === 404, 'InFlight’s old admin API: gone', `${r.status} ${r2.status}`);
 
 // ---- 4. Accounts: the list, one account, pigeons given, a reset link, signing out ----
 await account(G);
@@ -92,7 +95,6 @@ ok(/swift pigeon/.test(await text(G, '.toast')), 'a pigeon given (signed in just
 await G.p.click('#sheet .row.action:text-is("Make a reset link")'); await waitSheet(G, /#reset=/);
 ok(/#reset=[A-Za-z0-9_-]{30,}/.test(await sheetText(G)), 'a reset link, to copy');
 // (a change needs a sign-in in the last 10 minutes: older, and it asks)
-const gail = sql("SELECT id FROM pg_users WHERE handle = 'gail'").match(/"id": "([^"]+)"/)[1];
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now() - 30 * 60e3} WHERE user_id = '${gail}'`);
 await G.p.click('#sheet .row.action:text-is("Sign out everywhere")');
 ok(await G.p.waitForSelector('#sheet h2:text-is("Confirm it’s you")', { timeout: 8000 }).then(() => true, () => false), 'a change, half an hour on: Confirm it’s you first');
@@ -124,7 +126,7 @@ await G.p.click('#sheet .x'); await settle(G, 600);
 await adminRow(G, 'Email'); ok(await waitSheet(G, /Send a test email/), 'Email: on, with a test');
 await G.p.click('#sheet .x'); await settle(G, 600);
 await adminRow(G, 'Admin log'); await waitSheet(G, /Pigeons given/);
-ok(/Pigeons given/.test(await sheetText(G)) && /Signed out everywhere/.test(await sheetText(G)) && /Admin linked/.test(await sheetText(G)), 'the admin log', await sheetText(G));
+ok(/Pigeons given/.test(await sheetText(G)) && /Signed out everywhere/.test(await sheetText(G)), 'the admin log', await sheetText(G));
 await G.p.click('#sheet .x'); await settle(G, 600);
 
 // ---- 7. Deleting an account (not your own); each change in your Recent activity ----

@@ -5,6 +5,7 @@
 import { serveApp, isChat, notFound } from "./_app.js";
 import { isWeather, weatherHost } from "./_wxapp.js";
 import { isAccount, accountHost } from "./_acctapp.js";
+import { accountPage } from "./_pigeon.js";
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url);
@@ -17,6 +18,8 @@ export async function onRequest(ctx) {
   if (!isChat(url, ctx.env)) {
     // (the emails' pictures, every app's, are at /mail/ now: emails sent before still ask for them here)
     if (url.pathname.startsWith("/pigeon/mail/v2/")) return Response.redirect(`${url.origin}/mail/${url.pathname.slice(16)}`, 301);
+    // (InFlight's old admin dashboard: Admin's on the admin's account page now)
+    if (/^\/pigeon\/admin(\/|$)/.test(url.pathname)) return Response.redirect(`${accountPage(ctx.request, ctx.env)}/#admin`, 302);
     const res = await ctx.next();
     // (the site's own API answers: never taken for anything but what they say they are)
     if (!url.pathname.startsWith("/api/") || res.headers.get("X-Content-Type-Options")) return res;
@@ -24,8 +27,8 @@ export async function onRequest(ctx) {
   }
   // here, only InFlight's own API: the site's (its owner's sign-in, its content) stays on georgefarrowgreen.com
   if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/pigeon/") ? ctx.next() : notFound();
-  // InFlight's admin signs in as the site's owner, so it lives on the site's own address
-  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return Response.redirect(`${url.protocol}//${url.host.replace(/^chat\./, "")}/pigeon${url.pathname}${url.search}`, 302);
+  // (InFlight's admin: on the admin's account page)
+  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return Response.redirect(`${accountPage(ctx.request, ctx.env)}/#admin`, 302);
   // an old address on the new host (a link from before, a notification): the same place, at the root
   if (url.pathname === "/pigeon" || url.pathname.startsWith("/pigeon/")) {
     const to = new URL(url); to.pathname = url.pathname.slice(7) || "/";

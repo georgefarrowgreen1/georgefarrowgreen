@@ -118,13 +118,17 @@ one(`UPDATE pg_users SET warned_at = ${now() - 8 * DAY} WHERE id = '${bs.me.id}'
 await housekeep();
 ok(!!one(`SELECT 1 FROM pg_users WHERE id = '${bs.me.id}' AND warned_at IS NULL`).length, 'he came back: kept, and the warning forgotten');
 
-// 6. the admin's Storage panel
-const ad = await (await K.b.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
-await ad.goto('http://localhost:8788/pigeon/admin/'); await ad.waitForSelector('#f-pw'); await ad.fill('#f-pw', 'owner-test-pass'); await ad.press('#f-pw', 'Enter');
-await ad.waitForSelector('[data-a=storage]', { timeout: 15000 }); await ad.click('[data-a=storage]');
-await ad.waitForFunction(() => /Database/.test(document.querySelector('#layer')?.innerText || ''), null, { timeout: 15000 }).catch(() => {});
-const panel = (await ad.locator('#layer').innerText()).replace(/\s+/g, ' ');
-ok(/Database \d/.test(panel) && /pg_flights 4/.test(panel) && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage panel: the database’s size, rows per table, what’s waiting to go', panel.slice(0, 240));
+// 6. the admin's Storage sheet, on its account's page
+const AD = await K.admin(as.me.id);
+const actx = await K.b.newContext({ viewport: { width: 430, height: 932 }, deviceScaleFactor: 2 });
+await actx.addCookies([AD.cookie]);
+const ad = await actx.newPage();
+ad.on('pageerror', (e) => K.errs.push(`admin: ${e.message}`));
+await ad.goto(AD.page + '/'); await ad.waitForSelector('section.section:has(h3:text-is("Admin")) .row', { timeout: 20000 }); await ad.waitForTimeout(900);
+await ad.click('section.section:has(h3:text-is("Admin")) .row:has(b:text-is("Storage"))');
+await ad.waitForFunction(() => /Database/.test(document.querySelector('#sheet')?.innerText || ''), null, { timeout: 30000 }).catch(() => {});
+const panel = (await ad.locator('#sheet').innerText()).replace(/\s+/g, ' ');
+ok(/Database \d/.test(panel) && /pg_flights 4/.test(panel) && /Messages over 30 days/.test(panel) && /Last run/.test(panel), 'the admin’s Storage: the database’s size, rows per table, what’s waiting to go', panel.slice(0, 240));
 await ad.screenshot({ path: `${out}/storage-panel.png` });
 console.log('errs', K.errs);
 console.log(`FAILS ${K.fails()}`);

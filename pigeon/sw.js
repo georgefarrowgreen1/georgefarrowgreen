@@ -16,7 +16,7 @@ self.addEventListener("activate", (e) => e.waitUntil((async () => {
   await self.clients.claim();
 })()));
 
-const ours = (u) => u.origin === self.location.origin && u.pathname.startsWith("/pigeon/") && !u.pathname.startsWith("/pigeon/admin") && !u.pathname.startsWith("/pigeon/mail");
+const ours = (u) => u.origin === self.location.origin && u.pathname.startsWith("/pigeon/") && !u.pathname.startsWith("/pigeon/mail");
 
 self.addEventListener("fetch", (e) => {
   const r = e.request;
