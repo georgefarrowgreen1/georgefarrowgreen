@@ -3,7 +3,7 @@ import { isOnce, serveOnce, drawMystery, MYSTERY,
   db, body, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, sweepPhotos, rpIdFor, newChallenge, checkClientData, verifyAssertion,
   HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf,
-  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, appLink, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle,
+  emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin, createReset, resetUrl, accountPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle,
 } from "../../_pigeon.js";
 import { isAuthed } from "../../_auth.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
@@ -25,7 +25,7 @@ import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
 import { removeAccount, avatarKey } from "../../_accounts.js";
-import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn } from "../../_account.js";
+import { cookieToken, withSession, withoutSession, cookieUser, sameOrigin, saltFor, passwordUser, passkeyUser, tellSignIn, accountMail } from "../../_account.js";
 import { waitText, setName, setHandle, putPhoto, dropPhoto, photoOf } from "../../_profile.js";
 // (a session's hash, from its token)
 const hashOf = async (token) => hex(await sha256(token));
@@ -61,22 +61,18 @@ function meView(u, t) {
 const elsewhere = (what) => async () => { throw new HttpError(410, `${what} at account.georgefarrowgreen.com.`, "moved"); };
 
 // Confirming the email address: a link to it, good for 7 days. Until then it gets
-// nothing but this (and password resets, which prove the same thing).
+// nothing but this (and password resets, which prove the same thing). The email is the
+// account's (from "Account", to its page: functions/_account.js), as it's the account's
+// address; InFlight's older #verify= links still work.
 const CONFIRM_TTL = 7 * DAY;
-async function sendConfirm(env, u, origin) {
+async function sendConfirm(env, u, request) {
   if (!emailReady(env)) return false;
   const token = randomToken(32);
   await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
-  const { text, html } = emailBody({
-    origin, icon: "bird", title: "Confirm your email",
-    preheader: `Confirm the email address for @${u.handle} on InFlight.`,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, tap the button to confirm this is your email address for InFlight. It’s where password resets and any notifications you turn on will go.`,
-      "If you didn’t sign up for InFlight, ignore this email: nothing more will be sent."],
-    rows: [["Account", `@${u.handle}`]],
-    button: { label: "Confirm Email", url: appLink(origin, `#verify=${token}`) },
-  });
-  await sendEmail(env, { to: u.email, subject: "Confirm your email for InFlight", text, html });
-  return true;
+  return accountMail(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", to: u.email,
+    line: "tap the button to confirm this is your email address for your account.",
+    after: "It’s where password resets, security notes and any notifications you turn on go. If you didn’t ask for this, ignore it: nothing more will be sent.",
+    button: { label: "Confirm email", url: `${accountPage(request, env)}/#confirm=${token}` } }, linkOrigin(request));
 }
 async function confirmEmail({ request, env, waitUntil }) {
   await limit(env, "confirm:" + clientIp(request), 20, 15 * 60e3);
@@ -94,7 +90,7 @@ async function confirmResend({ request, env }) {
   if (u.email_ok) return json({ ok: true, already: true });
   if (!emailReady(env)) throw new HttpError(503, "Email isn’t switched on yet.");
   await limit(env, "confirmsend:" + u.id, 3, DAY);
-  await sendConfirm(env, u, linkOrigin(request));
+  await sendConfirm(env, u, request);
   return json({ ok: true });
 }
 
@@ -353,7 +349,7 @@ async function passkeyRegister({ request, env, waitUntil }) {
   await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .bind(b.id, u.id, String(b.publicKey), b.alg, String(b.label || "Passkey").slice(0, 40), provider, Date.now()).run();
   waitUntil(logEvent(env, u.id, "passkey-add", request, provider || String(b.label || "Passkey").slice(0, 40)));
-  waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), linkOrigin(request)).catch(() => {}));
+  waitUntil(notifyPasskeyAdded(env, u, String(b.label || "Passkey").slice(0, 40), request).catch(() => {}));
   return json({ ok: true });
 }
 // Where you're signed in, and signing the others out.
@@ -1076,29 +1072,18 @@ async function getPhoto({ request, env }, id) {
    The password locks the private key, so a reset can only keep someone's
    scrolls if their phone unlocks the key another way (a passkey with PRF).
    Otherwise the phone makes a new key pair and old scrolls stay sealed. */
-async function notifyPasskeyAdded(env, u, label, origin) {
-  if (!emailReady(env) || !u.email_ok) return;
-  const { text, html } = emailBody({
-    origin, icon: "shield", title: "A passkey was added",
-    preheader: `A new passkey can now sign in to @${u.handle}.`,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, a new passkey (“${label}”) was just added to your InFlight account. It can sign you in.`,
-      "If this wasn’t you, remove it in Privacy & Security → Passkeys and change your password straight away."],
-    rows: [["Account", `@${u.handle}`], ["Passkey", label], ["When", ukTime(Date.now())]],
-    button: { label: "Review Your Passkeys", url: appLink(origin, "#account") },
-  });
-  await sendEmail(env, { to: u.email, subject: "A passkey was added to your InFlight account", text, html }).catch(() => {});
+// (the account's, so from "Account", pointing at its page: functions/_account.js)
+async function notifyPasskeyAdded(env, u, label, request) {
+  await accountMail(env, u, { icon: "passkey", title: "A passkey was added", subject: "A passkey was added to your account",
+    line: `a new passkey (“${label}”) can now sign in to your account.`,
+    after: "If this wasn’t you, remove it in Passkeys and change your password straight away.",
+    rows: [["Passkey", label], ["Added in", "InFlight"]], button: { label: "Review your passkeys", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
 }
-async function notifyPasswordChanged(env, u, how, origin) {
-  if (!emailReady(env) || !u.email_ok) return;
-  const { text, html } = emailBody({
-    origin, icon: "shield", title: "Your password was changed",
-    preheader: `The password for @${u.handle} was just changed.`,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, the password for your InFlight account was just changed. Your messages are still safe.`,
-      "If this wasn’t you, reply to this email straight away."],
-    rows: [["Account", `@${u.handle}`], ["Changed", how], ["When", ukTime(Date.now())]],
-    button: { label: "Review Your Account", url: appLink(origin, "#account") },
-  });
-  await sendEmail(env, { to: u.email, subject: "Your InFlight password was changed", text, html }).catch(() => {});
+async function notifyPasswordChanged(env, u, request) {
+  await accountMail(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed",
+    line: "the password for your account was just changed. Your InFlight messages are still safe.",
+    after: "If this wasn’t you, reset your password straight away with Forgot password? at account.georgefarrowgreen.com.",
+    rows: [["Changed in", "InFlight"]], button: { label: "Review your account", url: `${accountPage(request, env)}/` } }, linkOrigin(request));
 }
 
 // A new sign-in: the account's phones are told at once, and its email too, so a sign-in
@@ -1147,7 +1132,7 @@ async function changePassword({ request, env, waitUntil }) {
     D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
   ]);
   waitUntil(logEvent(env, u.id, "password", request));
-  waitUntil(notifyPasswordChanged(env, u, "In the app", linkOrigin(request)));
+  waitUntil(notifyPasswordChanged(env, u, request).catch(() => {}));
   return json({ ok: true });
 }
 
@@ -1210,15 +1195,9 @@ async function adminReset({ request, env }) {
   if (b.mode === "email") {
     if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up yet. Use “Make a reset link” and send it yourself.");
     const token = await createReset(env, u.id, "admin-email", RESET_TTL_EMAIL);
-    const { text, html } = emailBody({
-      origin: linkOrigin(request), icon: "key", title: "Reset your password",
-      preheader: "Here’s a link to choose a new password for InFlight.",
-      lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, here’s a link to choose a new password for your InFlight account.`,
-        "If you didn’t ask for this, you can ignore it. Your password won’t change."],
-      rows: [["Account", `@${u.handle}`], ["Link works", "Once, for 1 hour"]],
-      button: { label: "Choose a New Password", url: resetUrl(request, env, token) },
-    });
-    await sendEmail(env, { to: u.email, subject: "Reset your InFlight password", text, html }, { explain: true });
+    await accountMail(env, u, { icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
+      line: "here’s a link to choose a new password for your account.", after: "If you didn’t ask for this, ignore this email: your password won’t change.",
+      rows: [["Link works", "Once, for 1 hour"]], button: { label: "Choose a new password", url: resetUrl(request, env, token) } }, linkOrigin(request), { explain: true });
     await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
     return json({ message: `Reset link emailed to ${u.email}. It works for one hour.` });
   }

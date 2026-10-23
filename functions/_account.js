@@ -17,7 +17,7 @@
 // ACCOUNT_SITE in the environment: tests, which stand in a site of their own (gfg.test), over plain http.
 
 import { HttpError, db, sha256, hex, b64url, clientIp, clientNet, limit, serverSecret, sessionUser, checkClientData, verifyAssertion, EMAIL_RE, SESSION_TTL, randomToken,
-  deviceOf, regionOf, emailReady, emailBody, sendEmail, ukTime, appLink } from "./_pigeon.js";
+  deviceOf, regionOf, emailReady, emailBody, sendEmail, ukTime, linkOrigin, accountPage } from "./_pigeon.js";
 import { proofOk } from "./_atrest.js";
 import { pushTo } from "./_notify.js";
 import { logEvent } from "./_activity.js";
@@ -133,8 +133,20 @@ export async function passkeyUser(env, request, b, { deleting = false } = {}) {
   return { u, cred };
 }
 
-// "A new sign-in", to the account's phones and by email. In InFlight (inflight), as InFlight says it, with where to
-// sign it out; anywhere else on the site, as the account's.
+// An email about the account (its sign-ins, password, passkeys, email, keeping it): from "Account", in the account's
+// look, whichever app it happened in. To the account's email once it's confirmed, or to another address (to). A send
+// that fails is said (as to an admin, explain), so callers that don't mind catch it.
+export async function accountMail(env, u, { icon = "shield", title, line, after, subject, rows = [], to, button }, origin, opts) {
+  if (!emailReady(env) || (!to && !u.email_ok)) return false;
+  const { text, html } = emailBody({ origin, icon, brand: "account", title, preheader: line, button,
+    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.georgefarrowgreen.com."],
+    rows: [["Account", `@${u.handle}`], ...rows, ["When", ukTime(Date.now())]] });
+  await sendEmail(env, { to: to || u.email, subject, text, html, app: "Account" }, opts);
+  return true;
+}
+
+// "A new sign-in", to the account's phones (in InFlight, as InFlight says it, with where to sign it out) and by email,
+// from the account, saying which app it was in
 export async function tellSignIn(env, u, request, how, origin, inflight = true) {
   await logEvent(env, u.id, "signin", request, how);
   const device = deviceOf(request) || "a new phone";
@@ -142,15 +154,10 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true) 
   if (/^(United|Netherlands|Philippines|Czech|Bahamas|Gambia|Maldives|Seychelles|Marshall|Solomon|Central African|Dominican)/.test(where)) where = "the " + where;
   const on = `${device}${where ? ` in ${where}` : ""}`, account = inflight ? "Your InFlight account" : "Your account";
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
-  if (!emailReady(env) || !u.email_ok) return;
-  const { text, html } = emailBody({
-    origin, icon: "shield", title: "A new sign-in", brand: inflight ? "inflight" : "account",
-    preheader: `@${u.handle} was signed in on ${on}.`,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${account.toLowerCase()} was just signed in on ${on}.`,
-      inflight ? "If this was you, there’s nothing to do. If not, sign it out in Account → Privacy & Security → Signed-in Phones and change your password."
-        : "If this was you, there’s nothing to do. If not, change your password."],
-    rows: [["Account", `@${u.handle}`], ["On", device], ...(where ? [["Where", where.replace(/^the /, "")]] : []), ["How", how], ["When", ukTime(Date.now())]],
-    ...(inflight ? { button: { label: "Review Your Account", url: appLink(origin, "#account") } } : {}),
-  });
-  await sendEmail(env, { to: u.email, subject: inflight ? "A new sign-in to InFlight" : "A new sign-in to your account", text, html }).catch(() => {});
+  const app = inflight ? "InFlight" : new URL(request.url).hostname.startsWith("weather.") ? "Weather" : "Account page";
+  await accountMail(env, u, { title: "A new sign-in", subject: "A new sign-in to your account",
+    line: `your account was just signed in on ${on}.`,
+    after: "If this was you, there’s nothing to do. If not, sign out the devices you don’t know in Signed-in devices and change your password.",
+    rows: [["Signed in to", app], ["On", device], ...(where ? [["Where", where.replace(/^the /, "")]] : []), ["How", how]],
+    button: { label: "Review your account", url: `${accountPage(request, env)}/` } }, origin || linkOrigin(request)).catch(() => {});
 }

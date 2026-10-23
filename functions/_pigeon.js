@@ -773,18 +773,22 @@ export function cleanPlace(b, approx = false) {
 }
 
 /* ---------------- email (Resend) ----------------
-   Needs RESEND_API_KEY and a sender on a domain verified in Resend:
-   PIGEON_FROM, else CONTACT_FROM, else noreply@georgefarrowgreen.com. */
+   Needs RESEND_API_KEY and a sender on a domain verified in Resend: the address in
+   PIGEON_FROM, else CONTACT_FROM (noreply@georgefarrowgreen.com). Every app's email
+   comes from that one address, each under its own app's name: "InFlight" for
+   InFlight's own (a pigeon landed), "Account" for the account's (its sign-ins,
+   password, passkeys, email, keeping it), whichever app it happened in. */
 export const emailReady = (env) => !!env.RESEND_API_KEY;
 // Until a domain is verified in Resend, its test sender onboarding@resend.dev
 // works, but only for mail to the Resend account's own address.
-export const emailFrom = (env) => env.PIGEON_FROM || env.CONTACT_FROM || "InFlight <onboarding@resend.dev>";
-export async function sendEmail(env, { to, subject, text, html, headers }, { explain = false } = {}) {
+const senderAddress = (env) => { const f = String(env.PIGEON_FROM || env.CONTACT_FROM || "onboarding@resend.dev"); return (/<([^>]+)>/.exec(f) || [, f.trim()])[1]; };
+export const emailFrom = (env, app = "InFlight") => `${app} <${senderAddress(env)}>`;
+export async function sendEmail(env, { to, subject, text, html, headers, app = "InFlight" }, { explain = false } = {}) {
   if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up on this server yet.");
   const r = await fetch(env.RESEND_API_URL || "https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: emailFrom(env), to, subject, text, html, ...(headers ? { headers } : {}) }),
+    body: JSON.stringify({ from: emailFrom(env, app), to, subject, text, html, ...(headers ? { headers } : {}) }),
   });
   if (!r.ok) {
     const why = await r.json().then((d) => d.message || d.error || "", () => "");
@@ -811,11 +815,14 @@ export function linkOrigin(request) {
 export const APP = "https://chat.georgefarrowgreen.com";
 export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : origin + "/pigeon/") + hash;
 export const ukTime = (t) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(t);
-// (brand "account": the site's account, for what's the account's rather than InFlight's: its own name, icon and link)
+// (brand "account": the site's account, for what's the account's rather than InFlight's: its own icon, and a way to it)
 export const ACCOUNT_APP = "https://account.georgefarrowgreen.com";
+// the account's page, for links in emails (this site's, or a local test server's copy)
+export const accountLink = (origin = SITE) => (origin === SITE ? ACCOUNT_APP : origin + "/account");
 export function emailBody({ title, lines = [], button, icon = "bird", rows = [], footer, unsub, origin = SITE, preheader, brand = "inflight" }) {
+  const acct = accountLink(origin), mine = brand === "account";
   const text = [title, ...lines, ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
-    footer || "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
+    footer || "", mine ? `Your georgefarrowgreen.com account: ${acct}/` : "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
   const e = escHtml, font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
   const row = ([k, v], i) => `<tr><td class="ml-k" style="padding:12px 16px;font-size:15px;line-height:20px;color:#6e6e73;text-align:left;${i ? "border-top:1px solid #e5e5ea;" : ""}">${e(k)}</td>
     <td class="ml-v" style="padding:12px 16px;font-size:15px;line-height:20px;color:#1c1c1e;font-weight:600;text-align:right;${i ? "border-top:1px solid #e5e5ea;" : ""}">${e(v)}</td></tr>`;
@@ -834,12 +841,9 @@ export function emailBody({ title, lines = [], button, icon = "bird", rows = [],
 ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${e(preheader)}</div>` : ""}
 <table role="presentation" class="ml-bg" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f7"><tr><td align="center" style="padding:28px 14px 36px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px">
-  <tr><td align="center" style="padding:0 0 18px">
-    ${brand === "account"
-      ? `<a href="${e(origin === SITE ? ACCOUNT_APP : origin + "/account")}/" style="text-decoration:none"><img src="${e(origin === SITE ? ACCOUNT_APP : origin + "/account")}/icon-180.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;border-radius:9px">
-    <span class="ml-t" style="vertical-align:middle;margin-left:8px;font-size:19px;font-weight:700;letter-spacing:-.2px;color:#1c1c1e">georgefarrowgreen.com</span></a>`
-      : `<a href="${e(origin)}/pigeon/" style="text-decoration:none"><img src="${e(origin)}/pigeon/icon-192.png" width="36" height="36" alt="" style="vertical-align:middle;border:0;border-radius:9px">
-    <span class="ml-t" style="vertical-align:middle;margin-left:8px;font-size:19px;font-weight:700;letter-spacing:-.2px;color:#1c1c1e">InFlight</span></a>`}
+  <!-- whose it is: the app's own icon (the sender says its name) -->
+  <tr><td align="center" style="padding:4px 0 20px">
+    <a href="${e(mine ? acct + "/" : origin + "/pigeon/")}" style="text-decoration:none"><img src="${e(mine ? acct + "/icon-180.png?v=2" : origin + "/pigeon/icon-192.png")}" width="52" height="52" alt="${mine ? "Account" : "InFlight"}" style="display:block;border:0;border-radius:12px"></a>
   </td></tr>
   <tr><td class="ml-card" align="center" style="background:#ffffff;border-radius:28px;padding:32px 26px 28px">
     <img src="${e(origin)}/pigeon/mail/${e(icon)}.png" width="64" height="64" alt="" style="display:block;margin:0 auto 18px;border:0">
@@ -851,7 +855,7 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;c
     <p class="ml-f" style="margin:14px 0 0;font-size:12px;line-height:17px;color:#8e8e93;word-break:break-all">Button not working? Paste this into your browser:<br><a href="${e(button.url)}" style="color:#8e8e93">${e(button.url)}</a></p>` : ""}
   </td></tr>
   <tr><td align="center" class="ml-f" style="padding:18px 22px 0;font-size:12px;line-height:18px;color:#8e8e93">
-    ${footer ? `${e(footer)}<br>` : ""}${unsub ? `<a href="${e(unsub)}" style="color:#8e8e93">Turn these emails off</a>` : ""}
+    ${footer ? `${e(footer)}<br>` : ""}${mine ? `About your georgefarrowgreen.com account. <a href="${e(acct)}/" style="color:#8e8e93;white-space:nowrap">Manage your account</a>` : ""}${unsub ? `<a href="${e(unsub)}" style="color:#8e8e93">Turn these emails off</a>` : ""}
   </td></tr>
 </table></td></tr></table></body></html>`;
   return { text, html };

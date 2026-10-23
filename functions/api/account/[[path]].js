@@ -25,8 +25,8 @@
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in InFlight; a new password needs the old one.
 import { HttpError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, checkClientData, verifyAssertion, b64url, fromB64url,
-  linkOrigin, emailReady, emailBody, sendEmail, ukTime, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, SITE, ACCOUNT_APP, issueSession } from "../../_pigeon.js";
-import { cookieUser, withCookie, withoutSession, sameOrigin, withSession } from "../../_account.js";
+  linkOrigin, emailReady, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, SITE, ACCOUNT_APP, issueSession } from "../../_pigeon.js";
+import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, accountMail } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";
 import { isAccount } from "../../_acctapp.js";
@@ -90,14 +90,8 @@ async function view(env, u) {
     },
   };
 }
-// a word to the account's email (as the account's: the same whichever app), or to another address (to)
-async function tell(env, u, { title, line, subject, rows = [], to, button, after }, origin) {
-  if (!emailReady(env) || (!to && !u.email_ok)) return;
-  const { text, html } = emailBody({ origin, icon: "shield", brand: "account", title, preheader: line, button,
-    lines: [`Hi ${String(u.name).trim().split(/\s+/)[0]}, ${line}`, after ?? "If this wasn’t you, change your password straight away, at account.georgefarrowgreen.com."],
-    rows: [["Account", `@${u.handle}`], ...rows, ["When", ukTime(Date.now())]] });
-  await sendEmail(env, { to: to || u.email, subject, text, html }).catch(() => {});
-}
+// a word to the account's email (from "Account", the same whichever app: functions/_account.js), or to another address (to)
+const tell = (env, u, mail, origin) => accountMail(env, u, mail, origin).catch(() => {});
 // where the page is, for links in emails (this site's, or a test server's: one standing in a site of its own, or local)
 const pageOf = (request, env) => (env.ACCOUNT_SITE || linkOrigin(request) !== SITE ? new URL(request.url).origin : ACCOUNT_APP);
 const saltOk = (s) => { const m = /^(a2:)?([A-Za-z0-9_-]{22})$/.exec(String(s || "")); return !!m && fromB64url(m[2]).length === 16; };
@@ -110,9 +104,9 @@ const onDay = (t) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "
 async function sendConfirm(env, u, request) {
   const token = randomToken(32);
   await (await db(env)).prepare("UPDATE pg_users SET email_code = ?, email_sent = ? WHERE id = ?").bind(hex(await sha256(token)), Date.now(), u.id).run();
-  await tell(env, u, { title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
+  await tell(env, u, { icon: "mail", title: "Confirm your email", subject: "Confirm your email for your account", line: "tap the button to confirm this is your email address for your account.",
     after: "It’s where password resets and security notes go. If you didn’t ask for this, ignore it: nothing more will be sent.",
-    to: u.email, button: { label: "Confirm Email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request));
+    to: u.email, button: { label: "Confirm email", url: `${pageOf(request, env)}/#confirm=${token}` } }, linkOrigin(request));
 }
 
 const ROUTES = {
@@ -163,16 +157,16 @@ const ROUTES = {
   "POST reset/request": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     return json(await requestReset(env, request, (await body(request, 4096)).email, waitUntil, (u, token) => tell(env, u, {
-      title: "Reset your password", subject: "Reset your password", to: u.email,
+      icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
       line: "someone asked to reset the password for your georgefarrowgreen.com account.", after: "If it wasn’t you, ignore this email: your password won’t change.",
-      rows: [["Link works", "Once, for 1 hour"]], button: { label: "Choose a New Password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
+      rows: [["Link works", "Once, for 1 hour"]], button: { label: "Choose a new password", url: `${pageOf(request, env)}/#reset=${token}` } }, linkOrigin(request))));
   },
   "POST reset/check": async ({ request, env }) => { sameOrigin(request); return json({ ...(await checkReset(env, request, (await body(request, 4096)).token)), rpId: rpIdFor(request, env) }); },
   "POST reset/complete": async ({ request, env, waitUntil }) => {
     sameOrigin(request);
     const { u, kept } = await completeReset(env, request, await body(request));
     waitUntil(logEvent(env, u.id, "reset", request));
-    waitUntil(tell(env, u, { title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
+    waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", subject: "Your password was changed", line: "the password for your account was just changed with a reset link.",
       rows: [["Your messages", kept ? "Kept, with your passkey" : "A new key: older messages can’t be opened"]] }, linkOrigin(request)));
     const token = await issueSession(env, u.id, request), hash = hex(await sha256(token));
     return withSession(json({ ...(await view(env, { ...u, sessionHash: hash, authAt: Date.now() })), kept }), request, env, hash);
@@ -223,7 +217,7 @@ const ROUTES = {
       D.prepare("DELETE FROM pg_resets WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "password", request));
-    waitUntil(tell(env, u, { title: "Your password was changed", line: "the password for your account was just changed.", subject: "Your password was changed" }, linkOrigin(request)));
+    waitUntil(tell(env, u, { icon: "key", title: "Your password was changed", line: "the password for your account was just changed.", subject: "Your password was changed" }, linkOrigin(request)));
     return json(await view(env, { ...u, salt: b.salt, pw_leaked: 0, pw_checked_at: t }));
   },
   // How the password did against data breaches, checked on the page (which has it as you type it): kept with its proof,
@@ -268,7 +262,7 @@ const ROUTES = {
     if (await D.prepare("SELECT 1 FROM pg_passkeys WHERE id = ?").bind(b.id).first()) throw new HttpError(409, "This passkey is already saved.");
     await D.prepare("INSERT INTO pg_passkeys (id, user_id, public_key, alg, label, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(b.id, u.id, String(b.publicKey), b.alg, label, provider, Date.now()).run();
     waitUntil(logEvent(env, u.id, "passkey-add", request, provider || label));
-    waitUntil(tell(env, u, { title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
+    waitUntil(tell(env, u, { icon: "passkey", title: "A passkey was added", line: `a new passkey (“${provider || label}”) can now sign in to your account.`, subject: "A passkey was added to your account" }, linkOrigin(request)));
     return json(await view(env, u));
   },
   "POST passkeys/remove": async ({ request, env, waitUntil }) => {
@@ -355,9 +349,9 @@ const ROUTES = {
     const token = randomToken(32), t = Date.now();
     await D.prepare("UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?").bind(email, hex(await sha256(token)), t, u.id).run();
     const origin = linkOrigin(request);
-    await tell(env, u, { title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
-      after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm New Email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
-    waitUntil(tell(env, u, { title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
+    await tell(env, u, { icon: "mail", title: "Confirm your new email", subject: "Confirm your new email", to: email, line: "tap the button to make this your account’s email address.",
+      after: "Until you do, nothing changes. If you didn’t ask for this, ignore it.", button: { label: "Confirm new email", url: `${pageOf(request, env)}/#email=${token}` } }, origin);
+    waitUntil(tell(env, u, { icon: "mail", title: "A new email was asked for", subject: "A new email was asked for your account", line: `someone signed in to your account asked to change its email to ${hide(email)}. It changes only if the link sent there is opened.`,
       rows: [["New email", hide(email)]] }, origin));
     waitUntil(logEvent(env, u.id, "email-change-asked", request, hide(email)));
     return json(await view(env, { ...u, email_new: email, email_new_at: t }));
@@ -378,7 +372,7 @@ const ROUTES = {
       ]);
     } catch (e) { if (String(e).includes("UNIQUE")) throw new HttpError(409, "That email is now used by another account."); throw e; }
     waitUntil(logEvent(env, u.id, "email-changed", request, hide(u.email_new)));
-    waitUntil(tell(env, u, { title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
+    waitUntil(tell(env, u, { icon: "mail", title: "Your email was changed", subject: "Your account’s email was changed", line: `your account’s email is now ${hide(u.email_new)}. Emails about it go there from now on.`,
       to: u.email, rows: [["New email", hide(u.email_new)]] }, linkOrigin(request)));
     return json({ ok: true, email: u.email_new });
   },
@@ -483,10 +477,10 @@ const ROUTES = {
       D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
     ]);
     waitUntil(logEvent(env, u.id, "delete-asked", request));
-    waitUntil(tell(env, { ...u, email_ok: 1 }, { title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
+    waitUntil(tell(env, { ...u, email_ok: 1 }, { icon: "trash", title: "Your account will be deleted", subject: `Your account will be deleted on ${onDay(at)}`,
       line: `your account and everything kept with it, in every app on the site, will be deleted on ${onDay(at)}.`,
       after: "Changed your mind? Keep it with the button, or sign in at account.georgefarrowgreen.com before then.",
-      rows: [["Deleted on", onDay(at)]], button: { label: "Keep My Account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));
+      rows: [["Deleted on", onDay(at)]], button: { label: "Keep my account", url: `${pageOf(request, env)}/#keep=${token}` } }, linkOrigin(request)));
     return withoutSession(json({ ok: true, deleteAt: at }), request, env);
   },
   "POST delete/cancel": async ({ request, env, waitUntil }) => {

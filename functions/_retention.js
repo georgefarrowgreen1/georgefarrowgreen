@@ -12,7 +12,7 @@
      picture) are found and deleted, a page at a time.
    - An account nobody has signed in to for a year is deleted, after an email a week before saying so. Signing in
      (or the app checking in) in that week keeps it. */
-import { DAY, MIN, sendEmail, emailReady, emailBody, appLink, groupPhotoKey, adminLog, londonDay } from "./_pigeon.js";
+import { DAY, MIN, sendEmail, emailReady, emailBody, accountLink, groupPhotoKey, adminLog, londonDay } from "./_pigeon.js";
 import { stampPassports } from "./_passport.js";
 import { settleBirds } from "./_birds.js";
 import { removeAccount } from "./_accounts.js";
@@ -141,11 +141,14 @@ export async function idleAccounts(env, D, t, origin) {
     for (const u of results) {
       // (never a day already gone: one long unused, or emails that were off for a while, still gets its week)
       const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(Math.max(u.last + IDLE_MS, t + WARN_MS));
-      const { text, html } = emailBody({ origin, title: "Your InFlight account will be deleted soon",
-        lines: [`Hi ${String(u.name || "").split(/\s+/)[0] || "there"}, nobody has signed in to your InFlight account for almost a year, so it will be deleted on ${when}, with your friends, pigeons, passport and badges.`,
-          "To keep it, just open InFlight and sign in before then."],
-        button: { label: "Open InFlight", url: appLink(origin) }, footer: "If you’d like it deleted, you don’t need to do anything." });
-      try { await sendEmail(env, { to: u.email, subject: "Your InFlight account will be deleted soon", text, html }); }
+      // (the account's, so from "Account": it goes with everything every app keeps)
+      const { text, html } = emailBody({ origin, icon: "trash", brand: "account", title: "Your account will be deleted soon",
+        preheader: `It hasn’t been used for almost a year, so it will be deleted on ${when}.`,
+        lines: [`Hi ${String(u.name || "").split(/\s+/)[0] || "there"}, nobody has signed in to your account for almost a year, so it will be deleted on ${when}, with everything kept with it in every app on the site.`,
+          "To keep it, just sign in before then, to your account or to any app on the site."],
+        rows: [["Account", `@${u.handle}`], ["Deleted on", when]],
+        button: { label: "Keep my account", url: `${accountLink(origin)}/` }, footer: "If you’d like it deleted, you don’t need to do anything." });
+      try { await sendEmail(env, { to: u.email, subject: "Your account will be deleted soon", text, html, app: "Account" }); }
       catch (_) { continue; }                                     // (not warned, so not deleted: tried again next time)
       await D.prepare("UPDATE pg_users SET warned_at = ? WHERE id = ?").bind(t, u.id).run();
       await adminLog(env, "idle-warned", u.id, `@${u.handle}`).catch(() => {});

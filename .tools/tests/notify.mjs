@@ -202,7 +202,7 @@ ok(!mails().slice(m0).some((x) => x.to === 'mira@example.com' && /landed/.test(x
 // (sent by the account's page, where the account was made: its link opens that page)
 const cmail = mails().find((x) => x.to === 'mira@example.com' && /Confirm your email/.test(x.subject));
 const ACCT = accountUrl(URL), ctoken = (/#confirm=([A-Za-z0-9_-]{40,50})/.exec(cmail?.text || '') || [])[1];
-ok(!!ctoken && cmail.text.includes(`${ACCT}#confirm=`) && !/Lovely/.test(cmail.text), 'making her account sent her a confirm link', cmail?.subject);
+ok(!!ctoken && cmail.text.includes(`${ACCT}#confirm=`) && !/Lovely/.test(cmail.text) && cmail.from === 'Account <noreply@georgefarrowgreen.com>', 'making her account sent her a confirm link, from the account', `${cmail?.from} · ${cmail?.subject}`);
 await M.p.goto(`${ACCT}#confirm=${ctoken}`); await M.p.waitForSelector('main:not([aria-busy])', { timeout: 15000 });
 await M.p.waitForFunction(() => /Your email is confirmed/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
 ok(/Your email is confirmed/.test(await M.p.locator('#toast').innerText().catch(() => '')) && sql("SELECT COUNT(*) AS n FROM pg_users WHERE handle = 'mira' AND email_ok > 0").includes('"n": 1'), 'tapping it confirms her address');
@@ -213,7 +213,7 @@ r = await tick(); await new Promise((s) => setTimeout(s, 300));
 const em = mails().slice(m0).at(-1);
 // (the minute-by-minute background tick may send it rather than this one: count what arrived)
 const toMira = mails().slice(m0).filter((x) => x.to === 'mira@example.com');
-ok(toMira.length === 1 && /A pigeon from George has landed/.test(em.subject), 'Mira gets one email after a while', `${toMira.length} email(s): ${em?.subject}`);
+ok(toMira.length === 1 && /A pigeon from George has landed/.test(em.subject) && em.from === 'InFlight <noreply@georgefarrowgreen.com>', 'Mira gets one email after a while, from InFlight', `${toMira.length} email(s): ${em?.from} · ${em?.subject}`);
 ok(!em.text.includes('Lovely') && !em.html.includes('Lovely') && /#open=/.test(em.text), 'email doesn’t contain the message, and links to the chat');
 const unsub = /Turn these emails off: (\S+)/.exec(em.text)?.[1];
 ok(em.headers?.['List-Unsubscribe'] === `<${unsub}>` && em.headers?.['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'email has one-click unsubscribe headers');

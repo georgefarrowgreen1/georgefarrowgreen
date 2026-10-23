@@ -245,7 +245,8 @@ Motion, solid with Reduce Transparency.
 - What could hurt if someone had only your sign-in (a passkey added or taken away, a device signed out, a new email,
   your data, the account deleted) asks you to show it's you first if you last did more than 10 minutes ago (a passkey or
   your password), then carries on with what you were doing. Changes to the password, passkeys and email are emailed to
-  the account, as the account's (its own name and icon at the top, no app named; so is a sign-in from Weather or here).
+  the account, from **Account** (noreply@georgefarrowgreen.com under the account's own name), with its icon at the top;
+  so is every sign-in, saying which app it was in (InFlight, Weather or this page), with **Review your account**.
 - The page acts only with the site's sign-in (the HttpOnly cookie, never in the page's reach), and only from its own
   address: anything that changes something is refused from any other page, the apps' included. Its rules allow
   nothing inline and no framing. A few files are the site's, shared: the password stretching (`pigeon/crypto.js`,
@@ -1649,7 +1650,14 @@ as a Secret (never in the code), then redeploy, and press **Send a test email**
 on the admin page. Until a domain is verified in Resend, mail goes from Resend's
 test sender `onboarding@resend.dev`, which only delivers to your own Resend
 address. To email everyone else, verify georgefarrowgreen.com in Resend and add
-**`PIGEON_FROM`** = `InFlight <noreply@georgefarrowgreen.com>`. Without a key
+**`PIGEON_FROM`** = `noreply@georgefarrowgreen.com` (a name with it, as in
+`InFlight <noreply@georgefarrowgreen.com>`, is fine: only the address is used).
+Every app's email comes from that one address under its own app's name:
+**InFlight** for InFlight's own (a pigeon landed, the admin page's test), and
+**Account** for the account's (sign-ins in any app, the password, passkeys, the
+email address, a reset link, keeping or deleting it), whichever app it happened
+in. Each email has the app's icon at the top (no name: the sender says it), and
+the account's end with a way to it. Without a key
 the app says reset emails aren't on yet, and the admin page can still make
 links for you to send by hand.
 
