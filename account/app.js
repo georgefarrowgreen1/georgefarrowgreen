@@ -820,6 +820,26 @@ sheetEl.addEventListener("click", (e) => {
   const b = sheetEl.getBoundingClientRect();
   if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) closeSheet();
 });
+// the page behind holds still while it's up: a finger (or a wheel) on the dim, or on what in the sheet doesn't scroll,
+// moves nothing (done here, not by stopping the page scrolling, which has iOS Safari put the sheet in the wrong place)
+{
+  let free = false;
+  sheetEl.addEventListener("touchstart", (e) => { free = e.touches.length > 1 || scrollsIn(e.target, sheetEl); }, { passive: true });
+  sheetEl.addEventListener("touchmove", (e) => { if (!free && e.cancelable) e.preventDefault(); }, { passive: false });
+  sheetEl.addEventListener("wheel", (e) => { if (!scrollsIn(e.target, sheetEl) && e.cancelable) e.preventDefault(); }, { passive: false });
+}
+// (whether what's under a finger, inside a sheet, would scroll: a list longer than it is, a row wider; or a field,
+// which has its own)
+function scrollsIn(el, top) {
+  if (el.closest?.("input, select, textarea, [contenteditable]")) return true;
+  for (; el && el !== top; el = el.parentElement) {
+    const y = el.scrollHeight > el.clientHeight + 1, x = el.scrollWidth > el.clientWidth + 1;
+    if (!y && !x) continue;
+    const s = getComputedStyle(el);
+    if ((y && /auto|scroll/.test(s.overflowY)) || (x && /auto|scroll/.test(s.overflowX))) return true;
+  }
+  return false;
+}
 // swiping it down, by its top
 {
   let y0 = null, dy = 0, t0 = 0;

@@ -2315,6 +2315,24 @@ function sheetGestures(d) {
     else { d.style.transform = ""; document.querySelector(".page").style.setProperty("--recede", "1"); }
   };
   d.addEventListener("touchend", end); d.addEventListener("touchcancel", end);
+  // and the page behind holds still: a finger (or a wheel) on the dim, or on what in the sheet doesn't scroll, moves
+  // nothing (done here, not by stopping the page scrolling, which has iOS Safari put a sheet in the wrong place)
+  let free = false;
+  d.addEventListener("touchstart", (e) => { free = e.touches.length > 1 || scrollsIn(e.target, d); }, { passive: true });
+  d.addEventListener("touchmove", (e) => { if (!free && e.cancelable) e.preventDefault(); }, { passive: false });
+  d.addEventListener("wheel", (e) => { if (!scrollsIn(e.target, d) && e.cancelable) e.preventDefault(); }, { passive: false });
+}
+// (whether what's under a finger, inside a sheet, would scroll: a list longer than it is, a strip wider; or a field or a
+// map, which have their own)
+function scrollsIn(el, top) {
+  if (el.closest?.("input, select, textarea, [contenteditable], .leaflet-container, .maplibregl-map")) return true;
+  for (; el && el !== top; el = el.parentElement) {
+    const y = el.scrollHeight > el.clientHeight + 1, x = el.scrollWidth > el.clientWidth + 1;
+    if (!y && !x) continue;
+    const s = getComputedStyle(el);
+    if ((y && /auto|scroll/.test(s.overflowY)) || (x && /auto|scroll/.test(s.overflowX))) return true;
+  }
+  return false;
 }
 
 // every source in one place (from the footer, or the map's ©), open at the part that was asked about

@@ -79,9 +79,6 @@ dialog.sheet:focus, dialog.sheet:focus-visible { outline: none; }
 /* ---- behind the status bar (where the page runs under it): glass, once the page has scrolled under it ---- */
 .status { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: var(--top); pointer-events: none; opacity: var(--bar, 0);
   background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); transition: opacity 0.2s linear; }
-/* (the page behind holds still while a sheet's up: a finger on it doesn't scroll it; and no scrollbar comes and goes) */
-html { scrollbar-gutter: stable; }
-html:has(> body.sheet-up) { overflow: hidden; }
 .page { transform-origin: 50% 0; transition: transform 0.5s var(--glide), filter 0.5s var(--glide), border-radius 0.5s var(--glide); }
 body.sheet-up .page { transform: scale(0.94) translateY(calc(var(--top) + 10px)); border-radius: 28px; filter: brightness(0.86); }
 main { max-width: 640px; margin: 0 auto; padding: calc(var(--top) + 28px) max(16px, env(safe-area-inset-right, 0px)) calc(48px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
