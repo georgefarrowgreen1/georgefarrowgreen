@@ -1788,13 +1788,30 @@ under **Email**. Press **Send a test email** on the admin page to check it's set
 up. Without a key the app says reset emails aren't on yet, and the admin page can
 still make links for you to send by hand.
 
-**Admin.** `/pigeon/admin/` uses the site owner sign-in (the key icon's password
-or passkey). It lists every account (name, handle, email, place, last active,
-passkeys, friends, scrolls sent) and can email a reset link, make a 24-hour
-reset link to send yourself, sign someone out everywhere, or delete an account.
-Admin changes need the owner cookie and a header only the admin page sends,
-and every action is logged on the page. Admins never see passwords, keys or
-scrolls; the server doesn't have them.
+**Admin.** It lists every account (name, handle, email, last active, passkeys,
+friends, scrolls sent), gives pigeons, can email a reset link, make a 24-hour
+reset link to send yourself, sign someone out everywhere, or delete an account;
+makes and cancels invites; and has Insights, Storage, Email (with a test) and a
+log of every action. Admins never see passwords, keys or scrolls; the server
+doesn't have them.
+
+It's on an account: the site's admin is linked, once, to your own account, and
+from then on Admin is a section of that account's page (account.<site>), only
+for it. To link: sign in to your account (it needs a passkey) and, in the same
+browser, open the old dashboard, `/pigeon/admin/`, with the site owner sign-in
+(the key icon's password or passkey), and press **Link Admin to @you**
+(`POST /api/pigeon/admin-link`, which keeps the account's id as `pg_meta`
+`admin_user`, logs it and emails the account). The old dashboard then sends you
+to your account's page, and its API answers the owner's sign-in with 410: the
+owner sign-in is only the website's Edit now. On the account's page it's
+`/api/account/admin/*` (the same handlers, `functions/api/pigeon`
+`ADMIN_ROUTES`): your account only, with a passkey on it; looking needs you to
+have shown it's you (password or passkey) in the last 12 hours, a change in the
+last 10 minutes (the page asks, as for anything else), from the page itself;
+each change is in your Recent activity too, and you can't delete your own
+account from Admin. If the linked account's ever gone (or being deleted), the
+old dashboard and the owner's sign-in work again, so it can't lock you out.
+`.tools/tests/adminlink.mjs` tests all of it.
 
 **Profiles.** In Account → My Profile, people can change their name any time,
 their handle once a day (enforced by the server), and add or remove a profile

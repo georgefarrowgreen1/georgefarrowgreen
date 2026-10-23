@@ -66,6 +66,8 @@ async function call(path, { method = "GET", body } = {}) {
   if (body) headers["Content-Type"] = "application/json";
   const r = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: "same-origin" });
   const data = await r.json().catch(() => ({}));
+  // (Admin's moved to the linked account's page since this was opened: there instead)
+  if (r.status === 410) { location.replace("/pigeon/admin/"); await new Promise(() => {}); }
   if (!r.ok) throw Object.assign(new Error(data.error || "Something went wrong."), { status: r.status });
   return data;
 }
@@ -162,6 +164,7 @@ function render() {
     <div class="navbar root b1"><div class="nb-left"></div><div class="nb-title one">Admin</div>
       <div class="nb-right"><button class="nbtn" type="button" data-a="signout" aria-label="Sign out">${I.out}</button></div></div>
     <h1 class="large">Admin</h1>
+    ${vLinkAccount()}
     <div class="kpis">
       ${stat(A.users.length, "Accounts", I.people, "blue")}${stat(onlineN, "Online Now", I.clock, "green")}
       ${stat(A.totals.flying, "In Flight", I.bird, "orange")}${stat(A.totals.msgs, "Scrolls", I.bubble, "indigo")}
@@ -187,6 +190,17 @@ function render() {
   </div>`;
   onScroll();
   if (A.sheet) drawSheet();
+}
+
+// Moving Admin to your account: the account signed in in this browser (it needs a passkey), linked once; from then on
+// Admin is on that account's page, and this page sends you there
+function vLinkAccount() {
+  const a = A.account;
+  if (!a) return "";
+  const go = a.handle && a.passkeys ? cell({ a: "linkacct", icon: I.key, tile: "indigo", label: `Link Admin to @${esc(a.handle)}`, cls: `blue${A.busy === "linkacct" ? " busy" : ""}` })
+    : cell({ tag: "a", attrs: `href="${esc(a.page)}/"`, icon: I.key, tile: "gray", label: a.handle ? `Add a passkey to @${esc(a.handle)} first` : "Sign in to your account first", chev: true });
+  return `<div class="ghead">Your Account</div><div class="group">${go}</div>
+    <div class="gfoot">Admin moves to your account’s page, behind Face ID or your password, and this page stops opening it.</div>`;
 }
 
 /* ---------- sheets (the app's bottom sheets) ---------- */
@@ -418,9 +432,11 @@ async function boot() {
   let st;
   try { st = await call("/api/pigeon/admin-status"); }
   catch (err) { root().innerHTML = `<p class="empty">${esc(err.message)}</p>`; return; }
+  // (linked to an account: Admin's on its page now)
+  if (st.moved) { root().innerHTML = `<p class="empty">Admin is on your account’s page now…</p>`; location.replace(st.moved); return; }
   if (!st.configured) { root().innerHTML = `<div class="auth adm-auth"><div class="appicon">${I.bird}</div><h1>InFlight Admin</h1><p class="sub">The site owner password (EDIT_PASSWORD) isn’t set on this server, so there’s no admin sign-in.</p></div>`; return; }
   if (!st.authed) return vSignIn();
-  A.email = !!st.email; A.from = st.from || ""; A.testTo = st.testTo || "";
+  A.email = !!st.email; A.from = st.from || ""; A.testTo = st.testTo || ""; A.account = st.account || null;
   try { await load(); render(); }
   catch (err) { if (err.status === 401) vSignIn(); else root().innerHTML = `<p class="empty">${esc(err.message)}</p>`; }
 }
@@ -434,6 +450,12 @@ document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-a]"); if (!b || b.disabled) return;
   const act = b.dataset.a, id = A.sheet?.id;
   if (act === "close") return closeSheet();
+  if (act === "linkacct") {
+    A.busy = "linkacct"; render();
+    try { const r = await call("/api/pigeon/admin-link", { method: "POST", body: {} }); toast(r.message); location.replace(r.moved); }
+    catch (err) { A.busy = null; render(); toast(err.message); }
+    return;
+  }
   if (act === "open") return openSheet({ type: "user", id: b.dataset.id });
   if (act === "activity") return openSheet({ type: "activity" });
   if (act === "storage") { openSheet({ type: "storage" }); return loadStorage(); }

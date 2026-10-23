@@ -512,3 +512,32 @@ label.row { cursor: pointer; }
 .signin .sent p { margin: 0; color: var(--text); font-size: 16px; line-height: 1.45; }
 .signin .hint .link { padding: 0 2px; font-size: inherit; }
 .signin .empty { display: grid; place-items: center; }
+
+/* ---- the site's admin (only on the linked account's page) ---- */
+.adm-av { position: relative; flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; font-size: 14px; font-weight: 600; color: #fff; }
+.adm-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.adm-av.h1 { background: linear-gradient(160deg, #5aa9ff, #2a6ae6); }
+.adm-av.h2 { background: linear-gradient(160deg, #4fdc8e, #1fa75a); }
+.adm-av.h3 { background: linear-gradient(160deg, #ffc35a, #f08a1c); }
+.adm-av.h4 { background: linear-gradient(160deg, #8a86ff, #5a4fe0); }
+.adm-av.h5 { background: linear-gradient(160deg, #ff8fb1, #e5487a); }
+.adm-av.xl { width: 76px; height: 76px; font-size: 28px; margin-bottom: 6px; }
+.adm-head { display: grid; justify-items: center; gap: 2px; text-align: center; }
+.adm-head b { font-size: 22px; font-weight: 700; }
+.adm-head small { color: var(--text-2); font-size: 15px; }
+.adm-on { color: #34c759; }
+.adm-search { position: relative; }
+.adm-search svg { position: absolute; left: 14px; top: 50%; translate: 0 -50%; color: var(--text-3); pointer-events: none; }
+.adm-search input { padding-left: 42px; }
+.adm-code { display: block; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; -webkit-user-select: all; user-select: all; }
+.adm-chart { display: grid; gap: 10px; padding: 14px 16px; border-radius: 16px; background: var(--glass-ctl); box-shadow: inset 0 0 0 0.5px var(--line); }
+.adm-chead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.adm-chead b { font-size: 15px; font-weight: 600; }
+.adm-chead span { font-size: 13px; color: var(--text-2); }
+.adm-bars { display: flex; align-items: flex-end; gap: 2px; height: 72px; }
+.adm-bars i { flex: 1; min-height: 2px; border-radius: 2px; background: linear-gradient(180deg, #7ab8ff, #2a6ae6); }
+.adm-meter { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 10px; min-height: 46px; padding: 6px 16px; font-size: 15px; }
+.adm-meter + .adm-meter::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 0.5px; background: var(--line); }
+.adm-meter .mbar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.adm-meter .mbar i { display: block; height: 100%; border-radius: 3px; background: var(--tint); }
+.adm-meter .mv { color: var(--text-2); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }

@@ -90,6 +90,12 @@ const ICONS = {
   shield: '<path d="M12 3.2 19.5 6v5.6c0 4.7-3.2 7.9-7.5 9.2-4.3-1.3-7.5-4.5-7.5-9.2V6z"/><path d="m8.8 12 2.3 2.3 4.2-4.6"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   download: '<path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/>',
+  people: '<circle cx="9" cy="8.5" r="3.4"/><path d="M3 19.5c.6-3.2 3-5.2 6-5.2s5.4 2 6 5.2"/><circle cx="17" cy="9.5" r="2.6"/><path d="M16.5 14.4c2.4.2 4 1.9 4.5 4.6"/>',
+  link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
+  db: '<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  gift: '<rect x="3.5" y="9" width="17" height="4" rx="1"/><path d="M5 13v6.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V13M12 9v11.5M12 9c-1.5-3.5-5.5-4-5.5-1.5S10 9 12 9zm0 0c1.5-3.5 5.5-4 5.5-1.5S14 9 12 9z"/>',
   doc: '<path d="M7 3.5h7l4.5 4.5V20a.5.5 0 0 1-.5.5H7a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4.5M9.5 12.5h5M9.5 16h5"/>',
   contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
   ruler: '<path d="M3.5 15.5 15.5 3.5l5 5-12 12z"/><path d="m7.5 11.5 2 2m1-5 2 2m1-5 2 2"/>',
@@ -300,7 +306,13 @@ function signedIn(r) {
   const ending = [
     !fromApp() && r(section(null, h("div.group.glass", {}, h("button.row.action", { type: "button", onclick: (e) => signOut(e.currentTarget) }, "Sign out")))),
   ];
-  const [a, b] = wide.matches ? [[...top, apps], [account, prefs, ...ending]] : [top, [apps, account, prefs, ...ending]];
+  // (the site's admin, for the linked account only; #admin, from the old dashboard or its email, brings it into view)
+  const admin = m.admin ? r(adminSection(m)) : null;
+  if (admin && location.hash === "#admin") {
+    history.replaceState(null, "", location.pathname + location.search);
+    setTimeout(() => admin.scrollIntoView({ behavior: still.matches ? "auto" : "smooth", block: "center" }), 450);
+  }
+  const [a, b] = wide.matches ? [[...top, apps], [account, prefs, admin, ...ending]] : [top, [apps, account, prefs, admin, ...ending]];
   return [h("div.cols", {}, h("div.col-a", {}, a.filter(Boolean)), h("div.col-b", {}, b.filter(Boolean)))];
 }
 // Your photo, tapped: a new one, straight from the picker (the camera badge says so)
@@ -1143,6 +1155,247 @@ function devicesView() {
 }
 const monthsSince = (t) => { const n = Math.max(3, Math.floor((Date.now() - t) / (30.44 * 86400e3))); return n >= 24 ? `${Math.floor(n / 12)} years` : `${n} months`; };
 
+// ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
+// Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
+// a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
+const AD = { sum: null, asked: false, data: {}, busy: {}, more: {}, err: {}, q: "", note: "", link: null, invite: null };
+// (asked again while it's being asked: again once that's in, so a change just made is in it)
+const admAsk = (key, again) => {
+  if (AD.busy[key]) { if (again) AD.more[key] = true; return AD.data[key]; }
+  if (!again && (AD.data[key] || AD.err[key])) return AD.data[key];
+  AD.busy[key] = true; AD.err[key] = null;
+  freshly(() => call(`admin/${key}`)).then((x) => { AD.data[key] = x; if (key === "summary") AD.sum = x; else if (!AD.sum) admChanged(); },
+    (e) => { AD.err[key] = e.quiet ? "Confirm it’s you to see this." : e.message; })
+    .finally(() => { AD.busy[key] = false; if (AD.more[key]) { AD.more[key] = false; admAsk(key, true); } redraw(); });
+  return AD.data[key];
+};
+// (the figures beside the rows: asked once, quietly; without a recent sign-in, the rows go without)
+function admSum() {
+  if (AD.asked) return;
+  AD.asked = true;
+  call("admin/summary").then((x) => { AD.sum = x; patch(); }, () => {});
+}
+// (after a change: the figures and the log asked again)
+function admChanged() { AD.asked = false; AD.data.log = null; AD.err.log = null; patch(); }
+const admPost = (b, label, path, body) => freshly(() => busy(b, label, () => post(`admin/${path}`, body)));
+const admWait = (key) => AD.err[key]
+  ? h("div.group", {}, h("div.empty", { text: AD.err[key] }), h("button.row.action", { type: "button", onclick: () => { admAsk(key, true); redraw(); } }, "Try again"))
+  : h("div.group", {}, h("div.empty", {}, h("span.spin")));
+const admInfo = (t, v, warn) => h("div.row.plain.info", {}, h("span.tx", {}, h("b", { text: t })), h("span.val" + (warn ? ".warn" : ""), { text: String(v) }));
+const num = (n) => Number(n || 0).toLocaleString("en-GB"), pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const upper = (s) => s[0].toUpperCase() + s.slice(1);
+const isOn = (u) => !!u.last_seen && Date.now() - u.last_seen < 150e3;      // (the app checks in every 15 s, noted once a minute)
+function seenAt(t) {
+  if (!t) return "Never";
+  const d = new Date(t), hm = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return `Today ${hm}`;
+  if (d.toDateString() === new Date(Date.now() - 864e5).toDateString()) return "Yesterday";
+  return Date.now() - t < 6 * 864e5 ? `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${hm}` : day(t);
+}
+function admAvatar(u, xl) {
+  const hue = ([...String(u.handle || u.id)].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0) % 5 + 1;
+  const el = h(`span.adm-av.h${hue}${xl ? ".xl" : ""}`, { "aria-hidden": "true" }, [...String(u.name || u.handle).trim().split(/\s+/).map((w) => [...w][0] || "").join("")].slice(0, 2).join("").toUpperCase());
+  if (u.avatar_at) el.append(h("img", { src: `${API}/admin/avatar?id=${encodeURIComponent(u.id)}&v=${u.avatar_at}`, alt: "", decoding: "async", loading: "lazy" }));
+  return el;
+}
+const onNow = (u) => isOn(u) && [" · ", h("span.adm-on", { text: "Online now" })];
+// (a link shown once, to copy: a reset link, an invite)
+const admCopy = (url, note) => [h("div.group", {}, h("div.row.plain", {}, h("code.adm-code", { text: url })),
+  h("button.row.action", { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(url); toast("Copied."); } catch (_) { toast("Couldn’t copy it: select it instead.", true); } } }, "Copy link")),
+  h("p.hint", { text: note })];
+
+function adminSection(m) {
+  if (!m.admin.ready) return section("Admin", h("div.group.glass", {},
+    row({ icon: "passkey", tint: "indigo", title: "Admin", value: h("span.mini.go", { text: "Add a passkey" }), onclick: () => openSheet(passkeysView) })));
+  admSum();
+  const s = AD.sum || {}, st = AD.data.storage;
+  return section("Admin", h("div.group.glass", {},
+    row({ icon: "people", tint: "blue", title: "Accounts", value: s.accounts, onclick: () => openSheet(admAccountsView) }),
+    row({ icon: "link", tint: "indigo", title: "Invites", value: s.invites == null ? null : `${s.invites} unused`, onclick: () => { AD.invite = null; openSheet(admInvitesView); } }),
+    row({ icon: "chart", tint: "green", title: "Insights", value: s.online == null ? null : `${s.online} online`, onclick: () => openSheet(admInsightsView) }),
+    row({ icon: "db", tint: "grey", title: "Storage", value: st ? bytes(st.dbBytes + st.files.reduce((a, f) => a + f.bytes, 0)) : null, onclick: () => openSheet(admStorageView) }),
+    row({ icon: "mail", tint: "red", title: "Email", value: s.email == null ? null : s.email ? "Working" : "Off", warn: s.email === false, onclick: () => openSheet(admEmailView) }),
+    row({ icon: "clock", tint: "amber", title: "Admin log", value: s.logAt ? upper(when(s.logAt)) : null, onclick: () => openSheet(admLogView) })));
+}
+
+// Accounts: everyone, newest first, to search; each a tap from its own sheet
+function admAccountsView() {
+  const x = admAsk("users");
+  if (!x) return { title: "Accounts", body: [admWait("users")] };
+  const q = h("input", { type: "search", placeholder: "Search accounts", "aria-label": "Search accounts", value: AD.q, autocomplete: "off", spellcheck: "false" });
+  const list = h("div.group");
+  const fill = () => {
+    const t = AD.q.trim().toLowerCase(), us = x.users.filter((u) => !t || [u.name, u.handle, u.email].some((v) => String(v || "").toLowerCase().includes(t)));
+    list.replaceChildren(...(us.length ? us.map((u) => h("button.row", { type: "button", onclick: () => { AD.link = null; pushSheet(() => admAccountView(u.id)); } },
+      admAvatar(u), h("span.tx", {}, h("b", { text: u.name }), h("small", {}, `@${u.handle}`, onNow(u))),
+      !isOn(u) && h("span.val", { text: seenAt(u.last_seen) }), h("span.chev", {}, icon("chev", 16, 2.4))))
+      : [h("div.empty", { text: x.users.length ? "No accounts match." : "No one has signed up yet." })]));
+  };
+  q.addEventListener("input", () => { AD.q = q.value; fill(); });
+  fill();
+  return { title: "Accounts", body: [h("label.field.adm-search", {}, icon("search", 18, 2.2), q), list] };
+}
+// One account: who, how much, pigeons to give; a reset (by email, or a link to send yourself), signing them out,
+// and deleting it (at once, typed to confirm)
+const GIFTS = [["rocket", "Rocket", "9× faster · 1 a day"], ["turbo", "Turbo", "3× faster · 3 a day"], ["swift", "Swift", "2× faster · 9 a day"]];
+function admAccountView(id) {
+  const u = AD.data.users?.users.find((x) => x.id === id);
+  if (!u) return { title: "Account", body: [h("div.group", {}, h("div.empty", { text: "That account doesn’t exist any more." }))] };
+  const said = h("p.said", { role: "alert" }), link = AD.link?.id === u.id ? AD.link.url : null, me = u.id === S.me.id;
+  const act = (label, path, body, done) => async (e) => {
+    say(said, "");
+    try { const r = await admPost(e.currentTarget, label, path, { id: u.id, ...body }); admChanged(); if (done) done(r); else toast(r.message); }
+    catch (err) { if (!err.quiet) say(said, err.message); }
+  };
+  return { title: u.name, body: [
+    h("div.adm-head", {}, admAvatar(u, true), h("b", { text: u.name }), h("small", {}, `@${u.handle}`, onNow(u))),
+    h("div.group", {}, admInfo("Email", u.email), admInfo("Last online", isOn(u) ? "Now" : seenAt(u.last_seen)), admInfo("Joined", day(u.created_at)),
+      admInfo("Friends", num(u.friends)), admInfo("Pigeons sent", num(u.sent)), admInfo("Groups", num(u.groups)),
+      admInfo("Signed in on", `${u.sessions} device${u.sessions === 1 ? "" : "s"}`), admInfo("Passkeys", u.passkeys || "None")),
+    h("h4.app-k", { text: "Pigeons" }),
+    h("div.group", {}, GIFTS.map(([k, name, sub]) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: name }), h("small", { text: sub })),
+      h("span.val", { text: String(u.pigeons?.[k] ?? 0) }),
+      h("button.mini.go", { type: "button", "aria-label": `Give 1 ${name.toLowerCase()} pigeon`,
+        onclick: act("", "pigeons", { kind: k, add: 1 }, (r) => { u.pigeons = { ...u.pigeons, [k]: r.count }; toast(r.message); redraw(); }) }, "+1")))),
+    h("div.group", {},
+      AD.sum?.email !== false && h("button.row.action", { type: "button", onclick: act("Sending…", "reset", { mode: "email" }) }, "Email a reset link"),
+      h("button.row.action", { type: "button", onclick: act("Making it…", "reset", { mode: "link" }, (r) => { AD.link = { id: u.id, url: r.url }; redraw(); }) }, "Make a reset link"),
+      h("button.row.action", { type: "button", disabled: !u.sessions, onclick: act("Signing out…", "signout", {}, (r) => { u.sessions = 0; toast(r.message); redraw(); }) }, "Sign out everywhere")),
+    link && admCopy(link, "Works once, for 24 hours. Send it to them privately."),
+    said,
+    !me && h("div.group.apart", {}, h("button.row.action.danger", { type: "button", onclick: () => pushSheet(() => admDeleteView(u)) }, "Delete account…"))] };
+}
+function admDeleteView(u) {
+  const said = h("p.said", { role: "alert" });
+  const sure = h("input", { type: "text", autocomplete: "off", autocapitalize: "none", spellcheck: "false", placeholder: u.handle, "aria-label": `Type ${u.handle} to confirm` });
+  const go = h("button.btn.danger", { type: "submit", disabled: true }, "Delete account");
+  sure.addEventListener("input", () => { go.disabled = sure.value.trim().replace(/^@/, "").toLowerCase() !== u.handle; });
+  return { title: "Delete account", body: [
+    h("p", { text: `This deletes @${u.handle}’s account now, with every letter they sent or received. It can’t be undone.` }),
+    h("form.form", { onsubmit: async (e) => {
+      e.preventDefault(); say(said, "");
+      try {
+        const r = await admPost(go, "Deleting…", "delete", { id: u.id, confirm: sure.value });
+        AD.data.users.users = AD.data.users.users.filter((x) => x.id !== u.id); admChanged();
+        Sheet.stack.length = 1; draw(true); toast(r.message);
+      } catch (err) { if (!err.quiet) say(said, err.message); }
+    } }, field(`Type ${u.handle} to confirm`, h("div.at", {}, "@", sure)), go),
+    said] };
+}
+
+// Invites: sign-up is by a link made here, good for one account (shown once: only its fingerprint's kept)
+function admInvitesView() {
+  const x = admAsk("invites"), said = h("p.said", { role: "alert" });
+  // (what's typed kept across a redraw, as the list comes in)
+  const note = h("input", { placeholder: "Who it’s for (optional)", maxlength: "60", autocomplete: "off", "aria-label": "Who it’s for", value: AD.note });
+  note.addEventListener("input", () => { AD.note = note.value; });
+  const make = h("button.btn", { type: "submit" }, icon("link", 20, 2.2), "Make an invite link");
+  const open = (i) => !i.usedAt && !i.revokedAt;
+  const item = (i) => h("div.row", {}, h(`span.ic.${i.usedAt ? "green" : i.revokedAt ? "grey" : "blue"}`, {}, icon(i.usedAt ? "people" : "link", 19)),
+    h("span.tx", {}, h("b", { text: i.note || "Invite" }), h("small", { text: i.usedAt ? `Used by ${i.by?.handle ? "@" + i.by.handle : "an account since deleted"} · ${day(i.usedAt)}`
+      : i.revokedAt ? `Cancelled · ${day(i.revokedAt)}` : `Unused · made ${when(i.createdAt)}` })),
+    open(i) && h("button.mini", { type: "button", onclick: async (e) => {
+      say(said, "");
+      try { await admPost(e.currentTarget, "", "invite-revoke", { id: i.id }); i.revokedAt = Date.now(); admChanged(); redraw(); toast("Invite cancelled."); }
+      catch (err) { if (!err.quiet) say(said, err.message); }
+    } }, "Cancel"));
+  return { title: "Invites", body: [
+    h("form.form", { onsubmit: async (e) => {
+      e.preventDefault(); say(said, "");
+      try { const r = await admPost(make, "Making it…", "invite", { note: AD.note }); AD.invite = r.url; AD.note = ""; admAsk("invites", true); admChanged(); redraw(); }
+      catch (err) { if (!err.quiet) say(said, err.message); }
+    } }, h("label.field", {}, note), make),
+    AD.invite && admCopy(AD.invite, "Copy it now: it isn’t shown again. It makes one account, then stops working."),
+    said,
+    !x ? admWait("invites") : x.invites.length > 0 && h("div.group", {}, [...x.invites.filter(open), ...x.invites.filter((i) => !open(i)).slice(0, 20)].map(item))] };
+}
+
+// Insights: how InFlight is used, in totals over everyone (functions/_insights.js), never who sent what to whom
+const KINDS = { standard: "Standard", swift: "Swift", turbo: "Turbo", rocket: "Rocket", dumb: "Dumb (the secret one)", lunar: "Lunar", laser: "Laser", orbital: "Orbital" };
+function admBars(title, vals) {
+  const top = Math.max(1, ...vals), total = vals.reduce((a, b) => a + b, 0);
+  return h("div.adm-chart", { role: "img", "aria-label": `${title}: ${num(total)} in the last ${vals.length} days` },
+    h("div.adm-chead", {}, h("b", { text: title }), h("span", { text: `${num(total)} in ${vals.length} days` })),
+    h("div.adm-bars", { "aria-hidden": "true" }, vals.map((v) => { const i = h("i"); i.style.height = `${(v / top) * 100}%`; return i; })));
+}
+function admMeter(label, n, of, val) {
+  const i = h("i"); i.style.width = `${of ? Math.max(n ? 2 : 0, (n / of) * 100) : 0}%`;
+  return h("div.adm-meter", {}, h("span.ml", { text: label }), h("span.mbar", { "aria-hidden": "true" }, i), h("span.mv", { text: val ?? `${num(n)} · ${pct(n, of)}%` }));
+}
+function admInsightsView() {
+  const x = admAsk("insights");
+  if (!x) return { title: "Insights", body: [admWait("insights")] };
+  const P = x.people, R = x.retention, F = x.features, U = x.adoption, H = x.health, kindsN = x.kinds.reduce((a, k) => a + k.n, 0);
+  const stat = (n, label) => h("div.stat", {}, h("b", { text: String(n) }), h("span", { text: label }));
+  const meters = (list, of) => h("div.group.adm-meters", {}, list.map(([l, n]) => admMeter(l, n, of)));
+  return { title: "Insights", body: [
+    h("div.stats", {}, stat(num(P.today), "today"), stat(num(P.week), "this week"), stat(num(P.month), "this month"), stat(R.old ? `${pct(R.back, R.old)}%` : "–", "came back")),
+    admBars("Pigeons sent", x.days.sent), admBars("People active", x.days.active), admBars("New accounts", x.days.joined),
+    h("h4.app-k", { text: "Coming back" }),
+    h("div.group.adm-meters", {}, R.weeks.length ? R.weeks.map((w) => { const n = w.secondWeek ?? w.back;
+      return admMeter(`Joined ${w.weeksAgo}–${w.weeksAgo + 1} weeks ago`, n, w.joined, `${num(n)} of ${num(w.joined)}`); })
+      : h("div.empty", { text: "No one’s been here long enough yet." })),
+    h("h4.app-k", { text: `Pigeons, last 30 days · ${num(F.total)}` }),
+    x.kinds.length ? meters(x.kinds.map((k) => [KINDS[k.kind] || upper(k.kind), k.n]), kindsN) : h("div.group", {}, h("div.empty", { text: "None sent yet." })),
+    h("h4.app-k", { text: "Features used" }),
+    meters([["To a group", F.group], ["With a photo or voice", F.photo], ["Mystery pigeon", F.mystery], ["Scheduled", F.sched], ["With a stopover", F.via],
+      ["Cheered on", F.cheered], ["Scenic or safe route", F.styled], ["To or from space", F.space], ["Disappearing", F.vanish], ["Pigeon Death on", F.risky], ["Called back", F.recalled]], F.total),
+    h("h4.app-k", { text: `Accounts · ${num(P.total)}` }),
+    meters([["Have a friend", U.friends], ["In a group", U.groups], ["Notifications on", U.push], ["Email confirmed", U.email], ["Passkey", U.passkey],
+      ["Named pigeons", U.birds], ["Pigeon Death on", U.risky], ["Approximate location", U.approx], ["Living in space", U.space]], P.total),
+    h("h4.app-k", { text: "Landing on time" }),
+    h("div.group", {}, admInfo("In the air now", num(H.flying)), admInfo("Landed today", num(H.landed)), admInfo("Lost to Pigeon Death today", num(H.lost)),
+      admInfo("Landings not told yet", H.late ? num(H.late) : "None", !!H.late)),
+    h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("insights", true); redraw(); } }, AD.busy.insights ? "Counting…" : "Count again"))] };
+}
+
+// Storage: what's kept, and how much (functions/_retention.js)
+const bytes = (n) => (n == null ? "–" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
+const FILES = { "pigeon/": "Photos and voice", "pigeon-g/": "Group photos", "pigeon-avatars/": "Profile pictures", "bg/": "Site backgrounds" };
+function admStorageView() {
+  const s = admAsk("storage");
+  if (!s) return { title: "Storage", body: [admWait("storage")] };
+  const files = s.files.reduce((a, f) => ({ n: a.n + f.n, b: a.b + f.bytes }), { n: 0, b: 0 });
+  return { title: "Storage", body: [
+    h("div.group", {}, admInfo("Database", bytes(s.dbBytes)), admInfo("Files", `${num(files.n)} · ${bytes(files.b)}`), admInfo("Message words", bytes(s.words)), admInfo("Flight paths", bytes(s.ways))),
+    h("h4.app-k", { text: "Cleaning up" }),
+    h("div.group", {}, admInfo("Last run", s.keptAt ? seenAt(s.keptAt) : "Not yet"), admInfo(`Messages over ${s.keepDays} days`, num(s.due)), admInfo("Unused accounts warned", num(s.warned))),
+    h("h4.app-k", { text: "Files" }),
+    h("div.group", {}, s.files.length ? s.files.map((f) => admInfo(FILES[f.prefix] || f.prefix, `${num(f.n)}${f.more ? "+" : ""} · ${bytes(f.bytes)}`)) : h("div.empty", { text: "No file storage." })),
+    h("h4.app-k", { text: "Rows" }),
+    h("div.group", {}, s.tables.map((t) => admInfo(t.name, num(t.rows)))),
+    h("div.group", {}, h("button.row.action", { type: "button", onclick: () => { admAsk("storage", true); redraw(); } }, AD.busy.storage ? "Counting…" : "Count again"))] };
+}
+
+// Email: whether it's on, who it's from, and a test to your own inbox
+function admEmailView() {
+  const s = admAsk("summary"), said = h("p.said", { role: "alert" });
+  if (!s) return { title: "Email", body: [admWait("summary")] };
+  return { title: "Email", body: [
+    h("div.group", {}, admInfo("Emails", s.email ? "On" : "Off", !s.email),
+      s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "From" }), h("small", { text: s.from }))),
+      s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Tests go to" }), h("small", { text: s.testTo })))),
+    s.email ? h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
+      say(said, "");
+      try { const r = await admPost(e.currentTarget, "Sending…", "test-email", {}); admChanged(); toast(r.message, false, 4500); }
+      catch (err) { if (!err.quiet) say(said, err.message); }
+    } }, "Send a test email")) : h("p.hint", { text: "Add RESEND_API_KEY in Cloudflare to switch emails on." }),
+    said] };
+}
+
+// The admin log: what's been done here (and by the site itself: unused accounts warned and deleted)
+const LOG = { "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Test email sent", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
+  "reset-link": ["Reset link made", "link", "indigo"], "reset-used": ["Password reset", "key", "green"], "signed-out": ["Signed out everywhere", "signout", "grey"],
+  deleted: ["Account deleted", "trash", "red"], "idle-warned": ["Unused account warned", "mail", "grey"], "idle-deleted": ["Unused account deleted", "trash", "grey"],
+  "invite-made": ["Invite made", "link", "blue"], "invite-cancelled": ["Invite cancelled", "link", "grey"], linked: ["Admin linked to your account", "shield", "green"] };
+function admLogView() {
+  const x = admAsk("log");
+  if (!x) return { title: "Admin log", body: [admWait("log")] };
+  return { title: "Admin log", body: [h("div.group", {}, x.log.length ? x.log.map((l) => { const [label, ic, tint] = LOG[l.action] || [l.action, "clock", "grey"];
+    return h("div.row", {}, h(`span.ic.${tint}`, {}, icon(ic, 19)), h("span.tx", {}, h("b", { text: label }), h("small", { text: [l.detail, seenAt(l.at)].filter(Boolean).join(" · ") })));
+  }) : h("div.empty", { text: "Nothing yet." }))] };
+}
+
 // ---- recent activity: the last 30 days, newest first, by day ----
 const DID = {
   signin: (e) => (e.detail === "Passkey" ? "Signed in with a passkey" : e.detail === "Password" ? "Signed in with your password" : "Signed in"),
@@ -1153,11 +1406,12 @@ const DID = {
   "email-confirmed": () => "Email confirmed", "email-change-asked": (e) => `New email asked for${e.detail ? `: ${e.detail}` : ""}`,
   "email-changed": (e) => `Email changed${e.detail ? ` to ${e.detail}` : ""}`, export: () => "Your data downloaded",
   "delete-asked": () => "Deletion asked for", "delete-cancelled": () => "Deletion called off",
+  admin: (e) => `Admin: ${e.detail ? e.detail[0].toLowerCase() + e.detail.slice(1) : "a change"}`,
 };
 const KIND_LOOK = { signin: ["signin", "green"], signup: ["person", "green"], password: ["key", "blue"], reset: ["key", "amber"], "passkey-add": ["passkey", "indigo"],
   "passkey-remove": ["passkey", "grey"], "signout-device": ["signout", "grey"], "signout-others": ["signout", "grey"], "signout-stale": ["signout", "grey"],
   "email-confirmed": ["mail", "blue"], "email-change-asked": ["mail", "amber"], "email-changed": ["mail", "blue"], export: ["download", "green"],
-  "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"] };
+  "delete-asked": ["trash", "red"], "delete-cancelled": ["undo", "green"], admin: ["shield", "indigo"] };
 const SIGNINS = new Set(["signin", "signup", "signout-device", "signout-others", "signout-stale"]);
 const APP_MARK = { InFlight: "/apps/inflight.png", Weather: "/apps/weather.png", Account: "/icon.svg?v=2" };
 function activityView() {

@@ -37,6 +37,7 @@ import { logEvent, activityOf, providerOf } from "../../_activity.js";
 import { prefsOf } from "../../_notify.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset } from "../../_join.js";
 import { avatarKey } from "../../_profile.js";
+import { ADMIN_ROUTES } from "../pigeon/[[path]].js";
 
 const STALE = 90 * DAY, GRACE = 7 * DAY, CONFIRM_TTL = 7 * DAY, CHANGE_TTL = 2 * DAY;
 const UNITS = { temp: ["c", "f"], wind: ["mph", "kmh", "ms", "kn"], precip: ["mm", "in"], pressure: ["hpa", "inhg", "mmhg"], clock: ["12", "24"] };
@@ -75,13 +76,14 @@ async function inflightOf(D, id) {
 async function view(env, u) {
   if (u.delete_at) return { signedIn: true, deleting: true, deleteAt: u.delete_at, id: u.id, name: u.name, handle: u.handle, photoAt: u.avatar_at || null };
   const D = await db(env), t = Date.now();
-  const [{ results: pks }, { results: ss }, wx, inflight, last] = await Promise.all([
+  const [{ results: pks }, { results: ss }, wx, inflight, last, admin] = await Promise.all([
     D.prepare("SELECT id, label, provider, created_at, used_at FROM pg_passkeys WHERE user_id = ? ORDER BY created_at").bind(u.id).all(),
     D.prepare(`SELECT hash, label, place, apps, home, created_at, MAX(seen_at, COALESCE((SELECT MAX(c.seen_at) FROM pg_sessions c WHERE c.parent = s.hash), 0)) AS seen_at
       FROM pg_sessions s WHERE user_id = ? AND parent IS NULL ORDER BY hash = ? DESC, seen_at DESC`).bind(u.id, u.parent || u.sessionHash).all(),
     weatherOf(env, u.id),
     inflightOf(D, u.id),
     D.prepare("SELECT MAX(at) AS at FROM pg_events WHERE user_id = ?").bind(u.id).first().catch(() => null),
+    D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first().catch(() => null),
   ]);
   const s = wx.data?.settings || {}, units = Object.fromEntries(Object.entries(UNITS).filter(([k, ok]) => ok.includes(s[k])).map(([k]) => [k, s[k]]));
   return {
@@ -105,6 +107,8 @@ async function view(env, u) {
     // Weather's warnings and briefing, each on or off, and for which places and when, as its Notifications have them)
     emails: { inflight: !!u.notify_email, weather: weatherMail(wx.data?.notify) },
     lastActivity: last?.at || null,
+    // (the site's admin, on this page: only the linked account, and only with a passkey on it: functions/api/pigeon)
+    admin: admin?.v === u.id ? { ready: pks.length > 0 } : null,
     // (what each app keeps of yours, for its sheet: Weather's places (the first few by name) and notifications; InFlight's counts)
     apps: {
       weather: { places: Array.isArray(wx.data?.places) ? wx.data.places.length : 0, placeNames: (wx.data?.places || []).slice(0, 8).map((p) => String(p.name || "")),
@@ -552,6 +556,18 @@ const ROUTES = {
     return json({ ok: true, handle: u.handle });
   },
 };
+
+// The site's admin (the linked account's, here: functions/api/pigeon), each change noted in its Recent activity too
+const ADMIN_DID = { "admin/reset": "Made a password reset", "admin/signout": "Signed an account out", "admin/pigeons": "Gave pigeons",
+  "admin/delete": "Deleted an account", "admin/invite": "Made an invite", "admin/invite-revoke": "Cancelled an invite", "admin/test-email": "Sent a test email" };
+for (const [k, fn] of Object.entries(ADMIN_ROUTES)) {
+  const did = ADMIN_DID[k.split(" ")[1]];
+  ROUTES[k] = did ? async (ctx) => {
+    const res = await fn(ctx), u = res.ok && await cookieUser(ctx.request, ctx.env);
+    if (u) ctx.waitUntil(logEvent(ctx.env, u.id, "admin", ctx.request, did));
+    return res;
+  } : fn;
+}
 
 export async function onRequest(ctx) {
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []), route = ROUTES[`${ctx.request.method} ${parts.join("/")}`];
