@@ -188,6 +188,8 @@ function openSheet(d) {
   lastFocus = document.activeElement;
   d.classList.remove("closing");
   d.showModal();
+  // (the sheet itself takes the focus, not its first button, which a phone would ring as if it had been chosen)
+  $(".sheet-in", d).focus({ preventScroll: true });
   body.classList.add("sheet-up");
 }
 function closeSheet(d) {
